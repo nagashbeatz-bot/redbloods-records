@@ -64,11 +64,12 @@ interface Props {
 const MAX_VIEW = 2;
 
 export default function ArtistCellEdit({ value, artists, onSave }: Props) {
-  const [open, setOpen]     = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [tags, setTags]     = useState<string[]>([]);
-  const [input, setInput]   = useState("");
-  const [hiIdx, setHiIdx]   = useState(-1);
+  const [open, setOpen]       = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [tags, setTags]       = useState<string[]>([]);
+  const [input, setInput]     = useState("");
+  const [hiIdx, setHiIdx]     = useState(-1);
 
   const triggerRef          = useRef<HTMLDivElement>(null);
   const inputRef            = useRef<HTMLInputElement>(null);
@@ -117,17 +118,18 @@ export default function ArtistCellEdit({ value, artists, onSave }: Props) {
       ? [...tags, pending]
       : tags;
     setSaving(true);
+    setSaveError(null);
     try {
       await onSave(joinArtists(finalTags));
       setOpen(false);
-    } catch {
-      /* stay open */
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "שגיאה בשמירה");
     } finally {
       setSaving(false);
     }
   }
 
-  function cancel() { setOpen(false); setInput(""); }
+  function cancel() { setOpen(false); setInput(""); setSaveError(null); }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape")    { e.preventDefault(); cancel(); return; }
@@ -237,6 +239,22 @@ export default function ArtistCellEdit({ value, artists, onSave }: Props) {
                 {a}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Error message */}
+        {saveError && (
+          <div style={{
+            marginBottom: 8,
+            padding: "7px 10px",
+            borderRadius: 8,
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            color: "#EF4444",
+            fontSize: 12,
+            direction: "rtl",
+          }}>
+            ✗ {saveError}
           </div>
         )}
 
