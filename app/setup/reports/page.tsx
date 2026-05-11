@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 
 type SendState = "idle" | "sending" | "ok" | "error";
+type SaveState = "idle" | "saving" | "ok" | "error";
 
 interface SendResult {
   ok: boolean;
@@ -19,6 +20,11 @@ interface SmtpStatus {
   smtpPort:  string;
 }
 
+interface ReportConfig {
+  morningTime: string;
+  eveningTime: string;
+}
+
 export default function ReportsSetupPage() {
   const [status,  setStatus]  = useState<SmtpStatus | null>(null);
   const [morning, setMorning] = useState<SendState>("idle");
@@ -26,12 +32,49 @@ export default function ReportsSetupPage() {
   const [morningResult, setMorningResult] = useState<SendResult | null>(null);
   const [eveningResult, setEveningResult] = useState<SendResult | null>(null);
 
+  // Schedule config state
+  const [morningTime, setMorningTime] = useState("07:00");
+  const [eveningTime, setEveningTime] = useState("19:43");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch("/api/reports/status")
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => setStatus({ configured: false, smtpUser: null, emailTo: null, smtpHost: "smtp.gmail.com", smtpPort: "587" }));
+
+    fetch("/api/reports/config")
+      .then((r) => r.json())
+      .then((cfg: ReportConfig) => {
+        setMorningTime(cfg.morningTime);
+        setEveningTime(cfg.eveningTime);
+      })
+      .catch(() => { /* keep defaults */ });
   }, []);
+
+  async function saveSchedule() {
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const res  = await fetch("/api/reports/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ morningTime, eveningTime }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || data.error) {
+        setSaveError(data.error ?? "שגיאה לא ידועה");
+        setSaveState("error");
+      } else {
+        setSaveState("ok");
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "שגיאת רשת");
+      setSaveState("error");
+    }
+    setTimeout(() => setSaveState("idle"), 5000);
+  }
 
   async function send(type: "morning" | "evening") {
     const setState  = type === "morning" ? setMorning  : setEvening;
@@ -68,7 +111,7 @@ export default function ReportsSetupPage() {
             דוחות אימייל יומיים
           </h1>
           <p style={{ color: "#555", fontSize: 14, marginTop: 8, lineHeight: 1.6 }}>
-            דוח בוקר ב-07:00 ודוח ערב ב-19:00 — Asia/Jerusalem.
+            דוחות יומיים אוטומטיים — ניתן להגדיר את השעות כאן.
           </p>
         </div>
 
@@ -134,15 +177,101 @@ EMAIL_TO=youremail@gmail.com`}</CodeBlock>
           )}
         </Card>
 
-        {/* ── Scheduler ───────────────────────────────────────────────── */}
-        <Card title="Scheduler מקומי" icon="⏰">
-          <p style={{ color: "#666", fontSize: 13, lineHeight: 1.8, marginBottom: 12 }}>
-            אחרי הגדרת ה-SMTP, פתח טרמינל נוסף והרץ:
+        {/* ── Schedule times ──────────────────────────────────────────── */}
+        <Card title="שעות שליחה" icon="⏰">
+          <p style={{ color: "#555", fontSize: 13, marginBottom: 20, lineHeight: 1.7 }}>
+            שנה את שעות שליחת הדוחות — השינוי נכנס לתוקף מיידי, ללא הפעלה מחדש.
           </p>
-          <CodeBlock>npm run daily-reports</CodeBlock>
-          <p style={{ color: "#555", fontSize: 12, lineHeight: 1.7, marginTop: 10 }}>
-            השאר את הטרמינל פתוח — ישלח דוחות ב-07:00 וב-19:00 כל עוד הוא רץ.
-          </p>
+
+          <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+            {/* Morning */}
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={{
+                display: "block", fontSize: 11, fontWeight: 700, color: "#555",
+                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8,
+              }}>
+                ☀️  דוח בוקר
+              </label>
+              <input
+                type="time"
+                value={morningTime}
+                onChange={(e) => setMorningTime(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 10,
+                  background: "#0D0D0D", border: "1px solid #2A2A2A",
+                  color: "#F0F0F0", fontSize: 18, fontWeight: 700,
+                  fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+                  direction: "ltr",
+                }}
+              />
+            </div>
+
+            {/* Evening */}
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={{
+                display: "block", fontSize: 11, fontWeight: 700, color: "#555",
+                letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8,
+              }}>
+                🌙 דוח ערב
+              </label>
+              <input
+                type="time"
+                value={eveningTime}
+                onChange={(e) => setEveningTime(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 10,
+                  background: "#0D0D0D", border: "1px solid #2A2A2A",
+                  color: "#F0F0F0", fontSize: 18, fontWeight: 700,
+                  fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+                  direction: "ltr",
+                }}
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={saveSchedule}
+            disabled={saveState === "saving"}
+            style={{
+              width: "100%", padding: "12px 20px", borderRadius: 12,
+              border: saveState === "ok"
+                ? "1px solid rgba(16,185,129,0.4)"
+                : saveState === "error"
+                  ? "1px solid rgba(239,68,68,0.4)"
+                  : "1px solid rgba(59,130,246,0.35)",
+              background: saveState === "ok"
+                ? "rgba(16,185,129,0.10)"
+                : saveState === "error"
+                  ? "rgba(239,68,68,0.08)"
+                  : "rgba(59,130,246,0.10)",
+              color: saveState === "ok"
+                ? "#10B981"
+                : saveState === "error"
+                  ? "#EF4444"
+                  : "#3B82F6",
+              fontSize: 14, fontWeight: 700, fontFamily: "inherit",
+              cursor: saveState === "saving" ? "default" : "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            {saveState === "saving" ? "שומר..." : saveState === "ok" ? "✓ נשמר!" : saveState === "error" ? "✗ שגיאה" : "שמור שעות"}
+          </button>
+
+          {saveState === "error" && saveError && (
+            <div style={{ marginTop: 10, color: "#EF4444", fontSize: 12 }}>{saveError}</div>
+          )}
+
+          <div style={{
+            marginTop: 16, padding: "10px 14px", borderRadius: 10,
+            background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.15)",
+          }}>
+            <div style={{ fontSize: 11, color: "#A855F7", fontWeight: 700, marginBottom: 4 }}>
+              Timezone: Asia/Jerusalem
+            </div>
+            <div style={{ fontSize: 11, color: "#555" }}>
+              השרת בודק כל דקה ושולח את הדוח בשעה המדויקת שהוגדרה.
+            </div>
+          </div>
         </Card>
 
         {/* ── Test buttons ─────────────────────────────────────────────── */}
