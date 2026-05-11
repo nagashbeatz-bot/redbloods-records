@@ -13,7 +13,7 @@ const SIDEBAR_WIDTH = 224; // px — navigation sidebar (right side in RTL, w-56
 const PLAYER_H      = 60;  // px — mini player height
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const { projects } = useProjects();
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);
@@ -39,7 +39,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#0D0D0D" }}>
-      <Sidebar />
+      <Sidebar onOpenChat={() => setChatOpen(true)} />
 
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
@@ -66,8 +66,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {/* Page content — bottom padding when player visible */}
           <div
             ref={contentRef}
-            className="flex-1 overflow-auto"
-            style={{ paddingBottom: playerVisible ? PLAYER_H + 8 : 0 }}
+            className="flex-1 overflow-auto pb-16 md:pb-0"
+            style={{ paddingBottom: playerVisible ? PLAYER_H + 8 : undefined }}
           >
             {children}
           </div>
@@ -99,6 +99,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile chat overlay */}
       {chatOpen && (
         <div className="md:hidden fixed inset-0 z-50" style={{ background: "#0D0D0D" }}>
+          <div style={{ position: "absolute", top: 12, left: 12, zIndex: 51 }}>
+            <button
+              onClick={() => setChatOpen(false)}
+              style={{
+                background: "#1A1A1A", border: "1px solid #2A2A2A",
+                borderRadius: 10, padding: "8px 14px",
+                color: "#888", fontSize: 13, cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              ✕ סגור
+            </button>
+          </div>
           <ChatPanel
             projects={projects}
             onClose={() => setChatOpen(false)}

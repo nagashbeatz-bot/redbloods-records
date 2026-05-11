@@ -10,7 +10,11 @@ const NAV = [
   { href: "/setup/reports",   label: "דוחות",    icon: "📧" },
 ];
 
-export default function Sidebar() {
+interface Props {
+  onOpenChat?: () => void;
+}
+
+export default function Sidebar({ onOpenChat }: Props) {
   const pathname = usePathname();
 
   return (
@@ -74,7 +78,7 @@ export default function Sidebar() {
       {/* Mobile bottom nav */}
       <nav
         className="md:hidden fixed bottom-0 right-0 left-0 z-50 flex border-t"
-        style={{ background: "#141414", borderColor: "#2A2A2A" }}
+        style={{ background: "#141414", borderColor: "#2A2A2A", paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {NAV.map(({ href, label, icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
@@ -90,6 +94,15 @@ export default function Sidebar() {
             </Link>
           );
         })}
+        {/* AI Agent button */}
+        <button
+          onClick={onOpenChat}
+          className="flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium"
+          style={{ color: "#A855F7", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <span className="text-xl">✦</span>
+          סוכן
+        </button>
       </nav>
     </>
   );
