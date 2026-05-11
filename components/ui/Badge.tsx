@@ -38,6 +38,8 @@ export function OverdueTag({ small }: { small?: boolean }) {
         color: "#EF4444",
         background: "rgba(239,68,68,0.08)",
         borderColor: "rgba(239,68,68,0.3)",
+        whiteSpace: "nowrap",
+        flexShrink: 0,
       }}
     >
       עבר דדליין
@@ -55,6 +57,8 @@ export function DueSoonTag({ days, small }: { days: number; small?: boolean }) {
         color: "#F97316",
         background: "rgba(249,115,22,0.08)",
         borderColor: "rgba(249,115,22,0.3)",
+        whiteSpace: "nowrap",
+        flexShrink: 0,
       }}
     >
       {days === 0 ? "היום" : days === 1 ? "מחר" : `עוד ${days} ימים`}

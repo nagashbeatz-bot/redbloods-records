@@ -306,16 +306,25 @@ export default function ProjectsTable() {
             const isPlaying = player?.track?.projectId === p.id && player.playing;
             const isLoaded = player?.track?.projectId === p.id;
 
+            // Shared cell style — every cell stretches to full row height and centers content
+            const cell: React.CSSProperties = {
+              display:    "flex",
+              alignItems: "center",
+              overflow:   "hidden",
+              minWidth:   0,
+            };
+
             return (
               <div
                 key={p.id}
-                className="grid gap-3 px-5 border-b items-center transition-all"
+                className="grid gap-3 px-5 border-b transition-all"
                 style={{
                   gridTemplateColumns: "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
-                  background: i % 2 === 0 ? "#1A1A1A" : "#171717",
+                  alignItems:  "stretch",   // cells fill full row height
+                  background:  i % 2 === 0 ? "#1A1A1A" : "#171717",
                   borderColor: "#252525",
-                  height: 52,
-                  overflow: "hidden",
+                  height:      52,
+                  overflow:    "hidden",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLDivElement).style.background = "#1E1E1E";
@@ -325,8 +334,8 @@ export default function ProjectsTable() {
                     i % 2 === 0 ? "#1A1A1A" : "#171717";
                 }}
               >
-                {/* Play + Upload + Action buttons */}
-                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {/* ── Actions ── */}
+                <div style={{ ...cell, gap: 4 }} onClick={(e) => e.stopPropagation()}>
                   <ActionMenu
                     projectId={p.id}
                     projectName={p.name}
@@ -361,7 +370,7 @@ export default function ProjectsTable() {
                       {isPlaying ? "⏸" : "▶"}
                     </button>
                   ) : (
-                    <div style={{ width: 26 }} />
+                    <div style={{ width: 26, flexShrink: 0 }} />
                   )}
                   <UploadButton
                     projectId={p.id}
@@ -372,8 +381,8 @@ export default function ProjectsTable() {
                   />
                 </div>
 
-                {/* Name + navigate icon */}
-                <div className="flex items-center gap-1.5 min-w-0" onClick={(e) => e.stopPropagation()}>
+                {/* ── Name ── */}
+                <div style={{ ...cell, gap: 6 }} onClick={(e) => e.stopPropagation()}>
                   <InlineCellEdit
                     value={p.name}
                     onSave={(v) => updateProjectField(p.id, "name", v)}
@@ -387,7 +396,6 @@ export default function ProjectsTable() {
                   {p.files.length > 0 && (
                     <span className="text-xs flex-shrink-0" style={{ color: "#444" }}>📎</span>
                   )}
-                  {/* Navigate to detail */}
                   <Link
                     href={`/projects/${p.id}`}
                     onClick={(e) => e.stopPropagation()}
@@ -400,8 +408,8 @@ export default function ProjectsTable() {
                   </Link>
                 </div>
 
-                {/* Artist — chip tags */}
-                <div className="min-w-0" style={{ overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+                {/* ── Artist chips ── */}
+                <div style={cell} onClick={(e) => e.stopPropagation()}>
                   <ArtistCellEdit
                     value={p.artist}
                     artists={artists}
@@ -409,19 +417,15 @@ export default function ProjectsTable() {
                   />
                 </div>
 
-                {/* Status + tags — no wrap, clipped so row stays fixed height */}
-                <div
-                  className="flex items-center gap-1"
-                  style={{ overflow: "hidden", flexWrap: "nowrap", minWidth: 0 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
+                {/* ── Status ── */}
+                <div style={{ ...cell, gap: 4 }} onClick={(e) => e.stopPropagation()}>
                   <StatusDropdown projectId={p.id} status={p.status} small />
                   {p.isOverdue && p.status !== "הושלם" && <OverdueTag small />}
                   {showDueSoon && <DueSoonTag days={days!} small />}
                 </div>
 
-                {/* Project type — inline select */}
-                <div onClick={(e) => e.stopPropagation()}>
+                {/* ── Type ── */}
+                <div style={cell} onClick={(e) => e.stopPropagation()}>
                   <InlineCellEdit
                     value={p.projectType}
                     onSave={(v) => updateProjectField(p.id, "projectType", v)}
@@ -435,13 +439,14 @@ export default function ProjectsTable() {
                   </InlineCellEdit>
                 </div>
 
-                {/* שייך ל */}
-                <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+                {/* ── שייך ל ── */}
+                <div style={cell} onClick={(e) => e.stopPropagation()}>
                   <InlineCellEdit
                     value={p.parentProject || ""}
                     onSave={(v) => updateProjectField(p.id, "parentProject", v || "ללא שיוך")}
                     type="text"
                     placeholder="ללא שיוך"
+                    viewStyle={{ minWidth: 0 }}
                   >
                     <span className="text-xs truncate block" style={{ color: p.parentProject ? "#888" : "#333" }}>
                       {p.parentProject || "—"}
@@ -449,8 +454,8 @@ export default function ProjectsTable() {
                   </InlineCellEdit>
                 </div>
 
-                {/* דדליין */}
-                <div onClick={(e) => e.stopPropagation()}>
+                {/* ── דדליין ── */}
+                <div style={cell} onClick={(e) => e.stopPropagation()}>
                   <InlineCellEdit
                     value={p.deadline || ""}
                     onSave={(v) => updateProjectField(p.id, "deadline", v)}
@@ -462,6 +467,7 @@ export default function ProjectsTable() {
                         color: p.isOverdue && p.status !== "הושלם" ? "#EF4444"
                           : showDueSoon ? "#F97316"
                           : "#555",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {deadlineLabel(p.deadline)}
@@ -469,8 +475,8 @@ export default function ProjectsTable() {
                   </InlineCellEdit>
                 </div>
 
-                {/* הערות */}
-                <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+                {/* ── הערות ── */}
+                <div style={cell} onClick={(e) => e.stopPropagation()}>
                   <NotesCellEdit
                     value={p.notes || ""}
                     onSave={(v) => updateProjectField(p.id, "notes", v)}
