@@ -432,6 +432,57 @@ export async function checkManualSlot(
   return { ...result, conflictNames };
 }
 
+// ─── Helper: parse raw event item ─────────────────────────────────────────────
+
+function parseEventItem(
+  item: { id?: string | null; summary?: string | null; start?: { dateTime?: string | null; date?: string | null } | null; end?: { dateTime?: string | null; date?: string | null } | null; location?: string | null },
+  projects: ProjectStub[]
+): ParsedCalendarEvent {
+  const parsed    = parseTitle(item.summary!);
+  const isAllDay  = !item.start?.dateTime;
+  const startTime = item.start?.dateTime ?? item.start?.date ?? "";
+  const endTime   = item.end?.dateTime   ?? item.end?.date   ?? "";
+
+  let durationMinutes = 0;
+  if (!isAllDay && startTime && endTime) {
+    durationMinutes = Math.round(
+      (new Date(endTime).getTime() - new Date(startTime).getTime()) / 60_000
+    );
+  }
+
+  const matched = matchToProject(parsed.artist, parsed.context, projects);
+
+  return {
+    id:                 item.id!,
+    title:              item.summary!,
+    type:               parsed.type,
+    artist:             parsed.artist,
+    context:            parsed.context,
+    startTime,
+    endTime,
+    isAllDay,
+    durationMinutes,
+    matchedProjectId:   matched?.id,
+    matchedProjectName: matched?.name,
+    location:           item.location ?? undefined,
+  } satisfies ParsedCalendarEvent;
+}
+
+// ─── Get all calendar IDs the user has ────────────────────────────────────────
+
+async function getAllCalendarIds(auth: ReturnType<typeof getOAuthClient>): Promise<string[]> {
+  try {
+    const calendar = google.calendar({ version: "v3", auth });
+    const res = await calendar.calendarList.list({ maxResults: 50 });
+    const items = res.data.items ?? [];
+    return items
+      .filter((cal) => cal.id && cal.accessRole !== "freeBusyReader")
+      .map((cal) => cal.id!);
+  } catch {
+    return [CALENDAR_ID]; // fallback to primary
+  }
+}
+
 // ─── Fetch events for an explicit date range ──────────────────────────────────
 
 export async function fetchEventsInRange(
@@ -442,49 +493,44 @@ export async function fetchEventsInRange(
   const auth     = await getAuthenticatedClient();
   const calendar = google.calendar({ version: "v3", auth });
 
-  const res = await calendar.events.list({
-    calendarId: CALENDAR_ID,
-    timeMin:    start.toISOString(),
-    timeMax:    end.toISOString(),
-    singleEvents: true,
-    orderBy:    "startTime",
-    maxResults: 250,
-  });
+  // Fetch from ALL calendars the user has
+  const calendarIds = await getAllCalendarIds(auth);
 
-  const items = res.data.items ?? [];
-
-  return items
-    .filter((item) => item.summary)
-    .map((item) => {
-      const parsed    = parseTitle(item.summary!);
-      const isAllDay  = !item.start?.dateTime;
-      const startTime = item.start?.dateTime ?? item.start?.date ?? "";
-      const endTime   = item.end?.dateTime   ?? item.end?.date   ?? "";
-
-      let durationMinutes = 0;
-      if (!isAllDay && startTime && endTime) {
-        durationMinutes = Math.round(
-          (new Date(endTime).getTime() - new Date(startTime).getTime()) / 60_000
-        );
+  const allItems = await Promise.all(
+    calendarIds.map(async (calId) => {
+      try {
+        const res = await calendar.events.list({
+          calendarId:   calId,
+          timeMin:      start.toISOString(),
+          timeMax:      end.toISOString(),
+          singleEvents: true,
+          orderBy:      "startTime",
+          maxResults:   250,
+        });
+        return res.data.items ?? [];
+      } catch {
+        return [];
       }
+    })
+  );
 
-      const matched = matchToProject(parsed.artist, parsed.context, projects);
+  // Flatten, deduplicate by event ID, filter nulls
+  const seen = new Set<string>();
+  const events: ParsedCalendarEvent[] = [];
 
-      return {
-        id:                 item.id!,
-        title:              item.summary!,
-        type:               parsed.type,
-        artist:             parsed.artist,
-        context:            parsed.context,
-        startTime,
-        endTime,
-        isAllDay,
-        durationMinutes,
-        matchedProjectId:   matched?.id,
-        matchedProjectName: matched?.name,
-        location:           item.location ?? undefined,
-      } satisfies ParsedCalendarEvent;
-    });
+  for (const items of allItems) {
+    for (const item of items) {
+      if (!item.summary || !item.id) continue;
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      events.push(parseEventItem(item, projects));
+    }
+  }
+
+  // Sort by start time
+  return events.sort((a, b) =>
+    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  );
 }
 
 // ─── Event creation ───────────────────────────────────────────────────────────
