@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import type { ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
-import { OverdueTag, DueSoonTag } from "@/components/ui/Badge";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { useProjects } from "@/components/ProjectsProvider";
 import { SkeletonCard } from "@/components/ui/Skeleton";
@@ -418,10 +417,8 @@ export default function ProjectsTable() {
                 </div>
 
                 {/* ── Status ── */}
-                <div style={{ ...cell, gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                <div style={cell} onClick={(e) => e.stopPropagation()}>
                   <StatusDropdown projectId={p.id} status={p.status} small />
-                  {p.isOverdue && p.status !== "הושלם" && <OverdueTag small />}
-                  {showDueSoon && <DueSoonTag days={days!} small />}
                 </div>
 
                 {/* ── Type ── */}
