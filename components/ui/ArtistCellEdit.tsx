@@ -111,9 +111,14 @@ export default function ArtistCellEdit({ value, artists, onSave }: Props) {
   }
 
   async function commit() {
+    // If the user typed something but didn't press Enter yet, include it
+    const pending   = input.trim();
+    const finalTags = pending && !tags.includes(pending)
+      ? [...tags, pending]
+      : tags;
     setSaving(true);
     try {
-      await onSave(joinArtists(tags));
+      await onSave(joinArtists(finalTags));
       setOpen(false);
     } catch {
       /* stay open */
