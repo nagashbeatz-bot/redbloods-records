@@ -87,7 +87,12 @@ export default function ProjectsTable() {
     );
   }
 
-  const artists = Array.from(new Set(projects.map((p) => p.artist))).sort();
+  // Build individual artist list (deduplicated across all projects)
+  const artists = Array.from(new Set(
+    projects.flatMap((p) =>
+      p.artist.split(/[,،;]/).map((a) => a.trim()).filter(Boolean)
+    )
+  )).sort((a, b) => a.localeCompare(b, "he"));
 
   // Unique parent project values (excluding "ללא שיוך" and empty — shown as separate option)
   const uniqueParents = Array.from(
@@ -395,19 +400,21 @@ export default function ProjectsTable() {
                   </Link>
                 </div>
 
-                {/* Artist */}
-                <div className="text-sm min-w-0" onClick={(e) => e.stopPropagation()}>
+                {/* Artist — chip tags */}
+                <div className="min-w-0" style={{ overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
                   <ArtistCellEdit
                     value={p.artist}
                     artists={artists}
                     onSave={(v) => updateProjectField(p.id, "artist", v)}
-                  >
-                    <span className="truncate block" style={{ color: "#666" }}>{p.artist}</span>
-                  </ArtistCellEdit>
+                  />
                 </div>
 
-                {/* Status + tags */}
-                <div className="flex items-center gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                {/* Status + tags — no wrap, clipped so row stays fixed height */}
+                <div
+                  className="flex items-center gap-1"
+                  style={{ overflow: "hidden", flexWrap: "nowrap", minWidth: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <StatusDropdown projectId={p.id} status={p.status} small />
                   {p.isOverdue && p.status !== "הושלם" && <OverdueTag small />}
                   {showDueSoon && <DueSoonTag days={days!} small />}
