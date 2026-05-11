@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import WeekCalendar from "@/components/calendar/WeekCalendar";
 
-export default function CalendarPage() {
+function CalendarPageInner() {
   const params = useSearchParams();
   const router = useRouter();
 
@@ -205,5 +205,19 @@ export default function CalendarPage() {
 
       <WeekCalendar onManageConnection={() => setShowManage(true)} />
     </AppShell>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={
+      <AppShell>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#444", fontSize: 13 }}>
+          טוען...
+        </div>
+      </AppShell>
+    }>
+      <CalendarPageInner />
+    </Suspense>
   );
 }
