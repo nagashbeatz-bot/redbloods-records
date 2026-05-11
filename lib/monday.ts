@@ -327,15 +327,34 @@ export async function updateProjectField(
     return;
   }
 
-  // ── Artist (text column) ────────────────────────────────────────────────
+  // ── Artist (dropdown column) ─────────────────────────────────────────────
+  // "שם אמן" is a Monday dropdown column — value must use { labels: [...] }
+  // with create_labels_if_missing so new artist names are added automatically.
   if (field === "artist") {
     const columnId = colMap.artist;
     if (!columnId) throw new Error("עמודת שם אמן לא נמצאת בבורד");
+
+    // Parse comma-separated artists into individual labels
+    const labels = value
+      .split(/[,،;]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const columnValue = labels.length > 0
+      ? JSON.stringify({ labels })
+      : JSON.stringify({ labels: [] });
+
     await mondayGQL(
       `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-        change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+        change_column_value(
+          board_id: $boardId,
+          item_id: $itemId,
+          column_id: $columnId,
+          value: $value,
+          create_labels_if_missing: true
+        ) { id }
       }`,
-      { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify(value) }
+      { boardId: BOARD_ID, itemId, columnId, value: columnValue }
     );
     return;
   }
