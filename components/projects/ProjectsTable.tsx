@@ -275,7 +275,7 @@ export default function ProjectsTable() {
         <div
           className="grid gap-3 px-5 py-3 text-xs font-medium border-b"
           style={{
-            gridTemplateColumns: "80px 3fr 2fr 2fr 1fr 1.5fr 1.5fr 1fr",
+            gridTemplateColumns: "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
             background: "#141414",
             borderColor: "#252525",
             color: "#555",
@@ -311,7 +311,7 @@ export default function ProjectsTable() {
                 key={p.id}
                 className="grid gap-3 px-5 border-b items-center transition-all"
                 style={{
-                  gridTemplateColumns: "80px 3fr 2fr 2fr 1fr 1.5fr 1.5fr 1fr",
+                  gridTemplateColumns: "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
                   background: i % 2 === 0 ? "#1A1A1A" : "#171717",
                   borderColor: "#252525",
                   height: 52,

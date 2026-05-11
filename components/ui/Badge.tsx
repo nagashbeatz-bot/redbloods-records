@@ -14,7 +14,7 @@ export default function StatusBadge({ status, small }: StatusBadgeProps) {
 
   return (
     <span
-      style={{ color, background: bg, borderColor: `${color}33` }}
+      style={{ color, background: bg, borderColor: `${color}33`, whiteSpace: "nowrap" }}
       className={`inline-flex items-center gap-1.5 rounded-full border font-medium ${
         small ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm"
       }`}
