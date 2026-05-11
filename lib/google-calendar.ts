@@ -238,23 +238,29 @@ export async function fetchTodayAndWeek(
 ): Promise<{ today: ParsedCalendarEvent[]; week: ParsedCalendarEvent[] }> {
   const now = new Date();
 
-  // today: 00:00 → 23:59:59
+  // today: 00:00 → 23:59:59 (local time)
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
   const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-  // tomorrow: 00:00 → 23:59:59
+  // tomorrow: 00:00 → 23:59:59 (local time)
   const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   const tomorrowEnd   = new Date(todayEnd);   tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
 
   // Fetch all calendars for 48 hours
   const all = await fetchEventsInRange(todayStart, tomorrowEnd, projects);
 
-  // Date-string helper for all-day events (avoids UTC offset issues)
-  const todayStr    = todayStart.toISOString().slice(0, 10);
-  const tomorrowStr = tomorrowStart.toISOString().slice(0, 10);
+  // Local date string (avoids UTC offset bugs — e.g. UTC+3 midnight = "yesterday" in UTC)
+  function localDateStr(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
 
+  const todayStr    = localDateStr(todayStart);
+  const tomorrowStr = localDateStr(tomorrowStart);
+
+  // For event startTime: Google returns "2026-05-12T14:00:00+03:00" or "2026-05-12"
+  // Slice(0,10) gives the local date in both cases (Google stores in the event's timezone)
   function eventDate(e: ParsedCalendarEvent): string {
-    return e.startTime.slice(0, 10); // works for both "2026-05-12" and "2026-05-12T14:00:00"
+    return e.startTime.slice(0, 10);
   }
 
   const today    = all.filter((e) => eventDate(e) === todayStr);
