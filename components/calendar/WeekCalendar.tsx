@@ -298,13 +298,13 @@ export default function WeekCalendar({ onManageConnection }: Props) {
               {/* Day name + date */}
               <div style={{ padding: "8px 4px 4px", textAlign: "center" }}>
                 <div style={{
-                  fontSize: 9, fontWeight: 700, color: "#444",
+                  fontSize: 11, fontWeight: 700, color: "#555",
                   letterSpacing: "0.05em", direction: "rtl",
                 }}>
                   {DAYS_HE[dow]}
                 </div>
                 <div style={{
-                  fontSize: 18, fontWeight: 800, lineHeight: 1.1, marginTop: 1,
+                  fontSize: 20, fontWeight: 800, lineHeight: 1.1, marginTop: 1,
                   color: today ? "#3B82F6" : "#C0C0C0",
                 }}>
                   {day.getDate()}
@@ -442,9 +442,9 @@ export default function WeekCalendar({ onManageConnection }: Props) {
                       {/* Type badge (hide on very short) */}
                       {!short && (
                         <div style={{
-                          fontSize: 8, fontWeight: 700,
+                          fontSize: 10, fontWeight: 700,
                           color: c.dim, letterSpacing: "0.04em",
-                          marginBottom: 1, textTransform: "uppercase",
+                          marginBottom: 2, textTransform: "uppercase",
                         }}>
                           {ev.type}
                         </div>
@@ -452,7 +452,7 @@ export default function WeekCalendar({ onManageConnection }: Props) {
 
                       {/* Artist / title */}
                       <div style={{
-                        fontSize: short ? 9 : 11,
+                        fontSize: short ? 11 : 13,
                         fontWeight: 700, color: "#E8E8E8",
                         lineHeight: 1.25,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -463,7 +463,7 @@ export default function WeekCalendar({ onManageConnection }: Props) {
                       {/* Project name */}
                       {!short && ev.matchedProjectName && (
                         <div style={{
-                          fontSize: 9, color: "#A855F7",
+                          fontSize: 11, color: "#A855F7",
                           marginTop: 1,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
@@ -473,7 +473,7 @@ export default function WeekCalendar({ onManageConnection }: Props) {
 
                       {/* Time */}
                       {!short && (
-                        <div style={{ fontSize: 9, color: "#555", marginTop: medium ? 1 : 3 }}>
+                        <div style={{ fontSize: 11, color: "#666", marginTop: medium ? 1 : 3 }}>
                           {fmtTime(ev.startTime)} – {fmtTime(ev.endTime)}
                           {ev.location && ` · ${ev.location}`}
                         </div>
