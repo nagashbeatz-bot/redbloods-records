@@ -17,7 +17,16 @@ async function mondayGQL(query: string, variables?: Record<string, unknown>) {
     cache: "no-store",
   });
   const json = await res.json();
-  if (json.errors) throw new Error(json.errors[0]?.message || "Monday API error");
+  if (json.errors) {
+    const errMsg = json.errors[0]?.message || "Monday API error";
+    // Log full error for server-side diagnostics
+    console.error("[Monday GQL Error]", JSON.stringify({ errMsg, errors: json.errors, variables }));
+    throw new Error(errMsg);
+  }
+  if (!res.ok) {
+    console.error("[Monday HTTP Error]", res.status, JSON.stringify(json));
+    throw new Error(`Monday HTTP ${res.status}: ${JSON.stringify(json)}`);
+  }
   return json.data;
 }
 
@@ -493,6 +502,24 @@ export async function uploadFileToProject(
   if (json.errors) throw new Error(json.errors[0]?.message || "שגיאה בהעלאה");
   if (!json.data?.add_file_to_column) throw new Error("התגובה מ-Monday ריקה");
   return json.data.add_file_to_column;
+}
+
+/**
+ * Debug: return the raw column list from Monday with id, title, type.
+ * Used by GET /api/monday/debug to diagnose column mapping issues.
+ */
+export async function debugColumnMap() {
+  const data = await mondayGQL(`
+    query {
+      boards(ids: [${BOARD_ID}]) {
+        columns { id title type }
+      }
+    }
+  `);
+  const columns: { id: string; title: string; type: string }[] =
+    data.boards[0]?.columns || [];
+  const colMap = await getColumnMap();
+  return { columns, colMap };
 }
 
 /**
