@@ -1,0 +1,128 @@
+import type { Project } from "./types";
+import { isOverdue, isDueSoon } from "./utils";
+
+const today = new Date();
+const d = (offsetDays: number) => {
+  const dt = new Date(today);
+  dt.setDate(dt.getDate() + offsetDays);
+  return dt.toISOString().split("T")[0];
+};
+
+const raw: Omit<Project, "isOverdue" | "isDueSoon">[] = [
+  {
+    id: "1",
+    name: "ריצת הבוקר",
+    artist: "נועה כהן",
+    status: "בעבודה",
+    deadline: d(3),
+    notes: "צריך לסיים ריקורד גיטרה עד יום ראשון",
+    files: [{ name: "ריצת-הבוקר-v2.mp3", url: "#" }],
+    projectType: "שיר",
+    parentProject: "EP: קיץ חם",
+  },
+  {
+    id: "2",
+    name: "שקיעה בים",
+    artist: "יוסי לוי",
+    status: "מחכה למיקס",
+    deadline: d(1),
+    notes: "ממתין לתורו אצל מיקסר — עדיפות גבוהה",
+    files: [],
+    projectType: "שיר",
+    parentProject: "Riddim: Sunshine Riddim",
+  },
+  {
+    id: "3",
+    name: "לילות תל אביב",
+    artist: "מאיה שפיר",
+    status: "במיקס",
+    deadline: d(10),
+    notes: "מיקסר קיבל את כל הסטמות, ריוויו ראשון ביום רביעי",
+    files: [{ name: "stems.zip", url: "#" }, { name: "notes.pdf", url: "#" }],
+    projectType: "שיר",
+    parentProject: "ללא שיוך",
+  },
+  {
+    id: "4",
+    name: "עמק היוגב",
+    artist: "רון אביב",
+    status: "הושלם",
+    deadline: d(-5),
+    notes: "שוחרר בספוטיפיי ואפל מיוזיק",
+    files: [{ name: "final-master.wav", url: "#" }],
+    projectType: "שיר",
+    parentProject: "אלבום: לב מזהב",
+  },
+  {
+    id: "5",
+    name: "ברקע",
+    artist: "טל שמש",
+    status: "בהשהייה",
+    deadline: null,
+    notes: "האמן לא זמין עד אמצע יוני",
+    files: [],
+    projectType: "שיר",
+    parentProject: "ללא שיוך",
+  },
+  {
+    id: "6",
+    name: "סוף הקיץ",
+    artist: "נועה כהן",
+    status: "לא התחיל",
+    deadline: d(21),
+    notes: "תחילת הקלטות מתוכננת לשבוע הבא",
+    files: [],
+    projectType: "שיר",
+    parentProject: "EP: קיץ חם",
+  },
+  {
+    id: "7",
+    name: "גשם בסתיו",
+    artist: "יוסי לוי",
+    status: "בעבודה",
+    deadline: d(-2),
+    notes: "עיכוב בהקלטת תופים — לתאם מחדש עם הסטודיו",
+    files: [{ name: "demo-v1.mp3", url: "#" }],
+    projectType: "שיר",
+    parentProject: "Riddim: Sunshine Riddim",
+  },
+  {
+    id: "8",
+    name: "נשמת הלילה",
+    artist: "אמיר דוד",
+    status: "מחכה למיקס",
+    deadline: d(6),
+    notes: "כל הקלטות הושלמו, מחכה לאישור מהאמן",
+    files: [{ name: "rough-mix.mp3", url: "#" }],
+    projectType: "שיר",
+    parentProject: "ללא שיוך",
+  },
+  {
+    id: "9",
+    name: "קיץ חם",
+    artist: "נועה כהן",
+    status: "בעבודה",
+    deadline: d(30),
+    notes: "3 שירים מוכנים, 2 בתהליך",
+    files: [],
+    projectType: "EP",
+    parentProject: "ללא שיוך",
+  },
+  {
+    id: "10",
+    name: "Sunshine Riddim",
+    artist: "יוסי לוי",
+    status: "בעבודה",
+    deadline: d(45),
+    notes: "ריידים — 4 אמנים, 6 שירים בסה\"כ",
+    files: [],
+    projectType: "רידים",
+    parentProject: "ללא שיוך",
+  },
+];
+
+export const MOCK_PROJECTS: Project[] = raw.map((p) => ({
+  ...p,
+  isOverdue: isOverdue(p.deadline),
+  isDueSoon: isDueSoon(p.deadline),
+}));
