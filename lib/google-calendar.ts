@@ -232,28 +232,35 @@ export async function fetchEvents(
     });
 }
 
-/** Returns events split into today vs. the rest of the week */
+/** Returns events split into today vs. tomorrow (48h window, all calendars, all-day safe) */
 export async function fetchTodayAndWeek(
   projects: ProjectStub[] = []
 ): Promise<{ today: ParsedCalendarEvent[]; week: ParsedCalendarEvent[] }> {
-  const all = await fetchEvents(7, projects);
+  const now = new Date();
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  // today: 00:00 → 23:59:59
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-  const today = all.filter((e) => {
-    const s = new Date(e.startTime);
-    return s >= todayStart && s <= todayEnd;
-  });
+  // tomorrow: 00:00 → 23:59:59
+  const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const tomorrowEnd   = new Date(todayEnd);   tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
 
-  const week = all.filter((e) => {
-    const s = new Date(e.startTime);
-    return s > todayEnd;
-  });
+  // Fetch all calendars for 48 hours
+  const all = await fetchEventsInRange(todayStart, tomorrowEnd, projects);
 
-  return { today, week };
+  // Date-string helper for all-day events (avoids UTC offset issues)
+  const todayStr    = todayStart.toISOString().slice(0, 10);
+  const tomorrowStr = tomorrowStart.toISOString().slice(0, 10);
+
+  function eventDate(e: ParsedCalendarEvent): string {
+    return e.startTime.slice(0, 10); // works for both "2026-05-12" and "2026-05-12T14:00:00"
+  }
+
+  const today    = all.filter((e) => eventDate(e) === todayStr);
+  const tomorrow = all.filter((e) => eventDate(e) === tomorrowStr);
+
+  return { today, week: tomorrow };
 }
 
 /** Build a plain-text calendar context block for the AI agent */
