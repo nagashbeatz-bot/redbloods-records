@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import AppShell from "@/components/AppShell";
 
 type SendState = "idle" | "sending" | "ok" | "error";
 type SaveState = "idle" | "saving" | "ok" | "error";
@@ -102,8 +103,8 @@ export default function ReportsSetupPage() {
   }
 
   return (
+    <AppShell>
     <div style={{
-      minHeight: "100vh", background: "#0D0D0D",
       display: "flex", alignItems: "flex-start", justifyContent: "center",
       padding: "40px 24px", fontFamily: "Heebo, sans-serif", direction: "rtl",
     }}>
@@ -325,18 +326,9 @@ EMAIL_TO=youremail@gmail.com`}</CodeBlock>
           {eveningResult && <ResultBox result={eveningResult} />}
         </Card>
 
-        <Link href="/dashboard" style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          marginTop: 8, padding: "13px 24px", borderRadius: 14,
-          border: "1px solid #2A2A2A", background: "#141414",
-          color: "#D0D0D0", fontSize: 14, fontWeight: 600,
-          textDecoration: "none", transition: "all 0.15s",
-        }}>
-          ← חזור לדשבורד
-        </Link>
-
       </div>
     </div>
+    </AppShell>
   );
 }
 
