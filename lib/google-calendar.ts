@@ -217,6 +217,7 @@ export async function fetchEvents(
 
       return {
         id:                   item.id!,
+        calendarId:           CALENDAR_ID,
         title:                item.summary!,
         type:                 parsed.type,
         artist:               parsed.artist,
@@ -228,6 +229,7 @@ export async function fetchEvents(
         matchedProjectId:     matched?.id,
         matchedProjectName:   matched?.name,
         location:             item.location ?? undefined,
+        htmlLink:             item.htmlLink ?? undefined,
       } satisfies ParsedCalendarEvent;
     });
 }
@@ -448,8 +450,9 @@ export async function checkManualSlot(
 // ─── Helper: parse raw event item ─────────────────────────────────────────────
 
 function parseEventItem(
-  item: { id?: string | null; summary?: string | null; start?: { dateTime?: string | null; date?: string | null } | null; end?: { dateTime?: string | null; date?: string | null } | null; location?: string | null },
-  projects: ProjectStub[]
+  item: { id?: string | null; summary?: string | null; start?: { dateTime?: string | null; date?: string | null } | null; end?: { dateTime?: string | null; date?: string | null } | null; location?: string | null; htmlLink?: string | null },
+  projects: ProjectStub[],
+  calendarId: string
 ): ParsedCalendarEvent {
   const parsed    = parseTitle(item.summary!);
   const isAllDay  = !item.start?.dateTime;
@@ -467,6 +470,7 @@ function parseEventItem(
 
   return {
     id:                 item.id!,
+    calendarId,
     title:              item.summary!,
     type:               parsed.type,
     artist:             parsed.artist,
@@ -478,6 +482,7 @@ function parseEventItem(
     matchedProjectId:   matched?.id,
     matchedProjectName: matched?.name,
     location:           item.location ?? undefined,
+    htmlLink:           item.htmlLink ?? undefined,
   } satisfies ParsedCalendarEvent;
 }
 
@@ -520,9 +525,9 @@ export async function fetchEventsInRange(
           orderBy:      "startTime",
           maxResults:   250,
         });
-        return res.data.items ?? [];
+        return { calId, items: res.data.items ?? [] };
       } catch {
-        return [];
+        return { calId, items: [] };
       }
     })
   );
@@ -531,12 +536,12 @@ export async function fetchEventsInRange(
   const seen = new Set<string>();
   const events: ParsedCalendarEvent[] = [];
 
-  for (const items of allItems) {
+  for (const { calId, items } of allItems) {
     for (const item of items) {
       if (!item.summary || !item.id) continue;
       if (seen.has(item.id)) continue;
       seen.add(item.id);
-      events.push(parseEventItem(item, projects));
+      events.push(parseEventItem(item, projects, calId));
     }
   }
 
@@ -569,4 +574,69 @@ export async function createCalendarEvent(
     id:       res.data.id!,
     htmlLink: res.data.htmlLink!,
   };
+}
+
+// ─── Event deletion ───────────────────────────────────────────────────────────
+
+export async function deleteCalendarEvent(
+  eventId: string,
+  calendarId: string = CALENDAR_ID
+): Promise<void> {
+  const auth     = await getAuthenticatedClient();
+  const calendar = google.calendar({ version: "v3", auth });
+  await calendar.events.delete({ calendarId, eventId });
+}
+
+// ─── Event update ─────────────────────────────────────────────────────────────
+
+export interface EventUpdatePayload {
+  summary?:   string;
+  startIso?:  string;
+  endIso?:    string;
+  location?:  string;
+}
+
+export async function updateCalendarEvent(
+  eventId: string,
+  updates: EventUpdatePayload,
+  calendarId: string = CALENDAR_ID
+): Promise<{ id: string; htmlLink: string }> {
+  const auth     = await getAuthenticatedClient();
+  const calendar = google.calendar({ version: "v3", auth });
+
+  // Fetch current event first so we only patch changed fields
+  const current = await calendar.events.get({ calendarId, eventId });
+
+  const requestBody: Record<string, unknown> = { ...current.data };
+  if (updates.summary  !== undefined) requestBody.summary  = updates.summary;
+  if (updates.location !== undefined) requestBody.location = updates.location;
+  if (updates.startIso !== undefined) {
+    requestBody.start = { dateTime: updates.startIso, timeZone: "Asia/Jerusalem" };
+  }
+  if (updates.endIso !== undefined) {
+    requestBody.end = { dateTime: updates.endIso, timeZone: "Asia/Jerusalem" };
+  }
+
+  const res = await calendar.events.update({
+    calendarId,
+    eventId,
+    requestBody,
+  });
+
+  return {
+    id:       res.data.id!,
+    htmlLink: res.data.htmlLink!,
+  };
+}
+
+// ─── Permission check ─────────────────────────────────────────────────────────
+
+/** Returns true if the stored token includes write access (calendar.events scope). */
+export function hasWritePermission(): boolean {
+  const token = loadToken();
+  if (!token) return false;
+  // The scope list is stored in the token after OAuth completes
+  const scope = (token as Record<string, unknown>).scope;
+  if (typeof scope !== "string") return false;
+  return scope.includes("calendar.events") || scope.includes("calendar") && !scope.includes("readonly");
 }

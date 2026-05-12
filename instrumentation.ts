@@ -1,54 +1,97 @@
 /**
  * Next.js Instrumentation — runs once when the server starts.
  *
- * Schedules the daily email reports using node-cron.
- * The cron fires every minute and re-reads the config file each time,
- * so time changes made via /setup/reports take effect without a restart.
+ * 1. Loads schedule config from Monday.com (persistent across Railway redeploys).
+ * 2. Schedules daily email reports using node-cron.
+ * 3. Calls report functions DIRECTLY — no HTTP fetch, no port dependency.
+ *    Works reliably on Railway and any other host.
  */
 
 export async function register() {
-  // Only run in Node.js runtime (not Edge)
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-  const { default: cron }  = await import("node-cron");
-  const { getReportConfig } = await import("@/lib/reports/config");
+  const { default: cron }                      = await import("node-cron");
+  const { getRuntimeConfig, setRuntimeConfig, markSchedulerStarted, markCronTick, markSent } = await import("@/lib/reports/runtime-config");
 
-  const BASE_URL = process.env.REPORTS_BASE_URL ?? "http://localhost:3000";
-  const TZ       = "Asia/Jerusalem";
+  // ── Load config from Monday.com on startup ────────────────────────────────
+  try {
+    const { readMondayConfig } = await import("@/lib/reports/monday-config");
+    const stored = await readMondayConfig();
+    if (stored) {
+      setRuntimeConfig(stored);
+      console.log(`[reports] הגדרות נטענו מ-Monday.com — בוקר: ${stored.morningTime} · ערב: ${stored.eveningTime}`);
+    } else {
+      const def = getRuntimeConfig();
+      console.log(`[reports] ברירת מחדל — בוקר: ${def.morningTime} · ערב: ${def.eveningTime}`);
+    }
+  } catch (err) {
+    console.warn("[reports] לא ניתן לטעון הגדרות מ-Monday.com:", err);
+  }
 
-  // Track the last minute we sent each type to avoid double-sends
-  const lastSent: Record<string, string> = {};
+  // ── Send helpers (call functions directly, no HTTP) ───────────────────────
 
-  async function maybeSend(type: "morning" | "evening"): Promise<void> {
+  async function sendReport(type: "morning" | "evening"): Promise<void> {
     try {
-      const config = getReportConfig();
-      const target = type === "morning" ? config.morningTime : config.eveningTime;
+      const { fetchReportData }    = await import("@/lib/reports/data");
+      const { getRecommendations } = await import("@/lib/reports/ai");
+      const { sendReportEmail, isEmailConfigured } = await import("@/lib/reports/email");
 
-      // Current time in Jerusalem as HH:MM
-      const now   = new Date();
-      const nowHM = now.toLocaleString("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+      if (!isEmailConfigured()) {
+        console.warn(`[reports] אימייל לא מוגדר — דוח ${type} לא נשלח`);
+        return;
+      }
 
-      if (nowHM === target && lastSent[type] !== nowHM) {
-        lastSent[type] = nowHM;
-        console.log(`[reports] שולח דוח ${type} (${nowHM})`);
-        const res  = await fetch(`${BASE_URL}/api/reports/${type}`, { method: "POST" });
-        const data = await res.json() as { ok: boolean; subject?: string; error?: string };
-        if (data.ok) {
-          console.log(`[reports] ✓ נשלח: ${data.subject ?? type}`);
-        } else {
-          console.error(`[reports] ✗ שגיאה: ${data.error}`);
-        }
+      const data = await fetchReportData();
+      const recs = await getRecommendations(data, type);
+
+      if (type === "morning") {
+        const { generateMorningReport } = await import("@/lib/reports/templates");
+        const report = generateMorningReport(data, recs);
+        await sendReportEmail(report);
+        markSent("morning");
+        console.log(`[reports] ✓ דוח בוקר נשלח: ${report.subject}`);
+      } else {
+        const { generateEveningReport } = await import("@/lib/reports/templates");
+        const report = generateEveningReport(data, recs);
+        await sendReportEmail(report);
+        markSent("evening");
+        console.log(`[reports] ✓ דוח ערב נשלח: ${report.subject}`);
       }
     } catch (err) {
       console.error(`[reports] שגיאה בשליחת דוח ${type}:`, err);
     }
   }
 
-  // Fire every minute — reads config fresh each time
+  // ── Cron — fires every minute ─────────────────────────────────────────────
+
+  const TZ       = "Asia/Jerusalem";
+  const lastSent: Record<string, string> = {};
+
+  async function maybeSend(type: "morning" | "evening"): Promise<void> {
+    const config = getRuntimeConfig();
+    const target = type === "morning" ? config.morningTime : config.eveningTime;
+
+    const now   = new Date();
+    const nowHM = now.toLocaleString("en-GB", {
+      timeZone:  TZ,
+      hour:      "2-digit",
+      minute:    "2-digit",
+      hour12:    false,
+    });
+
+    if (nowHM === target && lastSent[type] !== nowHM) {
+      lastSent[type] = nowHM;
+      console.log(`[reports] שולח דוח ${type} (${nowHM})`);
+      await sendReport(type);
+    }
+  }
+
   cron.schedule("* * * * *", () => {
+    markCronTick();
     maybeSend("morning");
     maybeSend("evening");
   }, { timezone: TZ });
 
-  console.log("[reports] Scheduler הופעל — דוחות ישלחו לפי השעות בהגדרות.");
+  markSchedulerStarted();
+  console.log("[reports] Scheduler הופעל ✓");
 }

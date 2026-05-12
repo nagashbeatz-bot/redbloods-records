@@ -128,7 +128,9 @@ export async function fetchProjects(): Promise<Project[]> {
   `);
 
   type RawItem = { id: string; name: string; column_values: { id: string; text: string; value: string }[] };
-  const items: RawItem[] = data.boards[0]?.items_page?.items || [];
+  const allItems: RawItem[] = data.boards[0]?.items_page?.items || [];
+  // Filter out hidden system items (names starting with __ are internal config items)
+  const items = allItems.filter((i) => !i.name.startsWith("__redbloods_config__"));
 
   // Pass 1 — parse everything; collect raw file entries with assetIds
   type Partial = Omit<Project, "files"> & { rawFiles: RawFileEntry[] };

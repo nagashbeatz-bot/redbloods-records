@@ -16,6 +16,7 @@ export type CalendarEventType =
 
 export interface ParsedCalendarEvent {
   id: string;
+  calendarId: string;          // which Google calendar this event belongs to
   title: string;
   type: CalendarEventType;
   artist: string;
@@ -27,6 +28,7 @@ export interface ParsedCalendarEvent {
   matchedProjectId?: string;
   matchedProjectName?: string;
   location?: string;
+  htmlLink?: string;           // "Open in Google Calendar" URL
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────

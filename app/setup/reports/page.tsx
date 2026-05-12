@@ -23,6 +23,7 @@ interface SmtpStatus {
 interface ReportConfig {
   morningTime: string;
   eveningTime: string;
+  railwayUrl?: string | null;  // set only when running on Railway
 }
 
 export default function ReportsSetupPage() {
@@ -34,9 +35,12 @@ export default function ReportsSetupPage() {
 
   // Schedule config state
   const [morningTime, setMorningTime] = useState("07:00");
-  const [eveningTime, setEveningTime] = useState("19:43");
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [eveningTime, setEveningTime] = useState("19:00");
+  const [saveState,   setSaveState]   = useState<SaveState>("idle");
+  const [saveError,   setSaveError]   = useState<string | null>(null);
+  const [railwayUrl,  setRailwayUrl]  = useState<string | null>(null);
+
+  const isLocalhost = typeof window !== "undefined" && window.location.hostname === "localhost";
 
   useEffect(() => {
     fetch("/api/reports/status")
@@ -49,6 +53,7 @@ export default function ReportsSetupPage() {
       .then((cfg: ReportConfig) => {
         setMorningTime(cfg.morningTime);
         setEveningTime(cfg.eveningTime);
+        setRailwayUrl(cfg.railwayUrl ?? null);
       })
       .catch(() => { /* keep defaults */ });
   }, []);
@@ -115,6 +120,43 @@ export default function ReportsSetupPage() {
           </p>
         </div>
 
+        {/* ── Localhost warning ──────────────────────────────────────── */}
+        {isLocalhost && (
+          <div style={{
+            marginBottom: 20, padding: "16px 20px", borderRadius: 14,
+            background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)",
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#EF4444", marginBottom: 8, direction: "rtl" }}>
+              ⚠️ אתה על localhost — שינויים כאן לא ישפיעו על Railway
+            </div>
+            <div style={{ fontSize: 12, color: "#888", lineHeight: 1.9, direction: "rtl", marginBottom: railwayUrl ? 12 : 0 }}>
+              השרת שמריץ את הדוחות הוא Railway, לא המחשב שלך.<br />
+              כדי לשנות שעות שיעבדו גם כשהמחשב כבוי — כנס לאפליקציה דרך Railway.
+            </div>
+            {railwayUrl && (
+              <a
+                href={`${railwayUrl}/setup/reports`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "8px 16px", borderRadius: 9,
+                  background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)",
+                  color: "#EF4444", fontSize: 12, fontWeight: 700,
+                  textDecoration: "none",
+                }}
+              >
+                פתח הגדרות שעות ב-Railway ↗
+              </a>
+            )}
+            {!railwayUrl && (
+              <div style={{ fontSize: 11, color: "#555", direction: "rtl", marginTop: 6 }}>
+                מצא את ה-URL שלך ב-Railway dashboard → הפרויקט → Deployments
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── SMTP Status ─────────────────────────────────────────────── */}
         <Card title="סטטוס SMTP" icon="📡">
           {status === null ? (
@@ -179,10 +221,6 @@ EMAIL_TO=youremail@gmail.com`}</CodeBlock>
 
         {/* ── Schedule times ──────────────────────────────────────────── */}
         <Card title="שעות שליחה" icon="⏰">
-          <p style={{ color: "#555", fontSize: 13, marginBottom: 20, lineHeight: 1.7 }}>
-            שנה את שעות שליחת הדוחות — השינוי נכנס לתוקף מיידי, ללא הפעלה מחדש.
-          </p>
-
           <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
             {/* Morning */}
             <div style={{ flex: 1, minWidth: 140 }}>
@@ -262,14 +300,14 @@ EMAIL_TO=youremail@gmail.com`}</CodeBlock>
           )}
 
           <div style={{
-            marginTop: 16, padding: "10px 14px", borderRadius: 10,
-            background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.15)",
+            marginTop: 12, padding: "10px 14px", borderRadius: 10,
+            background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)",
           }}>
-            <div style={{ fontSize: 11, color: "#A855F7", fontWeight: 700, marginBottom: 4 }}>
-              Timezone: Asia/Jerusalem
+            <div style={{ fontSize: 11, color: "#10B981", fontWeight: 700, marginBottom: 3 }}>
+              ✓ שמירה אוטומטית ב-Monday.com
             </div>
-            <div style={{ fontSize: 11, color: "#555" }}>
-              השרת בודק כל דקה ושולח את הדוח בשעה המדויקת שהוגדרה.
+            <div style={{ fontSize: 11, color: "#555", lineHeight: 1.7 }}>
+              ההגדרות נשמרות ב-Monday.com ונטענות אוטומטית בכל הפעלה — כולל ב-Railway.
             </div>
           </div>
         </Card>

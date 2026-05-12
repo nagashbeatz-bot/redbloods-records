@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { ParsedCalendarEvent } from "@/lib/calendar-utils";
+import EventPopover from "./EventPopover";
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
 
@@ -156,11 +157,13 @@ interface Props {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function WeekCalendar({ onManageConnection }: Props) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [events,     setEvents]     = useState<ParsedCalendarEvent[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState<string | null>(null);
-  const [nowPx,      setNowPx]      = useState(nowLinePx());
+  const [weekOffset,     setWeekOffset]     = useState(0);
+  const [events,         setEvents]         = useState<ParsedCalendarEvent[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState<string | null>(null);
+  const [nowPx,          setNowPx]          = useState(nowLinePx());
+  const [selectedEvent,  setSelectedEvent]  = useState<ParsedCalendarEvent | null>(null);
+  const [popoverAnchor,  setPopoverAnchor]  = useState<{ top: number; left: number; width: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const weekDays  = getWeekDays(weekOffset);
@@ -198,6 +201,27 @@ export default function WeekCalendar({ onManageConnection }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function openEventPopover(ev: ParsedCalendarEvent, rect: DOMRect) {
+    // Position popover below the event block, shifted slightly right
+    const POP_W = 300;
+    const left  = Math.min(Math.max(rect.left - 8, 8), window.innerWidth - POP_W - 8);
+    const top   = Math.min(rect.bottom + 6, window.innerHeight - 420);
+    setSelectedEvent(ev);
+    setPopoverAnchor({ top, left, width: POP_W });
+  }
+
+  function handleEventDeleted(id: string) {
+    setEvents((prev) => prev.filter((e) => e.id !== id));
+    setSelectedEvent(null);
+    setPopoverAnchor(null);
+  }
+
+  function handleEventUpdated(updated: ParsedCalendarEvent) {
+    setEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e));
+    setSelectedEvent(null);
+    setPopoverAnchor(null);
   }
 
   function dayEvents(day: Date): ParsedCalendarEvent[] {
@@ -423,20 +447,27 @@ export default function WeekCalendar({ onManageConnection }: Props) {
                     <div
                       key={ev.id}
                       title={[ev.title, ev.location, `${fmtTime(ev.startTime)} – ${fmtTime(ev.endTime)}`].filter(Boolean).join("\n")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEventPopover(ev, (e.currentTarget as HTMLElement).getBoundingClientRect());
+                      }}
                       style={{
                         position: "absolute",
                         top, height,
                         left:  `calc(${col * colW}% + 2px)`,
                         width: `calc(${colW}% - 4px)`,
-                        background:  c.bg,
-                        border:      `1px solid ${c.border}`,
+                        background:  selectedEvent?.id === ev.id ? `${c.border}33` : c.bg,
+                        border:      `1px solid ${selectedEvent?.id === ev.id ? c.border : c.border}`,
                         borderRadius: 7,
                         padding:     short ? "2px 5px" : "5px 7px",
                         overflow:    "hidden",
-                        zIndex:      5,
-                        cursor:      "default",
+                        zIndex:      selectedEvent?.id === ev.id ? 10 : 5,
+                        cursor:      "pointer",
                         direction:   "rtl",
                         boxSizing:   "border-box",
+                        outline:     selectedEvent?.id === ev.id ? `2px solid ${c.border}` : "none",
+                        outlineOffset: selectedEvent?.id === ev.id ? 1 : 0,
+                        transition:  "outline 0.1s, background 0.1s",
                       }}
                     >
                       {/* Type badge (hide on very short) */}
@@ -500,6 +531,17 @@ export default function WeekCalendar({ onManageConnection }: Props) {
           </div>
         ))}
       </div>
+
+      {/* ── Event popover ─────────────────────────────────────────────── */}
+      {selectedEvent && popoverAnchor && (
+        <EventPopover
+          event={selectedEvent}
+          anchor={popoverAnchor}
+          onClose={() => { setSelectedEvent(null); setPopoverAnchor(null); }}
+          onDeleted={handleEventDeleted}
+          onUpdated={handleEventUpdated}
+        />
+      )}
     </div>
   );
 }
