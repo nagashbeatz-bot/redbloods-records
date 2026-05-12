@@ -11,7 +11,7 @@ function fmt(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function MiniPlayer() {
+export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
   const player = usePlayerSafe();
   const { projects } = useProjects();
   if (!player || !player.track) return null;
@@ -21,6 +21,56 @@ export default function MiniPlayer() {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const canPlay = track.url !== "#" && track.url !== "";
 
+  // ── Mobile compact layout ──────────────────────────────────────────────────
+  if (mobile) {
+    return (
+      <div style={{
+        background: "#141414", borderTop: "1px solid #2A2A2A",
+        padding: "8px 16px", display: "flex", alignItems: "center", gap: 12,
+      }}>
+        <button
+          onClick={canPlay ? (playing ? pause : resume) : undefined}
+          style={{
+            width: 34, height: 34, borderRadius: "50%", border: "none", flexShrink: 0,
+            background: canPlay ? "#3B82F6" : "#333", color: "#fff", fontSize: 14,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: canPlay ? "pointer" : "default",
+          }}
+        >{playing ? "⏸" : "▶"}</button>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "#E8E8E8" }}>
+            {track.projectName}
+          </div>
+          <div
+            style={{ height: 3, background: "#2A2A2A", borderRadius: 2, marginTop: 5, cursor: "pointer" }}
+            onClick={(e) => {
+              if (!duration) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const ratio = (e.clientX - rect.left) / rect.width;
+              seek(ratio * duration);
+            }}
+          >
+            <div style={{
+              width: `${progress}%`, height: "100%",
+              background: "#3B82F6", borderRadius: 2, transition: "width 0.1s linear",
+            }} />
+          </div>
+        </div>
+
+        <span style={{ fontSize: 11, color: "#666", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+          {fmt(currentTime)}
+        </span>
+
+        <button onClick={stop} style={{
+          background: "none", border: "none", cursor: "pointer",
+          color: "#555", fontSize: 20, padding: "0 4px", flexShrink: 0,
+        }}>×</button>
+      </div>
+    );
+  }
+
+  // ── Desktop full layout ────────────────────────────────────────────────────
   return (
     <div
       style={{

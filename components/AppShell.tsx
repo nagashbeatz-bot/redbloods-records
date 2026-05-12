@@ -142,15 +142,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <MiniPlayer />
       </div>
 
-      {/* Mobile: full-width player */}
+      {/* Mobile: full-width player — sits above bottom nav (56 px) */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
+        className="fixed left-0 right-0 z-50 md:hidden"
         style={{
+          bottom: 56,
           transform: playerVisible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.25s",
         }}
       >
-        <MiniPlayer />
+        <MiniPlayer mobile />
       </div>
     </div>
   );

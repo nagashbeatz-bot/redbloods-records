@@ -68,6 +68,14 @@ export default function ProjectsTable() {
   const [sortBy, setSortBy] = useState<"deadline" | "name" | "artist">("deadline");
   const [showSetup, setShowSetup] = useState(false);
   const [optionalColumnsReady, setOptionalColumnsReady] = useState<boolean | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     fetch("/api/monday/column")
@@ -272,9 +280,12 @@ export default function ProjectsTable() {
       <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "#252525" }}>
         {/* Header */}
         <div
-          className="grid gap-3 px-5 py-3 text-xs font-medium border-b"
+          className="grid px-4 py-3 text-xs font-medium border-b"
           style={{
-            gridTemplateColumns: "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
+            gridTemplateColumns: isMobile
+              ? "56px 1fr auto auto"
+              : "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
+            gap: isMobile ? "8px" : "12px",
             background: "#141414",
             borderColor: "#252525",
             color: "#555",
@@ -282,12 +293,12 @@ export default function ProjectsTable() {
         >
           <div />
           <div>שם פרויקט</div>
-          <div>אמן</div>
+          {!isMobile && <div>אמן</div>}
           <div>סטטוס</div>
-          <div>סוג</div>
-          <div>שייך ל</div>
+          {!isMobile && <div>סוג</div>}
+          {!isMobile && <div>שייך ל</div>}
           <div>דדליין</div>
-          <div>הערות</div>
+          {!isMobile && <div>הערות</div>}
         </div>
 
         {filtered.length === 0 ? (
@@ -316,10 +327,15 @@ export default function ProjectsTable() {
             return (
               <div
                 key={p.id}
-                className="grid gap-3 px-5 border-b transition-all"
+                className="grid border-b transition-all"
                 style={{
-                  gridTemplateColumns: "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
-                  alignItems:  "stretch",   // cells fill full row height
+                  gridTemplateColumns: isMobile
+                    ? "56px 1fr auto auto"
+                    : "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
+                  gap: isMobile ? "8px" : "12px",
+                  paddingLeft: isMobile ? "12px" : "20px",
+                  paddingRight: isMobile ? "12px" : "20px",
+                  alignItems:  "stretch",
                   background:  i % 2 === 0 ? "#1A1A1A" : "#171717",
                   borderColor: "#252525",
                   height:      52,
@@ -407,49 +423,55 @@ export default function ProjectsTable() {
                   </Link>
                 </div>
 
-                {/* ── Artist chips ── */}
-                <div style={cell} onClick={(e) => e.stopPropagation()}>
-                  <ArtistCellEdit
-                    value={p.artist}
-                    artists={artists}
-                    onSave={(v) => updateProjectField(p.id, "artist", v)}
-                  />
-                </div>
+                {/* ── Artist chips — hidden on mobile ── */}
+                {!isMobile && (
+                  <div style={cell} onClick={(e) => e.stopPropagation()}>
+                    <ArtistCellEdit
+                      value={p.artist}
+                      artists={artists}
+                      onSave={(v) => updateProjectField(p.id, "artist", v)}
+                    />
+                  </div>
+                )}
 
                 {/* ── Status ── */}
                 <div style={cell} onClick={(e) => e.stopPropagation()}>
                   <StatusDropdown projectId={p.id} status={p.status} small />
                 </div>
 
-                {/* ── Type ── */}
-                <div style={cell} onClick={(e) => e.stopPropagation()}>
-                  <InlineCellEdit
-                    value={p.projectType}
-                    onSave={(v) => updateProjectField(p.id, "projectType", v)}
-                    type="select"
-                    options={[
-                      { value: "", label: "ללא" },
-                      ...PROJECT_TYPES.map((t) => ({ value: t, label: t })),
-                    ]}
-                  >
-                    <ProjectTypeBadge type={p.projectType} />
-                  </InlineCellEdit>
-                </div>
+                {/* ── Type — hidden on mobile ── */}
+                {!isMobile && (
+                  <div style={cell} onClick={(e) => e.stopPropagation()}>
+                    <InlineCellEdit
+                      value={p.projectType}
+                      onSave={(v) => updateProjectField(p.id, "projectType", v)}
+                      type="select"
+                      options={[
+                        { value: "", label: "ללא" },
+                        ...PROJECT_TYPES.map((t) => ({ value: t, label: t })),
+                      ]}
+                    >
+                      <ProjectTypeBadge type={p.projectType} />
+                    </InlineCellEdit>
+                  </div>
+                )}
 
-                {/* ── שייך ל ── */}
-                <div style={cell} onClick={(e) => e.stopPropagation()}>
-                  <InlineCellEdit
-                    value={p.parentProject || ""}
-                    onSave={(v) => updateProjectField(p.id, "parentProject", v || "ללא שיוך")}
-                    type="text"
-                    placeholder="ללא שיוך"
-                    viewStyle={{ minWidth: 0 }}
-                  >
-                    <span className="text-xs truncate block" style={{ color: p.parentProject ? "#888" : "#333" }}>
-                      {p.parentProject || "—"}
-                    </span>
-                  </InlineCellEdit>
-                </div>
+                {/* ── שייך ל — hidden on mobile ── */}
+                {!isMobile && (
+                  <div style={cell} onClick={(e) => e.stopPropagation()}>
+                    <InlineCellEdit
+                      value={p.parentProject || ""}
+                      onSave={(v) => updateProjectField(p.id, "parentProject", v || "ללא שיוך")}
+                      type="text"
+                      placeholder="ללא שיוך"
+                      viewStyle={{ minWidth: 0 }}
+                    >
+                      <span className="text-xs truncate block" style={{ color: p.parentProject ? "#888" : "#333" }}>
+                        {p.parentProject || "—"}
+                      </span>
+                    </InlineCellEdit>
+                  </div>
+                )}
 
                 {/* ── דדליין ── */}
                 <div style={cell} onClick={(e) => e.stopPropagation()}>
@@ -472,13 +494,15 @@ export default function ProjectsTable() {
                   </InlineCellEdit>
                 </div>
 
-                {/* ── הערות ── */}
-                <div style={cell} onClick={(e) => e.stopPropagation()}>
-                  <NotesCellEdit
-                    value={p.notes || ""}
-                    onSave={(v) => updateProjectField(p.id, "notes", v)}
-                  />
-                </div>
+                {/* ── הערות — hidden on mobile ── */}
+                {!isMobile && (
+                  <div style={cell} onClick={(e) => e.stopPropagation()}>
+                    <NotesCellEdit
+                      value={p.notes || ""}
+                      onSave={(v) => updateProjectField(p.id, "notes", v)}
+                    />
+                  </div>
+                )}
               </div>
             );
           })
