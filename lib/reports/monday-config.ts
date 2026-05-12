@@ -92,20 +92,19 @@ export async function writeMondayConfig(config: ConfigPayload): Promise<void> {
   const existing = await findConfigItem();
 
   if (existing) {
-    // Update the item name to encode the new times
+    // Monday.com doesn't support renaming via change_column_value —
+    // delete the old item and create a fresh one with the new name.
     await gql(
-      `mutation ($boardId: ID!, $itemId: ID!, $value: JSON!) {
-         change_column_value(board_id: $boardId, item_id: $itemId, column_id: "name", value: $value) { id }
-       }`,
-      { boardId: BOARD_ID, itemId: existing.id, value: JSON.stringify(newName) }
-    );
-  } else {
-    // Create a new item with the config encoded in the name
-    await gql(
-      `mutation ($boardId: ID!, $name: String!) {
-         create_item(board_id: $boardId, item_name: $name) { id }
-       }`,
-      { boardId: BOARD_ID, name: newName }
+      `mutation ($itemId: ID!) { delete_item(item_id: $itemId) { id } }`,
+      { itemId: existing.id }
     );
   }
+
+  // Create item with the new config encoded in its name
+  await gql(
+    `mutation ($boardId: ID!, $name: String!) {
+       create_item(board_id: $boardId, item_name: $name) { id }
+     }`,
+    { boardId: BOARD_ID, name: newName }
+  );
 }
