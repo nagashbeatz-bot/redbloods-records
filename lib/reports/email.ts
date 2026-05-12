@@ -34,20 +34,20 @@ export async function sendReportEmail(payload: EmailPayload): Promise<void> {
 
   const nodemailer = (await import("nodemailer")).default;
 
-  const port   = parseInt(SMTP_PORT ?? "465", 10);
-  const secure = port === 465;          // 465 = SSL, 587 = STARTTLS
+  // Always use port 465 (SSL) — Railway blocks 587 and has no IPv6
+  const host = SMTP_HOST ?? "smtp.gmail.com";
 
+  // Force IPv4 DNS — Railway has no IPv6 and blocks port 587
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const transporter = nodemailer.createTransport({
-    host:   SMTP_HOST ?? "smtp.gmail.com",
-    port,
-    secure,
-    family: 4,                          // force IPv4 — Railway blocks IPv6 SMTP
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
+  const transporter = (nodemailer as any).createTransport({
+    host,
+    port:   465,
+    secure: true,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    lookup: (_host: string, _opts: unknown, cb: (err: Error | null, addr: string, fam: number) => void) => {
+      require("dns").lookup(_host, { family: 4 }, cb);
     },
-  } as any);
+  });
 
   await transporter.sendMail({
     from:    EMAIL_FROM ?? SMTP_USER,
