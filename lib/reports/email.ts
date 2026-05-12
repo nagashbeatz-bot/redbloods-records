@@ -1,15 +1,14 @@
 /**
  * Email sender for daily reports.
- * Uses Nodemailer + Gmail SMTP (App Password).
+ * Uses Resend HTTP API (port 443) — works on Railway and any host.
  * SERVER ONLY.
  *
  * Required env vars:
- *   SMTP_HOST   (default: smtp.gmail.com)
- *   SMTP_PORT   (default: 587)
- *   SMTP_USER   — your Gmail address
- *   SMTP_PASS   — Gmail App Password (not your regular password)
- *   EMAIL_FROM  — sender display (default: same as SMTP_USER)
- *   EMAIL_TO    — recipient (usually yourself)
+ *   RESEND_API_KEY  — get free key at resend.com
+ *   EMAIL_TO        — recipient address (usually yourself)
+ *   EMAIL_FROM      — sender display (optional, default: onboarding@resend.dev)
+ *                     Note: with free Resend plan, sender must be @resend.dev
+ *                     unless you verify a custom domain.
  */
 import "server-only";
 
@@ -20,40 +19,42 @@ export interface EmailPayload {
 }
 
 export function isEmailConfigured(): boolean {
-  return !!(process.env.SMTP_USER && process.env.SMTP_PASS && process.env.EMAIL_TO);
+  return !!(process.env.RESEND_API_KEY && process.env.EMAIL_TO);
 }
 
 export async function sendReportEmail(payload: EmailPayload): Promise<void> {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_TO } = process.env;
+  const { RESEND_API_KEY, EMAIL_TO, EMAIL_FROM } = process.env;
 
-  if (!SMTP_USER || !SMTP_PASS || !EMAIL_TO) {
+  if (!RESEND_API_KEY || !EMAIL_TO) {
     throw new Error(
-      "משתני הסביבה SMTP_USER / SMTP_PASS / EMAIL_TO חסרים. הגדר אותם ב-.env.local"
+      "משתני הסביבה RESEND_API_KEY / EMAIL_TO חסרים. הגדר אותם ב-Railway Variables"
     );
   }
 
-  const nodemailer = (await import("nodemailer")).default;
+  const from = EMAIL_FROM ?? "Redbloods Records <onboarding@resend.dev>";
 
-  // Always use port 465 (SSL) — Railway blocks 587 and has no IPv6
-  const host = SMTP_HOST ?? "smtp.gmail.com";
-
-  // Force IPv4 DNS — Railway has no IPv6 and blocks port 587
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const transporter = (nodemailer as any).createTransport({
-    host,
-    port:   465,
-    secure: true,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-    lookup: (_host: string, _opts: unknown, cb: (err: Error | null, addr: string, fam: number) => void) => {
-      require("dns").lookup(_host, { family: 4 }, cb);
+  const res = await fetch("https://api.resend.com/emails", {
+    method:  "POST",
+    headers: {
+      "Authorization": `Bearer ${RESEND_API_KEY}`,
+      "Content-Type":  "application/json",
     },
+    body: JSON.stringify({
+      from,
+      to:      [EMAIL_TO],
+      subject: payload.subject,
+      html:    payload.html,
+      text:    payload.text,
+    }),
   });
 
-  await transporter.sendMail({
-    from:    EMAIL_FROM ?? SMTP_USER,
-    to:      EMAIL_TO,
-    subject: payload.subject,
-    html:    payload.html,
-    text:    payload.text,
-  });
+  const data = await res.json() as { id?: string; name?: string; message?: string; statusCode?: number };
+
+  if (!res.ok) {
+    throw new Error(
+      `Resend error ${res.status}: ${data.name ?? data.message ?? JSON.stringify(data)}`
+    );
+  }
+
+  console.log(`[email] ✓ נשלח דרך Resend, id=${data.id}`);
 }
