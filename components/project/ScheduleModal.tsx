@@ -22,7 +22,7 @@ type Phase =
   | "checking"
   | { confirm: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean } }
   | "creating"
-  | { created: { label: string; htmlLink?: string } }
+  | { created: { label: string; htmlLink?: string; inviteSent?: boolean } }
   | { error: string; needsReauth?: boolean };
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -35,9 +35,12 @@ interface Props {
 }
 
 export default function ScheduleModal({ action, projectName, artist, onClose }: Props) {
-  const [minutes,  setMinutes]  = useState(action.defaultMinutes);
-  const [tab,      setTab]      = useState<Tab>("recommended");
-  const [phase,    setPhase]    = useState<Phase>("idle");
+  const [minutes,       setMinutes]       = useState(action.defaultMinutes);
+  const [tab,           setTab]           = useState<Tab>("recommended");
+  const [phase,         setPhase]         = useState<Phase>("idle");
+  const [sendToArtist,  setSendToArtist]  = useState(false);
+  const [artistEmail,   setArtistEmail]   = useState("");
+  const [publicTitle,   setPublicTitle]   = useState(`${action.calPrefix} באולפן`);
 
   // Manual picker state
   const today = new Date();
@@ -124,15 +127,21 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
   async function createEvent(startIso: string, endIso: string, label: string) {
     setPhase("creating");
     try {
+      const summary = sendToArtist ? publicTitle : title;
+      const body: Record<string, unknown> = { summary, start: startIso, end: endIso };
+      if (sendToArtist && artistEmail.trim()) {
+        body.artistEmail        = artistEmail.trim();
+        body.publicDescription  = `נקבע ${publicTitle}.\n\nאם צריך לשנות שעה, דבר איתי בפרטי.`;
+      }
       const r = await fetch("/api/calendar/create-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ summary: title, start: startIso, end: endIso }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       if (d.needsReauth) { setPhase({ error: "יש לחבר מחדש את Google Calendar עם הרשאות כתיבה.", needsReauth: true }); return; }
       if (!d.ok)         { setPhase({ error: d.error ?? "שגיאה" }); return; }
-      setPhase({ created: { label, htmlLink: d.event?.htmlLink } });
+      setPhase({ created: { label, htmlLink: d.event?.htmlLink, inviteSent: d.inviteSent ?? false } });
     } catch { setPhase({ error: "שגיאת רשת" }); }
   }
 
@@ -311,12 +320,15 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
             action={action}
             artist={artist}
             projectName={projectName}
-            onBack={() => setPhase(tab === "recommended" ? "idle" : "idle")}
+            sendToArtist={sendToArtist}
+            setSendToArtist={setSendToArtist}
+            artistEmail={artistEmail}
+            setArtistEmail={setArtistEmail}
+            publicTitle={publicTitle}
+            setPublicTitle={setPublicTitle}
+            onBack={() => setPhase("idle")}
             onCreate={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
-            onForce={() => {
-              // force-create despite warnings
-              createEvent(confirmData.start, confirmData.end, confirmData.label);
-            }}
+            onForce={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
           />
         )}
 
@@ -452,22 +464,29 @@ function ManualPicker({
 }
 
 function ConfirmPanel({
-  data, action, artist, projectName, onBack, onCreate, onForce,
+  data, action, artist, projectName,
+  sendToArtist, setSendToArtist, artistEmail, setArtistEmail, publicTitle, setPublicTitle,
+  onBack, onCreate, onForce,
 }: {
   data: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean };
   action: ActionDef; artist: string; projectName: string;
+  sendToArtist: boolean; setSendToArtist: (v: boolean) => void;
+  artistEmail: string; setArtistEmail: (v: string) => void;
+  publicTitle: string; setPublicTitle: (v: string) => void;
   onBack: () => void; onCreate: () => void; onForce: () => void;
 }) {
-  const hasWarning = data.hardConflict || data.bufferWarning;
+  const hasWarning  = data.hardConflict || data.bufferWarning;
+  const emailValid  = !sendToArtist || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(artistEmail.trim());
+  const canCreate   = emailValid;
 
   return (
     <div>
-      {/* Summary card */}
+      {/* ── Internal summary ─────────────────────────────────────── */}
       <div style={{
         background: "#111", border: "1px solid #2A2A2A", borderRadius: 14,
-        padding: "16px 16px", marginBottom: 16,
+        padding: "16px", marginBottom: 14,
       }}>
-        <div style={{ fontSize: 11, color: "#555", marginBottom: 10, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+        <div style={{ fontSize: 10, color: "#555", marginBottom: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
           אישור יצירת אירוע
         </div>
         <Row label="פעולה"   value={action.calPrefix} />
@@ -476,7 +495,91 @@ function ConfirmPanel({
         <Row label="זמן"     value={data.label} highlight />
       </div>
 
-      {/* Warnings */}
+      {/* ── Artist invite section ─────────────────────────────────── */}
+      <div style={{
+        background: sendToArtist ? "rgba(168,85,247,0.06)" : "#111",
+        border: `1px solid ${sendToArtist ? "rgba(168,85,247,0.25)" : "#222"}`,
+        borderRadius: 14, padding: "14px 16px", marginBottom: 14,
+        transition: "all 0.2s",
+      }}>
+        {/* Checkbox */}
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+          <div
+            onClick={() => setSendToArtist(!sendToArtist)}
+            style={{
+              width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+              border: `1.5px solid ${sendToArtist ? "#A855F7" : "#333"}`,
+              background: sendToArtist ? "rgba(168,85,247,0.2)" : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.15s", cursor: "pointer",
+            }}
+          >
+            {sendToArtist && <span style={{ color: "#C084FC", fontSize: 12, lineHeight: 1 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 600, color: sendToArtist ? "#C084FC" : "#888" }}>
+            שלח הזמנה לאמן
+          </span>
+        </label>
+
+        {sendToArtist && (
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* Public title */}
+            <div>
+              <div style={{ fontSize: 10, color: "#666", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
+                כותרת שהאמן יראה
+              </div>
+              <input
+                value={publicTitle}
+                onChange={(e) => setPublicTitle(e.target.value)}
+                placeholder="סשן באולפן"
+                style={{
+                  width: "100%", padding: "8px 12px", borderRadius: 9,
+                  border: "1px solid #303030", background: "#0D0D0D",
+                  color: "#E8E8E8", fontSize: 13, fontFamily: "inherit",
+                  outline: "none", boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            {/* Artist email */}
+            <div>
+              <div style={{ fontSize: 10, color: "#666", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
+                אימייל האמן
+              </div>
+              <input
+                type="email"
+                value={artistEmail}
+                onChange={(e) => setArtistEmail(e.target.value)}
+                placeholder="artist@example.com"
+                dir="ltr"
+                style={{
+                  width: "100%", padding: "8px 12px", borderRadius: 9,
+                  border: `1px solid ${artistEmail && !emailValid ? "rgba(239,68,68,0.5)" : "#303030"}`,
+                  background: "#0D0D0D", color: "#E8E8E8",
+                  fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+                }}
+              />
+              {artistEmail && !emailValid && (
+                <div style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>כתובת מייל לא תקינה</div>
+              )}
+            </div>
+
+            {/* Preview */}
+            <div style={{
+              background: "#0D0D0D", border: "1px solid #222", borderRadius: 9,
+              padding: "10px 12px", fontSize: 11, color: "#555",
+            }}>
+              <div style={{ marginBottom: 4 }}>מה האמן יקבל:</div>
+              <div style={{ color: "#C084FC", fontWeight: 600, fontSize: 12 }}>{publicTitle || "סשן באולפן"}</div>
+              <div style={{ color: "#444", marginTop: 4 }}>
+                {"נקבע " + (publicTitle || "סשן") + " באולפן. אם צריך לשנות שעה, דבר איתי בפרטי."}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Warnings ─────────────────────────────────────────────── */}
       {data.hardConflict && (
         <WarnBox icon="⚠">
           יש אירוע אחר בזמן הזה{data.conflictNames.length > 0 ? `: "${data.conflictNames[0]}"` : ""}.
@@ -488,21 +591,21 @@ function ConfirmPanel({
         </WarnBox>
       )}
 
-      {/* Buttons */}
+      {/* ── Buttons ──────────────────────────────────────────────── */}
       {!hasWarning && (
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn primary onClick={onCreate}>✓ צור אירוע ביומן</Btn>
+          <Btn primary onClick={onCreate} disabled={!canCreate}>
+            {sendToArtist ? "✓ צור ושלח הזמנה לאמן" : "✓ צור אירוע ביומן"}
+          </Btn>
           <Btn onClick={onBack}>חזור</Btn>
         </div>
       )}
 
       {hasWarning && (
-        <>
-          <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-            <Btn onClick={onBack}>בחר זמן אחר</Btn>
-            <Btn primary onClick={onForce}>צור בכל זאת</Btn>
-          </div>
-        </>
+        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+          <Btn onClick={onBack}>בחר זמן אחר</Btn>
+          <Btn primary onClick={onForce} disabled={!canCreate}>צור בכל זאת</Btn>
+        </div>
       )}
     </div>
   );
@@ -511,7 +614,7 @@ function ConfirmPanel({
 function CreatedPanel({
   data, action, artist, projectName, onClose,
 }: {
-  data: { label: string; htmlLink?: string };
+  data: { label: string; htmlLink?: string; inviteSent?: boolean };
   action: ActionDef; artist: string; projectName: string;
   onClose: () => void;
 }) {
@@ -528,6 +631,11 @@ function CreatedPanel({
         <Row label="אמן"    value={artist} />
         <Row label="פרויקט" value={projectName} />
         <Row label="זמן"    value={data.label} highlight />
+        {data.inviteSent && (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#A855F7", fontWeight: 600 }}>
+            ✉️ הזמנה נשלחה לאמן
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         {data.htmlLink && (

@@ -7,7 +7,10 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { summary, start, end } = await req.json();
+    const { summary, start, end, artistEmail, publicDescription } = await req.json() as {
+      summary: string; start: string; end: string;
+      artistEmail?: string; publicDescription?: string;
+    };
 
     if (!summary || !start || !end) {
       return NextResponse.json({ error: "summary / start / end חסרים" }, { status: 400 });
@@ -19,8 +22,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "not_connected" }, { status: 400 });
     }
 
-    const event = await createCalendarEvent(summary, start, end);
-    return NextResponse.json({ ok: true, event });
+    const event = await createCalendarEvent(summary, start, end,
+      artistEmail
+        ? { attendees: [{ email: artistEmail }], description: publicDescription }
+        : undefined
+    );
+    return NextResponse.json({ ok: true, event, inviteSent: !!artistEmail });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     const needsReauth =

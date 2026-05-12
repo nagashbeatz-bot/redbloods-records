@@ -556,17 +556,25 @@ export async function fetchEventsInRange(
 export async function createCalendarEvent(
   summary: string,
   startIso: string,
-  endIso: string
+  endIso: string,
+  opts?: {
+    attendees?:    { email: string }[];
+    description?:  string;
+  }
 ): Promise<{ id: string; htmlLink: string }> {
   const auth     = await getAuthenticatedClient();
   const calendar = google.calendar({ version: "v3", auth });
 
   const res = await calendar.events.insert({
-    calendarId: CALENDAR_ID,
+    calendarId:  CALENDAR_ID,
+    sendUpdates: opts?.attendees?.length ? "all" : "none",
     requestBody: {
       summary,
+      description:              opts?.description,
       start: { dateTime: startIso, timeZone: "Asia/Jerusalem" },
       end:   { dateTime: endIso,   timeZone: "Asia/Jerusalem" },
+      attendees:                opts?.attendees,
+      guestsCanSeeOtherGuests:  false,
     },
   });
 
