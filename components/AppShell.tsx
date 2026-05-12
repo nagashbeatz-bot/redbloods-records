@@ -12,15 +12,26 @@ const CHAT_WIDTH    = 320; // px — agent chat panel (left side in RTL)
 const SIDEBAR_WIDTH = 224; // px — navigation sidebar (right side in RTL, w-56)
 const PLAYER_H      = 60;  // px — mini player height
 
+const MOBILE_NAV_H = 56; // px — bottom nav height on mobile
+const MOBILE_PLAYER_H = 50; // px — compact mobile player height
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const { projects } = useProjects();
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);
+  const [isMobile, setIsMobile] = useState(false);
 
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -67,7 +78,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div
             ref={contentRef}
             className="flex-1 overflow-auto pb-16 md:pb-0"
-            style={{ paddingBottom: playerVisible ? PLAYER_H + 8 : undefined }}
+            style={{
+              paddingBottom: playerVisible
+                ? isMobile
+                  ? MOBILE_NAV_H + MOBILE_PLAYER_H + 8
+                  : PLAYER_H + 8
+                : undefined,
+            }}
           >
             {children}
           </div>
