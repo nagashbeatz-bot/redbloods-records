@@ -25,17 +25,16 @@ const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID ?? "primary";
 
 // ─── OAuth client ─────────────────────────────────────────────────────────────
 
-export function getOAuthClient() {
+export function getOAuthClient(redirectUri?: string) {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI ??
-      "http://localhost:3000/api/calendar/callback"
+    redirectUri ?? process.env.GOOGLE_REDIRECT_URI ?? "http://localhost:3000/api/calendar/callback"
   );
 }
 
-export function getAuthUrl(): string {
-  const oauth2 = getOAuthClient();
+export function getAuthUrl(redirectUri?: string): string {
+  const oauth2 = getOAuthClient(redirectUri);
   return oauth2.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,

@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const { getOAuthClient, saveToken } = await import("@/lib/google-calendar");
-    const oauth2 = getOAuthClient();
+    const redirectUri = `${req.nextUrl.origin}/api/calendar/callback`;
+    const oauth2 = getOAuthClient(redirectUri);
     const { tokens } = await oauth2.getToken(code);
     await saveToken(tokens);
     return NextResponse.redirect(
