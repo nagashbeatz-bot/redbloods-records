@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const { isConnected, fetchTodayAndWeek } = await import("@/lib/google-calendar");
 
-    if (!isConnected()) {
+    if (!await isConnected()) {
       return NextResponse.json(
         { error: "not_connected", today: [], week: [] },
         { status: 200 } // 200 so the widget can show "not connected" gracefully

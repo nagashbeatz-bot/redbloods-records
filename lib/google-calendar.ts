@@ -43,42 +43,47 @@ export function getAuthUrl(): string {
   });
 }
 
-// ─── Token management ─────────────────────────────────────────────────────────
+// ─── Token management (Supabase-backed, survives redeploys) ──────────────────
 
-export function saveToken(tokens: object) {
-  fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+export async function saveToken(tokens: object): Promise<void> {
+  const { supabase } = await import("./supabase");
+  await supabase.from("settings").upsert({
+    key: "google_calendar_token",
+    value: tokens,
+    updated_at: new Date().toISOString(),
+  });
 }
 
-export function loadToken(): Record<string, unknown> | null {
-  try {
-    const raw = fs.readFileSync(TOKEN_PATH, "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+export async function loadToken(): Promise<Record<string, unknown> | null> {
+  const { supabase } = await import("./supabase");
+  const { data } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "google_calendar_token")
+    .single();
+  return (data?.value as Record<string, unknown>) ?? null;
 }
 
-export function revokeToken() {
-  try {
-    fs.unlinkSync(TOKEN_PATH);
-  } catch { /* ignore */ }
+export async function revokeToken(): Promise<void> {
+  const { supabase } = await import("./supabase");
+  await supabase.from("settings").delete().eq("key", "google_calendar_token");
 }
 
-export function isConnected(): boolean {
-  return loadToken() !== null;
+export async function isConnected(): Promise<boolean> {
+  return (await loadToken()) !== null;
 }
 
 export async function getAuthenticatedClient() {
   const oauth2 = getOAuthClient();
-  const token  = loadToken();
+  const token  = await loadToken();
   if (!token) throw new Error("Google Calendar לא מחובר");
 
   oauth2.setCredentials(token as Parameters<typeof oauth2.setCredentials>[0]);
 
-  // Auto-save refreshed tokens
+  // Auto-save refreshed tokens (fire-and-forget)
   oauth2.on("tokens", (newTokens) => {
     const merged = { ...token, ...newTokens };
-    saveToken(merged);
+    saveToken(merged).catch(console.error);
   });
 
   return oauth2;
@@ -640,10 +645,9 @@ export async function updateCalendarEvent(
 // ─── Permission check ─────────────────────────────────────────────────────────
 
 /** Returns true if the stored token includes write access (calendar.events scope). */
-export function hasWritePermission(): boolean {
-  const token = loadToken();
+export async function hasWritePermission(): Promise<boolean> {
+  const token = await loadToken();
   if (!token) return false;
-  // The scope list is stored in the token after OAuth completes
   const scope = (token as Record<string, unknown>).scope;
   if (typeof scope !== "string") return false;
   return scope.includes("calendar.events") || scope.includes("calendar") && !scope.includes("readonly");

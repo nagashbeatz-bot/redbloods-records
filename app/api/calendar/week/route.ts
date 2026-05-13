@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { isConnected, fetchEventsInRange } = await import("@/lib/google-calendar");
-    if (!isConnected()) {
+    if (!await isConnected()) {
       return NextResponse.json({ error: "not_connected", events: [] });
     }
 

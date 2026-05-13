@@ -29,7 +29,7 @@ export async function fetchReportData(): Promise<ReportData> {
 
   try {
     const { isConnected, fetchTodayAndWeek } = await import("@/lib/google-calendar");
-    if (isConnected()) {
+    if (await isConnected()) {
       calendarConnected = true;
       const { today } = await fetchTodayAndWeek();
       calendarEvents = today.map((e) => ({

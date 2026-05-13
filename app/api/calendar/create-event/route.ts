@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
 
-    if (!isConnected()) {
+    if (!await isConnected()) {
       return NextResponse.json({ error: "not_connected" }, { status: 400 });
     }
 

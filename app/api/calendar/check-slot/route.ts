@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     if (!start || !end) return NextResponse.json({ error: "start / end חסרים" }, { status: 400 });
 
     const { isConnected, checkManualSlot } = await import("@/lib/google-calendar");
-    if (!isConnected()) return NextResponse.json({ error: "not_connected" }, { status: 400 });
+    if (!await isConnected()) return NextResponse.json({ error: "not_connected" }, { status: 400 });
 
     const result = await checkManualSlot(start, end, !!requiresBuffer);
     return NextResponse.json(result);

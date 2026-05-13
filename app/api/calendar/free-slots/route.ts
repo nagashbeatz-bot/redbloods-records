@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { isConnected, findFreeSlots } = await import("@/lib/google-calendar");
-    if (!isConnected()) return NextResponse.json({ error: "not_connected", slots: [] });
+    if (!await isConnected()) return NextResponse.json({ error: "not_connected", slots: [] });
 
     const slots = await findFreeSlots(duration, requiresBuffer, days);
     return NextResponse.json({ slots });

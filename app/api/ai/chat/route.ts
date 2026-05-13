@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       const { isConnected, fetchTodayAndWeek, buildCalendarContext } = await import(
         "@/lib/google-calendar"
       );
-      if (isConnected()) {
+      if (await isConnected()) {
         const projectStubs = (projects as Array<{ id: string; name: string; artist: string }>).map(
           (p) => ({ id: p.id, name: p.name, artist: p.artist })
         );
