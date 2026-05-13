@@ -129,8 +129,10 @@ export async function fetchProjects(): Promise<Project[]> {
 
   type RawItem = { id: string; name: string; column_values: { id: string; text: string; value: string }[] };
   const allItems: RawItem[] = data.boards[0]?.items_page?.items || [];
-  // Filter out hidden system items (names starting with __ are internal config items)
-  const items = allItems.filter((i) => !i.name.startsWith("__redbloods_config__"));
+  // Filter out hidden system items (config and client records stored in this board)
+  const items = allItems.filter(
+    (i) => !i.name.startsWith("__redbloods_config__") && !i.name.startsWith("__client__|")
+  );
 
   // Pass 1 — parse everything; collect raw file entries with assetIds
   type Partial = Omit<Project, "files"> & { rawFiles: RawFileEntry[] };

@@ -40,7 +40,26 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
   const [phase,         setPhase]         = useState<Phase>("idle");
   const [sendToArtist,  setSendToArtist]  = useState(false);
   const [artistEmail,   setArtistEmail]   = useState("");
+  const [emailFromClients, setEmailFromClients] = useState(false);
   const [publicTitle,   setPublicTitle]   = useState(`${action.calPrefix} באולפן`);
+
+  // Auto-fill artist email from clients list
+  useEffect(() => {
+    if (!artist) return;
+    fetch("/api/clients")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.clients) return;
+        const match = (d.clients as { name: string; email: string }[]).find(
+          (c) => c.name.trim().toLowerCase() === artist.trim().toLowerCase()
+        );
+        if (match?.email) {
+          setArtistEmail(match.email);
+          setEmailFromClients(true);
+        }
+      })
+      .catch(() => {});
+  }, [artist]);
 
   // Manual picker state
   const today = new Date();
@@ -323,7 +342,8 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
             sendToArtist={sendToArtist}
             setSendToArtist={setSendToArtist}
             artistEmail={artistEmail}
-            setArtistEmail={setArtistEmail}
+            setArtistEmail={(v) => { setArtistEmail(v); setEmailFromClients(false); }}
+            emailFromClients={emailFromClients}
             publicTitle={publicTitle}
             setPublicTitle={setPublicTitle}
             onBack={() => setPhase("idle")}
@@ -465,13 +485,14 @@ function ManualPicker({
 
 function ConfirmPanel({
   data, action, artist, projectName,
-  sendToArtist, setSendToArtist, artistEmail, setArtistEmail, publicTitle, setPublicTitle,
-  onBack, onCreate, onForce,
+  sendToArtist, setSendToArtist, artistEmail, setArtistEmail, emailFromClients,
+  publicTitle, setPublicTitle, onBack, onCreate, onForce,
 }: {
   data: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean };
   action: ActionDef; artist: string; projectName: string;
   sendToArtist: boolean; setSendToArtist: (v: boolean) => void;
   artistEmail: string; setArtistEmail: (v: string) => void;
+  emailFromClients: boolean;
   publicTitle: string; setPublicTitle: (v: string) => void;
   onBack: () => void; onCreate: () => void; onForce: () => void;
 }) {
@@ -561,6 +582,9 @@ function ConfirmPanel({
               />
               {artistEmail && !emailValid && (
                 <div style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>כתובת מייל לא תקינה</div>
+              )}
+              {emailFromClients && artistEmail && emailValid && (
+                <div style={{ fontSize: 11, color: "#34D399", marginTop: 4 }}>✓ מולא אוטומטית מרשימת הלקוחות</div>
               )}
             </div>
 

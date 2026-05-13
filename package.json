@@ -9,6 +9,7 @@
     "daily-reports": "tsx scripts/daily-reports.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.4",
     "dotenv": "^17.4.2",
     "googleapis": "^171.4.0",
     "next": "16.2.6",
