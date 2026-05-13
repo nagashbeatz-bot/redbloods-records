@@ -9,9 +9,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Derive redirect URI from the actual request origin — works on any domain automatically
-  const origin = req.nextUrl.origin;
-  const redirectUri = `${origin}/api/calendar/callback`;
+  // Derive redirect URI from public-facing origin (works behind Railway / any reverse proxy)
+  const host  = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
+  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0] || "http";
+  const redirectUri = `${proto}://${host}/api/calendar/callback`;
 
   const { getAuthUrl } = await import("@/lib/google-calendar");
   const url = getAuthUrl(redirectUri);

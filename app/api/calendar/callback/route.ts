@@ -23,7 +23,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const { getOAuthClient, saveToken } = await import("@/lib/google-calendar");
-    const redirectUri = `${req.nextUrl.origin}/api/calendar/callback`;
+    const host  = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
+    const proto = req.headers.get("x-forwarded-proto")?.split(",")[0] || "http";
+    const redirectUri = `${proto}://${host}/api/calendar/callback`;
     const oauth2 = getOAuthClient(redirectUri);
     const { tokens } = await oauth2.getToken(code);
     await saveToken(tokens);
