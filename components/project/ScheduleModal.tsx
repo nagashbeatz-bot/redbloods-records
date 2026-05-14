@@ -22,7 +22,7 @@ type Phase =
   | "checking"
   | { confirm: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean } }
   | "creating"
-  | { created: { label: string; htmlLink?: string; whatsappUrl?: string } }
+  | { created: { label: string; htmlLink?: string; inviteSent?: boolean } }
   | { error: string; needsReauth?: boolean };
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -38,24 +38,24 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
   const [minutes,       setMinutes]       = useState(action.defaultMinutes);
   const [tab,           setTab]           = useState<Tab>("recommended");
   const [phase,         setPhase]         = useState<Phase>("idle");
-  const [sendToArtist,    setSendToArtist]    = useState(false);
-  const [artistPhone,     setArtistPhone]     = useState("");
-  const [phoneFromClients,setPhoneFromClients]= useState(false);
-  const [publicTitle,     setPublicTitle]     = useState(`${action.calPrefix} עם נגש ביטס`);
+  const [sendToArtist,   setSendToArtist]   = useState(false);
+  const [artistEmail,    setArtistEmail]    = useState("");
+  const [emailFromClients,setEmailFromClients] = useState(false);
+  const [publicTitle,    setPublicTitle]    = useState(`${action.calPrefix} עם נגש ביטס`);
 
-  // Auto-fill artist phone from clients list
+  // Auto-fill artist email from clients list
   useEffect(() => {
     if (!artist) return;
     fetch("/api/clients")
       .then((r) => r.json())
       .then((d) => {
         if (!d.clients) return;
-        const match = (d.clients as { name: string; phone: string }[]).find(
+        const match = (d.clients as { name: string; email: string }[]).find(
           (c) => c.name.trim().toLowerCase() === artist.trim().toLowerCase()
         );
-        if (match?.phone) {
-          setArtistPhone(match.phone);
-          setPhoneFromClients(true);
+        if (match?.email) {
+          setArtistEmail(match.email);
+          setEmailFromClients(true);
         }
       })
       .catch(() => {});
@@ -146,9 +146,14 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
   async function createEvent(startIso: string, endIso: string, label: string) {
     setPhase("creating");
     try {
-      // Create calendar event with internal title (no Google Calendar invite sent to artist).
-      // Notification is done via WhatsApp link shown after creation.
-      const body: Record<string, unknown> = { summary: title, start: startIso, end: endIso };
+      // When sending to artist: use public title so they see "סשן עם נגש ביטס".
+      // Without invite: use internal title so the user sees artist+project name.
+      const summary = sendToArtist && artistEmail.trim() ? publicTitle : title;
+      const body: Record<string, unknown> = { summary, start: startIso, end: endIso };
+      if (sendToArtist && artistEmail.trim()) {
+        body.artistEmail       = artistEmail.trim();
+        body.publicDescription = `שם אמן: ${artist}\nשם פרויקט: ${projectName}`;
+      }
       const r = await fetch("/api/calendar/create-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,17 +162,7 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
       const d = await r.json();
       if (d.needsReauth) { setPhase({ error: "יש לחבר מחדש את Google Calendar עם הרשאות כתיבה.", needsReauth: true }); return; }
       if (!d.ok)         { setPhase({ error: d.error ?? "שגיאה" }); return; }
-
-      // Build WhatsApp link if artist phone is available
-      let whatsappUrl: string | undefined;
-      if (sendToArtist && artistPhone.trim()) {
-        const digits = artistPhone.replace(/\D/g, "");
-        const waPhone = digits.startsWith("972") ? digits : digits.startsWith("0") ? "972" + digits.slice(1) : "972" + digits;
-        const waText  = encodeURIComponent(`היי! נקבע לך ${publicTitle} ב${label}.\n\nאם יש צורך לשנות שעה או לתאם מחדש - דבר איתי בפרטי.`);
-        whatsappUrl   = `https://wa.me/${waPhone}?text=${waText}`;
-      }
-
-      setPhase({ created: { label, htmlLink: d.event?.htmlLink, whatsappUrl } });
+      setPhase({ created: { label, htmlLink: d.event?.htmlLink, inviteSent: !!artistEmail && sendToArtist } });
     } catch { setPhase({ error: "שגיאת רשת" }); }
   }
 
@@ -348,11 +343,10 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
             projectName={projectName}
             sendToArtist={sendToArtist}
             setSendToArtist={setSendToArtist}
-            artistPhone={artistPhone}
-            setArtistPhone={(v) => { setArtistPhone(v); setPhoneFromClients(false); }}
-            phoneFromClients={phoneFromClients}
+            artistEmail={artistEmail}
+            setArtistEmail={(v) => { setArtistEmail(v); setEmailFromClients(false); }}
+            emailFromClients={emailFromClients}
             publicTitle={publicTitle}
-            setPublicTitle={setPublicTitle}
             onBack={() => setPhase("idle")}
             onCreate={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
             onForce={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
@@ -492,19 +486,20 @@ function ManualPicker({
 
 function ConfirmPanel({
   data, action, artist, projectName,
-  sendToArtist, setSendToArtist, artistPhone, setArtistPhone, phoneFromClients,
-  publicTitle, setPublicTitle, onBack, onCreate, onForce,
+  sendToArtist, setSendToArtist, artistEmail, setArtistEmail, emailFromClients,
+  publicTitle, onBack, onCreate, onForce,
 }: {
   data: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean };
   action: ActionDef; artist: string; projectName: string;
   sendToArtist: boolean; setSendToArtist: (v: boolean) => void;
-  artistPhone: string; setArtistPhone: (v: string) => void;
-  phoneFromClients: boolean;
-  publicTitle: string; setPublicTitle: (v: string) => void;
+  artistEmail: string; setArtistEmail: (v: string) => void;
+  emailFromClients: boolean;
+  publicTitle: string;
   onBack: () => void; onCreate: () => void; onForce: () => void;
 }) {
-  const hasWarning  = data.hardConflict || data.bufferWarning;
-  const canCreate   = true;
+  const hasWarning = data.hardConflict || data.bufferWarning;
+  const emailValid = !sendToArtist || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(artistEmail.trim());
+  const canCreate  = emailValid;
 
   return (
     <div>
@@ -535,53 +530,55 @@ function ConfirmPanel({
             onClick={() => setSendToArtist(!sendToArtist)}
             style={{
               width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-              border: `1.5px solid ${sendToArtist ? "#25D366" : "#333"}`,
-              background: sendToArtist ? "rgba(37,211,102,0.15)" : "transparent",
+              border: `1.5px solid ${sendToArtist ? "#A855F7" : "#333"}`,
+              background: sendToArtist ? "rgba(168,85,247,0.2)" : "transparent",
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "all 0.15s", cursor: "pointer",
             }}
           >
-            {sendToArtist && <span style={{ color: "#25D366", fontSize: 12, lineHeight: 1 }}>✓</span>}
+            {sendToArtist && <span style={{ color: "#C084FC", fontSize: 12, lineHeight: 1 }}>✓</span>}
           </div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: sendToArtist ? "#25D366" : "#888" }}>
-            הכן הודעת WhatsApp לאמן
+          <span style={{ fontSize: 13, fontWeight: 600, color: sendToArtist ? "#C084FC" : "#888" }}>
+            שלח הזמנה לאמן במייל
           </span>
         </label>
 
         {sendToArtist && (
           <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Phone number */}
+            {/* Artist email */}
             <div>
               <div style={{ fontSize: 10, color: "#666", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
-                מספר טלפון
+                אימייל האמן
               </div>
               <input
-                type="tel"
-                value={artistPhone}
-                onChange={(e) => setArtistPhone(e.target.value)}
-                placeholder="05X-XXXXXXX"
+                type="email"
+                value={artistEmail}
+                onChange={(e) => setArtistEmail(e.target.value)}
+                placeholder="artist@example.com"
                 dir="ltr"
                 style={{
                   width: "100%", padding: "8px 12px", borderRadius: 9,
-                  border: "1px solid #303030",
+                  border: `1px solid ${artistEmail && !emailValid ? "rgba(239,68,68,0.5)" : "#303030"}`,
                   background: "#0D0D0D", color: "#E8E8E8",
                   fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
                 }}
               />
-              {phoneFromClients && artistPhone && (
+              {artistEmail && !emailValid && (
+                <div style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>כתובת מייל לא תקינה</div>
+              )}
+              {emailFromClients && artistEmail && emailValid && (
                 <div style={{ fontSize: 11, color: "#34D399", marginTop: 4 }}>✓ מולא אוטומטית מרשימת הלקוחות</div>
               )}
             </div>
 
-            {/* Message preview */}
+            {/* Preview */}
             <div style={{
-              background: "#0A1F0F", border: "1px solid rgba(37,211,102,0.2)", borderRadius: 9,
-              padding: "10px 12px", fontSize: 12, color: "#888",
+              background: "#0D0D0D", border: "1px solid #222", borderRadius: 9,
+              padding: "10px 12px", fontSize: 11, color: "#555",
             }}>
-              <div style={{ marginBottom: 6, fontSize: 10, color: "#555", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>תצוגה מקדימה של ההודעה</div>
-              <div style={{ color: "#D0D0D0", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-                {`היי! נקבע לך ${publicTitle} ב${data.label}.\n\nאם יש צורך לשנות שעה או לתאם מחדש - דבר איתי בפרטי.`}
-              </div>
+              <div style={{ marginBottom: 4 }}>מה האמן יקבל:</div>
+              <div style={{ color: "#C084FC", fontWeight: 600, fontSize: 12 }}>{publicTitle}</div>
+              <div style={{ color: "#666", marginTop: 6, lineHeight: 1.7, whiteSpace: "pre" }}>{`שם אמן: ${artist}\nשם פרויקט: ${projectName}`}</div>
             </div>
           </div>
         )}
@@ -603,7 +600,7 @@ function ConfirmPanel({
       {!hasWarning && (
         <div style={{ display: "flex", gap: 10 }}>
           <Btn primary onClick={onCreate} disabled={!canCreate}>
-            {sendToArtist ? "✓ צור אירוע + הכן הודעת WhatsApp" : "✓ צור אירוע ביומן"}
+            {sendToArtist ? "✓ צור ושלח הזמנה לאמן" : "✓ צור אירוע ביומן"}
           </Btn>
           <Btn onClick={onBack}>חזור</Btn>
         </div>
@@ -622,7 +619,7 @@ function ConfirmPanel({
 function CreatedPanel({
   data, action, artist, projectName, onClose,
 }: {
-  data: { label: string; htmlLink?: string; whatsappUrl?: string };
+  data: { label: string; htmlLink?: string; inviteSent?: boolean };
   action: ActionDef; artist: string; projectName: string;
   onClose: () => void;
 }) {
@@ -639,23 +636,13 @@ function CreatedPanel({
         <Row label="אמן"    value={artist} />
         <Row label="פרויקט" value={projectName} />
         <Row label="זמן"    value={data.label} highlight />
-      </div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {data.whatsappUrl && (
-          <a
-            href={data.whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: "10px 20px", borderRadius: 100, textDecoration: "none",
-              border: "1.5px solid rgba(37,211,102,0.4)",
-              background: "rgba(37,211,102,0.12)", color: "#25D366",
-              fontSize: 13, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6,
-            }}
-          >
-            💬 שלח WhatsApp לאמן
-          </a>
+        {data.inviteSent && (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#A855F7", fontWeight: 600 }}>
+            ✉️ הזמנה נשלחה לאמן במייל
+          </div>
         )}
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
         {data.htmlLink && (
           <a href={data.htmlLink} target="_blank" rel="noopener noreferrer" style={{ ...SECONDARY_STYLE, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
             פתח ביומן ↗
