@@ -41,7 +41,7 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
   const [sendToArtist,   setSendToArtist]   = useState(false);
   const [artistEmail,    setArtistEmail]    = useState("");
   const [emailFromClients,setEmailFromClients] = useState(false);
-  const [publicTitle,    setPublicTitle]    = useState(`${action.calPrefix} עם נגש ביטס`);
+  const [publicTitle,    setPublicTitle]    = useState(`${action.calPrefix} ${artist} ונגש ביטס`);
 
   // Auto-fill artist email from clients list
   useEffect(() => {
