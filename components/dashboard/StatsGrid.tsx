@@ -89,7 +89,7 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
   }).length;
 
   return (
-    <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+    <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
       <StatCard label="סה״כ"         count={projects.length} color="#F0F0F0" icon="◈" />
       <StatCard label="פעילים"       count={active}          color="#3B82F6" icon="▶"  sectionId="section-active" />
       <StatCard label="מחכה למיקס"  count={waitMix}         color="#F59E0B" icon="🎚" dim sectionId="section-wait-mix" />

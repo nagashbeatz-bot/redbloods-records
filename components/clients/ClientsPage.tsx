@@ -37,15 +37,23 @@ const EMPTY_FORM = {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
-  const [clients,  setClients]  = useState<Client[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [modal,    setModal]    = useState<"add" | "edit" | null>(null);
-  const [editing,  setEditing]  = useState<Client | null>(null);
-  const [form,     setForm]     = useState({ ...EMPTY_FORM });
-  const [saving,   setSaving]   = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [search,   setSearch]   = useState("");
+  const [clients,   setClients]  = useState<Client[]>([]);
+  const [loading,   setLoading]  = useState(true);
+  const [error,     setError]    = useState<string | null>(null);
+  const [modal,     setModal]    = useState<"add" | "edit" | null>(null);
+  const [editing,   setEditing]  = useState<Client | null>(null);
+  const [form,      setForm]     = useState({ ...EMPTY_FORM });
+  const [saving,    setSaving]   = useState(false);
+  const [deleting,  setDeleting] = useState<string | null>(null);
+  const [search,    setSearch]   = useState("");
+  const [isCompact, setIsCompact]= useState(false);
+
+  useEffect(() => {
+    const check = () => setIsCompact(window.innerWidth < 1300);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -230,7 +238,7 @@ export default function ClientsPage() {
           <div
             className="hidden md:grid"
             style={{
-              gridTemplateColumns: "2fr 1.4fr 2fr 1fr 1.1fr 80px",
+              gridTemplateColumns: isCompact ? "2fr 1.4fr 1.2fr 80px" : "2fr 1.4fr 2fr 1fr 1.1fr 80px",
               padding: "10px 20px",
               borderBottom: "1px solid #1E1E1E",
               fontSize: 10, fontWeight: 700, color: "#444",
@@ -239,8 +247,8 @@ export default function ClientsPage() {
           >
             <span>שם</span>
             <span>טלפון</span>
-            <span>אימייל</span>
-            <span>סוג</span>
+            {!isCompact && <span>אימייל</span>}
+            {!isCompact && <span>סוג</span>}
             <span>סטטוס</span>
             <span></span>
           </div>
@@ -250,6 +258,7 @@ export default function ClientsPage() {
             <ClientRow
               key={client.id}
               client={client}
+              isCompact={isCompact}
               deleting={deleting === client.id}
               onEdit={() => openEdit(client)}
               onDelete={() => handleDelete(client.id)}
@@ -282,9 +291,9 @@ export default function ClientsPage() {
 // ─── Row ──────────────────────────────────────────────────────────────────────
 
 function ClientRow({
-  client, deleting, onEdit, onDelete,
+  client, isCompact, deleting, onEdit, onDelete,
 }: {
-  client: Client; deleting: boolean;
+  client: Client; isCompact: boolean; deleting: boolean;
   onEdit: () => void; onDelete: () => void;
 }) {
   const typeColor   = TYPE_COLORS[client.type]   || TYPE_COLORS["אחר"];
@@ -304,28 +313,30 @@ function ClientRow({
       <div
         className="hidden md:grid"
         style={{
-          gridTemplateColumns: "2fr 1.4fr 2fr 1fr 1.1fr 80px",
+          gridTemplateColumns: isCompact ? "2fr 1.4fr 1.2fr 80px" : "2fr 1.4fr 2fr 1fr 1.1fr 80px",
           alignItems: "center", gap: 8,
         }}
       >
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8" }}>{client.name}</div>
-          {client.notes && (
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#E8E8E8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client.name}</div>
+          {client.notes && !isCompact && (
             <div className="truncate" style={{ fontSize: 11, color: "#555", marginTop: 2, maxWidth: 200 }}>
               {client.notes}
             </div>
           )}
         </div>
 
-        <div style={{ fontSize: 13, color: "#A0A0A0", direction: "ltr", textAlign: "right" }}>
+        <div style={{ fontSize: 13, color: "#A0A0A0", direction: "ltr", textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {client.phone || <span style={{ color: "#333" }}>—</span>}
         </div>
 
-        <div style={{ fontSize: 12, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "right" }}>
-          {client.email || <span style={{ color: "#333" }}>—</span>}
-        </div>
+        {!isCompact && (
+          <div style={{ fontSize: 12, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "right" }}>
+            {client.email || <span style={{ color: "#333" }}>—</span>}
+          </div>
+        )}
 
-        <Badge bg={typeColor.bg} color={typeColor.color}>{client.type}</Badge>
+        {!isCompact && <Badge bg={typeColor.bg} color={typeColor.color}>{client.type}</Badge>}
         <Badge bg={statusColor.bg} color={statusColor.color}>{client.status}</Badge>
 
         <Actions deleting={deleting} onEdit={onEdit} onDelete={onDelete} />

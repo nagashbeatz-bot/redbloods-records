@@ -61,7 +61,7 @@ export default function DashboardContent() {
     return (
       <div className="px-6 py-8 max-w-5xl mx-auto space-y-8">
         <div style={{ height: 52 }} />
-        <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+        <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
           {Array.from({ length: 8 }).map((_, i) => (
             <div
               key={i}
