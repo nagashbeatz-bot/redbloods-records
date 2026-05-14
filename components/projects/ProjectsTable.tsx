@@ -68,11 +68,16 @@ export default function ProjectsTable() {
   const [sortBy, setSortBy] = useState<"deadline" | "name" | "artist">("deadline");
   const [showSetup, setShowSetup] = useState(false);
   const [optionalColumnsReady, setOptionalColumnsReady] = useState<boolean | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile,  setIsMobile]  = useState(false);
+  const [isCompact, setIsCompact] = useState(false); // 768–1300px
   const [clientNames, setClientNames] = useState<string[]>([]);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => {
+      const w = window.innerWidth;
+      setIsMobile(w < 768);
+      setIsCompact(w >= 768 && w < 1300);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -298,6 +303,8 @@ export default function ProjectsTable() {
           style={{
             gridTemplateColumns: isMobile
               ? "56px 1fr auto auto"
+              : isCompact
+              ? "60px 3fr 2.5fr 2.2fr 1fr 1.8fr"
               : "80px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
             gap: isMobile ? "8px" : "12px",
             background: "#141414",
@@ -310,9 +317,9 @@ export default function ProjectsTable() {
           {!isMobile && <div>אמן</div>}
           <div>סטטוס</div>
           {!isMobile && <div>סוג</div>}
-          {!isMobile && <div>שייך ל</div>}
+          {!isMobile && !isCompact && <div>שייך ל</div>}
           <div>דדליין</div>
-          {!isMobile && <div>הערות</div>}
+          {!isMobile && !isCompact && <div>הערות</div>}
         </div>
 
         {filtered.length === 0 ? (
@@ -345,6 +352,8 @@ export default function ProjectsTable() {
                 style={{
                   gridTemplateColumns: isMobile
                     ? "56px 1fr auto auto"
+                    : isCompact
+                    ? "60px 3fr 2.5fr 2.2fr 1fr 1.8fr"
                     : "80px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
                   gap: isMobile ? "8px" : "12px",
                   paddingLeft: isMobile ? "12px" : "20px",
@@ -470,8 +479,8 @@ export default function ProjectsTable() {
                   </div>
                 )}
 
-                {/* ── שייך ל — hidden on mobile ── */}
-                {!isMobile && (
+                {/* ── שייך ל — hidden on mobile/compact ── */}
+                {!isMobile && !isCompact && (
                   <div style={cell} onClick={(e) => e.stopPropagation()}>
                     <InlineCellEdit
                       value={p.parentProject || ""}
@@ -508,8 +517,8 @@ export default function ProjectsTable() {
                   </InlineCellEdit>
                 </div>
 
-                {/* ── הערות — hidden on mobile ── */}
-                {!isMobile && (
+                {/* ── הערות — hidden on mobile/compact ── */}
+                {!isMobile && !isCompact && (
                   <div style={cell} onClick={(e) => e.stopPropagation()}>
                     <NotesCellEdit
                       value={p.notes || ""}
