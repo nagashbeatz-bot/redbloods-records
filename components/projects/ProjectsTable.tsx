@@ -298,7 +298,7 @@ export default function ProjectsTable() {
           style={{
             gridTemplateColumns: isMobile
               ? "56px 1fr auto auto"
-              : "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
+              : "80px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
             gap: isMobile ? "8px" : "12px",
             background: "#141414",
             borderColor: "#252525",
@@ -345,7 +345,7 @@ export default function ProjectsTable() {
                 style={{
                   gridTemplateColumns: isMobile
                     ? "56px 1fr auto auto"
-                    : "80px 3fr 2fr 2.4fr 1fr 1.5fr 1.5fr 1fr",
+                    : "80px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
                   gap: isMobile ? "8px" : "12px",
                   paddingLeft: isMobile ? "12px" : "20px",
                   paddingRight: isMobile ? "12px" : "20px",
