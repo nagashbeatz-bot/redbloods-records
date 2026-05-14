@@ -146,8 +146,9 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
   async function createEvent(startIso: string, endIso: string, label: string) {
     setPhase("creating");
     try {
-      const summary = sendToArtist ? publicTitle : title;
-      const body: Record<string, unknown> = { summary, start: startIso, end: endIso };
+      // Always use the internal title in the calendar (so the user sees artist name).
+      // publicTitle goes only into the description that the artist receives in the invite email.
+      const body: Record<string, unknown> = { summary: title, start: startIso, end: endIso };
       if (sendToArtist && artistEmail.trim()) {
         body.artistEmail        = artistEmail.trim();
         body.publicDescription  = `נקבע ${publicTitle}.\n\nאם צריך לשנות שעה, דבר איתי בפרטי.`;
