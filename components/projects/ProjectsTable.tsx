@@ -304,7 +304,7 @@ export default function ProjectsTable() {
             gridTemplateColumns: isMobile
               ? "56px 1fr auto auto"
               : isCompact
-              ? "60px 3fr 2.5fr 2.2fr 1fr 1.8fr"
+              ? "80px 2.5fr 2fr 3fr 1fr 1.8fr"
               : "80px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
             gap: isMobile ? "8px" : "12px",
             background: "#141414",
