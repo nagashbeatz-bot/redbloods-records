@@ -439,9 +439,6 @@ export default function ProjectsTable() {
                       {p.name}
                     </span>
                   </InlineCellEdit>
-                  {p.files.length > 0 && (
-                    <span className="text-xs flex-shrink-0" style={{ color: "#444" }}>📎</span>
-                  )}
                   <Link
                     href={`/projects/${p.id}`}
                     onClick={(e) => e.stopPropagation()}
