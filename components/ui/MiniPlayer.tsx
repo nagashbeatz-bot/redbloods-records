@@ -16,7 +16,7 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
   const { projects } = useProjects();
   if (!player || !player.track) return null;
 
-  const { track, playing, currentTime, duration, pause, resume, stop, seek, skip } = player;
+  const { track, playing, currentTime, duration, volume, pause, resume, stop, seek, skip, setVolume } = player;
   const project = projects.find((p) => p.id === track.projectId);
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const canPlay = track.url !== "#" && track.url !== "";
@@ -160,6 +160,35 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
         <span style={{ fontSize: 11, color: "#555", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
           {fmt(duration)}
         </span>
+      </div>
+
+      {/* Volume control */}
+      <div dir="ltr" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        <button
+          onClick={() => setVolume(volume === 0 ? 80 : 0)}
+          title={volume === 0 ? "בטל השתקה" : "השתק"}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: "#555", fontSize: 14, padding: 0, lineHeight: 1,
+            width: 20, display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
+        >
+          {volume === 0 ? "🔇" : volume < 50 ? "🔉" : "🔊"}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+          style={{
+            width: 72, height: 4, cursor: "pointer",
+            accentColor: "#3B82F6", opacity: 0.8,
+          }}
+          title={`ווליום: ${volume}%`}
+        />
       </div>
 
       {/* Right side: upload + open original + close */}

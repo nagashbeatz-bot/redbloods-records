@@ -15,12 +15,14 @@ interface PlayerContextValue {
   playing: boolean;
   currentTime: number;
   duration: number;
+  volume: number;          // 0–100
   play: (track: AudioTrack) => void;
   pause: () => void;
   resume: () => void;
   stop: () => void;
   seek: (time: number) => void;
   skip: (seconds: number) => void;
+  setVolume: (v: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -41,11 +43,16 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [volume, setVolumeState] = useState<number>(() => {
+    if (typeof window === "undefined") return 80;
+    return Number(localStorage.getItem("player_volume") ?? 80);
+  });
 
   // Create audio element once on client
   useEffect(() => {
     const audio = new Audio();
     audio.preload = "metadata";
+    audio.volume = volume / 100;
     audioRef.current = audio;
 
     const onTimeUpdate = () => setCurrentTime(audio.currentTime);
@@ -102,10 +109,16 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
       Math.min(audioRef.current.currentTime + seconds, audioRef.current.duration || 0)
     );
   }, []);
+  const setVolume = useCallback((v: number) => {
+    const clamped = Math.max(0, Math.min(100, v));
+    setVolumeState(clamped);
+    if (audioRef.current) audioRef.current.volume = clamped / 100;
+    localStorage.setItem("player_volume", String(clamped));
+  }, []);
 
   return (
     <PlayerContext.Provider
-      value={{ track, playing, currentTime, duration, play, pause, resume, stop, seek, skip }}
+      value={{ track, playing, currentTime, duration, volume, play, pause, resume, stop, seek, skip, setVolume }}
     >
       {children}
     </PlayerContext.Provider>
