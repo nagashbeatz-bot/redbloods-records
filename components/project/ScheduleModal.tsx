@@ -151,7 +151,7 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
       const body: Record<string, unknown> = { summary: title, start: startIso, end: endIso };
       if (sendToArtist && artistEmail.trim()) {
         body.artistEmail        = artistEmail.trim();
-        body.publicDescription  = `נקבע ${publicTitle}.\n\nאם צריך לשנות שעה, דבר איתי בפרטי.`;
+        body.publicDescription  = `נקבע לך סשן אצל נגש.\n\nאם יש צורך לשנות שעה או לתאם מחדש - דבר איתי בפרטי.`;
       }
       const r = await fetch("/api/calendar/create-event", {
         method: "POST",
