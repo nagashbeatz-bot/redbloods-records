@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
@@ -16,6 +14,7 @@ import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
 import ActionMenu from "@/components/project/ActionMenu";
 import NotesCellEdit from "@/components/ui/NotesCellEdit";
+import ProjectDrawer from "@/components/ui/ProjectDrawer";
 
 type FilterStatus = ProjectStatus | "כל הסטטוסים" | "באיחור" | "קרובים לדדליין";
 
@@ -60,7 +59,6 @@ function ProjectTypeBadge({ type }: { type: ProjectType }) {
 export default function ProjectsTable() {
   const { projects, loading, updateProjectField } = useProjects();
   const player = usePlayerSafe();
-  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("כל הסטטוסים");
   const [typeFilter, setTypeFilter] = useState<ProjectType | "">("");
   const [parentFilter, setParentFilter] = useState("");
@@ -71,6 +69,7 @@ export default function ProjectsTable() {
   const [isMobile,  setIsMobile]  = useState(false);
   const [isCompact,      setIsCompact]      = useState(false); // 900–1300px
   const [isUltraCompact, setIsUltraCompact] = useState(false); // 768–900px
+  const [drawerProjectId, setDrawerProjectId] = useState<string | null>(null);
   const [clientNames, setClientNames] = useState<string[]>([]);
 
   useEffect(() => {
@@ -439,16 +438,36 @@ export default function ProjectsTable() {
                       {p.name}
                     </span>
                   </InlineCellEdit>
-                  <Link
-                    href={`/projects/${p.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    title="פתח פרויקט"
-                    style={{ color: "#333", fontSize: 10, flexShrink: 0, lineHeight: 1, textDecoration: "none" }}
-                    onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#888")}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#333")}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDrawerProjectId(p.id); }}
+                    title="פתח פרטי פרויקט"
+                    style={{
+                      width: 22, height: 22, borderRadius: 5,
+                      border: "1px solid #2A2A2A",
+                      background: "rgba(255,255,255,0.03)",
+                      color: "#444", cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0, transition: "all 0.13s",
+                    }}
+                    onMouseEnter={(e) => {
+                      const el = e.currentTarget as HTMLButtonElement;
+                      el.style.borderColor = "#3B82F6";
+                      el.style.color = "#3B82F6";
+                      el.style.background = "rgba(59,130,246,0.08)";
+                    }}
+                    onMouseLeave={(e) => {
+                      const el = e.currentTarget as HTMLButtonElement;
+                      el.style.borderColor = "#2A2A2A";
+                      el.style.color = "#444";
+                      el.style.background = "rgba(255,255,255,0.03)";
+                    }}
                   >
-                    ↗
-                  </Link>
+                    {/* Sidebar-panel icon */}
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                      <rect x="0.7" y="0.7" width="9.6" height="9.6" rx="1.5" />
+                      <line x1="7.2" y1="0.7" x2="7.2" y2="10.3" />
+                    </svg>
+                  </button>
                 </div>
 
                 {/* ── Artist chips — hidden on mobile ── */}
@@ -538,6 +557,14 @@ export default function ProjectsTable() {
       </div>
 
       {showSetup && <ColumnSetupModal onClose={() => setShowSetup(false)} />}
+
+      {drawerProjectId && (
+        <ProjectDrawer
+          projectId={drawerProjectId}
+          artists={artists}
+          onClose={() => setDrawerProjectId(null)}
+        />
+      )}
     </div>
   );
 }
