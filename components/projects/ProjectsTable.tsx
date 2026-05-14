@@ -69,12 +69,25 @@ export default function ProjectsTable() {
   const [showSetup, setShowSetup] = useState(false);
   const [optionalColumnsReady, setOptionalColumnsReady] = useState<boolean | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [clientNames, setClientNames] = useState<string[]>([]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // Fetch client names for artist autocomplete
+  useEffect(() => {
+    fetch("/api/clients")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.clients) {
+          setClientNames((d.clients as { name: string }[]).map((c) => c.name));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -94,12 +107,13 @@ export default function ProjectsTable() {
     );
   }
 
-  // Build individual artist list (deduplicated across all projects)
-  const artists = Array.from(new Set(
-    projects.flatMap((p) =>
+  // Build individual artist list — projects + clients (deduplicated)
+  const artists = Array.from(new Set([
+    ...projects.flatMap((p) =>
       p.artist.split(/[,،;]/).map((a) => a.trim()).filter(Boolean)
-    )
-  )).sort((a, b) => a.localeCompare(b, "he"));
+    ),
+    ...clientNames,
+  ])).sort((a, b) => a.localeCompare(b, "he"));
 
   // Unique parent project values (excluding "ללא שיוך" and empty — shown as separate option)
   const uniqueParents = Array.from(
