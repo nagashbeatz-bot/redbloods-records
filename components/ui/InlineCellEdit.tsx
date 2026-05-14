@@ -60,13 +60,19 @@ export default function InlineCellEdit({
     if (!editing) setDraft(value);
   }, [value, editing]);
 
-  // Focus input when entering edit mode
+  // Focus input when entering edit mode; auto-open native select picker
   useEffect(() => {
     if (editing) {
       setTimeout(() => {
         inputRef.current?.focus();
-        selectRef.current?.focus();
-      }, 0);
+        if (selectRef.current) {
+          selectRef.current.focus();
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (selectRef.current as any).showPicker?.();
+          } catch { /* not supported — user can click manually */ }
+        }
+      }, 30);
     }
   }, [editing]);
 
