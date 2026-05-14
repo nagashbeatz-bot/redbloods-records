@@ -46,26 +46,32 @@ export function getAuthUrl(redirectUri?: string): string {
 
 export async function saveToken(tokens: object): Promise<void> {
   const { supabase } = await import("./supabase");
-  await supabase.from("settings").upsert({
+  const { error } = await supabase.from("settings").upsert({
     key: "google_calendar_token",
     value: tokens,
     updated_at: new Date().toISOString(),
   });
+  if (error) throw new Error(`Supabase saveToken failed: ${error.message}`);
 }
 
 export async function loadToken(): Promise<Record<string, unknown> | null> {
   const { supabase } = await import("./supabase");
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("settings")
     .select("value")
     .eq("key", "google_calendar_token")
     .single();
+  if (error && error.code !== "PGRST116") {
+    // PGRST116 = no rows found (expected when not connected)
+    console.error("loadToken Supabase error:", error.message, error.code);
+  }
   return (data?.value as Record<string, unknown>) ?? null;
 }
 
 export async function revokeToken(): Promise<void> {
   const { supabase } = await import("./supabase");
-  await supabase.from("settings").delete().eq("key", "google_calendar_token");
+  const { error } = await supabase.from("settings").delete().eq("key", "google_calendar_token");
+  if (error) throw new Error(`Supabase revokeToken failed: ${error.message}`);
 }
 
 export async function isConnected(): Promise<boolean> {
