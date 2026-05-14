@@ -69,14 +69,16 @@ export default function ProjectsTable() {
   const [showSetup, setShowSetup] = useState(false);
   const [optionalColumnsReady, setOptionalColumnsReady] = useState<boolean | null>(null);
   const [isMobile,  setIsMobile]  = useState(false);
-  const [isCompact, setIsCompact] = useState(false); // 768–1300px
+  const [isCompact,      setIsCompact]      = useState(false); // 900–1300px
+  const [isUltraCompact, setIsUltraCompact] = useState(false); // 768–900px
   const [clientNames, setClientNames] = useState<string[]>([]);
 
   useEffect(() => {
     const check = () => {
       const w = window.innerWidth;
       setIsMobile(w < 768);
-      setIsCompact(w >= 768 && w < 1300);
+      setIsUltraCompact(w >= 768 && w < 900);
+      setIsCompact(w >= 900 && w < 1300);
     };
     check();
     window.addEventListener("resize", check);
@@ -299,14 +301,18 @@ export default function ProjectsTable() {
       <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "#252525" }}>
         {/* Header */}
         <div
-          className="grid px-4 py-3 text-xs font-medium border-b"
+          className="grid py-3 text-xs font-medium border-b"
           style={{
             gridTemplateColumns: isMobile
               ? "56px 1fr auto auto"
+              : isUltraCompact
+              ? "90px 3fr 2fr 3fr 2fr"
               : isCompact
-              ? "80px 2.5fr 2fr 3fr 1fr 1.8fr"
-              : "80px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
+              ? "90px 2.5fr 2fr 3fr 1fr 1.8fr"
+              : "90px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
             gap: isMobile ? "8px" : "12px",
+            paddingLeft: isMobile ? "12px" : "20px",
+            paddingRight: isMobile ? "12px" : "20px",
             background: "#141414",
             borderColor: "#252525",
             color: "#555",
@@ -316,10 +322,10 @@ export default function ProjectsTable() {
           <div>שם פרויקט</div>
           {!isMobile && <div>אמן</div>}
           <div>סטטוס</div>
-          {!isMobile && <div>סוג</div>}
-          {!isMobile && !isCompact && <div>שייך ל</div>}
+          {!isMobile && !isUltraCompact && <div>סוג</div>}
+          {!isMobile && !isCompact && !isUltraCompact && <div>שייך ל</div>}
           <div>דדליין</div>
-          {!isMobile && !isCompact && <div>הערות</div>}
+          {!isMobile && !isCompact && !isUltraCompact && <div>הערות</div>}
         </div>
 
         {filtered.length === 0 ? (
@@ -352,9 +358,11 @@ export default function ProjectsTable() {
                 style={{
                   gridTemplateColumns: isMobile
                     ? "56px 1fr auto auto"
+                    : isUltraCompact
+                    ? "90px 3fr 2fr 3fr 2fr"
                     : isCompact
-                    ? "60px 3fr 2.5fr 2.2fr 1fr 1.8fr"
-                    : "80px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
+                    ? "90px 2.5fr 2fr 3fr 1fr 1.8fr"
+                    : "90px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
                   gap: isMobile ? "8px" : "12px",
                   paddingLeft: isMobile ? "12px" : "20px",
                   paddingRight: isMobile ? "12px" : "20px",
@@ -462,8 +470,8 @@ export default function ProjectsTable() {
                   <StatusDropdown projectId={p.id} status={p.status} small />
                 </div>
 
-                {/* ── Type — hidden on mobile ── */}
-                {!isMobile && (
+                {/* ── Type — hidden on mobile and ultra-compact ── */}
+                {!isMobile && !isUltraCompact && (
                   <div style={cell} onClick={(e) => e.stopPropagation()}>
                     <InlineCellEdit
                       value={p.projectType}
@@ -479,8 +487,8 @@ export default function ProjectsTable() {
                   </div>
                 )}
 
-                {/* ── שייך ל — hidden on mobile/compact ── */}
-                {!isMobile && !isCompact && (
+                {/* ── שייך ל — hidden on mobile/compact/ultra-compact ── */}
+                {!isMobile && !isCompact && !isUltraCompact && (
                   <div style={cell} onClick={(e) => e.stopPropagation()}>
                     <InlineCellEdit
                       value={p.parentProject || ""}
@@ -517,8 +525,8 @@ export default function ProjectsTable() {
                   </InlineCellEdit>
                 </div>
 
-                {/* ── הערות — hidden on mobile/compact ── */}
-                {!isMobile && !isCompact && (
+                {/* ── הערות — hidden on mobile/compact/ultra-compact ── */}
+                {!isMobile && !isCompact && !isUltraCompact && (
                   <div style={cell} onClick={(e) => e.stopPropagation()}>
                     <NotesCellEdit
                       value={p.notes || ""}
