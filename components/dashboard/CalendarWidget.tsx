@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ParsedCalendarEvent } from "@/lib/calendar-utils";
 
 type State =
@@ -88,6 +89,7 @@ function Section({ title, events }: { title: string; events: ParsedCalendarEvent
 }
 
 export default function CalendarWidget() {
+  const router = useRouter();
   const [state, setState] = useState<State>({ status: "loading" });
 
   useEffect(() => {
@@ -106,10 +108,22 @@ export default function CalendarWidget() {
   }, []);
 
   const shell = (content: React.ReactNode) => (
-    <div style={{
-      background: "#141414", border: "1px solid #252525",
-      borderRadius: 20, padding: "18px 20px",
-    }}>
+    <div
+      onClick={() => router.push("/setup/calendar")}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor = "#3A3A3A";
+        (e.currentTarget as HTMLDivElement).style.cursor = "pointer";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor = "#252525";
+      }}
+      style={{
+        background: "#141414", border: "1px solid #252525",
+        borderRadius: 20, padding: "18px 20px",
+        transition: "border-color 150ms",
+        cursor: "pointer",
+      }}
+    >
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         marginBottom: 12,
