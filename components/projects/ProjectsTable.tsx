@@ -353,7 +353,7 @@ export default function ProjectsTable() {
                   background:  i % 2 === 0 ? "#1A1A1A" : "#171717",
                   borderColor: "#252525",
                   height:      52,
-                  overflow:    "hidden",
+                  overflow:    "visible",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLDivElement).style.background = "#1E1E1E";
@@ -364,7 +364,7 @@ export default function ProjectsTable() {
                 }}
               >
                 {/* ── Actions ── */}
-                <div style={{ ...cell, gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ ...cell, gap: 4, overflow: "visible" }} onClick={(e) => e.stopPropagation()}>
                   <ActionMenu
                     projectId={p.id}
                     projectName={p.name}
