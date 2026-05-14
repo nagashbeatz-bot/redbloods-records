@@ -108,7 +108,7 @@ export default function InlineCellEdit({
         onClick={(e) => { e.stopPropagation(); setEditing(true); setDraft(value); }}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditing(true); setDraft(value); } }}
         style={{
-          cursor: "text",
+          cursor: type === "select" ? "pointer" : "text",
           borderRadius: 4,
           padding: "1px 3px",
           margin: "-1px -3px",
@@ -118,7 +118,7 @@ export default function InlineCellEdit({
           maxWidth: "100%",
           ...viewStyle,
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(59,130,246,0.08)")}
+        onMouseEnter={(e) => (e.currentTarget.style.background = type === "select" ? "rgba(168,85,247,0.08)" : "rgba(59,130,246,0.08)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
       >
         {children ?? <span style={{ color: value ? undefined : "#444" }}>{value || placeholder || "—"}</span>}
