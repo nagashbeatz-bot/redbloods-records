@@ -152,7 +152,7 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
       const body: Record<string, unknown> = { summary, start: startIso, end: endIso };
       if (sendToArtist && artistEmail.trim()) {
         body.artistEmail       = artistEmail.trim();
-        body.publicDescription = `שם אמן: ${artist}\nשם פרויקט: ${projectName}`;
+        body.publicDescription = `שם פרויקט: ${projectName}\nשעות: ${label}`;
       }
       const r = await fetch("/api/calendar/create-event", {
         method: "POST",
@@ -578,7 +578,7 @@ function ConfirmPanel({
             }}>
               <div style={{ marginBottom: 4 }}>מה האמן יקבל:</div>
               <div style={{ color: "#C084FC", fontWeight: 600, fontSize: 12 }}>{publicTitle}</div>
-              <div style={{ color: "#666", marginTop: 6, lineHeight: 1.7, whiteSpace: "pre" }}>{`שם אמן: ${artist}\nשם פרויקט: ${projectName}`}</div>
+              <div style={{ color: "#666", marginTop: 6, lineHeight: 1.7, whiteSpace: "pre" }}>{`שם פרויקט: ${projectName}\nשעות: ${data.label}`}</div>
             </div>
           </div>
         )}
