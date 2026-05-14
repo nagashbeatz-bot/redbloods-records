@@ -245,9 +245,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   }
 
   // ── Files ─────────────────────────────────────────────────────────────────
-  const audioFiles = project.files.filter((f) => isAudio(f.name));
-  const otherFiles = project.files.filter((f) => !isAudio(f.name));
-  const allFiles   = [...project.files].reverse(); // newest first
+  const allFiles = [...project.files].reverse(); // newest first
 
   // ── Render ────────────────────────────────────────────────────────────────
   return createPortal(
