@@ -506,17 +506,32 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                             }}>
                               {s.status}
                             </span>
-                            {(s.session_type ?? "סשן") !== "סשן" && (
-                              <span style={{
-                                fontSize: 10, fontWeight: 600,
-                                color: "#A855F7",
-                                background: "rgba(168,85,247,0.1)",
-                                border: "1px solid rgba(168,85,247,0.25)",
-                                borderRadius: 5, padding: "1px 6px",
-                              }}>
-                                {s.session_type}
-                              </span>
-                            )}
+                            {/* Clickable type badge — cycles through types */}
+                            <button
+                              onClick={async () => {
+                                const cur = (s.session_type ?? "סשן") as SessionType;
+                                const next = TYPE_OPTIONS[(TYPE_OPTIONS.indexOf(cur) + 1) % TYPE_OPTIONS.length];
+                                setSessions((prev) => prev.map((x) => x.id === s.id ? { ...x, session_type: next } : x));
+                                await fetch(`/api/sessions/${s.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ sessionType: next }),
+                                });
+                              }}
+                              title="לחץ לשינוי סוג"
+                              style={{
+                                fontSize: 10, fontWeight: 600, cursor: "pointer",
+                                borderRadius: 5, padding: "1px 6px", border: "none",
+                                ...((() => {
+                                  const t = (s.session_type ?? "סשן") as SessionType;
+                                  if (t === "חזרה")      return { color: "#F59E0B", background: "rgba(245,158,11,0.12)", outline: "1px solid rgba(245,158,11,0.3)" };
+                                  if (t === "ניקוי מיקס") return { color: "#A855F7", background: "rgba(168,85,247,0.12)", outline: "1px solid rgba(168,85,247,0.3)" };
+                                  return { color: "#3B82F6", background: "rgba(59,130,246,0.10)", outline: "1px solid rgba(59,130,246,0.25)" };
+                                })()),
+                              }}
+                            >
+                              {s.session_type ?? "סשן"}
+                            </button>
                           </div>
                           {s.notes && (
                             <div style={{ fontSize: 11, color: "#555", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
