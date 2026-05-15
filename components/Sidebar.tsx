@@ -8,6 +8,7 @@ const NAV_MAIN = [
   { href: "/projects",  label: "פרויקטים", icon: "♫" },
   { href: "/clients",   label: "לקוחות",   icon: "👥" },
   { href: "/finance",   label: "כספים",    icon: "₪" },
+  { href: "/insights",  label: "תובנות",   icon: "◎" },
 ];
 
 const NAV_SETTINGS = [

@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-// ── GET /api/sessions?projectId=xxx ─────────────────────────────────────────
+// ── GET /api/sessions?projectId=xxx  OR  ?all=1 ──────────────────────────────
 export async function GET(req: NextRequest) {
   try {
+    const all       = req.nextUrl.searchParams.get("all");
     const projectId = req.nextUrl.searchParams.get("projectId");
+
+    // Return all sessions across all projects (for Insights page)
+    if (all === "1") {
+      const { data: rows, error: sessErr } = await supabase
+        .from("sessions")
+        .select("*")
+        .order("date", { ascending: false });
+      if (sessErr) throw new Error(sessErr.message);
+
+      // Fetch all session limits
+      const { data: limitRows } = await supabase
+        .from("settings")
+        .select("key, value")
+        .like("key", "session_limit_%");
+
+      const limits: Record<string, number> = {};
+      (limitRows ?? []).forEach((r) => {
+        const pid = (r.key as string).replace("session_limit_", "");
+        limits[pid] = (r.value as { limit?: number })?.limit ?? 3;
+      });
+
+      return NextResponse.json({ sessions: rows ?? [], limits });
+    }
+
     if (!projectId) {
       return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
     }
 
-    // Fetch sessions
+    // Fetch sessions for one project
     const { data: rows, error: sessErr } = await supabase
       .from("sessions")
       .select("*")
