@@ -36,6 +36,17 @@ export async function createClient(fields: Omit<Client, "id" | "created_at">): P
   return data as Client;
 }
 
+export async function getClient(id: string): Promise<Client | null> {
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) return null;
+  return data as Client;
+}
+
 export async function updateClient(id: string, fields: Omit<Client, "id" | "created_at">): Promise<void> {
   const { error } = await supabase
     .from("clients")
