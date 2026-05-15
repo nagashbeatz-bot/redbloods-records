@@ -752,34 +752,17 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           {/* ── כספים ───────────────────────────────────────────────────── */}
           <Card>
             {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>כספים</span>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  onClick={() => { setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
-                  style={{ fontSize: 11, color: "#10B981", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
-                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.16)")}
-                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.08)")}
-                >+ הכנסה</button>
-                <button
-                  onClick={() => { setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
-                  style={{ fontSize: 11, color: "#F59E0B", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
-                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.16)")}
-                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.08)")}
-                >+ הוצאה</button>
-              </div>
             </div>
 
-            {/* Stats grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-              {/* Agreed price — editable */}
-              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
-                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>מחיר מוסכם</div>
+            {/* Agreed price row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: "#555" }}>מחיר מוסכם</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {editingPrice ? (
                   <input
-                    autoFocus
-                    type="number"
-                    min={0}
+                    autoFocus type="number" min={0}
                     value={priceDraft}
                     onChange={(e) => setPriceDraft(e.target.value)}
                     onBlur={() => handleSaveAgreedPrice(priceDraft)}
@@ -787,101 +770,93 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                       if (e.key === "Enter") handleSaveAgreedPrice(priceDraft);
                       if (e.key === "Escape") setEditingPrice(false);
                     }}
-                    style={{ ...INPUT_S, width: "100%", boxSizing: "border-box" }}
+                    style={{ ...INPUT_S, width: 90, fontSize: 13, padding: "4px 8px", height: 28 }}
                   />
                 ) : (
                   <button
                     onClick={() => { setPriceDraft(String(agreedPrice)); setEditingPrice(true); }}
                     title="לחץ לעריכה"
-                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 16, fontWeight: 700, color: "#DDD", fontFamily: "inherit" }}
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid #2A2A2A", borderRadius: 7, padding: "3px 10px", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#DDD", fontFamily: "inherit" }}
                   >
-                    {agreedPrice.toLocaleString()}{finCurrency}
+                    {agreedPrice > 0 ? `${agreedPrice.toLocaleString()}${finCurrency}` : "לא הוגדר"}
                   </button>
                 )}
-              </div>
-
-              {/* Paid */}
-              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
-                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>שולם</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#10B981" }}>{totalPaid.toLocaleString()}{finCurrency}</div>
-              </div>
-
-              {/* Balance */}
-              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
-                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>יתרה</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: balance > 0 ? "#EF4444" : balance < 0 ? "#F59E0B" : "#10B981" }}>
-                  {balance.toLocaleString()}{finCurrency}
-                </div>
-              </div>
-
-              {/* Expenses */}
-              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
-                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הוצאות</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#F59E0B" }}>{totalExp.toLocaleString()}{finCurrency}</div>
-              </div>
-
-              {/* Profit */}
-              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222", gridColumn: "1 / -1" }}>
-                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>רווח</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: profit >= 0 ? "#10B981" : "#EF4444" }}>{profit.toLocaleString()}{finCurrency}</div>
+                <span style={{ fontSize: 10, color: "#444" }}>ערוך ✏</span>
               </div>
             </div>
 
-            {/* Add TX form */}
+            {/* Stats rows */}
+            {[
+              { label: "שולם עד עכשיו",    value: totalPaid,  color: "#10B981", prefix: "" },
+              { label: "יתרה לתשלום",       value: balance,    color: balance > 0 ? "#EF4444" : "#10B981", prefix: "" },
+              { label: "הוצאות",            value: totalExp,   color: "#F59E0B", prefix: "−" },
+              { label: "רווח משוער",        value: profit,     color: profit >= 0 ? "#10B981" : "#EF4444", prefix: "" },
+            ].map(({ label, value, color, prefix }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #1E1E1E" }}>
+                <div style={{ fontSize: 11, color: "#666" }}>{label}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color }}>{prefix}{value.toLocaleString()}{finCurrency}</div>
+              </div>
+            ))}
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button
+                onClick={() => { setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
+                style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#10B981", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.14)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.07)")}
+              >+ הוסף תשלום</button>
+              <button
+                onClick={() => { setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
+                style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "1px solid rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.07)", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.14)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.07)")}
+              >+ הוסף הוצאה</button>
+            </div>
+
+            {/* Inline TX form */}
             {addingTx && (
-              <DrawerTxForm
-                draft={txDraft}
-                setDraft={setTxDraft}
-                saving={txSaving}
-                onSave={handleAddTx}
-                onCancel={() => setAddingTx(null)}
-              />
+              <div style={{ marginTop: 12 }}>
+                <DrawerTxForm
+                  draft={txDraft}
+                  setDraft={setTxDraft}
+                  saving={txSaving}
+                  onSave={handleAddTx}
+                  onCancel={() => setAddingTx(null)}
+                />
+              </div>
             )}
 
-            {/* Income list */}
+            {/* Transaction lists */}
             {!finLoaded ? (
-              <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
+              <div style={{ fontSize: 11, color: "#444", marginTop: 12 }}>טוען...</div>
+            ) : transactions.length === 0 && !addingTx ? (
+              <div style={{ fontSize: 11, color: "#444", marginTop: 12, textAlign: "center", padding: "10px 0" }}>
+                אין נתונים פיננסיים עדיין
+              </div>
             ) : (
-              <>
+              <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Income */}
                 {incomeList.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10, color: "#444", marginBottom: 6, fontWeight: 700 }}>הכנסות</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#10B981", fontWeight: 700, marginBottom: 6, letterSpacing: "0.05em" }}>תשלומים</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       {incomeList.map((tx) => (
                         <div key={tx.id}>
                           {editingTxId === tx.id ? (
-                            <DrawerTxForm
-                              draft={editTxDraft}
-                              setDraft={setEditTxDraft}
-                              saving={editTxSaving}
-                              onSave={handleUpdateTx}
-                              onCancel={() => setEditingTxId(null)}
-                            />
+                            <DrawerTxForm draft={editTxDraft} setDraft={setEditTxDraft} saving={editTxSaving} onSave={handleUpdateTx} onCancel={() => setEditingTxId(null)} />
                           ) : (
-                            <div style={{
-                              display: "flex", alignItems: "center", gap: 6,
-                              padding: "5px 8px", borderRadius: 7,
-                              background: "rgba(255,255,255,0.02)", border: "1px solid #222",
-                            }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 7, background: "rgba(16,185,129,0.04)", border: "1px solid rgba(16,185,129,0.1)" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                  <span style={{ fontSize: 11, color: "#888" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
-                                  <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{tx.description || "—"}</span>
-                                  <span style={{
-                                    fontSize: 10, fontWeight: 700, color: PMT_COLOR[tx.payment_status],
-                                    background: `${PMT_COLOR[tx.payment_status]}18`,
-                                    border: `1px solid ${PMT_COLOR[tx.payment_status]}35`,
-                                    borderRadius: 5, padding: "1px 6px",
-                                  }}>{tx.payment_status}</span>
+                                  <span style={{ fontSize: 10, color: "#666" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
+                                  <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 110 }}>{tx.description || "—"}</span>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: PMT_COLOR[tx.payment_status], background: `${PMT_COLOR[tx.payment_status]}18`, border: `1px solid ${PMT_COLOR[tx.payment_status]}30`, borderRadius: 4, padding: "1px 5px" }}>{tx.payment_status}</span>
                                 </div>
                               </div>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#10B981", flexShrink: 0 }}>+{tx.amount.toLocaleString()}{tx.currency}</span>
-                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }}
-                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
-                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
-                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }}
-                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
-                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#10B981", flexShrink: 0 }}>+{tx.amount.toLocaleString()}{tx.currency}</span>
+                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
+                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
                             </div>
                           )}
                         </div>
@@ -890,40 +865,27 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                   </div>
                 )}
 
+                {/* Expenses */}
                 {expenseList.length > 0 && (
                   <div>
-                    <div style={{ fontSize: 10, color: "#444", marginBottom: 6, fontWeight: 700 }}>הוצאות</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700, marginBottom: 6, letterSpacing: "0.05em" }}>הוצאות</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       {expenseList.map((tx) => (
                         <div key={tx.id}>
                           {editingTxId === tx.id ? (
-                            <DrawerTxForm
-                              draft={editTxDraft}
-                              setDraft={setEditTxDraft}
-                              saving={editTxSaving}
-                              onSave={handleUpdateTx}
-                              onCancel={() => setEditingTxId(null)}
-                            />
+                            <DrawerTxForm draft={editTxDraft} setDraft={setEditTxDraft} saving={editTxSaving} onSave={handleUpdateTx} onCancel={() => setEditingTxId(null)} />
                           ) : (
-                            <div style={{
-                              display: "flex", alignItems: "center", gap: 6,
-                              padding: "5px 8px", borderRadius: 7,
-                              background: "rgba(255,255,255,0.02)", border: "1px solid #222",
-                            }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 7, background: "rgba(245,158,11,0.04)", border: "1px solid rgba(245,158,11,0.1)" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                  <span style={{ fontSize: 11, color: "#888" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
-                                  {tx.category && <span style={{ fontSize: 10, color: "#666", background: "rgba(255,255,255,0.05)", borderRadius: 4, padding: "1px 5px" }}>{tx.category}</span>}
-                                  <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 110 }}>{tx.description || "—"}</span>
+                                  <span style={{ fontSize: 10, color: "#666" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
+                                  {tx.category && <span style={{ fontSize: 9, color: "#888", background: "rgba(255,255,255,0.05)", borderRadius: 4, padding: "1px 5px" }}>{tx.category}</span>}
+                                  <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{tx.description || "—"}</span>
                                 </div>
                               </div>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B", flexShrink: 0 }}>−{tx.amount.toLocaleString()}{tx.currency}</span>
-                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }}
-                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
-                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
-                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }}
-                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
-                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#F59E0B", flexShrink: 0 }}>−{tx.amount.toLocaleString()}{tx.currency}</span>
+                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
+                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
                             </div>
                           )}
                         </div>
@@ -931,11 +893,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                     </div>
                   </div>
                 )}
-
-                {transactions.length === 0 && !addingTx && (
-                  <div style={{ fontSize: 11, color: "#444" }}>אין נתונים פיננסיים עדיין</div>
-                )}
-              </>
+              </div>
             )}
           </Card>
 

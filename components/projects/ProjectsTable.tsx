@@ -285,6 +285,7 @@ export default function ProjectsTable() {
   const [confirmDeleteId,   setConfirmDeleteId]   = useState<string | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState("");
   const [clientNames, setClientNames] = useState<string[]>([]);
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; currency: string }>>({});
 
   useEffect(() => {
     const check = () => {
@@ -307,6 +308,26 @@ export default function ProjectsTable() {
         if (d.clients) {
           setClientNames((d.clients as { name: string }[]).map((c) => c.name));
         }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch finance summary for all projects
+  useEffect(() => {
+    fetch("/api/transactions?all=1")
+      .then((r) => r.json())
+      .then((d) => {
+        const map: Record<string, { paid: number; agreed: number; currency: string }> = {};
+        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
+          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, currency: "₪" };
+          if (t.type === "income" && t.payment_status === "שולם") map[t.project_id].paid += t.amount;
+        });
+        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; currency: string }) => {
+          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, currency: "₪" };
+          map[s.project_id].agreed = s.agreedPrice ?? 0;
+          map[s.project_id].currency = s.currency ?? "₪";
+        });
+        setFinanceSummary(map);
       })
       .catch(() => {});
   }, []);
@@ -704,9 +725,25 @@ export default function ProjectsTable() {
                   </div>
                 )}
 
-                {/* ── Status ── */}
-                <div style={cell} onClick={(e) => e.stopPropagation()}>
+                {/* ── Status + Finance badge ── */}
+                <div style={{ ...cell, gap: 6 }} onClick={(e) => e.stopPropagation()}>
                   <StatusDropdown projectId={p.id} status={p.status} small />
+                  {(() => {
+                    const fin = financeSummary[p.id];
+                    if (!fin || fin.agreed <= 0) return null;
+                    const pct = fin.paid / fin.agreed;
+                    const label = pct >= 1 ? "שולם" : fin.paid > 0 ? "חלקי" : "לא שולם";
+                    const color = pct >= 1 ? "#10B981" : fin.paid > 0 ? "#F59E0B" : "#EF4444";
+                    return (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color,
+                        background: `${color}14`, border: `1px solid ${color}30`,
+                        borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0,
+                      }}>
+                        {pct < 1 && fin.paid === 0 ? "לא שולם" : pct >= 1 ? "✓ שולם" : `חלקי ${Math.round(pct * 100)}%`}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* ── Type — hidden on mobile and ultra-compact ── */}

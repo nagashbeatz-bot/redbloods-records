@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -27,7 +28,6 @@ interface FinanceSetting {
   project_id: string;
   agreedPrice: number;
   currency: string;
-  financialNotes: string;
 }
 
 interface TxDraft {
@@ -71,23 +71,27 @@ function fmtDate(d: string | null): string {
   return `${day}.${m}.${y}`;
 }
 
-function fmtAmount(amount: number, currency: string): string {
+function fmtAmount(amount: number, currency = "₪"): string {
   return `${amount.toLocaleString("he-IL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}${currency}`;
 }
 
-// ── Summary Card ──────────────────────────────────────────────────────────────
-function SummaryCard({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
-  return (
-    <div style={{
-      background: "#1C1C1C", border: "1px solid #252525", borderRadius: 14,
-      padding: "16px 18px", flex: "1 1 160px", minWidth: 130,
-    }}>
-      <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: "#444", marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
+function isThisMonth(date: string | null): boolean {
+  if (!date) return false;
+  const now = new Date();
+  const d = new Date(date);
+  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
+
+// ── Input style ───────────────────────────────────────────────────────────────
+const INPUT_S: React.CSSProperties = {
+  background: "#1A1A1A", border: "1px solid #333", borderRadius: 8,
+  color: "#E8E8E8", fontSize: 13, padding: "8px 12px", outline: "none",
+  fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+};
+
+const LABEL_S: React.CSSProperties = {
+  fontSize: 11, color: "#555", marginBottom: 5, display: "block", textAlign: "right",
+};
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: PaymentStatus }) {
@@ -103,15 +107,28 @@ function StatusBadge({ status }: { status: PaymentStatus }) {
   );
 }
 
-// ── Inline form ───────────────────────────────────────────────────────────────
-const INPUT_S: React.CSSProperties = {
-  background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6,
-  color: "#E8E8E8", fontSize: 12, padding: "5px 9px", outline: "none",
-  fontFamily: "inherit", height: 30, boxSizing: "border-box",
-};
+// ── Summary Card ──────────────────────────────────────────────────────────────
+function SummaryCard({ label, value, color, sub, icon }: {
+  label: string; value: string; color: string; sub?: string; icon?: string;
+}) {
+  return (
+    <div style={{
+      background: "#1C1C1C", border: "1px solid #252525", borderRadius: 14,
+      padding: "16px 18px", flex: "1 1 160px", minWidth: 140,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        {icon && <span style={{ fontSize: 14 }}>{icon}</span>}
+        <div style={{ fontSize: 11, color: "#555" }}>{label}</div>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: "#444", marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
 
-function TxForm({
-  draft, setDraft, saving, onSave, onCancel, projects,
+// ── Transaction Modal ─────────────────────────────────────────────────────────
+function TxModal({
+  draft, setDraft, saving, onSave, onCancel, projects, title,
 }: {
   draft: TxDraft;
   setDraft: (d: TxDraft) => void;
@@ -119,142 +136,182 @@ function TxForm({
   onSave: () => void;
   onCancel: () => void;
   projects: { id: string; name: string; artist: string }[];
+  title: string;
 }) {
   const isIncome = draft.type === "income";
-  return (
-    <div style={{
-      background: "#181818", border: "1px solid #2A2A2A", borderRadius: 12,
-      padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10,
-      marginBottom: 14,
-    }}>
-      {/* Type toggle */}
-      <div style={{ display: "flex", gap: 6 }}>
-        {(["income", "expense"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setDraft({ ...draft, type: t })}
-            style={{
-              padding: "4px 14px", borderRadius: 8, border: "none", cursor: "pointer",
-              fontSize: 12, fontFamily: "inherit", fontWeight: 600,
-              background: draft.type === t
-                ? (t === "income" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.15)")
-                : "transparent",
-              color: draft.type === t
-                ? (t === "income" ? "#10B981" : "#EF4444")
-                : "#555",
-              outline: draft.type === t
-                ? `1px solid ${t === "income" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.3)"}`
-                : "none",
-            }}
-          >
-            {t === "income" ? "הכנסה" : "הוצאה"}
-          </button>
-        ))}
-      </div>
 
-      {/* Project + Date row */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <select
-          value={draft.projectId}
-          onChange={(e) => setDraft({ ...draft, projectId: e.target.value })}
-          style={{ ...INPUT_S, flex: "2 1 180px" }}
-        >
-          <option value="">בחר פרויקט...</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.name} — {p.artist}</option>
+  // Close on ESC
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onCancel]);
+
+  const modal = (
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed", inset: 0, zIndex: 99999,
+        background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#141414", border: "1px solid #2A2A2A",
+          borderRadius: 18, padding: "24px 24px 20px",
+          width: 460, maxWidth: "95vw", direction: "rtl",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
+          maxHeight: "90vh", overflowY: "auto",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <button onClick={onCancel} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>{title}</h2>
+        </div>
+
+        {/* Type toggle */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          {(["income", "expense"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setDraft({ ...draft, type: t })}
+              style={{
+                flex: 1, padding: "8px", borderRadius: 10, border: "none", cursor: "pointer",
+                fontSize: 13, fontFamily: "inherit", fontWeight: 600,
+                background: draft.type === t
+                  ? (t === "income" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.15)")
+                  : "#1A1A1A",
+                color: draft.type === t
+                  ? (t === "income" ? "#10B981" : "#EF4444")
+                  : "#555",
+                outline: draft.type === t
+                  ? `1px solid ${t === "income" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.3)"}`
+                  : "1px solid #252525",
+              }}
+            >
+              {t === "income" ? "💰 הכנסה" : "💸 הוצאה"}
+            </button>
           ))}
-        </select>
-        <input
-          type="date"
-          value={draft.date}
-          onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-          style={{ ...INPUT_S, flex: "1 1 130px", colorScheme: "dark" }}
-        />
-      </div>
+        </div>
 
-      {/* Description */}
-      <input
-        type="text"
-        value={draft.description}
-        onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-        placeholder={isIncome ? "תיאור (למשל: תשלום ראשון)" : "תיאור הוצאה"}
-        style={{ ...INPUT_S, width: "100%", boxSizing: "border-box" }}
-      />
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Project */}
+          <div>
+            <label style={LABEL_S}>פרויקט *</label>
+            <select value={draft.projectId} onChange={(e) => setDraft({ ...draft, projectId: e.target.value })} style={{ ...INPUT_S }}>
+              <option value="">בחר פרויקט...</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} — {p.artist}</option>
+              ))}
+            </select>
+          </div>
 
-      {/* Amount + Currency + Status row */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input
-          type="number"
-          value={draft.amount}
-          onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
-          placeholder="סכום"
-          min={0}
-          style={{ ...INPUT_S, flex: "2 1 120px" }}
-        />
-        <select
-          value={draft.currency}
-          onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
-          style={{ ...INPUT_S, flex: "0 0 60px" }}
-        >
-          {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        {isIncome && (
-          <select
-            value={draft.paymentStatus}
-            onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value as PaymentStatus })}
-            style={{ ...INPUT_S, flex: "1 1 100px" }}
-          >
-            {PAYMENT_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        )}
-        {!isIncome && (
-          <select
-            value={draft.category}
-            onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-            style={{ ...INPUT_S, flex: "1 1 130px" }}
-          >
-            <option value="">קטגוריה...</option>
-            {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        )}
-      </div>
+          {/* Artist / Client / Vendor */}
+          <div>
+            <label style={LABEL_S}>{isIncome ? "לקוח / אמן" : "ספק"}</label>
+            <input type="text" value={draft.artist} onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
+              placeholder={isIncome ? "שם הלקוח..." : "שם הספק..."}
+              style={INPUT_S} />
+          </div>
 
-      {/* Notes */}
-      <input
-        type="text"
-        value={draft.notes}
-        onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-        placeholder="הערות (אופציונלי)"
-        style={{ ...INPUT_S, width: "100%", boxSizing: "border-box" }}
-        onKeyDown={(e) => { if (e.key === "Enter") onSave(); if (e.key === "Escape") onCancel(); }}
-      />
+          {/* Description */}
+          <div>
+            <label style={LABEL_S}>תיאור</label>
+            <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              placeholder={isIncome ? "למשל: תשלום ראשון, תשלום סופי..." : "למשל: מיקס, עריכת וידאו..."}
+              style={INPUT_S} />
+          </div>
 
-      {/* Buttons */}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={onSave}
-          disabled={saving}
-          style={{
-            flex: 1, padding: "6px 0", borderRadius: 8, border: "none",
-            background: "#3B82F6", color: "#fff", fontSize: 12,
-            cursor: saving ? "wait" : "pointer", fontFamily: "inherit", fontWeight: 600,
-          }}
-        >
-          {saving ? "שומר..." : "שמור"}
-        </button>
-        <button
-          onClick={onCancel}
-          style={{
-            padding: "6px 18px", borderRadius: 8,
-            border: "1px solid #2A2A2A", background: "transparent",
-            color: "#666", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-          }}
-        >
-          ביטול
-        </button>
+          {/* Amount + Currency row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 10 }}>
+            <div>
+              <label style={LABEL_S}>סכום *</label>
+              <input type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
+                placeholder="0" min={0} style={INPUT_S} />
+            </div>
+            <div>
+              <label style={LABEL_S}>מטבע</label>
+              <select value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value })} style={INPUT_S}>
+                {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Date + Status/Category row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={LABEL_S}>תאריך</label>
+              <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                style={{ ...INPUT_S, colorScheme: "dark" }} />
+            </div>
+            <div>
+              {isIncome ? (
+                <>
+                  <label style={LABEL_S}>סטטוס</label>
+                  <select value={draft.paymentStatus} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value as PaymentStatus })} style={INPUT_S}>
+                    {PAYMENT_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label style={LABEL_S}>קטגוריה</label>
+                  <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={INPUT_S}>
+                    <option value="">בחר...</option>
+                    {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Payment method */}
+          <div>
+            <label style={LABEL_S}>אמצעי תשלום</label>
+            <input type="text" value={draft.paymentMethod} onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })}
+              placeholder="מזומן, העברה, ביט..." style={INPUT_S} />
+          </div>
+
+          {/* Receipt ref */}
+          <div>
+            <label style={LABEL_S}>אסמכתא</label>
+            <input type="text" value={draft.receiptRef} onChange={(e) => setDraft({ ...draft, receiptRef: e.target.value })}
+              placeholder="מספר חשבונית / קבלה..." style={INPUT_S} />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label style={LABEL_S}>הערות</label>
+            <input type="text" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+              placeholder="הערות נוספות..." style={INPUT_S}
+              onKeyDown={(e) => { if (e.key === "Enter") onSave(); }} />
+          </div>
+
+          {/* Buttons */}
+          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <button onClick={onCancel} style={{
+              flex: 1, padding: "10px", borderRadius: 10,
+              border: "1px solid #2A2A2A", background: "transparent",
+              color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit",
+            }}>ביטול</button>
+            <button onClick={onSave} disabled={saving || !draft.projectId} style={{
+              flex: 2, padding: "10px", borderRadius: 10, border: "none",
+              background: saving || !draft.projectId ? "#1A2A3A" : "#1E40AF",
+              color: saving || !draft.projectId ? "#445" : "#fff",
+              cursor: saving || !draft.projectId ? "not-allowed" : "pointer",
+              fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+            }}>
+              {saving ? "שומר..." : "שמור תנועה"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : null;
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -263,15 +320,18 @@ export default function FinancePage() {
   const [transactions,  setTransactions]  = useState<Transaction[]>([]);
   const [settings,      setSettings]      = useState<FinanceSetting[]>([]);
   const [loaded,        setLoaded]        = useState(false);
+
+  // Filters
   const [typeFilter,    setTypeFilter]    = useState<"all" | "income" | "expense">("all");
   const [statusFilter,  setStatusFilter]  = useState<PaymentStatus | "">("");
   const [projectFilter, setProjectFilter] = useState("");
-  const [showForm,      setShowForm]      = useState(false);
-  const [draft,         setDraft]         = useState<TxDraft>(emptyDraft());
-  const [saving,        setSaving]        = useState(false);
-  const [editingId,     setEditingId]     = useState<string | null>(null);
-  const [editDraft,     setEditDraft]     = useState<TxDraft>(emptyDraft());
-  const [editSaving,    setEditSaving]    = useState(false);
+  const [monthFilter,   setMonthFilter]   = useState(false);
+
+  // Modal
+  const [modalOpen,  setModalOpen]  = useState(false);
+  const [editingId,  setEditingId]  = useState<string | null>(null);
+  const [draft,      setDraft]      = useState<TxDraft>(emptyDraft());
+  const [saving,     setSaving]     = useState(false);
 
   const loadAll = useCallback(() => {
     setLoaded(false);
@@ -288,95 +348,34 @@ export default function FinancePage() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   // ── Computed totals ──────────────────────────────────────────────────────
-  const income    = transactions.filter((t) => t.type === "income");
-  const expenses  = transactions.filter((t) => t.type === "expense");
-  const totalPaid = income.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
-  const totalExpected = income.filter((t) => t.payment_status !== "בוטל").reduce((s, t) => s + t.amount, 0);
-  const totalBalance  = income.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = expenses.reduce((s, t) => s + t.amount, 0);
-  const profit        = totalPaid - totalExpenses;
+  const income       = transactions.filter((t) => t.type === "income");
+  const expenses     = transactions.filter((t) => t.type === "expense");
+  const totalReceived = income.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
+  const totalOpen    = income.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExpPaid = expenses.filter((t) => t.payment_status === "שולם" || t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const profit       = totalReceived - totalExpPaid;
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const filtered = transactions.filter((t) => {
     if (typeFilter !== "all" && t.type !== typeFilter) return false;
     if (statusFilter && t.payment_status !== statusFilter) return false;
     if (projectFilter && t.project_id !== projectFilter) return false;
+    if (monthFilter && !isThisMonth(t.date)) return false;
     return true;
   });
 
   const projectsWithTx = projects.filter((p) => transactions.some((t) => t.project_id === p.id));
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
-  async function handleAdd() {
-    if (!draft.projectId) return;
-    setSaving(true);
-    try {
-      const res = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId:     draft.projectId,
-          type:          draft.type,
-          date:          draft.date || null,
-          description:   draft.description,
-          artist:        draft.artist,
-          amount:        Number(draft.amount) || 0,
-          currency:      draft.currency,
-          paymentStatus: draft.paymentStatus,
-          paymentMethod: draft.paymentMethod,
-          receiptRef:    draft.receiptRef,
-          notes:         draft.notes,
-          category:      draft.category,
-        }),
-      });
-      const data = await res.json();
-      if (data.transaction) {
-        setTransactions((prev) => [data.transaction, ...prev]);
-        setShowForm(false);
-        setDraft(emptyDraft());
-      }
-    } finally {
-      setSaving(false);
-    }
+  function openAdd() {
+    setEditingId(null);
+    setDraft(emptyDraft());
+    setModalOpen(true);
   }
 
-  async function handleUpdate() {
-    if (!editingId) return;
-    setEditSaving(true);
-    try {
-      const res = await fetch(`/api/transactions/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type:          editDraft.type,
-          date:          editDraft.date || null,
-          description:   editDraft.description,
-          artist:        editDraft.artist,
-          amount:        Number(editDraft.amount) || 0,
-          currency:      editDraft.currency,
-          paymentStatus: editDraft.paymentStatus,
-          notes:         editDraft.notes,
-          category:      editDraft.category,
-        }),
-      });
-      const data = await res.json();
-      if (data.transaction) {
-        setTransactions((prev) => prev.map((t) => t.id === editingId ? data.transaction : t));
-        setEditingId(null);
-      }
-    } finally {
-      setEditSaving(false);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    setTransactions((prev) => prev.filter((t) => t.id !== id)); // optimistic
-    await fetch(`/api/transactions/${id}`, { method: "DELETE" });
-  }
-
-  function startEdit(tx: Transaction) {
+  function openEdit(tx: Transaction) {
     setEditingId(tx.id);
-    setEditDraft({
+    setDraft({
       projectId:     tx.project_id,
       type:          tx.type,
       date:          tx.date ?? "",
@@ -390,234 +389,304 @@ export default function FinancePage() {
       notes:         tx.notes,
       category:      tx.category,
     });
+    setModalOpen(true);
+  }
+
+  async function handleSave() {
+    if (!draft.projectId) return;
+    setSaving(true);
+    try {
+      const body = {
+        projectId:     draft.projectId,
+        type:          draft.type,
+        date:          draft.date || null,
+        description:   draft.description,
+        artist:        draft.artist,
+        amount:        Number(draft.amount) || 0,
+        currency:      draft.currency,
+        paymentStatus: draft.paymentStatus,
+        paymentMethod: draft.paymentMethod,
+        receiptRef:    draft.receiptRef,
+        notes:         draft.notes,
+        category:      draft.category,
+      };
+
+      if (editingId) {
+        const res = await fetch(`/api/transactions/${editingId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.transaction) setTransactions((prev) => prev.map((t) => t.id === editingId ? data.transaction : t));
+      } else {
+        const res = await fetch("/api/transactions", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.transaction) setTransactions((prev) => [data.transaction, ...prev]);
+      }
+      setModalOpen(false);
+      setEditingId(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    await fetch(`/api/transactions/${id}`, { method: "DELETE" });
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div dir="rtl" style={{ padding: "24px 28px", maxWidth: 1100, margin: "0 auto" }}>
-      {/* Page header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>כספים</h1>
-          <p style={{ fontSize: 12, color: "#555", margin: "4px 0 0" }}>מעקב הכנסות והוצאות</p>
-        </div>
-        <button
-          onClick={() => { setShowForm(true); setDraft(emptyDraft()); }}
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "8px 16px", borderRadius: 10,
-            border: "1px solid rgba(59,130,246,0.35)",
-            background: "rgba(59,130,246,0.08)",
-            color: "#3B82F6", fontSize: 13, fontWeight: 600, cursor: "pointer",
-          }}
-        >
-          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-          הוסף עסקה
-        </button>
-      </div>
+    <div dir="rtl" style={{ padding: "28px 32px", maxWidth: 1200, margin: "0 auto" }}>
 
-      {/* Summary cards */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
-        <SummaryCard label="הכנסות שולמו"   value={fmtAmount(totalPaid, "₪")}      color="#10B981" />
-        <SummaryCard label="הכנסות צפויות"  value={fmtAmount(totalExpected, "₪")}  color="#3B82F6" />
-        <SummaryCard label="יתרות פתוחות"   value={fmtAmount(totalBalance, "₪")}   color={totalBalance > 0 ? "#EF4444" : "#555"} />
-        <SummaryCard label="הוצאות"          value={fmtAmount(totalExpenses, "₪")} color="#F59E0B" />
-        <SummaryCard label="רווח משוער"      value={fmtAmount(profit, "₪")}         color={profit >= 0 ? "#10B981" : "#EF4444"} />
-      </div>
-
-      {/* Inline add form */}
-      {showForm && (
-        <TxForm
+      {/* Modal */}
+      {modalOpen && (
+        <TxModal
           draft={draft}
           setDraft={setDraft}
           saving={saving}
-          onSave={handleAdd}
-          onCancel={() => setShowForm(false)}
+          onSave={handleSave}
+          onCancel={() => { setModalOpen(false); setEditingId(null); }}
           projects={projects}
+          title={editingId ? "עריכת תנועה" : "תנועה חדשה"}
         />
       )}
 
-      {/* Filters */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16, alignItems: "center" }}>
-        {/* Type filter */}
-        {(["all", "income", "expense"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setTypeFilter(f)}
-            style={{
-              padding: "5px 12px", borderRadius: 8,
-              border: `1px solid ${typeFilter === f ? "rgba(59,130,246,0.4)" : "#252525"}`,
-              background: typeFilter === f ? "rgba(59,130,246,0.1)" : "#1A1A1A",
-              color: typeFilter === f ? "#3B82F6" : "#555",
-              fontSize: 12, fontWeight: 500, cursor: "pointer",
-            }}
-          >
-            {f === "all" ? "הכל" : f === "income" ? "הכנסות" : "הוצאות"}
-          </button>
-        ))}
-
-        {/* Status filter */}
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as PaymentStatus | "")}
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>כספים</h1>
+          <p style={{ fontSize: 12, color: "#555", margin: "4px 0 0" }}>מעקב הכנסות והוצאות</p>
+        </div>
+        <button
+          onClick={openAdd}
           style={{
-            background: "#1A1A1A", border: `1px solid ${statusFilter ? "rgba(59,130,246,0.4)" : "#252525"}`,
-            borderRadius: 8, color: statusFilter ? "#3B82F6" : "#555",
-            fontSize: 12, padding: "5px 10px", outline: "none",
+            display: "flex", alignItems: "center", gap: 7,
+            padding: "10px 20px", borderRadius: 12,
+            border: "1px solid rgba(59,130,246,0.4)",
+            background: "rgba(59,130,246,0.1)",
+            color: "#3B82F6", fontSize: 14, fontWeight: 700, cursor: "pointer",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.background = "rgba(59,130,246,0.2)";
+            el.style.borderColor = "rgba(59,130,246,0.6)";
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.background = "rgba(59,130,246,0.1)";
+            el.style.borderColor = "rgba(59,130,246,0.4)";
           }}
         >
+          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+          הוסף תנועה
+        </button>
+      </div>
+
+      {/* Summary cards — business logic order */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 28 }}>
+        <SummaryCard
+          icon="✅" label="הכנסות שהתקבלו"
+          value={fmtAmount(totalReceived)}
+          color="#10B981"
+          sub={`${income.filter((t) => t.payment_status === "שולם").length} תשלומים`}
+        />
+        <SummaryCard
+          icon="⏳" label="יתרות / חובות פתוחים"
+          value={fmtAmount(totalOpen)}
+          color={totalOpen > 0 ? "#EF4444" : "#555"}
+          sub={`${income.filter((t) => ["צפוי","לא שולם","חלקי"].includes(t.payment_status)).length} פתוחים`}
+        />
+        <SummaryCard
+          icon="💸" label="הוצאות"
+          value={fmtAmount(totalExpPaid)}
+          color="#F59E0B"
+          sub={`${expenses.length} תנועות`}
+        />
+        <SummaryCard
+          icon="📈" label="רווח משוער"
+          value={fmtAmount(profit)}
+          color={profit >= 0 ? "#10B981" : "#EF4444"}
+          sub="הכנסות שהתקבלו פחות הוצאות"
+        />
+      </div>
+
+      {/* Filters bar */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14,
+        alignItems: "center", padding: "12px 16px",
+        background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12,
+      }}>
+        {/* Type */}
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["all", "income", "expense"] as const).map((f) => (
+            <button key={f} onClick={() => setTypeFilter(f)} style={{
+              padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+              background: typeFilter === f ? (f === "income" ? "rgba(16,185,129,0.15)" : f === "expense" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)") : "transparent",
+              color: typeFilter === f ? (f === "income" ? "#10B981" : f === "expense" ? "#EF4444" : "#3B82F6") : "#555",
+              fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+              outline: typeFilter === f ? `1px solid ${f === "income" ? "rgba(16,185,129,0.35)" : f === "expense" ? "rgba(239,68,68,0.3)" : "rgba(59,130,246,0.35)"}` : "none",
+            }}>
+              {f === "all" ? "הכל" : f === "income" ? "הכנסות" : "הוצאות"}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ width: 1, height: 20, background: "#2A2A2A", margin: "0 2px" }} />
+
+        {/* Status */}
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PaymentStatus | "")} style={{
+          background: "transparent", border: `1px solid ${statusFilter ? "#3B82F6" : "#2A2A2A"}`,
+          borderRadius: 8, color: statusFilter ? "#3B82F6" : "#555",
+          fontSize: 12, padding: "5px 10px", outline: "none", fontFamily: "inherit",
+        }}>
           <option value="">כל הסטטוסים</option>
           {PAYMENT_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
 
-        {/* Project filter */}
-        <select
-          value={projectFilter}
-          onChange={(e) => setProjectFilter(e.target.value)}
-          style={{
-            background: "#1A1A1A", border: `1px solid ${projectFilter ? "rgba(59,130,246,0.4)" : "#252525"}`,
-            borderRadius: 8, color: projectFilter ? "#3B82F6" : "#555",
-            fontSize: 12, padding: "5px 10px", outline: "none",
-          }}
-        >
+        {/* Project */}
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={{
+          background: "transparent", border: `1px solid ${projectFilter ? "#3B82F6" : "#2A2A2A"}`,
+          borderRadius: 8, color: projectFilter ? "#3B82F6" : "#555",
+          fontSize: 12, padding: "5px 10px", outline: "none", fontFamily: "inherit",
+        }}>
           <option value="">כל הפרויקטים</option>
           {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
-        {/* Result count */}
+        {/* Month toggle */}
+        <button onClick={() => setMonthFilter((v) => !v)} style={{
+          padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+          background: monthFilter ? "rgba(168,85,247,0.12)" : "transparent",
+          color: monthFilter ? "#A855F7" : "#555",
+          fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+          outline: monthFilter ? "1px solid rgba(168,85,247,0.3)" : "none",
+        }}>
+          החודש בלבד
+        </button>
+
+        {/* Count */}
         <span style={{ fontSize: 11, color: "#444", marginRight: "auto" }}>
-          {filtered.length} עסקאות
+          {filtered.length} תנועות
         </span>
       </div>
 
       {/* Transactions table */}
       {!loaded ? (
-        <div style={{ color: "#444", fontSize: 13, padding: "24px", textAlign: "center" }}>טוען...</div>
+        <div style={{ color: "#444", fontSize: 13, padding: "48px", textAlign: "center" }}>טוען...</div>
       ) : filtered.length === 0 ? (
         <div style={{
           background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14,
-          padding: "40px", textAlign: "center", color: "#444", fontSize: 13,
+          padding: "60px", textAlign: "center", color: "#444", fontSize: 13,
         }}>
-          אין עסקאות
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+          אין תנועות כספיות עדיין
+          <div style={{ marginTop: 14 }}>
+            <button onClick={openAdd} style={{
+              padding: "8px 18px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.35)",
+              background: "rgba(59,130,246,0.08)", color: "#3B82F6",
+              fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+            }}>+ הוסף תנועה ראשונה</button>
+          </div>
         </div>
       ) : (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, overflow: "hidden" }}>
           {/* Header */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "100px 2fr 1.5fr 2fr 1fr 80px 80px 60px",
+            gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px",
             gap: 8, padding: "10px 16px",
             background: "#141414", borderBottom: "1px solid #252525",
             fontSize: 10, fontWeight: 700, color: "#555", letterSpacing: "0.05em",
           }}>
             <div>תאריך</div>
+            <div>סוג</div>
             <div>פרויקט</div>
             <div>אמן / ספק</div>
             <div>תיאור</div>
             <div>סכום</div>
             <div>סטטוס</div>
-            <div>סוג</div>
+            <div>אמצעי תשלום</div>
             <div />
           </div>
 
-          {/* Rows */}
           {filtered.map((tx, i) => {
             const proj = projects.find((p) => p.id === tx.project_id);
-            const isEditing = editingId === tx.id;
-
-            if (isEditing) {
-              return (
-                <div key={tx.id} style={{ padding: "12px 16px", borderBottom: i < filtered.length - 1 ? "1px solid #222" : "none", background: "#1C1C1C" }}>
-                  <TxForm
-                    draft={editDraft}
-                    setDraft={setEditDraft}
-                    saving={editSaving}
-                    onSave={handleUpdate}
-                    onCancel={() => setEditingId(null)}
-                    projects={projects}
-                  />
-                </div>
-              );
-            }
-
+            const isIncome = tx.type === "income";
             return (
               <div
                 key={tx.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "100px 2fr 1.5fr 2fr 1fr 80px 80px 60px",
-                  gap: 8, padding: "11px 16px", alignItems: "center",
+                  gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px",
+                  gap: 8, padding: "10px 16px", alignItems: "center",
                   borderBottom: i < filtered.length - 1 ? "1px solid #202020" : "none",
                   background: i % 2 === 0 ? "#1A1A1A" : "#181818",
-                  transition: "background 0.12s",
+                  transition: "background 0.1s",
                 }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "#1E1E1E")}
                 onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = i % 2 === 0 ? "#1A1A1A" : "#181818")}
               >
                 <div style={{ fontSize: 11, color: "#666" }}>{fmtDate(tx.date)}</div>
-                <div style={{ fontSize: 12, color: "#DDD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {proj?.name ?? tx.project_id.slice(0, 8)}
+                <div>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                    background: isIncome ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
+                    color: isIncome ? "#10B981" : "#F59E0B",
+                    border: `1px solid ${isIncome ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}`,
+                  }}>
+                    {isIncome ? "הכנסה" : "הוצאה"}
+                  </span>
                 </div>
-                <div style={{ fontSize: 11, color: "#777", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {tx.artist || proj?.artist || "—"}
+                <div style={{ fontSize: 12, color: "#DDD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {proj?.name ?? "—"}
                 </div>
                 <div style={{ fontSize: 11, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {tx.description || (tx.category || "—")}
+                  {tx.artist || proj?.artist || "—"}
+                </div>
+                <div style={{ fontSize: 11, color: "#777", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {tx.description || tx.category || "—"}
                 </div>
                 <div style={{
                   fontSize: 13, fontWeight: 700,
-                  color: tx.type === "income" ? "#10B981" : "#F59E0B",
+                  color: isIncome ? "#10B981" : "#F59E0B",
                 }}>
-                  {tx.type === "expense" ? "−" : "+"}{fmtAmount(tx.amount, tx.currency)}
+                  {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
                 </div>
                 <div>
-                  {tx.type === "income" ? <StatusBadge status={tx.payment_status} /> : (
-                    <span style={{ fontSize: 10, color: "#F59E0B", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 5, padding: "1px 7px" }}>
-                      הוצאה
-                    </span>
-                  )}
+                  {isIncome
+                    ? <StatusBadge status={tx.payment_status} />
+                    : <span style={{ fontSize: 10, color: "#777" }}>{tx.category || "—"}</span>
+                  }
                 </div>
-                <div style={{ fontSize: 10, color: "#555" }}>
-                  {tx.category || (tx.type === "income" ? tx.payment_method || "" : "")}
+                <div style={{ fontSize: 11, color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {tx.payment_method || "—"}
                 </div>
-                <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                  <button
-                    onClick={() => startEdit(tx)}
-                    title="ערוך"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "2px 4px" }}
+                <div style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
+                  <button onClick={() => openEdit(tx)} title="ערוך"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "3px 5px" }}
                     onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
-                  >✏</button>
-                  <button
-                    onClick={() => handleDelete(tx.id)}
-                    title="מחק"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "2px 4px" }}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
+                  <button onClick={() => handleDelete(tx.id)} title="מחק"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "3px 5px" }}
                     onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
-                  >×</button>
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
                 </div>
               </div>
             );
           })}
 
-          {/* Footer totals */}
+          {/* Footer */}
           <div style={{
-            display: "flex", gap: 20, padding: "12px 16px",
+            display: "flex", gap: 24, padding: "12px 16px",
             borderTop: "1px solid #252525", background: "#141414",
-            fontSize: 11, color: "#666",
+            fontSize: 11, color: "#555",
           }}>
-            <span>
-              הכנסות (מסונן):{" "}
-              <strong style={{ color: "#10B981" }}>
-                {fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0), "₪")}
-              </strong>
-            </span>
-            <span>
-              הוצאות (מסונן):{" "}
-              <strong style={{ color: "#F59E0B" }}>
-                {fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0), "₪")}
-              </strong>
-            </span>
+            <span>הכנסות: <strong style={{ color: "#10B981" }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
+            <span>הוצאות: <strong style={{ color: "#F59E0B" }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+            <span style={{ marginRight: "auto" }}>{filtered.length} תנועות מסוננות</span>
           </div>
         </div>
       )}
