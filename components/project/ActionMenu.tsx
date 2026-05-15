@@ -20,6 +20,8 @@ export default function ActionMenu({ projectId, projectName, artist }: Props) {
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (open) { setOpen(false); return; }
+    // Tell all other menus to close
+    document.dispatchEvent(new CustomEvent("rb-menu-open", { detail: { id: projectId } }));
     const r    = btnRef.current!.getBoundingClientRect();
     const MENU_W = 210;
     const MENU_H = ACTIONS.length * 41 + 48; // approx height
@@ -31,6 +33,16 @@ export default function ActionMenu({ projectId, projectName, artist }: Props) {
     setPos({ top, left, openUp });
     setOpen(true);
   };
+
+  // Close when another menu opens
+  useEffect(() => {
+    const h = (e: Event) => {
+      const { id } = (e as CustomEvent<{ id: string }>).detail;
+      if (id !== projectId) setOpen(false);
+    };
+    document.addEventListener("rb-menu-open", h);
+    return () => document.removeEventListener("rb-menu-open", h);
+  }, [projectId]);
 
   useEffect(() => {
     if (!open) return;
