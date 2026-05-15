@@ -323,8 +323,8 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
       >
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           {dot}
-          <span style={{ color: "#F0F0F0", fontSize: 13, fontWeight: 700 }}>
-            Jahkno Radio
+          <span style={{ color: "#F0F0F0", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em" }}>
+            RED VIBE
           </span>
           {playing && (
             <span style={{ color: "#10B981", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>
