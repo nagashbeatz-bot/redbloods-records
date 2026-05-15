@@ -60,12 +60,14 @@ function ProjectTypeBadge({ type }: { type: ProjectType }) {
 // ── New-project modal ─────────────────────────────────────────────────────────
 function NewProjectModal({
   artists,
+  clientNames,
   onClose,
   onCreate,
 }: {
   artists: string[];
+  clientNames: string[];
   onClose: () => void;
-  onCreate: (fields: { name: string; artist: string; status: ProjectStatus; projectType: ProjectType; deadline: string; notes: string }) => Promise<void>;
+  onCreate: (fields: { name: string; artist: string; status: ProjectStatus; projectType: ProjectType; deadline: string; notes: string }) => Promise<{ newClientAdded?: string }>;
 }) {
   const [name,        setName]        = useState("");
   const [artist,      setArtist]      = useState("");
@@ -75,16 +77,17 @@ function NewProjectModal({
   const [notes,       setNotes]       = useState("");
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState("");
+  const [newClientWarning, setNewClientWarning] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { nameRef.current?.focus(); }, []);
 
-  // Close on ESC
+  // Close on ESC (only if not showing warning)
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !newClientWarning) onClose(); };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, newClientWarning]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,8 +95,12 @@ function NewProjectModal({
     setSaving(true);
     setError("");
     try {
-      await onCreate({ name: name.trim(), artist: artist.trim(), status, projectType, deadline, notes });
-      onClose();
+      const result = await onCreate({ name: name.trim(), artist: artist.trim(), status, projectType, deadline, notes });
+      if (result?.newClientAdded) {
+        setNewClientWarning(result.newClientAdded);
+      } else {
+        onClose();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {
@@ -109,9 +116,15 @@ function NewProjectModal({
   };
   const selectStyle: React.CSSProperties = { ...inputStyle };
 
+  // Indicator: is artist new (not in clients)?
+  const trimmedArtist = artist.trim();
+  const isNewArtist = trimmedArtist.length > 0 && !clientNames.some(
+    (c) => c.toLowerCase() === trimmedArtist.toLowerCase()
+  );
+
   return createPortal(
     <div
-      onClick={onClose}
+      onClick={() => { if (!newClientWarning) onClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 99998,
         background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
@@ -127,83 +140,128 @@ function NewProjectModal({
           boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>פרויקט חדש</h2>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Name */}
-          <div>
-            <label style={labelStyle}>שם הפרויקט *</label>
-            <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="שם הפרויקט..." />
-          </div>
-
-          {/* Artist */}
-          <div>
-            <label style={labelStyle}>אמן</label>
-            <input
-              value={artist}
-              onChange={(e) => setArtist(e.target.value)}
-              list="new-project-artists"
-              style={inputStyle}
-              placeholder="שם האמן..."
-            />
-            <datalist id="new-project-artists">
-              {artists.map((a) => <option key={a} value={a} />)}
-            </datalist>
-          </div>
-
-          {/* Status + Type row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={labelStyle}>סטטוס</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)} style={selectStyle}>
-                {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+        {/* ── Success / warning state after creation ── */}
+        {newClientWarning ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8", margin: "0 0 10px" }}>
+              הפרויקט נוצר בהצלחה!
+            </h2>
+            <div style={{
+              background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
+              borderRadius: 12, padding: "14px 16px", marginBottom: 20, textAlign: "right",
+            }}>
+              <p style={{ color: "#F59E0B", fontSize: 13, fontWeight: 600, margin: "0 0 6px" }}>
+                🆕 אמן חדש נוסף ללקוחות
+              </p>
+              <p style={{ color: "#D4A855", fontSize: 12, margin: "0 0 4px" }}>
+                <strong>{newClientWarning}</strong> נוסף אוטומטית לרשימת הלקוחות
+              </p>
+              <p style={{ color: "#888", fontSize: 12, margin: 0 }}>
+                ⚡ נדרש טיפול: חסר כתובת מייל לאמן זה — כנסו ללקוחות והשלימו את הפרטים
+              </p>
             </div>
-            <div>
-              <label style={labelStyle}>סוג</label>
-              <select value={projectType} onChange={(e) => setProjectType(e.target.value as ProjectType)} style={selectStyle}>
-                {PROJECT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Deadline */}
-          <div>
-            <label style={labelStyle}>דדליין</label>
-            <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={{ ...inputStyle, colorScheme: "dark" }} />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label style={labelStyle}>הערות</label>
-            <input value={notes} onChange={(e) => setNotes(e.target.value)} style={inputStyle} placeholder="הערות אופציונליות..." />
-          </div>
-
-          {error && <p style={{ color: "#EF4444", fontSize: 12, margin: 0, textAlign: "center" }}>{error}</p>}
-
-          {/* Buttons */}
-          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
             <button
-              type="button" onClick={onClose}
-              style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: "1px solid #2A2A2A", background: "transparent", color: "#777", cursor: "pointer", fontSize: 13 }}
-            >
-              ביטול
-            </button>
-            <button
-              type="submit" disabled={saving}
+              onClick={onClose}
               style={{
-                flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
-                background: saving ? "#1D3A5F" : "#1E40AF", color: "#fff",
-                cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600,
+                width: "100%", padding: "10px 0", borderRadius: 10, border: "none",
+                background: "#1E40AF", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600,
               }}
             >
-              {saving ? "שומר..." : "צור פרויקט"}
+              הבנתי, סגור
             </button>
           </div>
-        </form>
+        ) : (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+              <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>פרויקט חדש</h2>
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* Name */}
+              <div>
+                <label style={labelStyle}>שם הפרויקט *</label>
+                <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="שם הפרויקט..." />
+              </div>
+
+              {/* Artist */}
+              <div>
+                <label style={{ ...labelStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  {isNewArtist && (
+                    <span style={{ color: "#F59E0B", fontSize: 10, fontWeight: 600 }}>
+                      🆕 אמן חדש — יתווסף ללקוחות
+                    </span>
+                  )}
+                  <span>אמן</span>
+                </label>
+                <input
+                  value={artist}
+                  onChange={(e) => setArtist(e.target.value)}
+                  list="new-project-artists"
+                  style={{
+                    ...inputStyle,
+                    borderColor: isNewArtist ? "rgba(245,158,11,0.4)" : "#2A2A2A",
+                  }}
+                  placeholder="שם האמן..."
+                />
+                <datalist id="new-project-artists">
+                  {artists.map((a) => <option key={a} value={a} />)}
+                </datalist>
+              </div>
+
+              {/* Status + Type row */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={labelStyle}>סטטוס</label>
+                  <select value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)} style={selectStyle}>
+                    {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>סוג</label>
+                  <select value={projectType} onChange={(e) => setProjectType(e.target.value as ProjectType)} style={selectStyle}>
+                    {PROJECT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Deadline */}
+              <div>
+                <label style={labelStyle}>דדליין</label>
+                <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={{ ...inputStyle, colorScheme: "dark" }} />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={labelStyle}>הערות</label>
+                <input value={notes} onChange={(e) => setNotes(e.target.value)} style={inputStyle} placeholder="הערות אופציונליות..." />
+              </div>
+
+              {error && <p style={{ color: "#EF4444", fontSize: 12, margin: 0, textAlign: "center" }}>{error}</p>}
+
+              {/* Buttons */}
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button
+                  type="button" onClick={onClose}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: "1px solid #2A2A2A", background: "transparent", color: "#777", cursor: "pointer", fontSize: 13 }}
+                >
+                  ביטול
+                </button>
+                <button
+                  type="submit" disabled={saving}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
+                    background: saving ? "#1D3A5F" : "#1E40AF", color: "#fff",
+                    cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  {saving ? "שומר..." : "צור פרויקט"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </div>,
     document.body
@@ -754,8 +812,10 @@ export default function ProjectsTable() {
       {showNewProject && typeof document !== "undefined" && (
         <NewProjectModal
           artists={artists}
+          clientNames={clientNames}
           onClose={() => setShowNewProject(false)}
           onCreate={async (fields) => {
+            // 1. Create the project
             await createProject({
               name: fields.name,
               artist: fields.artist,
@@ -764,6 +824,29 @@ export default function ProjectsTable() {
               deadline: fields.deadline,
               notes: fields.notes,
             });
+
+            // 2. If artist is new (not in clients), auto-add them
+            const trimmed = fields.artist.trim();
+            if (trimmed && !clientNames.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+              try {
+                await fetch("/api/clients", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: trimmed, type: "אמן", status: "חדש" }),
+                });
+                // Refresh client names
+                const res = await fetch("/api/clients");
+                const d = await res.json();
+                if (d.clients) {
+                  setClientNames((d.clients as { name: string }[]).map((c) => c.name));
+                }
+                return { newClientAdded: trimmed };
+              } catch {
+                // If client creation fails, still return success for project
+                return { newClientAdded: trimmed };
+              }
+            }
+            return {};
           }}
         />
       )}
