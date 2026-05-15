@@ -4,10 +4,10 @@ import { supabase } from "@/lib/supabase";
 // ── PATCH /api/sessions/[id] — update a session ──────────────────────────────
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     const body = await req.json();
     const { date, startTime, endTime, status, notes } = body;
 
@@ -38,10 +38,10 @@ export async function PATCH(
 // ── DELETE /api/sessions/[id] ─────────────────────────────────────────────────
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     const { error } = await supabase.from("sessions").delete().eq("id", id);
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
