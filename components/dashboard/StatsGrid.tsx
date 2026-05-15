@@ -66,7 +66,7 @@ function StatCard({ label, count, color, icon, dim, sectionId }: StatCardProps) 
         {count}
       </div>
       {clickable && (
-        <div className="text-xs" style={{ color: "#3A3A3A", marginTop: -4 }}>
+        <div className="text-xs" style={{ color: "#4A4A4A", marginTop: -4 }}>
           ↓ לצפייה
         </div>
       )}

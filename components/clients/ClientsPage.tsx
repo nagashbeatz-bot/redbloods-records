@@ -239,17 +239,16 @@ export default function ClientsPage() {
       {/* Table */}
       {!loading && !error && clients.length > 0 && (
         <div style={{
-          background: "#141414", border: "1px solid #222", borderRadius: 16, overflow: "hidden",
+          background: "#141414", border: "1px solid #252525", borderRadius: 16, overflow: "hidden",
         }}>
           {/* Desktop header */}
           <div
-            className="hidden md:grid"
+            className="hidden md:grid tbl-header"
             style={{
               gridTemplateColumns: isCompact ? "2fr 1.4fr 1.2fr 80px" : "2fr 1.4fr 2fr 1fr 1.1fr 80px",
               padding: "10px 20px",
-              borderBottom: "1px solid #1E1E1E",
-              fontSize: 10, fontWeight: 700, color: "#444",
-              letterSpacing: "0.07em", textTransform: "uppercase",
+              background: "#141414",
+              borderBottom: "1px solid #252525",
             }}
           >
             <span>שם</span>
@@ -309,11 +308,11 @@ function ClientRow({
   return (
     <div
       style={{
-        borderBottom: "1px solid #1A1A1A",
-        padding: "14px 20px",
+        borderBottom: "1px solid #252525",
+        padding: "11px 20px",
         transition: "background 0.1s",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "#181818")}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#1E1E1E")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
       {/* Desktop grid */}
@@ -380,11 +379,14 @@ function Badge({
 }) {
   return (
     <span style={{
-      display: "inline-block",
+      display: "inline-flex",
+      alignItems: "center",
       padding: small ? "2px 8px" : "3px 10px",
       borderRadius: 100,
       background: bg, color,
+      border: `1px solid ${color}35`,
       fontSize: small ? 11 : 12, fontWeight: 600,
+      whiteSpace: "nowrap",
       ...style,
     }}>
       {children}

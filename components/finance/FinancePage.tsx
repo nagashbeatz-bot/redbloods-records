@@ -195,13 +195,14 @@ const INPUT_S: React.CSSProperties = {
 };
 
 const LABEL_S: React.CSSProperties = {
-  fontSize: 11, color: "#555", marginBottom: 5, display: "block", textAlign: "right",
+  fontSize: 10, fontWeight: 700, color: "#555", letterSpacing: "0.06em",
+  textTransform: "uppercase", marginBottom: 6, display: "block", textAlign: "right",
 };
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 10, fontWeight: 700, color: "#3A3A3A", letterSpacing: "0.08em",
+  fontSize: 10, fontWeight: 700, color: "#4A4A4A", letterSpacing: "0.08em",
   textTransform: "uppercase", marginBottom: 10, paddingBottom: 6,
-  borderBottom: "1px solid #1E1E1E",
+  borderBottom: "1px solid #282828",
 };
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
@@ -211,7 +212,8 @@ function StatusBadge({ status }: { status: string }) {
     <span style={{
       fontSize: 10, fontWeight: 600, color,
       background: `${color}18`, border: `1px solid ${color}35`,
-      borderRadius: 5, padding: "1px 7px", whiteSpace: "nowrap",
+      borderRadius: 100, padding: "2px 8px", whiteSpace: "nowrap",
+      display: "inline-flex", alignItems: "center",
     }}>
       {status}
     </span>
@@ -234,7 +236,7 @@ function SummaryCard({
 
   return (
     <div style={{
-      background: "#1C1C1C", border: "1px solid #252525", borderRadius: 14,
+      background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14,
       padding: "16px 18px", flex: "1 1 0", minWidth: 0,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
@@ -971,7 +973,7 @@ export default function FinancePage() {
       ) : (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, overflow: "hidden" }}>
           {/* Table header */}
-          <div style={{ display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px", gap: 8, padding: "10px 16px", background: "#141414", borderBottom: "1px solid #252525", fontSize: 10, fontWeight: 700, color: "#555", letterSpacing: "0.05em" }}>
+          <div className="tbl-header" style={{ display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px", gap: 8, padding: "10px 16px", background: "#141414", borderBottom: "1px solid #252525" }}>
             <div>תאריך</div><div>סוג</div><div>פרויקט</div><div>אמן / ספק</div>
             <div>תיאור / קטגוריה</div><div>סכום</div><div>סטטוס</div><div>אמצעי תשלום</div><div />
           </div>

@@ -77,10 +77,10 @@ export default function Sidebar({ onOpenChat }: Props) {
             ))}
           </div>
 
-          <div className="mt-5 mb-2 px-3" style={{ fontSize: 10, fontWeight: 700, color: "#3A3A3A", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          <div className="mt-5 mb-2 px-3" style={{ fontSize: 10, fontWeight: 700, color: "#4A4A4A", letterSpacing: "0.08em", textTransform: "uppercase" }}>
             ניהול
           </div>
-          <div style={{ height: 1, background: "#1E1E1E", marginBottom: 8 }} />
+          <div style={{ height: 1, background: "#282828", marginBottom: 8 }} />
 
           <div className="space-y-1">
             {NAV_SETTINGS.map(({ href, label, icon }) => (

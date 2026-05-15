@@ -107,11 +107,14 @@ function NewProjectModal({
     }
   };
 
-  const labelStyle: React.CSSProperties = { fontSize: 11, color: "#666", marginBottom: 4, display: "block", textAlign: "right" };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em",
+    textTransform: "uppercase", marginBottom: 6, display: "block", textAlign: "right",
+  };
   const inputStyle: React.CSSProperties = {
-    width: "100%", background: "#1A1A1A", border: "1px solid #2A2A2A",
-    borderRadius: 8, color: "#E8E8E8", fontSize: 13, padding: "7px 10px",
-    outline: "none", direction: "rtl",
+    width: "100%", background: "#111", border: "1px solid #2A2A2A",
+    borderRadius: 10, color: "#E8E8E8", fontSize: 13, padding: "9px 12px",
+    outline: "none", direction: "rtl", fontFamily: "inherit", boxSizing: "border-box" as const,
   };
   const selectStyle: React.CSSProperties = { ...inputStyle };
 
@@ -240,19 +243,19 @@ function NewProjectModal({
               {error && <p style={{ color: "#EF4444", fontSize: 12, margin: 0, textAlign: "center" }}>{error}</p>}
 
               {/* Buttons */}
-              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
                 <button
                   type="button" onClick={onClose}
-                  style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: "1px solid #2A2A2A", background: "transparent", color: "#777", cursor: "pointer", fontSize: 13 }}
+                  style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "1px solid #2A2A2A", background: "transparent", color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}
                 >
                   ביטול
                 </button>
                 <button
                   type="submit" disabled={saving}
                   style={{
-                    flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
+                    flex: 1, padding: "10px 0", borderRadius: 12, border: "none",
                     background: saving ? "#1D3A5F" : "#1E40AF", color: "#fff",
-                    cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600,
+                    cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                   }}
                 >
                   {saving ? "שומר..." : "צור פרויקט"}
@@ -550,7 +553,7 @@ export default function ProjectsTable() {
       <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "#252525" }}>
         {/* Header */}
         <div
-          className="grid py-3 text-xs font-medium border-b"
+          className="grid py-3 border-b tbl-header"
           style={{
             gridTemplateColumns: isMobile
               ? "56px 1fr auto auto"
@@ -564,7 +567,6 @@ export default function ProjectsTable() {
             paddingRight: isMobile ? "12px" : "20px",
             background: "#141414",
             borderColor: "#252525",
-            color: "#555",
           }}
         >
           <div />
@@ -745,8 +747,8 @@ export default function ProjectsTable() {
                     return (
                       <span style={{
                         fontSize: 9, fontWeight: 700, color,
-                        background: `${color}14`, border: `1px solid ${color}30`,
-                        borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0,
+                        background: `${color}14`, border: `1px solid ${color}35`,
+                        borderRadius: 100, padding: "2px 7px", whiteSpace: "nowrap", flexShrink: 0,
                       }}>
                         {pct < 1 && fin.paid === 0 ? "לא שולם" : pct >= 1 ? "✓ שולם" : `חלקי ${Math.round(pct * 100)}%`}
                       </span>
