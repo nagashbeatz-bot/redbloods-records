@@ -14,6 +14,7 @@ interface ProjectsContextValue {
     value: string
   ) => Promise<void>;
   createProject: (fields: PendingCreateAction) => Promise<string>;
+  deleteProject: (id: string) => Promise<void>;
 }
 
 const ProjectsContext = createContext<ProjectsContextValue | null>(null);
@@ -84,6 +85,20 @@ export default function ProjectsProvider({ children }: { children: React.ReactNo
     []
   );
 
+  const deleteProject = useCallback(async (id: string): Promise<void> => {
+    setProjects((prev) => prev.filter((p) => p.id !== id)); // optimistic remove
+    try {
+      const res = await fetch("/api/monday/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: id }),
+      });
+      if (!res.ok) await fetchAll(); // rollback on failure
+    } catch {
+      await fetchAll(); // rollback on network error
+    }
+  }, [fetchAll]);
+
   const createProject = useCallback(async (fields: PendingCreateAction): Promise<string> => {
     const res = await fetch("/api/monday/create", {
       method: "POST",
@@ -99,7 +114,7 @@ export default function ProjectsProvider({ children }: { children: React.ReactNo
   }, [fetchAll]);
 
   return (
-    <ProjectsContext.Provider value={{ projects, loading, refresh: fetchAll, updateProjectField, createProject }}>
+    <ProjectsContext.Provider value={{ projects, loading, refresh: fetchAll, updateProjectField, createProject, deleteProject }}>
       {children}
     </ProjectsContext.Provider>
   );

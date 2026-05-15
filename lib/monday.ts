@@ -405,6 +405,16 @@ export async function updateProjectField(
 }
 
 /**
+ * Permanently delete a project (item) from the Monday board.
+ */
+export async function deleteProject(itemId: string): Promise<void> {
+  await mondayGQL(
+    `mutation ($itemId: ID!) { delete_item(item_id: $itemId) { id } }`,
+    { itemId }
+  );
+}
+
+/**
  * Create a new project (item) on the Monday board.
  * Returns the new item's ID.
  */
