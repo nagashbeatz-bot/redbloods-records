@@ -9,9 +9,10 @@ interface Props {
   projectId:   string;
   projectName: string;
   artist:      string;
+  onSessionCreated?: () => void;
 }
 
-export default function ActionMenu({ projectId, projectName, artist }: Props) {
+export default function ActionMenu({ projectId, projectName, artist, onSessionCreated }: Props) {
   const [open,    setOpen]    = useState(false);
   const [active,  setActive]  = useState<ActionDef | null>(null);
   const [pos,     setPos]     = useState({ top: 0, left: 0, openUp: false });
@@ -145,9 +146,11 @@ export default function ActionMenu({ projectId, projectName, artist }: Props) {
       {active && (
         <ScheduleModal
           action={active}
+          projectId={projectId}
           projectName={projectName}
           artist={artist}
           onClose={() => setActive(null)}
+          onSessionCreated={onSessionCreated}
         />
       )}
     </>

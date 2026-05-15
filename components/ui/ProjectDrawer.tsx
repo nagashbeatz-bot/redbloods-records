@@ -120,9 +120,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [limitDraft,     setLimitDraft]     = useState("");
 
   // ── Fetch sessions ─────────────────────────────────────────────────────────
-  useEffect(() => {
+  const fetchSessions = () => {
     setSessionsLoaded(false);
-    setSessions([]);
     fetch(`/api/sessions?projectId=${projectId}`)
       .then((r) => r.json())
       .then((d) => {
@@ -131,6 +130,12 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         setSessionsLoaded(true);
       })
       .catch(() => setSessionsLoaded(true));
+  };
+
+  useEffect(() => {
+    setSessions([]);
+    fetchSessions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // ── ESC to close ───────────────────────────────────────────────────────────
@@ -673,7 +678,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           <Card>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 10, color: "#555" }}>פעולות</span>
-              <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} />
+              <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
             </div>
           </Card>
 

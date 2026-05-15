@@ -29,12 +29,23 @@ type Phase =
 
 interface Props {
   action:      ActionDef;
+  projectId:   string;
   projectName: string;
   artist:      string;
   onClose:     () => void;
+  onSessionCreated?: () => void;
 }
 
-export default function ScheduleModal({ action, projectName, artist, onClose }: Props) {
+// Extract YYYY-MM-DD and HH:MM in Israel timezone from an ISO datetime string
+function isoToIsrael(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const tz = "Asia/Jerusalem";
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  return { date, time };
+}
+
+export default function ScheduleModal({ action, projectId, projectName, artist, onClose, onSessionCreated }: Props) {
   const [minutes,       setMinutes]       = useState(action.defaultMinutes);
   const [tab,           setTab]           = useState<Tab>("recommended");
   const [phase,         setPhase]         = useState<Phase>("idle");
@@ -162,6 +173,28 @@ export default function ScheduleModal({ action, projectName, artist, onClose }: 
       const d = await r.json();
       if (d.needsReauth) { setPhase({ error: "יש לחבר מחדש את Google Calendar עם הרשאות כתיבה.", needsReauth: true }); return; }
       if (!d.ok)         { setPhase({ error: d.error ?? "שגיאה" }); return; }
+
+      // ── Also save session to Supabase so ProjectDrawer stays in sync ──────
+      try {
+        const { date, time: startTime } = isoToIsrael(startIso);
+        const { time: endTime }         = isoToIsrael(endIso);
+        await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            date,
+            startTime,
+            endTime,
+            status: "מתוכנן",
+            notes: action.calPrefix,
+          }),
+        });
+        onSessionCreated?.();
+      } catch {
+        // session save failure is non-fatal — calendar event was created
+      }
+
       setPhase({ created: { label, htmlLink: d.event?.htmlLink, inviteSent: !!artistEmail && sendToArtist } });
     } catch { setPhase({ error: "שגיאת רשת" }); }
   }
