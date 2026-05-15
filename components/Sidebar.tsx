@@ -80,8 +80,8 @@ export default function Sidebar({ onOpenChat }: Props) {
         {/* Nav */}
         <nav className="flex-1 px-3 py-4">
           <div className="space-y-1">
-            {NAV_MAIN.map(({ href, label, icon }) => (
-              <NavLink key={href} href={href} label={label} icon={icon} pathname={pathname} />
+            {NAV_MAIN.map(({ href, label, icon, iconColor }) => (
+              <NavLink key={href} href={href} label={label} icon={icon} iconColor={iconColor} pathname={pathname} />
             ))}
           </div>
 
@@ -91,8 +91,8 @@ export default function Sidebar({ onOpenChat }: Props) {
           <div style={{ height: 1, background: "#282828", marginBottom: 8 }} />
 
           <div className="space-y-1">
-            {NAV_SETTINGS.map(({ href, label, icon }) => (
-              <NavLink key={href} href={href} label={label} icon={icon} pathname={pathname} />
+            {NAV_SETTINGS.map(({ href, label, icon, iconColor }) => (
+              <NavLink key={href} href={href} label={label} icon={icon} iconColor={iconColor} pathname={pathname} />
             ))}
           </div>
         </nav>
