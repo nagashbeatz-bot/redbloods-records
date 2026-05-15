@@ -14,14 +14,21 @@ interface Props {
 export default function ActionMenu({ projectId, projectName, artist }: Props) {
   const [open,    setOpen]    = useState(false);
   const [active,  setActive]  = useState<ActionDef | null>(null);
-  const [pos,     setPos]     = useState({ top: 0, left: 0 });
+  const [pos,     setPos]     = useState({ top: 0, left: 0, openUp: false });
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (open) { setOpen(false); return; }
-    const r = btnRef.current!.getBoundingClientRect();
-    setPos({ top: r.bottom + 6, left: r.left });
+    const r    = btnRef.current!.getBoundingClientRect();
+    const MENU_W = 210;
+    const MENU_H = ACTIONS.length * 41 + 48; // approx height
+    // Flip horizontally if near right edge
+    const left   = r.left + MENU_W > window.innerWidth ? r.right - MENU_W : r.left;
+    // Flip vertically if near bottom edge
+    const openUp = r.bottom + 6 + MENU_H > window.innerHeight;
+    const top    = openUp ? r.top - MENU_H - 6 : r.bottom + 6;
+    setPos({ top, left, openUp });
     setOpen(true);
   };
 
