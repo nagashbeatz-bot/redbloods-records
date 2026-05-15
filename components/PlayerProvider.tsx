@@ -39,6 +39,7 @@ export function usePlayerSafe(): PlayerContextValue | null {
 
 export default function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const [track, setTrack] = useState<AudioTrack | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -48,39 +49,55 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     return Number(localStorage.getItem("player_volume") ?? 80);
   });
 
-  // Create audio element once on client
+  // ── Create audio element once ─────────────────────────────────────────────
   useEffect(() => {
     const audio = new Audio();
     audio.preload = "metadata";
-    audio.volume = volume / 100;
+    audio.volume = Number(localStorage.getItem("player_volume") ?? 80) / 100;
     audioRef.current = audio;
 
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onTimeUpdate    = () => setCurrentTime(audio.currentTime);
     const onDurationChange = () => setDuration(audio.duration || 0);
-    const onEnded = () => setPlaying(false);
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onEnded  = () => setPlaying(false);
+    const onPlay   = () => setPlaying(true);
+    const onPause  = () => setPlaying(false);
 
-    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("timeupdate",     onTimeUpdate);
     audio.addEventListener("durationchange", onDurationChange);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended",  onEnded);
+    audio.addEventListener("play",   onPlay);
+    audio.addEventListener("pause",  onPause);
+
+    // ── Cross-provider: when radio starts, silently pause project audio ──────
+    // We call audio.pause() directly — NOT through the pause() callback —
+    // so we don't dispatch rb:project-ended (that would cause radio to try
+    // to resume itself, creating a loop).
+    const onRadioStarted = () => {
+      audio.pause();
+      // Don't dispatch rb:project-ended here — radio is taking over intentionally
+    };
+    window.addEventListener("rb:radio-started", onRadioStarted);
 
     return () => {
-      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("timeupdate",     onTimeUpdate);
       audio.removeEventListener("durationchange", onDurationChange);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended",  onEnded);
+      audio.removeEventListener("play",   onPlay);
+      audio.removeEventListener("pause",  onPause);
+      window.removeEventListener("rb:radio-started", onRadioStarted);
       audio.pause();
     };
   }, []);
 
+  // ── Actions ───────────────────────────────────────────────────────────────
+
   const play = useCallback((newTrack: AudioTrack) => {
     const audio = audioRef.current;
     if (!audio) return;
-    // public_url from Monday assets is a pre-signed S3 URL — use directly, no proxy needed
+
+    // Notify radio to fade out (if it was playing)
+    window.dispatchEvent(new Event("rb:project-started"));
+
     audio.src = (newTrack.url && newTrack.url !== "#") ? newTrack.url : "";
     audio.load();
     audio.play().catch(() => setPlaying(false));
@@ -89,8 +106,17 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     setDuration(0);
   }, []);
 
-  const pause = useCallback(() => audioRef.current?.pause(), []);
-  const resume = useCallback(() => audioRef.current?.play().catch(() => {}), []);
+  const pause = useCallback(() => {
+    audioRef.current?.pause();
+    // Tell radio it can resume (if it was playing before this project track started)
+    window.dispatchEvent(new Event("rb:project-ended"));
+  }, []);
+
+  const resume = useCallback(() => {
+    audioRef.current?.play().catch(() => {});
+    // Don't notify radio here — user is resuming project, radio should stay off
+  }, []);
+
   const stop = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -98,10 +124,14 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     audio.currentTime = 0;
     setTrack(null);
     setPlaying(false);
+    // Tell radio it can resume (if it was playing before)
+    window.dispatchEvent(new Event("rb:project-ended"));
   }, []);
+
   const seek = useCallback((time: number) => {
     if (audioRef.current) audioRef.current.currentTime = time;
   }, []);
+
   const skip = useCallback((seconds: number) => {
     if (!audioRef.current) return;
     audioRef.current.currentTime = Math.max(
@@ -109,6 +139,7 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
       Math.min(audioRef.current.currentTime + seconds, audioRef.current.duration || 0)
     );
   }, []);
+
   const setVolume = useCallback((v: number) => {
     const clamped = Math.max(0, Math.min(100, v));
     setVolumeState(clamped);
@@ -125,8 +156,10 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
   );
 }
 
-// Helper — detect audio files in a project's file list
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
+
 export function getLatestAudioFile(
   files: { name: string; url: string; assetId?: number }[]
 ): { name: string; url: string; assetId?: number } | null {
@@ -138,9 +171,6 @@ export function getLatestAudioFile(
 
 /**
  * Fetch a fresh playable URL for a Monday asset.
- * Monday's public_url is a signed S3 URL that expires after ~1h.
- * This fetches a fresh one before every playback — no proxy needed,
- * the signed S3 URL works directly in <audio> elements.
  */
 export async function getFreshPlayUrl(file: { url: string; assetId?: number }): Promise<string> {
   if (!file.assetId) return file.url;

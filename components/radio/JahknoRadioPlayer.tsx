@@ -121,16 +121,15 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
           {loading ? "⋯" : playing ? "⏸" : "▶"}
         </button>
 
-        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ color: "#555", fontSize: 11 }}>🔊</span>
+        {/* dir="ltr" forces slider to go left=low → right=high regardless of page RTL */}
+        <div dir="ltr" style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ color: "#555", fontSize: 11 }}>🔈</span>
           <input
             type="range" min={0} max={100} value={volume}
             onChange={(e) => setVolume(Number(e.target.value))}
             style={{ flex: 1, accentColor: "#3B82F6", cursor: "pointer" }}
           />
-          <span style={{ color: "#555", fontSize: 10, minWidth: 24, textAlign: "right" }}>
-            {volume}%
-          </span>
+          <span style={{ color: "#555", fontSize: 11 }}>🔊</span>
         </div>
       </div>
 

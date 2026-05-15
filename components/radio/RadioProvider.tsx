@@ -14,18 +14,64 @@ export const RADIO_CHANNELS = [
 
 export type ChannelId = (typeof RADIO_CHANNELS)[number]["id"];
 
+// ── Fade helpers (module-level — no closure issues) ───────────────────────────
+const FADE_STEP_MS = 40; // ~25fps
+
+function startFadeOut(
+  audio: HTMLAudioElement,
+  durationMs: number,
+  timerRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>,
+  onDone: () => void,
+) {
+  if (timerRef.current) clearInterval(timerRef.current);
+  const startVol = audio.volume;
+  const steps    = Math.max(1, Math.round(durationMs / FADE_STEP_MS));
+  let step = 0;
+  timerRef.current = setInterval(() => {
+    step++;
+    audio.volume = Math.max(0, startVol * (1 - step / steps));
+    if (step >= steps) {
+      clearInterval(timerRef.current!);
+      timerRef.current = null;
+      audio.volume = 0;
+      onDone();
+    }
+  }, FADE_STEP_MS);
+}
+
+function startFadeIn(
+  audio: HTMLAudioElement,
+  durationMs: number,
+  targetVol: number,
+  timerRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>,
+) {
+  if (timerRef.current) clearInterval(timerRef.current);
+  audio.volume = 0;
+  const steps  = Math.max(1, Math.round(durationMs / FADE_STEP_MS));
+  let step = 0;
+  timerRef.current = setInterval(() => {
+    step++;
+    audio.volume = Math.min(targetVol, targetVol * (step / steps));
+    if (step >= steps) {
+      clearInterval(timerRef.current!);
+      timerRef.current = null;
+      audio.volume = targetVol;
+    }
+  }, FADE_STEP_MS);
+}
+
 // ── Context type ──────────────────────────────────────────────────────────────
 interface RadioContextValue {
-  playing:    boolean;
-  loading:    boolean;
-  channel:    ChannelId;
-  volume:     number;
-  panelOpen:  boolean;
-  play:       (channelId?: ChannelId) => void;
-  pause:      () => void;
-  stop:       () => void;
-  setChannel: (id: ChannelId) => void;
-  setVolume:  (v: number) => void;
+  playing:      boolean;
+  loading:      boolean;
+  channel:      ChannelId;
+  volume:       number;
+  panelOpen:    boolean;
+  play:         (channelId?: ChannelId) => void;
+  pause:        () => void;
+  stop:         () => void;
+  setChannel:   (id: ChannelId) => void;
+  setVolume:    (v: number) => void;
   setPanelOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
 }
 
@@ -43,23 +89,35 @@ export function useRadioSafe(): RadioContextValue | null {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 export default function RadioProvider({ children }: { children: React.ReactNode }) {
-  const audioRef      = useRef<HTMLAudioElement | null>(null);
-  const channelRef    = useRef<ChannelId>("main");   // shadow for closures
-  const playingRef    = useRef(false);               // shadow for closures
+  // ── Audio element ref (one for the app lifetime) ───────────────────────────
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // ── Refs that mirror state — used inside event handlers / intervals
+  //    to avoid stale closures without adding them as useEffect deps ──────────
+  const channelRef    = useRef<ChannelId>("main");
+  const playingRef    = useRef(false);
+  const volumeRef     = useRef(80);
+
+  // ── Coordination refs ─────────────────────────────────────────────────────
+  const wasProjectRef  = useRef(false); // radio was playing when project started
+  const fadeTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const resumeTimerRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
+
+  // ── UI state ──────────────────────────────────────────────────────────────
   const [playing,   setPlaying]   = useState(false);
   const [loading,   setLoading]   = useState(false);
   const [channel,   setChannelState] = useState<ChannelId>("main");
   const [volume,    setVolumeState]  = useState(80);
   const [panelOpen, setPanelOpen]    = useState(false);
 
-  // Create a single Audio element — only once, at root level
+  // ── Create audio element once — lives for the entire app session ───────────
   useEffect(() => {
-    const audio = new Audio();
+    const audio    = new Audio();
     audio.preload  = "none";
-    audio.volume   = 0.8; // default 80 %
+    audio.volume   = volumeRef.current / 100;
+    audioRef.current = audio;
 
-    const onPlaying = () => { setPlaying(true);  setLoading(false); playingRef.current = true; };
+    const onPlaying = () => { setPlaying(true);  setLoading(false); playingRef.current = true;  };
     const onPause   = () => { setPlaying(false);                    playingRef.current = false; };
     const onWaiting = () =>   setLoading(true);
     const onError   = () => { setPlaying(false); setLoading(false); playingRef.current = false; };
@@ -71,20 +129,71 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
     audio.addEventListener("error",   onError);
     audio.addEventListener("stalled", onStalled);
 
-    audioRef.current = audio;
+    // ── Cross-provider coordination ─────────────────────────────────────────
+    // When a project track starts → fade radio out
+    const onProjectStarted = () => {
+      // Cancel any pending radio-resume debounce
+      if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
 
-    // Cleanup only happens when the entire app unmounts (browser tab close)
+      if (!playingRef.current) return; // radio already silent — nothing to do
+
+      wasProjectRef.current = true;
+
+      startFadeOut(audio, 800, fadeTimerRef, () => {
+        audio.pause();
+        audio.volume = volumeRef.current / 100; // restore target volume for next play
+        setLoading(false);
+        // setPlaying(false) and playingRef.current = false will be set by onPause event
+      });
+    };
+
+    // When a project track ends/pauses → maybe fade radio back in
+    const onProjectEnded = () => {
+      if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
+      if (!wasProjectRef.current) return; // radio wasn't playing before — don't auto-resume
+
+      // Short debounce: if user immediately plays another project track, cancel resume
+      resumeTimerRef.current = setTimeout(() => {
+        resumeTimerRef.current = null;
+        if (!wasProjectRef.current) return;
+        wasProjectRef.current = false;
+
+        const ch = RADIO_CHANNELS.find(c => c.id === channelRef.current);
+        if (!ch) return;
+
+        // Set src and start playing (volume = 0, will fade in)
+        audio.src    = ch.url;
+        audio.volume = 0;
+        setLoading(true);
+        audio.play().catch(() => { setLoading(false); });
+
+        // Fade in once audio starts playing
+        const onFirstPlay = () => {
+          audio.removeEventListener("playing", onFirstPlay);
+          startFadeIn(audio, 900, volumeRef.current / 100, fadeTimerRef);
+        };
+        audio.addEventListener("playing", onFirstPlay);
+      }, 200); // 200 ms debounce — absorbs track-switching
+    };
+
+    window.addEventListener("rb:project-started", onProjectStarted);
+    window.addEventListener("rb:project-ended",   onProjectEnded);
+
     return () => {
       audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("pause",   onPause);
       audio.removeEventListener("waiting", onWaiting);
       audio.removeEventListener("error",   onError);
       audio.removeEventListener("stalled", onStalled);
+      window.removeEventListener("rb:project-started", onProjectStarted);
+      window.removeEventListener("rb:project-ended",   onProjectEnded);
+      if (fadeTimerRef.current)   clearInterval(fadeTimerRef.current);
+      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
       audio.pause();
     };
-  }, []); // ← empty dep array: run once, never re-run
+  }, []); // ← empty: create once, never re-run
 
-  // ── Actions ────────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────────────────────
 
   const getUrl = (id: ChannelId) =>
     RADIO_CHANNELS.find((c) => c.id === id)?.url ?? RADIO_CHANNELS[0].url;
@@ -92,46 +201,61 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
   const play = useCallback((channelId?: ChannelId) => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    // Cancel any pending fade / resume timers
+    if (fadeTimerRef.current)   { clearInterval(fadeTimerRef.current);   fadeTimerRef.current   = null; }
+    if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current);  resumeTimerRef.current = null; }
+
+    // Clear "was playing before project" — user manually started radio
+    wasProjectRef.current = false;
+
     const id = channelId ?? channelRef.current;
-    if (channelId) {
-      channelRef.current = channelId;
-      setChannelState(channelId);
-    }
+    if (channelId) { channelRef.current = channelId; setChannelState(channelId); }
+
+    // Tell project player to pause (silently — won't trigger rb:project-ended)
+    window.dispatchEvent(new Event("rb:radio-started"));
+
     setLoading(true);
     audio.src    = getUrl(id);
-    audio.volume = volume / 100;
-    audio.play().catch(() => { setLoading(false); setPlaying(false); });
+    audio.volume = volumeRef.current / 100;
+    audio.play().catch(() => { setLoading(false); setPlaying(false); playingRef.current = false; });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [volume]);
+  }, []);
 
   const pause = useCallback(() => {
+    if (fadeTimerRef.current) { clearInterval(fadeTimerRef.current); fadeTimerRef.current = null; }
     audioRef.current?.pause();
   }, []);
 
   const stop = useCallback(() => {
+    if (fadeTimerRef.current)   { clearInterval(fadeTimerRef.current);  fadeTimerRef.current   = null; }
+    if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
+    wasProjectRef.current = false;
     const audio = audioRef.current;
     if (!audio) return;
     audio.pause();
     audio.src = "";
-    setPlaying(false);
     setLoading(false);
-    playingRef.current = false;
   }, []);
 
   const setChannel = useCallback((id: ChannelId) => {
     channelRef.current = id;
     setChannelState(id);
     if (!playingRef.current) return;
-    // Already playing — seamlessly switch stream
+    // Seamlessly switch stream while playing
     const audio = audioRef.current;
     if (!audio) return;
+    if (fadeTimerRef.current) { clearInterval(fadeTimerRef.current); fadeTimerRef.current = null; }
     setLoading(true);
-    audio.src = getUrl(id);
-    audio.play().catch(() => { setLoading(false); setPlaying(false); });
+    audio.src    = getUrl(id);
+    audio.volume = volumeRef.current / 100;
+    audio.play().catch(() => { setLoading(false); setPlaying(false); playingRef.current = false; });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setVolume = useCallback((v: number) => {
     const clamped = Math.max(0, Math.min(100, v));
+    volumeRef.current = clamped;           // keep ref in sync
     setVolumeState(clamped);
     if (audioRef.current) audioRef.current.volume = clamped / 100;
   }, []);
