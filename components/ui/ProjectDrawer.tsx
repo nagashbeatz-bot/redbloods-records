@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -52,7 +52,7 @@ function isAudio(name: string) {
 }
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
     <div style={{
       background: "#1C1C1C", border: "1px solid #252525",
@@ -68,7 +68,7 @@ function Divider() {
   return <div style={{ height: 1, background: "#252525", margin: "10px 0" }} />;
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>{label}</div>
@@ -88,7 +88,7 @@ function fmtDate(d: string | null): string {
 }
 
 // ── Input style ───────────────────────────────────────────────────────────────
-const INPUT_S: React.CSSProperties = {
+const INPUT_S: CSSProperties = {
   background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6,
   color: "#E8E8E8", fontSize: 12, padding: "4px 8px", outline: "none",
   fontFamily: "inherit", height: 28, boxSizing: "border-box",
