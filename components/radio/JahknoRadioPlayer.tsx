@@ -435,7 +435,7 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
 
   return (
     <>
-      {/* Header trigger — two zones: [play/pause] + [panel toggle] */}
+      {/* Header trigger — body = open panel, icon = play/pause */}
       <div
         style={{
           display: "flex", alignItems: "center",
@@ -447,13 +447,13 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
           whiteSpace: "nowrap",
         }}
       >
-        {/* ── Zone A: Play / Pause (main action) ── */}
+        {/* ── Zone A: body — opens / closes panel ── */}
         <button
-          onClick={handlePlayPause}
-          title={playing ? "עצור רדיו" : "הפעל רדיו"}
+          onClick={() => setPanelOpen((o) => !o)}
+          title="פתח נגן"
           style={{
             display: "flex", alignItems: "center", gap: 6,
-            padding: "5px 10px 5px 11px",
+            padding: "5px 8px 5px 11px",
             background: "none", border: "none",
             color: playing ? "#34D399" : "#888",
             cursor: "pointer", fontFamily: "inherit",
@@ -472,41 +472,28 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
             }}
           />
 
-          {/* Play / Pause icon */}
-          <span style={{ fontSize: 8, lineHeight: 1, marginRight: -1 }}>
-            {loading ? "⋯" : playing ? "⏸" : "▶"}
-          </span>
+          {/* LIVE badge — only when playing */}
+          {(playing || loading) && (
+            <span style={{
+              fontSize: 8, fontWeight: 800,
+              letterSpacing: "0.12em",
+              color: loading ? "#666" : "#10B981",
+              transition: "color 0.3s",
+            }}>
+              {loading ? "•••" : "LIVE"}
+            </span>
+          )}
 
-          {/* Label */}
+          {/* Static label */}
           <span style={{
             fontSize: 11, fontWeight: 700,
             letterSpacing: "0.10em",
             textTransform: "uppercase",
+            color: playing ? "#D8D8D8" : "#777",
+            transition: "color 0.2s",
           }}>
-            {playing ? "Pause" : "Listen"}
+            {playing ? "Red Vibe" : "Listen"}
           </span>
-
-          {/* LIVE badge */}
-          {playing && !loading && (
-            <span style={{
-              fontSize: 8, fontWeight: 800,
-              letterSpacing: "0.12em",
-              color: "#10B981",
-              marginLeft: -2,
-            }}>
-              LIVE
-            </span>
-          )}
-          {loading && (
-            <span style={{
-              fontSize: 8, fontWeight: 700,
-              letterSpacing: "0.08em",
-              color: "#888",
-              marginLeft: -2,
-            }}>
-              ...
-            </span>
-          )}
         </button>
 
         {/* ── Divider ── */}
@@ -517,21 +504,21 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
           transition: "background 0.2s",
         }} />
 
-        {/* ── Zone B: Panel toggle (chevron) ── */}
+        {/* ── Zone B: small play / pause icon ── */}
         <button
-          onClick={() => setPanelOpen((o) => !o)}
-          title={panelOpen ? "סגור נגן" : "פתח נגן"}
+          onClick={handlePlayPause}
+          title={playing ? "עצור רדיו" : "הפעל רדיו"}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "5px 10px",
+            padding: "5px 11px 5px 9px",
             background: "none", border: "none",
-            color: panelOpen ? "#34D399" : "#555",
+            color: playing ? "#34D399" : "#555",
             cursor: "pointer", fontFamily: "inherit",
-            fontSize: 9,
+            fontSize: 9, lineHeight: 1,
             transition: "color 0.2s",
           }}
         >
-          {panelOpen ? "▲" : "▼"}
+          {loading ? "⋯" : playing ? "⏸" : "▶"}
         </button>
       </div>
 
