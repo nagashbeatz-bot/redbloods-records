@@ -76,6 +76,29 @@ input, textarea, select, button {
   animation: section-pulse 0.9s ease-out forwards;
 }
 
+/* ── Jahkno Radio — equalizer bar patterns ───────────────────────────────── */
+@keyframes eq1 { 0%,100% { transform: scaleY(0.12); } 50% { transform: scaleY(0.82); } }
+@keyframes eq2 { 0%,100% { transform: scaleY(0.55); } 50% { transform: scaleY(0.18); } }
+@keyframes eq3 { 0%,100% { transform: scaleY(0.30); } 50% { transform: scaleY(0.95); } }
+@keyframes eq4 { 0%,100% { transform: scaleY(0.70); } 50% { transform: scaleY(0.25); } }
+@keyframes eq5 { 0%,100% { transform: scaleY(0.20); } 50% { transform: scaleY(0.65); } }
+
+.eq-bar {
+  transform-origin: bottom;
+  will-change: transform;
+}
+.eq-bar.playing {
+  animation-name: eq1;           /* overridden per-bar via inline style */
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+.eq-bar.paused {
+  animation: none;
+  transform: scaleY(0.08);
+  transition: transform 0.6s ease;
+}
+
 /* ── Focus ring — applied to all interactive fields ─────────────────────── */
 input:focus,
 textarea:focus,
