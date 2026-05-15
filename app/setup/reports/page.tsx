@@ -305,10 +305,10 @@ EMAIL_TO=youremail@gmail.com`}</CodeBlock>
             background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)",
           }}>
             <div style={{ fontSize: 11, color: "#10B981", fontWeight: 700, marginBottom: 3 }}>
-              ✓ שמירה אוטומטית ב-Monday.com
+              ✓ שמירה אוטומטית ב-Supabase
             </div>
             <div style={{ fontSize: 11, color: "#555", lineHeight: 1.7 }}>
-              ההגדרות נשמרות ב-Monday.com ונטענות אוטומטית בכל הפעלה — כולל ב-Railway.
+              ההגדרות נשמרות ב-Supabase ונטענות אוטומטית בכל הפעלה — כולל ב-Railway.
             </div>
           </div>
         </Card>

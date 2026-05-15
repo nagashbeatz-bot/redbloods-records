@@ -8,7 +8,6 @@ import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { useProjects } from "@/components/ProjectsProvider";
 import { SkeletonCard } from "@/components/ui/Skeleton";
-import ColumnSetupModal from "./ColumnSetupModal";
 import { usePlayerSafe, getLatestAudioFile } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
@@ -278,8 +277,6 @@ export default function ProjectsTable() {
   const [parentFilter, setParentFilter] = useState("");
   const [artistFilter, setArtistFilter] = useState("");
   const [sortBy, setSortBy] = useState<"deadline" | "name" | "artist">("deadline");
-  const [showSetup, setShowSetup] = useState(false);
-  const [optionalColumnsReady, setOptionalColumnsReady] = useState<boolean | null>(null);
   const [isMobile,  setIsMobile]  = useState(false);
   const [isCompact,      setIsCompact]      = useState(false); // 900–1300px
   const [isUltraCompact, setIsUltraCompact] = useState(false); // 768–900px
@@ -312,13 +309,6 @@ export default function ProjectsTable() {
         }
       })
       .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/monday/column")
-      .then((r) => r.json())
-      .then((data) => setOptionalColumnsReady(!!(data.projectType && data.parentProject)))
-      .catch(() => setOptionalColumnsReady(false));
   }, []);
 
   if (loading) {
@@ -492,21 +482,6 @@ export default function ProjectsTable() {
             <option value="artist">מיון: אמן</option>
           </select>
 
-          {/* Column setup button — shown only when optional columns not yet on board */}
-          {optionalColumnsReady === false && (
-            <button
-              onClick={() => setShowSetup(true)}
-              className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
-              style={{
-                background: "rgba(245,158,11,0.08)",
-                borderColor: "rgba(245,158,11,0.3)",
-                color: "#F59E0B",
-                cursor: "pointer",
-              }}
-            >
-              + הוסף עמודות
-            </button>
-          )}
         </div>
       </div>
 
@@ -833,8 +808,6 @@ export default function ProjectsTable() {
           })
         )}
       </div>
-
-      {showSetup && <ColumnSetupModal onClose={() => setShowSetup(false)} />}
 
       {drawerProjectId && (
         <ProjectDrawer

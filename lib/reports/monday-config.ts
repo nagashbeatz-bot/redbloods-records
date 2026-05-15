@@ -1,110 +1,40 @@
 /**
- * Persistent report schedule config stored in Monday.com.
- *
- * A hidden item is created in the שירים board.
- * The config is encoded in the item NAME to avoid column-format issues:
- *   "__redbloods_config__|07:00|19:00"
- *
- * This survives Railway redeploys — no external services needed.
+ * Persistent report schedule config stored in Supabase settings table.
+ * Key: "report_schedule", value: { morningTime, eveningTime }
  */
 import "server-only";
+import { supabase } from "@/lib/supabase";
 
-const BOARD_ID  = process.env.MONDAY_BOARD_ID || "5096202122";
-const API_TOKEN = process.env.MONDAY_API_TOKEN || "";
-const API_URL   = "https://api.monday.com/v2";
-
-// Prefix so we can find the item quickly
-const PREFIX = "__redbloods_config__|";
+const SETTINGS_KEY = "report_schedule";
 
 interface ConfigPayload {
   morningTime: string;
   eveningTime: string;
 }
 
-// ─── Low-level GQL ────────────────────────────────────────────────────────────
-
-async function gql(query: string, variables?: Record<string, unknown>) {
-  if (!API_TOKEN) throw new Error("MONDAY_API_TOKEN חסר");
-  const res = await fetch(API_URL, {
-    method:  "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization:  API_TOKEN,
-      "API-Version":  "2024-10",
-    },
-    body:  JSON.stringify({ query, variables }),
-    cache: "no-store",
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors[0]?.message ?? "Monday API error");
-  return json.data;
-}
-
-// ─── Encode / decode ──────────────────────────────────────────────────────────
-
-function encode(config: ConfigPayload): string {
-  return `${PREFIX}${config.morningTime}|${config.eveningTime}`;
-}
-
-function decode(name: string): ConfigPayload | null {
-  if (!name.startsWith(PREFIX)) return null;
-  const parts = name.slice(PREFIX.length).split("|");
-  if (parts.length < 2) return null;
-  const [morningTime, eveningTime] = parts;
-  const timeRe = /^([01]\d|2[0-3]):([0-5]\d)$/;
-  if (!timeRe.test(morningTime) || !timeRe.test(eveningTime)) return null;
-  return { morningTime, eveningTime };
-}
-
-// ─── Find config item ─────────────────────────────────────────────────────────
-
-async function findConfigItem(): Promise<{ id: string; name: string } | null> {
-  const data = await gql(`
-    query {
-      boards(ids: [${BOARD_ID}]) {
-        items_page(limit: 200) {
-          items { id name }
-        }
-      }
-    }
-  `);
-  const items: { id: string; name: string }[] =
-    data.boards[0]?.items_page?.items ?? [];
-  return items.find((i) => i.name.startsWith(PREFIX)) ?? null;
-}
-
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-/** Read the stored schedule from Monday.com. Returns null if not found or on error. */
+/** Read the stored schedule from Supabase. Returns null if not found or on error. */
 export async function readMondayConfig(): Promise<ConfigPayload | null> {
   try {
-    const item = await findConfigItem();
-    if (!item) return null;
-    return decode(item.name);
+    const { data, error } = await supabase
+      .from("settings")
+      .select("value")
+      .eq("key", SETTINGS_KEY)
+      .single();
+
+    if (error || !data) return null;
+    const val = data.value as ConfigPayload;
+    if (!val?.morningTime || !val?.eveningTime) return null;
+    return val;
   } catch {
     return null;
   }
 }
 
-/** Write the schedule to Monday.com — creates the hidden config item if needed. */
+/** Write the schedule to Supabase settings table. */
 export async function writeMondayConfig(config: ConfigPayload): Promise<void> {
-  const newName = encode(config);
-  const existing = await findConfigItem();
+  const { error } = await supabase
+    .from("settings")
+    .upsert({ key: SETTINGS_KEY, value: config }, { onConflict: "key" });
 
-  if (existing) {
-    // Monday.com doesn't support renaming via change_column_value —
-    // delete the old item and create a fresh one with the new name.
-    await gql(
-      `mutation ($itemId: ID!) { delete_item(item_id: $itemId) { id } }`,
-      { itemId: existing.id }
-    );
-  }
-
-  // Create item with the new config encoded in its name
-  await gql(
-    `mutation ($boardId: ID!, $name: String!) {
-       create_item(board_id: $boardId, item_name: $name) { id }
-     }`,
-    { boardId: BOARD_ID, name: newName }
-  );
+  if (error) throw new Error(error.message);
 }

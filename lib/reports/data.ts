@@ -1,15 +1,15 @@
 /**
  * Fetch and compute all data needed for a daily report.
- * SERVER ONLY — imports Monday + Calendar server modules.
+ * SERVER ONLY — imports Supabase + Calendar server modules.
  */
 import "server-only";
-import { fetchProjects } from "@/lib/monday";
+import { listProjects } from "@/lib/projects-store";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { ReportData, ReportProject, ReportCalendarEvent } from "./types";
 
 export async function fetchReportData(): Promise<ReportData> {
-  // ── Monday.com projects ──────────────────────────────────────────────────────
-  const raw = await fetchProjects();
+  // ── Supabase projects ────────────────────────────────────────────────────────
+  const raw = await listProjects();
 
   const projects: ReportProject[] = raw.map((p) => ({
     id:        p.id,

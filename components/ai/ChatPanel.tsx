@@ -22,17 +22,11 @@ const SUGGESTED = [
   "מי האמן הפעיל ביותר?",
 ];
 
-interface PendingColumnAdd {
-  title: string;
-  columnType: string;
-  reason?: string;
-}
-
 // Strip all PENDING_* blocks from display text
 function stripPendingBlocks(raw: string): string {
   return raw
     .replace(/\[PENDING_UPDATE:\{[^}]*\}\]/g, "")
-    .replace(/\[PENDING_COLUMN_ADD:\{[^}]*\}\]/g, "")
+
     .replace(/\[PENDING_BULK_UPDATE:\{[^}]*\}\]/g, "")
     .replace(/\[PENDING_CREATE:\{[^}]*\}\]/g, "")
     .trim();
@@ -81,23 +75,10 @@ function parsePendingUpdate(raw: string): { text: string; action?: MondayUpdateA
   }
 }
 
-// Parse [PENDING_COLUMN_ADD:{...}] from agent response
-function parsePendingColumnAdd(raw: string): { text: string; columnAdd?: PendingColumnAdd } {
-  const match = raw.match(/\[PENDING_COLUMN_ADD:(\{[^}]*\})\]/);
-  if (!match) return { text: raw };
-  try {
-    const columnAdd = JSON.parse(match[1]) as PendingColumnAdd;
-    return { text: stripPendingBlocks(raw), columnAdd };
-  } catch {
-    return { text: stripPendingBlocks(raw) };
-  }
-}
-
 // Parse all protocol types from an agent response
 function parseAgentMessage(raw: string): {
   text: string;
   action?: MondayUpdateAction;
-  columnAdd?: PendingColumnAdd;
   bulkAction?: BulkUpdateAction;
   createAction?: PendingCreateAction;
 } {
@@ -110,22 +91,7 @@ function parseAgentMessage(raw: string): {
   // PENDING_CREATE
   const createResult = parsePendingCreate(raw);
   if (createResult.createAction) return { text: createResult.text, createAction: createResult.createAction };
-  // PENDING_COLUMN_ADD
-  const colResult = parsePendingColumnAdd(raw);
-  if (colResult.columnAdd) return { text: colResult.text, columnAdd: colResult.columnAdd };
   return { text: raw };
-}
-
-// Human-readable column type label
-function columnTypeLabel(type: string) {
-  const map: Record<string, string> = {
-    text: "טקסט",
-    long_text: "טקסט ארוך",
-    numbers: "מספרים",
-    date: "תאריך",
-    status: "סטטוס",
-  };
-  return map[type] ?? type;
 }
 
 // Human-readable field label
@@ -157,7 +123,6 @@ const PROVIDER_LABEL: Record<AIProvider, string> = {
 
 interface LocalMessage extends ChatMessage {
   pendingAction?: MondayUpdateAction;
-  pendingColumnAdd?: PendingColumnAdd;
   pendingBulkAction?: BulkUpdateAction;
   pendingCreateAction?: PendingCreateAction;
   actionDone?: boolean;
@@ -224,7 +189,7 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
         }
       }
 
-      const { text, action, columnAdd, bulkAction, createAction } = parseAgentMessage(raw);
+      const { text, action, bulkAction, createAction } = parseAgentMessage(raw);
 
       setMessages((prev) => [
         ...prev,
@@ -232,7 +197,6 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
           role: "assistant",
           content: text,
           pendingAction: action,
-          pendingColumnAdd: columnAdd,
           pendingBulkAction: bulkAction,
           pendingCreateAction: createAction,
           provider,
@@ -266,36 +230,6 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
       setMessages((prev) => {
         const updated = prev.map((m, i) => (i === msgIndex ? { ...m, actionDone: true } : m));
         return [...updated, { role: "assistant" as const, content: `✕ העדכון נכשל: ${msg}` }];
-      });
-    } finally {
-      setConfirmingSaving(false);
-    }
-  };
-
-  // Confirm column addition
-  const handleConfirmColumnAdd = async (msgIndex: number, col: PendingColumnAdd) => {
-    setConfirmingSaving(true);
-    try {
-      const res = await fetch("/api/monday/column", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: col.title, columnType: col.columnType }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "שגיאה");
-
-      setMessages((prev) => {
-        const updated = prev.map((m, i) => (i === msgIndex ? { ...m, actionDone: true } : m));
-        return [
-          ...updated,
-          { role: "assistant" as const, content: `✓ העמודה "${col.title}" נוספה בהצלחה לבורד.` },
-        ];
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "שגיאה";
-      setMessages((prev) => {
-        const updated = prev.map((m, i) => (i === msgIndex ? { ...m, actionDone: true } : m));
-        return [...updated, { role: "assistant" as const, content: `✕ הוספת העמודה נכשלה: ${msg}` }];
       });
     } finally {
       setConfirmingSaving(false);
@@ -666,61 +600,6 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
               </div>
             )}
 
-            {/* Column add confirmation card — more prominent, structural change warning */}
-            {msg.role === "assistant" && msg.pendingColumnAdd && !msg.actionDone && (
-              <div className="flex justify-end">
-                <div
-                  className="max-w-[88%] rounded-2xl px-4 py-3 text-sm"
-                  style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.3)" }}
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span style={{ fontSize: 11, color: "#F59E0B" }}>⚠</span>
-                    <span className="text-xs" style={{ color: "#F59E0B" }}>שינוי מבנה בורד</span>
-                  </div>
-                  <div className="mb-1" style={{ color: "#C0C0C0" }}>
-                    הוספת עמודה:{" "}
-                    <span style={{ color: "#F0F0F0", fontWeight: 600 }}>
-                      {msg.pendingColumnAdd.title}
-                    </span>
-                    {" · "}
-                    <span style={{ color: "#888", fontSize: 12 }}>
-                      {columnTypeLabel(msg.pendingColumnAdd.columnType)}
-                    </span>
-                  </div>
-                  {msg.pendingColumnAdd.reason && (
-                    <div className="mb-3 text-xs" style={{ color: "#666" }}>
-                      {msg.pendingColumnAdd.reason}
-                    </div>
-                  )}
-                  {!msg.pendingColumnAdd.reason && <div className="mb-3" />}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleConfirmColumnAdd(i, msg.pendingColumnAdd!)}
-                      disabled={confirmingSaving}
-                      style={{
-                        flex: 1, padding: "6px 0", borderRadius: 8, border: "none",
-                        background: "#F59E0B", color: "#000", fontSize: 12, fontWeight: 700,
-                        cursor: confirmingSaving ? "not-allowed" : "pointer",
-                        fontFamily: "inherit", opacity: confirmingSaving ? 0.7 : 1,
-                      }}
-                    >
-                      {confirmingSaving ? "מוסיף..." : "הוסף עמודה"}
-                    </button>
-                    <button
-                      onClick={() => handleCancel(i)}
-                      disabled={confirmingSaving}
-                      style={{
-                        flex: 1, padding: "6px 0", borderRadius: 8,
-                        border: "1px solid #333", background: "transparent",
-                        color: "#666", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-                      }}
-                    >
-                      ביטול
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         ))}
 
