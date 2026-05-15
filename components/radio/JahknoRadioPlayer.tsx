@@ -435,75 +435,105 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
 
   return (
     <>
-      {/* Header trigger — LISTEN button */}
-      <button
-        onClick={() => setPanelOpen((o) => !o)}
+      {/* Header trigger — two zones: [play/pause] + [panel toggle] */}
+      <div
         style={{
-          display: "flex", alignItems: "center", gap: 7,
-          padding: "5px 13px 5px 10px",
-          background: panelOpen
-            ? "rgba(16,185,129,0.13)"
-            : playing
-            ? "rgba(255,255,255,0.05)"
-            : "#161616",
-          border: `1px solid ${
-            panelOpen ? "rgba(16,185,129,0.35)" : playing ? "rgba(255,255,255,0.10)" : "#242424"
-          }`,
+          display: "flex", alignItems: "center",
+          background: playing ? "rgba(16,185,129,0.10)" : "#161616",
+          border: `1px solid ${playing ? "rgba(16,185,129,0.30)" : "#242424"}`,
           borderRadius: 100,
-          color: panelOpen ? "#34D399" : playing ? "#D0D0D0" : "#888",
-          cursor: "pointer", fontFamily: "inherit",
+          overflow: "hidden",
           transition: "all 0.2s",
           whiteSpace: "nowrap",
         }}
       >
-        {/* Status dot */}
-        <span
+        {/* ── Zone A: Play / Pause (main action) ── */}
+        <button
+          onClick={handlePlayPause}
+          title={playing ? "עצור רדיו" : "הפעל רדיו"}
           style={{
-            display: "inline-block",
-            width: 6, height: 6, borderRadius: "50%",
-            background: playing ? "#10B981" : panelOpen ? "#10B981" : "#333",
-            boxShadow: playing ? "0 0 6px #10B981" : "none",
-            flexShrink: 0,
-            transition: "background 0.3s, box-shadow 0.3s",
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "5px 10px 5px 11px",
+            background: "none", border: "none",
+            color: playing ? "#34D399" : "#888",
+            cursor: "pointer", fontFamily: "inherit",
+            transition: "color 0.2s",
           }}
-        />
+        >
+          {/* Status dot */}
+          <span
+            style={{
+              display: "inline-block",
+              width: 6, height: 6, borderRadius: "50%",
+              background: playing ? "#10B981" : "#333",
+              boxShadow: playing ? "0 0 6px #10B981" : "none",
+              flexShrink: 0,
+              transition: "background 0.3s, box-shadow 0.3s",
+            }}
+          />
 
-        {/* Play icon */}
-        <span style={{
-          fontSize: 8,
-          color: panelOpen ? "#34D399" : playing ? "#C0C0C0" : "#666",
-          lineHeight: 1,
-          marginRight: -1,
-          transition: "color 0.2s",
-        }}>
-          {playing ? "⏸" : "▶"}
-        </span>
-
-        {/* LISTEN label */}
-        <span style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.10em",
-          textTransform: "uppercase",
-          transition: "color 0.2s",
-        }}>
-          Listen
-        </span>
-
-        {/* LIVE badge — only when playing */}
-        {playing && (
-          <span style={{
-            fontSize: 8,
-            fontWeight: 800,
-            letterSpacing: "0.12em",
-            color: "#10B981",
-            marginLeft: -2,
-            transition: "opacity 0.3s",
-          }}>
-            LIVE
+          {/* Play / Pause icon */}
+          <span style={{ fontSize: 8, lineHeight: 1, marginRight: -1 }}>
+            {loading ? "⋯" : playing ? "⏸" : "▶"}
           </span>
-        )}
-      </button>
+
+          {/* Label */}
+          <span style={{
+            fontSize: 11, fontWeight: 700,
+            letterSpacing: "0.10em",
+            textTransform: "uppercase",
+          }}>
+            {playing ? "Pause" : "Listen"}
+          </span>
+
+          {/* LIVE badge */}
+          {playing && !loading && (
+            <span style={{
+              fontSize: 8, fontWeight: 800,
+              letterSpacing: "0.12em",
+              color: "#10B981",
+              marginLeft: -2,
+            }}>
+              LIVE
+            </span>
+          )}
+          {loading && (
+            <span style={{
+              fontSize: 8, fontWeight: 700,
+              letterSpacing: "0.08em",
+              color: "#888",
+              marginLeft: -2,
+            }}>
+              ...
+            </span>
+          )}
+        </button>
+
+        {/* ── Divider ── */}
+        <span style={{
+          width: 1, height: 14,
+          background: playing ? "rgba(16,185,129,0.25)" : "#2A2A2A",
+          flexShrink: 0,
+          transition: "background 0.2s",
+        }} />
+
+        {/* ── Zone B: Panel toggle (chevron) ── */}
+        <button
+          onClick={() => setPanelOpen((o) => !o)}
+          title={panelOpen ? "סגור נגן" : "פתח נגן"}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "5px 10px",
+            background: "none", border: "none",
+            color: panelOpen ? "#34D399" : "#555",
+            cursor: "pointer", fontFamily: "inherit",
+            fontSize: 9,
+            transition: "color 0.2s",
+          }}
+        >
+          {panelOpen ? "▲" : "▼"}
+        </button>
+      </div>
 
       {mounted && panelOpen && createPortal(panel, document.body)}
     </>
