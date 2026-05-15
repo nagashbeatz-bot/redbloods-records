@@ -120,7 +120,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [limitDraft,     setLimitDraft]     = useState("");
 
   // ── Fetch sessions ─────────────────────────────────────────────────────────
-  const fetchSessions = () => {
+  const fetchSessions = (withSync = false) => {
     setSessionsLoaded(false);
     fetch(`/api/sessions?projectId=${projectId}`)
       .then((r) => r.json())
@@ -128,13 +128,28 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         setSessions(d.sessions ?? []);
         setSessionLimit(d.limit ?? 3);
         setSessionsLoaded(true);
+
+        // After loading, run calendar sync in background to remove deleted events
+        if (withSync) {
+          fetch(`/api/sessions/sync?projectId=${projectId}`)
+            .then((r) => r.json())
+            .then((s) => {
+              if (s.deleted > 0) {
+                // Some sessions were removed — reload the list
+                fetch(`/api/sessions?projectId=${projectId}`)
+                  .then((r) => r.json())
+                  .then((d2) => setSessions(d2.sessions ?? []));
+              }
+            })
+            .catch(() => {});
+        }
       })
       .catch(() => setSessionsLoaded(true));
   };
 
   useEffect(() => {
     setSessions([]);
-    fetchSessions();
+    fetchSessions(true); // run calendar sync on every drawer open
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 

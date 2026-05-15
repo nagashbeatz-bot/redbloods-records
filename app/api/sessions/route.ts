@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { projectId, date, startTime, endTime, status, notes } = body;
+    const { projectId, date, startTime, endTime, status, notes, calendarEventId } = body;
 
     if (!projectId) {
       return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
@@ -48,12 +48,13 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from("sessions")
       .insert({
-        project_id: projectId,
-        date:       date       || null,
-        start_time: startTime  || null,
-        end_time:   endTime    || null,
-        status:     status     || "מתוכנן",
-        notes:      notes      || "",
+        project_id:        projectId,
+        date:              date              || null,
+        start_time:        startTime         || null,
+        end_time:          endTime           || null,
+        status:            status            || "מתוכנן",
+        notes:             notes             || "",
+        calendar_event_id: calendarEventId   || null,
       })
       .select()
       .single();

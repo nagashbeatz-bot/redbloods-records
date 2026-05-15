@@ -594,6 +594,24 @@ export async function createCalendarEvent(
   };
 }
 
+// ─── Check if event exists ────────────────────────────────────────────────────
+
+/** Returns true if the event exists on the calendar, false if deleted/not found. */
+export async function calendarEventExists(
+  eventId: string,
+  calendarId: string = CALENDAR_ID
+): Promise<boolean> {
+  try {
+    const auth     = await getAuthenticatedClient();
+    const calendar = google.calendar({ version: "v3", auth });
+    const res = await calendar.events.get({ calendarId, eventId });
+    // status "cancelled" means the event was deleted
+    return res.data.status !== "cancelled";
+  } catch {
+    return false; // 404 or any error → treat as not existing
+  }
+}
+
 // ─── Event deletion ───────────────────────────────────────────────────────────
 
 export async function deleteCalendarEvent(

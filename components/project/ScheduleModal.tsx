@@ -188,6 +188,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             endTime,
             status: "מתוכנן",
             notes: action.calPrefix,
+            calendarEventId: d.event?.id ?? null,
           }),
         });
         onSessionCreated?.();
