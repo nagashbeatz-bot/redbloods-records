@@ -31,7 +31,7 @@ export default function ProjectsProvider({ children }: { children: React.ReactNo
 
   const fetchAll = useCallback(async () => {
     try {
-      const res = await fetch("/api/monday/projects");
+      const res = await fetch("/api/projects");
       const data = await res.json();
       if (Array.isArray(data)) setProjects(data);
     } catch (err) {
@@ -64,10 +64,10 @@ export default function ProjectsProvider({ children }: { children: React.ReactNo
 
       let errorMsg: string | null = null;
       try {
-        const res = await fetch("/api/monday/update", {
-          method: "POST",
+        const res = await fetch(`/api/projects/${id}`, {
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId: id, field, value }),
+          body: JSON.stringify({ field, value }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -86,29 +86,34 @@ export default function ProjectsProvider({ children }: { children: React.ReactNo
   );
 
   const deleteProject = useCallback(async (id: string): Promise<void> => {
-    setProjects((prev) => prev.filter((p) => p.id !== id)); // optimistic remove
+    setProjects((prev) => prev.filter((p) => p.id !== id));
     try {
-      const res = await fetch("/api/monday/delete", {
+      const res = await fetch(`/api/projects/${id}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id }),
       });
-      if (!res.ok) await fetchAll(); // rollback on failure
+      if (!res.ok) await fetchAll();
     } catch {
-      await fetchAll(); // rollback on network error
+      await fetchAll();
     }
   }, [fetchAll]);
 
   const createProject = useCallback(async (fields: PendingCreateAction): Promise<string> => {
-    const res = await fetch("/api/monday/create", {
+    const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fields),
+      body: JSON.stringify({
+        name:          fields.name,
+        artist:        fields.artist,
+        status:        fields.status,
+        deadline:      fields.deadline,
+        notes:         fields.notes,
+        projectType:   fields.projectType,
+        parentProject: fields.parentProject,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "יצירה נכשלה");
 
-    // Refresh project list so the new item appears
     await fetchAll();
     return data.id ?? "";
   }, [fetchAll]);

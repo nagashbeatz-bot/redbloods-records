@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClient, updateClient, deleteClient } from "@/lib/clients-store";
+import { supabase } from "@/lib/supabase";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -14,7 +15,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     const newName = name.trim();
 
-    // Get old name before updating so we can sync Monday.com projects
+    // Get old name before updating so we can sync projects
     const existing = await getClient(id);
     const oldName  = existing?.name?.trim() ?? "";
     console.log(`[clients PATCH] id=${id} existing client: ${existing ? `"${existing.name}"` : "null"} → newName="${newName}"`);
@@ -29,21 +30,27 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       notes:  notes?.trim()  || "",
     });
 
-    // If the name changed — update artist field on all matching Monday.com projects
+    // If the name changed — update artist field on all matching projects in Supabase
     console.log(`[clients PATCH] name change detected: "${oldName}" → "${newName}"`);
     if (oldName && oldName !== newName) {
       try {
-        const { fetchProjects, updateProjectField } = await import("@/lib/monday");
-        const projects = await fetchProjects();
-        console.log(`[clients PATCH] fetched ${projects.length} projects from Monday`);
+        // Fetch all projects from Supabase where artist contains oldName
+        const { data: allProjects, error: fetchErr } = await supabase
+          .from("projects")
+          .select("id, name, artist");
 
-        // Find projects where the artist matches the old client name
+        if (fetchErr) throw new Error(fetchErr.message);
+
+        const projects = (allProjects || []) as { id: string; name: string; artist: string }[];
+        console.log(`[clients PATCH] fetched ${projects.length} projects from Supabase`);
+
+        // Find projects where artist matches old name
         const toUpdate = projects.filter((p) => {
           if (!p.artist) return false;
           return p.artist
             .split(/[,،;]/)
-            .map((a: string) => a.trim())
-            .some((a: string) => a.toLowerCase() === oldName.toLowerCase());
+            .map((a) => a.trim())
+            .some((a) => a.toLowerCase() === oldName.toLowerCase());
         });
 
         console.log(
@@ -51,18 +58,23 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           toUpdate.map((p) => ({ id: p.id, name: p.name, artist: p.artist }))
         );
 
-        // Update each matching project's artist — replace old name with new name
+        // Update each project's artist field
         const results = await Promise.allSettled(
-          toUpdate.map((p) => {
+          toUpdate.map(async (p) => {
             const updatedArtist = p.artist
               .split(/[,،;]/)
-              .map((a: string) => a.trim())
-              .map((a: string) =>
-                a.toLowerCase() === oldName.toLowerCase() ? newName : a
-              )
+              .map((a) => a.trim())
+              .map((a) => a.toLowerCase() === oldName.toLowerCase() ? newName : a)
               .join(", ");
+
             console.log(`[clients PATCH] updating project ${p.id} artist: "${p.artist}" → "${updatedArtist}"`);
-            return updateProjectField(p.id, "artist", updatedArtist);
+
+            const { error } = await supabase
+              .from("projects")
+              .update({ artist: updatedArtist, updated_at: new Date().toISOString() })
+              .eq("id", p.id);
+
+            if (error) throw new Error(error.message);
           })
         );
 
@@ -76,9 +88,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         console.log(`[clients PATCH] synced ${toUpdate.length} project(s) successfully`);
         return NextResponse.json({ ok: true, syncedProjects: toUpdate.length });
       } catch (syncErr) {
-        // Sync failure is non-fatal — client was updated, just log the error
         const syncMsg = syncErr instanceof Error ? syncErr.message : "sync error";
-        console.error("[clients PATCH] Monday sync failed:", syncMsg);
+        console.error("[clients PATCH] Supabase projects sync failed:", syncMsg);
         return NextResponse.json({ ok: true, syncWarning: syncMsg });
       }
     }
