@@ -126,6 +126,45 @@ function SummaryCard({ label, value, color, sub, icon }: {
   );
 }
 
+// ── Category field (predefined + free-text "אחר") ────────────────────────────
+function CategoryField({ draft, setDraft }: { draft: TxDraft; setDraft: (d: TxDraft) => void }) {
+  const isCustom = draft.category !== "" && !EXPENSE_CATEGORIES.includes(draft.category);
+  const [showCustom, setShowCustom] = useState(isCustom);
+
+  return (
+    <>
+      <label style={LABEL_S}>קטגוריה</label>
+      <select
+        value={showCustom ? "__other__" : draft.category}
+        onChange={(e) => {
+          if (e.target.value === "__other__") {
+            setShowCustom(true);
+            setDraft({ ...draft, category: "" });
+          } else {
+            setShowCustom(false);
+            setDraft({ ...draft, category: e.target.value });
+          }
+        }}
+        style={INPUT_S}
+      >
+        <option value="">בחר...</option>
+        {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        <option value="__other__">אחר (הקלד בחופשי)</option>
+      </select>
+      {showCustom && (
+        <input
+          autoFocus
+          type="text"
+          value={draft.category}
+          onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+          placeholder="תאר את ההוצאה..."
+          style={{ ...INPUT_S, marginTop: 6 }}
+        />
+      )}
+    </>
+  );
+}
+
 // ── Transaction Modal ─────────────────────────────────────────────────────────
 function TxModal({
   draft, setDraft, saving, onSave, onCancel, projects, title,
@@ -263,13 +302,7 @@ function TxModal({
                   </select>
                 </>
               ) : (
-                <>
-                  <label style={LABEL_S}>קטגוריה</label>
-                  <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={INPUT_S}>
-                    <option value="">בחר...</option>
-                    {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </>
+                <CategoryField draft={draft} setDraft={setDraft} />
               )}
             </div>
           </div>
