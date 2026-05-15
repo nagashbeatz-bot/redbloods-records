@@ -201,7 +201,14 @@ function TxModal({
           {/* Project */}
           <div>
             <label style={LABEL_S}>פרויקט *</label>
-            <select value={draft.projectId} onChange={(e) => setDraft({ ...draft, projectId: e.target.value })} style={{ ...INPUT_S }}>
+            <select
+              value={draft.projectId}
+              onChange={(e) => {
+                const proj = projects.find((p) => p.id === e.target.value);
+                setDraft({ ...draft, projectId: e.target.value, artist: proj?.artist ?? draft.artist });
+              }}
+              style={{ ...INPUT_S }}
+            >
               <option value="">בחר פרויקט...</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name} — {p.artist}</option>
