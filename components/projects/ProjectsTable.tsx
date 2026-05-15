@@ -313,7 +313,7 @@ export default function ProjectsTable() {
   }, []);
 
   // Fetch finance summary for all projects
-  useEffect(() => {
+  const fetchFinance = () => {
     fetch("/api/transactions?all=1")
       .then((r) => r.json())
       .then((d) => {
@@ -330,6 +330,14 @@ export default function ProjectsTable() {
         setFinanceSummary(map);
       })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchFinance();
+    // Re-fetch when a QuickTxModal saves a new transaction
+    document.addEventListener("rb-finance-updated", fetchFinance);
+    return () => document.removeEventListener("rb-finance-updated", fetchFinance);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {

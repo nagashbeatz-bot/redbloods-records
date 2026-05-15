@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ACTIONS, type ActionDef } from "@/lib/action-types";
 import ScheduleModal from "./ScheduleModal";
+import QuickTxModal from "@/components/finance/QuickTxModal";
 
 interface Props {
   projectId:   string;
@@ -13,10 +14,14 @@ interface Props {
 }
 
 export default function ActionMenu({ projectId, projectName, artist, onSessionCreated }: Props) {
-  const [open,    setOpen]    = useState(false);
-  const [active,  setActive]  = useState<ActionDef | null>(null);
-  const [pos,     setPos]     = useState({ top: 0, left: 0, openUp: false });
+  const [open,        setOpen]        = useState(false);
+  const [active,      setActive]      = useState<ActionDef | null>(null);
+  const [financeType, setFinanceType] = useState<"income" | "expense" | null>(null);
+  const [pos,         setPos]         = useState({ top: 0, left: 0, openUp: false });
   const btnRef = useRef<HTMLButtonElement>(null);
+
+  // Finance section adds separator + label + 2 items ≈ 130px extra
+  const MENU_H_ESTIMATE = ACTIONS.length * 41 + 48 + 130;
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -25,12 +30,11 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
     document.dispatchEvent(new CustomEvent("rb-menu-open", { detail: { id: projectId } }));
     const r    = btnRef.current!.getBoundingClientRect();
     const MENU_W = 210;
-    const MENU_H = ACTIONS.length * 41 + 48; // approx height
     // Flip horizontally if near right edge
     const left   = r.left + MENU_W > window.innerWidth ? r.right - MENU_W : r.left;
     // Flip vertically if near bottom edge
-    const openUp = r.bottom + 6 + MENU_H > window.innerHeight;
-    const top    = openUp ? r.top - MENU_H - 6 : r.bottom + 6;
+    const openUp = r.bottom + 6 + MENU_H_ESTIMATE > window.innerHeight;
+    const top    = openUp ? r.top - MENU_H_ESTIMATE - 6 : r.bottom + 6;
     setPos({ top, left, openUp });
     setOpen(true);
   };
@@ -55,6 +59,20 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
   }, [open]);
 
   const pick = (a: ActionDef) => { setOpen(false); setActive(a); };
+
+  const pickFinance = (type: "income" | "expense") => {
+    setOpen(false);
+    setFinanceType(type);
+  };
+
+  const menuItemStyle: React.CSSProperties = {
+    display: "block", width: "100%",
+    padding: "10px 14px",
+    background: "transparent", border: "none",
+    color: "#B0B0B0", fontSize: 13,
+    cursor: "pointer", textAlign: "right",
+    fontFamily: "inherit",
+  };
 
   return (
     <>
@@ -99,13 +117,13 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
             border: "1px solid #2A2A2A",
             borderRadius: 14,
             boxShadow: "0 16px 48px rgba(0,0,0,0.85)",
-            minWidth: 196,
+            minWidth: 210,
             overflow: "hidden",
             direction: "rtl",
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* project label */}
+          {/* Project label */}
           <div style={{
             padding: "9px 14px 7px",
             fontSize: 10, fontWeight: 700, color: "#777",
@@ -116,33 +134,44 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
             {projectName}
           </div>
 
-          {ACTIONS.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => pick(a)}
-              style={{
-                display: "block", width: "100%",
-                padding: "10px 14px",
-                background: "transparent", border: "none",
-                color: "#B0B0B0", fontSize: 13,
-                cursor: "pointer", textAlign: "right",
-                fontFamily: "inherit",
-              }}
-              onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, {
-                background: "rgba(168,85,247,0.11)", color: "#E0E0E0",
-              })}
-              onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, {
-                background: "transparent", color: "#B0B0B0",
-              })}
+          {/* ── פעולות עבודה ── */}
+          <div style={{ padding: "4px 0 0" }}>
+            {ACTIONS.map((a) => (
+              <button key={a.id} onClick={() => pick(a)} style={menuItemStyle}
+                onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(168,85,247,0.11)", color: "#E0E0E0" })}
+                onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#B0B0B0" })}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Separator ── */}
+          <div style={{ height: 1, background: "#212121", margin: "4px 0" }} />
+
+          {/* ── כספים ── */}
+          <div style={{ padding: "2px 14px 4px", fontSize: 9, fontWeight: 700, color: "#444", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+            כספים
+          </div>
+          <div style={{ padding: "0 0 4px" }}>
+            <button onClick={() => pickFinance("income")} style={{ ...menuItemStyle, color: "#10B981" }}
+              onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(16,185,129,0.1)", color: "#34D399" })}
+              onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#10B981" })}
             >
-              {a.label}
+              💰 הוסף הכנסה
             </button>
-          ))}
+            <button onClick={() => pickFinance("expense")} style={{ ...menuItemStyle, color: "#F59E0B" }}
+              onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(245,158,11,0.1)", color: "#FBB040" })}
+              onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#F59E0B" })}
+            >
+              💸 הוסף הוצאה
+            </button>
+          </div>
         </div>,
         document.body
       )}
 
-      {/* Modal */}
+      {/* Schedule modal */}
       {active && (
         <ScheduleModal
           action={active}
@@ -151,6 +180,17 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
           artist={artist}
           onClose={() => setActive(null)}
           onSessionCreated={onSessionCreated}
+        />
+      )}
+
+      {/* Finance quick-add modal */}
+      {financeType && (
+        <QuickTxModal
+          projectId={projectId}
+          projectName={projectName}
+          artist={artist}
+          initialType={financeType}
+          onClose={() => setFinanceType(null)}
         />
       )}
     </>
