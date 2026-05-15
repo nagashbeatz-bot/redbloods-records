@@ -6,6 +6,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type PaymentStatus = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "התקבל" | "לבדיקה";
+type Period = "month" | "prev-month" | "30days" | "year" | "custom";
 
 interface Transaction {
   id: string;
@@ -42,7 +43,7 @@ interface TxDraft {
   paymentMethod: string;
   receiptRef: string;
   notes: string;
-  category: string; // expense category OR income type
+  category: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -51,17 +52,110 @@ const INCOME_TYPES       = ["מקדמה", "תשלום חלקי", "תשלום ס�
 const INCOME_STATUSES:  PaymentStatus[] = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
 const EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
 const PAYMENT_METHODS    = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
+const HEB_MONTHS         = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+
+const PERIOD_OPTIONS: { key: Period; label: string }[] = [
+  { key: "month",      label: "החודש" },
+  { key: "prev-month", label: "חודש קודם" },
+  { key: "30days",     label: "30 יום" },
+  { key: "year",       label: "שנה נוכחית" },
+  { key: "custom",     label: "מותאם אישית" },
+];
 
 const STATUS_COLOR: Record<string, string> = {
-  "שולם":     "#10B981",
-  "התקבל":    "#10B981",
-  "צפוי":     "#3B82F6",
-  "לא שולם":  "#EF4444",
-  "חלקי":     "#F59E0B",
-  "בוטל":     "#6B7280",
-  "לבדיקה":   "#A855F7",
+  "שולם":    "#10B981",
+  "התקבל":   "#10B981",
+  "צפוי":    "#3B82F6",
+  "לא שולם": "#EF4444",
+  "חלקי":    "#F59E0B",
+  "בוטל":    "#6B7280",
+  "לבדיקה":  "#A855F7",
 };
 
+// ── Period helpers ─────────────────────────────────────────────────────────────
+function getRange(period: Period, customFrom = "", customTo = ""): { from: Date | null; to: Date | null } {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  switch (period) {
+    case "month":
+      return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59) };
+    case "prev-month": {
+      const pm = m === 0 ? 11 : m - 1;
+      const py = m === 0 ? y - 1 : y;
+      return { from: new Date(py, pm, 1), to: new Date(py, pm + 1, 0, 23, 59, 59) };
+    }
+    case "30days": {
+      const from = new Date(now); from.setDate(from.getDate() - 30);
+      return { from, to: new Date(y, m, now.getDate(), 23, 59, 59) };
+    }
+    case "year":
+      return { from: new Date(y, 0, 1), to: new Date(y, 11, 31, 23, 59, 59) };
+    case "custom":
+      if (customFrom && customTo)
+        return { from: new Date(customFrom), to: new Date(customTo + "T23:59:59") };
+      return { from: null, to: null };
+  }
+}
+
+function getCompRange(period: Period): { from: Date | null; to: Date | null } {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  switch (period) {
+    case "month": {
+      const pm = m === 0 ? 11 : m - 1;
+      const py = m === 0 ? y - 1 : y;
+      return { from: new Date(py, pm, 1), to: new Date(py, pm + 1, 0, 23, 59, 59) };
+    }
+    case "prev-month": {
+      const pm = m <= 1 ? (m === 0 ? 10 : 11) : m - 2;
+      const py = m <= 1 ? y - 1 : y;
+      return { from: new Date(py, pm, 1), to: new Date(py, pm + 1, 0, 23, 59, 59) };
+    }
+    case "30days": {
+      const from = new Date(now); from.setDate(from.getDate() - 60);
+      const to   = new Date(now); to.setDate(to.getDate() - 30);
+      return { from, to };
+    }
+    case "year":
+      return { from: new Date(y - 1, 0, 1), to: new Date(y - 1, 11, 31, 23, 59, 59) };
+    default:
+      return { from: null, to: null };
+  }
+}
+
+function getCompLabel(period: Period): string {
+  switch (period) {
+    case "month":      return "מול חודש קודם";
+    case "prev-month": return "מול חודשיים קודמים";
+    case "30days":     return "מול 30 יום קודמים";
+    case "year":       return "מול שנה קודמת";
+    default:           return "";
+  }
+}
+
+function getPeriodTitle(period: Period, customFrom = "", customTo = ""): { heading: string; sub: string } {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  switch (period) {
+    case "month":      return { heading: "חודש נוכחי",      sub: `${HEB_MONTHS[m]} ${y}` };
+    case "prev-month": {
+      const pm = m === 0 ? 11 : m - 1;
+      const py = m === 0 ? y - 1 : y;
+      return { heading: "חודש קודם", sub: `${HEB_MONTHS[pm]} ${py}` };
+    }
+    case "30days":     return { heading: "30 ימים אחרונים", sub: "" };
+    case "year":       return { heading: "שנה נוכחית",       sub: `${y}` };
+    case "custom":     return { heading: "מותאם אישית",      sub: customFrom && customTo ? `${fmtDate(customFrom)} – ${fmtDate(customTo)}` : "" };
+  }
+}
+
+function inRange(date: string | null, range: { from: Date | null; to: Date | null }): boolean {
+  if (!date || !range.from || !range.to) return false;
+  const d = new Date(date);
+  return d >= range.from && d <= range.to;
+}
+
+// ── General helpers ────────────────────────────────────────────────────────────
 function emptyDraft(projectId = ""): TxDraft {
   return {
     projectId, type: "income", date: "", description: "", artist: "",
@@ -72,19 +166,24 @@ function emptyDraft(projectId = ""): TxDraft {
 
 function fmtDate(d: string | null): string {
   if (!d) return "—";
-  const [y, m, day] = d.split("-");
-  return `${day}.${m}.${y}`;
+  const [y, mo, day] = d.split("-");
+  return `${day}.${mo}.${y}`;
 }
 
 function fmtAmount(amount: number, currency = "₪"): string {
   return `${amount.toLocaleString("he-IL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}${currency}`;
 }
 
-function isThisMonth(date: string | null): boolean {
-  if (!date) return false;
-  const now = new Date();
-  const d = new Date(date);
-  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+function calcStats(txList: Transaction[]) {
+  const income   = txList.filter((t) => t.type === "income");
+  const expenses = txList.filter((t) => t.type === "expense");
+  const incomeReceived  = income.filter((t) => t.payment_status === "התקבל").reduce((s, t) => s + t.amount, 0);
+  const incomeExpected  = income.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const expensesPaid    = expenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
+  const expensesExpected = expenses.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const profitReal      = incomeReceived - expensesPaid;
+  const profitEst       = incomeReceived + incomeExpected - expensesPaid - expensesExpected;
+  return { incomeReceived, incomeExpected, expensesPaid, expensesExpected, profitReal, profitEst };
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -119,37 +218,54 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ── Summary Card ──────────────────────────────────────────────────────────────
-function SummaryCard({ label, value, color, sub, icon }: {
-  label: string; value: string; color: string; sub?: string; icon?: string;
+function SummaryCard({
+  label, value, color, countLabel, icon,
+  delta, deltaCurrency = "₪", compLabel, deltaPositiveIsGood = true,
+}: {
+  label: string; value: string; color: string; countLabel?: string; icon?: string;
+  delta?: number; deltaCurrency?: string; compLabel?: string; deltaPositiveIsGood?: boolean;
 }) {
+  const showDelta = delta !== undefined && compLabel;
+  const deltaColor = !showDelta || delta === 0
+    ? "#555"
+    : (delta > 0) === deltaPositiveIsGood ? "#10B981" : "#EF4444";
+  const deltaSign  = delta !== undefined && delta > 0 ? "+" : "";
+
   return (
     <div style={{
       background: "#1C1C1C", border: "1px solid #252525", borderRadius: 14,
-      padding: "16px 18px", flex: "1 1 160px", minWidth: 140,
+      padding: "16px 18px", flex: "1 1 0", minWidth: 0,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
         {icon && <span style={{ fontSize: 14 }}>{icon}</span>}
         <div style={{ fontSize: 11, color: "#555" }}>{label}</div>
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: "#444", marginTop: 4 }}>{sub}</div>}
+      <div style={{ fontSize: 22, fontWeight: 700, color, letterSpacing: "-0.5px" }}>{value}</div>
+      {showDelta && (
+        <div style={{ fontSize: 10, color: deltaColor, marginTop: 5, display: "flex", alignItems: "center", gap: 3 }}>
+          <span>{deltaSign}{Math.abs(delta!).toLocaleString()}{deltaCurrency}</span>
+          <span style={{ color: "#444" }}>{compLabel}</span>
+        </div>
+      )}
+      {!showDelta && countLabel && (
+        <div style={{ fontSize: 10, color: "#444", marginTop: 5 }}>{countLabel}</div>
+      )}
     </div>
   );
 }
 
 // ── Custom Project Selector ───────────────────────────────────────────────────
 function ProjectSelect({
-  value, onChange,
-  projects,
+  value, onChange, projects,
 }: {
   value: string;
   onChange: (id: string, artist: string) => void;
   projects: { id: string; name: string; artist: string }[];
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen]   = useState(false);
   const [search, setSearch] = useState("");
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const btnRef            = useRef<HTMLButtonElement>(null);
+  const [pos, setPos]     = useState({ top: 0, left: 0, width: 0 });
 
   const selected = projects.find((p) => p.id === value);
 
@@ -189,48 +305,40 @@ function ProjectSelect({
       }}
     >
       <input
-        autoFocus
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
         placeholder="חפש פרויקט..."
         style={{ ...INPUT_S, marginBottom: 6, fontSize: 12, padding: "6px 10px" }}
       />
       <div style={{ overflowY: "auto", flex: 1 }}>
-        {filtered.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#444", padding: "8px 10px", textAlign: "center" }}>אין תוצאות</div>
-        ) : filtered.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => { onChange(p.id, p.artist); setOpen(false); }}
-            style={{
-              display: "block", width: "100%", textAlign: "right",
-              padding: "8px 10px", borderRadius: 8, border: "none",
-              background: p.id === value ? "rgba(59,130,246,0.12)" : "transparent",
-              cursor: "pointer", fontFamily: "inherit",
-            }}
-            onMouseEnter={(e) => { if (p.id !== value) (e.currentTarget as HTMLButtonElement).style.background = "#252525"; }}
-            onMouseLeave={(e) => { if (p.id !== value) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-          >
-            <div style={{ fontSize: 13, color: p.id === value ? "#3B82F6" : "#DDD", fontWeight: p.id === value ? 600 : 400 }}>{p.name}</div>
-            <div style={{ fontSize: 10, color: "#555", marginTop: 1 }}>{p.artist}</div>
-          </button>
-        ))}
+        {filtered.length === 0
+          ? <div style={{ fontSize: 12, color: "#444", padding: "8px 10px", textAlign: "center" }}>אין תוצאות</div>
+          : filtered.map((p) => (
+            <button key={p.id}
+              onClick={() => { onChange(p.id, p.artist); setOpen(false); }}
+              style={{
+                display: "block", width: "100%", textAlign: "right",
+                padding: "8px 10px", borderRadius: 8, border: "none",
+                background: p.id === value ? "rgba(59,130,246,0.12)" : "transparent",
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+              onMouseEnter={(e) => { if (p.id !== value) (e.currentTarget as HTMLButtonElement).style.background = "#252525"; }}
+              onMouseLeave={(e) => { if (p.id !== value) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+            >
+              <div style={{ fontSize: 13, color: p.id === value ? "#3B82F6" : "#DDD", fontWeight: p.id === value ? 600 : 400 }}>{p.name}</div>
+              <div style={{ fontSize: 10, color: "#555", marginTop: 1 }}>{p.artist}</div>
+            </button>
+          ))}
       </div>
     </div>
   );
 
   return (
     <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={handleOpen}
-        style={{
-          ...INPUT_S, textAlign: "right", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          color: selected ? "#E8E8E8" : "#555",
-        }}
-      >
+      <button ref={btnRef} type="button" onClick={handleOpen} style={{
+        ...INPUT_S, textAlign: "right", cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        color: selected ? "#E8E8E8" : "#555",
+      }}>
         <span style={{ fontSize: 12, color: "#555" }}>▾</span>
         <span>{selected ? selected.name : "בחר פרויקט..."}</span>
       </button>
@@ -251,7 +359,7 @@ function TxModal({
   projects: { id: string; name: string; artist: string }[];
   title: string;
 }) {
-  const isIncome = draft.type === "income";
+  const isIncome    = draft.type === "income";
   const categoryList = isIncome ? INCOME_TYPES : EXPENSE_CATEGORIES;
   const statusList   = isIncome ? INCOME_STATUSES : EXPENSE_STATUSES;
   const isOther      = draft.category === "אחר";
@@ -263,24 +371,18 @@ function TxModal({
   }, [onCancel]);
 
   const modal = (
-    <div
-      onClick={onCancel}
-      style={{
-        position: "fixed", inset: 0, zIndex: 99999,
-        background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#141414", border: "1px solid #2A2A2A",
-          borderRadius: 18, padding: "22px 22px 18px",
-          width: 460, maxWidth: "95vw", direction: "rtl",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
-          maxHeight: "92vh", overflowY: "auto",
-        }}
-      >
+    <div onClick={onCancel} style={{
+      position: "fixed", inset: 0, zIndex: 99999,
+      background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "#141414", border: "1px solid #2A2A2A",
+        borderRadius: 18, padding: "22px 22px 18px",
+        width: 460, maxWidth: "95vw", direction: "rtl",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
+        maxHeight: "92vh", overflowY: "auto",
+      }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <button onClick={onCancel} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
@@ -291,23 +393,13 @@ function TxModal({
         <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
           {(["income", "expense"] as const).map((t) => (
             <button key={t} type="button"
-              onClick={() => setDraft({
-                ...draft, type: t,
-                paymentStatus: t === "income" ? "צפוי" : "שולם",
-                category: "",
-              })}
+              onClick={() => setDraft({ ...draft, type: t, paymentStatus: t === "income" ? "צפוי" : "שולם", category: "" })}
               style={{
                 flex: 1, padding: "9px", borderRadius: 10, border: "none", cursor: "pointer",
                 fontSize: 13, fontFamily: "inherit", fontWeight: 600,
-                background: draft.type === t
-                  ? (t === "income" ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.14)")
-                  : "#1C1C1C",
-                color: draft.type === t
-                  ? (t === "income" ? "#10B981" : "#EF4444")
-                  : "#555",
-                outline: draft.type === t
-                  ? `1px solid ${t === "income" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.3)"}`
-                  : "1px solid #252525",
+                background: draft.type === t ? (t === "income" ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.14)") : "#1C1C1C",
+                color: draft.type === t ? (t === "income" ? "#10B981" : "#EF4444") : "#555",
+                outline: draft.type === t ? `1px solid ${t === "income" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.3)"}` : "1px solid #252525",
               }}
             >
               {t === "income" ? "💰 הכנסה" : "💸 הוצאה"}
@@ -323,26 +415,17 @@ function TxModal({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={LABEL_S}>פרויקט *</label>
-                <ProjectSelect
-                  value={draft.projectId}
-                  projects={projects}
-                  onChange={(id, artist) => setDraft({ ...draft, projectId: id, artist })}
-                />
+                <ProjectSelect value={draft.projectId} projects={projects}
+                  onChange={(id, artist) => setDraft({ ...draft, projectId: id, artist })} />
               </div>
               <div>
                 <label style={LABEL_S}>{isIncome ? "סוג הכנסה" : "קטגוריית הוצאה"}</label>
-                <select
-                  value={draft.category}
-                  onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-                  style={INPUT_S}
-                >
+                <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={INPUT_S}>
                   <option value="">בחר...</option>
                   {categoryList.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 {isOther && (
-                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>
-                    ⚠ נא למלא תיאור מפורט בשדה "תיאור"
-                  </div>
+                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>⚠ נא למלא תיאור מפורט בשדה &quot;תיאור&quot;</div>
                 )}
               </div>
             </div>
@@ -354,35 +437,16 @@ function TxModal({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={LABEL_S}>{isIncome ? "לקוח / אמן" : "ספק / למי שולם"}</label>
-                <input
-                  type="text"
-                  value={draft.artist}
-                  onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
-                  placeholder={isIncome ? "שם הלקוח / האמן..." : "שם הספק..."}
-                  style={INPUT_S}
-                />
+                <input type="text" value={draft.artist} onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
+                  placeholder={isIncome ? "שם הלקוח / האמן..." : "שם הספק..."} style={INPUT_S} />
               </div>
               <div>
-                <label style={{
-                  ...LABEL_S,
-                  ...(isOther ? { color: "#F59E0B" } : {}),
-                }}>
+                <label style={{ ...LABEL_S, ...(isOther ? { color: "#F59E0B" } : {}) }}>
                   תיאור{isOther ? " *" : ""}
                 </label>
-                <input
-                  type="text"
-                  value={draft.description}
-                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                  placeholder={
-                    isIncome
-                      ? "למשל: תשלום ראשון, מקדמה לפרויקט..."
-                      : "למשל: Bill - מיקס לשיר יהלום..."
-                  }
-                  style={{
-                    ...INPUT_S,
-                    ...(isOther && !draft.description ? { borderColor: "rgba(245,158,11,0.5)" } : {}),
-                  }}
-                />
+                <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  placeholder={isIncome ? "למשל: תשלום ראשון, מקדמה לפרויקט..." : "למשל: Bill - מיקס לשיר יהלום..."}
+                  style={{ ...INPUT_S, ...(isOther && !draft.description ? { borderColor: "rgba(245,158,11,0.5)" } : {}) }} />
               </div>
             </div>
           </div>
@@ -391,16 +455,12 @@ function TxModal({
           <div>
             <div style={SECTION_LABEL}>כסף וזמן</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* Amount + currency */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 10 }}>
                 <div>
                   <label style={LABEL_S}>סכום *</label>
-                  <input
-                    type="number" value={draft.amount} min={0}
+                  <input type="number" value={draft.amount} min={0}
                     onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
-                    placeholder="0"
-                    style={INPUT_S}
-                  />
+                    placeholder="0" style={INPUT_S} />
                 </div>
                 <div>
                   <label style={LABEL_S}>מטבע</label>
@@ -409,15 +469,12 @@ function TxModal({
                   </select>
                 </div>
               </div>
-              {/* Date + status */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
                   <label style={LABEL_S}>תאריך</label>
-                  <input
-                    type="date" value={draft.date}
+                  <input type="date" value={draft.date}
                     onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-                    style={{ ...INPUT_S, colorScheme: "dark" }}
-                  />
+                    style={{ ...INPUT_S, colorScheme: "dark" }} />
                 </div>
                 <div>
                   <label style={LABEL_S}>סטטוס</label>
@@ -461,18 +518,15 @@ function TxModal({
               border: "1px solid #2A2A2A", background: "transparent",
               color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit",
             }}>ביטול</button>
-            <button
-              type="button" onClick={onSave}
+            <button type="button" onClick={onSave}
               disabled={saving || !draft.projectId || !draft.amount || (isOther && !draft.description)}
               style={{
                 flex: 2, padding: "11px", borderRadius: 10, border: "none",
                 background: saving || !draft.projectId || !draft.amount || (isOther && !draft.description)
                   ? "#1A2A3A" : (isIncome ? "#065F46" : "#7C2D12"),
-                color: saving || !draft.projectId || !draft.amount || (isOther && !draft.description)
-                  ? "#445" : "#fff",
+                color: saving || !draft.projectId || !draft.amount || (isOther && !draft.description) ? "#445" : "#fff",
                 cursor: saving || !draft.projectId || !draft.amount ? "not-allowed" : "pointer",
                 fontSize: 13, fontWeight: 700, fontFamily: "inherit",
-                transition: "background 0.15s",
               }}
             >
               {saving ? "שומר..." : isIncome ? "שמור הכנסה" : "שמור הוצאה"}
@@ -489,19 +543,26 @@ function TxModal({
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function FinancePage() {
   const { projects } = useProjects();
-  const [transactions,  setTransactions]  = useState<Transaction[]>([]);
-  const [settings,      setSettings]      = useState<FinanceSetting[]>([]);
-  const [loaded,        setLoaded]        = useState(false);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [_settings,    setSettings]     = useState<FinanceSetting[]>([]);
+  const [loaded,       setLoaded]       = useState(false);
 
+  // Period
+  const [period,     setPeriod]     = useState<Period>("month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo,   setCustomTo]   = useState("");
+  const [showUndated, setShowUndated] = useState(false);
+
+  // Table filters (on top of period)
   const [typeFilter,    setTypeFilter]    = useState<"all" | "income" | "expense">("all");
   const [statusFilter,  setStatusFilter]  = useState<string>("");
   const [projectFilter, setProjectFilter] = useState("");
-  const [monthFilter,   setMonthFilter]   = useState(false);
 
-  const [modalOpen,  setModalOpen]  = useState(false);
-  const [editingId,  setEditingId]  = useState<string | null>(null);
-  const [draft,      setDraft]      = useState<TxDraft>(emptyDraft());
-  const [saving,     setSaving]     = useState(false);
+  // Modal
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft,     setDraft]     = useState<TxDraft>(emptyDraft());
+  const [saving,    setSaving]    = useState(false);
 
   const loadAll = useCallback(() => {
     setLoaded(false);
@@ -517,26 +578,35 @@ export default function FinancePage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // ── Computed totals ──────────────────────────────────────────────────────
-  const income        = transactions.filter((t) => t.type === "income");
-  const expenses      = transactions.filter((t) => t.type === "expense");
-  const totalReceived = income.filter((t) => ["שולם", "התקבל"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalOpen     = income.filter((t) => ["צפוי", "לא שולם", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = expenses.reduce((s, t) => s + t.amount, 0);
-  const profit        = totalReceived - totalExpenses;
+  // ── Period computations ────────────────────────────────────────────────────
+  const range     = getRange(period, customFrom, customTo);
+  const compRange = getCompRange(period);
+  const compLabel = getCompLabel(period);
+  const { heading: periodHeading, sub: periodSub } = getPeriodTitle(period, customFrom, customTo);
 
-  const filtered = transactions.filter((t) => {
+  const periodTx   = transactions.filter((t) => inRange(t.date, range));
+  const compTx     = transactions.filter((t) => inRange(t.date, compRange));
+  const noDateTx   = transactions.filter((t) => !t.date);
+
+  const stats     = calcStats(periodTx);
+  const compStats = compRange.from ? calcStats(compTx) : null;
+
+  // ── Table filtered rows ────────────────────────────────────────────────────
+  function matchesFilters(t: Transaction) {
     if (typeFilter !== "all" && t.type !== typeFilter) return false;
     if (statusFilter && t.payment_status !== statusFilter) return false;
     if (projectFilter && t.project_id !== projectFilter) return false;
-    if (monthFilter && !isThisMonth(t.date)) return false;
     return true;
-  });
+  }
+
+  const datedFiltered   = periodTx.filter(matchesFilters);
+  const undatedFiltered = noDateTx.filter(matchesFilters);
+  const filtered        = showUndated ? [...datedFiltered, ...undatedFiltered] : datedFiltered;
 
   const projectsWithTx = projects.filter((p) => transactions.some((t) => t.project_id === p.id));
-  const allStatuses = [...new Set(transactions.map((t) => t.payment_status))];
+  const allStatuses    = [...new Set(transactions.map((t) => t.payment_status))];
 
-  // ── CRUD ─────────────────────────────────────────────────────────────────
+  // ── CRUD ──────────────────────────────────────────────────────────────────
   function openAdd() {
     setEditingId(null);
     setDraft(emptyDraft());
@@ -546,18 +616,10 @@ export default function FinancePage() {
   function openEdit(tx: Transaction) {
     setEditingId(tx.id);
     setDraft({
-      projectId:     tx.project_id,
-      type:          tx.type,
-      date:          tx.date ?? "",
-      description:   tx.description,
-      artist:        tx.artist,
-      amount:        String(tx.amount),
-      currency:      tx.currency,
-      paymentStatus: tx.payment_status,
-      paymentMethod: tx.payment_method,
-      receiptRef:    tx.receipt_ref,
-      notes:         tx.notes,
-      category:      tx.category,
+      projectId: tx.project_id, type: tx.type, date: tx.date ?? "",
+      description: tx.description, artist: tx.artist, amount: String(tx.amount),
+      currency: tx.currency, paymentStatus: tx.payment_status, paymentMethod: tx.payment_method,
+      receiptRef: tx.receipt_ref, notes: tx.notes, category: tx.category,
     });
     setModalOpen(true);
   }
@@ -567,29 +629,17 @@ export default function FinancePage() {
     setSaving(true);
     try {
       const body = {
-        projectId:     draft.projectId,
-        type:          draft.type,
-        date:          draft.date || null,
-        description:   draft.description,
-        artist:        draft.artist,
-        amount:        Number(draft.amount) || 0,
-        currency:      draft.currency,
-        paymentStatus: draft.paymentStatus,
-        paymentMethod: draft.paymentMethod,
-        receiptRef:    draft.receiptRef,
-        notes:         draft.notes,
-        category:      draft.category,
+        projectId: draft.projectId, type: draft.type, date: draft.date || null,
+        description: draft.description, artist: draft.artist, amount: Number(draft.amount) || 0,
+        currency: draft.currency, paymentStatus: draft.paymentStatus, paymentMethod: draft.paymentMethod,
+        receiptRef: draft.receiptRef, notes: draft.notes, category: draft.category,
       };
       if (editingId) {
-        const res = await fetch(`/api/transactions/${editingId}`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-        });
+        const res  = await fetch(`/api/transactions/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const data = await res.json();
         if (data.transaction) setTransactions((prev) => prev.map((t) => t.id === editingId ? data.transaction : t));
       } else {
-        const res = await fetch("/api/transactions", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-        });
+        const res  = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const data = await res.json();
         if (data.transaction) setTransactions((prev) => [data.transaction, ...prev]);
       }
@@ -610,26 +660,30 @@ export default function FinancePage() {
     <div dir="rtl" style={{ padding: "28px 32px", maxWidth: 1200, margin: "0 auto" }}>
 
       {modalOpen && (
-        <TxModal
-          draft={draft} setDraft={setDraft} saving={saving}
+        <TxModal draft={draft} setDraft={setDraft} saving={saving}
           onSave={handleSave}
           onCancel={() => { setModalOpen(false); setEditingId(null); }}
           projects={projects}
-          title={editingId ? "עריכת תנועה" : "תנועה חדשה"}
-        />
+          title={editingId ? "עריכת תנועה" : "תנועה חדשה"} />
       )}
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>כספים</h1>
-          <p style={{ fontSize: 12, color: "#555", margin: "4px 0 0" }}>מעקב הכנסות והוצאות</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>
+            כספים
+            {periodHeading && (
+              <span style={{ fontSize: 15, fontWeight: 400, color: "#555", marginRight: 10 }}>— {periodHeading}</span>
+            )}
+          </h1>
+          {periodSub && (
+            <p style={{ fontSize: 13, color: "#666", margin: "4px 0 0", fontWeight: 500 }}>{periodSub}</p>
+          )}
         </div>
         <button onClick={openAdd} style={{
           display: "flex", alignItems: "center", gap: 7,
           padding: "10px 20px", borderRadius: 12,
-          border: "1px solid rgba(59,130,246,0.4)",
-          background: "rgba(59,130,246,0.1)",
+          border: "1px solid rgba(59,130,246,0.4)", background: "rgba(59,130,246,0.1)",
           color: "#3B82F6", fontSize: 14, fontWeight: 700, cursor: "pointer",
         }}>
           <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
@@ -637,19 +691,130 @@ export default function FinancePage() {
         </button>
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 28 }}>
-        <SummaryCard icon="✅" label="הכנסות שהתקבלו"     value={fmtAmount(totalReceived)} color="#10B981"
-          sub={`${income.filter((t) => ["שולם","התקבל"].includes(t.payment_status)).length} תשלומים`} />
-        <SummaryCard icon="⏳" label="יתרות / חובות פתוחים" value={fmtAmount(totalOpen)}   color={totalOpen > 0 ? "#EF4444" : "#555"}
-          sub={`${income.filter((t) => ["צפוי","לא שולם","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחים`} />
-        <SummaryCard icon="💸" label="הוצאות"              value={fmtAmount(totalExpenses)} color="#F59E0B"
-          sub={`${expenses.length} תנועות`} />
-        <SummaryCard icon="📈" label="רווח משוער"          value={fmtAmount(profit)}        color={profit >= 0 ? "#10B981" : "#EF4444"}
-          sub="הכנסות שהתקבלו פחות הוצאות" />
+      {/* ── Period selector ─────────────────────────────────────────────── */}
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {PERIOD_OPTIONS.map(({ key, label }) => {
+            const active = period === key;
+            return (
+              <button key={key} onClick={() => setPeriod(key)} style={{
+                padding: "7px 16px", borderRadius: 10, border: "none", cursor: "pointer",
+                background: active ? "rgba(59,130,246,0.14)" : "#1C1C1C",
+                color: active ? "#3B82F6" : "#555",
+                fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: "inherit",
+                outline: active ? "1px solid rgba(59,130,246,0.35)" : "1px solid #252525",
+                transition: "all 0.15s",
+              }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom date range */}
+        {period === "custom" && (
+          <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ fontSize: 11, color: "#555" }}>מ</label>
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                style={{ ...INPUT_S, width: 150, colorScheme: "dark", fontSize: 12 }} />
+            </div>
+            <span style={{ color: "#333", fontSize: 14 }}>—</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ fontSize: 11, color: "#555" }}>עד</label>
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                style={{ ...INPUT_S, width: 150, colorScheme: "dark", fontSize: 12 }} />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Filters */}
+      {/* ── No-date warning ─────────────────────────────────────────────── */}
+      {noDateTx.length > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "8px 14px", marginBottom: 18,
+          background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)",
+          borderRadius: 10, fontSize: 12,
+        }}>
+          <span style={{ color: "#F59E0B" }}>⚠</span>
+          <span style={{ color: "#777" }}>
+            יש <strong style={{ color: "#F59E0B" }}>{noDateTx.length}</strong> תנועות ללא תאריך שלא נכללות בסיכום התקופה.
+          </span>
+          <button onClick={() => setShowUndated((v) => !v)} style={{
+            marginRight: "auto", fontSize: 11, fontFamily: "inherit",
+            color: showUndated ? "#F59E0B" : "#555", background: "none",
+            border: "none", cursor: "pointer", textDecoration: "underline",
+          }}>
+            {showUndated ? "הסתר" : "הצג אותן בטבלה"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Summary cards ───────────────────────────────────────────────── */}
+      {/* Row 1: income & expenses */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+        <SummaryCard
+          icon="✅" label="הכנסות שהתקבלו"
+          value={fmtAmount(stats.incomeReceived)}
+          color="#10B981"
+          countLabel={`${periodTx.filter((t) => t.type === "income" && t.payment_status === "התקבל").length} תשלומים`}
+          delta={compStats ? stats.incomeReceived - compStats.incomeReceived : undefined}
+          compLabel={compLabel}
+          deltaPositiveIsGood={true}
+        />
+        <SummaryCard
+          icon="⏳" label="הכנסות צפויות"
+          value={fmtAmount(stats.incomeExpected)}
+          color={stats.incomeExpected > 0 ? "#3B82F6" : "#555"}
+          countLabel={`${periodTx.filter((t) => t.type === "income" && ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחות`}
+          delta={compStats ? stats.incomeExpected - compStats.incomeExpected : undefined}
+          compLabel={compLabel}
+          deltaPositiveIsGood={true}
+        />
+        <SummaryCard
+          icon="💳" label="הוצאות ששולמו"
+          value={fmtAmount(stats.expensesPaid)}
+          color={stats.expensesPaid > 0 ? "#F59E0B" : "#555"}
+          countLabel={`${periodTx.filter((t) => t.type === "expense" && t.payment_status === "שולם").length} הוצאות`}
+          delta={compStats ? stats.expensesPaid - compStats.expensesPaid : undefined}
+          compLabel={compLabel}
+          deltaPositiveIsGood={false}
+        />
+        <SummaryCard
+          icon="📋" label="הוצאות צפויות"
+          value={fmtAmount(stats.expensesExpected)}
+          color={stats.expensesExpected > 0 ? "#F59E0B" : "#555"}
+          countLabel={`${periodTx.filter((t) => t.type === "expense" && ["צפוי","לא שולם","חלקי"].includes(t.payment_status)).length} פתוחות`}
+          delta={compStats ? stats.expensesExpected - compStats.expensesExpected : undefined}
+          compLabel={compLabel}
+          deltaPositiveIsGood={false}
+        />
+      </div>
+
+      {/* Row 2: profit */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 28 }}>
+        <SummaryCard
+          icon="📊" label="רווח בפועל"
+          value={fmtAmount(stats.profitReal)}
+          color={stats.profitReal >= 0 ? "#10B981" : "#EF4444"}
+          countLabel="הכנסות שהתקבלו פחות הוצאות ששולמו"
+          delta={compStats ? stats.profitReal - compStats.profitReal : undefined}
+          compLabel={compLabel}
+          deltaPositiveIsGood={true}
+        />
+        <SummaryCard
+          icon="🔮" label="רווח משוער"
+          value={fmtAmount(stats.profitEst)}
+          color={stats.profitEst >= 0 ? "#10B981" : "#EF4444"}
+          countLabel="כולל הכנסות וההוצאות הצפויות"
+          delta={compStats ? stats.profitEst - compStats.profitEst : undefined}
+          compLabel={compLabel}
+          deltaPositiveIsGood={true}
+        />
+      </div>
+
+      {/* ── Table filters ────────────────────────────────────────────────── */}
       <div style={{
         display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14,
         alignItems: "center", padding: "12px 16px",
@@ -687,52 +852,56 @@ export default function FinancePage() {
           {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
-        <button onClick={() => setMonthFilter((v) => !v)} style={{
-          padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-          background: monthFilter ? "rgba(168,85,247,0.12)" : "transparent",
-          color: monthFilter ? "#A855F7" : "#555",
-          fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-          outline: monthFilter ? "1px solid rgba(168,85,247,0.3)" : "none",
-        }}>
-          החודש בלבד
-        </button>
-
         <span style={{ fontSize: 11, color: "#444", marginRight: "auto" }}>{filtered.length} תנועות</span>
       </div>
 
-      {/* Table */}
+      {/* ── Transactions table ───────────────────────────────────────────── */}
       {!loaded ? (
         <div style={{ color: "#444", fontSize: 13, padding: "48px", textAlign: "center" }}>טוען...</div>
       ) : filtered.length === 0 ? (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, padding: "60px", textAlign: "center", color: "#444", fontSize: 13 }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
-          אין תנועות כספיות עדיין
+          {transactions.length === 0 ? "אין תנועות כספיות עדיין" : `אין תנועות ב${periodHeading}`}
           <div style={{ marginTop: 14 }}>
             <button onClick={openAdd} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.35)", background: "rgba(59,130,246,0.08)", color: "#3B82F6", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-              + הוסף תנועה ראשונה
+              + הוסף תנועה
             </button>
           </div>
         </div>
       ) : (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, overflow: "hidden" }}>
-          {/* Header */}
+          {/* Table header */}
           <div style={{ display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px", gap: 8, padding: "10px 16px", background: "#141414", borderBottom: "1px solid #252525", fontSize: 10, fontWeight: 700, color: "#555", letterSpacing: "0.05em" }}>
             <div>תאריך</div><div>סוג</div><div>פרויקט</div><div>אמן / ספק</div>
             <div>תיאור / קטגוריה</div><div>סכום</div><div>סטטוס</div><div>אמצעי תשלום</div><div />
           </div>
 
           {filtered.map((tx, i) => {
-            const proj = projects.find((p) => p.id === tx.project_id);
+            const proj     = projects.find((p) => p.id === tx.project_id);
             const isIncome = tx.type === "income";
+            const undated  = !tx.date;
             return (
               <div key={tx.id}
-                style={{ display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px", gap: 8, padding: "10px 16px", alignItems: "center", borderBottom: i < filtered.length - 1 ? "1px solid #202020" : "none", background: i % 2 === 0 ? "#1A1A1A" : "#181818", transition: "background 0.1s" }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = "#1E1E1E")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = i % 2 === 0 ? "#1A1A1A" : "#181818")}
+                style={{
+                  display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px",
+                  gap: 8, padding: "10px 16px", alignItems: "center",
+                  borderBottom: i < filtered.length - 1 ? "1px solid #202020" : "none",
+                  background: undated ? "#1D1810" : i % 2 === 0 ? "#1A1A1A" : "#181818",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = undated ? "#231E12" : "#1E1E1E")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : i % 2 === 0 ? "#1A1A1A" : "#181818")}
               >
-                <div style={{ fontSize: 11, color: "#666" }}>{fmtDate(tx.date)}</div>
+                <div style={{ fontSize: 11, color: undated ? "#F59E0B" : "#666" }}>
+                  {undated ? "ללא תאריך" : fmtDate(tx.date)}
+                </div>
                 <div>
-                  <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px", background: isIncome ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)", color: isIncome ? "#10B981" : "#F59E0B", border: `1px solid ${isIncome ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}` }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                    background: isIncome ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
+                    color: isIncome ? "#10B981" : "#F59E0B",
+                    border: `1px solid ${isIncome ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}`,
+                  }}>
                     {isIncome ? "הכנסה" : "הוצאה"}
                   </span>
                 </div>
@@ -745,14 +914,20 @@ export default function FinancePage() {
                 <div><StatusBadge status={tx.payment_status} /></div>
                 <div style={{ fontSize: 11, color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.payment_method || "—"}</div>
                 <div style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
-                  <button onClick={() => openEdit(tx)} title="ערוך" style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "3px 5px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
-                  <button onClick={() => handleDelete(tx.id)} title="מחק" style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "3px 5px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
+                  <button onClick={() => openEdit(tx)} title="ערוך"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "3px 5px" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
+                  <button onClick={() => handleDelete(tx.id)} title="מחק"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "3px 5px" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
                 </div>
               </div>
             );
           })}
 
-          {/* Footer */}
+          {/* Footer totals */}
           <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: "1px solid #252525", background: "#141414", fontSize: 11, color: "#555" }}>
             <span>הכנסות: <strong style={{ color: "#10B981" }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
             <span>הוצאות: <strong style={{ color: "#F59E0B" }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
