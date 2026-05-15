@@ -128,10 +128,29 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
 // Helper — detect audio files in a project's file list
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
 export function getLatestAudioFile(
-  files: { name: string; url: string }[]
-): { name: string; url: string } | null {
+  files: { name: string; url: string; assetId?: number }[]
+): { name: string; url: string; assetId?: number } | null {
   const audioFiles = files.filter((f) =>
     AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
   );
   return audioFiles.length > 0 ? audioFiles[audioFiles.length - 1] : null;
+}
+
+/**
+ * Fetch a fresh playable URL for a Monday asset.
+ * Monday's public_url is a signed S3 URL that expires after ~1h.
+ * This always fetches a fresh one before playback.
+ */
+export async function getFreshPlayUrl(file: { url: string; assetId?: number }): Promise<string> {
+  if (!file.assetId) return file.url;
+  try {
+    const res = await fetch(`/api/monday/asset-url?assetId=${file.assetId}`);
+    if (!res.ok) return file.url;
+    const data = await res.json();
+    if (!data.url) return file.url;
+    // Route through proxy so range-requests work in the browser
+    return `/api/monday/file?url=${encodeURIComponent(data.url)}`;
+  } catch {
+    return file.url;
+  }
 }

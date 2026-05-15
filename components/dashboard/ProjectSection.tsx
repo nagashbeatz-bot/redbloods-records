@@ -5,7 +5,7 @@ import type { Project } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { OverdueTag, DueSoonTag } from "@/components/ui/Badge";
 import StatusDropdown from "@/components/ui/StatusDropdown";
-import { usePlayerSafe, getLatestAudioFile } from "@/components/PlayerProvider";
+import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 
 interface ProjectSectionProps {
   title: string;
@@ -87,16 +87,17 @@ export default function ProjectSection({
                 <div className="flex-shrink-0 ml-2">
                   {latestAudio && player ? (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (isLoaded) {
                           isPlaying ? player.pause() : player.resume();
                         } else {
+                          const url = await getFreshPlayUrl(latestAudio);
                           player.play({
                             projectId: p.id,
                             projectName: p.name,
                             artist: p.artist,
                             fileName: latestAudio.name,
-                            url: latestAudio.url,
+                            url,
                           });
                         }
                       }}

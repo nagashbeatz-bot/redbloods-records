@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
-import { usePlayerSafe, getLatestAudioFile } from "@/components/PlayerProvider";
+import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import { PROJECT_TYPES } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import StatusDropdown from "@/components/ui/StatusDropdown";
@@ -600,16 +600,17 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                   {/* Play/Pause */}
                   {player && (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (isLoaded) {
                           isPlaying ? player.pause() : player.resume();
                         } else {
+                          const url = await getFreshPlayUrl(latestAudio);
                           player.play({
                             projectId: project.id,
                             projectName: project.name,
                             artist: project.artist,
                             fileName: latestAudio.name,
-                            url: latestAudio.url,
+                            url,
                           });
                         }
                       }}

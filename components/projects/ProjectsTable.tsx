@@ -8,7 +8,7 @@ import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { useProjects } from "@/components/ProjectsProvider";
 import { SkeletonCard } from "@/components/ui/Skeleton";
-import { usePlayerSafe, getLatestAudioFile } from "@/components/PlayerProvider";
+import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
@@ -610,17 +610,18 @@ export default function ProjectsTable() {
                   />
                   {latestAudio && player ? (
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.preventDefault();
                         if (isLoaded) {
                           isPlaying ? player.pause() : player.resume();
                         } else {
+                          const url = await getFreshPlayUrl(latestAudio);
                           player.play({
                             projectId: p.id,
                             projectName: p.name,
                             artist: p.artist,
                             fileName: latestAudio.name,
-                            url: latestAudio.url,
+                            url,
                           });
                         }
                       }}
