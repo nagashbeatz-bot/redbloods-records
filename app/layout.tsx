@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ProjectsProvider from "@/components/ProjectsProvider";
 import PlayerProvider from "@/components/PlayerProvider";
+import RadioProvider from "@/components/radio/RadioProvider";
 
 export const metadata: Metadata = {
   title: "Redbloods Records",
@@ -38,7 +39,9 @@ export default function RootLayout({
       <body className="min-h-screen" suppressHydrationWarning>
         <ProjectsProvider>
           <PlayerProvider>
-            {children}
+            <RadioProvider>
+              {children}
+            </RadioProvider>
           </PlayerProvider>
         </ProjectsProvider>
       </body>
