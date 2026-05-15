@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectStatus } from "@/lib/types";
 import { ALL_STATUSES } from "@/lib/types";
 import { getStatusColor } from "@/lib/utils";
 import { useProjects } from "@/components/ProjectsProvider";
 import StatusBadge from "./Badge";
+
+const MIX_STATUSES: ProjectStatus[] = ["מחכה למיקס", "במיקס"];
 
 interface StatusDropdownProps {
   projectId: string;
@@ -16,12 +18,13 @@ interface StatusDropdownProps {
 
 export default function StatusDropdown({ projectId, status, small }: StatusDropdownProps) {
   const { updateProjectField } = useProjects();
-  const [open, setOpen]       = useState(false);
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [dropPos, setDropPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number }>({ left: 0, minWidth: 160 });
-  const triggerRef            = useRef<HTMLButtonElement>(null);
-  const errorTimer            = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [open, setOpen]             = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [dropPos, setDropPos]       = useState<{ top?: number; bottom?: number; left: number; minWidth: number }>({ left: 0, minWidth: 160 });
+  const [paymentWarning, setPaymentWarning] = useState<{ next: ProjectStatus; balance: number; currency: string } | null>(null);
+  const triggerRef                  = useRef<HTMLButtonElement>(null);
+  const errorTimer                  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -61,16 +64,10 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     setOpen((v) => !v);
   };
 
-  const handleSelect = async (e: React.MouseEvent, next: ProjectStatus) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setOpen(false);
-    if (next === status || saving) return;
-
+  const doUpdate = useCallback(async (next: ProjectStatus) => {
     setSaving(true);
     setError(null);
     if (errorTimer.current) clearTimeout(errorTimer.current);
-
     try {
       await updateProjectField(projectId, "status", next);
     } catch (err) {
@@ -80,6 +77,35 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     } finally {
       setSaving(false);
     }
+  }, [projectId, updateProjectField]);
+
+  const handleSelect = async (e: React.MouseEvent, next: ProjectStatus) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setOpen(false);
+    if (next === status || saving) return;
+
+    // Pre-mix payment check
+    if (MIX_STATUSES.includes(next)) {
+      try {
+        const res = await fetch(`/api/transactions?projectId=${projectId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const agreed = data.agreedPrice ?? 0;
+          const paid = (data.transactions ?? [])
+            .filter((t: { type: string; payment_status: string }) => t.type === "income" && t.payment_status === "שולם")
+            .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
+          if (agreed > 0 && paid < agreed) {
+            setPaymentWarning({ next, balance: agreed - paid, currency: data.currency ?? "₪" });
+            return;
+          }
+        }
+      } catch {
+        // Non-fatal — proceed with update even if check fails
+      }
+    }
+
+    await doUpdate(next);
   };
 
   const dropdown = (
@@ -180,6 +206,71 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
       {/* Portal dropdown — escapes parent overflow:hidden */}
       {open && typeof document !== "undefined" &&
         createPortal(dropdown, document.body)}
+
+      {/* Payment warning portal */}
+      {paymentWarning && typeof document !== "undefined" && createPortal(
+        <div
+          onClick={() => setPaymentWarning(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#161616", border: "1px solid #3A2A10",
+              borderRadius: 16, padding: "24px 28px 20px",
+              width: 340, direction: "rtl",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 28, marginBottom: 10 }}>⚠️</div>
+            <p style={{ color: "#F59E0B", fontWeight: 700, fontSize: 15, margin: "0 0 8px" }}>
+              יתרה לא משולמת
+            </p>
+            <p style={{ color: "#888", fontSize: 13, margin: "0 0 22px", lineHeight: 1.6 }}>
+              יש יתרה לא משולמת של{" "}
+              <strong style={{ color: "#EF4444" }}>
+                {paymentWarning.balance.toLocaleString()}{paymentWarning.currency}
+              </strong>
+              <br />
+              האם להמשיך לשנות את הסטטוס?
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setPaymentWarning(null)}
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10,
+                  border: "1px solid #2A2A2A", background: "transparent",
+                  color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit",
+                }}
+              >
+                בטל
+              </button>
+              <button
+                onClick={async () => {
+                  const next = paymentWarning.next;
+                  setPaymentWarning(null);
+                  await doUpdate(next);
+                }}
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10,
+                  border: "1px solid rgba(245,158,11,0.4)",
+                  background: "rgba(245,158,11,0.1)",
+                  color: "#F59E0B", cursor: "pointer", fontSize: 13,
+                  fontWeight: 700, fontFamily: "inherit",
+                }}
+              >
+                המשך בכל זאת
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

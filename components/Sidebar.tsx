@@ -7,6 +7,7 @@ const NAV_MAIN = [
   { href: "/dashboard", label: "דשבורד",   icon: "⬡" },
   { href: "/projects",  label: "פרויקטים", icon: "♫" },
   { href: "/clients",   label: "לקוחות",   icon: "👥" },
+  { href: "/finance",   label: "כספים",    icon: "₪" },
 ];
 
 const NAV_SETTINGS = [

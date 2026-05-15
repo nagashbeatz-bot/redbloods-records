@@ -15,8 +15,38 @@ import UploadButton from "@/components/ui/UploadButton";
 import ActionMenu from "@/components/project/ActionMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type SessionStatus = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
-type SessionType   = "סשן" | "ניקוי מיקס" | "חזרה";
+type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
+type SessionType    = "סשן" | "ניקוי מיקס" | "חזרה";
+type PaymentStatus  = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל";
+
+interface Transaction {
+  id: string;
+  project_id: string;
+  type: "income" | "expense";
+  date: string | null;
+  description: string;
+  artist: string;
+  amount: number;
+  currency: string;
+  payment_status: PaymentStatus;
+  payment_method: string;
+  receipt_ref: string;
+  notes: string;
+  category: string;
+}
+
+interface TxDraft {
+  type: "income" | "expense";
+  date: string;
+  description: string;
+  artist: string;
+  amount: string;
+  currency: string;
+  paymentStatus: PaymentStatus;
+  paymentMethod: string;
+  notes: string;
+  category: string;
+}
 
 interface Session {
   id: string;
@@ -39,8 +69,10 @@ interface Draft {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const STATUS_OPTIONS: SessionStatus[] = ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"];
-const TYPE_OPTIONS:   SessionType[]   = ["סשן", "ניקוי מיקס", "חזרה"];
+const STATUS_OPTIONS:   SessionStatus[]   = ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"];
+const TYPE_OPTIONS:     SessionType[]     = ["סשן", "ניקוי מיקס", "חזרה"];
+const PMT_STATUS_OPTS:  PaymentStatus[]   = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
+const EXPENSE_CATS      = ["מיקס/מאסטר", "צילום", "עריכת וידאו", "גרפיקה", "הפצה", "שיווק", "ציוד", "אחר"];
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
   "מתוכנן":  "#3B82F6",
@@ -49,6 +81,18 @@ const STATUS_COLOR: Record<SessionStatus, string> = {
   "נדחה":    "#F59E0B",
   "לא הגיע": "#EF4444",
 };
+
+const PMT_COLOR: Record<PaymentStatus, string> = {
+  "שולם":    "#10B981",
+  "צפוי":    "#3B82F6",
+  "לא שולם": "#EF4444",
+  "חלקי":    "#F59E0B",
+  "בוטל":    "#6B7280",
+};
+
+function emptyTxDraft(): TxDraft {
+  return { type: "income", date: "", description: "", artist: "", amount: "", currency: "₪", paymentStatus: "צפוי", paymentMethod: "", notes: "", category: "" };
+}
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
 function isAudio(name: string) {
@@ -110,6 +154,20 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const { projects, updateProjectField } = useProjects();
   const player = usePlayerSafe();
 
+  // ── Finance state ──────────────────────────────────────────────────────────
+  const [transactions,   setTransactions]   = useState<Transaction[]>([]);
+  const [agreedPrice,    setAgreedPrice]    = useState(0);
+  const [finCurrency,    setFinCurrency]    = useState("₪");
+  const [finLoaded,      setFinLoaded]      = useState(false);
+  const [addingTx,       setAddingTx]       = useState<"income" | "expense" | null>(null);
+  const [txDraft,        setTxDraft]        = useState<TxDraft>(emptyTxDraft());
+  const [txSaving,       setTxSaving]       = useState(false);
+  const [editingTxId,    setEditingTxId]    = useState<string | null>(null);
+  const [editTxDraft,    setEditTxDraft]    = useState<TxDraft>(emptyTxDraft());
+  const [editTxSaving,   setEditTxSaving]   = useState(false);
+  const [editingPrice,   setEditingPrice]   = useState(false);
+  const [priceDraft,     setPriceDraft]     = useState("");
+
   // ── Session state ──────────────────────────────────────────────────────────
   const [sessions,       setSessions]       = useState<Session[]>([]);
   const [sessionLimit,   setSessionLimit]   = useState(3);
@@ -155,6 +213,21 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     setSessions([]);
     fetchSessions(true); // run calendar sync on every drawer open
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // ── Fetch finance data ─────────────────────────────────────────────────────
+  useEffect(() => {
+    setFinLoaded(false);
+    setTransactions([]);
+    fetch(`/api/transactions?projectId=${projectId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setTransactions(d.transactions ?? []);
+        setAgreedPrice(d.agreedPrice ?? 0);
+        setFinCurrency(d.currency ?? "₪");
+        setFinLoaded(true);
+      })
+      .catch(() => setFinLoaded(true));
   }, [projectId]);
 
   // ── ESC to close ───────────────────────────────────────────────────────────
@@ -260,6 +333,99 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     });
   }
 
+  // ── Finance CRUD ───────────────────────────────────────────────────────────
+  async function handleAddTx() {
+    setTxSaving(true);
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          type:          txDraft.type,
+          date:          txDraft.date || null,
+          description:   txDraft.description,
+          artist:        txDraft.artist,
+          amount:        Number(txDraft.amount) || 0,
+          currency:      txDraft.currency,
+          paymentStatus: txDraft.paymentStatus,
+          paymentMethod: txDraft.paymentMethod,
+          notes:         txDraft.notes,
+          category:      txDraft.category,
+        }),
+      });
+      const data = await res.json();
+      if (data.transaction) {
+        setTransactions((prev) => [data.transaction, ...prev]);
+        setAddingTx(null);
+        setTxDraft(emptyTxDraft());
+      }
+    } finally {
+      setTxSaving(false);
+    }
+  }
+
+  async function handleUpdateTx() {
+    if (!editingTxId) return;
+    setEditTxSaving(true);
+    try {
+      const res = await fetch(`/api/transactions/${editingTxId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type:          editTxDraft.type,
+          date:          editTxDraft.date || null,
+          description:   editTxDraft.description,
+          amount:        Number(editTxDraft.amount) || 0,
+          currency:      editTxDraft.currency,
+          paymentStatus: editTxDraft.paymentStatus,
+          notes:         editTxDraft.notes,
+          category:      editTxDraft.category,
+        }),
+      });
+      const data = await res.json();
+      if (data.transaction) {
+        setTransactions((prev) => prev.map((t) => t.id === editingTxId ? data.transaction : t));
+        setEditingTxId(null);
+      }
+    } finally {
+      setEditTxSaving(false);
+    }
+  }
+
+  async function handleDeleteTx(id: string) {
+    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+  }
+
+  async function handleSaveAgreedPrice(val: string) {
+    const n = parseFloat(val);
+    if (isNaN(n) || n < 0) { setEditingPrice(false); return; }
+    setAgreedPrice(n);
+    setEditingPrice(false);
+    await fetch(`/api/transactions?projectId=${projectId}&type=settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agreedPrice: n, currency: finCurrency }),
+    });
+  }
+
+  function startEditTx(tx: Transaction) {
+    setEditingTxId(tx.id);
+    setEditTxDraft({
+      type:          tx.type,
+      date:          tx.date ?? "",
+      description:   tx.description,
+      artist:        tx.artist,
+      amount:        String(tx.amount),
+      currency:      tx.currency,
+      paymentStatus: tx.payment_status,
+      paymentMethod: tx.payment_method,
+      notes:         tx.notes,
+      category:      tx.category,
+    });
+  }
+
   function startEdit(s: Session) {
     setEditingId(s.id);
     setEditDraft({
@@ -271,6 +437,14 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       notes:       s.notes,
     });
   }
+
+  // ── Finance computed ──────────────────────────────────────────────────────
+  const incomeList  = transactions.filter((t) => t.type === "income");
+  const expenseList = transactions.filter((t) => t.type === "expense");
+  const totalPaid   = incomeList.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
+  const totalExp    = expenseList.reduce((s, t) => s + t.amount, 0);
+  const balance     = agreedPrice - totalPaid;
+  const profit      = totalPaid - totalExp;
 
   // ── Files ─────────────────────────────────────────────────────────────────
   const allFiles = [...project.files].reverse(); // newest first
@@ -575,6 +749,196 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             )}
           </Card>
 
+          {/* ── כספים ───────────────────────────────────────────────────── */}
+          <Card>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>כספים</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={() => { setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
+                  style={{ fontSize: 11, color: "#10B981", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.16)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.08)")}
+                >+ הכנסה</button>
+                <button
+                  onClick={() => { setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
+                  style={{ fontSize: 11, color: "#F59E0B", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.16)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.08)")}
+                >+ הוצאה</button>
+              </div>
+            </div>
+
+            {/* Stats grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {/* Agreed price — editable */}
+              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>מחיר מוסכם</div>
+                {editingPrice ? (
+                  <input
+                    autoFocus
+                    type="number"
+                    min={0}
+                    value={priceDraft}
+                    onChange={(e) => setPriceDraft(e.target.value)}
+                    onBlur={() => handleSaveAgreedPrice(priceDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveAgreedPrice(priceDraft);
+                      if (e.key === "Escape") setEditingPrice(false);
+                    }}
+                    style={{ ...INPUT_S, width: "100%", boxSizing: "border-box" }}
+                  />
+                ) : (
+                  <button
+                    onClick={() => { setPriceDraft(String(agreedPrice)); setEditingPrice(true); }}
+                    title="לחץ לעריכה"
+                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 16, fontWeight: 700, color: "#DDD", fontFamily: "inherit" }}
+                  >
+                    {agreedPrice.toLocaleString()}{finCurrency}
+                  </button>
+                )}
+              </div>
+
+              {/* Paid */}
+              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>שולם</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#10B981" }}>{totalPaid.toLocaleString()}{finCurrency}</div>
+              </div>
+
+              {/* Balance */}
+              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>יתרה</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: balance > 0 ? "#EF4444" : balance < 0 ? "#F59E0B" : "#10B981" }}>
+                  {balance.toLocaleString()}{finCurrency}
+                </div>
+              </div>
+
+              {/* Expenses */}
+              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הוצאות</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#F59E0B" }}>{totalExp.toLocaleString()}{finCurrency}</div>
+              </div>
+
+              {/* Profit */}
+              <div style={{ background: "#141414", borderRadius: 8, padding: "8px 10px", border: "1px solid #222", gridColumn: "1 / -1" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>רווח</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: profit >= 0 ? "#10B981" : "#EF4444" }}>{profit.toLocaleString()}{finCurrency}</div>
+              </div>
+            </div>
+
+            {/* Add TX form */}
+            {addingTx && (
+              <DrawerTxForm
+                draft={txDraft}
+                setDraft={setTxDraft}
+                saving={txSaving}
+                onSave={handleAddTx}
+                onCancel={() => setAddingTx(null)}
+              />
+            )}
+
+            {/* Income list */}
+            {!finLoaded ? (
+              <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
+            ) : (
+              <>
+                {incomeList.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, color: "#444", marginBottom: 6, fontWeight: 700 }}>הכנסות</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {incomeList.map((tx) => (
+                        <div key={tx.id}>
+                          {editingTxId === tx.id ? (
+                            <DrawerTxForm
+                              draft={editTxDraft}
+                              setDraft={setEditTxDraft}
+                              saving={editTxSaving}
+                              onSave={handleUpdateTx}
+                              onCancel={() => setEditingTxId(null)}
+                            />
+                          ) : (
+                            <div style={{
+                              display: "flex", alignItems: "center", gap: 6,
+                              padding: "5px 8px", borderRadius: 7,
+                              background: "rgba(255,255,255,0.02)", border: "1px solid #222",
+                            }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 11, color: "#888" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
+                                  <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{tx.description || "—"}</span>
+                                  <span style={{
+                                    fontSize: 10, fontWeight: 700, color: PMT_COLOR[tx.payment_status],
+                                    background: `${PMT_COLOR[tx.payment_status]}18`,
+                                    border: `1px solid ${PMT_COLOR[tx.payment_status]}35`,
+                                    borderRadius: 5, padding: "1px 6px",
+                                  }}>{tx.payment_status}</span>
+                                </div>
+                              </div>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#10B981", flexShrink: 0 }}>+{tx.amount.toLocaleString()}{tx.currency}</span>
+                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }}
+                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
+                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
+                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }}
+                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {expenseList.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, color: "#444", marginBottom: 6, fontWeight: 700 }}>הוצאות</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {expenseList.map((tx) => (
+                        <div key={tx.id}>
+                          {editingTxId === tx.id ? (
+                            <DrawerTxForm
+                              draft={editTxDraft}
+                              setDraft={setEditTxDraft}
+                              saving={editTxSaving}
+                              onSave={handleUpdateTx}
+                              onCancel={() => setEditingTxId(null)}
+                            />
+                          ) : (
+                            <div style={{
+                              display: "flex", alignItems: "center", gap: 6,
+                              padding: "5px 8px", borderRadius: 7,
+                              background: "rgba(255,255,255,0.02)", border: "1px solid #222",
+                            }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 11, color: "#888" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
+                                  {tx.category && <span style={{ fontSize: 10, color: "#666", background: "rgba(255,255,255,0.05)", borderRadius: 4, padding: "1px 5px" }}>{tx.category}</span>}
+                                  <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 110 }}>{tx.description || "—"}</span>
+                                </div>
+                              </div>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B", flexShrink: 0 }}>−{tx.amount.toLocaleString()}{tx.currency}</span>
+                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }}
+                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
+                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
+                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }}
+                                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {transactions.length === 0 && !addingTx && (
+                  <div style={{ fontSize: 11, color: "#444" }}>אין נתונים פיננסיים עדיין</div>
+                )}
+              </>
+            )}
+          </Card>
+
           {/* ── Files + Player ───────────────────────────────────────────── */}
           <Card>
             {/* Card header */}
@@ -736,6 +1100,95 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       </div>
     </div>,
     document.body
+  );
+}
+
+// ── Inline transaction form (add / edit) ─────────────────────────────────────
+function DrawerTxForm({
+  draft, setDraft, saving, onSave, onCancel,
+}: {
+  draft: TxDraft;
+  setDraft: (d: TxDraft) => void;
+  saving: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const isIncome = draft.type === "income";
+  return (
+    <div style={{
+      background: "#181818", border: "1px solid #2A2A2A",
+      borderRadius: 10, padding: "10px 12px",
+      display: "flex", flexDirection: "column", gap: 7, marginBottom: 10,
+    }}>
+      {/* Type toggle */}
+      <div style={{ display: "flex", gap: 6 }}>
+        {(["income", "expense"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setDraft({ ...draft, type: t })}
+            style={{
+              padding: "3px 10px", borderRadius: 7, border: "none", cursor: "pointer",
+              fontSize: 11, fontFamily: "inherit", fontWeight: 600,
+              background: draft.type === t
+                ? (t === "income" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.15)")
+                : "transparent",
+              color: draft.type === t
+                ? (t === "income" ? "#10B981" : "#EF4444")
+                : "#555",
+            }}
+          >
+            {t === "income" ? "הכנסה" : "הוצאה"}
+          </button>
+        ))}
+      </div>
+
+      {/* Date + Description */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+          className="rb-session-input" style={{ width: 120, colorScheme: "dark" }} />
+        <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+          placeholder="תיאור" className="rb-session-input" style={{ flex: 1 }} />
+      </div>
+
+      {/* Amount + Currency + Status/Category */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
+          placeholder="סכום" min={0} className="rb-session-input" style={{ flex: 1 }} />
+        <select value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
+          className="rb-session-input" style={{ width: 50 }}>
+          {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {isIncome ? (
+          <select value={draft.paymentStatus} onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value as PaymentStatus })}
+            className="rb-session-input" style={{ flex: 1 }}>
+            {PMT_STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        ) : (
+          <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+            className="rb-session-input" style={{ flex: 1 }}>
+            <option value="">קטגוריה</option>
+            {EXPENSE_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* Notes */}
+      <input type="text" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+        placeholder="הערות (אופציונלי)" className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }}
+        onKeyDown={(e) => { if (e.key === "Enter") onSave(); if (e.key === "Escape") onCancel(); }} />
+
+      {/* Buttons */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={onSave} disabled={saving}
+          style={{ flex: 1, padding: "5px 0", borderRadius: 7, border: "none", background: "#3B82F6", color: "#fff", fontSize: 12, cursor: saving ? "wait" : "pointer", fontFamily: "inherit" }}>
+          {saving ? "שומר..." : "שמור"}
+        </button>
+        <button onClick={onCancel}
+          style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid #2A2A2A", background: "transparent", color: "#666", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+          ביטול
+        </button>
+      </div>
+    </div>
   );
 }
 
