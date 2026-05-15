@@ -16,6 +16,7 @@ import ActionMenu from "@/components/project/ActionMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
+type SessionType   = "סשן" | "ניקוי מיקס" | "חזרה";
 
 interface Session {
   id: string;
@@ -24,6 +25,7 @@ interface Session {
   start_time: string | null;
   end_time: string | null;
   status: SessionStatus;
+  session_type: SessionType;
   notes: string;
 }
 
@@ -32,11 +34,13 @@ interface Draft {
   startTime: string;
   endTime: string;
   status: SessionStatus;
+  sessionType: SessionType;
   notes: string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const STATUS_OPTIONS: SessionStatus[] = ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"];
+const TYPE_OPTIONS:   SessionType[]   = ["סשן", "ניקוי מיקס", "חזרה"];
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
   "מתוכנן":  "#3B82F6",
@@ -78,7 +82,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function emptyDraft(): Draft {
-  return { date: "", startTime: "", endTime: "", status: "מתוכנן", notes: "" };
+  return { date: "", startTime: "", endTime: "", status: "מתוכנן", sessionType: "סשן", notes: "" };
 }
 
 function fmtDate(d: string | null): string {
@@ -177,9 +181,10 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     : showDueSoon ? "#F97316"
     : "#888";
 
-  // ── Session stats ──────────────────────────────────────────────────────────
-  const done      = sessions.filter((s) => s.status === "התקיים").length;
-  const planned   = sessions.filter((s) => s.status === "מתוכנן").length;
+  // ── Session stats — only "סשן" type counts toward the limit ─────────────────
+  const sessionOnly = sessions.filter((s) => (s.session_type ?? "סשן") === "סשן");
+  const done      = sessionOnly.filter((s) => s.status === "התקיים").length;
+  const planned   = sessionOnly.filter((s) => s.status === "מתוכנן").length;
   const remaining = Math.max(0, sessionLimit - done);
   const overLimit = done > sessionLimit;
   const progress  = sessionLimit > 0 ? Math.min(100, (done / sessionLimit) * 100) : 0;
@@ -193,11 +198,12 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          date:      addDraft.date      || null,
-          startTime: addDraft.startTime || null,
-          endTime:   addDraft.endTime   || null,
-          status:    addDraft.status,
-          notes:     addDraft.notes,
+          date:        addDraft.date        || null,
+          startTime:   addDraft.startTime   || null,
+          endTime:     addDraft.endTime     || null,
+          status:      addDraft.status,
+          sessionType: addDraft.sessionType,
+          notes:       addDraft.notes,
         }),
       });
       const data = await res.json();
@@ -219,11 +225,12 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          date:      editDraft.date      || null,
-          startTime: editDraft.startTime || null,
-          endTime:   editDraft.endTime   || null,
-          status:    editDraft.status,
-          notes:     editDraft.notes,
+          date:        editDraft.date        || null,
+          startTime:   editDraft.startTime   || null,
+          endTime:     editDraft.endTime     || null,
+          status:      editDraft.status,
+          sessionType: editDraft.sessionType,
+          notes:       editDraft.notes,
         }),
       });
       const data = await res.json();
@@ -256,11 +263,12 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   function startEdit(s: Session) {
     setEditingId(s.id);
     setEditDraft({
-      date:      s.date       ?? "",
-      startTime: s.start_time ?? "",
-      endTime:   s.end_time   ?? "",
-      status:    s.status,
-      notes:     s.notes,
+      date:        s.date         ?? "",
+      startTime:   s.start_time   ?? "",
+      endTime:     s.end_time     ?? "",
+      status:      s.status,
+      sessionType: (s.session_type ?? "סשן") as SessionType,
+      notes:       s.notes,
     });
   }
 
@@ -498,6 +506,17 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                             }}>
                               {s.status}
                             </span>
+                            {(s.session_type ?? "סשן") !== "סשן" && (
+                              <span style={{
+                                fontSize: 10, fontWeight: 600,
+                                color: "#A855F7",
+                                background: "rgba(168,85,247,0.1)",
+                                border: "1px solid rgba(168,85,247,0.25)",
+                                borderRadius: 5, padding: "1px 6px",
+                              }}>
+                                {s.session_type}
+                              </span>
+                            )}
                           </div>
                           {s.notes && (
                             <div style={{ fontSize: 11, color: "#555", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -748,17 +767,29 @@ function SessionForm({
         />
       </div>
 
-      {/* Status */}
-      <select
-        value={draft.status}
-        onChange={(e) => setDraft({ ...draft, status: e.target.value as SessionStatus })}
-        className="rb-session-input"
-        style={{ width: "100%" }}
-      >
-        {STATUS_OPTIONS.map((s) => (
-          <option key={s} value={s}>{s}</option>
-        ))}
-      </select>
+      {/* Type + Status row */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <select
+          value={draft.sessionType}
+          onChange={(e) => setDraft({ ...draft, sessionType: e.target.value as SessionType })}
+          className="rb-session-input"
+          style={{ flex: 1 }}
+        >
+          {TYPE_OPTIONS.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+        <select
+          value={draft.status}
+          onChange={(e) => setDraft({ ...draft, status: e.target.value as SessionStatus })}
+          className="rb-session-input"
+          style={{ flex: 1 }}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </div>
 
       {/* Notes */}
       <input

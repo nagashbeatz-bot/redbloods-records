@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { projectId, date, startTime, endTime, status, notes, calendarEventId } = body;
+    const { projectId, date, startTime, endTime, status, sessionType, notes, calendarEventId } = body;
 
     if (!projectId) {
       return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
         start_time:        startTime         || null,
         end_time:          endTime           || null,
         status:            status            || "מתוכנן",
+        session_type:      sessionType       || "סשן",
         notes:             notes             || "",
         calendar_event_id: calendarEventId   || null,
       })
