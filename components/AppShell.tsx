@@ -7,6 +7,7 @@ import ChatPanel from "./ai/ChatPanel";
 import MiniPlayer from "./ui/MiniPlayer";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe } from "@/components/PlayerProvider";
+import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel (left side in RTL)
 const SIDEBAR_WIDTH = 224; // px — navigation sidebar (right side in RTL, w-56)
@@ -58,7 +59,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           className="h-14 flex items-center justify-between px-6 border-b sticky top-0 z-40"
           style={{ background: "#141414", borderColor: "#2A2A2A" }}
         >
-          <div />
+          {/* Left side — Jahkno Radio trigger (hidden on mobile) */}
+          <div className="hidden md:block">
+            <JahknoRadioPlayer
+              playerOffset={playerVisible ? PLAYER_H : 0}
+              sidebarWidth={SIDEBAR_WIDTH}
+            />
+          </div>
+
+          {/* Mobile left placeholder */}
+          <div className="md:hidden" />
+
+          {/* Right side — AI agent toggle */}
           <button
             onClick={() => setChatOpen(!chatOpen)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
