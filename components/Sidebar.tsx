@@ -4,19 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_MAIN = [
-  { href: "/dashboard", label: "דשבורד",   icon: "⬡" },
-  { href: "/projects",  label: "פרויקטים", icon: "♫" },
-  { href: "/clients",   label: "לקוחות",   icon: "👥" },
-  { href: "/finance",   label: "כספים",    icon: "₪" },
-  { href: "/insights",  label: "תובנות",   icon: "◎" },
+  { href: "/dashboard", label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" }, // sky-blue
+  { href: "/projects",  label: "פרויקטים", icon: "♫", iconColor: "#60A5FA" }, // blue-400
+  { href: "/clients",   label: "לקוחות",   icon: "👥", iconColor: "#C084FC" }, // purple-400
+  { href: "/finance",   label: "כספים",    icon: "₪", iconColor: "#34D399" }, // emerald-400
+  { href: "/insights",  label: "תובנות",   icon: "◎", iconColor: "#2DD4BF" }, // teal-400
 ];
 
 const NAV_SETTINGS = [
-  { href: "/setup/calendar", label: "יומן",   icon: "📅" },
-  { href: "/setup/reports",  label: "דוחות",  icon: "📧" },
+  { href: "/setup/calendar", label: "יומן",   icon: "📅", iconColor: undefined }, // emoji — keep native
+  { href: "/setup/reports",  label: "דוחות",  icon: "📧", iconColor: undefined }, // emoji — keep native
 ];
 
-function NavLink({ href, label, icon, pathname }: { href: string; label: string; icon: string; pathname: string }) {
+function NavLink({ href, label, icon, iconColor, pathname }: {
+  href: string; label: string; icon: string; iconColor?: string; pathname: string;
+}) {
   const active = pathname === href || pathname.startsWith(href + "/");
   return (
     <Link
@@ -29,7 +31,13 @@ function NavLink({ href, label, icon, pathname }: { href: string; label: string;
         border: "1px solid",
       }}
     >
-      <span className="text-base">{icon}</span>
+      {/* Icon keeps its own color regardless of active state */}
+      <span
+        className="text-base"
+        style={iconColor ? { color: iconColor, opacity: active ? 1 : 0.85 } : undefined}
+      >
+        {icon}
+      </span>
       {label}
     </Link>
   );
@@ -102,7 +110,7 @@ export default function Sidebar({ onOpenChat }: Props) {
         className="md:hidden fixed bottom-0 right-0 left-0 z-50 flex border-t"
         style={{ background: "#141414", borderColor: "#2A2A2A", paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {[...NAV_MAIN, ...NAV_SETTINGS].map(({ href, label, icon }) => {
+        {[...NAV_MAIN, ...NAV_SETTINGS].map(({ href, label, icon, iconColor }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -111,7 +119,12 @@ export default function Sidebar({ onOpenChat }: Props) {
               className="flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium"
               style={{ color: active ? "#3B82F6" : "#888" }}
             >
-              <span className="text-xl">{icon}</span>
+              <span
+                className="text-xl"
+                style={iconColor ? { color: iconColor, opacity: active ? 1 : 0.85 } : undefined}
+              >
+                {icon}
+              </span>
               {label}
             </Link>
           );
