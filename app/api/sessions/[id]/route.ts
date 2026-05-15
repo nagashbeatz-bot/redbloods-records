@@ -43,8 +43,31 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
+
+    // Fetch session first to get calendar_event_id
+    const { data: session } = await supabase
+      .from("sessions")
+      .select("calendar_event_id")
+      .eq("id", id)
+      .single();
+
+    // Delete from Supabase
     const { error } = await supabase.from("sessions").delete().eq("id", id);
     if (error) throw new Error(error.message);
+
+    // Also delete from Google Calendar (best-effort)
+    const calEventId = session?.calendar_event_id as string | null;
+    if (calEventId) {
+      try {
+        const { deleteCalendarEvent, isConnected } = await import("@/lib/google-calendar");
+        if (await isConnected()) {
+          await deleteCalendarEvent(calEventId);
+        }
+      } catch {
+        // Calendar deletion is non-fatal
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
