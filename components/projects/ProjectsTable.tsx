@@ -285,7 +285,8 @@ export default function ProjectsTable() {
   const [isUltraCompact, setIsUltraCompact] = useState(false); // 768–900px
   const [drawerProjectId, setDrawerProjectId] = useState<string | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteId,   setConfirmDeleteId]   = useState<string | null>(null);
+  const [confirmDeleteName, setConfirmDeleteName] = useState("");
   const [clientNames, setClientNames] = useState<string[]>([]);
 
   useEffect(() => {
@@ -300,13 +301,6 @@ export default function ProjectsTable() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Reset delete-confirm on outside click
-  useEffect(() => {
-    if (!confirmDeleteId) return;
-    const h = () => setConfirmDeleteId(null);
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [confirmDeleteId]);
 
   // Fetch client names for artist autocomplete
   useEffect(() => {
@@ -806,48 +800,32 @@ export default function ProjectsTable() {
 
                 {/* ── מחיקה — last column, hidden on mobile ── */}
                 {!isMobile && (
-                  <div style={{ ...cell, justifyContent: "center", overflow: "visible" }} onClick={(e) => e.stopPropagation()}>
-                    {confirmDeleteId === p.id ? (
-                      <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); deleteProject(p.id); }}
-                        title="לחץ לאישור מחיקה"
-                        style={{
-                          width: 34, height: 22, borderRadius: 6,
-                          border: "1px solid rgba(239,68,68,0.5)",
-                          background: "rgba(239,68,68,0.12)",
-                          color: "#EF4444", cursor: "pointer",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 9, fontWeight: 700, fontFamily: "inherit",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        בטוח?
-                      </button>
-                    ) : (
-                      <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
-                        title="מחק פרויקט"
-                        style={{
-                          width: 26, height: 26, borderRadius: "50%",
-                          border: "none", background: "transparent",
-                          color: "#333", cursor: "pointer",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          transition: "all 0.13s",
-                        }}
-                        onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(239,68,68,0.1)", color: "#EF4444" })}
-                        onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#333" })}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="1,3 11,3" />
-                          <path d="M4,3V2a1,1,0,0,1,1-1H7a1,1,0,0,1,1,1V3" />
-                          <rect x="2" y="3" width="8" height="8" rx="1" />
-                          <line x1="5" y1="6" x2="5" y2="9" />
-                          <line x1="7" y1="6" x2="7" y2="9" />
-                        </svg>
-                      </button>
-                    )}
+                  <div style={{ ...cell, justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteId(p.id);
+                        setConfirmDeleteName(p.name);
+                      }}
+                      title="מחק פרויקט"
+                      style={{
+                        width: 26, height: 26, borderRadius: "50%",
+                        border: "none", background: "transparent",
+                        color: "#333", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.13s",
+                      }}
+                      onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(239,68,68,0.1)", color: "#EF4444" })}
+                      onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#333" })}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="1,3 11,3" />
+                        <path d="M4,3V2a1,1,0,0,1,1-1H7a1,1,0,0,1,1,1V3" />
+                        <rect x="2" y="3" width="8" height="8" rx="1" />
+                        <line x1="5" y1="6" x2="5" y2="9" />
+                        <line x1="7" y1="6" x2="7" y2="9" />
+                      </svg>
+                    </button>
                   </div>
                 )}
               </div>
@@ -864,6 +842,67 @@ export default function ProjectsTable() {
           artists={artists}
           onClose={() => setDrawerProjectId(null)}
         />
+      )}
+
+      {/* ── Delete confirmation popup ── */}
+      {confirmDeleteId && typeof document !== "undefined" && createPortal(
+        <div
+          onClick={() => setConfirmDeleteId(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#161616", border: "1px solid #2A2A2A",
+              borderRadius: 16, padding: "24px 28px 20px",
+              width: 320, direction: "rtl",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 28, marginBottom: 10 }}>🗑</div>
+            <p style={{ color: "#E8E8E8", fontWeight: 700, fontSize: 15, margin: "0 0 6px" }}>
+              מחיקת פרויקט
+            </p>
+            <p style={{ color: "#777", fontSize: 13, margin: "0 0 22px", lineHeight: 1.5 }}>
+              למחוק את <strong style={{ color: "#CCC" }}>{confirmDeleteName}</strong>?<br />
+              <span style={{ fontSize: 11, color: "#555" }}>פעולה זו אינה ניתנת לביטול</span>
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10,
+                  border: "1px solid #2A2A2A", background: "transparent",
+                  color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit",
+                }}
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => {
+                  const id = confirmDeleteId;
+                  setConfirmDeleteId(null);
+                  deleteProject(id);
+                }}
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10,
+                  border: "1px solid rgba(239,68,68,0.4)",
+                  background: "rgba(239,68,68,0.12)",
+                  color: "#EF4444", cursor: "pointer", fontSize: 13,
+                  fontWeight: 700, fontFamily: "inherit",
+                }}
+              >
+                כן, מחק
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {showNewProject && typeof document !== "undefined" && (
