@@ -26,7 +26,7 @@ function StatCard({ label, count, color, icon, dim, sectionId }: StatCardProps) 
 
   return (
     <div
-      className="rounded-2xl border p-5 flex flex-col gap-2"
+      className="rounded-2xl border flex flex-col justify-between"
       onClick={clickable ? () => scrollToSection(sectionId) : undefined}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
@@ -42,6 +42,9 @@ function StatCard({ label, count, color, icon, dim, sectionId }: StatCardProps) 
         cursor: clickable ? "pointer" : "default",
         transition: "border-color 150ms, background 150ms",
         outline: "none",
+        /* ── Fixed inner layout — every card identical ── */
+        minHeight: 108,
+        padding: "16px 18px 14px",
       }}
       onMouseEnter={(e) => {
         if (!clickable) return;
@@ -56,20 +59,43 @@ function StatCard({ label, count, color, icon, dim, sectionId }: StatCardProps) 
         el.style.background = "#1A1A1A";
       }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium" style={{ color: "#666" }}>
+      {/* ── Row 1: label + icon — always same height ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+        <span
+          style={{
+            fontSize: 11, fontWeight: 500,
+            color: "#666",
+            lineHeight: 1.3,
+            /* allow wrapping — height pinned by justify-between */
+          }}
+        >
           {label}
         </span>
-        <span className="text-base" style={{ opacity: 0.6 }}>{icon}</span>
+        <span style={{ fontSize: 15, opacity: 0.6, flexShrink: 0, lineHeight: 1 }}>{icon}</span>
       </div>
-      <div className="text-3xl font-bold tracking-tight" style={{ color }}>
+
+      {/* ── Row 2: number — always centred in remaining space ── */}
+      <div
+        style={{
+          fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em",
+          lineHeight: 1,
+          color,
+        }}
+      >
         {count}
       </div>
-      {clickable && (
-        <div className="text-xs" style={{ color: "#4A4A4A", marginTop: -4 }}>
-          ↓ לצפייה
-        </div>
-      )}
+
+      {/* ── Row 3: footer — always rendered, invisible when not clickable ── */}
+      <div
+        style={{
+          fontSize: 11,
+          color: clickable ? "#4A4A4A" : "transparent",
+          userSelect: "none",
+          lineHeight: 1,
+        }}
+      >
+        ↓ לצפייה
+      </div>
     </div>
   );
 }
