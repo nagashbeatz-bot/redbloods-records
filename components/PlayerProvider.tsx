@@ -139,7 +139,8 @@ export function getLatestAudioFile(
 /**
  * Fetch a fresh playable URL for a Monday asset.
  * Monday's public_url is a signed S3 URL that expires after ~1h.
- * This always fetches a fresh one before playback.
+ * This fetches a fresh one before every playback — no proxy needed,
+ * the signed S3 URL works directly in <audio> elements.
  */
 export async function getFreshPlayUrl(file: { url: string; assetId?: number }): Promise<string> {
   if (!file.assetId) return file.url;
@@ -147,9 +148,7 @@ export async function getFreshPlayUrl(file: { url: string; assetId?: number }): 
     const res = await fetch(`/api/monday/asset-url?assetId=${file.assetId}`);
     if (!res.ok) return file.url;
     const data = await res.json();
-    if (!data.url) return file.url;
-    // Route through proxy so range-requests work in the browser
-    return `/api/monday/file?url=${encodeURIComponent(data.url)}`;
+    return data.url || file.url;
   } catch {
     return file.url;
   }
