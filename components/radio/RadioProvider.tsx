@@ -4,12 +4,42 @@ import { createContext, useContext, useState, useRef, useEffect, useCallback } f
 
 // ── Channels ──────────────────────────────────────────────────────────────────
 export const RADIO_CHANNELS = [
-  { id: "main",      label: "Jahkno! Main",          url: "https://streaming.radio.co/s00d41a200/listen" },
-  { id: "dancehall", label: "Dancehall Reggae",       url: "http://stream.zeno.fm/7qrr5rm9g0hvv" },
-  { id: "hiphop",    label: "Hip-Hop × R&B",          url: "http://stream.zeno.fm/4k3px7s9g0hvv" },
-  { id: "afrobeats", label: "Afrobeats × Amapiano",   url: "http://stream.zeno.fm/n95vb4dah0hvv" },
-  { id: "gospel",    label: "Gospel",                 url: "https://stream.zeno.fm/azvi4fweulauv" },
-  { id: "trending",  label: "Trending",               url: "https://stream-163.zeno.fm/ce1jvste7tpuv" },
+  {
+    id: "main",
+    label: "Jahkno! Main",
+    url: "https://streaming.radio.co/s00d41a200/listen",
+    artwork: "https://jahknoradio.com/wp-content/uploads/2021/01/jahkno-radio-main-370x370.webp",
+  },
+  {
+    id: "dancehall",
+    label: "Dancehall Reggae",
+    url: "http://stream.zeno.fm/7qrr5rm9g0hvv",
+    artwork: "https://jahknoradio.com/wp-content/uploads/2025/03/jahkno-radio-dancehall-reggae-370x370.webp",
+  },
+  {
+    id: "hiphop",
+    label: "Hip-Hop × R&B",
+    url: "http://stream.zeno.fm/4k3px7s9g0hvv",
+    artwork: "https://jahknoradio.com/wp-content/uploads/2025/03/jahkno-radio-hip-hop-370x370.webp",
+  },
+  {
+    id: "afrobeats",
+    label: "Afrobeats × Amapiano",
+    url: "http://stream.zeno.fm/n95vb4dah0hvv",
+    artwork: "https://jahknoradio.com/wp-content/uploads/2025/03/jahkno-radio-afrobeats-amapiano-370x370.webp",
+  },
+  {
+    id: "gospel",
+    label: "Gospel",
+    url: "https://stream.zeno.fm/azvi4fweulauv",
+    artwork: "https://jahknoradio.com/wp-content/uploads/2025/03/jahkno-radio-gospel-370x370.webp",
+  },
+  {
+    id: "trending",
+    label: "Trending",
+    url: "https://stream-163.zeno.fm/ce1jvste7tpuv",
+    artwork: "https://jahknoradio.com/wp-content/uploads/2025/03/Jahkno-Radio-Trending-370x370.jpg",
+  },
 ] as const;
 
 export type ChannelId = (typeof RADIO_CHANNELS)[number]["id"];
