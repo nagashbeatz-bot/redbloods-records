@@ -435,26 +435,71 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
 
   return (
     <>
-      {/* Header trigger */}
+      {/* Header trigger — LISTEN button */}
       <button
         onClick={() => setPanelOpen((o) => !o)}
         style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: "6px 10px",
-          background: panelOpen ? "rgba(16,185,129,0.1)" : "#1A1A1A",
-          border: `1px solid ${panelOpen ? "rgba(16,185,129,0.3)" : "#2A2A2A"}`,
-          borderRadius: 10,
-          color: panelOpen ? "#34D399" : "#777",
-          fontSize: 12, fontWeight: 500,
+          display: "flex", alignItems: "center", gap: 7,
+          padding: "5px 13px 5px 10px",
+          background: panelOpen
+            ? "rgba(16,185,129,0.13)"
+            : playing
+            ? "rgba(255,255,255,0.05)"
+            : "#161616",
+          border: `1px solid ${
+            panelOpen ? "rgba(16,185,129,0.35)" : playing ? "rgba(255,255,255,0.10)" : "#242424"
+          }`,
+          borderRadius: 100,
+          color: panelOpen ? "#34D399" : playing ? "#D0D0D0" : "#888",
           cursor: "pointer", fontFamily: "inherit",
           transition: "all 0.2s",
           whiteSpace: "nowrap",
         }}
       >
-        {dot}
-        <span style={{ marginRight: 1 }}>Jahkno Radio</span>
+        {/* Status dot */}
+        <span
+          style={{
+            display: "inline-block",
+            width: 6, height: 6, borderRadius: "50%",
+            background: playing ? "#10B981" : panelOpen ? "#10B981" : "#333",
+            boxShadow: playing ? "0 0 6px #10B981" : "none",
+            flexShrink: 0,
+            transition: "background 0.3s, box-shadow 0.3s",
+          }}
+        />
+
+        {/* Play icon */}
+        <span style={{
+          fontSize: 8,
+          color: panelOpen ? "#34D399" : playing ? "#C0C0C0" : "#666",
+          lineHeight: 1,
+          marginRight: -1,
+          transition: "color 0.2s",
+        }}>
+          {playing ? "⏸" : "▶"}
+        </span>
+
+        {/* LISTEN label */}
+        <span style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.10em",
+          textTransform: "uppercase",
+          transition: "color 0.2s",
+        }}>
+          Listen
+        </span>
+
+        {/* LIVE badge — only when playing */}
         {playing && (
-          <span style={{ color: "#10B981", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em" }}>
+          <span style={{
+            fontSize: 8,
+            fontWeight: 800,
+            letterSpacing: "0.12em",
+            color: "#10B981",
+            marginLeft: -2,
+            transition: "opacity 0.3s",
+          }}>
             LIVE
           </span>
         )}
