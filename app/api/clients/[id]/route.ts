@@ -17,6 +17,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     // Get old name before updating so we can sync Monday.com projects
     const existing = await getClient(id);
     const oldName  = existing?.name?.trim() ?? "";
+    console.log(`[clients PATCH] id=${id} existing client: ${existing ? `"${existing.name}"` : "null"} → newName="${newName}"`);
 
     // Update client in Supabase
     await updateClient(id, {
@@ -29,21 +30,29 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     });
 
     // If the name changed — update artist field on all matching Monday.com projects
+    console.log(`[clients PATCH] name change detected: "${oldName}" → "${newName}"`);
     if (oldName && oldName !== newName) {
       try {
         const { fetchProjects, updateProjectField } = await import("@/lib/monday");
         const projects = await fetchProjects();
+        console.log(`[clients PATCH] fetched ${projects.length} projects from Monday`);
 
         // Find projects where the artist matches the old client name
-        const toUpdate = projects.filter((p) =>
-          p.artist
+        const toUpdate = projects.filter((p) => {
+          if (!p.artist) return false;
+          return p.artist
             .split(/[,،;]/)
             .map((a: string) => a.trim())
-            .some((a: string) => a.toLowerCase() === oldName.toLowerCase())
+            .some((a: string) => a.toLowerCase() === oldName.toLowerCase());
+        });
+
+        console.log(
+          `[clients PATCH] projects with artist="${oldName}": ${toUpdate.length}`,
+          toUpdate.map((p) => ({ id: p.id, name: p.name, artist: p.artist }))
         );
 
         // Update each matching project's artist — replace old name with new name
-        await Promise.all(
+        const results = await Promise.allSettled(
           toUpdate.map((p) => {
             const updatedArtist = p.artist
               .split(/[,،;]/)
@@ -52,10 +61,19 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
                 a.toLowerCase() === oldName.toLowerCase() ? newName : a
               )
               .join(", ");
+            console.log(`[clients PATCH] updating project ${p.id} artist: "${p.artist}" → "${updatedArtist}"`);
             return updateProjectField(p.id, "artist", updatedArtist);
           })
         );
 
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length > 0) {
+          const failMsg = (failed[0] as PromiseRejectedResult).reason?.message || "unknown";
+          console.error(`[clients PATCH] ${failed.length} project update(s) failed:`, failMsg);
+          return NextResponse.json({ ok: true, syncedProjects: toUpdate.length - failed.length, syncWarning: failMsg });
+        }
+
+        console.log(`[clients PATCH] synced ${toUpdate.length} project(s) successfully`);
         return NextResponse.json({ ok: true, syncedProjects: toUpdate.length });
       } catch (syncErr) {
         // Sync failure is non-fatal — client was updated, just log the error

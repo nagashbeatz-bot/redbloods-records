@@ -73,7 +73,7 @@ export default function ArtistCellEdit({ value, artists, onSave }: Props) {
 
   const triggerRef          = useRef<HTMLDivElement>(null);
   const inputRef            = useRef<HTMLInputElement>(null);
-  const [popPos, setPopPos] = useState({ top: 0, left: 0 });
+  const [popPos, setPopPos] = useState<{ top?: number; bottom?: number; left: number }>({ left: 0 });
 
   const parsed = parseArtists(value);
 
@@ -84,10 +84,18 @@ export default function ArtistCellEdit({ value, artists, onSave }: Props) {
   function openPopover(e: React.MouseEvent | React.KeyboardEvent) {
     e.stopPropagation();
     if (!triggerRef.current) return;
-    const rect  = triggerRef.current.getBoundingClientRect();
-    const POP_W = 280;
-    const left  = Math.min(Math.max(rect.left, 8), window.innerWidth - POP_W - 8);
-    setPopPos({ top: rect.bottom + 4, left });
+    const rect       = triggerRef.current.getBoundingClientRect();
+    const POP_W      = 280;
+    const POP_H      = 300; // conservative max height (includes autocomplete list)
+    const left       = Math.min(Math.max(rect.left, 8), window.innerWidth - POP_W - 8);
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    if (spaceBelow >= POP_H) {
+      // Enough room below — open downward
+      setPopPos({ top: rect.bottom + 4, left });
+    } else {
+      // Not enough room — flip above: anchor the bottom edge just above the trigger
+      setPopPos({ bottom: window.innerHeight - rect.top + 4, left });
+    }
     setTags([...parsed]);
     setInput("");
     setHiIdx(-1);
@@ -154,6 +162,7 @@ export default function ArtistCellEdit({ value, artists, onSave }: Props) {
         style={{
           position:     "fixed",
           top:          popPos.top,
+          bottom:       popPos.bottom,
           left:         popPos.left,
           width:        280,
           zIndex:       99999,

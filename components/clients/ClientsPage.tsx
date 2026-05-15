@@ -115,6 +115,13 @@ export default function ClientsPage() {
         setClients((prev) =>
           prev.map((c) => (c.id === editing.id ? { id: editing.id, ...form } : c))
         );
+        // Warn if Monday.com artist sync failed (non-fatal)
+        if (d.syncWarning) {
+          console.warn("[ClientsPage] Monday sync warning:", d.syncWarning);
+          alert(`הלקוח עודכן, אך עדכון שם האמן בפרויקטים נכשל:\n${d.syncWarning}`);
+        } else if (typeof d.syncedProjects === "number" && d.syncedProjects > 0) {
+          console.log(`[ClientsPage] synced artist name in ${d.syncedProjects} project(s)`);
+        }
       } else {
         const r = await fetch("/api/clients", {
           method: "POST",
