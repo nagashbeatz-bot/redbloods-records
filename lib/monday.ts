@@ -423,7 +423,14 @@ export async function createProject(fields: {
   const colValues: Record<string, unknown> = {};
 
   if (fields.artist && colMap.artist) {
-    colValues[colMap.artist] = fields.artist;
+    // Artist is a dropdown column — must pass { labels } format
+    const artistLabels = fields.artist
+      .split(/[,،;]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    colValues[colMap.artist] = artistLabels.length > 0
+      ? { labels: artistLabels }
+      : { labels: [] };
   }
 
   if (fields.notes && colMap.notes) {
@@ -470,6 +477,7 @@ export async function createProject(fields: {
         board_id: $boardId
         item_name: $name
         column_values: $colValues
+        create_labels_if_missing: true
       ) { id }
     }
   `,
