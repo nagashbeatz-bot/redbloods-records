@@ -178,6 +178,10 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       try {
         const { date, time: startTime } = isoToIsrael(startIso);
         const { time: endTime }         = isoToIsrael(endIso);
+        const sessionType =
+          action.id === "channel-clean" ? "ניקוי מיקס" :
+          action.id === "rehearsal"     ? "חזרה"        : "סשן";
+
         await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -186,8 +190,9 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             date,
             startTime,
             endTime,
-            status: "מתוכנן",
-            notes: action.calPrefix,
+            status:      "מתוכנן",
+            sessionType,
+            notes:       action.calPrefix,
             calendarEventId: d.event?.id ?? null,
           }),
         });
