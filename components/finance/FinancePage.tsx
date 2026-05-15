@@ -47,7 +47,7 @@ interface TxDraft {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
-const EXPENSE_CATEGORIES = ["מיקס/מאסטר", "צילום", "עריכת וידאו", "גרפיקה", "הפצה", "שיווק", "ציוד", "אחר"];
+const EXPENSE_CATEGORIES = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
 
 const STATUS_COLOR: Record<PaymentStatus, string> = {
   "שולם":    "#10B981",
@@ -126,40 +126,24 @@ function SummaryCard({ label, value, color, sub, icon }: {
   );
 }
 
-// ── Category field (predefined + free-text "אחר") ────────────────────────────
+// ── Category field ────────────────────────────────────────────────────────────
 function CategoryField({ draft, setDraft }: { draft: TxDraft; setDraft: (d: TxDraft) => void }) {
-  const isCustom = draft.category !== "" && !EXPENSE_CATEGORIES.includes(draft.category);
-  const [showCustom, setShowCustom] = useState(isCustom);
-
+  const isOther = draft.category === "אחר";
   return (
     <>
-      <label style={LABEL_S}>קטגוריה</label>
+      <label style={LABEL_S}>קטגוריית הוצאה</label>
       <select
-        value={showCustom ? "__other__" : draft.category}
-        onChange={(e) => {
-          if (e.target.value === "__other__") {
-            setShowCustom(true);
-            setDraft({ ...draft, category: "" });
-          } else {
-            setShowCustom(false);
-            setDraft({ ...draft, category: e.target.value });
-          }
-        }}
+        value={draft.category}
+        onChange={(e) => setDraft({ ...draft, category: e.target.value })}
         style={INPUT_S}
       >
         <option value="">בחר...</option>
         {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        <option value="__other__">אחר (הקלד בחופשי)</option>
       </select>
-      {showCustom && (
-        <input
-          autoFocus
-          type="text"
-          value={draft.category}
-          onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-          placeholder="תאר את ההוצאה..."
-          style={{ ...INPUT_S, marginTop: 6 }}
-        />
+      {isOther && (
+        <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 5 }}>
+          ⚠ נא למלא תיאור מפורט בשדה "תיאור" למטה
+        </div>
       )}
     </>
   );

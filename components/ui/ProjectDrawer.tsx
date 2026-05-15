@@ -72,7 +72,7 @@ interface Draft {
 const STATUS_OPTIONS:   SessionStatus[]   = ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"];
 const TYPE_OPTIONS:     SessionType[]     = ["סשן", "ניקוי מיקס", "חזרה"];
 const PMT_STATUS_OPTS:  PaymentStatus[]   = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
-const EXPENSE_CATS      = ["מיקס/מאסטר", "צילום", "עריכת וידאו", "גרפיקה", "הפצה", "שיווק", "ציוד", "אחר"];
+const EXPENSE_CATS      = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
   "מתוכנן":  "#3B82F6",
