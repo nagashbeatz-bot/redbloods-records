@@ -19,7 +19,7 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
   const [open, setOpen]       = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
-  const [dropPos, setDropPos] = useState({ top: 0, left: 0, minWidth: 160 });
+  const [dropPos, setDropPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number }>({ left: 0, minWidth: 160 });
   const triggerRef            = useRef<HTMLButtonElement>(null);
   const errorTimer            = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -47,11 +47,16 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     if (saving) return;
 
     if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
+      const rect      = triggerRef.current.getBoundingClientRect();
       const dropWidth = 168;
-      // align right edge of dropdown to right edge of trigger, clamp to viewport
-      const left = Math.max(rect.right - dropWidth, 8);
-      setDropPos({ top: rect.bottom + 4, left, minWidth: dropWidth });
+      const DROP_H    = 300; // conservative max height (6 statuses × ~38px + padding)
+      const left      = Math.max(rect.right - dropWidth, 8);
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      if (spaceBelow >= DROP_H) {
+        setDropPos({ top: rect.bottom + 4, left, minWidth: dropWidth });
+      } else {
+        setDropPos({ bottom: window.innerHeight - rect.top + 4, left, minWidth: dropWidth });
+      }
     }
     setOpen((v) => !v);
   };
@@ -83,6 +88,7 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
       style={{
         position:  "fixed",
         top:       dropPos.top,
+        bottom:    dropPos.bottom,
         left:      dropPos.left,
         zIndex:    99999,
         background: "#1A1A1A",
