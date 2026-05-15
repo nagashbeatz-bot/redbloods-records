@@ -7,6 +7,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 // ── Types ─────────────────────────────────────────────────────────────────────
 type PaymentStatus = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "התקבל" | "לבדיקה";
 type Period = "month" | "prev-month" | "30days" | "year" | "custom";
+type SortMode = "date-desc" | "date-asc" | "amount-desc" | "project" | "status" | "type";
 
 interface Transaction {
   id: string;
@@ -557,6 +558,8 @@ export default function FinancePage() {
   const [typeFilter,    setTypeFilter]    = useState<"all" | "income" | "expense">("all");
   const [statusFilter,  setStatusFilter]  = useState<string>("");
   const [projectFilter, setProjectFilter] = useState("");
+  const [sortMode,      setSortMode]      = useState<SortMode>("date-desc");
+  const [groupByMonth,  setGroupByMonth]  = useState(false);
 
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -599,9 +602,79 @@ export default function FinancePage() {
     return true;
   }
 
-  const datedFiltered   = periodTx.filter(matchesFilters);
+  function sortTx(list: Transaction[]): Transaction[] {
+    const copy = [...list];
+    switch (sortMode) {
+      case "date-desc":
+        return copy.sort((a, b) => {
+          if (!a.date && !b.date) return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          if (!a.date) return 1; if (!b.date) return -1;
+          const d = b.date.localeCompare(a.date);
+          return d !== 0 ? d : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+      case "date-asc":
+        return copy.sort((a, b) => {
+          if (!a.date && !b.date) return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          if (!a.date) return 1; if (!b.date) return -1;
+          const d = a.date.localeCompare(b.date);
+          return d !== 0 ? d : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+      case "amount-desc":
+        return copy.sort((a, b) => b.amount - a.amount);
+      case "project":
+        return copy.sort((a, b) => {
+          const pA = projects.find((p) => p.id === a.project_id)?.name ?? "";
+          const pB = projects.find((p) => p.id === b.project_id)?.name ?? "";
+          return pA.localeCompare(pB, "he");
+        });
+      case "status":
+        return copy.sort((a, b) => a.payment_status.localeCompare(b.payment_status, "he"));
+      case "type":
+        return copy.sort((a, b) => a.type.localeCompare(b.type));
+      default:
+        return copy;
+    }
+  }
+
+  // Build display items (with optional month grouping)
+  type DisplayItem =
+    | { kind: "header"; label: string; key: string }
+    | { kind: "row";    tx: Transaction; rowIndex: number };
+
+  function buildDisplayItems(sorted: Transaction[], undated: Transaction[]): DisplayItem[] {
+    if (!groupByMonth) {
+      const items: DisplayItem[] = sorted.map((tx, i) => ({ kind: "row" as const, tx, rowIndex: i }));
+      if (showUndated) undated.forEach((tx, i) => items.push({ kind: "row", tx, rowIndex: sorted.length + i }));
+      return items;
+    }
+    // Group dated transactions by YYYY-MM
+    const groups: { key: string; label: string; txs: Transaction[] }[] = [];
+    const seen = new Map<string, number>();
+    sorted.forEach((tx) => {
+      if (!tx.date) return;
+      const key = tx.date.substring(0, 7);
+      const [y, m] = key.split("-");
+      const label = `${HEB_MONTHS[parseInt(m) - 1]} ${y}`;
+      if (!seen.has(key)) { seen.set(key, groups.length); groups.push({ key, label, txs: [] }); }
+      groups[seen.get(key)!].txs.push(tx);
+    });
+    const items: DisplayItem[] = [];
+    let ri = 0;
+    groups.forEach((g) => {
+      items.push({ kind: "header", label: g.label, key: g.key });
+      g.txs.forEach((tx) => items.push({ kind: "row", tx, rowIndex: ri++ }));
+    });
+    if (showUndated && undated.length > 0) {
+      items.push({ kind: "header", label: "ללא תאריך", key: "undated" });
+      undated.forEach((tx) => items.push({ kind: "row", tx, rowIndex: ri++ }));
+    }
+    return items;
+  }
+
+  const datedFiltered   = sortTx(periodTx.filter(matchesFilters));
   const undatedFiltered = noDateTx.filter(matchesFilters);
   const filtered        = showUndated ? [...datedFiltered, ...undatedFiltered] : datedFiltered;
+  const displayItems    = buildDisplayItems(datedFiltered, undatedFiltered);
 
   const projectsWithTx = projects.filter((p) => transactions.some((t) => t.project_id === p.id));
   const allStatuses    = [...new Set(transactions.map((t) => t.payment_status))];
@@ -852,6 +925,33 @@ export default function FinancePage() {
           {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
+        <div style={{ width: 1, height: 20, background: "#2A2A2A", margin: "0 2px" }} />
+
+        {/* Sort */}
+        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={{
+          background: "transparent", border: `1px solid ${sortMode !== "date-desc" ? "#A855F7" : "#2A2A2A"}`,
+          borderRadius: 8, color: sortMode !== "date-desc" ? "#A855F7" : "#555",
+          fontSize: 12, padding: "5px 10px", outline: "none", fontFamily: "inherit",
+        }}>
+          <option value="date-desc">מהחדש לישן</option>
+          <option value="date-asc">מהישן לחדש</option>
+          <option value="amount-desc">לפי סכום</option>
+          <option value="project">לפי פרויקט</option>
+          <option value="status">לפי סטטוס</option>
+          <option value="type">לפי סוג</option>
+        </select>
+
+        {/* Group by month */}
+        <button onClick={() => setGroupByMonth((v) => !v)} style={{
+          padding: "5px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+          background: groupByMonth ? "rgba(168,85,247,0.12)" : "transparent",
+          color: groupByMonth ? "#A855F7" : "#555",
+          fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+          outline: groupByMonth ? "1px solid rgba(168,85,247,0.3)" : "none",
+        }}>
+          קיבוץ חודשי
+        </button>
+
         <span style={{ fontSize: 11, color: "#444", marginRight: "auto" }}>{filtered.length} תנועות</span>
       </div>
 
@@ -876,7 +976,20 @@ export default function FinancePage() {
             <div>תיאור / קטגוריה</div><div>סכום</div><div>סטטוס</div><div>אמצעי תשלום</div><div />
           </div>
 
-          {filtered.map((tx, i) => {
+          {displayItems.map((item) => {
+            if (item.kind === "header") {
+              return (
+                <div key={`hdr-${item.key}`} style={{
+                  padding: "8px 16px 6px", background: "#111",
+                  borderBottom: "1px solid #252525",
+                  fontSize: 11, fontWeight: 700, color: "#555",
+                  letterSpacing: "0.06em",
+                }}>
+                  {item.label}
+                </div>
+              );
+            }
+            const { tx, rowIndex: i } = item;
             const proj     = projects.find((p) => p.id === tx.project_id);
             const isIncome = tx.type === "income";
             const undated  = !tx.date;
@@ -885,7 +998,7 @@ export default function FinancePage() {
                 style={{
                   display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px",
                   gap: 8, padding: "10px 16px", alignItems: "center",
-                  borderBottom: i < filtered.length - 1 ? "1px solid #202020" : "none",
+                  borderBottom: "1px solid #202020",
                   background: undated ? "#1D1810" : i % 2 === 0 ? "#1A1A1A" : "#181818",
                   transition: "background 0.1s",
                 }}
