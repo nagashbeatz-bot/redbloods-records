@@ -557,10 +557,10 @@ export default function ProjectsTable() {
             gridTemplateColumns: isMobile
               ? "56px 1fr auto auto"
               : isUltraCompact
-              ? "120px 3fr 2fr 3fr 2fr"
+              ? "90px 3fr 2fr 3fr 2fr 44px"
               : isCompact
-              ? "120px 2.5fr 2fr 3fr 1fr 1.8fr"
-              : "120px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
+              ? "90px 2.5fr 2fr 3fr 1fr 1.8fr 44px"
+              : "90px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr 44px",
             gap: isMobile ? "8px" : "12px",
             paddingLeft: isMobile ? "12px" : "20px",
             paddingRight: isMobile ? "12px" : "20px",
@@ -577,6 +577,7 @@ export default function ProjectsTable() {
           {!isMobile && !isCompact && !isUltraCompact && <div>שייך ל</div>}
           <div>דדליין</div>
           {!isMobile && !isCompact && !isUltraCompact && <div>הערות</div>}
+          {!isMobile && <div />}
         </div>
 
         {filtered.length === 0 ? (
@@ -610,10 +611,10 @@ export default function ProjectsTable() {
                   gridTemplateColumns: isMobile
                     ? "56px 1fr auto auto"
                     : isUltraCompact
-                    ? "90px 3fr 2fr 3fr 2fr"
+                    ? "90px 3fr 2fr 3fr 2fr 44px"
                     : isCompact
-                    ? "90px 2.5fr 2fr 3fr 1fr 1.8fr"
-                    : "90px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr",
+                    ? "90px 2.5fr 2fr 3fr 1fr 1.8fr 44px"
+                    : "90px 3fr 2.8fr 2.4fr 1fr 1.5fr 2fr 1fr 44px",
                   gap: isMobile ? "8px" : "12px",
                   paddingLeft: isMobile ? "12px" : "20px",
                   paddingRight: isMobile ? "12px" : "20px",
@@ -676,58 +677,6 @@ export default function ProjectsTable() {
                     existingFiles={p.files}
                     size="sm"
                   />
-
-                  {/* ── Trash / confirm delete ── */}
-                  {confirmDeleteId === p.id ? (
-                    <button
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDeleteId(null);
-                        deleteProject(p.id);
-                      }}
-                      title="לחץ לאישור מחיקה"
-                      style={{
-                        width: 26, height: 26, borderRadius: "50%",
-                        border: "1px solid rgba(239,68,68,0.5)",
-                        background: "rgba(239,68,68,0.12)",
-                        color: "#EF4444", cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 9, flexShrink: 0, fontWeight: 700,
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      בטוח?
-                    </button>
-                  ) : (
-                    <button
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
-                      title="מחק פרויקט"
-                      style={{
-                        width: 26, height: 26, borderRadius: "50%",
-                        border: "none",
-                        background: "transparent",
-                        color: "#444", cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        flexShrink: 0, transition: "all 0.13s",
-                      }}
-                      onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, {
-                        background: "rgba(239,68,68,0.1)", color: "#EF4444",
-                      })}
-                      onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, {
-                        background: "transparent", color: "#444",
-                      })}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="1,3 11,3" />
-                        <path d="M4,3V2a1,1,0,0,1,1-1H7a1,1,0,0,1,1,1V3" />
-                        <rect x="2" y="3" width="8" height="8" rx="1" />
-                        <line x1="5" y1="6" x2="5" y2="9" />
-                        <line x1="7" y1="6" x2="7" y2="9" />
-                      </svg>
-                    </button>
-                  )}
                 </div>
 
                 {/* ── Name ── */}
@@ -852,6 +801,53 @@ export default function ProjectsTable() {
                       value={p.notes || ""}
                       onSave={(v) => updateProjectField(p.id, "notes", v)}
                     />
+                  </div>
+                )}
+
+                {/* ── מחיקה — last column, hidden on mobile ── */}
+                {!isMobile && (
+                  <div style={{ ...cell, justifyContent: "center", overflow: "visible" }} onClick={(e) => e.stopPropagation()}>
+                    {confirmDeleteId === p.id ? (
+                      <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); deleteProject(p.id); }}
+                        title="לחץ לאישור מחיקה"
+                        style={{
+                          width: 34, height: 22, borderRadius: 6,
+                          border: "1px solid rgba(239,68,68,0.5)",
+                          background: "rgba(239,68,68,0.12)",
+                          color: "#EF4444", cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 9, fontWeight: 700, fontFamily: "inherit",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        בטוח?
+                      </button>
+                    ) : (
+                      <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
+                        title="מחק פרויקט"
+                        style={{
+                          width: 26, height: 26, borderRadius: "50%",
+                          border: "none", background: "transparent",
+                          color: "#333", cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "all 0.13s",
+                        }}
+                        onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(239,68,68,0.1)", color: "#EF4444" })}
+                        onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#333" })}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1,3 11,3" />
+                          <path d="M4,3V2a1,1,0,0,1,1-1H7a1,1,0,0,1,1,1V3" />
+                          <rect x="2" y="3" width="8" height="8" rx="1" />
+                          <line x1="5" y1="6" x2="5" y2="9" />
+                          <line x1="7" y1="6" x2="7" y2="9" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
