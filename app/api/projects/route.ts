@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listProjects, createProject } from "@/lib/projects-store";
+import { upsertArtistsFromProject } from "@/lib/clients-store";
 
 // GET /api/projects — list all projects
 export async function GET() {
@@ -32,6 +33,11 @@ export async function POST(req: NextRequest) {
       project_type:   projectType           || "",
       parent_project: parentProject         || "",
     });
+
+    // Auto-create missing artists in clients table (fire-and-forget)
+    if (artist?.trim()) {
+      upsertArtistsFromProject(artist).catch(() => {});
+    }
 
     return NextResponse.json({ ok: true, id: project.id, project });
   } catch (err) {

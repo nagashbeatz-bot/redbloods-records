@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateProject, deleteProject } from "@/lib/projects-store";
+import { upsertArtistsFromProject } from "@/lib/clients-store";
 import type { UpdatableField } from "@/lib/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -32,6 +33,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }
 
       await updateProject(id, { [col]: value || (field === "deadline" ? null : "") } as Parameters<typeof updateProject>[1]);
+
+      // Sync new artists to clients table (fire-and-forget)
+      if (field === "artist" && value?.trim()) {
+        upsertArtistsFromProject(value).catch(() => {});
+      }
+
       return NextResponse.json({ ok: true });
     }
 
@@ -50,6 +57,11 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ...(projectType    !== undefined && { project_type:   projectType }),
       ...(parentProject  !== undefined && { parent_project: parentProject }),
     });
+
+    // Sync new artists to clients table (fire-and-forget)
+    if (artist?.trim()) {
+      upsertArtistsFromProject(artist).catch(() => {});
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

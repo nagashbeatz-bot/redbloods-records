@@ -64,3 +64,41 @@ export async function deleteClient(id: string): Promise<void> {
 
   if (error) throw new Error(error.message);
 }
+
+/**
+ * Given a raw artist string (comma/semicolon separated),
+ * ensure every named artist exists in the clients table.
+ * Creates missing ones with type "אמן" and status "חדש".
+ * Silently skips names that already exist (matched by trimmed name).
+ */
+export async function upsertArtistsFromProject(rawArtist: string): Promise<void> {
+  const names = rawArtist
+    .split(/[,،;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (names.length === 0) return;
+
+  // Fetch all existing client names in one query
+  const { data: existing } = await supabase
+    .from("clients")
+    .select("name")
+    .in("name", names);
+
+  const existingNames = new Set((existing ?? []).map((c: { name: string }) => c.name));
+
+  const toCreate = names.filter((n) => !existingNames.has(n));
+  if (toCreate.length === 0) return;
+
+  await supabase.from("clients").insert(
+    toCreate.map((name) => ({
+      name,
+      phone:  "",
+      email:  "",
+      type:   "אמן" as ClientType,
+      status: "חדש" as ClientStatus,
+      notes:  "",
+    }))
+  );
+  // Ignore insert errors (race conditions, duplicates) — best effort
+}
