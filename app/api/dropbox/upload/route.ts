@@ -57,7 +57,10 @@ export async function POST(req: NextRequest) {
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
       console.error("[dropbox/upload] upload failed:", errText);
-      return NextResponse.json({ error: "שגיאה בהעלאה ל-Dropbox" }, { status: 500 });
+      // Return the actual Dropbox error so we can debug
+      let detail = errText;
+      try { detail = JSON.parse(errText)?.error_summary ?? errText; } catch {}
+      return NextResponse.json({ error: `Dropbox: ${detail}` }, { status: 500 });
     }
 
     const uploaded = (await uploadRes.json()) as {
