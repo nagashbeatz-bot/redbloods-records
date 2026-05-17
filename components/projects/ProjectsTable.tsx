@@ -372,7 +372,10 @@ export default function ProjectsTable() {
 
   const filtered = projects
     .filter((p) => {
-      if (artistFilter && p.artist !== artistFilter) return false;
+      if (artistFilter) {
+        const projectArtists = p.artist.split(/[,،;]/).map((a) => a.trim()).filter(Boolean);
+        if (!projectArtists.includes(artistFilter)) return false;
+      }
       if (typeFilter) {
         // For אלבום/EP/רידים: include both the project itself AND items belonging to it via parentProject
         const parentPrefix: Record<string, string> = {
