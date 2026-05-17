@@ -37,6 +37,8 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
   // Exception step: "warn" = first screen, "exception" = reason input screen
   const [warnStep,        setWarnStep]        = useState<"warn" | "exception">("warn");
   const [exceptionReason, setExceptionReason] = useState("");
+  // Completion delivery prompt
+  const [showDeliveryPrompt, setShowDeliveryPrompt] = useState(false);
   const triggerRef                  = useRef<HTMLButtonElement>(null);
   const errorTimer                  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -84,6 +86,10 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     if (errorTimer.current) clearTimeout(errorTimer.current);
     try {
       await updateProjectField(projectId, "status", next);
+      // After marking complete, offer to create delivery folder
+      if (next === "הושלם") {
+        setShowDeliveryPrompt(true);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "שגיאה";
       setError(msg);
@@ -225,6 +231,64 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
       {/* Portal dropdown — escapes parent overflow:hidden */}
       {open && typeof document !== "undefined" &&
         createPortal(dropdown, document.body)}
+
+      {/* Completion delivery prompt */}
+      {showDeliveryPrompt && typeof document !== "undefined" && createPortal(
+        <div
+          onClick={() => setShowDeliveryPrompt(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: "rgba(0,0,0,0.65)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#161616", border: "1px solid #2A2A2A",
+              borderRadius: 16, padding: "24px 24px 20px",
+              width: 340, direction: "rtl",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
+            }}
+          >
+            <div style={{ fontSize: 26, marginBottom: 8, textAlign: "center" }}>✅</div>
+            <p style={{ color: "#10B981", fontWeight: 700, fontSize: 15, margin: "0 0 6px", textAlign: "center" }}>
+              הפרויקט הושלם!
+            </p>
+            <p style={{ color: "#555", fontSize: 12, margin: "0 0 20px", textAlign: "center", lineHeight: 1.6 }}>
+              רוצה ליצור תיקיית מסירה ב-Dropbox וללינק קבוע ללקוח?
+            </p>
+            <button
+              onClick={() => {
+                setShowDeliveryPrompt(false);
+                openProject(projectId);
+              }}
+              style={{
+                display: "block", width: "100%", padding: "10px 0",
+                borderRadius: 10, border: "1px solid rgba(168,85,247,0.4)",
+                background: "rgba(168,85,247,0.1)", color: "#C084FC",
+                cursor: "pointer", fontSize: 13, fontWeight: 700,
+                fontFamily: "inherit", marginBottom: 8, textAlign: "center",
+              }}
+            >
+              📁 צור תיקיית מסירה
+            </button>
+            <button
+              onClick={() => setShowDeliveryPrompt(false)}
+              style={{
+                display: "block", width: "100%", padding: "8px 0",
+                borderRadius: 10, border: "1px solid #2A2A2A",
+                background: "transparent", color: "#555",
+                cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+                textAlign: "center",
+              }}
+            >
+              דלג כרגע
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Payment warning portal */}
       {paymentWarning && typeof document !== "undefined" && createPortal(

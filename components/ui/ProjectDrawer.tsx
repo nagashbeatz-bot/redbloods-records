@@ -228,6 +228,105 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     }
   };
 
+  // ── Delivery handlers ──────────────────────────────────────────────────────
+  const handleCreateDelivery = async () => {
+    if (!project) return;
+    setDeliveryCreating(true);
+    setDeliveryError(null);
+    try {
+      const res = await fetch("/api/delivery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId:   project.id,
+          artist:      project.artist,
+          projectName: project.name,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "שגיאה ביצירת מסירה");
+      setDelivery({ ...d, files: [] });
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : "שגיאה");
+      setTimeout(() => setDeliveryError(null), 5000);
+    } finally {
+      setDeliveryCreating(false);
+    }
+  };
+
+  const handleDeliveryDeleteFolder = async () => {
+    if (!project) return;
+    setDeliveryDeleting(true);
+    setDeliveryError(null);
+    try {
+      const res = await fetch(`/api/delivery?projectId=${project.id}`, { method: "DELETE" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "שגיאה במחיקה");
+      setDelivery({ folderPath: "", deliveryLink: "", deliveryStatus: "not_created", deliveredAt: null, files: [] });
+      setDeliveryConfirmDelete(false);
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : "שגיאה");
+      setTimeout(() => setDeliveryError(null), 5000);
+    } finally {
+      setDeliveryDeleting(false);
+    }
+  };
+
+  const handleDeliveryMarkDelivered = async () => {
+    if (!project || !delivery) return;
+    const today = new Date().toISOString().split("T")[0];
+    const res = await fetch("/api/delivery", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: project.id, deliveryStatus: "delivered", deliveredAt: today }),
+    });
+    if (res.ok) {
+      setDelivery({ ...delivery, deliveryStatus: "delivered", deliveredAt: today });
+    }
+  };
+
+  const handleDeliveryUploadFiles = async (files: FileList | File[]) => {
+    if (!project || !delivery) return;
+    setDeliveryUploading(true);
+    setDeliveryError(null);
+    const arr = Array.from(files);
+    try {
+      const results: DeliveryFile[] = [];
+      for (const file of arr) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("projectId", project.id);
+        const res = await fetch("/api/delivery/upload", { method: "POST", body: fd });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || `שגיאה בהעלאת ${file.name}`);
+        results.push(d.file as DeliveryFile);
+      }
+      // Refresh file list from server
+      fetchDelivery();
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : "שגיאה בהעלאה");
+      setTimeout(() => setDeliveryError(null), 6000);
+    } finally {
+      setDeliveryUploading(false);
+    }
+  };
+
+  const handleDeliveryDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDeliveryDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleDeliveryUploadFiles(e.dataTransfer.files);
+    }
+  };
+
+  const handleDeliveryCopyLink = () => {
+    if (!delivery?.deliveryLink) return;
+    navigator.clipboard.writeText(delivery.deliveryLink).then(() => {
+      setDeliveryCopied(true);
+      setTimeout(() => setDeliveryCopied(false), 2000);
+    }).catch(() => {});
+  };
+
   // ── Session state ──────────────────────────────────────────────────────────
   const [sessions,       setSessions]       = useState<Session[]>([]);
   const [sessionLimit,   setSessionLimit]   = useState(3);
@@ -325,6 +424,42 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         setFinLoaded(true);
       })
       .catch(() => setFinLoaded(true));
+  }, [projectId]);
+
+  // ── Delivery state ─────────────────────────────────────────────────────────
+  interface DeliveryFile { name: string; path: string; }
+  interface DeliveryState {
+    folderPath:     string;
+    deliveryLink:   string;
+    deliveryStatus: "not_created" | "ready" | "delivered";
+    deliveredAt:    string | null;
+    files:          DeliveryFile[];
+  }
+  const [delivery,         setDelivery]         = useState<DeliveryState | null>(null);
+  const [deliveryLoading,  setDeliveryLoading]  = useState(false);
+  const [deliveryCreating, setDeliveryCreating] = useState(false);
+  const [deliveryDeleting, setDeliveryDeleting] = useState(false);
+  const [deliveryConfirmDelete, setDeliveryConfirmDelete] = useState(false);
+  const [deliveryError,    setDeliveryError]    = useState<string | null>(null);
+  const [deliveryUploading,setDeliveryUploading]= useState(false);
+  const [deliveryDragOver, setDeliveryDragOver] = useState(false);
+  const [deliveryCopied,   setDeliveryCopied]   = useState(false);
+
+  const fetchDelivery = () => {
+    setDeliveryLoading(true);
+    fetch(`/api/delivery?projectId=${projectId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.delivery) setDelivery(d.delivery as DeliveryState);
+      })
+      .catch(() => {})
+      .finally(() => setDeliveryLoading(false));
+  };
+
+  useEffect(() => {
+    setDelivery(null);
+    fetchDelivery();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // ── ESC to close ───────────────────────────────────────────────────────────
@@ -1523,6 +1658,214 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               <div style={{ fontSize: 11, color: "#444" }}>אין קבצים</div>
             )}
           </Card>
+
+          {/* ── Delivery ─────────────────────────────────────────────────── */}
+          {(project.status === "הושלם" || (delivery && delivery.deliveryStatus !== "not_created")) && (
+            <Card>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#A0A0A0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    מסירה ללקוח
+                  </span>
+                  {delivery && delivery.deliveryStatus === "delivered" && (
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(16,185,129,0.12)", color: "#10B981", border: "1px solid rgba(16,185,129,0.25)" }}>
+                      נמסר ✓
+                    </span>
+                  )}
+                  {delivery && delivery.deliveryStatus === "ready" && (
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(59,130,246,0.12)", color: "#60A5FA", border: "1px solid rgba(59,130,246,0.25)" }}>
+                      מוכן למסירה
+                    </span>
+                  )}
+                </div>
+                {delivery && delivery.deliveryStatus !== "not_created" && !deliveryConfirmDelete && (
+                  <button
+                    onClick={() => setDeliveryConfirmDelete(true)}
+                    title="מחק תיקיית מסירה"
+                    style={{ background: "none", border: "none", color: "#383838", cursor: "pointer", fontSize: 13, transition: "color 0.13s" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#383838")}
+                  >🗑</button>
+                )}
+              </div>
+
+              {/* Not created yet */}
+              {(!delivery || delivery.deliveryStatus === "not_created") && (
+                <div>
+                  {deliveryLoading ? (
+                    <div style={{ fontSize: 12, color: "#444" }}>טוען...</div>
+                  ) : (
+                    <button
+                      onClick={handleCreateDelivery}
+                      disabled={deliveryCreating}
+                      style={{
+                        width: "100%", padding: "10px 0", borderRadius: 10,
+                        border: "1px solid rgba(168,85,247,0.3)",
+                        background: "rgba(168,85,247,0.08)", color: "#C084FC",
+                        cursor: deliveryCreating ? "wait" : "pointer",
+                        fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                        opacity: deliveryCreating ? 0.6 : 1,
+                      }}
+                    >
+                      {deliveryCreating ? "יוצר תיקייה..." : "+ צור תיקיית מסירה ללקוח"}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Created — ready or delivered */}
+              {delivery && delivery.deliveryStatus !== "not_created" && !deliveryConfirmDelete && (
+                <div>
+                  {/* Folder path */}
+                  <div style={{ fontSize: 11, color: "#444", marginBottom: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📁 {delivery.folderPath}
+                  </div>
+
+                  {/* Link buttons */}
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+                    <button
+                      onClick={handleDeliveryCopyLink}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+                        fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+                        border: deliveryCopied ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(168,85,247,0.3)",
+                        background: deliveryCopied ? "rgba(16,185,129,0.1)" : "rgba(168,85,247,0.08)",
+                        color: deliveryCopied ? "#10B981" : "#C084FC",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {deliveryCopied ? "✓ הועתק" : "📋 העתק לינק מסירה"}
+                    </button>
+                    {delivery.deliveryLink && (
+                      <a
+                        href={delivery.deliveryLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5,
+                          padding: "6px 12px", borderRadius: 8,
+                          fontSize: 12, fontWeight: 600, textDecoration: "none",
+                          border: "1px solid #2A2A2A", background: "#1E1E1E", color: "#777",
+                        }}
+                      >
+                        ↗ פתח בדרופבוקס
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Files list */}
+                  {delivery.files.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      {delivery.files.map((f) => (
+                        <div key={f.path} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: "1px solid #1E1E1E" }}>
+                          <span style={{ fontSize: 10, color: "#555", flexShrink: 0 }}>♪</span>
+                          <span style={{ flex: 1, fontSize: 12, color: "#C0C0C0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {f.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Drag & drop upload area */}
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDeliveryDragOver(true); }}
+                    onDragLeave={() => setDeliveryDragOver(false)}
+                    onDrop={handleDeliveryDrop}
+                    style={{
+                      border: `1.5px dashed ${deliveryDragOver ? "#A855F7" : "#2A2A2A"}`,
+                      borderRadius: 10, padding: "14px 10px", textAlign: "center",
+                      background: deliveryDragOver ? "rgba(168,85,247,0.06)" : "transparent",
+                      transition: "all 0.15s", marginBottom: 10, cursor: "pointer",
+                      position: "relative",
+                    }}
+                    onClick={() => {
+                      const inp = document.createElement("input");
+                      inp.type = "file";
+                      inp.multiple = true;
+                      inp.onchange = () => { if (inp.files) handleDeliveryUploadFiles(inp.files); };
+                      inp.click();
+                    }}
+                  >
+                    {deliveryUploading ? (
+                      <span style={{ fontSize: 12, color: "#A855F7" }}>מעלה קבצים...</span>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 18, display: "block", marginBottom: 4 }}>☁</span>
+                        <span style={{ fontSize: 11, color: "#555" }}>גרור קבצים לכאן, או לחץ להעלאה</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Mark delivered / delivered info */}
+                  {delivery.deliveryStatus === "ready" && (
+                    <button
+                      onClick={handleDeliveryMarkDelivered}
+                      style={{
+                        width: "100%", padding: "8px 0", borderRadius: 9,
+                        border: "1px solid rgba(16,185,129,0.3)",
+                        background: "rgba(16,185,129,0.07)", color: "#10B981",
+                        cursor: "pointer", fontSize: 12, fontWeight: 600,
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      ✓ סמן כנמסר ללקוח
+                    </button>
+                  )}
+                  {delivery.deliveryStatus === "delivered" && delivery.deliveredAt && (
+                    <div style={{ fontSize: 11, color: "#10B981", textAlign: "center" }}>
+                      נמסר ב-{delivery.deliveredAt.split("-").reverse().join(".")}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Delete confirm */}
+              {deliveryConfirmDelete && (
+                <div>
+                  <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12, lineHeight: 1.6 }}>
+                    למחוק את תיקיית המסירה מדרופבוקס?<br />
+                    <span style={{ color: "#666", fontSize: 11 }}>כל הקבצים שבתיקיית 05_Delivery יימחקו לצמיתות.</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={handleDeliveryDeleteFolder}
+                      disabled={deliveryDeleting}
+                      style={{
+                        flex: 1, padding: "8px 0", borderRadius: 8,
+                        border: "1px solid rgba(239,68,68,0.35)",
+                        background: "rgba(239,68,68,0.1)", color: "#EF4444",
+                        cursor: deliveryDeleting ? "wait" : "pointer",
+                        fontSize: 12, fontWeight: 700, fontFamily: "inherit",
+                        opacity: deliveryDeleting ? 0.6 : 1,
+                      }}
+                    >
+                      {deliveryDeleting ? "מוחק..." : "מחק תיקיית מסירה"}
+                    </button>
+                    <button
+                      onClick={() => setDeliveryConfirmDelete(false)}
+                      style={{
+                        flex: 1, padding: "8px 0", borderRadius: 8,
+                        border: "1px solid #2A2A2A", background: "transparent",
+                        color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+                      }}
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Error */}
+              {deliveryError && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "#EF4444", background: "#2A1010", border: "1px solid #5A1A1A", borderRadius: 6, padding: "4px 10px" }}>
+                  {deliveryError}
+                </div>
+              )}
+            </Card>
+          )}
 
           {/* ── Actions ──────────────────────────────────────────────────── */}
           <Card>

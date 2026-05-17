@@ -41,6 +41,13 @@ interface FinanceSetting {
   currency: string;
 }
 
+interface DeliveryRecord {
+  projectId:      string;
+  deliveryLink:   string;
+  deliveryStatus: string;
+  deliveredAt:    string | null;
+}
+
 interface ProjectFinance {
   projectId: string;
   name: string;
@@ -89,11 +96,12 @@ interface ClientDrawerProps {
 export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerProps) {
   const { openProject } = useGlobalProjectDrawer();
 
-  const [projects,   setProjects]   = useState<Project[]>([]);
-  const [finances,   setFinances]   = useState<ProjectFinance[]>([]);
-  const [sessions,   setSessions]   = useState<Session[]>([]);
-  const [loading,    setLoading]    = useState(false);
-  const [mounted,    setMounted]    = useState(false);
+  const [projects,    setProjects]   = useState<Project[]>([]);
+  const [finances,    setFinances]   = useState<ProjectFinance[]>([]);
+  const [sessions,    setSessions]   = useState<Session[]>([]);
+  const [deliveries,  setDeliveries] = useState<DeliveryRecord[]>([]);
+  const [loading,     setLoading]    = useState(false);
+  const [mounted,     setMounted]    = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -110,13 +118,15 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
     setProjects([]);
     setFinances([]);
     setSessions([]);
+    setDeliveries([]);
 
     try {
-      // Fetch projects + transactions + sessions in parallel
-      const [projRes, txRes, sessRes] = await Promise.all([
+      // Fetch projects + transactions + sessions + deliveries in parallel
+      const [projRes, txRes, sessRes, delivRes] = await Promise.all([
         fetch("/api/projects").then((r) => r.json()),
         fetch("/api/transactions?all=1").then((r) => r.json()),
         fetch("/api/sessions?all=1").then((r) => r.json()),
+        fetch("/api/delivery?all=1").then((r) => r.json()).catch(() => ({ deliveries: [] })),
       ]);
 
       // Filter projects by client name match in artist field
@@ -169,9 +179,16 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
       const clientSessions = allSessions.filter((s) => projectIds.has(s.project_id));
 
+      // Filter deliveries to this client's projects
+      const allDeliveries: DeliveryRecord[] = delivRes.deliveries ?? [];
+      const clientDeliveries = allDeliveries.filter(
+        (d) => projectIds.has(d.projectId) && d.deliveryStatus !== "not_created" && d.deliveryLink
+      );
+
       setProjects(clientProjects);
       setFinances(Array.from(finMap.values()));
       setSessions(clientSessions);
+      setDeliveries(clientDeliveries);
     } catch {
       // Non-fatal — drawer still shows identity card
     } finally {
@@ -224,6 +241,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
             projects={projects}
             finances={finances}
             sessions={sessions}
+            deliveries={deliveries}
             loading={loading}
             onClose={onClose}
             onEdit={onEdit}
@@ -240,13 +258,14 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 // ─── DrawerContent ────────────────────────────────────────────────────────────
 
 function DrawerContent({
-  client, projects, finances, sessions, loading,
+  client, projects, finances, sessions, deliveries, loading,
   onClose, onEdit, openProject,
 }: {
   client: Client;
   projects: Project[];
   finances: ProjectFinance[];
   sessions: Session[];
+  deliveries: DeliveryRecord[];
   loading: boolean;
   onClose: () => void;
   onEdit: (client: Client) => void;
@@ -473,6 +492,71 @@ function DrawerContent({
                   color="#3B82F6"
                 />
               )}
+            </Section>
+          )}
+
+          {/* ── Deliveries ── */}
+          {deliveries.length > 0 && (
+            <Section title={`מסירות ללקוח (${deliveries.length})`}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {deliveries.map((d) => {
+                  const proj = projects.find((p) => p.id === d.projectId);
+                  const [copied, setCopied] = useState(false);
+                  const copy = () => {
+                    navigator.clipboard.writeText(d.deliveryLink).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1800);
+                    }).catch(() => {});
+                  };
+                  return (
+                    <div
+                      key={d.projectId}
+                      style={{
+                        background: "#111", border: "1px solid #222", borderRadius: 10,
+                        padding: "9px 12px", display: "flex", alignItems: "center", gap: 8,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: "#D0D0D0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {proj?.name ?? d.projectId}
+                        </div>
+                        {d.deliveredAt && (
+                          <div style={{ fontSize: 10, color: "#444" }}>
+                            נמסר {d.deliveredAt.split("-").reverse().join(".")}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={copy}
+                        style={{
+                          padding: "4px 9px", borderRadius: 7, cursor: "pointer",
+                          fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+                          border: copied ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(168,85,247,0.3)",
+                          background: copied ? "rgba(16,185,129,0.1)" : "rgba(168,85,247,0.08)",
+                          color: copied ? "#10B981" : "#C084FC",
+                          transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0,
+                        }}
+                      >
+                        {copied ? "✓" : "📋"} {copied ? "הועתק" : "לינק"}
+                      </button>
+                      {d.deliveryLink && (
+                        <a
+                          href={d.deliveryLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            padding: "4px 9px", borderRadius: 7, fontSize: 11,
+                            border: "1px solid #222", background: "#1A1A1A",
+                            color: "#555", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
+                          }}
+                        >
+                          ↗
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </Section>
           )}
 
