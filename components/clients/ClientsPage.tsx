@@ -45,6 +45,10 @@ export default function ClientsPage() {
   const [form,      setForm]     = useState({ ...EMPTY_FORM });
   const [saving,    setSaving]   = useState(false);
   const [deleting,  setDeleting] = useState<string | null>(null);
+  const [deleteWarning, setDeleteWarning] = useState<{
+    client: Client;
+    linkedProjects: { id: string; name: string }[];
+  } | null>(null);
   const [search,    setSearch]   = useState("");
   const [isCompact, setIsCompact]= useState(false);
 
@@ -143,13 +147,39 @@ export default function ClientsPage() {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   async function handleDelete(id: string) {
-    if (!confirm("למחוק את הלקוח הזה?")) return;
+    // Check if this client is referenced in any project
+    const client = clients.find((c) => c.id === id);
+    if (!client) return;
+
+    setDeleting(id);
+    try {
+      const r = await fetch(`/api/clients/${id}`);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+
+      if (d.linkedProjects?.length > 0) {
+        // Show warning modal — don't delete yet
+        setDeleteWarning({ client, linkedProjects: d.linkedProjects });
+        return;
+      }
+
+      // No projects linked — delete directly
+      await doDelete(id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  async function doDelete(id: string) {
     setDeleting(id);
     try {
       const r = await fetch(`/api/clients/${id}`, { method: "DELETE" });
       const d = await r.json();
       if (d.error) throw new Error(d.error);
       setClients((prev) => prev.filter((c) => c.id !== id));
+      setDeleteWarning(null);
     } catch (e) {
       alert(e instanceof Error ? e.message : "שגיאה במחיקה");
     } finally {
@@ -277,6 +307,17 @@ export default function ClientsPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Delete warning modal */}
+      {deleteWarning && (
+        <DeleteWarningModal
+          client={deleteWarning.client}
+          linkedProjects={deleteWarning.linkedProjects}
+          deleting={deleting === deleteWarning.client.id}
+          onConfirm={() => doDelete(deleteWarning.client.id)}
+          onCancel={() => setDeleteWarning(null)}
+        />
       )}
 
       {/* Add / Edit modal */}
@@ -588,6 +629,120 @@ function SelectField({
         <option key={o} value={o}>{o}</option>
       ))}
     </select>
+  );
+}
+
+// ─── Delete Warning Modal ─────────────────────────────────────────────────────
+
+function DeleteWarningModal({
+  client, linkedProjects, deleting, onConfirm, onCancel,
+}: {
+  client: Client;
+  linkedProjects: { id: string; name: string }[];
+  deleting: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 24,
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        style={{
+          background: "#141414",
+          border: "1px solid rgba(239,68,68,0.25)",
+          borderRadius: 20,
+          padding: "26px 28px 22px",
+          width: "100%", maxWidth: 400,
+          direction: "rtl", fontFamily: "inherit",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Icon + title */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <span style={{
+            fontSize: 20, lineHeight: 1,
+            width: 36, height: 36, borderRadius: "50%",
+            background: "rgba(239,68,68,0.1)",
+            border: "1px solid rgba(239,68,68,0.25)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
+          }}>⚠</span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0" }}>
+              מחיקת לקוח מחובר לפרויקטים
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <p style={{ fontSize: 13, color: "#AAA", lineHeight: 1.6, marginBottom: 14 }}>
+          <strong style={{ color: "#E8E8E8" }}>{client.name}</strong> מופיע
+          ב-{linkedProjects.length} {linkedProjects.length === 1 ? "פרויקט" : "פרויקטים"}:
+        </p>
+
+        {/* Project list */}
+        <div style={{
+          background: "#1A1A1A", border: "1px solid #2A2A2A",
+          borderRadius: 10, overflow: "hidden", marginBottom: 20,
+        }}>
+          {linkedProjects.map((p, i) => (
+            <div
+              key={p.id}
+              style={{
+                padding: "8px 14px",
+                fontSize: 13, color: "#C8C8C8",
+                borderBottom: i < linkedProjects.length - 1 ? "1px solid #242424" : "none",
+                display: "flex", alignItems: "center", gap: 8,
+              }}
+            >
+              <span style={{ color: "#555", fontSize: 11 }}>♫</span>
+              {p.name}
+            </div>
+          ))}
+        </div>
+
+        <p style={{ fontSize: 12, color: "#666", marginBottom: 20, lineHeight: 1.5 }}>
+          מחיקת הלקוח לא תמחק את הפרויקטים — אבל השם יוסר מרשימת הלקוחות.
+        </p>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1, padding: "10px 0", borderRadius: 11,
+              border: "1px solid #2A2A2A", background: "#1E1E1E",
+              color: "#888", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            ביטול
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            style={{
+              flex: 1, padding: "10px 0", borderRadius: 11,
+              border: "1px solid rgba(239,68,68,0.35)",
+              background: "rgba(239,68,68,0.10)",
+              color: "#F87171", fontSize: 13, fontWeight: 700,
+              cursor: deleting ? "not-allowed" : "pointer",
+              fontFamily: "inherit", opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            {deleting ? "מוחק..." : "מחק בכל זאת"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

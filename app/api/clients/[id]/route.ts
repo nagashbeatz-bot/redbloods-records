@@ -4,6 +4,33 @@ import { supabase } from "@/lib/supabase";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// GET /api/clients/[id] — returns client + any projects that reference their name
+export async function GET(_req: NextRequest, ctx: Ctx) {
+  try {
+    const { id } = await ctx.params;
+    const client = await getClient(id);
+    if (!client) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
+
+    const { data: allProjects } = await supabase
+      .from("projects")
+      .select("id, name, artist");
+
+    const linkedProjects = ((allProjects ?? []) as { id: string; name: string; artist: string }[])
+      .filter((p) =>
+        (p.artist || "")
+          .split(/[,،;]/)
+          .map((a) => a.trim())
+          .some((a) => a.toLowerCase() === client.name.toLowerCase())
+      )
+      .map((p) => ({ id: p.id, name: p.name }));
+
+    return NextResponse.json({ client, linkedProjects });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
