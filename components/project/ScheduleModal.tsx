@@ -322,8 +322,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               <div style={{ fontSize: 20, fontWeight: 800, color: "#F5F5F5", lineHeight: 1.2 }}>{projectName}</div>
               <div style={{ fontSize: 14, color: "#999", marginTop: 4 }}>{artist}</div>
             </div>
-            {/* ₪ optional finance button — hidden in confirm/created/error/creating */}
-            {!isConfirm && !isCreated && !isError && phase !== "creating" && (
+            {/* ₪ optional finance button — only on confirm screen */}
+            {isConfirm && !showFinance && (
               <button
                 onClick={handleOpenFinance}
                 title="הצג מצב כספי"
