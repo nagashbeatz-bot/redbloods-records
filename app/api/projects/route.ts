@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { listProjects, createProject } from "@/lib/projects-store";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
 
-// GET /api/projects — list all projects
-export async function GET() {
+// GET /api/projects           — visible projects only (default)
+// GET /api/projects?hidden=1  — hidden projects only
+// GET /api/projects?all=1     — all projects (visible + hidden)
+export async function GET(req: NextRequest) {
   try {
-    const projects = await listProjects();
+    const hidden = req.nextUrl.searchParams.get("hidden");
+    const all    = req.nextUrl.searchParams.get("all");
+    const filter = all === "1" ? null : hidden === "1" ? true : undefined;
+    const projects = await listProjects(filter);
     return NextResponse.json(projects);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

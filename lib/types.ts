@@ -64,6 +64,7 @@ export interface Project {
   isDueSoon: boolean;
   projectType: ProjectType;    // סוג פרויקט
   parentProject: string;       // שייך ל
+  isHidden: boolean;           // הסתרה — לא מופיע בתצוגה הפעילה
 }
 
 export interface ChatMessage {

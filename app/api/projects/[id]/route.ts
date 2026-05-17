@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     }
 
     // Full update (from modal / drawer)
-    const { name, artist, status, deadline, notes, projectType, parentProject } = body;
+    const { name, artist, status, deadline, notes, projectType, parentProject, isHidden } = body;
     if (name !== undefined && !name?.trim()) {
       return NextResponse.json({ error: "שם הפרויקט לא יכול להיות ריק" }, { status: 400 });
     }
@@ -77,6 +77,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ...(notes          !== undefined && { notes:          notes.trim() }),
       ...(projectType    !== undefined && { project_type:   projectType }),
       ...(parentProject  !== undefined && { parent_project: parentProject }),
+      ...(isHidden       !== undefined && { is_hidden:      Boolean(isHidden) }),
     });
 
     // Sync artist changes to clients table (fire-and-forget)

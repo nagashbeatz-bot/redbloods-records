@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
@@ -273,7 +273,7 @@ function NewProjectModal({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectsTable() {
-  const { projects, loading, updateProjectField, createProject, deleteProject } = useProjects();
+  const { projects, loading, updateProjectField, createProject, deleteProject, refresh } = useProjects();
   const player = usePlayerSafe();
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("כל הסטטוסים");
   const [typeFilter, setTypeFilter] = useState<ProjectType | "">("");
@@ -289,6 +289,31 @@ export default function ProjectsTable() {
   const [confirmDeleteName, setConfirmDeleteName] = useState("");
   const [clientNames, setClientNames] = useState<string[]>([]);
   const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; currency: string }>>({});
+
+  // ── Hidden-projects mode ────────────────────────────────────────────────────
+  const [showHidden,    setShowHidden]    = useState(false);
+  const [hiddenProjects, setHiddenProjects] = useState<import("@/lib/types").Project[]>([]);
+  const [hiddenLoading,  setHiddenLoading]  = useState(false);
+
+  const fetchHidden = useCallback(() => {
+    setHiddenLoading(true);
+    fetch("/api/projects?hidden=1")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setHiddenProjects(d); })
+      .catch(() => {})
+      .finally(() => setHiddenLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (showHidden) fetchHidden();
+  }, [showHidden, fetchHidden]);
+
+  // Re-fetch hidden list when a project is hidden/unhidden from the drawer
+  useEffect(() => {
+    const onHiddenChange = () => { refresh(); if (showHidden) fetchHidden(); };
+    document.addEventListener("rb-hidden-changed", onHiddenChange);
+    return () => document.removeEventListener("rb-hidden-changed", onHiddenChange);
+  }, [showHidden, fetchHidden, refresh]);
 
   useEffect(() => {
     const check = () => {
@@ -353,6 +378,9 @@ export default function ProjectsTable() {
     );
   }
 
+  // Active list: visible projects or hidden projects depending on mode
+  const activeProjects = showHidden ? hiddenProjects : projects;
+
   // Build individual artist list — projects + clients (deduplicated)
   const artists = Array.from(new Set([
     ...projects.flatMap((p) =>
@@ -364,13 +392,13 @@ export default function ProjectsTable() {
   // Unique parent project values (excluding "ללא שיוך" and empty — shown as separate option)
   const uniqueParents = Array.from(
     new Set(
-      projects
+      activeProjects
         .map((p) => p.parentProject)
         .filter((v) => !isNoAffiliation(v))
     )
   ).sort();
 
-  const filtered = projects
+  const filtered = activeProjects
     .filter((p) => {
       if (artistFilter) {
         const projectArtists = p.artist.split(/[,،;]/).map((a) => a.trim()).filter(Boolean);
@@ -433,8 +461,35 @@ export default function ProjectsTable() {
         ))}
       </div>
 
-      {/* Filters row 2 — type + parent */}
-      <div className="flex flex-wrap items-center gap-2 mb-2">
+      {/* Hidden-mode toggle — sits after status row, before type row */}
+      <div className="flex items-center gap-2 mb-2">
+        <button
+          onClick={() => {
+            setShowHidden((v) => !v);
+            setStatusFilter("כל הסטטוסים");
+            setTypeFilter("");
+            setParentFilter("");
+            setArtistFilter("");
+          }}
+          className="px-3 py-1 rounded-lg border text-xs font-medium transition-all"
+          style={{
+            background: showHidden ? "rgba(107,114,128,0.15)" : "transparent",
+            borderColor: showHidden ? "rgba(107,114,128,0.5)" : "#252525",
+            color: showHidden ? "#9CA3AF" : "#444",
+          }}
+        >
+          {showHidden ? "← חזור לפרויקטים" : "🚫 מוסתרים"}
+          {!showHidden && hiddenProjects.length === 0 && projects.length > 0 ? "" : ""}
+        </button>
+        {showHidden && (
+          <span style={{ fontSize: 11, color: "#555" }}>
+            {hiddenLoading ? "טוען..." : `${hiddenProjects.length} פרויקטים מוסתרים`}
+          </span>
+        )}
+      </div>
+
+      {/* Filters row 2 + 3 — hidden when in hidden-mode */}
+      {!showHidden && <><div className="flex flex-wrap items-center gap-2 mb-2">
         {/* Project type filter */}
         <div className="flex flex-wrap gap-1.5">
           <button
@@ -519,6 +574,7 @@ export default function ProjectsTable() {
 
         </div>
       </div>
+      </>}
 
       <div className="flex items-center justify-between mb-4">
         <button
@@ -548,7 +604,7 @@ export default function ProjectsTable() {
           פרויקט חדש
         </button>
         <p className="text-xs" style={{ color: "#555" }}>
-          {filtered.length} פרויקטים
+          {filtered.length} {showHidden ? "פרויקטים מוסתרים" : "פרויקטים"}
         </p>
       </div>
 

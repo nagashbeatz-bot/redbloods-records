@@ -8,7 +8,7 @@ const d = (offsetDays: number) => {
   return dt.toISOString().split("T")[0];
 };
 
-const raw: Omit<Project, "isOverdue" | "isDueSoon">[] = [
+const raw: Omit<Project, "isOverdue" | "isDueSoon" | "isHidden">[] = [
   {
     id: "1",
     name: "ריצת הבוקר",
@@ -125,4 +125,5 @@ export const MOCK_PROJECTS: Project[] = raw.map((p) => ({
   ...p,
   isOverdue: isOverdue(p.deadline),
   isDueSoon: isDueSoon(p.deadline),
+  isHidden:  false,
 }));

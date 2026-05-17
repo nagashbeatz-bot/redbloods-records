@@ -15,6 +15,7 @@ interface DbProject {
   notes:          string;
   project_type:   string;
   parent_project: string;
+  is_hidden:      boolean;
   files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string }[];
   created_at:     string;
   updated_at:     string;
@@ -41,17 +42,25 @@ function dbToProject(db: DbProject): Project {
     isDueSoon:     isDueSoon(db.deadline),
     projectType:   db.project_type as ProjectType,
     parentProject: db.parent_project,
+    isHidden:      db.is_hidden ?? false,
   };
 }
 
 // ─── Exports ───────────────────────────────────────────────────────────────────
 
-export async function listProjects(): Promise<Project[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .order("created_at", { ascending: false });
+/**
+ * List projects.
+ * @param hidden  undefined → only visible (default)
+ *                true      → only hidden
+ *                null      → all (no filter)
+ */
+export async function listProjects(hidden?: boolean | null): Promise<Project[]> {
+  let q = supabase.from("projects").select("*");
 
+  if (hidden === true)       q = q.eq("is_hidden", true);
+  else if (hidden !== null)  q = q.eq("is_hidden", false); // default: visible only
+
+  const { data, error } = await q.order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data as DbProject[]).map(dbToProject);
 }
@@ -119,6 +128,7 @@ export async function updateProject(
     notes:          string;
     project_type:   string;
     parent_project: string;
+    is_hidden:      boolean;
     files:          { name: string; assetId?: number; url?: string }[];
   }>
 ): Promise<void> {

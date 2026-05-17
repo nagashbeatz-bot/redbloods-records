@@ -1869,9 +1869,10 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
           {/* ── Actions ──────────────────────────────────────────────────── */}
           <Card>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 10, color: "#555" }}>פעולות</span>
               <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
+              <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
             </div>
           </Card>
 
@@ -2126,6 +2127,98 @@ function DrawerTxForm({
         <button onClick={onCancel} className="rb-btn-secondary">ביטול</button>
       </div>
     </div>
+  );
+}
+
+// ── Hide / unhide button with toast ──────────────────────────────────────────
+function HideButton({ project, onDone }: { project: { id: string; name: string; isHidden: boolean }; onDone: () => void }) {
+  const [saving,  setSaving]  = useState(false);
+  const [toast,   setToast]   = useState<{ msg: string; undo: () => void } | null>(null);
+  const undoTimer = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  const toggle = async (hide: boolean) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/projects/${project.id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ isHidden: hide }),
+      });
+
+      // Show toast with undo
+      if (undoTimer[0]) clearTimeout(undoTimer[0]);
+      const msg = hide ? "הפרויקט הוסתר מהתצוגה" : "הפרויקט הוחזר לתצוגה";
+      const undoFn = async () => {
+        setToast(null);
+        await fetch(`/api/projects/${project.id}`, {
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ isHidden: !hide }),
+        });
+        document.dispatchEvent(new Event("rb-hidden-changed"));
+        onDone();
+      };
+      setToast({ msg, undo: undoFn });
+      undoTimer[0] = setTimeout(() => {
+        setToast(null);
+        document.dispatchEvent(new Event("rb-hidden-changed"));
+        onDone();
+      }, 4000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => toggle(!project.isHidden)}
+        disabled={saving}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          padding: "5px 10px", borderRadius: 8, cursor: saving ? "wait" : "pointer",
+          fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+          border: project.isHidden
+            ? "1px solid rgba(59,130,246,0.35)"
+            : "1px solid #2A2A2A",
+          background: project.isHidden
+            ? "rgba(59,130,246,0.08)"
+            : "transparent",
+          color: project.isHidden ? "#60A5FA" : "#555",
+          opacity: saving ? 0.5 : 1,
+          transition: "all 0.15s",
+        }}
+      >
+        {project.isHidden ? "👁 החזר לתצוגה" : "🚫 הסתר מהתצוגה"}
+      </button>
+
+      {/* Toast */}
+      {toast && typeof document !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          zIndex: 999999, display: "flex", alignItems: "center", gap: 12,
+          background: "#1C1C1C", border: "1px solid #333",
+          borderRadius: 12, padding: "10px 18px",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+          fontSize: 13, color: "#D0D0D0", fontFamily: "inherit",
+          whiteSpace: "nowrap",
+        }}>
+          <span>{toast.msg}</span>
+          <button
+            onClick={toast.undo}
+            style={{
+              background: "none", border: "none",
+              color: "#A855F7", fontWeight: 700, cursor: "pointer",
+              fontSize: 12, fontFamily: "inherit", padding: 0,
+            }}
+          >
+            בטל
+          </button>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
