@@ -8,6 +8,7 @@ import { formatDeadline, deadlineLabel, getStatusColor, daysUntilDeadline } from
 import StatusBadge, { OverdueTag, DueSoonTag } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import UploadButton from "@/components/ui/UploadButton";
+import CopyLinkButton from "@/components/ui/CopyLinkButton";
 import { useProjects } from "@/components/ProjectsProvider";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -431,6 +432,15 @@ export default function ProjectDetail({ project, onUpdate }: ProjectDetailProps)
                       >
                         {f.name}
                       </a>
+                      {/* Copy share link button (Dropbox files only) */}
+                      {f.dropboxPath != null && (
+                        <CopyLinkButton
+                          shareUrl={f.dropboxShareUrl}
+                          dropboxPath={f.dropboxPath}
+                          projectId={project.id}
+                          size="sm"
+                        />
+                      )}
                       {/* Delete button — visible on hover (Dropbox files only) */}
                       {f.dropboxPath != null && (
                         <button

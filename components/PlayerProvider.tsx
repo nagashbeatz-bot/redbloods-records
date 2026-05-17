@@ -161,8 +161,8 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
 
 export function getLatestAudioFile(
-  files: { name: string; url: string; assetId?: number; dropboxPath?: string }[]
-): { name: string; url: string; assetId?: number; dropboxPath?: string } | null {
+  files: { name: string; url: string; assetId?: number; dropboxPath?: string; dropboxShareUrl?: string }[]
+): { name: string; url: string; assetId?: number; dropboxPath?: string; dropboxShareUrl?: string } | null {
   // Only Dropbox files are playable — skip legacy Monday entries (no dropboxPath)
   const audioFiles = files.filter((f) =>
     f.dropboxPath && AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))

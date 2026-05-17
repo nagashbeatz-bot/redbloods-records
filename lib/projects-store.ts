@@ -15,17 +15,18 @@ interface DbProject {
   notes:          string;
   project_type:   string;
   parent_project: string;
-  files:          { name: string; assetId?: number; url?: string; dropboxPath?: string }[];
+  files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string }[];
   created_at:     string;
   updated_at:     string;
 }
 
 function dbToProject(db: DbProject): Project {
   const files: FileLink[] = (db.files || []).map((f) => ({
-    name:        f.name,
-    url:         f.url || "#",
-    assetId:     f.assetId,
-    dropboxPath: f.dropboxPath,
+    name:             f.name,
+    url:              f.url || "#",
+    assetId:          f.assetId,
+    dropboxPath:      f.dropboxPath,
+    dropboxShareUrl:  f.dropboxShareUrl,
   }));
 
   return {
@@ -141,7 +142,7 @@ export async function deleteProject(id: string): Promise<void> {
 /** Update files JSONB for a project (used after file upload) */
 export async function addFileToProject(
   id: string,
-  file: { name: string; assetId?: number; url?: string; dropboxPath?: string }
+  file: { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string }
 ): Promise<void> {
   // Read current files, append, write back
   const { data, error: readErr } = await supabase
@@ -152,7 +153,7 @@ export async function addFileToProject(
 
   if (readErr) throw new Error(readErr.message);
 
-  const current: { name: string; assetId?: number; url?: string }[] =
+  const current: { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string }[] =
     (data as { files: typeof current }).files || [];
 
   const { error } = await supabase
@@ -189,6 +190,33 @@ export async function removeFileFromProject(
     })
     .eq("id", id);
 
+  if (error) throw new Error(error.message);
+}
+
+/** Update the dropboxShareUrl for a specific file in a project's files JSONB */
+export async function updateFileShareUrl(
+  projectId: string,
+  dropboxPath: string,
+  shareUrl: string
+): Promise<void> {
+  const { data, error: readErr } = await supabase
+    .from("projects")
+    .select("files")
+    .eq("id", projectId)
+    .single();
+  if (readErr) throw new Error(readErr.message);
+
+  const current: { name: string; dropboxPath?: string; dropboxShareUrl?: string; [key: string]: unknown }[] =
+    (data as { files: typeof current }).files || [];
+
+  const updated = current.map((f) =>
+    f.dropboxPath === dropboxPath ? { ...f, dropboxShareUrl: shareUrl } : f
+  );
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ files: updated, updated_at: new Date().toISOString() })
+    .eq("id", projectId);
   if (error) throw new Error(error.message);
 }
 

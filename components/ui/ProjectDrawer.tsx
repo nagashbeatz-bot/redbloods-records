@@ -12,6 +12,7 @@ import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
 import NotesCellEdit from "@/components/ui/NotesCellEdit";
 import UploadButton from "@/components/ui/UploadButton";
+import CopyLinkButton from "@/components/ui/CopyLinkButton";
 import ActionMenu from "@/components/project/ActionMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1021,6 +1022,19 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                     </svg>
                   </a>
 
+                  {/* Copy share link */}
+                  {latestAudio.dropboxPath && (
+                    <CopyLinkButton
+                      shareUrl={latestAudio.dropboxShareUrl}
+                      dropboxPath={latestAudio.dropboxPath}
+                      projectId={project.id}
+                      size="sm"
+                      onShareUrlUpdate={() => {
+                        refresh();
+                      }}
+                    />
+                  )}
+
                   {/* Delete (Dropbox files only) */}
                   {latestAudio.dropboxPath && (
                     confirmDeletePath === latestAudio.dropboxPath ? (
@@ -1128,6 +1142,14 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                             <span style={{ flexShrink: 0, fontSize: 10 }}>↓</span>
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
                           </a>
+                          {f.dropboxPath && (
+                            <CopyLinkButton
+                              shareUrl={f.dropboxShareUrl}
+                              dropboxPath={f.dropboxPath}
+                              projectId={project.id}
+                              size="sm"
+                            />
+                          )}
                           {f.dropboxPath && (
                             <button
                               onClick={() => setConfirmDeletePath(f.dropboxPath!)}
