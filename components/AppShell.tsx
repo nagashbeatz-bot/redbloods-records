@@ -39,6 +39,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [pathname]);
 
+  // Auto-mark past sessions as "התקיים" on every app load (global — all projects)
+  useEffect(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const clientNow =
+      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+      `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    fetch("/api/sessions/auto-mark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientNow }),
+    }).catch(() => {}); // fire-and-forget, non-fatal
+  }, []);
+
   useEffect(() => {
     const handler = (e: Event) => {
       const prompt = (e as CustomEvent<string>).detail;

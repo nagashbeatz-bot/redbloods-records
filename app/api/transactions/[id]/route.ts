@@ -20,7 +20,8 @@ export async function PATCH(
   if (body.receiptRef     !== undefined) patch.receipt_ref    = body.receiptRef;
   if (body.notes          !== undefined) patch.notes          = body.notes;
   if (body.category       !== undefined) patch.category       = body.category;
-  if (body.type           !== undefined) patch.type           = body.type;
+  if (body.type           !== undefined) patch.type              = body.type;
+  if (body.linkedSessionId !== undefined) patch.linked_session_id = body.linkedSessionId;
 
   const { data, error } = await supabase
     .from("transactions")

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
-import { checkHealth, ProjectIssue } from "@/lib/health";
+import { checkHealth, checkFinanceHealth, ProjectIssue, FinanceSummary } from "@/lib/health";
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -150,6 +150,21 @@ function IssueRow({ issue, onFixed, onSnooze }: IssueRowProps) {
             פתח פרויקט ←
           </button>
         )}
+
+        {/* ── Finance issue types — all open the project drawer ── */}
+        {(issue.type === "unpaid_in_mix" ||
+          issue.type === "payment_overdue" ||
+          issue.type === "open_balance" ||
+          issue.type === "negative_profit") && (
+          <button
+            onClick={() => openProject(issue.id)}
+            style={{ fontSize: 11, color: "#3B82F6", cursor: "pointer", fontFamily: "inherit",
+              padding: "3px 10px", borderRadius: 6, border: "1px solid rgba(59,130,246,0.3)",
+              background: "rgba(59,130,246,0.08)" }}
+          >
+            פתח כספים ←
+          </button>
+        )}
       </div>
     </div>
   );
@@ -180,7 +195,66 @@ function ActionBtn({
 
 export default function HealthAlert() {
   const { projects } = useProjects();
-  const allIssues = useMemo(() => checkHealth(projects), [projects]);
+
+  // ── Finance summaries (loaded once, used for finance health checks) ──────
+  const [financeSummaries, setFinanceSummaries] = useState<FinanceSummary[]>([]);
+
+  useEffect(() => {
+    const today = new Date().toISOString().split("T")[0];
+    fetch("/api/transactions?all=1")
+      .then((r) => r.json())
+      .then((d) => {
+        const transactions: Array<{
+          project_id: string; type: string; amount: number;
+          payment_status: string; date: string | null;
+        }> = d.transactions ?? [];
+        const settings: Array<{
+          project_id: string; agreedPrice: number; currency: string;
+        }> = d.settings ?? [];
+
+        // Build per-project map
+        const map = new Map<string, FinanceSummary>();
+
+        const ensure = (pid: string) => {
+          if (!map.has(pid)) {
+            map.set(pid, { projectId: pid, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, totalExpenses: 0, overduePayment: false });
+          }
+          return map.get(pid)!;
+        };
+
+        for (const t of transactions) {
+          const s = ensure(t.project_id);
+          if (t.type === "income") {
+            if (t.payment_status === "שולם" || t.payment_status === "התקבל") {
+              s.totalPaid += t.amount;
+            } else if (t.payment_status === "צפוי" || t.payment_status === "חלקי") {
+              s.totalExpected += t.amount;
+              if (t.date && t.date < today) s.overduePayment = true;
+            }
+          } else if (t.type === "expense") {
+            s.totalExpenses += t.amount;
+          }
+        }
+
+        for (const setting of settings) {
+          const s = ensure(setting.project_id);
+          s.agreedPrice = setting.agreedPrice ?? 0;
+          s.currency    = setting.currency    ?? "₪";
+        }
+
+        setFinanceSummaries(Array.from(map.values()));
+      })
+      .catch(() => {}); // non-fatal — health alert still works without finance data
+  }, []);
+
+  // ── Merge project + finance issues ───────────────────────────────────────
+  const allIssues = useMemo(
+    () => [
+      ...checkHealth(projects),
+      ...checkFinanceHealth(projects, financeSummaries),
+    ],
+    [projects, financeSummaries],
+  );
 
   const [dismissed, setDismissed] = useState(false);
   const [expanded, setExpanded] = useState(false);

@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
   const {
     projectId, type, date, description, artist, amount,
     currency, paymentStatus, paymentMethod, receiptRef, notes, category,
+    linkedSessionId,
   } = body;
 
   if (!projectId || !type) {
@@ -61,18 +62,19 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from("transactions")
     .insert({
-      project_id:     projectId,
+      project_id:        projectId,
       type,
-      date:           date           || null,
-      description:    description    || "",
-      artist:         artist         || "",
-      amount:         Number(amount) || 0,
-      currency:       currency       || "₪",
-      payment_status: paymentStatus  || "צפוי",
-      payment_method: paymentMethod  || "",
-      receipt_ref:    receiptRef     || "",
-      notes:          notes          || "",
-      category:       category       || "",
+      date:              date              || null,
+      description:       description       || "",
+      artist:            artist            || "",
+      amount:            Number(amount)    || 0,
+      currency:          currency          || "₪",
+      payment_status:    paymentStatus     || "צפוי",
+      payment_method:    paymentMethod     || "",
+      receipt_ref:       receiptRef        || "",
+      notes:             notes             || "",
+      category:          category          || "",
+      linked_session_id: linkedSessionId   || "",
     })
     .select()
     .single();

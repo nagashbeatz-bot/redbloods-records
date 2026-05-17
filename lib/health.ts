@@ -7,7 +7,12 @@ export type IssueType =
   | "overdue_active"     // active project past deadline
   | "missing_type"       // no projectType
   | "missing_parent"     // no parentProject (empty, not "ללא שיוך")
-  | "missing_artist";    // no artist
+  | "missing_artist"     // no artist
+  // ── Finance ────────────────────────────────────────────
+  | "unpaid_in_mix"      // project in mix stages with open balance
+  | "payment_overdue"    // expected payment whose date has passed
+  | "open_balance"       // active project with unpaid balance
+  | "negative_profit";   // expenses exceed received income
 
 export interface ProjectIssue {
   id: string;
@@ -16,6 +21,17 @@ export interface ProjectIssue {
   type: IssueType;
   priority: IssuePriority;
   label: string;
+}
+
+// ── Finance summary (computed per-project from transactions) ──────────────────
+export interface FinanceSummary {
+  projectId:      string;
+  agreedPrice:    number;
+  currency:       string;
+  totalPaid:      number;   // income where status = שולם / התקבל
+  totalExpected:  number;   // income where status = צפוי / חלקי
+  totalExpenses:  number;   // all expense transactions
+  overduePayment: boolean;  // any "צפוי" income with date < today
 }
 
 const ACTIVE_STATUSES = new Set(["בעבודה", "מחכה למיקס", "במיקס", "לא התחיל"]);
@@ -111,9 +127,90 @@ export function checkHealth(projects: Project[]): ProjectIssue[] {
   return issues;
 }
 
+// ── Finance health checks ─────────────────────────────────────────────────────
+const MIX_STATUSES    = new Set(["מחכה למיקס", "במיקס"]);
+const PAID_STATUSES   = new Set(["שולם", "התקבל"]);
+const EXPECT_STATUSES = new Set(["צפוי", "חלקי"]);
+
+export function checkFinanceHealth(
+  projects: Project[],
+  summaries: FinanceSummary[],
+): ProjectIssue[] {
+  const issues: ProjectIssue[] = [];
+  const map = new Map(summaries.map((s) => [s.projectId, s]));
+
+  for (const p of projects) {
+    // Skip completed / paused projects
+    if (p.status === "הושלם" || p.status === "בהשהייה") continue;
+
+    const fin = map.get(p.id);
+    if (!fin || fin.agreedPrice <= 0) continue; // no agreed price → nothing to check
+
+    const balance = fin.agreedPrice - fin.totalPaid;
+    const profit  = fin.totalPaid - fin.totalExpenses;
+    const inMix   = MIX_STATUSES.has(p.status);
+    const active  = ACTIVE_STATUSES.has(p.status);
+
+    // ─── HIGH ────────────────────────────────────────────
+    // Project in mix / waiting for mix — but still has open balance
+    if (inMix && balance > 0) {
+      issues.push({
+        id: p.id, name: p.name, artist: p.artist,
+        type: "unpaid_in_mix",
+        priority: "high",
+        label: `"${p.name}" — ${p.status} ועדיין לא שולם (יתרה: ${balance.toLocaleString()}${fin.currency})`,
+      });
+    }
+
+    // Expected payment whose date has already passed (and project is NOT in mix)
+    if (!inMix && fin.overduePayment) {
+      issues.push({
+        id: p.id, name: p.name, artist: p.artist,
+        type: "payment_overdue",
+        priority: "high",
+        label: `"${p.name}" — יש תשלום צפוי שתאריכו עבר`,
+      });
+    }
+
+    // ─── MEDIUM ──────────────────────────────────────────
+    // Active project (not in mix) with open balance — no overdue (that's already high)
+    if (!inMix && active && balance > 0 && !fin.overduePayment) {
+      issues.push({
+        id: p.id, name: p.name, artist: p.artist,
+        type: "open_balance",
+        priority: "medium",
+        label: `"${p.name}" — יתרה פתוחה של ${balance.toLocaleString()}${fin.currency}`,
+      });
+    }
+
+    // Expenses exceed received income → negative profit
+    if (fin.totalExpenses > 0 && profit < 0) {
+      issues.push({
+        id: p.id, name: p.name, artist: p.artist,
+        type: "negative_profit",
+        priority: "medium",
+        label: `"${p.name}" — הוצאות (${fin.totalExpenses.toLocaleString()}${fin.currency}) עולות על הכנסות שהתקבלו`,
+      });
+    }
+  }
+
+  issues.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority === "high" ? -1 : 1;
+    return a.name.localeCompare(b.name, "he");
+  });
+
+  return issues;
+}
+
 /** Returns a compact health summary string for the AI agent context */
-export function buildHealthSummary(projects: Project[]): string {
-  const issues = checkHealth(projects);
+export function buildHealthSummary(
+  projects: Project[],
+  financeSummaries?: FinanceSummary[],
+): string {
+  const projectIssues = checkHealth(projects);
+  const financeIssues = financeSummaries ? checkFinanceHealth(projects, financeSummaries) : [];
+  const issues = [...projectIssues, ...financeIssues];
+
   if (issues.length === 0) return "✓ כל הפרויקטים מלאים ומסודרים.";
 
   const high = issues.filter((i) => i.priority === "high");

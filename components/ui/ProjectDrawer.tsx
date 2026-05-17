@@ -34,6 +34,7 @@ interface Transaction {
   receipt_ref: string;
   notes: string;
   category: string;
+  linked_session_id: string;
 }
 
 interface TxDraft {
@@ -47,6 +48,7 @@ interface TxDraft {
   paymentMethod: string;
   notes: string;
   category: string;
+  linkedSessionId: string;
 }
 
 interface Session {
@@ -106,7 +108,7 @@ const PMT_COLOR: Record<PaymentStatus, string> = {
 };
 
 function emptyTxDraft(): TxDraft {
-  return { type: "income", date: "", description: "", artist: "", amount: "", currency: "₪", paymentStatus: "צפוי", paymentMethod: "", notes: "", category: "" };
+  return { type: "income", date: "", description: "", artist: "", amount: "", currency: "₪", paymentStatus: "צפוי", paymentMethod: "", notes: "", category: "", linkedSessionId: "" };
 }
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
@@ -237,13 +239,48 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [editingLimit,   setEditingLimit]   = useState(false);
   const [limitDraft,     setLimitDraft]     = useState("");
 
+  // ── Local auto-mark helper ─────────────────────────────────────────────────
+  // Marks sessions that have passed as "התקיים" — optimistic update + background PATCH
+  function localAutoMark(list: Session[]): Session[] {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const clientNow =
+      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+      `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    const toMark = list.filter((s) => {
+      if (s.status !== "מתוכנן") return false;
+      if (!s.date || !s.end_time) return false;
+      const sessionEnd = `${s.date}T${s.end_time}:00`;
+      return sessionEnd < clientNow;
+    });
+
+    if (toMark.length === 0) return list;
+
+    // Fire PATCH requests in the background (non-blocking)
+    toMark.forEach((s) => {
+      fetch(`/api/sessions/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "התקיים" }),
+      }).catch(() => {});
+    });
+
+    // Return updated list immediately (optimistic)
+    return list.map((s) =>
+      toMark.some((m) => m.id === s.id) ? { ...s, status: "התקיים" as SessionStatus } : s
+    );
+  }
+
   // ── Fetch sessions ─────────────────────────────────────────────────────────
   const fetchSessions = (withSync = false) => {
     setSessionsLoaded(false);
     fetch(`/api/sessions?projectId=${projectId}`)
       .then((r) => r.json())
       .then((d) => {
-        setSessions(d.sessions ?? []);
+        // Auto-mark passed sessions immediately (optimistic + background PATCH)
+        const marked = localAutoMark(d.sessions ?? []);
+        setSessions(marked);
         setSessionLimit(d.limit ?? 3);
         setSessionsLoaded(true);
 
@@ -256,7 +293,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 // Some sessions were removed — reload the list
                 fetch(`/api/sessions?projectId=${projectId}`)
                   .then((r) => r.json())
-                  .then((d2) => setSessions(d2.sessions ?? []));
+                  .then((d2) => setSessions(localAutoMark(d2.sessions ?? [])));
               }
             })
             .catch(() => {});
@@ -398,16 +435,17 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          type:          txDraft.type,
-          date:          txDraft.date || null,
-          description:   txDraft.description,
-          artist:        txDraft.artist,
-          amount:        Number(txDraft.amount) || 0,
-          currency:      txDraft.currency,
-          paymentStatus: txDraft.paymentStatus,
-          paymentMethod: txDraft.paymentMethod,
-          notes:         txDraft.notes,
-          category:      txDraft.category,
+          type:            txDraft.type,
+          date:            txDraft.date || null,
+          description:     txDraft.description,
+          artist:          txDraft.artist,
+          amount:          Number(txDraft.amount) || 0,
+          currency:        txDraft.currency,
+          paymentStatus:   txDraft.paymentStatus,
+          paymentMethod:   txDraft.paymentMethod,
+          notes:           txDraft.notes,
+          category:        txDraft.category,
+          linkedSessionId: txDraft.linkedSessionId || "",
         }),
       });
       const data = await res.json();
@@ -429,15 +467,16 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type:          editTxDraft.type,
-          date:          editTxDraft.date || null,
-          description:   editTxDraft.description,
-          amount:        Number(editTxDraft.amount) || 0,
-          currency:      editTxDraft.currency,
-          paymentStatus: editTxDraft.paymentStatus,
-          paymentMethod: editTxDraft.paymentMethod,
-          notes:         editTxDraft.notes,
-          category:      editTxDraft.category,
+          type:            editTxDraft.type,
+          date:            editTxDraft.date || null,
+          description:     editTxDraft.description,
+          amount:          Number(editTxDraft.amount) || 0,
+          currency:        editTxDraft.currency,
+          paymentStatus:   editTxDraft.paymentStatus,
+          paymentMethod:   editTxDraft.paymentMethod,
+          notes:           editTxDraft.notes,
+          category:        editTxDraft.category,
+          linkedSessionId: editTxDraft.linkedSessionId || "",
         }),
       });
       const data = await res.json();
@@ -470,16 +509,17 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   function startEditTx(tx: Transaction) {
     setEditingTxId(tx.id);
     setEditTxDraft({
-      type:          tx.type,
-      date:          tx.date ?? "",
-      description:   tx.description,
-      artist:        tx.artist,
-      amount:        String(tx.amount),
-      currency:      tx.currency,
-      paymentStatus: tx.payment_status,
-      paymentMethod: tx.payment_method,
-      notes:         tx.notes,
-      category:      tx.category,
+      type:            tx.type,
+      date:            tx.date ?? "",
+      description:     tx.description,
+      artist:          tx.artist,
+      amount:          String(tx.amount),
+      currency:        tx.currency,
+      paymentStatus:   tx.payment_status,
+      paymentMethod:   tx.payment_method,
+      notes:           tx.notes,
+      category:        tx.category,
+      linkedSessionId: tx.linked_session_id ?? "",
     });
   }
 
@@ -1016,6 +1056,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                   onCancel={() => setAddingTx(null)}
                   balanceHint={balance > 0 ? balance : undefined}
                   balanceCurrency={finCurrency}
+                  sessions={sessions}
                 />
               </div>
             )}
@@ -1037,7 +1078,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                       {incomeList.map((tx) => (
                         <div key={tx.id}>
                           {editingTxId === tx.id ? (
-                            <DrawerTxForm draft={editTxDraft} setDraft={setEditTxDraft} saving={editTxSaving} onSave={handleUpdateTx} onCancel={() => setEditingTxId(null)} />
+                            <DrawerTxForm draft={editTxDraft} setDraft={setEditTxDraft} saving={editTxSaving} onSave={handleUpdateTx} onCancel={() => setEditingTxId(null)} sessions={sessions} />
                           ) : (
                             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 7, background: "rgba(16,185,129,0.04)", border: "1px solid rgba(16,185,129,0.1)" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
@@ -1102,6 +1143,19 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                   {tx.receipt_ref && (
                                     <span style={{ fontSize: 9, color: "#555", background: "rgba(255,255,255,0.03)", border: "1px solid #222", borderRadius: 4, padding: "1px 5px" }} title="אסמכתא">#{tx.receipt_ref}</span>
                                   )}
+                                  {/* Linked session tag */}
+                                  {tx.linked_session_id && (() => {
+                                    const linked = sessions.find((s) => s.id === tx.linked_session_id);
+                                    if (!linked) return null;
+                                    return (
+                                      <span
+                                        title={`התקבל בסשן ${linked.date ? fmtDate(linked.date) : ""}`}
+                                        style={{ fontSize: 9, color: "#A78BFA", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.25)", borderRadius: 4, padding: "1px 5px", display: "flex", alignItems: "center", gap: 3 }}
+                                      >
+                                        🎵 {linked.date ? linked.date.slice(5).split("-").reverse().join(".") : "—"}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#10B981", flexShrink: 0 }}>+{tx.amount.toLocaleString()}{tx.currency}</span>
@@ -1123,7 +1177,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                       {expenseList.map((tx) => (
                         <div key={tx.id}>
                           {editingTxId === tx.id ? (
-                            <DrawerTxForm draft={editTxDraft} setDraft={setEditTxDraft} saving={editTxSaving} onSave={handleUpdateTx} onCancel={() => setEditingTxId(null)} />
+                            <DrawerTxForm draft={editTxDraft} setDraft={setEditTxDraft} saving={editTxSaving} onSave={handleUpdateTx} onCancel={() => setEditingTxId(null)} sessions={sessions} />
                           ) : (
                             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 7, background: "rgba(245,158,11,0.04)", border: "1px solid rgba(245,158,11,0.1)" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
@@ -1490,7 +1544,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
 // ── Inline transaction form (add / edit) ─────────────────────────────────────
 function DrawerTxForm({
-  draft, setDraft, saving, onSave, onCancel, balanceHint, balanceCurrency,
+  draft, setDraft, saving, onSave, onCancel, balanceHint, balanceCurrency, sessions,
 }: {
   draft: TxDraft;
   setDraft: (d: TxDraft) => void;
@@ -1499,8 +1553,15 @@ function DrawerTxForm({
   onCancel: () => void;
   balanceHint?: number;
   balanceCurrency?: string;
+  sessions?: Session[];
 }) {
-  const isIncome = draft.type === "income";
+  const isIncome   = draft.type === "income";
+  const isCash     = draft.paymentMethod === "מזומן";
+  const isReceived = draft.paymentStatus === "התקבל";
+  // Sessions that already took place in this project (status = התקיים)
+  const completedSessions = (sessions ?? []).filter(
+    (s) => s.status === "התקיים" && s.date
+  ).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
   return (
     <div className="rb-form-card" style={{ marginBottom: 10 }}>
       {/* Type toggle */}
@@ -1580,6 +1641,54 @@ function DrawerTxForm({
         <option value="">אמצעי תשלום (אופציונלי)</option>
         {PMT_METHOD_OPTS.map((m) => <option key={m} value={m}>{m}</option>)}
       </select>
+
+      {/* Session link — shown when status = "התקבל" and there are completed sessions */}
+      {isIncome && isReceived && completedSessions.length > 0 && (
+        <div style={{
+          borderRadius: 8,
+          border: isCash ? "1px solid rgba(167,139,250,0.35)" : "1px solid #2A2A2A",
+          background: isCash ? "rgba(167,139,250,0.07)" : "transparent",
+          padding: isCash ? "8px 10px" : "0",
+          display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          {isCash && (
+            <div style={{ fontSize: 10, color: "#A78BFA", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+              🎵 מזומן — בדרך כלל מתקבל פיזית בסשן
+            </div>
+          )}
+          <select
+            value={draft.linkedSessionId}
+            onChange={(e) => {
+              const sid = e.target.value;
+              const sess = completedSessions.find((s) => s.id === sid);
+              setDraft({
+                ...draft,
+                linkedSessionId: sid,
+                // auto-fill date from session (user can override)
+                date: sid && sess?.date ? sess.date : draft.date,
+              });
+            }}
+            className="rb-session-input"
+            style={{ width: "100%", boxSizing: "border-box" }}
+          >
+            <option value="">🎵 התקבל בסשן — בחר סשן (אופציונלי)</option>
+            {completedSessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.date ? fmtDate(s.date) : "—"}
+                {s.start_time ? ` • ${s.start_time}` : ""}
+                {s.end_time ? `–${s.end_time}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* No completed sessions message — only if status = "התקבל" and no sessions exist at all */}
+      {isIncome && isReceived && completedSessions.length === 0 && (sessions ?? []).length > 0 && (
+        <div style={{ fontSize: 10, color: "#444", padding: "4px 2px" }}>
+          אין סשנים שהתקיימו בפרויקט זה עדיין
+        </div>
+      )}
 
       {/* Notes */}
       <input type="text" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
