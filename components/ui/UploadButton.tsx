@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
@@ -42,13 +43,15 @@ export default function UploadButton({
   existingFiles,
   size = "sm",
 }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [state,    setState]    = useState<State>("idle");
-  const [progress, setProgress] = useState(0);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [copied,   setCopied]   = useState(false);
+  const inputRef  = useRef<HTMLInputElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [state,      setState]      = useState<State>("idle");
+  const [progress,   setProgress]   = useState(0);
+  const [errorMsg,   setErrorMsg]   = useState<string | null>(null);
+  const [dragging,   setDragging]   = useState(false);
+  const [shareUrl,   setShareUrl]   = useState<string | null>(null);
+  const [popupAnchor, setPopupAnchor] = useState<{ bottom: number; right: number } | null>(null);
+  const [copied,     setCopied]     = useState(false);
   const { refresh } = useProjects();
 
   const reset = (delay = 4000) =>
@@ -101,8 +104,15 @@ export default function UploadButton({
           }
           setState("done");
           await refresh();
-          // Show share popup for 5 seconds
+          // Show share popup for 5 seconds (portal — escapes overflow:hidden)
           if (url) {
+            if (buttonRef.current) {
+              const r = buttonRef.current.getBoundingClientRect();
+              setPopupAnchor({
+                bottom: window.innerHeight - r.top + 8,
+                right:  window.innerWidth  - r.right,
+              });
+            }
             setShareUrl(url);
             setCopied(false);
             setTimeout(() => setShareUrl(null), 5000);
@@ -190,6 +200,7 @@ export default function UploadButton({
         />
 
         <button
+          ref={buttonRef}
           onClick={(e) => { e.stopPropagation(); if (state === "idle") inputRef.current?.click(); }}
           disabled={state === "uploading"}
           title={tooltip}
@@ -272,10 +283,13 @@ export default function UploadButton({
           </div>
         )}
 
-        {/* Share link popup */}
-        {shareUrl && <SharePopup url={shareUrl} copied={copied} onCopy={() => {
-          navigator.clipboard.writeText(shareUrl).then(() => setCopied(true));
-        }} onClose={() => setShareUrl(null)} />}
+        {/* Share link popup — portal to escape overflow:hidden */}
+        {shareUrl && popupAnchor && typeof document !== "undefined" && createPortal(
+          <SharePopup url={shareUrl} anchor={popupAnchor} copied={copied}
+            onCopy={() => { navigator.clipboard.writeText(shareUrl).then(() => setCopied(true)); }}
+            onClose={() => setShareUrl(null)} />,
+          document.body
+        )}
       </div>
     );
   }
@@ -310,12 +324,16 @@ export default function UploadButton({
         onChange={handleInputChange}
       />
 
-      {/* Share link popup */}
-      {shareUrl && <SharePopup url={shareUrl} copied={copied} onCopy={() => {
-        navigator.clipboard.writeText(shareUrl).then(() => setCopied(true));
-      }} onClose={() => setShareUrl(null)} />}
+      {/* Share link popup — portal to escape overflow:hidden */}
+      {shareUrl && popupAnchor && typeof document !== "undefined" && createPortal(
+        <SharePopup url={shareUrl} anchor={popupAnchor} copied={copied}
+          onCopy={() => { navigator.clipboard.writeText(shareUrl).then(() => setCopied(true)); }}
+          onClose={() => setShareUrl(null)} />,
+        document.body
+      )}
 
       <button
+        ref={buttonRef}
         onClick={(e) => { e.stopPropagation(); if (state === "idle") inputRef.current?.click(); }}
         disabled={state === "uploading"}
         title={tooltip}
@@ -373,14 +391,14 @@ export default function UploadButton({
 
 // ── Share link popup ──────────────────────────────────────────────────────────
 function SharePopup({
-  url, copied, onCopy, onClose,
-}: { url: string; copied: boolean; onCopy: () => void; onClose: () => void }) {
+  url, anchor, copied, onCopy, onClose,
+}: { url: string; anchor: { bottom: number; right: number }; copied: boolean; onCopy: () => void; onClose: () => void }) {
   return (
     <div style={{
-      position: "absolute",
-      bottom: "calc(100% + 8px)",
-      right: 0,
-      zIndex: 300,
+      position: "fixed",
+      bottom: anchor.bottom,
+      right:  anchor.right,
+      zIndex: 99999,
       background: "#1C1C1C",
       border: "1px solid #333",
       borderRadius: 10,
