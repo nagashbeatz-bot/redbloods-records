@@ -26,7 +26,7 @@ export const PROJECT_TYPES: Exclude<ProjectType, "">[] = [
   "אחר",
 ];
 
-/** Canonical "no affiliation" value stored in Monday and shown in UI */
+/** Canonical "no affiliation" value stored in DB and shown in UI */
 export const NO_AFFILIATION = "ללא שיוך";
 
 /** Returns true if a parentProject value means "not affiliated" */
@@ -41,13 +41,13 @@ export type UpdatableField =
   | "notes"
   | "projectType"
   | "parentProject"
-  | "name"    // item title (requires special Monday mutation)
-  | "artist"; // text column שם אמן
+  | "name"
+  | "artist";
 
 export interface FileLink {
   name: string;
   url: string;
-  assetId?: number;     // Monday asset ID (legacy)
+  assetId?: number;     // legacy field (unused)
   dropboxPath?: string; // Dropbox path — required for Dropbox file deletion
 }
 
@@ -109,16 +109,3 @@ export interface MondayColumnMap {
   parentProject: string;  // שייך ל — empty string if column not yet added
 }
 
-/**
- * Describes a pending column change for display in the confirmation UI.
- * IMPORTANT: Every column mutation MUST be previewed and confirmed before
- * the actual API function is called. See lib/monday.ts column management section.
- */
-export interface ColumnChangePreview {
-  operation: "add" | "rename" | "delete";
-  boardId: string;
-  columnId?: string;
-  currentTitle?: string;
-  newTitle?: string;
-  columnType?: string;
-}

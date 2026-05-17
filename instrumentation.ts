@@ -1,7 +1,7 @@
 /**
  * Next.js Instrumentation — runs once when the server starts.
  *
- * 1. Loads schedule config from Monday.com (persistent across Railway redeploys).
+ * 1. Loads schedule config from Supabase (persistent across Railway redeploys).
  * 2. Schedules daily email reports using node-cron.
  * 3. Calls report functions DIRECTLY — no HTTP fetch, no port dependency.
  *    Works reliably on Railway and any other host.
@@ -13,19 +13,19 @@ export async function register() {
   const { default: cron }                      = await import("node-cron");
   const { getRuntimeConfig, setRuntimeConfig, markSchedulerStarted, markCronTick, markSent } = await import("@/lib/reports/runtime-config");
 
-  // ── Load config from Monday.com on startup ────────────────────────────────
+  // ── Load config from Supabase on startup ─────────────────────────────────
   try {
-    const { readMondayConfig } = await import("@/lib/reports/monday-config");
-    const stored = await readMondayConfig();
+    const { readReportConfig } = await import("@/lib/reports/monday-config");
+    const stored = await readReportConfig();
     if (stored) {
       setRuntimeConfig(stored);
-      console.log(`[reports] הגדרות נטענו מ-Monday.com — בוקר: ${stored.morningTime} · ערב: ${stored.eveningTime}`);
+      console.log(`[reports] הגדרות נטענו מ-Supabase — בוקר: ${stored.morningTime} · ערב: ${stored.eveningTime}`);
     } else {
       const def = getRuntimeConfig();
       console.log(`[reports] ברירת מחדל — בוקר: ${def.morningTime} · ערב: ${def.eveningTime}`);
     }
   } catch (err) {
-    console.warn("[reports] לא ניתן לטעון הגדרות מ-Monday.com:", err);
+    console.warn("[reports] לא ניתן לטעון הגדרות:", err);
   }
 
   // ── Send helpers (call functions directly, no HTTP) ───────────────────────

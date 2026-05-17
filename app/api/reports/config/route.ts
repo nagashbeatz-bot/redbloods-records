@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { getRuntimeConfig, setRuntimeConfig } from "@/lib/reports/runtime-config";
-import { readMondayConfig, writeMondayConfig } from "@/lib/reports/monday-config";
+import { readReportConfig, writeReportConfig } from "@/lib/reports/monday-config";
 import { saveReportConfig } from "@/lib/reports/config";
 
 // GET /api/reports/config — returns current schedule + Railway URL if available
 export async function GET() {
   try {
     const runtime    = getRuntimeConfig();
-    // Railway sets RAILWAY_PUBLIC_DOMAIN to the service's public URL
     const domain     = process.env.RAILWAY_PUBLIC_DOMAIN;
     const railwayUrl = domain ? `https://${domain}` : null;
     return NextResponse.json({ ...runtime, railwayUrl });
@@ -16,7 +15,7 @@ export async function GET() {
   }
 }
 
-// POST /api/reports/config — save schedule to Monday.com + memory + local file
+// POST /api/reports/config — save schedule to Supabase + memory + local file
 export async function POST(req: Request) {
   try {
     const body = await req.json() as { morningTime?: string; eveningTime?: string };
@@ -32,8 +31,8 @@ export async function POST(req: Request) {
 
     const config = { morningTime, eveningTime };
 
-    // 1. Save to Monday.com (persistent across Railway redeploys)
-    await writeMondayConfig(config);
+    // 1. Save to Supabase (persistent across Railway redeploys)
+    await writeReportConfig(config);
 
     // 2. Update in-memory config immediately (cron picks it up next minute)
     setRuntimeConfig(config);
@@ -48,10 +47,10 @@ export async function POST(req: Request) {
   }
 }
 
-// Also expose a read-from-monday endpoint for diagnostics
+// Read current stored config from Supabase (diagnostics)
 export async function PUT() {
   try {
-    const stored = await readMondayConfig();
+    const stored = await readReportConfig();
     return NextResponse.json({ stored });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

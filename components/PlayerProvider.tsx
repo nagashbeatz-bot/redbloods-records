@@ -171,20 +171,9 @@ export function getLatestAudioFile(
 
 /**
  * Returns a playable URL for a file.
- * - Dropbox files (dropboxPath set, no assetId): URL already points to /api/dropbox/stream — return as-is.
- * - Monday files (assetId set): fetch a fresh signed URL from Monday.
- * - Fallback: return stored url.
+ * Dropbox files: URL points to /api/dropbox/stream — always fresh.
+ * Legacy files without dropboxPath: return stored url as-is.
  */
 export async function getFreshPlayUrl(file: { url: string; assetId?: number; dropboxPath?: string }): Promise<string> {
-  // Dropbox file — stream URL is always fresh (server fetches temp link on each request)
-  if (file.dropboxPath || !file.assetId) return file.url;
-  // Legacy Monday file — fetch a fresh signed URL
-  try {
-    const res = await fetch(`/api/monday/asset-url?assetId=${file.assetId}`);
-    if (!res.ok) return file.url;
-    const data = await res.json();
-    return data.url || file.url;
-  } catch {
-    return file.url;
-  }
+  return file.url;
 }

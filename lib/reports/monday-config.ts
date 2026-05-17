@@ -13,7 +13,7 @@ interface ConfigPayload {
 }
 
 /** Read the stored schedule from Supabase. Returns null if not found or on error. */
-export async function readMondayConfig(): Promise<ConfigPayload | null> {
+export async function readReportConfig(): Promise<ConfigPayload | null> {
   try {
     const { data, error } = await supabase
       .from("settings")
@@ -31,7 +31,7 @@ export async function readMondayConfig(): Promise<ConfigPayload | null> {
 }
 
 /** Write the schedule to Supabase settings table. */
-export async function writeMondayConfig(config: ConfigPayload): Promise<void> {
+export async function writeReportConfig(config: ConfigPayload): Promise<void> {
   const { error } = await supabase
     .from("settings")
     .upsert({ key: SETTINGS_KEY, value: config }, { onConflict: "key" });
