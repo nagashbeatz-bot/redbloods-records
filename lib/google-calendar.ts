@@ -326,11 +326,76 @@ export function buildCalendarContext(
 
 import {
   WORK_START_H, WORK_END_H, WORK_DAYS, SLOT_STEP_MIN, BUFFER_MIN,
-  isWorkingDay, slotLabel,
 } from "./schedule-rules";
 
+// ── Israel-timezone helpers (server-safe) ─────────────────────────────────────
+// The server runs in UTC (Railway). All working-hour logic must be computed in
+// Asia/Jerusalem time, NOT in server-local time.
+
+const IL_TZ = "Asia/Jerusalem";
+const IL_DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+const p2 = (n: number) => String(n).padStart(2, "0");
+
+/** YYYY-MM-DD in Israel timezone */
+function ilDateStr(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: IL_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+}
+
+/** Day-of-week (0=Sun) for a date string, using noon-UTC anchor (safe across DST) */
+function ilDayOfWeek(dateStr: string): number {
+  return new Date(`${dateStr}T12:00:00.000Z`).getDay();
+}
+
+/** Israel UTC offset in whole hours at noon on a given date (e.g. 3 for UTC+3, 2 for UTC+2) */
+function ilOffsetH(dateStr: string): number {
+  const probe = new Date(`${dateStr}T12:00:00.000Z`);
+  const ilH   = parseInt(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: IL_TZ, hour: "2-digit", hour12: false,
+    }).format(probe),
+    10
+  );
+  return ilH - 12; // e.g. 15 - 12 = 3 for EEST
+}
+
+/** Build a real UTC Date for a given Israel date + working-hour slot (e.g. 10:00 IL) */
+function ilSlotToDate(dateStr: string, h: number, m: number): Date {
+  const off  = ilOffsetH(dateStr);
+  const sign = off >= 0 ? "+" : "-";
+  return new Date(`${dateStr}T${p2(h)}:${p2(m)}:00${sign}${p2(Math.abs(off))}:00`);
+}
+
+/** "HH:MM" in Israel timezone */
+function ilTimeStr(d: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: IL_TZ, hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const h = parts.find((p) => p.type === "hour")?.value   ?? "00";
+  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${h.padStart(2, "0")}:${m.padStart(2, "0")}`;
+}
+
+/** "היום / מחר / יום X d.m" in Israel timezone */
+function ilDayLabel(d: Date, now: Date): string {
+  const dStr   = ilDateStr(d);
+  const nowStr = ilDateStr(now);
+  const tomStr = ilDateStr(new Date(now.getTime() + 86_400_000));
+  if (dStr === nowStr) return "היום";
+  if (dStr === tomStr) return "מחר";
+  const dow     = ilDayOfWeek(dStr);
+  const [, mm, dd] = dStr.split("-");
+  return `יום ${IL_DAY_NAMES[dow]} ${parseInt(dd)}.${parseInt(mm)}`;
+}
+
+/** Full slot label in Israel time */
+function ilSlotLabel(start: Date, end: Date, now: Date): string {
+  return `${ilDayLabel(start, now)}  ${ilTimeStr(start)} – ${ilTimeStr(end)}`;
+}
+
 /**
- * Returns up to `maxSlots` free :00/:30 windows within working hours (Sun–Thu 10–20).
+ * Returns up to `maxSlots` free :00/:30 windows within working hours (Sun–Thu 10–20 IL).
  * If `requiresBuffer` is true, enforces 30-min gap before/after adjacent events.
  */
 export async function findFreeSlots(
@@ -359,33 +424,34 @@ export async function findFreeSlots(
   }));
 
   const slots: Array<{ start: string; end: string; label: string }> = [];
-  const durMs    = durationMinutes * 60_000;
-  const bufMs    = requiresBuffer ? BUFFER_MIN * 60_000 : 0;
+  const durMs = durationMinutes * 60_000;
+  const bufMs = requiresBuffer ? BUFFER_MIN * 60_000 : 0;
 
   for (let d = 0; d < daysAhead && slots.length < maxSlots; d++) {
-    const base = new Date(now);
-    base.setDate(base.getDate() + d);
-    base.setHours(0, 0, 0, 0);
+    // Derive the Israel calendar date for offset d (adding ms handles DST safely)
+    const dayUTC   = new Date(now.getTime() + d * 86_400_000);
+    const dateStr  = ilDateStr(dayUTC); // "2026-05-18"
+    const dow      = ilDayOfWeek(dateStr);
 
-    if (!isWorkingDay(base)) continue;
+    if (!WORK_DAYS.includes(dow)) continue;
 
-    // Generate candidate :00/:30 times for this day
+    // Generate candidate :00/:30 slots in Israel working hours
     for (
       let startMin = WORK_START_H * 60;
       startMin + durationMinutes <= WORK_END_H * 60;
       startMin += SLOT_STEP_MIN
     ) {
-      const candidate = new Date(base);
-      candidate.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
+      const slotH      = Math.floor(startMin / 60);
+      const slotM      = startMin % 60;
+      // Build a real UTC Date representing this Israel working-hour slot
+      const candidate  = ilSlotToDate(dateStr, slotH, slotM);
 
-      // Skip past times
+      // Skip slots that have already passed (real UTC comparison)
       if (candidate <= now) continue;
 
       const candidateEnd = new Date(candidate.getTime() + durMs);
-
-      // Check busy conflicts including buffer zone
-      const checkStart = new Date(candidate.getTime() - bufMs);
-      const checkEnd   = new Date(candidateEnd.getTime() + bufMs);
+      const checkStart   = new Date(candidate.getTime() - bufMs);
+      const checkEnd     = new Date(candidateEnd.getTime() + bufMs);
 
       const hasConflict = busy.some(
         (b) => b.start < checkEnd && b.end > checkStart
@@ -395,7 +461,7 @@ export async function findFreeSlots(
         slots.push({
           start: candidate.toISOString(),
           end:   candidateEnd.toISOString(),
-          label: slotLabel(candidate, candidateEnd),
+          label: ilSlotLabel(candidate, candidateEnd, now), // Israel-aware label
         });
         if (slots.length >= maxSlots) break;
       }
