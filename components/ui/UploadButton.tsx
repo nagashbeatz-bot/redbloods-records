@@ -47,6 +47,8 @@ export default function UploadButton({
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [copied,   setCopied]   = useState(false);
   const { refresh } = useProjects();
 
   const reset = (delay = 4000) =>
@@ -84,9 +86,11 @@ export default function UploadButton({
         setProgress(100);
         if (xhr.status >= 200 && xhr.status < 300) {
           let ok = false;
+          let url = "";
           try {
             const json = JSON.parse(xhr.responseText);
             ok = !!json.ok;
+            url = json.shareUrl ?? "";
             if (!ok) throw new Error(json.error || "שגיאה בהעלאה");
           } catch (err) {
             setState("error");
@@ -97,6 +101,12 @@ export default function UploadButton({
           }
           setState("done");
           await refresh();
+          // Show share popup for 5 seconds
+          if (url) {
+            setShareUrl(url);
+            setCopied(false);
+            setTimeout(() => setShareUrl(null), 5000);
+          }
           reset(2000);
         } else {
           let msg = "שגיאה בהעלאה";
@@ -261,6 +271,11 @@ export default function UploadButton({
             {errorMsg}
           </div>
         )}
+
+        {/* Share link popup */}
+        {shareUrl && <SharePopup url={shareUrl} copied={copied} onCopy={() => {
+          navigator.clipboard.writeText(shareUrl).then(() => setCopied(true));
+        }} onClose={() => setShareUrl(null)} />}
       </div>
     );
   }
@@ -294,6 +309,11 @@ export default function UploadButton({
         style={{ display: "none" }}
         onChange={handleInputChange}
       />
+
+      {/* Share link popup */}
+      {shareUrl && <SharePopup url={shareUrl} copied={copied} onCopy={() => {
+        navigator.clipboard.writeText(shareUrl).then(() => setCopied(true));
+      }} onClose={() => setShareUrl(null)} />}
 
       <button
         onClick={(e) => { e.stopPropagation(); if (state === "idle") inputRef.current?.click(); }}
@@ -346,6 +366,54 @@ export default function UploadButton({
         ) : (
           <><span style={{ fontSize: 15, lineHeight: 1 }}>↑</span><span>העלה גרסה</span></>
         )}
+      </button>
+    </div>
+  );
+}
+
+// ── Share link popup ──────────────────────────────────────────────────────────
+function SharePopup({
+  url, copied, onCopy, onClose,
+}: { url: string; copied: boolean; onCopy: () => void; onClose: () => void }) {
+  return (
+    <div style={{
+      position: "absolute",
+      bottom: "calc(100% + 8px)",
+      right: 0,
+      zIndex: 300,
+      background: "#1C1C1C",
+      border: "1px solid #333",
+      borderRadius: 10,
+      padding: "10px 12px",
+      width: 260,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "#10B981" }}>✓ הועלה — קישור לשיתוף</span>
+        <button onClick={onClose} style={{
+          background: "none", border: "none", cursor: "pointer",
+          color: "#555", fontSize: 16, padding: 0, lineHeight: 1,
+        }}>×</button>
+      </div>
+      <div style={{
+        background: "#111", borderRadius: 6, padding: "5px 8px",
+        fontSize: 10, color: "#666", wordBreak: "break-all",
+        marginBottom: 8, lineHeight: 1.4,
+      }}>
+        {url.length > 60 ? url.slice(0, 57) + "..." : url}
+      </div>
+      <button
+        onClick={onCopy}
+        style={{
+          width: "100%", padding: "6px 0", borderRadius: 7,
+          border: "none", cursor: "pointer", fontFamily: "inherit",
+          fontSize: 12, fontWeight: 600,
+          background: copied ? "rgba(16,185,129,0.15)" : "#3B82F6",
+          color: copied ? "#10B981" : "#fff",
+          transition: "all 0.2s",
+        }}
+      >
+        {copied ? "✓ הועתק!" : "העתק קישור"}
       </button>
     </div>
   );

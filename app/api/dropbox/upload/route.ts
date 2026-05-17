@@ -70,10 +70,42 @@ export async function POST(req: NextRequest) {
     // Use the actual path Dropbox chose (may differ if autorename kicked in)
     const finalPath = uploaded.path_display;
 
-    // ── 2. Build the stream URL (routes through our API → fresh Dropbox temp link) ──
+    // ── 2. Build the internal stream URL (for the in-app player) ─────────────
     const fileUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
-    // ── 3. Persist to Supabase ────────────────────────────────────────────────
+    // ── 3. Create a public shared link (for sharing with clients) ─────────────
+    let shareUrl = "";
+    try {
+      const linkRes = await fetch(
+        "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ path: finalPath, settings: { requested_visibility: "public" } }),
+        }
+      );
+      if (linkRes.ok) {
+        const linkData = (await linkRes.json()) as { url: string };
+        // Convert ?dl=0 → ?dl=1 for direct download/playback
+        shareUrl = linkData.url.replace(/\?dl=0$/, "?dl=1");
+      } else {
+        // Link might already exist — try fetching it
+        const existing = await fetch(
+          "https://api.dropboxapi.com/2/sharing/list_shared_links",
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ path: finalPath, direct_only: true }),
+          }
+        );
+        if (existing.ok) {
+          const ed = (await existing.json()) as { links?: { url: string }[] };
+          if (ed.links?.[0]?.url) shareUrl = ed.links[0].url.replace(/\?dl=0$/, "?dl=1");
+        }
+      }
+    } catch { /* non-fatal */ }
+
+    // ── 4. Persist to Supabase ────────────────────────────────────────────────
     const { addFileToProject } = await import("@/lib/projects-store");
     await addFileToProject(projectId, {
       name:        newName,
@@ -81,7 +113,7 @@ export async function POST(req: NextRequest) {
       dropboxPath: finalPath,
     });
 
-    return NextResponse.json({ ok: true, file: { name: newName, url: fileUrl, dropboxPath: finalPath } });
+    return NextResponse.json({ ok: true, shareUrl, file: { name: newName, url: fileUrl, dropboxPath: finalPath } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[dropbox/upload]", msg);
