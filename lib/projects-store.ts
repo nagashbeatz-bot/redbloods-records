@@ -15,16 +15,17 @@ interface DbProject {
   notes:          string;
   project_type:   string;
   parent_project: string;
-  files:          { name: string; assetId?: number; url?: string }[];
+  files:          { name: string; assetId?: number; url?: string; dropboxPath?: string }[];
   created_at:     string;
   updated_at:     string;
 }
 
 function dbToProject(db: DbProject): Project {
   const files: FileLink[] = (db.files || []).map((f) => ({
-    name:    f.name,
-    url:     f.url || "#",
-    assetId: f.assetId,
+    name:        f.name,
+    url:         f.url || "#",
+    assetId:     f.assetId,
+    dropboxPath: f.dropboxPath,
   }));
 
   return {
