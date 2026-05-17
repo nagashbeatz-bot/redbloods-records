@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
         headers: {
           Authorization:     `Bearer ${token}`,
           "Content-Type":    "application/octet-stream",
-          // dropboxArg() ensures all Hebrew/Unicode chars are \uXXXX-escaped
           "Dropbox-API-Arg": dropboxArg({
             path:       dropboxPath,
             mode:       "add",
@@ -57,55 +56,25 @@ export async function POST(req: NextRequest) {
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
       console.error("[dropbox/upload] upload failed:", errText);
-      // Return the actual Dropbox error so we can debug
       let detail = errText;
       try { detail = JSON.parse(errText)?.error_summary ?? errText; } catch {}
       return NextResponse.json({ error: `Dropbox: ${detail}` }, { status: 500 });
     }
 
-    const uploaded = (await uploadRes.json()) as {
-      path_display: string;
-      name: string;
-    };
-    // Use the actual path Dropbox chose (may differ if autorename kicked in)
+    const uploaded = (await uploadRes.json()) as { path_display: string; name: string };
     const finalPath = uploaded.path_display;
 
-    // ── 2. Build the internal stream URL (for the in-app player) ─────────────
+    // ── 2. Build URLs ──────────────────────────────────────────────────────────
+    // Internal stream URL (for the in-app player)
     const fileUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
-    // ── 3. Create a public shared link (for sharing with clients) ─────────────
-    let shareUrl = "";
-    try {
-      const linkRes = await fetch(
-        "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ path: finalPath, settings: { requested_visibility: "public" } }),
-        }
-      );
-      if (linkRes.ok) {
-        const linkData = (await linkRes.json()) as { url: string };
-        // Convert ?dl=0 → ?dl=1 for direct download/playback
-        shareUrl = linkData.url.replace(/\?dl=0$/, "?dl=1");
-      } else {
-        // Link might already exist — try fetching it
-        const existing = await fetch(
-          "https://api.dropboxapi.com/2/sharing/list_shared_links",
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ path: finalPath, direct_only: true }),
-          }
-        );
-        if (existing.ok) {
-          const ed = (await existing.json()) as { links?: { url: string }[] };
-          if (ed.links?.[0]?.url) shareUrl = ed.links[0].url.replace(/\?dl=0$/, "?dl=1");
-        }
-      }
-    } catch { /* non-fatal */ }
+    // Public share URL — uses our own stream endpoint, no extra Dropbox permissions needed.
+    // The Railway domain is the public base; fall back to the request origin.
+    const domain   = process.env.RAILWAY_PUBLIC_DOMAIN;
+    const base     = domain ? `https://${domain}` : req.nextUrl.origin;
+    const shareUrl = `${base}/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
-    // ── 4. Persist to Supabase ────────────────────────────────────────────────
+    // ── 3. Persist to Supabase ────────────────────────────────────────────────
     const { addFileToProject } = await import("@/lib/projects-store");
     await addFileToProject(projectId, {
       name:        newName,
