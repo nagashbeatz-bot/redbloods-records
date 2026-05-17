@@ -121,6 +121,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
   // Track whether the user has already triggered a slot search at least once
   const [hasSearched, setHasSearched] = useState(false);
+  // Cache last successful slots so we can show them (dimmed) while refetching
+  const [cachedSlots, setCachedSlots] = useState<FreeSlot[]>([]);
 
   // Auto-reload slots when duration changes (if recommended tab already searched)
   useEffect(() => {
@@ -177,6 +179,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       if (d.needsReauth) { setPhase({ error: "יש לחבר מחדש את Google Calendar עם הרשאות כתיבה.", needsReauth: true }); return; }
       if (d.error)       { setPhase({ error: d.error }); return; }
       if (!d.slots?.length) { setPhase("no_slots"); return; }
+      setCachedSlots(d.slots);
       setPhase({ slots: d.slots });
     } catch { setPhase({ error: "שגיאת רשת" }); }
   }
@@ -420,7 +423,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── RECOMMENDED / MANUAL tabs ─────────────────────────────── */}
-        {!showFinance && (phase === "idle" || isSlots || phase === "no_slots") && (
+        {!showFinance && (phase === "idle" || isSlots || phase === "no_slots" || phase === "searching") && (
           <>
             <div style={{ display: "flex", gap: 0, marginBottom: 18, borderBottom: "1px solid #222" }}>
               {(["recommended", "manual"] as Tab[]).map((t) => (
@@ -450,6 +453,36 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               <>
                 {phase === "idle" && (
                   <Btn primary onClick={findSlots}>🗓 מצא זמן פנוי ביומן</Btn>
+                )}
+
+                {/* Searching: show cached slots dimmed + spinner overlay, or bare spinner */}
+                {phase === "searching" && (
+                  cachedSlots.length > 0 ? (
+                    <div style={{ position: "relative" }}>
+                      {/* Dim overlay with spinner text */}
+                      <div style={{
+                        position: "absolute", inset: 0, zIndex: 5,
+                        display: "flex", alignItems: "flex-start", justifyContent: "flex-end",
+                        pointerEvents: "none",
+                      }}>
+                        <span style={{
+                          fontSize: 11, color: "#555", marginTop: 2, marginLeft: 2,
+                          animation: "pulse 1s ease-in-out infinite",
+                        }}>
+                          מחפש...
+                        </span>
+                      </div>
+                      {/* Previous slots, dimmed */}
+                      <div style={{ opacity: 0.35, pointerEvents: "none", transition: "opacity 0.2s" }}>
+                        <SlotDayGroups
+                          slots={cachedSlots}
+                          onSelect={() => {}}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <Spinner label="מחפש חלונות פנויים..." />
+                  )
                 )}
 
                 {isSlots && (
@@ -498,9 +531,6 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
         {/* ── Checking ────────────────────────────────────────────── */}
         {!showFinance && phase === "checking" && <Spinner label="בודק זמינות..." />}
-
-        {/* ── Searching ───────────────────────────────────────────── */}
-        {!showFinance && phase === "searching" && <Spinner label="מחפש חלונות פנויים..." />}
 
         {/* ── Creating ────────────────────────────────────────────── */}
         {!showFinance && phase === "creating" && <Spinner label="יוצר אירוע ביומן..." />}
@@ -557,7 +587,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── Bottom cancel (idle states) ──────────────────────────── */}
-        {!showFinance && (phase === "idle" || isSlots || phase === "no_slots") && (
+        {!showFinance && (phase === "idle" || isSlots || phase === "no_slots" || phase === "searching") && (
           <div style={{ marginTop: 16 }}>
             <button onClick={onClose} style={{ background: "none", border: "none", color: "#444", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
               ביטול
