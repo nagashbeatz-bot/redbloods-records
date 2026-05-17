@@ -65,6 +65,36 @@ export async function deleteClient(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Parse a raw comma/semicolon-separated artist string into individual names */
+function parseArtistNames(raw: string): string[] {
+  return raw.split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * After removing artists from a project, delete any "אמן" clients
+ * whose name no longer appears in ANY project.
+ * Safe: only touches clients with type="אמן" (won't delete manually-added clients).
+ */
+export async function removeArtistsIfOrphaned(names: string[]): Promise<void> {
+  if (names.length === 0) return;
+
+  // Collect every artist name currently in any project
+  const { data: projects } = await supabase.from("projects").select("artist");
+  const allProjectArtists = new Set(
+    (projects ?? []).flatMap((p: { artist: string }) => parseArtistNames(p.artist || ""))
+  );
+
+  // Only remove names that are no longer referenced by any project
+  const toRemove = names.filter((n) => !allProjectArtists.has(n));
+  if (toRemove.length === 0) return;
+
+  await supabase
+    .from("clients")
+    .delete()
+    .in("name", toRemove)
+    .eq("type", "אמן"); // Safety: never auto-delete manually-created clients
+}
+
 /**
  * Given a raw artist string (comma/semicolon separated),
  * ensure every named artist exists in the clients table.
