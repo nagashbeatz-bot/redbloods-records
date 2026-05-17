@@ -22,9 +22,8 @@ export async function GET(req: NextRequest) {
     // Project stubs for matching — best-effort (calendar still works without them)
     let projects: { id: string; name: string; artist: string }[] = [];
     try {
-      const { fetchProjects } = await import("@/lib/monday");
-      const raw = await fetchProjects();
-      projects = raw.map((p) => ({ id: p.id, name: p.name, artist: p.artist }));
+      const { listProjects } = await import("@/lib/projects-store");
+      projects = (await listProjects()).map((p) => ({ id: p.id, name: p.name, artist: p.artist }));
     } catch { /* ignore — show events without project links */ }
 
     const events = await fetchEventsInRange(start, end, projects);

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 /**
  * GET /api/calendar/events
  * Returns { today, week } — arrays of ParsedCalendarEvent.
- * Projects are fetched from Monday to enable project-matching.
+ * Projects are fetched from Supabase for event matching.
  */
 export async function GET() {
   try {
@@ -16,11 +16,11 @@ export async function GET() {
       );
     }
 
-    // Fetch Monday projects for matching (best-effort — if it fails, we proceed without matching)
+    // Fetch projects from Supabase for event matching (best-effort)
     let projects: Array<{ id: string; name: string; artist: string }> = [];
     try {
-      const { fetchProjects } = await import("@/lib/monday");
-      projects = (await fetchProjects()).map((p) => ({
+      const { listProjects } = await import("@/lib/projects-store");
+      projects = (await listProjects()).map((p) => ({
         id:     p.id,
         name:   p.name,
         artist: p.artist,
