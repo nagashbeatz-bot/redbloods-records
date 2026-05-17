@@ -1143,16 +1143,23 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                   {tx.receipt_ref && (
                                     <span style={{ fontSize: 9, color: "#555", background: "rgba(255,255,255,0.03)", border: "1px solid #222", borderRadius: 4, padding: "1px 5px" }} title="אסמכתא">#{tx.receipt_ref}</span>
                                   )}
-                                  {/* Linked session tag */}
+                                  {/* Linked session tag — "התקבל בסשן" or "צפוי בסשן" */}
                                   {tx.linked_session_id && (() => {
                                     const linked = sessions.find((s) => s.id === tx.linked_session_id);
                                     if (!linked) return null;
+                                    const isPaid = PAID_STATUSES.has(tx.payment_status);
+                                    const dateShort = linked.date ? linked.date.slice(5).split("-").reverse().join(".") : "—";
+                                    const color  = isPaid ? "#A78BFA" : "#3B82F6";
+                                    const bg     = isPaid ? "rgba(167,139,250,0.1)" : "rgba(59,130,246,0.1)";
+                                    const border = isPaid ? "rgba(167,139,250,0.25)" : "rgba(59,130,246,0.25)";
+                                    const icon   = isPaid ? "🎵" : "⏳";
+                                    const label  = isPaid ? "התקבל" : "צפוי";
                                     return (
                                       <span
-                                        title={`התקבל בסשן ${linked.date ? fmtDate(linked.date) : ""}`}
-                                        style={{ fontSize: 9, color: "#A78BFA", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.25)", borderRadius: 4, padding: "1px 5px", display: "flex", alignItems: "center", gap: 3 }}
+                                        title={`${label} בסשן ${linked.date ? fmtDate(linked.date) : ""}`}
+                                        style={{ fontSize: 9, color, background: bg, border: `1px solid ${border}`, borderRadius: 4, padding: "1px 5px", display: "flex", alignItems: "center", gap: 3 }}
                                       >
-                                        🎵 {linked.date ? linked.date.slice(5).split("-").reverse().join(".") : "—"}
+                                        {icon} {dateShort}
                                       </span>
                                     );
                                   })()}
@@ -1558,10 +1565,19 @@ function DrawerTxForm({
   const isIncome   = draft.type === "income";
   const isCash     = draft.paymentMethod === "מזומן";
   const isReceived = draft.paymentStatus === "התקבל";
-  // Sessions that already took place in this project (status = התקיים)
+  const isExpected = draft.paymentStatus === "צפוי";
+
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  // Sessions that already took place — for "התקבל" (any method)
   const completedSessions = (sessions ?? []).filter(
     (s) => s.status === "התקיים" && s.date
   ).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+
+  // Future planned sessions — for "צפוי" + מזומן only
+  const futureSessions = (sessions ?? []).filter(
+    (s) => s.status === "מתוכנן" && s.date && s.date >= todayStr
+  ).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
   return (
     <div className="rb-form-card" style={{ marginBottom: 10 }}>
       {/* Type toggle */}
@@ -1683,10 +1699,48 @@ function DrawerTxForm({
         </div>
       )}
 
-      {/* No completed sessions message — only if status = "התקבל" and no sessions exist at all */}
+      {/* No completed sessions message — only if status = "התקבל" and sessions exist but none completed */}
       {isIncome && isReceived && completedSessions.length === 0 && (sessions ?? []).length > 0 && (
         <div style={{ fontSize: 10, color: "#444", padding: "4px 2px" }}>
           אין סשנים שהתקיימו בפרויקט זה עדיין
+        </div>
+      )}
+
+      {/* Future session link — shown when status = "צפוי" AND method = "מזומן" */}
+      {isIncome && isExpected && isCash && futureSessions.length > 0 && (
+        <div style={{
+          borderRadius: 8,
+          border: "1px solid rgba(59,130,246,0.35)",
+          background: "rgba(59,130,246,0.07)",
+          padding: "8px 10px",
+          display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <div style={{ fontSize: 10, color: "#3B82F6", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+            ⏳ מזומן — בחר סשן עתידי שבו צפוי להתקבל התשלום
+          </div>
+          <select
+            value={draft.linkedSessionId}
+            onChange={(e) => {
+              const sid = e.target.value;
+              const sess = futureSessions.find((s) => s.id === sid);
+              setDraft({
+                ...draft,
+                linkedSessionId: sid,
+                date: sid && sess?.date ? sess.date : draft.date,
+              });
+            }}
+            className="rb-session-input"
+            style={{ width: "100%", boxSizing: "border-box" }}
+          >
+            <option value="">⏳ צפוי להתקבל בסשן — בחר סשן (אופציונלי)</option>
+            {futureSessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.date ? fmtDate(s.date) : "—"}
+                {s.start_time ? ` • ${s.start_time}` : ""}
+                {s.end_time ? `–${s.end_time}` : ""}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
