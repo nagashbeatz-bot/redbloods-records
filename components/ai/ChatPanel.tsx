@@ -110,15 +110,13 @@ interface BulkProgress {
   failed: number;
 }
 
-type AIProvider = "groq" | "openai";
+type AIProvider = "groq";
 
 const PROVIDER_COLOR: Record<AIProvider, string> = {
-  groq:   "#10B981",
-  openai: "#3B82F6",
+  groq: "#10B981",
 };
 const PROVIDER_LABEL: Record<AIProvider, string> = {
-  groq:   "Groq",
-  openai: "OpenAI",
+  groq: "Groq",
 };
 
 interface LocalMessage extends ChatMessage {
@@ -177,17 +175,8 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
       });
       const data = await res.json();
       const raw: string = data.content || "שגיאה בתגובה.";
-      const provider: AIProvider | undefined =
-        data.provider === "groq" || data.provider === "openai" ? data.provider : undefined;
-
-      // Show actual provider in header briefly; always return to Groq (default) after.
-      if (provider) {
-        setActiveProvider(provider);
-        // OpenAI was a per-message fallback — reset to Groq after 3 s
-        if (provider !== "groq") {
-          setTimeout(() => setActiveProvider("groq"), 3000);
-        }
-      }
+      const provider: AIProvider = "groq";
+      setActiveProvider(provider);
 
       const { text, action, bulkAction, createAction } = parseAgentMessage(raw);
 
@@ -337,24 +326,13 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
                   width: 6,
                   height: 6,
                   borderRadius: "50%",
-                  // Dot is always Groq-green, except briefly after an OpenAI fallback
-                  background: loading
-                    ? "#555"
-                    : activeProvider === "openai"
-                    ? PROVIDER_COLOR.openai
-                    : PROVIDER_COLOR.groq,
-                  boxShadow: !loading
-                    ? `0 0 4px ${activeProvider === "openai" ? PROVIDER_COLOR.openai : PROVIDER_COLOR.groq}55`
-                    : "none",
+                  background: loading ? "#555" : PROVIDER_COLOR.groq,
+                  boxShadow: !loading ? `0 0 4px ${PROVIDER_COLOR.groq}55` : "none",
                   flexShrink: 0,
                   transition: "background 0.4s, box-shadow 0.4s",
                 }}
               />
-              {loading
-                ? "Groq מגיב..."
-                : activeProvider === "openai"
-                ? `OpenAI (fallback) · חוזר ל-Groq`
-                : `Groq · ${projects.length} פרויקטים`}
+              {loading ? "Groq מגיב..." : `Groq · ${projects.length} פרויקטים`}
             </div>
           </div>
         </div>
@@ -399,17 +377,14 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
                 {msg.role === "assistant" && msg.provider && (
                   <div
                     className="flex items-center gap-1"
-                    style={{ opacity: 0.45, fontSize: 10, color: PROVIDER_COLOR[msg.provider] }}
+                    style={{ opacity: 0.45, fontSize: 10, color: PROVIDER_COLOR.groq }}
                   >
                     <span style={{
                       width: 4, height: 4, borderRadius: "50%",
-                      background: PROVIDER_COLOR[msg.provider],
+                      background: PROVIDER_COLOR.groq,
                       display: "inline-block", flexShrink: 0,
                     }} />
-                    {PROVIDER_LABEL[msg.provider]}
-                    {msg.provider === "openai" && (
-                      <span style={{ color: "#444" }}> · fallback</span>
-                    )}
+                    {PROVIDER_LABEL.groq}
                   </div>
                 )}
               </div>
