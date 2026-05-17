@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import type { Project } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { OverdueTag, DueSoonTag } from "@/components/ui/Badge";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
+import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 
 interface ProjectSectionProps {
   title: string;
@@ -26,6 +26,7 @@ export default function ProjectSection({
 }: ProjectSectionProps) {
   const items = maxItems ? projects.slice(0, maxItems) : projects;
   const player = usePlayerSafe();
+  const { openProject } = useGlobalProjectDrawer();
 
   return (
     <div>
@@ -118,11 +119,11 @@ export default function ProjectSection({
                   )}
                 </div>
 
-                {/* Name + artist — clicking navigates */}
-                <Link
-                  href={`/projects/${p.id}`}
+                {/* Name + artist — clicking opens Side Panel */}
+                <button
+                  onClick={() => openProject(p.id)}
                   className="flex items-center gap-3 min-w-0 flex-1"
-                  style={{ textDecoration: "none" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", textAlign: "right", padding: 0 }}
                 >
                   <div className="min-w-0">
                     <div className="font-medium text-sm truncate" style={{ color: "#E8E8E8" }}>
@@ -132,7 +133,7 @@ export default function ProjectSection({
                       {p.artist}
                     </div>
                   </div>
-                </Link>
+                </button>
 
                 {/* Right: status + tags + deadline */}
                 <div className="flex items-center gap-2 flex-shrink-0 mr-3">

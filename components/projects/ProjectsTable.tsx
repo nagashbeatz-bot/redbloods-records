@@ -14,7 +14,7 @@ import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
 import ActionMenu from "@/components/project/ActionMenu";
 import NotesCellEdit from "@/components/ui/NotesCellEdit";
-import ProjectDrawer from "@/components/ui/ProjectDrawer";
+import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 
 type FilterStatus = ProjectStatus | "כל הסטטוסים" | "באיחור" | "קרובים לדדליין";
 
@@ -283,7 +283,7 @@ export default function ProjectsTable() {
   const [isMobile,  setIsMobile]  = useState(false);
   const [isCompact,      setIsCompact]      = useState(false); // 900–1300px
   const [isUltraCompact, setIsUltraCompact] = useState(false); // 768–900px
-  const [drawerProjectId, setDrawerProjectId] = useState<string | null>(null);
+  const { openProject } = useGlobalProjectDrawer();
   const [showNewProject, setShowNewProject] = useState(false);
   const [confirmDeleteId,   setConfirmDeleteId]   = useState<string | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState("");
@@ -696,7 +696,7 @@ export default function ProjectsTable() {
                     </span>
                   </InlineCellEdit>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setDrawerProjectId(p.id); }}
+                    onClick={(e) => { e.stopPropagation(); openProject(p.id); }}
                     title="פתח פרטי פרויקט"
                     style={{
                       width: 22, height: 22, borderRadius: 5,
@@ -859,14 +859,6 @@ export default function ProjectsTable() {
           })
         )}
       </div>
-
-      {drawerProjectId && (
-        <ProjectDrawer
-          projectId={drawerProjectId}
-          artists={artists}
-          onClose={() => setDrawerProjectId(null)}
-        />
-      )}
 
       {/* ── Delete confirmation popup ── */}
       {confirmDeleteId && typeof document !== "undefined" && createPortal(

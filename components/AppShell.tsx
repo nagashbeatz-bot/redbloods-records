@@ -8,6 +8,7 @@ import MiniPlayer from "./ui/MiniPlayer";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
+import GlobalProjectDrawerProvider from "@/components/GlobalProjectDrawer";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel (left side in RTL)
 const SIDEBAR_WIDTH = 224; // px — navigation sidebar (right side in RTL, w-56)
@@ -98,7 +99,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 : undefined,
             }}
           >
-            {children}
+            <GlobalProjectDrawerProvider>
+              {children}
+            </GlobalProjectDrawerProvider>
           </div>
 
           {/* Chat sidebar */}

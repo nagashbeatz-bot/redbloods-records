@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
+import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { checkHealth, ProjectIssue } from "@/lib/health";
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
 
@@ -25,6 +25,7 @@ interface IssueRowProps {
 
 function IssueRow({ issue, onFixed, onSnooze }: IssueRowProps) {
   const { updateProjectField } = useProjects();
+  const { openProject } = useGlobalProjectDrawer();
   const [saving, setSaving] = useState(false);
   const [dateVal, setDateVal] = useState("");
 
@@ -93,14 +94,14 @@ function IssueRow({ issue, onFixed, onSnooze }: IssueRowProps) {
         )}
 
         {issue.type === "overdue_active" && (
-          <Link
-            href={`/projects/${issue.id}`}
-            style={{ fontSize: 11, color: "#3B82F6", textDecoration: "none",
+          <button
+            onClick={() => openProject(issue.id)}
+            style={{ fontSize: 11, color: "#3B82F6", cursor: "pointer", fontFamily: "inherit",
               padding: "3px 10px", borderRadius: 6, border: "1px solid rgba(59,130,246,0.3)",
               background: "rgba(59,130,246,0.08)" }}
           >
-            עבור לפרויקט ←
-          </Link>
+            פתח פרויקט ←
+          </button>
         )}
 
         {issue.type === "missing_type" && (
@@ -129,25 +130,25 @@ function IssueRow({ issue, onFixed, onSnooze }: IssueRowProps) {
               disabled={saving}
               onClick={() => save("parentProject", NO_AFFILIATION)}
             />
-            <Link
-              href={`/projects/${issue.id}`}
-              style={{ fontSize: 11, color: "#888", textDecoration: "none",
-                padding: "3px 10px", borderRadius: 6, border: "1px solid #2A2A2A" }}
+            <button
+              onClick={() => openProject(issue.id)}
+              style={{ fontSize: 11, color: "#888", cursor: "pointer", fontFamily: "inherit",
+                padding: "3px 10px", borderRadius: 6, border: "1px solid #2A2A2A", background: "none" }}
             >
               הגדר ידנית
-            </Link>
+            </button>
           </>
         )}
 
         {issue.type === "missing_artist" && (
-          <Link
-            href={`/projects/${issue.id}`}
-            style={{ fontSize: 11, color: "#3B82F6", textDecoration: "none",
+          <button
+            onClick={() => openProject(issue.id)}
+            style={{ fontSize: 11, color: "#3B82F6", cursor: "pointer", fontFamily: "inherit",
               padding: "3px 10px", borderRadius: 6, border: "1px solid rgba(59,130,246,0.3)",
               background: "rgba(59,130,246,0.08)" }}
           >
-            עבור לפרויקט ←
-          </Link>
+            פתח פרויקט ←
+          </button>
         )}
       </div>
     </div>
