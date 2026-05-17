@@ -18,7 +18,7 @@ import ActionMenu from "@/components/project/ActionMenu";
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
 type SessionType    = "סשן" | "ניקוי מיקס" | "חזרה";
-type PaymentStatus  = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל";
+type PaymentStatus  = "שולם" | "התקבל" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "לבדיקה";
 
 interface Transaction {
   id: string;
@@ -72,7 +72,10 @@ interface Draft {
 // ── Constants ─────────────────────────────────────────────────────────────────
 const STATUS_OPTIONS:   SessionStatus[]   = ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"];
 const TYPE_OPTIONS:     SessionType[]     = ["סשן", "ניקוי מיקס", "חזרה"];
-const PMT_STATUS_OPTS:  PaymentStatus[]   = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
+// Quick-change options shown in the status dropdown (income)
+const PMT_STATUS_OPTS:  PaymentStatus[]   = ["התקבל", "צפוי", "חלקי", "בוטל", "לבדיקה"];
+// Statuses that count as "paid" in totalPaid calculation
+const PAID_STATUSES = new Set<PaymentStatus>(["שולם", "התקבל"]);
 const EXPENSE_CATS      = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
@@ -85,10 +88,12 @@ const STATUS_COLOR: Record<SessionStatus, string> = {
 
 const PMT_COLOR: Record<PaymentStatus, string> = {
   "שולם":    "#10B981",
+  "התקבל":   "#10B981",
   "צפוי":    "#3B82F6",
   "לא שולם": "#EF4444",
   "חלקי":    "#F59E0B",
   "בוטל":    "#6B7280",
+  "לבדיקה":  "#A855F7",
 };
 
 function emptyTxDraft(): TxDraft {
@@ -168,6 +173,18 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [editTxSaving,   setEditTxSaving]   = useState(false);
   const [editingPrice,   setEditingPrice]   = useState(false);
   const [priceDraft,     setPriceDraft]     = useState("");
+  // Quick status-change dropdown
+  const [statusDropId,   setStatusDropId]   = useState<string | null>(null);
+  // Past-date confirmation modal
+  const [dateConfirm,    setDateConfirm]    = useState<{ tx: Transaction; newStatus: PaymentStatus } | null>(null);
+
+  // Close status dropdown on any outside click
+  useEffect(() => {
+    if (!statusDropId) return;
+    const close = () => setStatusDropId(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [statusDropId]);
 
   // ── File delete state ─────────────────────────────────────────────────────
   const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
@@ -454,6 +471,37 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     });
   }
 
+  // ── Quick status change (income only) ─────────────────────────────────────
+  async function handleQuickStatusChange(tx: Transaction, newStatus: PaymentStatus, dateOverride?: string) {
+    const patch: Record<string, unknown> = { paymentStatus: newStatus };
+    if (dateOverride) patch.date = dateOverride;
+    // Optimistic update
+    setTransactions((prev) =>
+      prev.map((t) =>
+        t.id === tx.id
+          ? { ...t, payment_status: newStatus, ...(dateOverride ? { date: dateOverride } : {}) }
+          : t
+      )
+    );
+    await fetch(`/api/transactions/${tx.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  }
+
+  function onStatusBadgeClick(tx: Transaction, newStatus: PaymentStatus) {
+    setStatusDropId(null);
+    if (newStatus === tx.payment_status) return;
+    const today = new Date().toISOString().split("T")[0];
+    // Show past-date warning only when switching to a "received" status with a past date
+    if (PAID_STATUSES.has(newStatus) && tx.date && tx.date < today) {
+      setDateConfirm({ tx, newStatus });
+      return;
+    }
+    handleQuickStatusChange(tx, newStatus);
+  }
+
   function startEdit(s: Session) {
     setEditingId(s.id);
     setEditDraft({
@@ -469,7 +517,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   // ── Finance computed ──────────────────────────────────────────────────────
   const incomeList  = transactions.filter((t) => t.type === "income");
   const expenseList = transactions.filter((t) => t.type === "expense");
-  const totalPaid   = incomeList.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
+  const totalPaid   = incomeList.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExp    = expenseList.reduce((s, t) => s + t.amount, 0);
   const balance     = agreedPrice - totalPaid;
   const profit      = totalPaid - totalExp;
@@ -909,7 +957,33 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                   <span style={{ fontSize: 10, color: "#666" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
                                   <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 110 }}>{tx.description || "—"}</span>
-                                  <span style={{ fontSize: 9, fontWeight: 700, color: PMT_COLOR[tx.payment_status], background: `${PMT_COLOR[tx.payment_status]}18`, border: `1px solid ${PMT_COLOR[tx.payment_status]}30`, borderRadius: 4, padding: "1px 5px" }}>{tx.payment_status}</span>
+                                  {/* Clickable status badge */}
+                                  <div style={{ position: "relative" }}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setStatusDropId(statusDropId === tx.id ? null : tx.id); }}
+                                      style={{ fontSize: 9, fontWeight: 700, color: PMT_COLOR[tx.payment_status] ?? "#888", background: `${PMT_COLOR[tx.payment_status] ?? "#888"}18`, border: `1px solid ${PMT_COLOR[tx.payment_status] ?? "#888"}30`, borderRadius: 4, padding: "1px 5px", cursor: "pointer", fontFamily: "inherit" }}
+                                    >
+                                      {tx.payment_status} ▾
+                                    </button>
+                                    {statusDropId === tx.id && (
+                                      <div
+                                        style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 9999, background: "#1C1C1C", border: "1px solid #333", borderRadius: 8, padding: "4px", minWidth: 100, boxShadow: "0 6px 20px rgba(0,0,0,0.5)" }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {PMT_STATUS_OPTS.map((s) => (
+                                          <button
+                                            key={s}
+                                            onClick={() => onStatusBadgeClick(tx, s)}
+                                            style={{ display: "block", width: "100%", textAlign: "right", padding: "5px 8px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: s === tx.payment_status ? 700 : 500, background: s === tx.payment_status ? `${PMT_COLOR[s] ?? "#888"}22` : "transparent", color: s === tx.payment_status ? (PMT_COLOR[s] ?? "#888") : "#CCC" }}
+                                            onMouseEnter={(e) => { if (s !== tx.payment_status) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
+                                            onMouseLeave={(e) => { if (s !== tx.payment_status) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                                          >
+                                            {s}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#10B981", flexShrink: 0 }}>+{tx.amount.toLocaleString()}{tx.currency}</span>
@@ -1224,6 +1298,42 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           </Card>
 
         </div>
+
+      {/* ── Past-date confirmation modal ──────────────────────────────── */}
+      {dateConfirm && (() => {
+        const { tx, newStatus } = dateConfirm;
+        const displayDate = tx.date ? tx.date.split("-").reverse().join(".") : "";
+        const todayStr = new Date().toISOString().split("T")[0];
+        return (
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={() => setDateConfirm(null)}>
+            <div style={{ background: "#1C1C1C", border: "1px solid #333", borderRadius: 14, padding: "20px 22px", maxWidth: 320, width: "90%", boxShadow: "0 12px 40px rgba(0,0,0,0.6)" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0", marginBottom: 8 }}>⚠️ תאריך עבר</div>
+              <div style={{ fontSize: 12, color: "#999", lineHeight: 1.6, marginBottom: 16 }}>
+                התשלום מסומן כ<strong style={{ color: "#E0E0E0" }}>{newStatus}</strong> אבל תאריכו הוא{" "}
+                <strong style={{ color: "#F59E0B" }}>{displayDate}</strong>.<br />
+                האם זה באמת התאריך שהכסף התקבל?
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <button
+                  onClick={() => { handleQuickStatusChange(tx, newStatus); setDateConfirm(null); }}
+                  style={{ padding: "8px 0", borderRadius: 8, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: "#10B981", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+                >כן, אשר — שמור על {displayDate}</button>
+                <button
+                  onClick={() => { handleQuickStatusChange(tx, newStatus, todayStr); setDateConfirm(null); }}
+                  style={{ padding: "8px 0", borderRadius: 8, border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.08)", color: "#3B82F6", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+                >שנה לתאריך היום</button>
+                <button
+                  onClick={() => setDateConfirm(null)}
+                  style={{ padding: "8px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#666", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                >ביטול</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       </div>
     </div>,
     document.body
