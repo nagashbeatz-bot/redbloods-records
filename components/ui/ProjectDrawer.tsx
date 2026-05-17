@@ -428,6 +428,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           amount:        Number(editTxDraft.amount) || 0,
           currency:      editTxDraft.currency,
           paymentStatus: editTxDraft.paymentStatus,
+          paymentMethod: editTxDraft.paymentMethod,
           notes:         editTxDraft.notes,
           category:      editTxDraft.category,
         }),
@@ -1507,6 +1508,13 @@ function DrawerTxForm({
           </select>
         )}
       </div>
+
+      {/* Payment method */}
+      <select value={draft.paymentMethod} onChange={(e) => setDraft({ ...draft, paymentMethod: e.target.value })}
+        className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }}>
+        <option value="">אמצעי תשלום (אופציונלי)</option>
+        {PMT_METHOD_OPTS.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
 
       {/* Notes */}
       <input type="text" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
