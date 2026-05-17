@@ -821,7 +821,35 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               { label: "רווח משוער",        value: profit,     color: profit >= 0 ? "#10B981" : "#EF4444", prefix: "" },
             ].map(({ label, value, color, prefix }) => (
               <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #1E1E1E" }}>
-                <div style={{ fontSize: 11, color: "#666" }}>{label}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "#666" }}>{label}</span>
+                  {label === "יתרה לתשלום" && balance > 0 && (
+                    <button
+                      onClick={() => {
+                        setAddingTx("income");
+                        setTxDraft({
+                          ...emptyTxDraft(),
+                          type: "income",
+                          amount: String(balance),
+                          description: "סגירת יתרה",
+                          paymentStatus: "שולם",
+                          currency: finCurrency,
+                        });
+                      }}
+                      style={{
+                        padding: "2px 7px", borderRadius: 5,
+                        border: "1px solid rgba(239,68,68,0.35)",
+                        background: "rgba(239,68,68,0.08)",
+                        color: "#EF4444", fontSize: 10, fontWeight: 600,
+                        cursor: "pointer", fontFamily: "inherit", lineHeight: 1.4,
+                      }}
+                      onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.18)")}
+                      onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.08)")}
+                    >
+                      קבל יתרה
+                    </button>
+                  )}
+                </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color }}>{prefix}{value.toLocaleString()}{finCurrency}</div>
               </div>
             ))}
@@ -851,6 +879,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                   saving={txSaving}
                   onSave={handleAddTx}
                   onCancel={() => setAddingTx(null)}
+                  balanceHint={balance > 0 ? balance : undefined}
+                  balanceCurrency={finCurrency}
                 />
               </div>
             )}
@@ -1202,13 +1232,15 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
 // ── Inline transaction form (add / edit) ─────────────────────────────────────
 function DrawerTxForm({
-  draft, setDraft, saving, onSave, onCancel,
+  draft, setDraft, saving, onSave, onCancel, balanceHint, balanceCurrency,
 }: {
   draft: TxDraft;
   setDraft: (d: TxDraft) => void;
   saving: boolean;
   onSave: () => void;
   onCancel: () => void;
+  balanceHint?: number;
+  balanceCurrency?: string;
 }) {
   const isIncome = draft.type === "income";
   return (
@@ -1249,8 +1281,27 @@ function DrawerTxForm({
 
       {/* Amount + Currency + Status/Category */}
       <div style={{ display: "flex", gap: 6 }}>
-        <input type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
-          placeholder="סכום" min={0} className="rb-session-input" style={{ flex: 1 }} />
+        <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
+          <input type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
+            placeholder="סכום" min={0} className="rb-session-input" style={{ flex: 1 }} />
+          {isIncome && balanceHint && balanceHint > 0 && (
+            <button
+              type="button"
+              onClick={() => setDraft({ ...draft, amount: String(balanceHint), currency: balanceCurrency ?? draft.currency })}
+              style={{
+                padding: "3px 7px", borderRadius: 5, whiteSpace: "nowrap",
+                border: "1px solid rgba(239,68,68,0.35)",
+                background: "rgba(239,68,68,0.08)",
+                color: "#EF4444", fontSize: 10, fontWeight: 600,
+                cursor: "pointer", fontFamily: "inherit", lineHeight: 1.4,
+              }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.18)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.08)")}
+            >
+              יתרה {balanceHint.toLocaleString()}{balanceCurrency}
+            </button>
+          )}
+        </div>
         <select value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
           className="rb-session-input" style={{ width: 50 }}>
           {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
