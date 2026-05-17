@@ -119,10 +119,18 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   const [manualDate, setManualDate] = useState(todayStr);
   const [manualHM,   setManualHM]   = useState<{ h: number; m: number } | null>(null);
 
-  // Reset slot selection when duration changes
+  // Track whether the user has already triggered a slot search at least once
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Auto-reload slots when duration changes (if recommended tab already searched)
   useEffect(() => {
-    if (typeof phase === "object" && "slots" in phase) setPhase("idle");
     setManualHM(null);
+    if (tab === "recommended" && hasSearched) {
+      findSlots();
+    } else if (typeof phase === "object" && "slots" in phase) {
+      setPhase("idle");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minutes]);
 
   const title = buildEventTitle(action, artist, projectName);
@@ -159,6 +167,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
   // ── Recommended: find slots ───────────────────────────────────────────────
   async function findSlots() {
+    setHasSearched(true);
     setPhase("searching");
     try {
       const r = await fetch(
@@ -417,7 +426,11 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               {(["recommended", "manual"] as Tab[]).map((t) => (
                 <button
                   key={t}
-                  onClick={() => { setTab(t); setPhase("idle"); }}
+                  onClick={() => {
+                    setTab(t);
+                    if (t === "recommended" && hasSearched) findSlots();
+                    else setPhase("idle");
+                  }}
                   style={{
                     padding: "7px 16px", border: "none", background: "transparent",
                     color: tab === t ? "#C084FC" : "#555",
