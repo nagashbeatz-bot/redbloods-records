@@ -22,7 +22,7 @@ type Phase =
   | "checking"
   | { confirm: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean } }
   | "creating"
-  | { created: { label: string; htmlLink?: string; inviteSent?: boolean } }
+  | { created: { label: string; htmlLink?: string; inviteSent?: boolean; paymentAmount?: number; paymentCurrency?: string } }
   | { error: string; needsReauth?: boolean };
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -71,6 +71,48 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       })
       .catch(() => {});
   }, [artist]);
+
+  // ── Finance (optional) ───────────────────────────────────────────────────
+  const [showFinance,    setShowFinance]    = useState(false);
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeInfo, setFinanceInfo] = useState<{
+    agreedPrice: number; totalPaid: number; currency: string;
+  } | null>(null);
+  const [paymentDraft, setPaymentDraft] = useState({
+    amount: "", method: "מזומן", notes: "צפוי להתקבל במזומן בסשן",
+  });
+  const [pendingPayment, setPendingPayment] = useState<{
+    amount: number; method: string; notes: string; currency: string;
+  } | null>(null);
+
+  const handleOpenFinance = () => {
+    setShowFinance(true);
+    if (financeInfo || financeLoading) return;
+    setFinanceLoading(true);
+    fetch(`/api/transactions?projectId=${projectId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const totalPaid = (d.transactions ?? [])
+          .filter((t: { type: string; payment_status: string }) =>
+            t.type === "income" &&
+            (t.payment_status === "שולם" || t.payment_status === "התקבל")
+          )
+          .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
+        const info = {
+          agreedPrice: d.agreedPrice ?? 0,
+          totalPaid,
+          currency: d.currency ?? "₪",
+        };
+        setFinanceInfo(info);
+        // Pre-fill amount with open balance if not already set
+        const balance = info.agreedPrice - totalPaid;
+        if (balance > 0 && !paymentDraft.amount) {
+          setPaymentDraft((prev) => ({ ...prev, amount: String(balance) }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setFinanceLoading(false));
+  };
 
   // Manual picker state
   const today = new Date();
@@ -175,6 +217,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       if (!d.ok)         { setPhase({ error: d.error ?? "שגיאה" }); return; }
 
       // ── Also save session to Supabase so ProjectDrawer stays in sync ──────
+      let savedSessionId: string | null = null;
       try {
         const { date, time: startTime } = isoToIsrael(startIso);
         const { time: endTime }         = isoToIsrael(endIso);
@@ -182,7 +225,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
           action.id === "channel-clean" ? "ניקוי מיקס" :
           action.id === "rehearsal"     ? "חזרה"        : "סשן";
 
-        await fetch("/api/sessions", {
+        const sessRes = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -190,18 +233,49 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             date,
             startTime,
             endTime,
-            status:      "מתוכנן",
+            status:          "מתוכנן",
             sessionType,
-            notes:       action.calPrefix,
+            notes:           action.calPrefix,
             calendarEventId: d.event?.id ?? null,
           }),
         });
+        const sessData = await sessRes.json().catch(() => ({}));
+        savedSessionId = sessData.session?.id ?? null;
         onSessionCreated?.();
+
+        // ── Save pending payment if one was staged ────────────────────────
+        if (pendingPayment) {
+          await fetch("/api/transactions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId,
+              type:            "income",
+              date,
+              description:     "תשלום צפוי לסשן",
+              artist,
+              amount:          pendingPayment.amount,
+              currency:        pendingPayment.currency,
+              paymentStatus:   "צפוי",
+              paymentMethod:   pendingPayment.method,
+              notes:           pendingPayment.notes,
+              linkedSessionId: savedSessionId ?? "",
+            }),
+          });
+        }
       } catch {
         // session save failure is non-fatal — calendar event was created
       }
 
-      setPhase({ created: { label, htmlLink: d.event?.htmlLink, inviteSent: !!artistEmail && sendToArtist } });
+      setPhase({
+        created: {
+          label,
+          htmlLink:       d.event?.htmlLink,
+          inviteSent:     !!artistEmail && sendToArtist,
+          paymentAmount:  pendingPayment?.amount,
+          paymentCurrency: pendingPayment?.currency,
+        },
+      });
     } catch { setPhase({ error: "שגיאת רשת" }); }
   }
 
@@ -243,12 +317,63 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
           <div style={{ fontSize: 11, fontWeight: 700, color: "#A855F7", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
             ⚡ {action.modalTitle}
           </div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#F5F5F5", lineHeight: 1.2 }}>{projectName}</div>
-          <div style={{ fontSize: 14, color: "#999", marginTop: 4 }}>{artist}</div>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#F5F5F5", lineHeight: 1.2 }}>{projectName}</div>
+              <div style={{ fontSize: 14, color: "#999", marginTop: 4 }}>{artist}</div>
+            </div>
+            {/* ₪ optional finance button — hidden in confirm/created/error/creating */}
+            {!isConfirm && !isCreated && !isError && phase !== "creating" && (
+              <button
+                onClick={handleOpenFinance}
+                title="הצג מצב כספי"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "5px 10px", borderRadius: 8, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 11, fontWeight: 600, flexShrink: 0,
+                  border: pendingPayment
+                    ? "1px solid rgba(16,185,129,0.4)"
+                    : "1px solid #2A2A2A",
+                  background: pendingPayment
+                    ? "rgba(16,185,129,0.1)"
+                    : "#1A1A1A",
+                  color: pendingPayment ? "#10B981" : "#666",
+                  transition: "all 0.15s",
+                  marginTop: 2,
+                }}
+              >
+                ₪{pendingPayment ? " ✓" : ""}
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* ── Finance panel (optional) ─────────────────────────────── */}
+        {showFinance && (
+          <FinancePanel
+            loading={financeLoading}
+            info={financeInfo}
+            draft={paymentDraft}
+            pending={pendingPayment}
+            onDraftChange={(patch) => setPaymentDraft((p) => ({ ...p, ...patch }))}
+            onConfirm={() => {
+              const amt = parseFloat(paymentDraft.amount);
+              if (!amt || amt <= 0) return;
+              setPendingPayment({
+                amount:   amt,
+                method:   paymentDraft.method,
+                notes:    paymentDraft.notes,
+                currency: financeInfo?.currency ?? "₪",
+              });
+              setShowFinance(false);
+            }}
+            onCancel={() => { setPendingPayment(null); }}
+            onBack={() => setShowFinance(false)}
+          />
+        )}
+
         {/* ── Duration pills ────────────────────────────────────────── */}
-        {!isCreated && (
+        {!showFinance && !isCreated && (
           <div style={{ marginBottom: 20 }}>
             <Label>משך זמן</Label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -266,7 +391,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── Event title preview ───────────────────────────────────── */}
-        {!isCreated && !isConfirm && (
+        {!showFinance && !isCreated && !isConfirm && (
           <div style={{ marginBottom: 22 }}>
             <Label>שם האירוע ביומן</Label>
             <div style={{
@@ -286,7 +411,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── RECOMMENDED / MANUAL tabs ─────────────────────────────── */}
-        {(phase === "idle" || isSlots || phase === "no_slots") && (
+        {!showFinance && (phase === "idle" || isSlots || phase === "no_slots") && (
           <>
             <div style={{ display: "flex", gap: 0, marginBottom: 18, borderBottom: "1px solid #222" }}>
               {(["recommended", "manual"] as Tab[]).map((t) => (
@@ -365,16 +490,16 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── Checking ────────────────────────────────────────────── */}
-        {phase === "checking" && <Spinner label="בודק זמינות..." />}
+        {!showFinance && phase === "checking" && <Spinner label="בודק זמינות..." />}
 
         {/* ── Searching ───────────────────────────────────────────── */}
-        {phase === "searching" && <Spinner label="מחפש חלונות פנויים..." />}
+        {!showFinance && phase === "searching" && <Spinner label="מחפש חלונות פנויים..." />}
 
         {/* ── Creating ────────────────────────────────────────────── */}
-        {phase === "creating" && <Spinner label="יוצר אירוע ביומן..." />}
+        {!showFinance && phase === "creating" && <Spinner label="יוצר אירוע ביומן..." />}
 
         {/* ── Confirm ─────────────────────────────────────────────── */}
-        {isConfirm && confirmData && (
+        {!showFinance && isConfirm && confirmData && (
           <ConfirmPanel
             data={confirmData}
             action={action}
@@ -393,7 +518,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── Created ─────────────────────────────────────────────── */}
-        {isCreated && createdData && (
+        {!showFinance && isCreated && createdData && (
           <CreatedPanel
             data={createdData}
             action={action}
@@ -404,7 +529,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── Error ───────────────────────────────────────────────── */}
-        {isError && errorData && (
+        {!showFinance && isError && errorData && (
           <>
             <div style={{
               background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)",
@@ -425,7 +550,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         )}
 
         {/* ── Bottom cancel (idle states) ──────────────────────────── */}
-        {(phase === "idle" || isSlots || phase === "no_slots") && (
+        {!showFinance && (phase === "idle" || isSlots || phase === "no_slots") && (
           <div style={{ marginTop: 16 }}>
             <button onClick={onClose} style={{ background: "none", border: "none", color: "#444", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
               ביטול
@@ -658,7 +783,7 @@ function ConfirmPanel({
 function CreatedPanel({
   data, action, artist, projectName, onClose,
 }: {
-  data: { label: string; htmlLink?: string; inviteSent?: boolean };
+  data: { label: string; htmlLink?: string; inviteSent?: boolean; paymentAmount?: number; paymentCurrency?: string };
   action: ActionDef; artist: string; projectName: string;
   onClose: () => void;
 }) {
@@ -666,7 +791,7 @@ function CreatedPanel({
     <div>
       <div style={{
         background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.2)",
-        borderRadius: 14, padding: "16px", marginBottom: 20,
+        borderRadius: 14, padding: "16px", marginBottom: 14,
       }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#10B981", marginBottom: 10 }}>
           ✓ האירוע נוצר ביומן
@@ -681,6 +806,17 @@ function CreatedPanel({
           </div>
         )}
       </div>
+      {data.paymentAmount != null && (
+        <div style={{
+          background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)",
+          borderRadius: 12, padding: "10px 14px", marginBottom: 14,
+          fontSize: 12, color: "#60A5FA",
+        }}>
+          💰 נוסף תשלום צפוי של{" "}
+          <strong>{data.paymentAmount.toLocaleString()}{data.paymentCurrency ?? "₪"}</strong>{" "}
+          מקושר לסשן
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10 }}>
         {data.htmlLink && (
           <a href={data.htmlLink} target="_blank" rel="noopener noreferrer" style={{ ...SECONDARY_STYLE, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
@@ -793,6 +929,183 @@ function Btn({ children, primary, onClick, disabled, style }: {
     >
       {children}
     </button>
+  );
+}
+
+// ─── Finance panel ────────────────────────────────────────────────────────────
+
+const PMT_METHODS = ["מזומן", "ביט", "העברה בנקאית", "PayPal", "Payoneer", "אשראי", "אחר"];
+
+function FinancePanel({
+  loading, info, draft, pending, onDraftChange, onConfirm, onCancel, onBack,
+}: {
+  loading: boolean;
+  info: { agreedPrice: number; totalPaid: number; currency: string } | null;
+  draft: { amount: string; method: string; notes: string };
+  pending: { amount: number; method: string; notes: string; currency: string } | null;
+  onDraftChange: (patch: Partial<typeof draft>) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  onBack: () => void;
+}) {
+  const balance  = info ? info.agreedPrice - info.totalPaid : 0;
+  const hasPrice = info && info.agreedPrice > 0;
+  const currency = info?.currency ?? "₪";
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#777", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
+        מצב כספי לסשן
+      </div>
+
+      {loading && (
+        <div style={{ fontSize: 13, color: "#444", marginBottom: 16 }}>טוען...</div>
+      )}
+
+      {!loading && info && hasPrice && (
+        <div style={{
+          background: "#111", border: "1px solid #222", borderRadius: 12,
+          padding: "12px 14px", marginBottom: 14,
+        }}>
+          <Row label="מחיר מוסכם" value={`${info.agreedPrice.toLocaleString()}${currency}`} />
+          <Row label="שולם"       value={`${info.totalPaid.toLocaleString()}${currency}`} />
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2, gap: 12 }}>
+            <span style={{ fontSize: 12, color: "#555" }}>יתרה לתשלום</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: balance > 0 ? "#EF4444" : "#10B981" }}>
+              {balance.toLocaleString()}{currency}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {!loading && info && !hasPrice && (
+        <div style={{ fontSize: 12, color: "#444", marginBottom: 14 }}>
+          אין מחיר מוסכם לפרויקט זה.
+        </div>
+      )}
+
+      {!loading && info && balance <= 0 && hasPrice && (
+        <div style={{ fontSize: 12, color: "#10B981", marginBottom: 14 }}>
+          ✓ אין יתרה פתוחה בפרויקט
+        </div>
+      )}
+
+      {/* Payment form — only if balance > 0 */}
+      {!loading && info && balance > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+            תשלום צפוי בסשן
+          </div>
+
+          {/* Amount */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סכום</div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="number"
+                value={draft.amount}
+                onChange={(e) => onDraftChange({ amount: e.target.value })}
+                placeholder={String(balance)}
+                style={{
+                  flex: 1, padding: "7px 10px", borderRadius: 8,
+                  border: "1px solid #2A2A2A", background: "#111",
+                  color: "#E8E8E8", fontSize: 13, fontFamily: "inherit",
+                  outline: "none",
+                }}
+              />
+              <span style={{ fontSize: 13, color: "#555" }}>{currency}</span>
+            </div>
+          </div>
+
+          {/* Method */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>אמצעי תשלום</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {PMT_METHODS.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => onDraftChange({ method: m })}
+                  style={{
+                    padding: "3px 9px", borderRadius: 7, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 11,
+                    border: draft.method === m ? "1px solid rgba(168,85,247,0.45)" : "1px solid #2A2A2A",
+                    background: draft.method === m ? "rgba(168,85,247,0.12)" : "transparent",
+                    color: draft.method === m ? "#C084FC" : "#666",
+                  }}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערה</div>
+            <input
+              type="text"
+              value={draft.notes}
+              onChange={(e) => onDraftChange({ notes: e.target.value })}
+              style={{
+                width: "100%", padding: "7px 10px", borderRadius: 8,
+                border: "1px solid #2A2A2A", background: "#111",
+                color: "#E8E8E8", fontSize: 12, fontFamily: "inherit",
+                outline: "none", boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* Confirm / cancel payment */}
+          {!pending ? (
+            <button
+              onClick={onConfirm}
+              disabled={!draft.amount || parseFloat(draft.amount) <= 0}
+              style={{
+                width: "100%", padding: "9px 0", borderRadius: 9,
+                border: "1px solid rgba(59,130,246,0.35)",
+                background: "rgba(59,130,246,0.1)", color: "#60A5FA",
+                cursor: "pointer", fontSize: 12, fontWeight: 700,
+                fontFamily: "inherit",
+                opacity: !draft.amount || parseFloat(draft.amount) <= 0 ? 0.4 : 1,
+              }}
+            >
+              💰 קבע כתשלום צפוי בסשן
+            </button>
+          ) : (
+            <div>
+              <div style={{
+                padding: "8px 12px", borderRadius: 8, marginBottom: 8,
+                background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)",
+                fontSize: 12, color: "#10B981",
+              }}>
+                ✓ תשלום צפוי של {pending.amount.toLocaleString()}{pending.currency} ({pending.method}) יוצר עם הסשן
+              </div>
+              <button
+                onClick={onCancel}
+                style={{
+                  width: "100%", padding: "7px 0", borderRadius: 8,
+                  border: "1px solid #2A2A2A", background: "transparent",
+                  color: "#555", cursor: "pointer", fontSize: 11, fontFamily: "inherit",
+                }}
+              >
+                בטל תשלום צפוי
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Back button */}
+      <button
+        onClick={onBack}
+        style={{
+          marginTop: 14, background: "none", border: "none",
+          color: "#555", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+        }}
+      >
+        ← חזור לקביעת סשן
+      </button>
+    </div>
   );
 }
 
