@@ -71,7 +71,8 @@ export function buildEventTitle(
 }
 
 export interface FreeSlot {
-  start: string; // ISO
-  end: string;   // ISO
-  label: string; // e.g. "היום  19:00 – 21:00"
+  start:   string; // ISO
+  end:     string; // ISO
+  label:   string; // e.g. "היום  19:00 – 21:00"
+  dateStr: string; // "YYYY-MM-DD" in Israel timezone — used for day grouping
 }

@@ -440,16 +440,10 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                 )}
 
                 {isSlots && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 6 }}>
-                    <Label>בחר זמן</Label>
-                    {(phase as { slots: FreeSlot[] }).slots.map((slot) => (
-                      <SlotButton
-                        key={slot.start}
-                        label={slot.label}
-                        onSelect={() => checkAndConfirm(slot.start, slot.end, slot.label)}
-                      />
-                    ))}
-                  </div>
+                  <SlotDayGroups
+                    slots={(phase as { slots: FreeSlot[] }).slots}
+                    onSelect={(s) => checkAndConfirm(s.start, s.end, s.label)}
+                  />
                 )}
 
                 {phase === "no_slots" && (
@@ -830,6 +824,81 @@ function CreatedPanel({
 }
 
 // ─── Tiny helpers ─────────────────────────────────────────────────────────────
+
+// ─── Day-grouped slot list ─────────────────────────────────────────────────────
+
+function SlotDayGroups({
+  slots,
+  onSelect,
+}: {
+  slots: FreeSlot[];
+  onSelect: (s: FreeSlot) => void;
+}) {
+  // Group slots by dateStr, preserving insertion order
+  const groups: { dateStr: string; dayLabel: string; slots: FreeSlot[] }[] = [];
+  const seen = new Map<string, number>();
+
+  for (const slot of slots) {
+    const idx = seen.get(slot.dateStr);
+    // Extract day label: everything before the first double-space in slot.label
+    const dayLabel = slot.label.split("  ")[0] ?? slot.dateStr;
+    if (idx === undefined) {
+      seen.set(slot.dateStr, groups.length);
+      groups.push({ dateStr: slot.dateStr, dayLabel, slots: [slot] });
+    } else {
+      groups[idx].slots.push(slot);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 6 }}>
+      {groups.map((g) => (
+        <div key={g.dateStr}>
+          {/* Day header */}
+          <div style={{
+            fontSize: 10, fontWeight: 700, color: "#A855F7",
+            letterSpacing: "0.07em", textTransform: "uppercase",
+            marginBottom: 6,
+          }}>
+            {g.dayLabel}
+          </div>
+          {/* Time pills grid */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {g.slots.map((slot) => {
+              // Extract just "HH:MM – HH:MM" from the label
+              const timePart = slot.label.split("  ")[1] ?? slot.label;
+              return (
+                <TimePill key={slot.start} label={timePart} onSelect={() => onSelect(slot)} />
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TimePill({ label, onSelect }: { label: string; onSelect: () => void }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onSelect}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+        border: `1.5px solid ${hov ? "rgba(168,85,247,0.55)" : "#222"}`,
+        background: hov ? "rgba(168,85,247,0.12)" : "#1A1A1A",
+        color: hov ? "#C084FC" : "#C0C0C0",
+        fontSize: 13, fontFamily: "inherit",
+        transition: "all 0.13s", direction: "ltr",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 function SlotButton({ label, onSelect }: { label: string; onSelect: () => void }) {
   const [hov, setHov] = useState(false);

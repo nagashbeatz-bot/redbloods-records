@@ -395,15 +395,17 @@ function ilSlotLabel(start: Date, end: Date, now: Date): string {
 }
 
 /**
- * Returns up to `maxSlots` free :00/:30 windows within working hours (Sun–Thu 10–20 IL).
+ * Returns free :00/:30 windows within working hours (Sun–Thu 10–20 IL).
+ * Groups by day; up to `maxPerDay` slots per day, up to `maxDays` days total.
  * If `requiresBuffer` is true, enforces 30-min gap before/after adjacent events.
  */
 export async function findFreeSlots(
   durationMinutes: number,
   requiresBuffer: boolean,
-  daysAhead = 14,
-  maxSlots  = 5
-): Promise<Array<{ start: string; end: string; label: string }>> {
+  daysAhead  = 14,
+  maxPerDay  = 50,  // effectively unlimited per day
+  maxDays    = 14
+): Promise<Array<{ start: string; end: string; label: string; dateStr: string }>> {
   const auth     = await getAuthenticatedClient();
   const calendar = google.calendar({ version: "v3", auth });
 
@@ -423,17 +425,20 @@ export async function findFreeSlots(
     end:   new Date(b.end!),
   }));
 
-  const slots: Array<{ start: string; end: string; label: string }> = [];
-  const durMs = durationMinutes * 60_000;
-  const bufMs = requiresBuffer ? BUFFER_MIN * 60_000 : 0;
+  const slots: Array<{ start: string; end: string; label: string; dateStr: string }> = [];
+  const durMs    = durationMinutes * 60_000;
+  const bufMs    = requiresBuffer ? BUFFER_MIN * 60_000 : 0;
+  let   daysUsed = 0;
 
-  for (let d = 0; d < daysAhead && slots.length < maxSlots; d++) {
+  for (let d = 0; d < daysAhead && daysUsed < maxDays; d++) {
     // Derive the Israel calendar date for offset d (adding ms handles DST safely)
     const dayUTC   = new Date(now.getTime() + d * 86_400_000);
     const dateStr  = ilDateStr(dayUTC); // "2026-05-18"
     const dow      = ilDayOfWeek(dateStr);
 
     if (!WORK_DAYS.includes(dow)) continue;
+
+    let slotsThisDay = 0;
 
     // Generate candidate :00/:30 slots in Israel working hours
     for (
@@ -459,13 +464,17 @@ export async function findFreeSlots(
 
       if (!hasConflict) {
         slots.push({
-          start: candidate.toISOString(),
-          end:   candidateEnd.toISOString(),
-          label: ilSlotLabel(candidate, candidateEnd, now), // Israel-aware label
+          start:   candidate.toISOString(),
+          end:     candidateEnd.toISOString(),
+          label:   ilSlotLabel(candidate, candidateEnd, now), // Israel-aware label
+          dateStr, // "2026-05-18" — used for grouping in the UI
         });
-        if (slots.length >= maxSlots) break;
+        slotsThisDay++;
+        if (slotsThisDay >= maxPerDay) break;
       }
     }
+
+    if (slotsThisDay > 0) daysUsed++;
   }
 
   return slots;
