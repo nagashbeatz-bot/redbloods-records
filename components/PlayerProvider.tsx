@@ -161,8 +161,8 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
 
 export function getLatestAudioFile(
-  files: { name: string; url: string; assetId?: number }[]
-): { name: string; url: string; assetId?: number } | null {
+  files: { name: string; url: string; assetId?: number; dropboxPath?: string }[]
+): { name: string; url: string; assetId?: number; dropboxPath?: string } | null {
   const audioFiles = files.filter((f) =>
     AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
   );
@@ -170,10 +170,15 @@ export function getLatestAudioFile(
 }
 
 /**
- * Fetch a fresh playable URL for a Monday asset.
+ * Returns a playable URL for a file.
+ * - Dropbox files (dropboxPath set, no assetId): URL already points to /api/dropbox/stream — return as-is.
+ * - Monday files (assetId set): fetch a fresh signed URL from Monday.
+ * - Fallback: return stored url.
  */
-export async function getFreshPlayUrl(file: { url: string; assetId?: number }): Promise<string> {
-  if (!file.assetId) return file.url;
+export async function getFreshPlayUrl(file: { url: string; assetId?: number; dropboxPath?: string }): Promise<string> {
+  // Dropbox file — stream URL is always fresh (server fetches temp link on each request)
+  if (file.dropboxPath || !file.assetId) return file.url;
+  // Legacy Monday file — fetch a fresh signed URL
   try {
     const res = await fetch(`/api/monday/asset-url?assetId=${file.assetId}`);
     if (!res.ok) return file.url;

@@ -77,7 +77,7 @@ export default function UploadButton({
       const xhr = new XMLHttpRequest();
 
       // Real upload progress (client → our server)
-      // We map 0→85% to client upload; the server→Monday leg gets the last 15%.
+      // We map 0→85% to client upload; the server→Dropbox leg gets the last 15%.
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           setProgress(Math.round((e.loaded / e.total) * 85));
@@ -119,7 +119,7 @@ export default function UploadButton({
         resolve();
       };
 
-      xhr.open("POST", "/api/monday/upload");
+      xhr.open("POST", "/api/dropbox/upload");
       xhr.send(body);
     });
 

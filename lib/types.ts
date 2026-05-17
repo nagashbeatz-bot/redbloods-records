@@ -47,7 +47,8 @@ export type UpdatableField =
 export interface FileLink {
   name: string;
   url: string;
-  assetId?: number; // Monday asset ID — required for file deletion
+  assetId?: number;     // Monday asset ID (legacy)
+  dropboxPath?: string; // Dropbox path — required for Dropbox file deletion
 }
 
 export interface Project {

@@ -36,19 +36,19 @@ export default function ProjectDetail({ project, onUpdate }: ProjectDetailProps)
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const handleDeleteFile = async (assetId: number) => {
+  const handleDeleteFile = async (dropboxPath: string) => {
     setDeleting(true);
     setDeleteError(null);
     try {
-      const res = await fetch("/api/monday/delete-file", {
+      const res = await fetch("/api/dropbox/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetId }),
+        body: JSON.stringify({ dropboxPath, projectId: project.id }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "מחיקה נכשלה");
       setConfirmDeleteIdx(null);
-      await refresh(); // reload project with updated file list
+      await refresh();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "שגיאה במחיקה");
       setTimeout(() => setDeleteError(null), 4000);
@@ -389,8 +389,8 @@ export default function ProjectDetail({ project, onUpdate }: ProjectDetailProps)
                       </span>
                       <div className="flex gap-2 flex-shrink-0">
                         <button
-                          onClick={() => f.assetId != null && handleDeleteFile(f.assetId)}
-                          disabled={deleting || f.assetId == null}
+                          onClick={() => f.dropboxPath != null && handleDeleteFile(f.dropboxPath)}
+                          disabled={deleting || f.dropboxPath == null}
                           style={{
                             padding: "3px 10px", borderRadius: 7, border: "none",
                             background: "#EF4444", color: "#fff", fontSize: 12, fontWeight: 600,
@@ -431,8 +431,8 @@ export default function ProjectDetail({ project, onUpdate }: ProjectDetailProps)
                       >
                         {f.name}
                       </a>
-                      {/* Delete button — visible on hover */}
-                      {f.assetId != null && (
+                      {/* Delete button — visible on hover (Dropbox files only) */}
+                      {f.dropboxPath != null && (
                         <button
                           onClick={() => setConfirmDeleteIdx(i)}
                           title="מחק קובץ"

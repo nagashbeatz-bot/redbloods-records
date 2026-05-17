@@ -140,7 +140,7 @@ export async function deleteProject(id: string): Promise<void> {
 /** Update files JSONB for a project (used after file upload) */
 export async function addFileToProject(
   id: string,
-  file: { name: string; assetId?: number; url?: string }
+  file: { name: string; assetId?: number; url?: string; dropboxPath?: string }
 ): Promise<void> {
   // Read current files, append, write back
   const { data, error: readErr } = await supabase
@@ -184,6 +184,33 @@ export async function removeFileFromProject(
     .from("projects")
     .update({
       files:      current.filter((f) => f.assetId !== assetId),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+/** Remove a file from a project's files JSONB by its Dropbox path */
+export async function removeFileFromProjectByPath(
+  id: string,
+  dropboxPath: string
+): Promise<void> {
+  const { data, error: readErr } = await supabase
+    .from("projects")
+    .select("files")
+    .eq("id", id)
+    .single();
+
+  if (readErr) throw new Error(readErr.message);
+
+  const current: { name: string; dropboxPath?: string }[] =
+    (data as { files: typeof current }).files || [];
+
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      files:      current.filter((f) => f.dropboxPath !== dropboxPath),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
