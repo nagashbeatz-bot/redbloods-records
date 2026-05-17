@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * Serialize an object to JSON where every non-ASCII character is escaped as \uXXXX.
+ * Required for the Dropbox-API-Arg header — HTTP headers must be pure ASCII.
+ */
+function dropboxArg(obj: Record<string, unknown>): string {
+  return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
+    `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const token = process.env.DROPBOX_ACCESS_TOKEN;
@@ -30,9 +40,10 @@ export async function POST(req: NextRequest) {
       {
         method: "POST",
         headers: {
-          Authorization:      `Bearer ${token}`,
-          "Content-Type":     "application/octet-stream",
-          "Dropbox-API-Arg":  JSON.stringify({
+          Authorization:     `Bearer ${token}`,
+          "Content-Type":    "application/octet-stream",
+          // dropboxArg() ensures all Hebrew/Unicode chars are \uXXXX-escaped
+          "Dropbox-API-Arg": dropboxArg({
             path:       dropboxPath,
             mode:       "add",
             autorename: true,
@@ -57,15 +68,13 @@ export async function POST(req: NextRequest) {
     const finalPath = uploaded.path_display;
 
     // ── 2. Build the stream URL (routes through our API → fresh Dropbox temp link) ──
-    // Using our own /api/dropbox/stream endpoint means the audio player always
-    // gets a valid direct URL regardless of when the file was uploaded.
     const fileUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
     // ── 3. Persist to Supabase ────────────────────────────────────────────────
     const { addFileToProject } = await import("@/lib/projects-store");
     await addFileToProject(projectId, {
       name:        newName,
-      url:         fileUrl || "#",
+      url:         fileUrl,
       dropboxPath: finalPath,
     });
 
