@@ -76,6 +76,8 @@ const TYPE_OPTIONS:     SessionType[]     = ["סשן", "ניקוי מיקס", "�
 const PMT_STATUS_OPTS:  PaymentStatus[]   = ["התקבל", "צפוי", "חלקי", "בוטל", "לבדיקה"];
 // Statuses that count as "paid" in totalPaid calculation
 const PAID_STATUSES = new Set<PaymentStatus>(["שולם", "התקבל"]);
+// Payment method options
+const PMT_METHOD_OPTS = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
 const EXPENSE_CATS      = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
@@ -175,16 +177,18 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [priceDraft,     setPriceDraft]     = useState("");
   // Quick status-change dropdown
   const [statusDropId,   setStatusDropId]   = useState<string | null>(null);
+  // Quick payment-method dropdown
+  const [methodDropId,   setMethodDropId]   = useState<string | null>(null);
   // Past-date confirmation modal
   const [dateConfirm,    setDateConfirm]    = useState<{ tx: Transaction; newStatus: PaymentStatus } | null>(null);
 
-  // Close status dropdown on any outside click
+  // Close any open dropdown on outside click
   useEffect(() => {
-    if (!statusDropId) return;
-    const close = () => setStatusDropId(null);
+    if (!statusDropId && !methodDropId) return;
+    const close = () => { setStatusDropId(null); setMethodDropId(null); };
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
-  }, [statusDropId]);
+  }, [statusDropId, methodDropId]);
 
   // ── File delete state ─────────────────────────────────────────────────────
   const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
@@ -487,6 +491,19 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
+    });
+  }
+
+  async function handleQuickMethodChange(tx: Transaction, newMethod: string) {
+    setMethodDropId(null);
+    if (newMethod === tx.payment_method) return;
+    setTransactions((prev) =>
+      prev.map((t) => t.id === tx.id ? { ...t, payment_method: newMethod } : t)
+    );
+    await fetch(`/api/transactions/${tx.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentMethod: newMethod }),
     });
   }
 
@@ -960,7 +977,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                   {/* Clickable status badge */}
                                   <div style={{ position: "relative" }}>
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); setStatusDropId(statusDropId === tx.id ? null : tx.id); }}
+                                      onClick={(e) => { e.stopPropagation(); setMethodDropId(null); setStatusDropId(statusDropId === tx.id ? null : tx.id); }}
                                       style={{ fontSize: 9, fontWeight: 700, color: PMT_COLOR[tx.payment_status] ?? "#888", background: `${PMT_COLOR[tx.payment_status] ?? "#888"}18`, border: `1px solid ${PMT_COLOR[tx.payment_status] ?? "#888"}30`, borderRadius: 4, padding: "1px 5px", cursor: "pointer", fontFamily: "inherit" }}
                                     >
                                       {tx.payment_status} ▾
@@ -984,6 +1001,37 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                       </div>
                                     )}
                                   </div>
+                                  {/* Clickable payment method chip */}
+                                  <div style={{ position: "relative" }}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setStatusDropId(null); setMethodDropId(methodDropId === tx.id ? null : tx.id); }}
+                                      style={{ fontSize: 9, fontWeight: 600, color: tx.payment_method ? "#AAA" : "#555", background: "rgba(255,255,255,0.04)", border: "1px solid #2A2A2A", borderRadius: 4, padding: "1px 5px", cursor: "pointer", fontFamily: "inherit" }}
+                                    >
+                                      {tx.payment_method || "אמצעי ▾"} {tx.payment_method ? "▾" : ""}
+                                    </button>
+                                    {methodDropId === tx.id && (
+                                      <div
+                                        style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 9999, background: "#1C1C1C", border: "1px solid #333", borderRadius: 8, padding: "4px", minWidth: 110, boxShadow: "0 6px 20px rgba(0,0,0,0.5)" }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {PMT_METHOD_OPTS.map((m) => (
+                                          <button
+                                            key={m}
+                                            onClick={() => handleQuickMethodChange(tx, m)}
+                                            style={{ display: "block", width: "100%", textAlign: "right", padding: "5px 8px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: m === tx.payment_method ? 700 : 500, background: m === tx.payment_method ? "rgba(255,255,255,0.08)" : "transparent", color: m === tx.payment_method ? "#E0E0E0" : "#AAA" }}
+                                            onMouseEnter={(e) => { if (m !== tx.payment_method) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
+                                            onMouseLeave={(e) => { if (m !== tx.payment_method) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                                          >
+                                            {m}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Receipt ref */}
+                                  {tx.receipt_ref && (
+                                    <span style={{ fontSize: 9, color: "#555", background: "rgba(255,255,255,0.03)", border: "1px solid #222", borderRadius: 4, padding: "1px 5px" }} title="אסמכתא">#{tx.receipt_ref}</span>
+                                  )}
                                 </div>
                               </div>
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#10B981", flexShrink: 0 }}>+{tx.amount.toLocaleString()}{tx.currency}</span>
@@ -1013,6 +1061,36 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                   <span style={{ fontSize: 10, color: "#666" }}>{tx.date ? tx.date.split("-").reverse().join(".") : "—"}</span>
                                   {tx.category && <span style={{ fontSize: 9, color: "#888", background: "rgba(255,255,255,0.05)", borderRadius: 4, padding: "1px 5px" }}>{tx.category}</span>}
                                   <span style={{ fontSize: 11, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{tx.description || "—"}</span>
+                                  {/* Clickable payment method chip (expenses) */}
+                                  <div style={{ position: "relative" }}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setStatusDropId(null); setMethodDropId(methodDropId === `exp-${tx.id}` ? null : `exp-${tx.id}`); }}
+                                      style={{ fontSize: 9, fontWeight: 600, color: tx.payment_method ? "#AAA" : "#555", background: "rgba(255,255,255,0.04)", border: "1px solid #2A2A2A", borderRadius: 4, padding: "1px 5px", cursor: "pointer", fontFamily: "inherit" }}
+                                    >
+                                      {tx.payment_method || "אמצעי ▾"} {tx.payment_method ? "▾" : ""}
+                                    </button>
+                                    {methodDropId === `exp-${tx.id}` && (
+                                      <div
+                                        style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 9999, background: "#1C1C1C", border: "1px solid #333", borderRadius: 8, padding: "4px", minWidth: 110, boxShadow: "0 6px 20px rgba(0,0,0,0.5)" }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {PMT_METHOD_OPTS.map((m) => (
+                                          <button
+                                            key={m}
+                                            onClick={() => handleQuickMethodChange(tx, m)}
+                                            style={{ display: "block", width: "100%", textAlign: "right", padding: "5px 8px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: m === tx.payment_method ? 700 : 500, background: m === tx.payment_method ? "rgba(255,255,255,0.08)" : "transparent", color: m === tx.payment_method ? "#E0E0E0" : "#AAA" }}
+                                            onMouseEnter={(e) => { if (m !== tx.payment_method) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
+                                            onMouseLeave={(e) => { if (m !== tx.payment_method) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                                          >
+                                            {m}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {tx.receipt_ref && (
+                                    <span style={{ fontSize: 9, color: "#555", background: "rgba(255,255,255,0.03)", border: "1px solid #222", borderRadius: 4, padding: "1px 5px" }} title="אסמכתא">#{tx.receipt_ref}</span>
+                                  )}
                                 </div>
                               </div>
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#F59E0B", flexShrink: 0 }}>−{tx.amount.toLocaleString()}{tx.currency}</span>
