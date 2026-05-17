@@ -68,25 +68,23 @@ export async function POST(req: NextRequest) {
     // Internal stream URL (for the in-app player)
     const fileUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
-    // Public share URL — get a temporary direct link from Dropbox (4h TTL).
-    // Hosted on Dropbox CDN, does NOT expose our app domain.
+    // ── 3. Create a share token → public player page ──────────────────────────
+    // Generate a random token, store it in Supabase settings, return a /share/TOKEN URL.
+    // The /share page shows only a minimal audio player — no app access possible.
     let shareUrl = "";
     try {
-      const tmpRes = await fetch(
-        "https://api.dropboxapi.com/2/files/get_temporary_link",
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ path: finalPath }),
-        }
-      );
-      if (tmpRes.ok) {
-        const tmpData = (await tmpRes.json()) as { link: string };
-        shareUrl = tmpData.link;
-      }
-    } catch { /* non-fatal — share popup just won't open */ }
+      const shareToken = crypto.randomUUID().replace(/-/g, "");
+      const { supabase } = await import("@/lib/supabase");
+      await supabase.from("settings").insert({
+        key:   `share_token_${shareToken}`,
+        value: { dropboxPath: finalPath, fileName: newName, createdAt: new Date().toISOString() },
+      });
+      const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
+      const base   = domain ? `https://${domain}` : ""; // empty = relative (won't be useful)
+      if (base) shareUrl = `${base}/share/${shareToken}`;
+    } catch { /* non-fatal */ }
 
-    // ── 3. Persist to Supabase ────────────────────────────────────────────────
+    // ── 4. Persist to Supabase ────────────────────────────────────────────────
     const { addFileToProject } = await import("@/lib/projects-store");
     await addFileToProject(projectId, {
       name:        newName,
