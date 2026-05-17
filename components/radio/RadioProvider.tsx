@@ -132,6 +132,7 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
   const wasProjectRef  = useRef(false); // radio was playing when project started
   const fadeTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const firstPlayRef   = useRef<(() => void) | null>(null); // pending fade-in listener
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [playing,   setPlaying]   = useState(false);
@@ -165,7 +166,19 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
       // Cancel any pending radio-resume debounce
       if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
 
-      if (!playingRef.current) return; // radio already silent — nothing to do
+      // Clean up any pending fade-in listener (prevents stale fade-in after re-play)
+      if (firstPlayRef.current) {
+        audio.removeEventListener("playing", firstPlayRef.current);
+        firstPlayRef.current = null;
+      }
+
+      // Cancel any in-progress fade timer
+      if (fadeTimerRef.current) { clearInterval(fadeTimerRef.current); fadeTimerRef.current = null; }
+
+      // Radio is "active" if it's playing OR loading (play() called but not yet buffered)
+      // We check both playingRef AND !audio.paused to catch the buffering window
+      const radioActive = playingRef.current || (!audio.paused && !!audio.src);
+      if (!radioActive) return; // radio truly silent — nothing to do
 
       wasProjectRef.current = true;
 
@@ -191,17 +204,25 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
         const ch = RADIO_CHANNELS.find(c => c.id === channelRef.current);
         if (!ch) return;
 
+        // Clean up any stale fade-in listener before adding new one
+        if (firstPlayRef.current) {
+          audio.removeEventListener("playing", firstPlayRef.current);
+          firstPlayRef.current = null;
+        }
+
         // Set src and start playing (volume = 0, will fade in)
         audio.src    = ch.url;
         audio.volume = 0;
         setLoading(true);
         audio.play().catch(() => { setLoading(false); });
 
-        // Fade in once audio starts playing
+        // Fade in once audio starts playing — keep ref so it can be cleaned up
         const onFirstPlay = () => {
           audio.removeEventListener("playing", onFirstPlay);
+          firstPlayRef.current = null;
           startFadeIn(audio, 900, volumeRef.current / 100, fadeTimerRef);
         };
+        firstPlayRef.current = onFirstPlay;
         audio.addEventListener("playing", onFirstPlay);
       }, 200); // 200 ms debounce — absorbs track-switching
     };
@@ -235,6 +256,7 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
     // Cancel any pending fade / resume timers
     if (fadeTimerRef.current)   { clearInterval(fadeTimerRef.current);   fadeTimerRef.current   = null; }
     if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current);  resumeTimerRef.current = null; }
+    if (firstPlayRef.current)   { audio.removeEventListener("playing", firstPlayRef.current); firstPlayRef.current = null; }
 
     // Clear "was playing before project" — user manually started radio
     wasProjectRef.current = false;
@@ -260,8 +282,9 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
   const stop = useCallback(() => {
     if (fadeTimerRef.current)   { clearInterval(fadeTimerRef.current);  fadeTimerRef.current   = null; }
     if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
-    wasProjectRef.current = false;
     const audio = audioRef.current;
+    if (firstPlayRef.current && audio) { audio.removeEventListener("playing", firstPlayRef.current); firstPlayRef.current = null; }
+    wasProjectRef.current = false;
     if (!audio) return;
     audio.pause();
     audio.src = "";
