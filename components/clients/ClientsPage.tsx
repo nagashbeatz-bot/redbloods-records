@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
+import ClientDrawer from "./ClientDrawer";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -49,8 +50,9 @@ export default function ClientsPage() {
     client: Client;
     linkedProjects: { id: string; name: string }[];
   } | null>(null);
-  const [search,    setSearch]   = useState("");
-  const [isCompact, setIsCompact]= useState(false);
+  const [search,    setSearch]       = useState("");
+  const [isCompact, setIsCompact]    = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   useEffect(() => {
     const check = () => setIsCompact(window.innerWidth < 1300);
@@ -85,6 +87,7 @@ export default function ClientsPage() {
   }
 
   function openEdit(client: Client) {
+    setSelectedClient(null);
     setEditing(client);
     setForm({
       name:   client.name,
@@ -296,6 +299,8 @@ export default function ClientsPage() {
               client={client}
               isCompact={isCompact}
               deleting={deleting === client.id}
+              selected={selectedClient?.id === client.id}
+              onSelect={() => setSelectedClient(client)}
               onEdit={() => openEdit(client)}
               onDelete={() => handleDelete(client.id)}
             />
@@ -331,6 +336,13 @@ export default function ClientsPage() {
           onClose={closeModal}
         />
       )}
+
+      {/* Client drawer */}
+      <ClientDrawer
+        client={selectedClient}
+        onClose={() => setSelectedClient(null)}
+        onEdit={openEdit}
+      />
     </div>
   );
 }
@@ -338,23 +350,27 @@ export default function ClientsPage() {
 // ─── Row ──────────────────────────────────────────────────────────────────────
 
 function ClientRow({
-  client, isCompact, deleting, onEdit, onDelete,
+  client, isCompact, deleting, selected, onSelect, onEdit, onDelete,
 }: {
-  client: Client; isCompact: boolean; deleting: boolean;
-  onEdit: () => void; onDelete: () => void;
+  client: Client; isCompact: boolean; deleting: boolean; selected?: boolean;
+  onSelect: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const typeColor   = TYPE_COLORS[client.type]   || TYPE_COLORS["אחר"];
   const statusColor = STATUS_COLORS[client.status] || STATUS_COLORS["חדש"];
 
   return (
     <div
+      onClick={onSelect}
       style={{
         borderBottom: "1px solid #252525",
         padding: "11px 20px",
         transition: "background 0.1s",
+        cursor: "pointer",
+        background: selected ? "#1C1C2A" : "transparent",
+        borderRight: selected ? "2px solid rgba(168,85,247,0.5)" : "2px solid transparent",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "#1E1E1E")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+      onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = "#1E1E1E"; }}
+      onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = "transparent"; }}
     >
       {/* Desktop grid */}
       <div
@@ -386,7 +402,9 @@ function ClientRow({
         {!isCompact && <Badge bg={typeColor.bg} color={typeColor.color}>{client.type}</Badge>}
         <Badge bg={statusColor.bg} color={statusColor.color}>{client.status}</Badge>
 
-        <Actions deleting={deleting} onEdit={onEdit} onDelete={onDelete} />
+        <div onClick={(e) => e.stopPropagation()}>
+          <Actions deleting={deleting} onEdit={onEdit} onDelete={onDelete} />
+        </div>
       </div>
 
       {/* Mobile layout */}
@@ -404,7 +422,9 @@ function ClientRow({
           )}
           <Badge bg={statusColor.bg} color={statusColor.color} small style={{ marginTop: 6 }}>{client.status}</Badge>
         </div>
-        <Actions deleting={deleting} onEdit={onEdit} onDelete={onDelete} />
+        <div onClick={(e) => e.stopPropagation()}>
+          <Actions deleting={deleting} onEdit={onEdit} onDelete={onDelete} />
+        </div>
       </div>
     </div>
   );
