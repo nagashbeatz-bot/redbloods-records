@@ -68,11 +68,23 @@ export async function POST(req: NextRequest) {
     // Internal stream URL (for the in-app player)
     const fileUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
 
-    // Public share URL — uses our own stream endpoint, no extra Dropbox permissions needed.
-    // The Railway domain is the public base; fall back to the request origin.
-    const domain   = process.env.RAILWAY_PUBLIC_DOMAIN;
-    const base     = domain ? `https://${domain}` : req.nextUrl.origin;
-    const shareUrl = `${base}/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
+    // Public share URL — get a temporary direct link from Dropbox (4h TTL).
+    // Hosted on Dropbox CDN, does NOT expose our app domain.
+    let shareUrl = "";
+    try {
+      const tmpRes = await fetch(
+        "https://api.dropboxapi.com/2/files/get_temporary_link",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ path: finalPath }),
+        }
+      );
+      if (tmpRes.ok) {
+        const tmpData = (await tmpRes.json()) as { link: string };
+        shareUrl = tmpData.link;
+      }
+    } catch { /* non-fatal — share popup just won't open */ }
 
     // ── 3. Persist to Supabase ────────────────────────────────────────────────
     const { addFileToProject } = await import("@/lib/projects-store");
