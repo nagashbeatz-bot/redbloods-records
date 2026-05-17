@@ -897,13 +897,26 @@ function SlotDayGroups({
     <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 6 }}>
       {groups.map((g) => (
         <div key={g.dateStr}>
-          {/* Day header */}
+          {/* Day header — always include numeric date next to היום/מחר */}
           <div style={{
-            fontSize: 10, fontWeight: 700, color: "#A855F7",
-            letterSpacing: "0.07em", textTransform: "uppercase",
+            display: "flex", alignItems: "baseline", gap: 6,
             marginBottom: 6,
           }}>
-            {g.dayLabel}
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: "#A855F7",
+              letterSpacing: "0.07em", textTransform: "uppercase",
+            }}>
+              {g.dayLabel}
+            </span>
+            {/* Show numeric date for "היום"/"מחר" (day-of-week labels already include it) */}
+            {(g.dayLabel === "היום" || g.dayLabel === "מחר") && (() => {
+              const [, mm, dd] = g.dateStr.split("-");
+              return (
+                <span style={{ fontSize: 10, color: "#555" }}>
+                  {parseInt(dd, 10)}.{parseInt(mm, 10)}
+                </span>
+              );
+            })()}
           </div>
           {/* Time pills grid */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
