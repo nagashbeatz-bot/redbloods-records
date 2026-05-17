@@ -493,8 +493,13 @@ export async function checkManualSlot(
   const auth     = await getAuthenticatedClient();
   const calendar = google.calendar({ version: "v3", auth });
 
-  const dayStart = new Date(start); dayStart.setHours(0, 0, 0, 0);
-  const dayEnd   = new Date(start); dayEnd.setHours(23, 59, 59, 999);
+  // Build day window in Israel timezone — server is UTC so setHours(0,0,0,0) would be wrong
+  const dateStr  = ilDateStr(start);                // "2026-05-18" in IL
+  const offH     = ilOffsetH(dateStr);
+  const sign     = offH >= 0 ? "+" : "-";
+  const absOff   = p2(Math.abs(offH));
+  const dayStart = new Date(`${dateStr}T00:00:00${sign}${absOff}:00`); // midnight IL
+  const dayEnd   = new Date(`${dateStr}T23:59:59${sign}${absOff}:00`); // end-of-day IL
 
   const evRes = await calendar.events.list({
     calendarId: CALENDAR_ID,

@@ -13,6 +13,30 @@ export const SLOT_STEP_MIN = 30;
 export const BUFFER_MIN    = 30;
 
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+const IL_TZ = "Asia/Jerusalem";
+
+/** YYYY-MM-DD in Israel timezone (works on client and server) */
+export function ilDateStr(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: IL_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+}
+
+/** Hour (0-23) in Israel timezone */
+function ilHour(d: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: IL_TZ, hour: "2-digit", hour12: false,
+  }).formatToParts(d);
+  return parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+}
+
+/** Minute (0-59) in Israel timezone */
+function ilMinute(d: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: IL_TZ, minute: "2-digit",
+  }).formatToParts(d);
+  return parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+}
 
 export function dayName(date: Date): string {
   return DAY_NAMES[date.getDay()];
@@ -46,19 +70,21 @@ export function fmtHM(h: number, m: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/** Format a Date as "HH:MM" */
+/** Format a Date as "HH:MM" in Israel timezone */
 export function fmtTime(d: Date): string {
-  return fmtHM(d.getHours(), d.getMinutes());
+  return fmtHM(ilHour(d), ilMinute(d));
 }
 
-/** Short Hebrew day+date label, e.g. "יום ד׳ 15.1" */
+/** Short Hebrew day+date label, e.g. "יום ד׳ 15.1" — uses Israel timezone */
 export function fmtDayDate(d: Date): string {
-  const now = new Date();
-  const todayStr    = now.toDateString();
-  const tomorrowStr = new Date(now.getTime() + 86_400_000).toDateString();
-  if (d.toDateString() === todayStr)    return "היום";
-  if (d.toDateString() === tomorrowStr) return "מחר";
-  return `יום ${dayName(d)} ${d.getDate()}.${d.getMonth() + 1}`;
+  const now         = new Date();
+  const todayIL     = ilDateStr(now);
+  const tomorrowIL  = ilDateStr(new Date(now.getTime() + 86_400_000));
+  const dIL         = ilDateStr(d);
+  if (dIL === todayIL)    return "היום";
+  if (dIL === tomorrowIL) return "מחר";
+  const [, mm, dd] = dIL.split("-");
+  return `יום ${dayName(d)} ${parseInt(dd, 10)}.${parseInt(mm, 10)}`;
 }
 
 /** Full slot label like "היום  10:00 – 12:00" */
@@ -93,7 +119,8 @@ export function checkSlot(
   busyPeriods: BusyPeriod[]
 ): SlotCheckResult {
   const outOfDays  = !isWorkingDay(start);
-  const endH = end.getHours() + end.getMinutes() / 60;
+  // Use Israel timezone for hours — server runs UTC so getHours() would be wrong
+  const endH = ilHour(end) + ilMinute(end) / 60;
   const outOfHours = endH > WORK_END_H;
 
   let hardConflict  = false;

@@ -114,9 +114,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       .finally(() => setFinanceLoading(false));
   };
 
-  // Manual picker state
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  // Manual picker state — always Israel calendar date, never UTC
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
   const [manualDate, setManualDate] = useState(todayStr);
   const [manualHM,   setManualHM]   = useState<{ h: number; m: number } | null>(null);
 
@@ -129,7 +128,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   const title = buildEventTitle(action, artist, projectName);
 
   // ── Derived manual values ─────────────────────────────────────────────────
-  const manualDateObj = useMemo(() => new Date(manualDate + "T00:00:00"), [manualDate]);
+  // Anchor to noon-UTC so getDay() is unambiguously the Israel calendar day
+  const manualDateObj = useMemo(() => new Date(manualDate + "T12:00:00Z"), [manualDate]);
   const manualDayOk   = isWorkingDay(manualDateObj);
 
   const timeOptions = useMemo(() => validStartTimes(minutes), [minutes]);
