@@ -7,10 +7,13 @@ import { NextRequest, NextResponse } from "next/server";
  * Used as the audio src so the player always gets a playable direct URL.
  */
 export async function GET(req: NextRequest) {
-  const token = process.env.DROPBOX_ACCESS_TOKEN;
-  if (!token) {
+  let token: string;
+  try {
+    const { getDropboxToken } = await import("@/lib/dropbox-token");
+    token = await getDropboxToken();
+  } catch (e) {
     return NextResponse.json(
-      { error: "DROPBOX_ACCESS_TOKEN לא מוגדר" },
+      { error: e instanceof Error ? e.message : "Dropbox לא מחובר" },
       { status: 500 }
     );
   }

@@ -29,8 +29,8 @@ async function createDropboxShareLink(token: string, path: string): Promise<stri
 // Body: { dropboxPath: string, projectId: string }
 export async function POST(req: NextRequest) {
   try {
-    const token = process.env.DROPBOX_ACCESS_TOKEN;
-    if (!token) return NextResponse.json({ error: "DROPBOX_ACCESS_TOKEN חסר" }, { status: 500 });
+    const { getDropboxToken } = await import("@/lib/dropbox-token");
+    const token = await getDropboxToken();
 
     const { dropboxPath, projectId } = await req.json();
     if (!dropboxPath || !projectId) return NextResponse.json({ error: "חסרים פרמטרים" }, { status: 400 });

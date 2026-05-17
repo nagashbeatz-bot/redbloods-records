@@ -10,9 +10,12 @@ function dropboxArg(obj: Record<string, unknown>): string {
 // POST /api/delivery/upload
 // FormData: { file: File, projectId: string }
 export async function POST(req: NextRequest) {
-  const token = process.env.DROPBOX_ACCESS_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: "DROPBOX_ACCESS_TOKEN חסר" }, { status: 500 });
+  let token: string;
+  try {
+    const { getDropboxToken } = await import("@/lib/dropbox-token");
+    token = await getDropboxToken();
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Dropbox לא מחובר" }, { status: 500 });
   }
 
   const formData  = await req.formData();

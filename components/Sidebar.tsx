@@ -13,6 +13,7 @@ const NAV_MAIN = [
 
 const NAV_SETTINGS = [
   { href: "/setup/calendar", label: "יומן",   icon: "📅", iconColor: undefined }, // emoji — keep native
+  { href: "/setup/dropbox",  label: "Dropbox", icon: "📦", iconColor: undefined }, // emoji — keep native
   { href: "/setup/reports",  label: "דוחות",  icon: "📧", iconColor: undefined }, // emoji — keep native
 ];
 

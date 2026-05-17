@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const token = process.env.DROPBOX_ACCESS_TOKEN;
-    if (!token) {
-      return NextResponse.json(
-        { error: "DROPBOX_ACCESS_TOKEN לא מוגדר בסביבה" },
-        { status: 500 }
-      );
-    }
+    const { getDropboxToken } = await import("@/lib/dropbox-token");
+    const token = await getDropboxToken();
 
     const { dropboxPath, projectId } = await req.json();
 

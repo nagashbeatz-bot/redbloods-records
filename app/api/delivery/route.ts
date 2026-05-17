@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getDropboxToken } from "@/lib/dropbox-token";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -136,8 +137,10 @@ export async function GET(req: NextRequest) {
   // Live file list from Dropbox (if folder exists)
   let files: Array<{ name: string; path: string }> = [];
   if (folderPath) {
-    const token = process.env.DROPBOX_ACCESS_TOKEN;
-    if (token) files = await listDropboxFolder(token, folderPath);
+    try {
+      const token = await getDropboxToken();
+      files = await listDropboxFolder(token, folderPath);
+    } catch { /* token not configured — skip file listing */ }
   }
 
   return NextResponse.json({
@@ -149,9 +152,11 @@ export async function GET(req: NextRequest) {
 // Body: { projectId, artist, projectName }
 
 export async function POST(req: NextRequest) {
-  const token = process.env.DROPBOX_ACCESS_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: "DROPBOX_ACCESS_TOKEN חסר" }, { status: 500 });
+  let token: string;
+  try {
+    token = await getDropboxToken();
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Dropbox לא מחובר" }, { status: 500 });
   }
 
   const { projectId, artist, projectName } = await req.json();
@@ -218,9 +223,11 @@ export async function PATCH(req: NextRequest) {
 // ─── DELETE /api/delivery?projectId=xxx ───────────────────────────────────────
 
 export async function DELETE(req: NextRequest) {
-  const token = process.env.DROPBOX_ACCESS_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: "DROPBOX_ACCESS_TOKEN חסר" }, { status: 500 });
+  let token: string;
+  try {
+    token = await getDropboxToken();
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Dropbox לא מחובר" }, { status: 500 });
   }
 
   const projectId = req.nextUrl.searchParams.get("projectId");

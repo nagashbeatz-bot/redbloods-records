@@ -21,8 +21,11 @@ async function getShareData(token: string) {
   };
 
   // Get a fresh temporary Dropbox link
-  const dropboxToken = process.env.DROPBOX_ACCESS_TOKEN;
-  if (!dropboxToken) return null;
+  let dropboxToken: string;
+  try {
+    const { getDropboxToken } = await import("@/lib/dropbox-token");
+    dropboxToken = await getDropboxToken();
+  } catch { return null; }
 
   const res = await fetch("https://api.dropboxapi.com/2/files/get_temporary_link", {
     method: "POST",
