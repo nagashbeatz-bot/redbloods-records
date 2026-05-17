@@ -113,8 +113,10 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
   }, []);
 
   const resume = useCallback(() => {
+    // Notify radio to fade out — same as play(), must fire every time user
+    // resumes a project track, not just the first time.
+    window.dispatchEvent(new Event("rb:project-started"));
     audioRef.current?.play().catch(() => {});
-    // Don't notify radio here — user is resuming project, radio should stay off
   }, []);
 
   const stop = useCallback(() => {
