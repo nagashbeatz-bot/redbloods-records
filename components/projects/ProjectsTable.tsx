@@ -10,7 +10,6 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
-import CopyLinkButton from "@/components/ui/CopyLinkButton";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
 import ActionMenu from "@/components/project/ActionMenu";
@@ -671,14 +670,6 @@ export default function ProjectsTable() {
                     </button>
                   ) : (
                     <div style={{ width: 26, flexShrink: 0 }} />
-                  )}
-                  {latestAudio && (
-                    <CopyLinkButton
-                      shareUrl={latestAudio.dropboxShareUrl}
-                      dropboxPath={latestAudio.dropboxPath}
-                      projectId={p.id}
-                      size="sm"
-                    />
                   )}
                   <UploadButton
                     projectId={p.id}
