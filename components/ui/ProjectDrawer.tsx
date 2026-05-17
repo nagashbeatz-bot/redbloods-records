@@ -172,10 +172,12 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const player = usePlayerSafe();
 
   // ── Finance state ──────────────────────────────────────────────────────────
-  const [transactions,   setTransactions]   = useState<Transaction[]>([]);
-  const [agreedPrice,    setAgreedPrice]    = useState(0);
-  const [finCurrency,    setFinCurrency]    = useState("₪");
-  const [finLoaded,      setFinLoaded]      = useState(false);
+  const [transactions,          setTransactions]          = useState<Transaction[]>([]);
+  const [agreedPrice,           setAgreedPrice]           = useState(0);
+  const [finCurrency,           setFinCurrency]           = useState("₪");
+  const [finLoaded,             setFinLoaded]             = useState(false);
+  const [financeException,      setFinanceException]      = useState(false);
+  const [financeExceptionReason, setFinanceExceptionReason] = useState("");
   const [addingTx,       setAddingTx]       = useState<"income" | "expense" | null>(null);
   const [txDraft,        setTxDraft]        = useState<TxDraft>(emptyTxDraft());
   const [txSaving,       setTxSaving]       = useState(false);
@@ -318,6 +320,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         setTransactions(d.transactions ?? []);
         setAgreedPrice(d.agreedPrice ?? 0);
         setFinCurrency(d.currency ?? "₪");
+        setFinanceException(d.financeException ?? false);
+        setFinanceExceptionReason(d.financeExceptionReason ?? "");
         setFinLoaded(true);
       })
       .catch(() => setFinLoaded(true));
@@ -955,9 +959,31 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           {/* ── כספים ───────────────────────────────────────────────────── */}
           <Card>
             {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: financeException ? 8 : 14 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>כספים</span>
             </div>
+
+            {/* Finance exception banner */}
+            {financeException && (
+              <div style={{
+                display: "flex", alignItems: "flex-start", gap: 8,
+                padding: "8px 10px", borderRadius: 8, marginBottom: 14,
+                background: "rgba(245,158,11,0.07)",
+                border: "1px solid rgba(245,158,11,0.25)",
+              }}>
+                <span style={{ fontSize: 13, flexShrink: 0 }}>⚠️</span>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#F59E0B" }}>
+                    חריג כספי — עבר למיקס עם יתרה פתוחה
+                  </div>
+                  {financeExceptionReason && (
+                    <div style={{ fontSize: 10, color: "#777", marginTop: 2 }}>
+                      סיבה: {financeExceptionReason}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Agreed price row */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>

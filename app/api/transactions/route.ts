@@ -38,12 +38,19 @@ export async function GET(req: NextRequest) {
 
   if (txRes.error) return NextResponse.json({ error: txRes.error.message }, { status: 500 });
 
-  const val           = (settingsRes.data?.value ?? {}) as Record<string, unknown>;
-  const agreedPrice   = (val.agreedPrice   as number  | undefined) ?? 0;
-  const currency      = (val.currency      as string  | undefined) ?? "₪";
-  const financialNotes = (val.financialNotes as string | undefined) ?? "";
+  const val                = (settingsRes.data?.value ?? {}) as Record<string, unknown>;
+  const agreedPrice        = (val.agreedPrice        as number  | undefined) ?? 0;
+  const currency           = (val.currency           as string  | undefined) ?? "₪";
+  const financialNotes     = (val.financialNotes     as string  | undefined) ?? "";
+  const financeException   = (val.financeException   as boolean | undefined) ?? false;
+  const financeExceptionReason = (val.financeExceptionReason as string | undefined) ?? "";
+  const financeExceptionDate   = (val.financeExceptionDate   as string | undefined) ?? "";
 
-  return NextResponse.json({ transactions: txRes.data, agreedPrice, currency, financialNotes });
+  return NextResponse.json({
+    transactions: txRes.data,
+    agreedPrice, currency, financialNotes,
+    financeException, financeExceptionReason, financeExceptionDate,
+  });
 }
 
 // POST /api/transactions  → create a new transaction
