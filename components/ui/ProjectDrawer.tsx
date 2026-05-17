@@ -151,7 +151,7 @@ interface Props {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
-  const { projects, updateProjectField } = useProjects();
+  const { projects, updateProjectField, refresh } = useProjects();
   const player = usePlayerSafe();
 
   // ── Finance state ──────────────────────────────────────────────────────────
@@ -167,6 +167,33 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [editTxSaving,   setEditTxSaving]   = useState(false);
   const [editingPrice,   setEditingPrice]   = useState(false);
   const [priceDraft,     setPriceDraft]     = useState("");
+
+  // ── File delete state ─────────────────────────────────────────────────────
+  const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null);
+  const [deletingFile,      setDeletingFile]      = useState(false);
+  const [fileDeleteErr,     setFileDeleteErr]     = useState<string | null>(null);
+
+  const handleDeleteFile = async (dropboxPath: string) => {
+    if (!project) return;
+    setDeletingFile(true);
+    setFileDeleteErr(null);
+    try {
+      const res = await fetch("/api/dropbox/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dropboxPath, projectId: project.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "מחיקה נכשלה");
+      setConfirmDeletePath(null);
+      await refresh();
+    } catch (err) {
+      setFileDeleteErr(err instanceof Error ? err.message : "שגיאה במחיקה");
+      setTimeout(() => setFileDeleteErr(null), 4000);
+    } finally {
+      setDeletingFile(false);
+    }
+  };
 
   // ── Session state ──────────────────────────────────────────────────────────
   const [sessions,       setSessions]       = useState<Session[]>([]);
@@ -993,6 +1020,47 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                       <path d="M1.5 10.5h10" />
                     </svg>
                   </a>
+
+                  {/* Delete (Dropbox files only) */}
+                  {latestAudio.dropboxPath && (
+                    confirmDeletePath === latestAudio.dropboxPath ? (
+                      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleDeleteFile(latestAudio.dropboxPath!)}
+                          disabled={deletingFile}
+                          title="אשר מחיקה"
+                          style={{
+                            padding: "2px 7px", borderRadius: 5, border: "none",
+                            background: "#EF4444", color: "#fff", fontSize: 11,
+                            cursor: deletingFile ? "wait" : "pointer", fontFamily: "inherit",
+                          }}
+                        >{deletingFile ? "..." : "מחק"}</button>
+                        <button
+                          onClick={() => setConfirmDeletePath(null)}
+                          disabled={deletingFile}
+                          style={{
+                            padding: "2px 7px", borderRadius: 5,
+                            border: "1px solid #333", background: "transparent",
+                            color: "#666", fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+                          }}
+                        >ביטול</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeletePath(latestAudio.dropboxPath!)}
+                        title="מחק קובץ"
+                        style={{
+                          width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                          background: "none", border: "none", cursor: "pointer",
+                          color: "#444", fontSize: 15,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "color 0.13s",
+                        }}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
+                      >🗑</button>
+                    )
+                  )}
                 </div>
               </div>
             ) : (
@@ -1010,34 +1078,83 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 <div style={{ fontSize: 10, color: "#444", marginBottom: 6 }}>כל הקבצים</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   {allFiles.map((f, i) => (
-                    <a
+                    <div
                       key={i}
-                      href={f.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       style={{
-                        fontSize: 11, color: "#555", textDecoration: "none",
-                        display: "flex", alignItems: "center", gap: 6,
-                        padding: "4px 6px", borderRadius: 6,
-                        transition: "color 0.12s, background 0.12s",
-                      }}
-                      onMouseEnter={(e) => {
-                        const el = e.currentTarget as HTMLAnchorElement;
-                        el.style.color = "#3B82F6";
-                        el.style.background = "rgba(59,130,246,0.07)";
-                      }}
-                      onMouseLeave={(e) => {
-                        const el = e.currentTarget as HTMLAnchorElement;
-                        el.style.color = "#555";
-                        el.style.background = "transparent";
+                        display: "flex", alignItems: "center", gap: 4,
+                        padding: "3px 4px", borderRadius: 6,
                       }}
                     >
-                      <span style={{ flexShrink: 0, fontSize: 10 }}>↓</span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                    </a>
+                      {confirmDeletePath === f.dropboxPath && f.dropboxPath ? (
+                        /* ── Confirm row ── */
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+                          <span style={{ flex: 1, fontSize: 10, color: "#EF4444", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            מחק &quot;{f.name}&quot;?
+                          </span>
+                          <button
+                            onClick={() => handleDeleteFile(f.dropboxPath!)}
+                            disabled={deletingFile}
+                            style={{
+                              padding: "1px 7px", borderRadius: 4, border: "none",
+                              background: "#EF4444", color: "#fff", fontSize: 10,
+                              cursor: deletingFile ? "wait" : "pointer", fontFamily: "inherit", flexShrink: 0,
+                            }}
+                          >{deletingFile ? "..." : "מחק"}</button>
+                          <button
+                            onClick={() => setConfirmDeletePath(null)}
+                            disabled={deletingFile}
+                            style={{
+                              padding: "1px 6px", borderRadius: 4,
+                              border: "1px solid #333", background: "transparent",
+                              color: "#666", fontSize: 10, cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+                            }}
+                          >ביטול</button>
+                        </div>
+                      ) : (
+                        /* ── Normal row ── */
+                        <>
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              flex: 1, fontSize: 11, color: "#555", textDecoration: "none",
+                              display: "flex", alignItems: "center", gap: 6,
+                              overflow: "hidden",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#3B82F6"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#555"; }}
+                          >
+                            <span style={{ flexShrink: 0, fontSize: 10 }}>↓</span>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                          </a>
+                          {f.dropboxPath && (
+                            <button
+                              onClick={() => setConfirmDeletePath(f.dropboxPath!)}
+                              title="מחק קובץ"
+                              style={{
+                                background: "none", border: "none", cursor: "pointer",
+                                color: "#383838", fontSize: 13, padding: "0 2px",
+                                flexShrink: 0, lineHeight: 1, transition: "color 0.13s",
+                              }}
+                              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#383838")}
+                            >🗑</button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Delete error */}
+            {fileDeleteErr && (
+              <div style={{
+                marginTop: 6, padding: "4px 10px", borderRadius: 6, fontSize: 11,
+                background: "#2A1010", border: "1px solid #5A1A1A", color: "#FF6B6B",
+              }}>{fileDeleteErr}</div>
             )}
 
             {/* No files at all */}
