@@ -78,6 +78,13 @@ const PMT_STATUS_OPTS:  PaymentStatus[]   = ["התקבל", "צפוי", "חלקי
 const PAID_STATUSES = new Set<PaymentStatus>(["שולם", "התקבל"]);
 // Payment method options
 const PMT_METHOD_OPTS = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
+
+// Half-hour time slots for the custom time picker (avoids ugly native scroll wheel)
+const TIME_SLOTS: string[] = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
+  const m = i % 2 === 0 ? "00" : "30";
+  return `${String(h).padStart(2, "0")}:${m}`;
+});
 const EXPENSE_CATS      = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
@@ -568,8 +575,70 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             from { transform: translateX(100%); opacity: 0.6; }
             to   { transform: translateX(0);    opacity: 1;   }
           }
-          .rb-session-input { background:#0D0D0D; border:1px solid #3A3A3A; border-radius:6px; color:#E8E8E8; font-size:12px; padding:4px 8px; outline:none; font-family:inherit; height:28px; box-sizing:border-box; }
-          .rb-session-input:focus { border-color:#3B82F6; }
+
+          /* ── Form inputs ───────────────────────────────────────────────── */
+          .rb-session-input {
+            background: #111;
+            border: 1px solid #2A2A2A;
+            border-radius: 8px;
+            color: #E0E0E0;
+            font-size: 12px;
+            padding: 0 10px;
+            outline: none;
+            font-family: inherit;
+            height: 32px;
+            box-sizing: border-box;
+            color-scheme: dark;
+            transition: border-color 0.15s, box-shadow 0.15s;
+          }
+          .rb-session-input:focus {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.12);
+          }
+          .rb-session-input::placeholder { color: #3A3A3A; }
+
+          /* Custom chevron for selects (RTL: arrow on left = end of field) */
+          select.rb-session-input {
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23555' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: left 8px center;
+            padding-left: 24px;
+            padding-right: 10px;
+          }
+          select.rb-session-input option {
+            background: #1A1A1A;
+            color: #E0E0E0;
+          }
+
+          /* Form card wrapper */
+          .rb-form-card {
+            background: #161616;
+            border: 1px solid #222;
+            border-radius: 11px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+          }
+
+          /* Primary / secondary / danger buttons inside forms */
+          .rb-btn-primary {
+            flex: 1; padding: 7px 0; border-radius: 8px; border: none;
+            background: #3B82F6; color: #fff; font-size: 12px; font-weight: 600;
+            cursor: pointer; font-family: inherit; transition: opacity 0.15s;
+          }
+          .rb-btn-primary:hover:not(:disabled) { opacity: 0.88; }
+          .rb-btn-primary:disabled { opacity: 0.45; cursor: wait; }
+          .rb-btn-secondary {
+            padding: 7px 16px; border-radius: 8px;
+            border: 1px solid #2A2A2A; background: transparent;
+            color: #666; font-size: 12px; font-weight: 500;
+            cursor: pointer; font-family: inherit; transition: border-color 0.15s, color 0.15s;
+          }
+          .rb-btn-secondary:hover { border-color: #3A3A3A; color: #AAA; }
         `}</style>
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
@@ -1433,11 +1502,7 @@ function DrawerTxForm({
 }) {
   const isIncome = draft.type === "income";
   return (
-    <div style={{
-      background: "#181818", border: "1px solid #2A2A2A",
-      borderRadius: 10, padding: "10px 12px",
-      display: "flex", flexDirection: "column", gap: 7, marginBottom: 10,
-    }}>
+    <div className="rb-form-card" style={{ marginBottom: 10 }}>
       {/* Type toggle */}
       <div style={{ display: "flex", gap: 6 }}>
         {(["income", "expense"] as const).map((t) => (
@@ -1463,7 +1528,7 @@ function DrawerTxForm({
       {/* Date + Description */}
       <div style={{ display: "flex", gap: 6 }}>
         <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-          className="rb-session-input" style={{ width: 120, colorScheme: "dark" }} />
+          className="rb-session-input" style={{ width: 120 }} />
         <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
           placeholder="תיאור" className="rb-session-input" style={{ flex: 1 }} />
       </div>
@@ -1523,14 +1588,10 @@ function DrawerTxForm({
 
       {/* Buttons */}
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={onSave} disabled={saving}
-          style={{ flex: 1, padding: "5px 0", borderRadius: 7, border: "none", background: "#3B82F6", color: "#fff", fontSize: 12, cursor: saving ? "wait" : "pointer", fontFamily: "inherit" }}>
+        <button onClick={onSave} disabled={saving} className="rb-btn-primary">
           {saving ? "שומר..." : "שמור"}
         </button>
-        <button onClick={onCancel}
-          style={{ padding: "5px 14px", borderRadius: 7, border: "1px solid #2A2A2A", background: "transparent", color: "#666", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-          ביטול
-        </button>
+        <button onClick={onCancel} className="rb-btn-secondary">ביטול</button>
       </div>
     </div>
   );
@@ -1547,37 +1608,37 @@ function SessionForm({
   onCancel: () => void;
 }) {
   return (
-    <div style={{
-      background: "#181818", border: "1px solid #2A2A2A",
-      borderRadius: 10, padding: "10px 12px",
-      display: "flex", flexDirection: "column", gap: 8,
-    }}>
-      {/* Date + times row */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <input
-          type="date"
-          value={draft.date}
-          onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-          className="rb-session-input"
-          style={{ flex: "1 1 120px" }}
-        />
-        <input
-          type="time"
+    <div className="rb-form-card">
+      {/* Date row */}
+      <input
+        type="date"
+        value={draft.date}
+        onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+        className="rb-session-input"
+        style={{ width: "100%", boxSizing: "border-box" }}
+      />
+
+      {/* Time slots row (custom selects — no ugly browser scroll wheel) */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <select
           value={draft.startTime}
           onChange={(e) => setDraft({ ...draft, startTime: e.target.value })}
           className="rb-session-input"
-          style={{ width: 90 }}
-          placeholder="התחלה"
-        />
-        <span style={{ lineHeight: "28px", color: "#555", fontSize: 12 }}>–</span>
-        <input
-          type="time"
+          style={{ flex: 1 }}
+        >
+          <option value="">שעת התחלה</option>
+          {TIME_SLOTS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <span style={{ color: "#444", fontSize: 13, flexShrink: 0 }}>—</span>
+        <select
           value={draft.endTime}
           onChange={(e) => setDraft({ ...draft, endTime: e.target.value })}
           className="rb-session-input"
-          style={{ width: 90 }}
-          placeholder="סיום"
-        />
+          style={{ flex: 1 }}
+        >
+          <option value="">שעת סיום</option>
+          {TIME_SLOTS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
       </div>
 
       {/* Type + Status row */}
@@ -1588,9 +1649,7 @@ function SessionForm({
           className="rb-session-input"
           style={{ flex: 1 }}
         >
-          {TYPE_OPTIONS.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
+          {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <select
           value={draft.status}
@@ -1598,9 +1657,7 @@ function SessionForm({
           className="rb-session-input"
           style={{ flex: 1 }}
         >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
 
@@ -1617,27 +1674,10 @@ function SessionForm({
 
       {/* Buttons */}
       <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={onSave}
-          disabled={saving}
-          style={{
-            flex: 1, padding: "5px 0", borderRadius: 7, border: "none",
-            background: "#3B82F6", color: "#fff", fontSize: 12,
-            cursor: saving ? "wait" : "pointer", fontFamily: "inherit",
-          }}
-        >
+        <button onClick={onSave} disabled={saving} className="rb-btn-primary">
           {saving ? "שומר..." : "שמור"}
         </button>
-        <button
-          onClick={onCancel}
-          style={{
-            padding: "5px 14px", borderRadius: 7,
-            border: "1px solid #2A2A2A", background: "transparent",
-            color: "#666", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-          }}
-        >
-          ביטול
-        </button>
+        <button onClick={onCancel} className="rb-btn-secondary">ביטול</button>
       </div>
     </div>
   );
