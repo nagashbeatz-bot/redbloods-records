@@ -431,6 +431,22 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         setSessionLimit(d.limit ?? 3);
         setSessionsLoaded(true);
 
+        // Auto-fill startDate from earliest session if not yet set
+        const proj = projects.find((p) => p.id === projectId);
+        if (!proj?.startDate && marked.length > 0) {
+          const earliest = marked
+            .filter((s) => s.date)
+            .map((s) => s.date!)
+            .sort()[0];
+          if (earliest) {
+            fetch(`/api/projects/${projectId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ startDate: earliest }),
+            }).then(() => refresh()).catch(() => {});
+          }
+        }
+
         // After loading, run calendar sync in background to remove deleted events
         if (withSync) {
           fetch(`/api/sessions/sync?projectId=${projectId}`)

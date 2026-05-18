@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { touchProject } from "@/lib/projects-store";
+import { touchProject, ensureProjectStartDate } from "@/lib/projects-store";
 
 // ── GET /api/sessions?projectId=xxx  OR  ?all=1 ──────────────────────────────
 export async function GET(req: NextRequest) {
@@ -112,6 +112,8 @@ export async function POST(req: NextRequest) {
 
     // Bump project's updated_at so it rises to top of "עודכן לאחרונה" sort
     touchProject(projectId).catch(() => {});
+    // Auto-fill start_date from earliest session if not yet set
+    ensureProjectStartDate(projectId).catch(() => {});
 
     return NextResponse.json({ session: data });
   } catch (err) {

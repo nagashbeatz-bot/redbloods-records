@@ -247,6 +247,38 @@ export async function touchProject(id: string): Promise<void> {
     .eq("id", id);
 }
 
+/**
+ * If the project has no start_date, find its earliest session date and set it.
+ * Never overwrites a manually-set start_date.
+ */
+export async function ensureProjectStartDate(projectId: string): Promise<void> {
+  // Only proceed if start_date is not yet set
+  const { data: proj } = await supabase
+    .from("projects")
+    .select("start_date")
+    .eq("id", projectId)
+    .single();
+
+  if (proj?.start_date) return; // already set — never overwrite
+
+  // Find the earliest session date for this project
+  const { data: rows } = await supabase
+    .from("sessions")
+    .select("date")
+    .eq("project_id", projectId)
+    .not("date", "is", null)
+    .order("date", { ascending: true })
+    .limit(1);
+
+  const earliest = rows?.[0]?.date as string | undefined;
+  if (!earliest) return;
+
+  await supabase
+    .from("projects")
+    .update({ start_date: earliest, updated_at: new Date().toISOString() })
+    .eq("id", projectId);
+}
+
 /** Remove a file from a project's files JSONB by its Dropbox path */
 export async function removeFileFromProjectByPath(
   id: string,
