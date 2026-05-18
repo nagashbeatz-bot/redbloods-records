@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { touchProject } from "@/lib/projects-store";
 
 // ── PATCH /api/sessions/[id] — update a session ──────────────────────────────
 export async function PATCH(
@@ -28,6 +29,10 @@ export async function PATCH(
 
     if (error) throw new Error(error.message);
 
+    // Bump project's updated_at
+    const projectId = (data as { project_id?: string }).project_id;
+    if (projectId) touchProject(projectId).catch(() => {});
+
     return NextResponse.json({ session: data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
@@ -44,10 +49,10 @@ export async function DELETE(
   try {
     const { id } = await context.params;
 
-    // Fetch session first to get calendar_event_id
+    // Fetch session first to get calendar_event_id + project_id
     const { data: session } = await supabase
       .from("sessions")
-      .select("calendar_event_id")
+      .select("calendar_event_id, project_id")
       .eq("id", id)
       .single();
 
@@ -67,6 +72,10 @@ export async function DELETE(
         // Calendar deletion is non-fatal
       }
     }
+
+    // Bump project's updated_at
+    const delProjectId = (session as { project_id?: string } | null)?.project_id;
+    if (delProjectId) touchProject(delProjectId).catch(() => {});
 
     return NextResponse.json({ ok: true });
   } catch (err) {

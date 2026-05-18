@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { touchProject } from "@/lib/projects-store";
 
 // GET /api/transactions?projectId=xxx   → transactions + finance settings for one project
 // GET /api/transactions?all=1           → all transactions + all finance settings
@@ -93,6 +94,10 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Bump project's updated_at for project-scoped transactions
+  if (txScope === "project" && projectId) touchProject(projectId).catch(() => {});
+
   return NextResponse.json({ transaction: data });
 }
 

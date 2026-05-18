@@ -331,7 +331,7 @@ export default function ProjectsTable() {
   const [typeFilter, setTypeFilter] = useState<ProjectType | "">("");
   const [parentFilter, setParentFilter] = useState("");
   const [artistFilter, setArtistFilter] = useState("");
-  const [sortBy, setSortBy] = useState<"urgency" | "deadline" | "name" | "artist" | "status">("urgency");
+  const [sortBy, setSortBy] = useState<"updated" | "urgency" | "deadline" | "name" | "artist" | "status">("updated");
   const [isMobile,  setIsMobile]  = useState(false);
   const [isCompact,      setIsCompact]      = useState(false); // 900–1300px
   const [isUltraCompact, setIsUltraCompact] = useState(false); // 768–900px
@@ -483,6 +483,11 @@ export default function ProjectsTable() {
       return p.status === statusFilter;
     })
     .sort((a, b) => {
+      if (sortBy === "updated") {
+        const tA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const tB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return tB - tA; // newest first
+      }
       if (sortBy === "urgency") return urgencyCompare(a, b);
       if (sortBy === "deadline") {
         if (!a.deadline && !b.deadline) return a.name.localeCompare(b.name, "he");
@@ -630,10 +635,11 @@ export default function ProjectsTable() {
             className="px-3 py-1.5 rounded-lg border text-xs font-medium"
             style={{
               background: "#1A1A1A",
-              borderColor: sortBy !== "urgency" ? "rgba(168,85,247,0.4)" : "#252525",
-              color: sortBy !== "urgency" ? "#A855F7" : "#666",
+              borderColor: sortBy !== "updated" ? "rgba(168,85,247,0.4)" : "#252525",
+              color: sortBy !== "updated" ? "#A855F7" : "#666",
             }}
           >
+            <option value="updated">מיון: עודכן לאחרונה</option>
             <option value="urgency">מיון: דחיפות</option>
             <option value="deadline">מיון: דדליין</option>
             <option value="name">מיון: שם פרויקט</option>

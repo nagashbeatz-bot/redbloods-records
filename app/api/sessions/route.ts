@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { touchProject } from "@/lib/projects-store";
 
 // ── GET /api/sessions?projectId=xxx  OR  ?all=1 ──────────────────────────────
 export async function GET(req: NextRequest) {
@@ -108,6 +109,9 @@ export async function POST(req: NextRequest) {
         }
       } catch { /* calendar optional */ }
     }
+
+    // Bump project's updated_at so it rises to top of "עודכן לאחרונה" sort
+    touchProject(projectId).catch(() => {});
 
     return NextResponse.json({ session: data });
   } catch (err) {

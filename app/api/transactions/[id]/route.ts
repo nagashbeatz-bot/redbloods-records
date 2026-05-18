@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { touchProject } from "@/lib/projects-store";
 
 // PATCH /api/transactions/[id]  → update a transaction
 export async function PATCH(
@@ -33,6 +34,11 @@ export async function PATCH(
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Bump project's updated_at
+  const pid = (data as { project_id?: string | null }).project_id;
+  if (pid) touchProject(pid).catch(() => {});
+
   return NextResponse.json({ transaction: data });
 }
 
@@ -43,11 +49,23 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
+  // Fetch project_id before deleting
+  const { data: tx } = await supabase
+    .from("transactions")
+    .select("project_id")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase
     .from("transactions")
     .delete()
     .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Bump project's updated_at
+  const delPid = (tx as { project_id?: string | null } | null)?.project_id;
+  if (delPid) touchProject(delPid).catch(() => {});
+
   return NextResponse.json({ ok: true });
 }

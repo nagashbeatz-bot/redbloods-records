@@ -65,6 +65,7 @@ export interface Project {
   projectType: ProjectType;    // סוג פרויקט
   parentProject: string;       // שייך ל
   isHidden: boolean;           // הסתרה — לא מופיע בתצוגה הפעילה
+  updatedAt: string;           // ISO timestamp of last meaningful change
 }
 
 export interface ChatMessage {

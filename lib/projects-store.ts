@@ -43,6 +43,7 @@ function dbToProject(db: DbProject): Project {
     projectType:   db.project_type as ProjectType,
     parentProject: db.parent_project,
     isHidden:      db.is_hidden ?? false,
+    updatedAt:     db.updated_at ?? db.created_at ?? "",
   };
 }
 
@@ -228,6 +229,14 @@ export async function updateFileShareUrl(
     .update({ files: updated, updated_at: new Date().toISOString() })
     .eq("id", projectId);
   if (error) throw new Error(error.message);
+}
+
+/** Bump updated_at without changing any other field — call after sessions/transactions */
+export async function touchProject(id: string): Promise<void> {
+  await supabase
+    .from("projects")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", id);
 }
 
 /** Remove a file from a project's files JSONB by its Dropbox path */
