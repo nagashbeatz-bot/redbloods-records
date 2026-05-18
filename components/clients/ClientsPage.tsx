@@ -1,8 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
 import ClientDrawer from "./ClientDrawer";
+
+// ── Open client drawer from URL param (?open=<id>) ────────────────────────────
+function OpenClientFromURL({ onOpen }: { onOpen: (id: string) => void }) {
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+
+  useEffect(() => {
+    const id = searchParams.get("open");
+    if (id) {
+      onOpen(id);
+      router.replace("/clients");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,6 +71,7 @@ export default function ClientsPage() {
   const [search,    setSearch]       = useState("");
   const [isCompact, setIsCompact]    = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [pendingOpenId, setPendingOpenId]   = useState<string | null>(null);
 
   useEffect(() => {
     const check = () => setIsCompact(window.innerWidth < 1300);
@@ -68,7 +87,16 @@ export default function ClientsPage() {
       const r = await fetch("/api/clients");
       const d = await r.json();
       if (d.error) throw new Error(d.error);
-      setClients(d.clients);
+      const loaded: Client[] = d.clients;
+      setClients(loaded);
+      // Open a specific client if navigated here with ?open=<id>
+      setPendingOpenId((pending) => {
+        if (pending) {
+          const c = loaded.find((x) => x.id === pending);
+          if (c) setSelectedClient(c);
+        }
+        return null;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
     } finally {
@@ -222,6 +250,9 @@ export default function ClientsPage() {
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto" style={{ direction: "rtl" }}>
+      <Suspense fallback={null}>
+        <OpenClientFromURL onOpen={setPendingOpenId} />
+      </Suspense>
       {/* Header */}
       <div className="mb-8 flex items-start justify-between">
         <div>
