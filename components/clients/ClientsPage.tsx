@@ -192,15 +192,31 @@ export default function ClientsPage() {
 
   // ── Filter ────────────────────────────────────────────────────────────────
 
-  const filtered = clients.filter((c) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      c.name.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      c.phone.includes(q)
-    );
-  });
+  // Status priority: VIP → פעיל → בעייתי → חדש → לא פעיל
+  const CLIENT_STATUS_PRIORITY: Record<ClientStatus, number> = {
+    "VIP":     0,
+    "פעיל":    1,
+    "בעייתי":  2,
+    "חדש":     3,
+    "לא פעיל": 4,
+  };
+
+  const filtered = clients
+    .filter((c) => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.email.toLowerCase().includes(q) ||
+        c.phone.includes(q)
+      );
+    })
+    .sort((a, b) => {
+      const pa = CLIENT_STATUS_PRIORITY[a.status] ?? 5;
+      const pb = CLIENT_STATUS_PRIORITY[b.status] ?? 5;
+      if (pa !== pb) return pa - pb;
+      return a.name.localeCompare(b.name, "he");
+    });
 
   // ─────────────────────────────────────────────────────────────────────────
 

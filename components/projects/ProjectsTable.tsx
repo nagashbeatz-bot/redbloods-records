@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import type { ProjectStatus, ProjectType } from "@/lib/types";
+import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import StatusDropdown from "@/components/ui/StatusDropdown";
@@ -24,6 +24,39 @@ const FILTER_OPTIONS: FilterStatus[] = [
   "קרובים לדדליין",
   ...ALL_STATUSES,
 ];
+
+// ── Urgency sort ──────────────────────────────────────────────────────────────
+// Tier 0 = overdue  |  1 = due ≤7 days  |  2–7 = by status  |  8 = unknown
+
+function urgencyTier(p: Project, days: number | null): number {
+  if (p.isOverdue && p.status !== "הושלם") return 0;
+  if (days !== null && days >= 0 && days <= 7 && p.status !== "הושלם") return 1;
+  const STATUS_TIER: Partial<Record<ProjectStatus, number>> = {
+    "בעבודה":      2,
+    "מחכה למיקס":  3,
+    "במיקס":       4,
+    "בהשהייה":     5,
+    "לא התחיל":    6,
+    "הושלם":       7,
+  };
+  return STATUS_TIER[p.status] ?? 8;
+}
+
+function urgencyCompare(a: Project, b: Project): number {
+  const dA = daysUntilDeadline(a.deadline);
+  const dB = daysUntilDeadline(b.deadline);
+  const tA = urgencyTier(a, dA);
+  const tB = urgencyTier(b, dB);
+  if (tA !== tB) return tA - tB;
+  // Same tier → closest deadline first
+  if (a.deadline && b.deadline) {
+    const diff = new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    if (diff !== 0) return diff;
+  }
+  if (a.deadline && !b.deadline) return -1;
+  if (!a.deadline && b.deadline) return 1;
+  return a.name.localeCompare(b.name, "he");
+}
 
 // Project type badge colors
 const TYPE_COLORS: Record<string, string> = {
@@ -279,7 +312,7 @@ export default function ProjectsTable() {
   const [typeFilter, setTypeFilter] = useState<ProjectType | "">("");
   const [parentFilter, setParentFilter] = useState("");
   const [artistFilter, setArtistFilter] = useState("");
-  const [sortBy, setSortBy] = useState<"deadline" | "name" | "artist">("deadline");
+  const [sortBy, setSortBy] = useState<"urgency" | "deadline" | "name" | "artist" | "status">("urgency");
   const [isMobile,  setIsMobile]  = useState(false);
   const [isCompact,      setIsCompact]      = useState(false); // 900–1300px
   const [isUltraCompact, setIsUltraCompact] = useState(false); // 768–900px
@@ -431,14 +464,22 @@ export default function ProjectsTable() {
       return p.status === statusFilter;
     })
     .sort((a, b) => {
+      if (sortBy === "urgency") return urgencyCompare(a, b);
       if (sortBy === "deadline") {
-        if (!a.deadline && !b.deadline) return 0;
+        if (!a.deadline && !b.deadline) return a.name.localeCompare(b.name, "he");
         if (!a.deadline) return 1;
         if (!b.deadline) return -1;
         return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
       }
-      if (sortBy === "name") return a.name.localeCompare(b.name, "he");
-      return a.artist.localeCompare(b.artist, "he");
+      if (sortBy === "name")   return a.name.localeCompare(b.name, "he");
+      if (sortBy === "artist") return a.artist.localeCompare(b.artist, "he");
+      if (sortBy === "status") {
+        const dA = daysUntilDeadline(a.deadline);
+        const dB = daysUntilDeadline(b.deadline);
+        const t = urgencyTier(a, dA) - urgencyTier(b, dB);
+        return t !== 0 ? t : a.name.localeCompare(b.name, "he");
+      }
+      return 0;
     });
 
   return (
@@ -565,11 +606,17 @@ export default function ProjectsTable() {
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             className="px-3 py-1.5 rounded-lg border text-xs font-medium"
-            style={{ background: "#1A1A1A", borderColor: "#252525", color: "#666" }}
+            style={{
+              background: "#1A1A1A",
+              borderColor: sortBy !== "urgency" ? "rgba(168,85,247,0.4)" : "#252525",
+              color: sortBy !== "urgency" ? "#A855F7" : "#666",
+            }}
           >
+            <option value="urgency">מיון: דחיפות</option>
             <option value="deadline">מיון: דדליין</option>
-            <option value="name">מיון: שם</option>
+            <option value="name">מיון: שם פרויקט</option>
             <option value="artist">מיון: אמן</option>
+            <option value="status">מיון: סטטוס</option>
           </select>
 
         </div>
