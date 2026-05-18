@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Allow up to 5 minutes for large audio file uploads (WAV/FLAC can be 200MB+)
+export const maxDuration = 300;
+
 /**
  * Serialize an object to JSON where every non-ASCII character is escaped as \uXXXX.
  * Required for the Dropbox-API-Arg header — HTTP headers must be pure ASCII.

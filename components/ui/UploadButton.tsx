@@ -79,8 +79,24 @@ export default function UploadButton({
     body.append("projectId", projectId);
     body.append("newName", newName);
 
+    // Warn for very large files (>150MB) — may take a minute
+    if (file.size > 150 * 1024 * 1024) {
+      console.warn("[UploadButton] Large file:", (file.size / 1024 / 1024).toFixed(1), "MB — may take a few minutes");
+    }
+
     await new Promise<void>((resolve) => {
       const xhr = new XMLHttpRequest();
+
+      // 5-minute timeout for large WAV/FLAC files
+      xhr.timeout = 5 * 60 * 1000;
+
+      xhr.ontimeout = () => {
+        console.error("[UploadButton] timeout after 5 minutes");
+        setState("error");
+        setErrorMsg("הקובץ גדול מדי או החיבור איטי — נסה שוב");
+        reset(15000);
+        resolve();
+      };
 
       // 0→85% = client→server, last 15% = server→Dropbox
       xhr.upload.onprogress = (e) => {
