@@ -2341,22 +2341,12 @@ function SessionForm({
 
 // ── Victor Section (self-contained, lazy-loaded) ──────────────────────────────
 
-import type { VendorWork, VictorStatus, VictorWorkState, VictorOutcome } from "@/lib/types";
-import { VICTOR_STATUSES, VICTOR_WORK_STATES, VICTOR_OUTCOMES } from "@/lib/types";
+import type { VendorWork, VictorStatus } from "@/lib/types";
+import { VICTOR_STATUSES } from "@/lib/types";
 import { useRef, useCallback } from "react";
 
 function vsColor(s: VictorStatus): string {
   return s === "פעיל" ? "#A855F7" : s === "הושלם" ? "#10B981" : "#555";
-}
-function wsColor(s: VictorWorkState | null): string {
-  if (!s) return "#444";
-  const m: Record<VictorWorkState, string> = { "נשלח לויקטור": "#3B82F6", "חזר מויקטור": "#2DD4BF", "דורש בדיקה": "#F59E0B", "דורש תיקון": "#EF4444", "מחכה לקבצים": "#F59E0B", "לא רלוונטי": "#444" };
-  return m[s] ?? "#444";
-}
-function ocColor(o: VictorOutcome | null): string {
-  if (!o) return "#444";
-  const m: Record<VictorOutcome, string> = { "אושר": "#10B981", "נכנס לפרויקט בפועל": "#2DD4BF", "חלקית": "#F59E0B", "לא נכנס לפרויקט": "#555", "נדחה": "#EF4444" };
-  return m[o] ?? "#444";
 }
 
 function VictorSection({ project }: { project: { id: string; name: string; artist: string } }) {
@@ -2469,16 +2459,9 @@ function VictorSection({ project }: { project: { id: string; name: string; artis
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#A855F7" }}>🎛 שליחה לויקטור</span>
           {work && (
-            <>
-              <span style={{ fontSize: 10, color: vsColor(work.status), background: `${vsColor(work.status)}18`, border: `1px solid ${vsColor(work.status)}33`, borderRadius: 5, padding: "1px 7px" }}>
-                {work.status}
-              </span>
-              {work.workState && (
-                <span style={{ fontSize: 10, color: wsColor(work.workState), background: `${wsColor(work.workState)}12`, border: `1px solid ${wsColor(work.workState)}30`, borderRadius: 5, padding: "1px 7px" }}>
-                  {work.workState}
-                </span>
-              )}
-            </>
+            <span style={{ fontSize: 10, color: vsColor(work.status), background: `${vsColor(work.status)}18`, border: `1px solid ${vsColor(work.status)}33`, borderRadius: 5, padding: "1px 7px" }}>
+              {work.status}
+            </span>
           )}
         </div>
         <span style={{ fontSize: 13, color: "#444", display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", lineHeight: 1 }}>▾</span>
@@ -2501,32 +2484,12 @@ function VictorSection({ project }: { project: { id: string; name: string; artis
             </>
           ) : work ? (
             <>
-              {/* Status row: סטטוס ראשי + מצב עבודה */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סטטוס ראשי</div>
-                  <select value={work.status} onChange={(e) => patch({ status: e.target.value as VictorStatus })}
-                    style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: vsColor(work.status), fontSize: 12, padding: "5px 8px", fontFamily: "inherit" }}>
-                    {VICTOR_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>מצב עבודה</div>
-                  <select value={work.workState ?? ""} onChange={(e) => patch({ workState: (e.target.value as VictorWorkState) || null })}
-                    style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: wsColor(work.workState), fontSize: 12, padding: "5px 8px", fontFamily: "inherit" }}>
-                    <option value="">—</option>
-                    {VICTOR_WORK_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Outcome */}
+              {/* Status */}
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תוצאה</div>
-                <select value={work.outcome ?? ""} onChange={(e) => patch({ outcome: (e.target.value as VictorOutcome) || null })}
-                  style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: ocColor(work.outcome), fontSize: 12, padding: "5px 8px", fontFamily: "inherit" }}>
-                  <option value="">—</option>
-                  {VICTOR_OUTCOMES.map((o) => <option key={o} value={o}>{o}</option>)}
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סטטוס</div>
+                <select value={work.status} onChange={(e) => patch({ status: e.target.value as VictorStatus })}
+                  style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: vsColor(work.status), fontSize: 12, padding: "5px 8px", fontFamily: "inherit" }}>
+                  {VICTOR_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 

@@ -117,6 +117,7 @@ export default function VictorCard() {
               <StatBox label="פעילים"  value={stats.active}    color="#A855F7" />
               <StatBox label="הושלמו"  value={stats.completed} color="#10B981" />
               <StatBox label="בוטלו"   value={stats.cancelled} color="#555" />
+              <StatBox label="תקועים"  value={stats.stuck}     color={stats.stuck > 0 ? "#EF4444" : "#555"} />
             </div>
 
             {/* Pace bar */}

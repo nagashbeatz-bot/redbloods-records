@@ -2,11 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import type {
-  VictorMonthStats, VendorWork,
-  VictorStatus, VictorWorkState, VictorOutcome,
-} from "@/lib/types";
-import { VICTOR_STATUSES, VICTOR_WORK_STATES, VICTOR_OUTCOMES } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorStatus } from "@/lib/types";
+import { VICTOR_STATUSES } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -19,31 +16,6 @@ function heMonth(ym: string): string {
 
 function statusColor(s: VictorStatus | null): string {
   return s === "פעיל" ? "#A855F7" : s === "הושלם" ? "#10B981" : "#555";
-}
-
-function workStateColor(s: VictorWorkState | null): string {
-  if (!s) return "#444";
-  const map: Record<VictorWorkState, string> = {
-    "נשלח לויקטור":  "#3B82F6",
-    "חזר מויקטור":   "#2DD4BF",
-    "דורש בדיקה":    "#F59E0B",
-    "דורש תיקון":    "#EF4444",
-    "מחכה לקבצים":   "#F59E0B",
-    "לא רלוונטי":    "#444",
-  };
-  return map[s] ?? "#444";
-}
-
-function outcomeColor(o: VictorOutcome | null): string {
-  if (!o) return "#444";
-  const map: Record<VictorOutcome, string> = {
-    "אושר":                "#10B981",
-    "נכנס לפרויקט בפועל": "#2DD4BF",
-    "חלקית":               "#F59E0B",
-    "לא נכנס לפרויקט":    "#555",
-    "נדחה":                "#EF4444",
-  };
-  return map[o] ?? "#444";
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -217,10 +189,8 @@ function WorkRow({ work, onOpenProject, onPatch, onToast }: WorkRowProps) {
                 { label: "העתק לינק Dropbox",  action: copyLink },
                 { label: "פתח ב-Dropbox ↗",    action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); if (work.dropboxShareLink) window.open(work.dropboxShareLink, "_blank"); else onToast("אין לינק Dropbox"); } },
                 { sep: true },
-                { label: "✓ אושר",              action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); void patch({ status: "הושלם", workState: "חזר מויקטור", outcome: "אושר" }, "סומן כאושר ✓"); },  color: "#10B981" },
-                { label: "↩ קיבלתי מויקטור",   action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); void patch({ workState: "חזר מויקטור" }, "עודכן: חזר מויקטור ✓"); }, color: "#2DD4BF" },
-                { label: "⚠ דורש תיקון",       action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); void patch({ workState: "דורש תיקון" }, "עודכן: דורש תיקון"); }, color: "#EF4444" },
-                { label: "✕ בטל עבודה",        action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); void patch({ status: "בוטל", workState: "לא רלוונטי" }, "בוטל"); }, color: "#555" },
+                { label: "✓ סמן הושלם",        action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); void patch({ status: "הושלם" }, "הושלם ✓"); }, color: "#10B981" },
+                { label: "✕ בטל עבודה",        action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); void patch({ status: "בוטל" }, "בוטל"); }, color: "#555" },
               ].map((item, i) =>
                 "sep" in item ? (
                   <div key={i} style={{ height: 1, background: "#252525", margin: "2px 0" }} />
@@ -247,29 +217,20 @@ function WorkRow({ work, onOpenProject, onPatch, onToast }: WorkRowProps) {
         </div>
       )}
 
-      {/* Line 3: status badges (all clickable) */}
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+      {/* Status badge (clickable dropdown) */}
+      <div style={{ display: "flex", gap: 5 }}>
         <BadgeDropdown<VictorStatus>
           value={work.status}
           options={VICTOR_STATUSES}
           colorFn={statusColor}
           onChange={(v) => void patch({ status: v }, `סטטוס → ${v} ✓`)}
         />
-        <BadgeDropdown<VictorWorkState>
-          value={work.workState}
-          options={VICTOR_WORK_STATES}
-          colorFn={workStateColor}
-          placeholder="מצב עבודה"
-          onChange={(v) => void patch({ workState: v }, `מצב → ${v} ✓`)}
-        />
-        {(work.outcome || work.status === "הושלם") && (
-          <BadgeDropdown<VictorOutcome>
-            value={work.outcome}
-            options={VICTOR_OUTCOMES}
-            colorFn={outcomeColor}
-            placeholder="תוצאה"
-            onChange={(v) => void patch({ outcome: v }, `תוצאה → ${v} ✓`)}
-          />
+        {work.dropboxShareLink && (
+          <a href={work.dropboxShareLink} target="_blank" rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ fontSize: 10, color: "#3B82F6", background: "#3B82F618", border: "1px solid #3B82F630", borderRadius: 5, padding: "2px 7px", textDecoration: "none" }}>
+            ↗ Dropbox
+          </a>
         )}
       </div>
     </div>
