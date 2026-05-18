@@ -866,7 +866,17 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               <StatusDropdown projectId={project.id} status={project.status} small />
             </Row>
             <Divider />
-            <Row label="דדליין">
+            <Row label="תאריך תחילה">
+              <InlineCellEdit value={project.startDate || ""} onSave={(v) => updateProjectField(project.id, "startDate", v)} type="date">
+                <span style={{ fontSize: 12, color: "#888" }}>
+                  {project.startDate
+                    ? new Date(project.startDate + "T00:00:00").toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" })
+                    : <span style={{ color: "#444" }}>—</span>}
+                </span>
+              </InlineCellEdit>
+            </Row>
+            <Divider />
+            <Row label="תאריך סיום">
               <InlineCellEdit value={project.deadline || ""} onSave={(v) => updateProjectField(project.id, "deadline", v)} type="date">
                 <span style={{ fontSize: 12, color: deadlineColor }}>{deadlineLabel(project.deadline)}</span>
               </InlineCellEdit>

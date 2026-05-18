@@ -38,6 +38,7 @@ export function isNoAffiliation(val: string): boolean {
 export type UpdatableField =
   | "status"
   | "deadline"
+  | "startDate"
   | "notes"
   | "projectType"
   | "parentProject"
@@ -57,7 +58,8 @@ export interface Project {
   name: string;
   artist: string;
   status: ProjectStatus;
-  deadline: string | null;
+  startDate: string | null;    // תאריך תחילת פרויקט
+  deadline: string | null;     // תאריך סיום / דדליין
   notes: string;
   files: FileLink[];
   isOverdue: boolean;

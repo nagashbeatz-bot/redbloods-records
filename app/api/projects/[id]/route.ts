@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         name:          "name",
         artist:        "artist",
         status:        "status",
+        startDate:     "start_date",
         deadline:      "deadline",
         notes:         "notes",
         projectType:   "project_type",
@@ -43,7 +44,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         oldArtist = current?.artist ?? "";
       }
 
-      await updateProject(id, { [col]: value || (field === "deadline" ? null : "") } as Parameters<typeof updateProject>[1]);
+      await updateProject(id, { [col]: value || (field === "deadline" || field === "startDate" ? null : "") } as Parameters<typeof updateProject>[1]);
 
       // Sync artist changes to clients table (fire-and-forget)
       if (field === "artist") {
@@ -57,7 +58,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     }
 
     // Full update (from modal / drawer)
-    const { name, artist, status, deadline, notes, projectType, parentProject, isHidden } = body;
+    const { name, artist, status, startDate, deadline, notes, projectType, parentProject, isHidden } = body;
     if (name !== undefined && !name?.trim()) {
       return NextResponse.json({ error: "שם הפרויקט לא יכול להיות ריק" }, { status: 400 });
     }
@@ -73,6 +74,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ...(name           !== undefined && { name:           name.trim() }),
       ...(artist         !== undefined && { artist:         artist.trim() }),
       ...(status         !== undefined && { status }),
+      ...(startDate      !== undefined && { start_date:     startDate || null }),
       ...(deadline       !== undefined && { deadline:       deadline || null }),
       ...(notes          !== undefined && { notes:          notes.trim() }),
       ...(projectType    !== undefined && { project_type:   projectType }),

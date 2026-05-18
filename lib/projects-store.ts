@@ -11,6 +11,7 @@ interface DbProject {
   name:           string;
   artist:         string;
   status:         string;
+  start_date:     string | null;
   deadline:       string | null;
   notes:          string;
   project_type:   string;
@@ -35,6 +36,7 @@ function dbToProject(db: DbProject): Project {
     name:          db.name,
     artist:        db.artist,
     status:        db.status as ProjectStatus,
+    startDate:     db.start_date ?? null,
     deadline:      db.deadline,
     notes:         db.notes,
     files,
@@ -92,6 +94,7 @@ export async function createProject(fields: {
   name:           string;
   artist?:        string;
   status?:        string;
+  start_date?:    string | null;
   deadline?:      string | null;
   notes?:         string;
   project_type?:  string;
@@ -105,6 +108,7 @@ export async function createProject(fields: {
       name:           fields.name,
       artist:         fields.artist         || "",
       status:         fields.status         || "לא התחיל",
+      start_date:     fields.start_date     || null,
       deadline:       fields.deadline       || null,
       notes:          fields.notes          || "",
       project_type:   fields.project_type   || "",
@@ -125,6 +129,7 @@ export async function updateProject(
     name:           string;
     artist:         string;
     status:         string;
+    start_date:     string | null;
     deadline:       string | null;
     notes:          string;
     project_type:   string;
