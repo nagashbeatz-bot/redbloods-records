@@ -146,6 +146,40 @@ function emptyDraft(): Draft {
   return { date: "", startTime: "", endTime: "", status: "מתוכנן", sessionType: "סשן", notes: "" };
 }
 
+function CollapsibleCard({
+  label, badge, open, onToggle, children, style,
+}: {
+  label: string; badge?: string | number; open: boolean;
+  onToggle: () => void; children: ReactNode; style?: CSSProperties;
+}) {
+  return (
+    <div style={{ background: "#1C1C1C", border: "1px solid #252525", borderRadius: 14, marginBottom: 10, overflow: "hidden", ...style }}>
+      <button
+        onClick={onToggle}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "12px 16px", background: "none", border: "none", cursor: "pointer",
+          textAlign: "right", fontFamily: "inherit",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>{label}</span>
+          {badge !== undefined && badge !== "" && (
+            <span style={{ fontSize: 10, color: "#555", background: "rgba(255,255,255,0.04)", border: "1px solid #2A2A2A", borderRadius: 5, padding: "1px 6px" }}>{badge}</span>
+          )}
+        </div>
+        <span style={{ fontSize: 13, color: "#444", display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", lineHeight: 1 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 16px 14px" }}>
+          <div style={{ height: 1, background: "#252525", marginBottom: 14 }} />
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function fmtDate(d: string | null): string {
   if (!d) return "—";
   const [y, m, day] = d.split("-");
@@ -192,6 +226,18 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [methodDropId,   setMethodDropId]   = useState<string | null>(null);
   // Past-date confirmation modal
   const [dateConfirm,    setDateConfirm]    = useState<{ tx: Transaction; newStatus: PaymentStatus } | null>(null);
+
+  // ── Collapsible sections ──────────────────────────────────────────────────
+  const [openSections, setOpenSections] = useState<Set<string>>(
+    new Set(["summary", "finance", "files"])
+  );
+  function toggleSection(id: string) {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   // Close any open dropdown on outside click
   useEffect(() => {
@@ -729,6 +775,22 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   // ── Files ─────────────────────────────────────────────────────────────────
   const allFiles = [...project.files].reverse(); // newest first
 
+  // ── Next session ──────────────────────────────────────────────────────────
+  const todayStr = new Date().toISOString().split("T")[0];
+  const nextSession = sessions
+    .filter((s) => s.status === "מתוכנן" && s.date && s.date >= todayStr)
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0] ?? null;
+
+  // ── What's missing ────────────────────────────────────────────────────────
+  const missingItems: string[] = [];
+  if (!project.startDate) missingItems.push("אין תאריך התחלה");
+  if (!project.deadline && project.status !== "הושלם") missingItems.push("אין דדליין");
+  if (!project.notes) missingItems.push("אין הערות");
+  if (project.files.length === 0) missingItems.push("אין קבצים");
+  if (finLoaded && balance > 0) missingItems.push("יש יתרה פתוחה");
+  if (sessionsLoaded && !nextSession && project.status !== "הושלם" && project.status !== "בהשהייה")
+    missingItems.push("אין סשן עתידי");
+
   // ── Render ────────────────────────────────────────────────────────────────
   return createPortal(
     <div dir="rtl" style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
@@ -847,8 +909,27 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         {/* ── Scrollable body ──────────────────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
 
-          {/* Name + Artist */}
-          <Card>
+          {/* ── Quick actions ──────────────────────────────────────────────── */}
+          <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+            <button
+              onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("sessions"); return n; }); setAddingSession(true); setAddDraft(emptyDraft()); }}
+              style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.07)", color: "#60A5FA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.15)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.07)")}
+            >📅 קבע סשן</button>
+            <button
+              onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("finance"); return n; }); setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
+              style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#34D399", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.15)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.07)")}
+            >₪ הוסף תשלום</button>
+            <div style={{ flex: 1, display: "flex" }}>
+              <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
+            </div>
+          </div>
+
+          {/* ── תקציר פרויקט ──────────────────────────────────────────────── */}
+          <CollapsibleCard label="תקציר פרויקט" open={openSections.has("summary")} onToggle={() => toggleSection("summary")}>
             <Row label="שם פרויקט">
               <InlineCellEdit value={project.name} onSave={(v) => updateProjectField(project.id, "name", v)} type="text">
                 <span style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8" }}>{project.name}</span>
@@ -858,58 +939,52 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             <Row label="אמן">
               <ArtistCellEdit value={project.artist} artists={artists} onSave={(v) => updateProjectField(project.id, "artist", v)} />
             </Row>
-          </Card>
-
-          {/* Status / Deadline / Type / Parent / Notes */}
-          <Card>
+            <Divider />
             <Row label="סטטוס">
               <StatusDropdown projectId={project.id} status={project.status} small />
             </Row>
             <Divider />
-            <Row label="תאריך התחלה">
-              <InlineCellEdit value={project.startDate || ""} onSave={(v) => updateProjectField(project.id, "startDate", v)} type="date">
-                <span style={{ fontSize: 12, color: "#888" }}>
-                  {project.startDate
-                    ? new Date(project.startDate + "T00:00:00").toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" })
-                    : <span style={{ color: "#444" }}>—</span>}
-                </span>
-              </InlineCellEdit>
-            </Row>
-            <Divider />
-            <Row label="דדליין">
-              <InlineCellEdit value={project.deadline || ""} onSave={(v) => updateProjectField(project.id, "deadline", v)} type="date">
-                <span style={{ fontSize: 12, color: deadlineColor }}>{deadlineLabel(project.deadline)}</span>
-              </InlineCellEdit>
-            </Row>
-            <Divider />
-            <Row label="תאריך סיום">
-              <span style={{ fontSize: 12, color: project.endDate ? "#6EE7B7" : "#444" }}>
-                {project.endDate
-                  ? new Date(project.endDate + "T00:00:00").toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" })
-                  : "לא הושלם עדיין"}
-              </span>
-            </Row>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Row label="תאריך התחלה">
+                <InlineCellEdit value={project.startDate || ""} onSave={(v) => updateProjectField(project.id, "startDate", v)} type="date">
+                  <span style={{ fontSize: 12, color: "#888" }}>
+                    {project.startDate
+                      ? new Date(project.startDate + "T00:00:00").toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "2-digit" })
+                      : <span style={{ color: "#444" }}>—</span>}
+                  </span>
+                </InlineCellEdit>
+              </Row>
+              <Row label="דדליין">
+                <InlineCellEdit value={project.deadline || ""} onSave={(v) => updateProjectField(project.id, "deadline", v)} type="date">
+                  <span style={{ fontSize: 12, color: deadlineColor }}>{deadlineLabel(project.deadline)}</span>
+                </InlineCellEdit>
+              </Row>
+            </div>
+            {project.status === "הושלם" && (
+              <>
+                <Divider />
+                <Row label="תאריך סיום">
+                  <span style={{ fontSize: 12, color: project.endDate ? "#6EE7B7" : "#444" }}>
+                    {project.endDate
+                      ? new Date(project.endDate + "T00:00:00").toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" })
+                      : "—"}
+                  </span>
+                </Row>
+              </>
+            )}
             <Divider />
             <Row label="משך פרויקט">
               {(() => {
                 if (!project.startDate) return <span style={{ fontSize: 12, color: "#444" }}>—</span>;
                 const start = new Date(project.startDate + "T00:00:00").getTime();
-                const end   = project.endDate
-                  ? new Date(project.endDate + "T00:00:00").getTime()
-                  : Date.now();
-                const days  = Math.max(0, Math.round((end - start) / 86400000));
-                const label = project.endDate ? `${days} ימים` : `${days} ימים עד עכשיו`;
-                return <span style={{ fontSize: 12, color: "#888" }}>{label}</span>;
+                const end   = project.endDate ? new Date(project.endDate + "T00:00:00").getTime() : Date.now();
+                const diffDays = Math.max(0, Math.round((end - start) / 86400000));
+                return <span style={{ fontSize: 12, color: "#888" }}>{diffDays} ימים{!project.endDate ? " עד עכשיו" : ""}</span>;
               })()}
             </Row>
             <Divider />
             <Row label="סוג">
-              <InlineCellEdit
-                value={project.projectType}
-                onSave={(v) => updateProjectField(project.id, "projectType", v)}
-                type="select"
-                options={[{ value: "", label: "ללא" }, ...PROJECT_TYPES.map((t) => ({ value: t, label: t }))]}
-              >
+              <InlineCellEdit value={project.projectType} onSave={(v) => updateProjectField(project.id, "projectType", v)} type="select" options={[{ value: "", label: "ללא" }, ...PROJECT_TYPES.map((t) => ({ value: t, label: t }))]}>
                 <span style={{ fontSize: 12, color: project.projectType ? "#E0E0E0" : "#444" }}>{project.projectType || "ללא"}</span>
               </InlineCellEdit>
             </Row>
@@ -923,26 +998,57 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             <Row label="הערות">
               <NotesCellEdit value={project.notes || ""} onSave={(v) => updateProjectField(project.id, "notes", v)} />
             </Row>
-          </Card>
+          </CollapsibleCard>
 
-          {/* ── מעקב סשנים ──────────────────────────────────────────────── */}
-          <Card>
+          {/* ── מה חסר ────────────────────────────────────────────────────── */}
+          {missingItems.length > 0 && (
+            <div style={{ background: "#181818", border: "1px solid #2A2A2A", borderRadius: 12, padding: "10px 14px", marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#555", marginBottom: 7, letterSpacing: "0.05em" }}>מה חסר בפרויקט</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {missingItems.map((item) => (
+                  <div key={item} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span style={{ fontSize: 10, color: "#F59E0B" }}>⚠</span>
+                    <span style={{ fontSize: 11, color: "#777" }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── סשנים ────────────────────────────────────────────────────── */}
+          <CollapsibleCard
+            label="סשנים"
+            badge={`${done}/${sessionLimit}${nextSession && !openSections.has("sessions") ? ` · הבא: ${fmtDate(nextSession.date)}` : ""}`}
+            open={openSections.has("sessions")}
+            onToggle={() => toggleSection("sessions")}
+          >
             {/* Header row */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>מעקב סשנים</span>
               <button
                 onClick={() => { setAddingSession(true); setAddDraft(emptyDraft()); }}
-                style={{
-                  fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.08)",
-                  border: "1px solid rgba(59,130,246,0.25)", borderRadius: 8,
-                  padding: "3px 10px", cursor: "pointer",
-                }}
+                style={{ fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.16)")}
                 onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.08)")}
-              >
-                + הוסף סשן
-              </button>
+              >+ הוסף סשן</button>
             </div>
+
+            {/* Next session highlight */}
+            {nextSession ? (
+              <div style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                <div style={{ fontSize: 10, color: "#3B82F6", fontWeight: 700, marginBottom: 4 }}>סשן הבא</div>
+                <div style={{ fontSize: 13, color: "#CCC", fontWeight: 600 }}>
+                  {fmtDate(nextSession.date)}
+                  {nextSession.start_time && (
+                    <span style={{ fontSize: 12, color: "#888", fontWeight: 400, marginRight: 8 }}>
+                      {nextSession.start_time}{nextSession.end_time ? `–${nextSession.end_time}` : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : sessionsLoaded && project.status !== "הושלם" && (
+              <div style={{ fontSize: 11, color: "#444", marginBottom: 12 }}>אין סשן עתידי</div>
+            )}
 
             {/* Progress bar */}
             <div style={{ marginBottom: 10 }}>
@@ -1120,14 +1226,15 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 )}
               </div>
             )}
-          </Card>
+          </CollapsibleCard>
 
           {/* ── כספים ───────────────────────────────────────────────────── */}
-          <Card>
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: financeException ? 8 : 14 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>כספים</span>
-            </div>
+          <CollapsibleCard
+            label="כספים"
+            badge={transactions.length > 0 ? String(transactions.length) : undefined}
+            open={openSections.has("finance")}
+            onToggle={() => toggleSection("finance")}
+          >
 
             {/* Finance exception banner */}
             {financeException && (
@@ -1428,21 +1535,40 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 )}
               </div>
             )}
-          </Card>
+          </CollapsibleCard>
 
-          {/* ── Files + Player ───────────────────────────────────────────── */}
-          <Card>
-            {/* Card header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>קבצים</span>
-              <UploadButton
-                projectId={project.id}
-                projectName={project.name}
-                artist={project.artist}
-                existingFiles={project.files}
-                size="sm"
-              />
+          {/* ── קבצים ────────────────────────────────────────────────────── */}
+          <CollapsibleCard
+            label="קבצים"
+            badge={project.files.length > 0 ? String(project.files.length) : undefined}
+            open={openSections.has("files")}
+            onToggle={() => toggleSection("files")}
+          >
+            {/* Upload button */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+              <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
             </div>
+
+            {/* Delivery folder — prominent if exists */}
+            {delivery && delivery.deliveryStatus !== "not_created" && (
+              <div style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                <div style={{ fontSize: 10, color: "#C084FC", fontWeight: 700, marginBottom: 8 }}>תיקיית מסירה ללקוח</div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  <button onClick={handleDeliveryCopyLink}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", border: deliveryCopied ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(168,85,247,0.3)", background: deliveryCopied ? "rgba(16,185,129,0.1)" : "rgba(168,85,247,0.08)", color: deliveryCopied ? "#10B981" : "#C084FC", transition: "all 0.15s" }}
+                  >{deliveryCopied ? "✓ הועתק" : "📋 העתק לינק ללקוח"}</button>
+                  {delivery.deliveryLink && (
+                    <a href={delivery.deliveryLink} target="_blank" rel="noopener noreferrer"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600, textDecoration: "none", border: "1px solid #2A2A2A", background: "#1E1E1E", color: "#777" }}>
+                      ↗ פתח בדרופבוקס
+                    </a>
+                  )}
+                </div>
+                {delivery.deliveryStatus === "delivered" && delivery.deliveredAt && (
+                  <div style={{ fontSize: 10, color: "#10B981", marginTop: 6 }}>נמסר ב-{delivery.deliveredAt.split("-").reverse().join(".")}</div>
+                )}
+              </div>
+            )}
 
             {/* Latest audio version */}
             {latestAudio ? (
@@ -1685,227 +1811,82 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             )}
 
             {/* No files at all */}
-            {project.files.length === 0 && (
-              <div style={{ fontSize: 11, color: "#444" }}>אין קבצים</div>
-            )}
-          </Card>
+            {project.files.length === 0 && <div style={{ fontSize: 11, color: "#444" }}>אין קבצים</div>}
+          </CollapsibleCard>
 
-          {/* ── Delivery ─────────────────────────────────────────────────── */}
-          {(project.status === "הושלם" || (delivery && delivery.deliveryStatus !== "not_created")) && (
-            <Card>
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#A0A0A0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    מסירה ללקוח
-                  </span>
-                  {delivery && delivery.deliveryStatus === "delivered" && (
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(16,185,129,0.12)", color: "#10B981", border: "1px solid rgba(16,185,129,0.25)" }}>
-                      נמסר ✓
-                    </span>
-                  )}
-                  {delivery && delivery.deliveryStatus === "ready" && (
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(59,130,246,0.12)", color: "#60A5FA", border: "1px solid rgba(59,130,246,0.25)" }}>
-                      מוכן למסירה
-                    </span>
-                  )}
-                </div>
-                {delivery && delivery.deliveryStatus !== "not_created" && !deliveryConfirmDelete && (
-                  <button
-                    onClick={() => setDeliveryConfirmDelete(true)}
-                    title="מחק תיקיית מסירה"
-                    style={{ background: "none", border: "none", color: "#383838", cursor: "pointer", fontSize: 13, transition: "color 0.13s" }}
-                    onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#383838")}
-                  >🗑</button>
-                )}
-              </div>
+          {/* ── פעולות ───────────────────────────────────────────────────── */}
+          <CollapsibleCard label="פעולות" open={openSections.has("actions")} onToggle={() => toggleSection("actions")}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 
-              {/* Not created yet */}
+              {/* Create delivery folder */}
               {(!delivery || delivery.deliveryStatus === "not_created") && (
-                <div>
-                  {deliveryLoading ? (
-                    <div style={{ fontSize: 12, color: "#444" }}>טוען...</div>
-                  ) : (
-                    <button
-                      onClick={handleCreateDelivery}
-                      disabled={deliveryCreating}
-                      style={{
-                        width: "100%", padding: "10px 0", borderRadius: 10,
-                        border: "1px solid rgba(168,85,247,0.3)",
-                        background: "rgba(168,85,247,0.08)", color: "#C084FC",
-                        cursor: deliveryCreating ? "wait" : "pointer",
-                        fontSize: 13, fontWeight: 600, fontFamily: "inherit",
-                        opacity: deliveryCreating ? 0.6 : 1,
-                      }}
-                    >
-                      {deliveryCreating ? "יוצר תיקייה..." : "+ צור תיקיית מסירה ללקוח"}
-                    </button>
-                  )}
-                </div>
+                deliveryLoading ? (
+                  <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
+                ) : (
+                  <button onClick={handleCreateDelivery} disabled={deliveryCreating}
+                    style={{ width: "100%", padding: "9px 0", borderRadius: 10, border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.08)", color: "#C084FC", cursor: deliveryCreating ? "wait" : "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", opacity: deliveryCreating ? 0.6 : 1 }}>
+                    {deliveryCreating ? "יוצר תיקייה..." : "+ צור תיקיית מסירה ללקוח"}
+                  </button>
+                )
               )}
 
-              {/* Created — ready or delivered */}
+              {/* Delivery created — upload + mark delivered */}
               {delivery && delivery.deliveryStatus !== "not_created" && !deliveryConfirmDelete && (
-                <div>
-                  {/* Folder path */}
-                  <div style={{ fontSize: 11, color: "#444", marginBottom: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    📁 {delivery.folderPath}
-                  </div>
-
-                  {/* Link buttons */}
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
-                    <button
-                      onClick={handleDeliveryCopyLink}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        padding: "6px 12px", borderRadius: 8, cursor: "pointer",
-                        fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-                        border: deliveryCopied ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(168,85,247,0.3)",
-                        background: deliveryCopied ? "rgba(16,185,129,0.1)" : "rgba(168,85,247,0.08)",
-                        color: deliveryCopied ? "#10B981" : "#C084FC",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      {deliveryCopied ? "✓ הועתק" : "📋 העתק לינק מסירה"}
-                    </button>
-                    {delivery.deliveryLink && (
-                      <a
-                        href={delivery.deliveryLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          padding: "6px 12px", borderRadius: 8,
-                          fontSize: 12, fontWeight: 600, textDecoration: "none",
-                          border: "1px solid #2A2A2A", background: "#1E1E1E", color: "#777",
-                        }}
-                      >
-                        ↗ פתח בדרופבוקס
-                      </a>
-                    )}
-                  </div>
-
-                  {/* Files list */}
-                  {delivery.files.length > 0 && (
-                    <div style={{ marginBottom: 10 }}>
-                      {delivery.files.map((f) => (
-                        <div key={f.path} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: "1px solid #1E1E1E" }}>
-                          <span style={{ fontSize: 10, color: "#555", flexShrink: 0 }}>♪</span>
-                          <span style={{ flex: 1, fontSize: 12, color: "#C0C0C0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {f.name}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Drag & drop upload area */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   <div
                     onDragOver={(e) => { e.preventDefault(); setDeliveryDragOver(true); }}
                     onDragLeave={() => setDeliveryDragOver(false)}
                     onDrop={handleDeliveryDrop}
-                    style={{
-                      border: `1.5px dashed ${deliveryDragOver ? "#A855F7" : "#2A2A2A"}`,
-                      borderRadius: 10, padding: "14px 10px", textAlign: "center",
-                      background: deliveryDragOver ? "rgba(168,85,247,0.06)" : "transparent",
-                      transition: "all 0.15s", marginBottom: 10, cursor: "pointer",
-                      position: "relative",
-                    }}
-                    onClick={() => {
-                      const inp = document.createElement("input");
-                      inp.type = "file";
-                      inp.multiple = true;
-                      inp.onchange = () => { if (inp.files) handleDeliveryUploadFiles(inp.files); };
-                      inp.click();
-                    }}
+                    onClick={() => { const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.onchange = () => { if (inp.files) handleDeliveryUploadFiles(inp.files); }; inp.click(); }}
+                    style={{ border: `1.5px dashed ${deliveryDragOver ? "#A855F7" : "#2A2A2A"}`, borderRadius: 10, padding: "12px 10px", textAlign: "center", background: deliveryDragOver ? "rgba(168,85,247,0.06)" : "transparent", transition: "all 0.15s", cursor: "pointer" }}
                   >
-                    {deliveryUploading ? (
-                      <span style={{ fontSize: 12, color: "#A855F7" }}>מעלה קבצים...</span>
-                    ) : (
-                      <>
-                        <span style={{ fontSize: 18, display: "block", marginBottom: 4 }}>☁</span>
-                        <span style={{ fontSize: 11, color: "#555" }}>גרור קבצים לכאן, או לחץ להעלאה</span>
-                      </>
-                    )}
+                    {deliveryUploading ? <span style={{ fontSize: 12, color: "#A855F7" }}>מעלה...</span> : <span style={{ fontSize: 11, color: "#555" }}>☁ העלה קבצי מסירה</span>}
                   </div>
-
-                  {/* Mark delivered / delivered info */}
+                  {delivery.files.length > 0 && delivery.files.map((f) => (
+                    <div key={f.path} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: "1px solid #1E1E1E" }}>
+                      <span style={{ fontSize: 10, color: "#555" }}>♪</span>
+                      <span style={{ flex: 1, fontSize: 11, color: "#C0C0C0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                    </div>
+                  ))}
                   {delivery.deliveryStatus === "ready" && (
-                    <button
-                      onClick={handleDeliveryMarkDelivered}
-                      style={{
-                        width: "100%", padding: "8px 0", borderRadius: 9,
-                        border: "1px solid rgba(16,185,129,0.3)",
-                        background: "rgba(16,185,129,0.07)", color: "#10B981",
-                        cursor: "pointer", fontSize: 12, fontWeight: 600,
-                        fontFamily: "inherit",
-                      }}
-                    >
+                    <button onClick={handleDeliveryMarkDelivered}
+                      style={{ width: "100%", padding: "8px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#10B981", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
                       ✓ סמן כנמסר ללקוח
                     </button>
                   )}
-                  {delivery.deliveryStatus === "delivered" && delivery.deliveredAt && (
-                    <div style={{ fontSize: 11, color: "#10B981", textAlign: "center" }}>
-                      נמסר ב-{delivery.deliveredAt.split("-").reverse().join(".")}
-                    </div>
-                  )}
+                  <button onClick={() => setDeliveryConfirmDelete(true)}
+                    style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#555", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                    🗑 מחק תיקיית מסירה
+                  </button>
                 </div>
               )}
 
               {/* Delete confirm */}
               {deliveryConfirmDelete && (
                 <div>
-                  <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12, lineHeight: 1.6 }}>
-                    למחוק את תיקיית המסירה מדרופבוקס?<br />
-                    <span style={{ color: "#666", fontSize: 11 }}>כל הקבצים שבתיקיית 05_Delivery יימחקו לצמיתות.</span>
+                  <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 8, lineHeight: 1.6 }}>
+                    למחוק תיקיית מסירה מדרופבוקס?<br /><span style={{ color: "#666", fontSize: 11 }}>כל הקבצים ב-05_Delivery יימחקו לצמיתות.</span>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={handleDeliveryDeleteFolder}
-                      disabled={deliveryDeleting}
-                      style={{
-                        flex: 1, padding: "8px 0", borderRadius: 8,
-                        border: "1px solid rgba(239,68,68,0.35)",
-                        background: "rgba(239,68,68,0.1)", color: "#EF4444",
-                        cursor: deliveryDeleting ? "wait" : "pointer",
-                        fontSize: 12, fontWeight: 700, fontFamily: "inherit",
-                        opacity: deliveryDeleting ? 0.6 : 1,
-                      }}
-                    >
-                      {deliveryDeleting ? "מוחק..." : "מחק תיקיית מסירה"}
+                    <button onClick={handleDeliveryDeleteFolder} disabled={deliveryDeleting}
+                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.1)", color: "#EF4444", cursor: deliveryDeleting ? "wait" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", opacity: deliveryDeleting ? 0.6 : 1 }}>
+                      {deliveryDeleting ? "מוחק..." : "מחק"}
                     </button>
-                    <button
-                      onClick={() => setDeliveryConfirmDelete(false)}
-                      style={{
-                        flex: 1, padding: "8px 0", borderRadius: 8,
-                        border: "1px solid #2A2A2A", background: "transparent",
-                        color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit",
-                      }}
-                    >
-                      ביטול
-                    </button>
+                    <button onClick={() => setDeliveryConfirmDelete(false)}
+                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>ביטול</button>
                   </div>
                 </div>
               )}
 
-              {/* Error */}
-              {deliveryError && (
-                <div style={{ marginTop: 8, fontSize: 11, color: "#EF4444", background: "#2A1010", border: "1px solid #5A1A1A", borderRadius: 6, padding: "4px 10px" }}>
-                  {deliveryError}
-                </div>
-              )}
-            </Card>
-          )}
+              {deliveryError && <div style={{ fontSize: 11, color: "#EF4444", background: "#2A1010", border: "1px solid #5A1A1A", borderRadius: 6, padding: "4px 10px" }}>{deliveryError}</div>}
 
-          {/* ── Actions ──────────────────────────────────────────────────── */}
-          <Card>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 10, color: "#555" }}>פעולות</span>
-              <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
-              <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
+              <div style={{ height: 1, background: "#252525" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
+                <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
+              </div>
             </div>
-          </Card>
+          </CollapsibleCard>
 
         </div>
 
