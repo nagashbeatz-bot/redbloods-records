@@ -25,6 +25,8 @@ export async function POST(req: Request) {
     const body = await req.json() as {
       projectId: string;
       status?: string;
+      workState?: string;
+      outcome?: string;
       sentDate?: string;
       notes?: string;
       dropboxFolder?: string;
@@ -34,10 +36,12 @@ export async function POST(req: Request) {
 
     const { createVictorWork } = await import("@/lib/vendor-store");
     const work = await createVictorWork(body.projectId, {
-      status:           (body.status as import("@/lib/types").VictorStatus) ?? "נשלח לויקטור",
+      status:           (body.status    as import("@/lib/types").VictorStatus)    ?? "פעיל",
+      workState:        (body.workState as import("@/lib/types").VictorWorkState) ?? "נשלח לויקטור",
+      outcome:          (body.outcome   as import("@/lib/types").VictorOutcome)   ?? undefined,
       sentDate:         body.sentDate ?? new Date().toISOString().split("T")[0],
       notes:            body.notes ?? "",
-      dropboxFolder:    body.dropboxFolder ?? null,
+      dropboxFolder:    body.dropboxFolder    ?? null,
       dropboxShareLink: body.dropboxShareLink ?? null,
     });
     return NextResponse.json({ ok: true, work });

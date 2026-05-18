@@ -60,8 +60,8 @@ export default function VictorCard() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  const pace      = stats ? paceColor(stats.approved, stats.expectedByNow) : "#888";
-  const belowPace = stats ? stats.approved < stats.expectedByNow : false;
+  const pace      = stats ? paceColor(stats.paceValue, stats.expectedByNow) : "#888";
+  const belowPace = stats ? stats.paceValue < stats.expectedByNow : false;
   const payColor  = stats?.paymentStatus === "שולם" ? "#10B981"
                   : stats?.paymentStatus === "לא שולם" ? "#EF4444"
                   : "#F59E0B";
@@ -114,12 +114,12 @@ export default function VictorCard() {
         ) : stats ? (
           <>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-              <StatBox label="נשלחו"        value={stats.sent}          color="#3B82F6" />
-              <StatBox label="חזרו"         value={stats.returned}      color="#A855F7" />
-              <StatBox label="אושרו"        value={stats.approved}      color="#10B981" />
-              <StatBox label="תיקונים"      value={stats.needsFix}      color="#F59E0B" />
-              <StatBox label="תקועים"       value={stats.stuck}         color={stats.stuck > 0 ? "#EF4444" : "#555"} />
-              <StatBox label="נכנסו לפרויקט" value={stats.enteredProject} color="#2DD4BF" />
+              <StatBox label="פעילים"           value={stats.active}         color="#A855F7" />
+              <StatBox label="הושלמו"           value={stats.completed}      color="#10B981" />
+              <StatBox label="בוטלו"            value={stats.cancelled}      color="#555" />
+              <StatBox label="דורשים בדיקה"     value={stats.needsReview}    color="#F59E0B" />
+              <StatBox label="תקועים"           value={stats.stuck}          color={stats.stuck > 0 ? "#EF4444" : "#555"} />
+              <StatBox label="נכנסו לפרויקט"   value={stats.enteredProject} color="#2DD4BF" />
             </div>
 
             {/* Pace bar */}
@@ -132,7 +132,7 @@ export default function VictorCard() {
                   קצב מול יעד — {heMonth(month)}
                 </span>
                 <span style={{ fontSize: 11, color: pace, fontWeight: 700 }}>
-                  {stats.approved} / {stats.expectedByNow} צפוי עד עכשיו
+                  {stats.paceValue} / {stats.expectedByNow} צפוי עד עכשיו
                 </span>
               </div>
               <div style={{ height: 4, background: "#252525", borderRadius: 4, overflow: "hidden" }}>

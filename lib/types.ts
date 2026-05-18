@@ -117,82 +117,93 @@ export interface MondayColumnMap {
 
 // ── Vendor / Team types ────────────────────────────────────────────────────────
 
-export type VictorStatus =
-  | "לא נשלח"
-  | "נשלח לויקטור"
-  | "בעבודה אצל ויקטור"
-  | "מחכה לקבצים"
-  | "הוחזר מויקטור"
-  | "דורש תיקונים"
-  | "אושר"
-  | "לא רלוונטי";
+/** Primary status — 3 simple states */
+export type VictorStatus = "פעיל" | "הושלם" | "בוטל";
+export const VICTOR_STATUSES: VictorStatus[] = ["פעיל", "הושלם", "בוטל"];
 
-export const VICTOR_STATUSES: VictorStatus[] = [
-  "לא נשלח",
-  "נשלח לויקטור",
-  "בעבודה אצל ויקטור",
-  "מחכה לקבצים",
-  "הוחזר מויקטור",
-  "דורש תיקונים",
-  "אושר",
-  "לא רלוונטי",
+/** Work state — what's happening inside the active work */
+export type VictorWorkState =
+  | "נשלח לויקטור"
+  | "חזר מויקטור"
+  | "דורש בדיקה"
+  | "דורש תיקון"
+  | "מחכה לקבצים"
+  | "לא רלוונטי";
+export const VICTOR_WORK_STATES: VictorWorkState[] = [
+  "נשלח לויקטור", "חזר מויקטור", "דורש בדיקה", "דורש תיקון", "מחכה לקבצים", "לא רלוונטי",
 ];
 
-/** Statuses that mean "active / in Victor's court" → used for stuck detection */
-export const VICTOR_ACTIVE_STATUSES = new Set<VictorStatus>([
-  "נשלח לויקטור",
-  "בעבודה אצל ויקטור",
-  "מחכה לקבצים",
-]);
+/** Outcome — what came out of the work */
+export type VictorOutcome =
+  | "אושר"
+  | "נכנס לפרויקט בפועל"
+  | "חלקית"
+  | "לא נכנס לפרויקט"
+  | "נדחה";
+export const VICTOR_OUTCOMES: VictorOutcome[] = [
+  "אושר", "נכנס לפרויקט בפועל", "חלקית", "לא נכנס לפרויקט", "נדחה",
+];
 
-export type VictorQuality = "מצוין" | "אושר" | "חלקי" | "דורש תיקון" | "נדחה";
-export type VictorEntered = "כן" | "לא" | "חלקית";
+/** Pace metric setting — what counts toward the monthly goal */
+export type VictorPaceMetric = "הושלמו" | "אושרו" | "נכנסו לפרויקט בפועל";
 
 export interface VendorWork {
   id: string;
   vendorName: string;
   projectId: string;
-  projectName: string;   // joined from projects table
-  artist: string;        // joined from projects table
-  status: VictorStatus;
+  projectName: string;           // joined from projects table
+  artist: string;                // joined from projects table
+  status: VictorStatus;          // "פעיל" | "הושלם" | "בוטל"
+  workState: VictorWorkState | null;  // detail state within active work
+  outcome: VictorOutcome | null;     // what came out of the work
   sentDate: string | null;           // YYYY-MM-DD
   internalDeadline: string | null;   // YYYY-MM-DD
   returnedDate: string | null;       // YYYY-MM-DD
-  dropboxFolder: string | null;      // base path, e.g. "Victor/Shalev - HaMida"
+  dropboxFolder: string | null;      // base path, e.g. "Victor/Artist - Project"
   dropboxShareLink: string | null;   // public share link to base folder
-  quality: VictorQuality | null;
-  enteredProject: VictorEntered | null;
   notes: string;
   filesSent: FileLink[];
   filesReceived: FileLink[];
-  isStuck: boolean;                  // computed
+  isStuck: boolean;                  // computed: פעיל + daysSinceSent > stuckAfterDays
   daysSinceSent: number | null;      // computed
   createdAt: string;
   updatedAt: string;
 }
 
 export interface VendorSettings {
-  monthlyGoal: number;       // target approved projects per month
-  monthlySalary: number;     // e.g. 550
-  salaryCurrency: string;    // "$"
-  salaryPayDay: number;      // day of month, e.g. 10
-  stuckAfterDays: number;    // default 5
+  monthlyGoal: number;           // target per month
+  monthlySalary: number;         // e.g. 550
+  salaryCurrency: string;        // "$"
+  salaryPayDay: number;          // day of month, e.g. 10
+  stuckAfterDays: number;        // default 5
+  paceMetric: VictorPaceMetric;  // what to measure for pace — default "נכנסו לפרויקט בפועל"
 }
 
 export interface VictorMonthStats {
-  month: string;             // "YYYY-MM"
+  month: string;              // "YYYY-MM"
   goal: number;
-  sent: number;
-  inProgress: number;        // currently in active statuses
-  returned: number;          // returned (any terminal/returned status)
-  approved: number;
-  needsFix: number;
-  rejected: number;
-  enteredProject: number;    // entered_project = "כן" or "חלקית"
-  stuck: number;             // computed
-  expectedByNow: number;     // pace target for today's date
-  successRate: number;       // approved / max(returned,1) * 100
-  paymentStatus: string;     // "שולם" | "צפוי" | "לא שולם"
+  paceMetric: VictorPaceMetric;
+
+  // Status counts (records in this month)
+  sent: number;               // sentDate in month
+  active: number;             // status = 'פעיל' (all, not month-filtered)
+  completed: number;          // status = 'הושלם' in month
+  cancelled: number;          // status = 'בוטל' in month
+
+  // Detail counts (active records)
+  needsReview: number;        // active + workState in ['חזר מויקטור', 'דורש בדיקה']
+  needsFix: number;           // active + workState = 'דורש תיקון'
+  stuck: number;              // active + daysSinceSent > stuckAfterDays
+
+  // Outcome counts (in month)
+  approved: number;           // outcome = 'אושר'
+  enteredProject: number;     // outcome = 'נכנס לפרויקט בפועל'
+
+  // Pace
+  paceValue: number;          // actual value for paceMetric this month
+  expectedByNow: number;      // goal * (dayOfMonth / daysInMonth)
+
+  paymentStatus: string;      // "שולם" | "צפוי" | "לא שולם"
   monthlySalary: number;
   salaryCurrency: string;
 }

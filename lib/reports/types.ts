@@ -110,10 +110,12 @@ export interface ReportData {
 
   /** Victor summary — only included when there's something to flag */
   victorSummary?: {
+    active:         number;
     stuck:          number;
+    needsReview:    number;
     needsFix:       number;
-    inProgress:     number;
-    approved:       number;
+    completed:      number;
+    paceValue:      number;
     expectedByNow:  number;
     belowPace:      boolean;
     paymentStatus:  string;

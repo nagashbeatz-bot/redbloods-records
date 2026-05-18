@@ -298,14 +298,16 @@ export async function fetchReportData(): Promise<ReportData> {
   try {
     const { getVictorMonthStats } = await import("@/lib/vendor-store");
     const vs = await getVictorMonthStats(todayStr.slice(0, 7));
-    if (vs.stuck > 0 || vs.needsFix > 0 || vs.approved < vs.expectedByNow) {
+    if (vs.stuck > 0 || vs.needsReview > 0 || vs.needsFix > 0 || vs.paceValue < vs.expectedByNow) {
       victorSummary = {
+        active:        vs.active,
         stuck:         vs.stuck,
+        needsReview:   vs.needsReview,
         needsFix:      vs.needsFix,
-        inProgress:    vs.inProgress,
-        approved:      vs.approved,
+        completed:     vs.completed,
+        paceValue:     vs.paceValue,
         expectedByNow: vs.expectedByNow,
-        belowPace:     vs.approved < vs.expectedByNow,
+        belowPace:     vs.paceValue < vs.expectedByNow,
         paymentStatus: vs.paymentStatus,
         month:         vs.month,
       };

@@ -653,10 +653,12 @@ function victorBlock(data: ReportData): string {
   const monthLabel = HE_MONTHS[parseInt(m, 10) - 1];
 
   let lines = "";
-  if (v.stuck > 0)    lines += `<div class="row"><span class="lbl">תקועים מעל הסף</span><span class="val r">${v.stuck}</span></div>`;
-  if (v.needsFix > 0) lines += `<div class="row"><span class="lbl">דורשים תיקון</span><span class="val a">${v.needsFix}</span></div>`;
-  if (v.belowPace)    lines += `<div class="row"><span class="lbl">קצב חודשי</span><span class="val r">מתחת ליעד — ${v.approved} / ${v.expectedByNow} צפוי</span></div>`;
-  if (v.inProgress > 0) lines += `<div class="row"><span class="lbl">בעבודה אצל ויקטור</span><span class="val">${v.inProgress}</span></div>`;
+  if (v.active > 0)      lines += `<div class="row"><span class="lbl">פעילים אצל ויקטור</span><span class="val">${v.active}</span></div>`;
+  if (v.stuck > 0)       lines += `<div class="row"><span class="lbl">תקועים מעל הסף</span><span class="val r">${v.stuck}</span></div>`;
+  if (v.needsReview > 0) lines += `<div class="row"><span class="lbl">דורשים בדיקה</span><span class="val a">${v.needsReview}</span></div>`;
+  if (v.needsFix > 0)    lines += `<div class="row"><span class="lbl">דורשים תיקון</span><span class="val a">${v.needsFix}</span></div>`;
+  if (v.completed > 0)   lines += `<div class="row"><span class="lbl">הושלמו החודש</span><span class="val g">${v.completed}</span></div>`;
+  if (v.belowPace)       lines += `<div class="row"><span class="lbl">קצב חודשי</span><span class="val r">מתחת ליעד — ${v.paceValue} / ${v.expectedByNow} צפוי</span></div>`;
 
   return `
     <div class="card">
