@@ -57,19 +57,25 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const {
-    projectId, type, date, description, artist, amount,
+    projectId, scope, type, date, description, artist, amount,
     currency, paymentStatus, paymentMethod, receiptRef, notes, category,
     linkedSessionId,
   } = body;
 
-  if (!projectId || !type) {
-    return NextResponse.json({ error: "projectId and type required" }, { status: 400 });
+  const txScope = scope ?? "project";
+
+  if (!type) {
+    return NextResponse.json({ error: "type required" }, { status: 400 });
+  }
+  if (txScope === "project" && !projectId) {
+    return NextResponse.json({ error: "projectId required for project-scoped transactions" }, { status: 400 });
   }
 
   const { data, error } = await supabase
     .from("transactions")
     .insert({
-      project_id:        projectId,
+      project_id:        txScope === "general" ? null : (projectId || null),
+      scope:             txScope,
       type,
       date:              date              || null,
       description:       description       || "",

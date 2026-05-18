@@ -6,12 +6,15 @@ import { useProjects } from "@/components/ProjectsProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type PaymentStatus = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "התקבל" | "לבדיקה";
-type Period = "month" | "prev-month" | "30days" | "year" | "custom";
-type SortMode = "date-desc" | "date-asc" | "amount-desc" | "project" | "status" | "type";
+type Period        = "month" | "prev-month" | "30days" | "year" | "custom";
+type SortMode      = "date-desc" | "date-asc" | "amount-desc" | "project" | "status" | "type";
+type Scope         = "project" | "general";
+type SourceFilter  = "all" | "project" | "general";
 
 interface Transaction {
   id: string;
-  project_id: string;
+  project_id: string | null;
+  scope: Scope;
   type: "income" | "expense";
   date: string | null;
   description: string;
@@ -33,6 +36,7 @@ interface FinanceSetting {
 }
 
 interface TxDraft {
+  scope: Scope;
   projectId: string;
   type: "income" | "expense";
   date: string;
@@ -48,12 +52,13 @@ interface TxDraft {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const EXPENSE_CATEGORIES = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
-const INCOME_TYPES       = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תשלום מלא", "תוספת / חריגה", "אחר"];
+const PROJECT_EXPENSE_CATEGORIES = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "ציוד", "אחר"];
+const GENERAL_EXPENSE_CATEGORIES = ["שכירות", "חשמל", "מים", "אינטרנט", "תוכנות ומנויים", "ציוד", "צוות", "שיווק", "נסיעות", "חובות", "משרד / סטודיו", "אחר"];
+const INCOME_TYPES               = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תשלום מלא", "תוספת / חריגה", "אחר"];
 const INCOME_STATUSES:  PaymentStatus[] = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
 const EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
-const PAYMENT_METHODS    = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
-const HEB_MONTHS         = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+const PAYMENT_METHODS   = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
+const HEB_MONTHS        = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
 
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: "month",      label: "החודש" },
@@ -157,9 +162,9 @@ function inRange(date: string | null, range: { from: Date | null; to: Date | nul
 }
 
 // ── General helpers ────────────────────────────────────────────────────────────
-function emptyDraft(projectId = ""): TxDraft {
+function emptyDraft(projectId = "", scope: Scope = "project"): TxDraft {
   return {
-    projectId, type: "income", date: "", description: "", artist: "",
+    scope, projectId, type: "income", date: "", description: "", artist: "",
     amount: "", currency: "₪", paymentStatus: "צפוי",
     paymentMethod: "", receiptRef: "", notes: "", category: "",
   };
@@ -176,15 +181,20 @@ function fmtAmount(amount: number, currency = "₪"): string {
 }
 
 function calcStats(txList: Transaction[]) {
-  const income   = txList.filter((t) => t.type === "income");
-  const expenses = txList.filter((t) => t.type === "expense");
-  const incomeReceived  = income.filter((t) => t.payment_status === "התקבל").reduce((s, t) => s + t.amount, 0);
-  const incomeExpected  = income.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const expensesPaid    = expenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
-  const expensesExpected = expenses.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const profitReal      = incomeReceived - expensesPaid;
-  const profitEst       = incomeReceived + incomeExpected - expensesPaid - expensesExpected;
-  return { incomeReceived, incomeExpected, expensesPaid, expensesExpected, profitReal, profitEst };
+  const income          = txList.filter((t) => t.type === "income");
+  const expenses        = txList.filter((t) => t.type === "expense");
+  const projectExpenses = expenses.filter((t) => (t.scope ?? "project") === "project");
+  const generalExpenses = expenses.filter((t) => t.scope === "general");
+
+  const incomeReceived    = income.filter((t) => t.payment_status === "התקבל").reduce((s, t) => s + t.amount, 0);
+  const incomeExpected    = income.filter((t) => ["צפוי", "חלקי", "לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const projExpPaid       = projectExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
+  const genExpPaid        = generalExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
+  const expensesPaid      = projExpPaid + genExpPaid;
+  const expensesExpected  = expenses.filter((t) => ["צפוי", "לא שולם", "חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const profitReal        = incomeReceived - expensesPaid;
+  const profitEst         = incomeReceived + incomeExpected - expensesPaid - expensesExpected;
+  return { incomeReceived, incomeExpected, projExpPaid, genExpPaid, expensesPaid, expensesExpected, profitReal, profitEst };
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -222,17 +232,17 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Summary Card ──────────────────────────────────────────────────────────────
 function SummaryCard({
-  label, value, color, countLabel, icon,
+  label, value, color, sub, icon,
   delta, deltaCurrency = "₪", compLabel, deltaPositiveIsGood = true,
 }: {
-  label: string; value: string; color: string; countLabel?: string; icon?: string;
+  label: string; value: string; color: string; sub?: string; icon?: string;
   delta?: number; deltaCurrency?: string; compLabel?: string; deltaPositiveIsGood?: boolean;
 }) {
   const showDelta = delta !== undefined && compLabel;
   const deltaColor = !showDelta || delta === 0
     ? "#555"
     : (delta > 0) === deltaPositiveIsGood ? "#10B981" : "#EF4444";
-  const deltaSign  = delta !== undefined && delta > 0 ? "+" : "";
+  const deltaSign = delta !== undefined && delta > 0 ? "+" : "";
 
   return (
     <div style={{
@@ -250,8 +260,8 @@ function SummaryCard({
           <span style={{ color: "#444" }}>{compLabel}</span>
         </div>
       )}
-      {!showDelta && countLabel && (
-        <div style={{ fontSize: 10, color: "#444", marginTop: 5 }}>{countLabel}</div>
+      {!showDelta && sub && (
+        <div style={{ fontSize: 10, color: "#444", marginTop: 5 }}>{sub}</div>
       )}
     </div>
   );
@@ -265,10 +275,10 @@ function ProjectSelect({
   onChange: (id: string, artist: string) => void;
   projects: { id: string; name: string; artist: string }[];
 }) {
-  const [open, setOpen]   = useState(false);
+  const [open, setOpen]     = useState(false);
   const [search, setSearch] = useState("");
-  const btnRef            = useRef<HTMLButtonElement>(null);
-  const [pos, setPos]     = useState({ top: 0, left: 0, width: 0 });
+  const btnRef              = useRef<HTMLButtonElement>(null);
+  const [pos, setPos]       = useState({ top: 0, left: 0, width: 0 });
 
   const selected = projects.find((p) => p.id === value);
 
@@ -363,9 +373,13 @@ function TxModal({
   title: string;
 }) {
   const isIncome    = draft.type === "income";
-  const categoryList = isIncome ? INCOME_TYPES : EXPENSE_CATEGORIES;
+  const isGeneral   = draft.scope === "general";
+  const categoryList = isIncome
+    ? INCOME_TYPES
+    : isGeneral ? GENERAL_EXPENSE_CATEGORIES : PROJECT_EXPENSE_CATEGORIES;
   const statusList   = isIncome ? INCOME_STATUSES : EXPENSE_STATUSES;
   const isOther      = draft.category === "אחר";
+  const canSave      = !saving && !!draft.amount && (isGeneral || !!draft.projectId) && (!isOther || !!draft.description);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
@@ -393,7 +407,7 @@ function TxModal({
         </div>
 
         {/* Type toggle */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           {(["income", "expense"] as const).map((t) => (
             <button key={t} type="button"
               onClick={() => setDraft({ ...draft, type: t, paymentStatus: t === "income" ? "צפוי" : "שולם", category: "" })}
@@ -410,25 +424,45 @@ function TxModal({
           ))}
         </div>
 
+        {/* Scope toggle */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {(["project", "general"] as Scope[]).map((s) => (
+            <button key={s} type="button"
+              onClick={() => setDraft({ ...draft, scope: s, projectId: s === "general" ? "" : draft.projectId, category: "" })}
+              style={{
+                flex: 1, padding: "7px", borderRadius: 8, border: "none", cursor: "pointer",
+                fontSize: 12, fontFamily: "inherit", fontWeight: 600,
+                background: draft.scope === s ? "rgba(59,130,246,0.14)" : "#1A1A1A",
+                color: draft.scope === s ? "#3B82F6" : "#444",
+                outline: draft.scope === s ? "1px solid rgba(59,130,246,0.35)" : "1px solid #252525",
+              }}
+            >
+              {s === "project" ? "📁 פרויקט" : "🏢 כללי"}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
           {/* ── בלוק 1: פרויקט וסוג ── */}
           <div>
-            <div style={SECTION_LABEL}>פרויקט וסוג</div>
+            <div style={SECTION_LABEL}>{isGeneral ? "סוג" : "פרויקט וסוג"}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {!isGeneral && (
+                <div>
+                  <label style={LABEL_S}>פרויקט *</label>
+                  <ProjectSelect value={draft.projectId} projects={projects}
+                    onChange={(id, artist) => setDraft({ ...draft, projectId: id, artist })} />
+                </div>
+              )}
               <div>
-                <label style={LABEL_S}>פרויקט *</label>
-                <ProjectSelect value={draft.projectId} projects={projects}
-                  onChange={(id, artist) => setDraft({ ...draft, projectId: id, artist })} />
-              </div>
-              <div>
-                <label style={LABEL_S}>{isIncome ? "סוג הכנסה" : "קטגוריית הוצאה"}</label>
+                <label style={LABEL_S}>{isIncome ? "סוג הכנסה" : "קטגוריה"}</label>
                 <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} style={INPUT_S}>
                   <option value="">בחר...</option>
                   {categoryList.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 {isOther && (
-                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>⚠ נא למלא תיאור מפורט בשדה &quot;תיאור&quot;</div>
+                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>⚠ נא למלא תיאור מפורט</div>
                 )}
               </div>
             </div>
@@ -439,7 +473,7 @@ function TxModal({
             <div style={SECTION_LABEL}>{isIncome ? "לקוח ותיאור" : "ספק ותיאור"}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
-                <label style={LABEL_S}>{isIncome ? "לקוח / אמן" : "ספק / למי שולם"}</label>
+                <label style={LABEL_S}>{isIncome ? "לקוח / אמן" : isGeneral ? "ספק / שם" : "ספק / למי שולם"}</label>
                 <input type="text" value={draft.artist} onChange={(e) => setDraft({ ...draft, artist: e.target.value })}
                   placeholder={isIncome ? "שם הלקוח / האמן..." : "שם הספק..."} style={INPUT_S} />
               </div>
@@ -448,7 +482,7 @@ function TxModal({
                   תיאור{isOther ? " *" : ""}
                 </label>
                 <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                  placeholder={isIncome ? "למשל: תשלום ראשון, מקדמה לפרויקט..." : "למשל: Bill - מיקס לשיר יהלום..."}
+                  placeholder={isIncome ? "למשל: מקדמה לפרויקט..." : "למשל: חשמל ינואר, מנוי Adobe..."}
                   style={{ ...INPUT_S, ...(isOther && !draft.description ? { borderColor: "rgba(245,158,11,0.5)" } : {}) }} />
               </div>
             </div>
@@ -509,7 +543,7 @@ function TxModal({
                 <label style={LABEL_S}>הערות</label>
                 <input type="text" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                   placeholder="הערות נוספות..." style={INPUT_S}
-                  onKeyDown={(e) => { if (e.key === "Enter") onSave(); }} />
+                  onKeyDown={(e) => { if (e.key === "Enter" && canSave) onSave(); }} />
               </div>
             </div>
           </div>
@@ -521,18 +555,16 @@ function TxModal({
               border: "1px solid #2A2A2A", background: "transparent",
               color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit",
             }}>ביטול</button>
-            <button type="button" onClick={onSave}
-              disabled={saving || !draft.projectId || !draft.amount || (isOther && !draft.description)}
+            <button type="button" onClick={onSave} disabled={!canSave}
               style={{
                 flex: 2, padding: "11px", borderRadius: 10, border: "none",
-                background: saving || !draft.projectId || !draft.amount || (isOther && !draft.description)
-                  ? "#1A2A3A" : (isIncome ? "#065F46" : "#7C2D12"),
-                color: saving || !draft.projectId || !draft.amount || (isOther && !draft.description) ? "#445" : "#fff",
-                cursor: saving || !draft.projectId || !draft.amount ? "not-allowed" : "pointer",
+                background: canSave ? (isIncome ? "#065F46" : isGeneral ? "#4C1D95" : "#7C2D12") : "#1A2A3A",
+                color: canSave ? "#fff" : "#445",
+                cursor: canSave ? "pointer" : "not-allowed",
                 fontSize: 13, fontWeight: 700, fontFamily: "inherit",
               }}
             >
-              {saving ? "שומר..." : isIncome ? "שמור הכנסה" : "שמור הוצאה"}
+              {saving ? "שומר..." : isIncome ? "שמור הכנסה" : isGeneral ? "שמור הוצאה כללית" : "שמור הוצאה"}
             </button>
           </div>
         </div>
@@ -556,12 +588,14 @@ export default function FinancePage() {
   const [customTo,   setCustomTo]   = useState("");
   const [showUndated, setShowUndated] = useState(false);
 
-  // Table filters (on top of period)
-  const [typeFilter,    setTypeFilter]    = useState<"all" | "income" | "expense">("all");
-  const [statusFilter,  setStatusFilter]  = useState<string>("");
+  // Table filters
+  const [typeFilter,   setTypeFilter]   = useState<"all" | "income" | "expense">("all");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const [projectFilter, setProjectFilter] = useState("");
-  const [sortMode,      setSortMode]      = useState<SortMode>("date-desc");
-  const [groupByMonth,  setGroupByMonth]  = useState(false);
+  const [sortMode,     setSortMode]     = useState<SortMode>("date-desc");
+  const [groupByMonth, setGroupByMonth] = useState(false);
+  const [expandedIds,  setExpandedIds]  = useState<Set<string>>(new Set());
 
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -583,24 +617,38 @@ export default function FinancePage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   // ── Period computations ────────────────────────────────────────────────────
   const range     = getRange(period, customFrom, customTo);
   const compRange = getCompRange(period);
   const compLabel = getCompLabel(period);
   const { heading: periodHeading, sub: periodSub } = getPeriodTitle(period, customFrom, customTo);
 
-  const periodTx   = transactions.filter((t) => inRange(t.date, range));
-  const compTx     = transactions.filter((t) => inRange(t.date, compRange));
-  const noDateTx   = transactions.filter((t) => !t.date);
+  const periodTx = transactions.filter((t) => inRange(t.date, range));
+  const compTx   = transactions.filter((t) => inRange(t.date, compRange));
+  const noDateTx = transactions.filter((t) => !t.date);
 
   const stats     = calcStats(periodTx);
   const compStats = compRange.from ? calcStats(compTx) : null;
 
+  // ── Needs attention (from ALL transactions, not just period) ──────────────
+  const attentionUnpaidIncome  = transactions.filter((t) => t.type === "income"  && t.payment_status === "לא שולם");
+  const attentionOpenExpenses  = transactions.filter((t) => t.type === "expense" && ["צפוי", "לא שולם"].includes(t.payment_status));
+  const hasAttention = noDateTx.length > 0 || attentionUnpaidIncome.length > 0 || attentionOpenExpenses.length > 0;
+
   // ── Table filtered rows ────────────────────────────────────────────────────
   function matchesFilters(t: Transaction) {
-    if (typeFilter !== "all" && t.type !== typeFilter) return false;
-    if (statusFilter && t.payment_status !== statusFilter) return false;
-    if (projectFilter && t.project_id !== projectFilter) return false;
+    if (typeFilter !== "all"   && t.type !== typeFilter) return false;
+    if (statusFilter           && t.payment_status !== statusFilter) return false;
+    if (projectFilter          && t.project_id !== projectFilter) return false;
+    if (sourceFilter !== "all" && (t.scope ?? "project") !== sourceFilter) return false;
     return true;
   }
 
@@ -621,24 +669,18 @@ export default function FinancePage() {
           const d = a.date.localeCompare(b.date);
           return d !== 0 ? d : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         });
-      case "amount-desc":
-        return copy.sort((a, b) => b.amount - a.amount);
-      case "project":
-        return copy.sort((a, b) => {
-          const pA = projects.find((p) => p.id === a.project_id)?.name ?? "";
-          const pB = projects.find((p) => p.id === b.project_id)?.name ?? "";
-          return pA.localeCompare(pB, "he");
-        });
-      case "status":
-        return copy.sort((a, b) => a.payment_status.localeCompare(b.payment_status, "he"));
-      case "type":
-        return copy.sort((a, b) => a.type.localeCompare(b.type));
-      default:
-        return copy;
+      case "amount-desc":  return copy.sort((a, b) => b.amount - a.amount);
+      case "project":      return copy.sort((a, b) => {
+        const pA = projects.find((p) => p.id === a.project_id)?.name ?? (a.scope === "general" ? "כללי" : "");
+        const pB = projects.find((p) => p.id === b.project_id)?.name ?? (b.scope === "general" ? "כללי" : "");
+        return pA.localeCompare(pB, "he");
+      });
+      case "status":       return copy.sort((a, b) => a.payment_status.localeCompare(b.payment_status, "he"));
+      case "type":         return copy.sort((a, b) => a.type.localeCompare(b.type));
+      default:             return copy;
     }
   }
 
-  // Build display items (with optional month grouping)
   type DisplayItem =
     | { kind: "header"; label: string; key: string }
     | { kind: "row";    tx: Transaction; rowIndex: number };
@@ -649,14 +691,13 @@ export default function FinancePage() {
       if (showUndated) undated.forEach((tx, i) => items.push({ kind: "row", tx, rowIndex: sorted.length + i }));
       return items;
     }
-    // Group dated transactions by YYYY-MM
     const groups: { key: string; label: string; txs: Transaction[] }[] = [];
     const seen = new Map<string, number>();
     sorted.forEach((tx) => {
       if (!tx.date) return;
       const key = tx.date.substring(0, 7);
       const [y, m] = key.split("-");
-      const label = `${HEB_MONTHS[parseInt(m) - 1]} ${y}`;
+      const label  = `${HEB_MONTHS[parseInt(m) - 1]} ${y}`;
       if (!seen.has(key)) { seen.set(key, groups.length); groups.push({ key, label, txs: [] }); }
       groups[seen.get(key)!].txs.push(tx);
     });
@@ -691,7 +732,8 @@ export default function FinancePage() {
   function openEdit(tx: Transaction) {
     setEditingId(tx.id);
     setDraft({
-      projectId: tx.project_id, type: tx.type, date: tx.date ?? "",
+      scope: tx.scope ?? "project",
+      projectId: tx.project_id ?? "", type: tx.type, date: tx.date ?? "",
       description: tx.description, artist: tx.artist, amount: String(tx.amount),
       currency: tx.currency, paymentStatus: tx.payment_status, paymentMethod: tx.payment_method,
       receiptRef: tx.receipt_ref, notes: tx.notes, category: tx.category,
@@ -700,21 +742,30 @@ export default function FinancePage() {
   }
 
   async function handleSave() {
-    if (!draft.projectId || !draft.amount) return;
+    if (!draft.amount) return;
+    if (draft.scope === "project" && !draft.projectId) return;
     setSaving(true);
     try {
       const body = {
-        projectId: draft.projectId, type: draft.type, date: draft.date || null,
-        description: draft.description, artist: draft.artist, amount: Number(draft.amount) || 0,
-        currency: draft.currency, paymentStatus: draft.paymentStatus, paymentMethod: draft.paymentMethod,
+        scope: draft.scope,
+        projectId: draft.scope === "general" ? null : draft.projectId,
+        type: draft.type, date: draft.date || null,
+        description: draft.description, artist: draft.artist,
+        amount: Number(draft.amount) || 0, currency: draft.currency,
+        paymentStatus: draft.paymentStatus, paymentMethod: draft.paymentMethod,
         receiptRef: draft.receiptRef, notes: draft.notes, category: draft.category,
       };
       if (editingId) {
-        const res  = await fetch(`/api/transactions/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const res  = await fetch(`/api/transactions/${editingId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, project_id: body.projectId }),
+        });
         const data = await res.json();
         if (data.transaction) setTransactions((prev) => prev.map((t) => t.id === editingId ? data.transaction : t));
       } else {
-        const res  = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const res  = await fetch("/api/transactions", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
         const data = await res.json();
         if (data.transaction) setTransactions((prev) => [data.transaction, ...prev]);
       }
@@ -727,6 +778,7 @@ export default function FinancePage() {
 
   async function handleDelete(id: string) {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
+    setExpandedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
     await fetch(`/api/transactions/${id}`, { method: "DELETE" });
   }
 
@@ -760,6 +812,7 @@ export default function FinancePage() {
           padding: "10px 20px", borderRadius: 12,
           border: "1px solid rgba(59,130,246,0.4)", background: "rgba(59,130,246,0.1)",
           color: "#3B82F6", fontSize: 14, fontWeight: 700, cursor: "pointer",
+          fontFamily: "inherit",
         }}>
           <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
           הוסף תנועה
@@ -786,7 +839,6 @@ export default function FinancePage() {
           })}
         </div>
 
-        {/* Custom date range */}
         {period === "custom" && (
           <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -804,90 +856,113 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* ── No-date warning ─────────────────────────────────────────────── */}
-      {noDateTx.length > 0 && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "8px 14px", marginBottom: 18,
-          background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)",
-          borderRadius: 10, fontSize: 12,
-        }}>
-          <span style={{ color: "#F59E0B" }}>⚠</span>
-          <span style={{ color: "#777" }}>
-            יש <strong style={{ color: "#F59E0B" }}>{noDateTx.length}</strong> תנועות ללא תאריך שלא נכללות בסיכום התקופה.
-          </span>
-          <button onClick={() => setShowUndated((v) => !v)} style={{
-            marginRight: "auto", fontSize: 11, fontFamily: "inherit",
-            color: showUndated ? "#F59E0B" : "#555", background: "none",
-            border: "none", cursor: "pointer", textDecoration: "underline",
-          }}>
-            {showUndated ? "הסתר" : "הצג אותן בטבלה"}
-          </button>
-        </div>
-      )}
-
-      {/* ── Summary cards ───────────────────────────────────────────────── */}
-      {/* Row 1: income & expenses */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+      {/* ── Summary cards (2×3) ─────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 10 }}>
         <SummaryCard
           icon="✅" label="הכנסות שהתקבלו"
-          value={fmtAmount(stats.incomeReceived)}
-          color="#10B981"
-          countLabel={`${periodTx.filter((t) => t.type === "income" && t.payment_status === "התקבל").length} תשלומים`}
+          value={fmtAmount(stats.incomeReceived)} color="#10B981"
+          sub={`${periodTx.filter((t) => t.type === "income" && t.payment_status === "התקבל").length} תשלומים`}
           delta={compStats ? stats.incomeReceived - compStats.incomeReceived : undefined}
-          compLabel={compLabel}
-          deltaPositiveIsGood={true}
+          compLabel={compLabel} deltaPositiveIsGood={true}
         />
         <SummaryCard
           icon="⏳" label="הכנסות צפויות"
           value={fmtAmount(stats.incomeExpected)}
           color={stats.incomeExpected > 0 ? "#3B82F6" : "#555"}
-          countLabel={`${periodTx.filter((t) => t.type === "income" && ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחות`}
+          sub={`${periodTx.filter((t) => t.type === "income" && ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחות`}
           delta={compStats ? stats.incomeExpected - compStats.incomeExpected : undefined}
-          compLabel={compLabel}
-          deltaPositiveIsGood={true}
+          compLabel={compLabel} deltaPositiveIsGood={true}
         />
-        <SummaryCard
-          icon="💳" label="הוצאות ששולמו"
-          value={fmtAmount(stats.expensesPaid)}
-          color={stats.expensesPaid > 0 ? "#F59E0B" : "#555"}
-          countLabel={`${periodTx.filter((t) => t.type === "expense" && t.payment_status === "שולם").length} הוצאות`}
-          delta={compStats ? stats.expensesPaid - compStats.expensesPaid : undefined}
-          compLabel={compLabel}
-          deltaPositiveIsGood={false}
-        />
-        <SummaryCard
-          icon="📋" label="הוצאות צפויות"
-          value={fmtAmount(stats.expensesExpected)}
-          color={stats.expensesExpected > 0 ? "#F59E0B" : "#555"}
-          countLabel={`${periodTx.filter((t) => t.type === "expense" && ["צפוי","לא שולם","חלקי"].includes(t.payment_status)).length} פתוחות`}
-          delta={compStats ? stats.expensesExpected - compStats.expensesExpected : undefined}
-          compLabel={compLabel}
-          deltaPositiveIsGood={false}
-        />
-      </div>
-
-      {/* Row 2: profit */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 28 }}>
         <SummaryCard
           icon="📊" label="רווח בפועל"
           value={fmtAmount(stats.profitReal)}
           color={stats.profitReal >= 0 ? "#10B981" : "#EF4444"}
-          countLabel="הכנסות שהתקבלו פחות הוצאות ששולמו"
+          sub="הכנסות שהתקבלו פחות הוצאות ששולמו"
           delta={compStats ? stats.profitReal - compStats.profitReal : undefined}
-          compLabel={compLabel}
-          deltaPositiveIsGood={true}
+          compLabel={compLabel} deltaPositiveIsGood={true}
+        />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 28 }}>
+        <SummaryCard
+          icon="🎵" label="הוצאות פרויקטים"
+          value={fmtAmount(stats.projExpPaid)}
+          color={stats.projExpPaid > 0 ? "#F59E0B" : "#555"}
+          sub={`${periodTx.filter((t) => t.type === "expense" && (t.scope ?? "project") === "project" && t.payment_status === "שולם").length} הוצאות`}
+          delta={compStats ? stats.projExpPaid - compStats.projExpPaid : undefined}
+          compLabel={compLabel} deltaPositiveIsGood={false}
+        />
+        <SummaryCard
+          icon="🏢" label="הוצאות כלליות"
+          value={fmtAmount(stats.genExpPaid)}
+          color={stats.genExpPaid > 0 ? "#A855F7" : "#555"}
+          sub={`${periodTx.filter((t) => t.type === "expense" && t.scope === "general" && t.payment_status === "שולם").length} הוצאות`}
+          delta={compStats ? stats.genExpPaid - compStats.genExpPaid : undefined}
+          compLabel={compLabel} deltaPositiveIsGood={false}
         />
         <SummaryCard
           icon="🔮" label="רווח משוער"
           value={fmtAmount(stats.profitEst)}
           color={stats.profitEst >= 0 ? "#10B981" : "#EF4444"}
-          countLabel="כולל הכנסות וההוצאות הצפויות"
+          sub="כולל הכנסות והוצאות צפויות"
           delta={compStats ? stats.profitEst - compStats.profitEst : undefined}
-          compLabel={compLabel}
-          deltaPositiveIsGood={true}
+          compLabel={compLabel} deltaPositiveIsGood={true}
         />
       </div>
+
+      {/* ── Needs attention ─────────────────────────────────────────────── */}
+      {hasAttention && (
+        <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#444", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>
+            דורש תשומת לב
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {noDateTx.length > 0 && (
+              <button onClick={() => setShowUndated((v) => !v)} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "7px 14px", borderRadius: 10,
+                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.22)",
+                cursor: "pointer", fontFamily: "inherit",
+              }}>
+                <span style={{ color: "#F59E0B", fontSize: 13 }}>⚠</span>
+                <span style={{ fontSize: 12, color: "#CCC" }}>
+                  <strong style={{ color: "#F59E0B" }}>{noDateTx.length}</strong> תנועות ללא תאריך
+                </span>
+                <span style={{ fontSize: 10, color: showUndated ? "#F59E0B" : "#555", marginRight: 4 }}>
+                  {showUndated ? "הסתר ▲" : "הצג ▼"}
+                </span>
+              </button>
+            )}
+            {attentionUnpaidIncome.length > 0 && (
+              <button onClick={() => { setTypeFilter("income"); setStatusFilter("לא שולם"); }} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "7px 14px", borderRadius: 10,
+                background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.22)",
+                cursor: "pointer", fontFamily: "inherit",
+              }}>
+                <span style={{ color: "#EF4444", fontSize: 13 }}>⚡</span>
+                <span style={{ fontSize: 12, color: "#CCC" }}>
+                  <strong style={{ color: "#EF4444" }}>{attentionUnpaidIncome.length}</strong> הכנסות לא שולמו
+                </span>
+                <span style={{ fontSize: 10, color: "#555", marginRight: 4 }}>סנן ←</span>
+              </button>
+            )}
+            {attentionOpenExpenses.length > 0 && (
+              <button onClick={() => { setTypeFilter("expense"); setStatusFilter(""); }} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "7px 14px", borderRadius: 10,
+                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.22)",
+                cursor: "pointer", fontFamily: "inherit",
+              }}>
+                <span style={{ color: "#F59E0B", fontSize: 13 }}>📋</span>
+                <span style={{ fontSize: 12, color: "#CCC" }}>
+                  <strong style={{ color: "#F59E0B" }}>{attentionOpenExpenses.length}</strong> הוצאות פתוחות
+                </span>
+                <span style={{ fontSize: 10, color: "#555", marginRight: 4 }}>סנן ←</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Table filters ────────────────────────────────────────────────── */}
       <div style={{
@@ -895,6 +970,7 @@ export default function FinancePage() {
         alignItems: "center", padding: "12px 16px",
         background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12,
       }}>
+        {/* Type filter */}
         {(["all", "income", "expense"] as const).map((f) => (
           <button key={f} onClick={() => setTypeFilter(f)} style={{
             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -904,6 +980,21 @@ export default function FinancePage() {
             outline: typeFilter === f ? `1px solid ${f === "income" ? "rgba(16,185,129,0.35)" : f === "expense" ? "rgba(239,68,68,0.3)" : "rgba(59,130,246,0.35)"}` : "none",
           }}>
             {f === "all" ? "הכל" : f === "income" ? "הכנסות" : "הוצאות"}
+          </button>
+        ))}
+
+        <div style={{ width: 1, height: 20, background: "#2A2A2A", margin: "0 2px" }} />
+
+        {/* Source filter */}
+        {(["all", "project", "general"] as SourceFilter[]).map((f) => (
+          <button key={f} onClick={() => setSourceFilter(f)} style={{
+            padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+            background: sourceFilter === f ? (f === "general" ? "rgba(168,85,247,0.12)" : "rgba(59,130,246,0.10)") : "transparent",
+            color: sourceFilter === f ? (f === "general" ? "#A855F7" : "#3B82F6") : "#555",
+            fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+            outline: sourceFilter === f ? `1px solid ${f === "general" ? "rgba(168,85,247,0.3)" : "rgba(59,130,246,0.3)"}` : "none",
+          }}>
+            {f === "all" ? "כל המקורות" : f === "project" ? "📁 פרויקטים" : "🏢 כללי"}
           </button>
         ))}
 
@@ -929,7 +1020,6 @@ export default function FinancePage() {
 
         <div style={{ width: 1, height: 20, background: "#2A2A2A", margin: "0 2px" }} />
 
-        {/* Sort */}
         <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={{
           background: "transparent", border: `1px solid ${sortMode !== "date-desc" ? "#A855F7" : "#2A2A2A"}`,
           borderRadius: 8, color: sortMode !== "date-desc" ? "#A855F7" : "#555",
@@ -943,7 +1033,6 @@ export default function FinancePage() {
           <option value="type">לפי סוג</option>
         </select>
 
-        {/* Group by month */}
         <button onClick={() => setGroupByMonth((v) => !v)} style={{
           padding: "5px 10px", borderRadius: 8, border: "none", cursor: "pointer",
           background: groupByMonth ? "rgba(168,85,247,0.12)" : "transparent",
@@ -973,9 +1062,15 @@ export default function FinancePage() {
       ) : (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, overflow: "hidden" }}>
           {/* Table header */}
-          <div className="tbl-header" style={{ display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px", gap: 8, padding: "10px 16px", background: "#141414", borderBottom: "1px solid #252525" }}>
-            <div>תאריך</div><div>סוג</div><div>פרויקט</div><div>אמן / ספק</div>
-            <div>תיאור / קטגוריה</div><div>סכום</div><div>סטטוס</div><div>אמצעי תשלום</div><div />
+          <div style={{
+            display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
+            gap: 8, padding: "10px 16px",
+            background: "#141414", borderBottom: "1px solid #252525",
+            fontSize: 10, fontWeight: 700, color: "#444", letterSpacing: "0.06em",
+          }}>
+            <div>תאריך</div><div>סוג</div><div>פרויקט / מקור</div>
+            <div>אמן / ספק</div><div>תיאור / קטגוריה</div>
+            <div>סכום</div><div>סטטוס</div><div />
           </div>
 
           {displayItems.map((item) => {
@@ -984,60 +1079,131 @@ export default function FinancePage() {
                 <div key={`hdr-${item.key}`} style={{
                   padding: "8px 16px 6px", background: "#111",
                   borderBottom: "1px solid #252525",
-                  fontSize: 11, fontWeight: 700, color: "#555",
-                  letterSpacing: "0.06em",
+                  fontSize: 11, fontWeight: 700, color: "#555", letterSpacing: "0.06em",
                 }}>
                   {item.label}
                 </div>
               );
             }
+
             const { tx, rowIndex: i } = item;
             const proj     = projects.find((p) => p.id === tx.project_id);
             const isIncome = tx.type === "income";
+            const isGen    = (tx.scope ?? "project") === "general";
             const undated  = !tx.date;
+            const expanded = expandedIds.has(tx.id);
+
             return (
-              <div key={tx.id}
-                style={{
-                  display: "grid", gridTemplateColumns: "90px 50px 2fr 1.5fr 2fr 110px 80px 100px 50px",
-                  gap: 8, padding: "10px 16px", alignItems: "center",
-                  borderBottom: "1px solid #202020",
-                  background: undated ? "#1D1810" : i % 2 === 0 ? "#1A1A1A" : "#181818",
-                  transition: "background 0.1s",
-                }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLDivElement).style.background = undated ? "#231E12" : "#1E1E1E")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : i % 2 === 0 ? "#1A1A1A" : "#181818")}
-              >
-                <div style={{ fontSize: 11, color: undated ? "#F59E0B" : "#666" }}>
-                  {undated ? "ללא תאריך" : fmtDate(tx.date)}
+              <div key={tx.id}>
+                {/* Main row */}
+                <div
+                  onClick={() => toggleExpand(tx.id)}
+                  style={{
+                    display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
+                    gap: 8, padding: "10px 16px", alignItems: "center",
+                    borderBottom: expanded ? "none" : "1px solid #202020",
+                    background: undated ? "#1D1810" : expanded ? "#1E1E24" : i % 2 === 0 ? "#1A1A1A" : "#181818",
+                    cursor: "pointer", transition: "background 0.1s",
+                  }}
+                  onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#231E12" : "#1E1E1E"; }}
+                  onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : i % 2 === 0 ? "#1A1A1A" : "#181818"; }}
+                >
+                  <div style={{ fontSize: 11, color: undated ? "#F59E0B" : "#666" }}>
+                    {undated ? "ללא תאריך" : fmtDate(tx.date)}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                      background: isIncome ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
+                      color: isIncome ? "#10B981" : "#F59E0B",
+                      border: `1px solid ${isIncome ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}`,
+                      display: "inline-block", width: "fit-content",
+                    }}>
+                      {isIncome ? "הכנסה" : "הוצאה"}
+                    </span>
+                    {isGen && (
+                      <span style={{
+                        fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                        background: "rgba(168,85,247,0.12)", color: "#A855F7",
+                        border: "1px solid rgba(168,85,247,0.25)",
+                        display: "inline-block", width: "fit-content",
+                      }}>
+                        כללי
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#DDD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {isGen
+                      ? <span style={{ color: "#A855F7" }}>🏢 כללי</span>
+                      : (proj?.name ?? "—")}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {tx.artist || proj?.artist || "—"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#777", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {tx.description || tx.category || "—"}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: isIncome ? "#10B981" : isGen ? "#A855F7" : "#F59E0B" }}>
+                    {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
+                  </div>
+                  <div><StatusBadge status={tx.payment_status} /></div>
+                  <div style={{ textAlign: "center", color: expanded ? "#A855F7" : "#444", fontSize: 11 }}>
+                    {expanded ? "▲" : "▼"}
+                  </div>
                 </div>
-                <div>
-                  <span style={{
-                    fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                    background: isIncome ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
-                    color: isIncome ? "#10B981" : "#F59E0B",
-                    border: `1px solid ${isIncome ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}`,
+
+                {/* Expanded details */}
+                {expanded && (
+                  <div style={{
+                    padding: "10px 16px 12px 16px", borderBottom: "1px solid #202020",
+                    background: "#1B1B22",
+                    display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
                   }}>
-                    {isIncome ? "הכנסה" : "הוצאה"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: "#DDD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proj?.name ?? "—"}</div>
-                <div style={{ fontSize: 11, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.artist || proj?.artist || "—"}</div>
-                <div style={{ fontSize: 11, color: "#777", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.description || tx.category || "—"}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: isIncome ? "#10B981" : "#F59E0B" }}>
-                  {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
-                </div>
-                <div><StatusBadge status={tx.payment_status} /></div>
-                <div style={{ fontSize: 11, color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.payment_method || "—"}</div>
-                <div style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
-                  <button onClick={() => openEdit(tx)} title="ערוך"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "3px 5px" }}
-                    onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
-                  <button onClick={() => handleDelete(tx.id)} title="מחק"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "3px 5px" }}
-                    onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
-                </div>
+                    {tx.payment_method && (
+                      <div style={{ fontSize: 11, color: "#666" }}>
+                        <span style={{ color: "#444", marginLeft: 4 }}>אמצעי תשלום:</span>
+                        {tx.payment_method}
+                      </div>
+                    )}
+                    {tx.receipt_ref && (
+                      <div style={{ fontSize: 11, color: "#666" }}>
+                        <span style={{ color: "#444", marginLeft: 4 }}>אסמכתא:</span>
+                        {tx.receipt_ref}
+                      </div>
+                    )}
+                    {tx.category && (
+                      <div style={{ fontSize: 11, color: "#666" }}>
+                        <span style={{ color: "#444", marginLeft: 4 }}>קטגוריה:</span>
+                        {tx.category}
+                      </div>
+                    )}
+                    {tx.notes && (
+                      <div style={{ fontSize: 11, color: "#666" }}>
+                        <span style={{ color: "#444", marginLeft: 4 }}>הערות:</span>
+                        {tx.notes}
+                      </div>
+                    )}
+                    {!tx.payment_method && !tx.receipt_ref && !tx.category && !tx.notes && (
+                      <div style={{ fontSize: 11, color: "#444" }}>אין פרטים נוספים</div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, marginRight: "auto" }}>
+                      <button onClick={(e) => { e.stopPropagation(); openEdit(tx); }} style={{
+                        padding: "5px 14px", borderRadius: 8, border: "1px solid #333",
+                        background: "transparent", color: "#AAA", cursor: "pointer",
+                        fontSize: 12, fontFamily: "inherit",
+                      }}>
+                        ✏ ערוך
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(tx.id); }} style={{
+                        padding: "5px 14px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.25)",
+                        background: "rgba(239,68,68,0.06)", color: "#EF4444", cursor: "pointer",
+                        fontSize: 12, fontFamily: "inherit",
+                      }}>
+                        × מחק
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
