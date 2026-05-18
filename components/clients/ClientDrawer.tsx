@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
@@ -8,55 +8,31 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Project {
-  id: string;
-  name: string;
-  status: string;
-  artist: string;
-  deadline: string | null;
-  project_type?: string;
+  id: string; name: string; status: string; artist: string;
+  deadline: string | null; project_type?: string;
 }
-
 interface Transaction {
-  project_id: string;
-  type: "income" | "expense";
-  amount: number;
-  payment_status: string;
-  date: string | null;
-  currency: string;
+  project_id: string; type: "income" | "expense"; amount: number;
+  payment_status: string; date: string | null; currency: string;
 }
-
 interface Session {
-  id: string;
-  project_id: string;
-  date: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  status: string;
-  notes: string;
+  id: string; project_id: string; date: string | null;
+  start_time: string | null; end_time: string | null; status: string; notes: string;
 }
-
-interface FinanceSetting {
-  project_id: string;
-  agreedPrice: number;
-  currency: string;
-}
-
+interface FinanceSetting { project_id: string; agreedPrice: number; currency: string; }
 interface DeliveryRecord {
-  projectId:      string;
-  deliveryLink:   string;
-  deliveryStatus: string;
-  deliveredAt:    string | null;
+  projectId: string; deliveryLink: string; deliveryStatus: string; deliveredAt: string | null;
 }
-
 interface ProjectFinance {
-  projectId: string;
-  name: string;
-  status: string;
-  agreedPrice: number;
-  currency: string;
-  totalPaid: number;
-  totalExpected: number;
-  totalExpenses: number;
+  projectId: string; name: string; status: string;
+  agreedPrice: number; currency: string; totalPaid: number; totalExpected: number; totalExpenses: number;
+}
+interface Meeting {
+  id: string; client_id: string; client_name: string;
+  project_id: string | null; date: string | null; time: string | null;
+  duration: number; location: string; notes: string;
+  status: "נקבעה" | "התקיימה" | "בוטלה"; calendar_event_id: string | null;
+  created_at: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -67,7 +43,6 @@ const TYPE_COLORS: Record<ClientType, { bg: string; color: string }> = {
   "איש צוות": { bg: "rgba(16,185,129,0.15)",  color: "#34D399" },
   "אחר":       { bg: "rgba(107,114,128,0.15)", color: "#9CA3AF" },
 };
-
 const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string }> = {
   "פעיל":    { bg: "rgba(16,185,129,0.12)",  color: "#34D399" },
   "לא פעיל": { bg: "rgba(107,114,128,0.12)", color: "#6B7280" },
@@ -75,17 +50,26 @@ const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string }> = {
   "VIP":     { bg: "rgba(245,158,11,0.12)",  color: "#FBBF24" },
   "חדש":     { bg: "rgba(59,130,246,0.12)",  color: "#60A5FA" },
 };
-
 const PROJECT_STATUS_COLOR: Record<string, string> = {
-  "בעבודה":      "#3B82F6",
-  "מחכה למיקס":  "#F59E0B",
-  "במיקס":        "#A855F7",
-  "לא התחיל":    "#6B7280",
-  "הושלם":        "#10B981",
-  "בהשהייה":      "#EF4444",
+  "בעבודה": "#3B82F6", "מחכה למיקס": "#F59E0B", "במיקס": "#A855F7",
+  "לא התחיל": "#6B7280", "הושלם": "#10B981", "בהשהייה": "#EF4444",
 };
+const MEETING_STATUS_COLOR: Record<Meeting["status"], string> = {
+  "נקבעה": "#3B82F6", "התקיימה": "#10B981", "בוטלה": "#6B7280",
+};
+const LOCATIONS = ["פגישה פנים אל פנים", "זום", "טלפון", "סטודיו", "אחר"];
+const DURATIONS = [30, 45, 60, 90, 120];
 
-// ─── ClientDrawer ─────────────────────────────────────────────────────────────
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return "—";
+  const [y, m, day] = d.split("-");
+  return `${parseInt(day, 10)}.${parseInt(m, 10)}.${y}`;
+}
+function fmtMoney(n: number, cur = "₪") {
+  return `${n.toLocaleString("he-IL", { maximumFractionDigits: 0 })}${cur}`;
+}
+
+// ─── ClientDrawer (center modal) ──────────────────────────────────────────────
 
 interface ClientDrawerProps {
   client: Client | null;
@@ -95,17 +79,17 @@ interface ClientDrawerProps {
 
 export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerProps) {
   const { openProject } = useGlobalProjectDrawer();
-
-  const [projects,    setProjects]   = useState<Project[]>([]);
-  const [finances,    setFinances]   = useState<ProjectFinance[]>([]);
-  const [sessions,    setSessions]   = useState<Session[]>([]);
-  const [deliveries,  setDeliveries] = useState<DeliveryRecord[]>([]);
-  const [loading,     setLoading]    = useState(false);
-  const [mounted,     setMounted]    = useState(false);
+  const [projects,   setProjects]   = useState<Project[]>([]);
+  const [finances,   setFinances]   = useState<ProjectFinance[]>([]);
+  const [sessions,   setSessions]   = useState<Session[]>([]);
+  const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
+  const [meetings,   setMeetings]   = useState<Meeting[]>([]);
+  const [loading,    setLoading]    = useState(false);
+  const [mounted,    setMounted]    = useState(false);
+  const [showMeetingForm, setShowMeetingForm] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Close on Escape
   useEffect(() => {
     if (!client) return;
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -113,63 +97,40 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
     return () => window.removeEventListener("keydown", handler);
   }, [client, onClose]);
 
-  const loadData = useCallback(async (clientName: string) => {
+  const loadData = useCallback(async (c: Client) => {
     setLoading(true);
-    setProjects([]);
-    setFinances([]);
-    setSessions([]);
-    setDeliveries([]);
-
+    setProjects([]); setFinances([]); setSessions([]); setDeliveries([]); setMeetings([]);
     try {
-      // Fetch projects + transactions + sessions + deliveries in parallel
-      const [projRes, txRes, sessRes, delivRes] = await Promise.all([
+      const [projRes, txRes, sessRes, delivRes, meetRes] = await Promise.all([
         fetch("/api/projects").then((r) => r.json()),
         fetch("/api/transactions?all=1").then((r) => r.json()),
         fetch("/api/sessions?all=1").then((r) => r.json()),
         fetch("/api/delivery?all=1").then((r) => r.json()).catch(() => ({ deliveries: [] })),
+        fetch(`/api/meetings?clientId=${c.id}`).then((r) => r.json()).catch(() => ({ meetings: [] })),
       ]);
 
-      // Filter projects by client name match in artist field
-      const allProjects: Project[] = Array.isArray(projRes) ? projRes : [];
+      const allProjects: Project[] = Array.isArray(projRes) ? projRes : (projRes.projects ?? []);
       const clientProjects = allProjects.filter((p) =>
-        p.artist
-          .split(/[,،;]/)
-          .map((s: string) => s.trim())
-          .includes(clientName)
+        p.artist.split(/[,،;]/).map((s: string) => s.trim()).includes(c.name)
       );
-
       const projectIds = new Set(clientProjects.map((p) => p.id));
 
-      // Build per-project finance
-      const allTx: Transaction[] = txRes.transactions ?? [];
+      const allTx: Transaction[]       = txRes.transactions ?? [];
       const allSettings: FinanceSetting[] = txRes.settings ?? [];
-      const allSessions: Session[] = sessRes.sessions ?? [];
+      const allSessions: Session[]     = sessRes.sessions ?? [];
 
       const finMap = new Map<string, ProjectFinance>();
       for (const p of clientProjects) {
-        finMap.set(p.id, {
-          projectId: p.id,
-          name: p.name,
-          status: p.status,
-          agreedPrice: 0,
-          currency: "₪",
-          totalPaid: 0,
-          totalExpected: 0,
-          totalExpenses: 0,
-        });
+        finMap.set(p.id, { projectId: p.id, name: p.name, status: p.status, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, totalExpenses: 0 });
       }
-
       for (const t of allTx) {
         if (!projectIds.has(t.project_id)) continue;
         const fin = finMap.get(t.project_id)!;
         if (t.type === "income") {
-          if (t.payment_status === "שולם" || t.payment_status === "התקבל") fin.totalPaid += t.amount;
-          else if (t.payment_status === "צפוי" || t.payment_status === "חלקי") fin.totalExpected += t.amount;
-        } else if (t.type === "expense") {
-          fin.totalExpenses += t.amount;
-        }
+          if (["שולם","התקבל"].includes(t.payment_status)) fin.totalPaid += t.amount;
+          else if (["צפוי","חלקי"].includes(t.payment_status)) fin.totalExpected += t.amount;
+        } else { fin.totalExpenses += t.amount; }
       }
-
       for (const s of allSettings) {
         if (!finMap.has(s.project_id)) continue;
         const fin = finMap.get(s.project_id)!;
@@ -177,450 +138,500 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
         fin.currency    = s.currency    ?? "₪";
       }
 
-      const clientSessions = allSessions.filter((s) => projectIds.has(s.project_id));
-
-      // Filter deliveries to this client's projects
-      const allDeliveries: DeliveryRecord[] = delivRes.deliveries ?? [];
-      const clientDeliveries = allDeliveries.filter(
-        (d) => projectIds.has(d.projectId) && d.deliveryStatus !== "not_created" && d.deliveryLink
-      );
-
       setProjects(clientProjects);
       setFinances(Array.from(finMap.values()));
-      setSessions(clientSessions);
-      setDeliveries(clientDeliveries);
-    } catch {
-      // Non-fatal — drawer still shows identity card
-    } finally {
-      setLoading(false);
-    }
+      setSessions(allSessions.filter((s) => projectIds.has(s.project_id)));
+      setDeliveries((delivRes.deliveries ?? []).filter(
+        (d: DeliveryRecord) => projectIds.has(d.projectId) && d.deliveryStatus !== "not_created" && d.deliveryLink
+      ));
+      setMeetings(meetRes.meetings ?? []);
+    } catch { /* non-fatal */ } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    if (client) loadData(client.name);
-  }, [client, loadData]);
+  useEffect(() => { if (client) loadData(client); }, [client, loadData]);
 
-  if (!mounted) return null;
+  const addMeeting = useCallback((m: Meeting) => setMeetings((prev) => [...prev, m]), []);
+  const updateMeeting = useCallback((m: Meeting) => setMeetings((prev) => prev.map((x) => x.id === m.id ? m : x)), []);
+  const removeMeeting = useCallback((id: string) => setMeetings((prev) => prev.filter((x) => x.id !== id)), []);
 
-  const visible = !!client;
+  if (!mounted || !client) return null;
 
-  const drawer = (
-    <>
-      {/* Backdrop */}
+  const modal = (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9000, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
-        onClick={onClose}
-        style={{
-          position: "fixed", inset: 0, zIndex: 9000,
-          background: "rgba(0,0,0,0.55)",
-          backdropFilter: "blur(2px)",
-          opacity: visible ? 1 : 0,
-          transition: "opacity 0.2s",
-          pointerEvents: visible ? "auto" : "none",
-        }}
-      />
-
-      {/* Panel */}
-      <div
-        style={{
-          position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 9001,
-          width: 400, maxWidth: "100vw",
-          background: "#141414",
-          borderRight: "1px solid #262626",
-          boxShadow: "4px 0 32px rgba(0,0,0,0.8)",
-          transform: visible ? "translateX(0)" : "translateX(-100%)",
-          transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
-          display: "flex", flexDirection: "column",
-          direction: "rtl",
-          overflowY: "auto",
-        }}
+        style={{ background: "#141414", border: "1px solid #262626", borderRadius: 22, width: "100%", maxWidth: 680, maxHeight: "88vh", display: "flex", flexDirection: "column", direction: "rtl", boxShadow: "0 32px 80px rgba(0,0,0,0.9)", overflow: "hidden" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {client && (
-          <DrawerContent
+        <ModalContent
+          client={client}
+          projects={projects}
+          finances={finances}
+          sessions={sessions}
+          deliveries={deliveries}
+          meetings={meetings}
+          loading={loading}
+          showMeetingForm={showMeetingForm}
+          onClose={onClose}
+          onEdit={onEdit}
+          openProject={(id) => { onClose(); setTimeout(() => openProject(id), 50); }}
+          onOpenMeetingForm={() => setShowMeetingForm(true)}
+          onCloseMeetingForm={() => setShowMeetingForm(false)}
+          onAddMeeting={addMeeting}
+          onUpdateMeeting={updateMeeting}
+          onRemoveMeeting={removeMeeting}
+        />
+      </div>
+    </div>
+  );
+
+  return createPortal(modal, document.body);
+}
+
+// ─── ModalContent ─────────────────────────────────────────────────────────────
+
+function ModalContent({
+  client, projects, finances, sessions, deliveries, meetings, loading,
+  showMeetingForm, onClose, onEdit, openProject,
+  onOpenMeetingForm, onCloseMeetingForm, onAddMeeting, onUpdateMeeting, onRemoveMeeting,
+}: {
+  client: Client; projects: Project[]; finances: ProjectFinance[];
+  sessions: Session[]; deliveries: DeliveryRecord[]; meetings: Meeting[];
+  loading: boolean; showMeetingForm: boolean;
+  onClose: () => void; onEdit: (c: Client) => void; openProject: (id: string) => void;
+  onOpenMeetingForm: () => void; onCloseMeetingForm: () => void;
+  onAddMeeting: (m: Meeting) => void; onUpdateMeeting: (m: Meeting) => void;
+  onRemoveMeeting: (id: string) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+
+  const totalAgreed   = finances.reduce((s, f) => s + f.agreedPrice, 0);
+  const totalPaid     = finances.reduce((s, f) => s + f.totalPaid, 0);
+  const totalExpected = finances.reduce((s, f) => s + f.totalExpected, 0);
+  const totalBalance  = totalAgreed - totalPaid;
+  const totalExpenses = finances.reduce((s, f) => s + f.totalExpenses, 0);
+  const currency      = finances[0]?.currency ?? "₪";
+
+  const completedSessions = sessions.filter((s) => s.status === "התקיים").length;
+  const plannedSessions   = sessions.filter((s) => s.status === "מתוכנן").length;
+  const nextSession = sessions.filter((s) => s.status === "מתוכנן" && s.date && s.date >= today).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
+  const lastSession = sessions.filter((s) => s.status === "התקיים" && s.date).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))[0];
+
+  const upcomingMeetings = meetings.filter((m) => m.status === "נקבעה" && m.date && m.date >= today).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+  const pastMeetings     = meetings.filter((m) => m.status !== "נקבעה" || !m.date || m.date < today).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, 5);
+
+  const typeColor   = TYPE_COLORS[client.type]    ?? TYPE_COLORS["אחר"];
+  const statusColor = STATUS_COLORS[client.status] ?? STATUS_COLORS["חדש"];
+
+  return (
+    <>
+      {/* ── Sticky header ── */}
+      <div style={{ padding: "18px 22px 16px", borderBottom: "1px solid #222", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#F0F0F0", marginBottom: 8, lineHeight: 1.2 }}>{client.name}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <Chip bg={typeColor.bg} color={typeColor.color}>{client.type}</Chip>
+              <Chip bg={statusColor.bg} color={statusColor.color}>{client.status}</Chip>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <IconBtn onClick={() => onEdit(client)} title="עריכה">✎</IconBtn>
+            <IconBtn onClick={onClose} title="סגור" style={{ fontSize: 20 }}>×</IconBtn>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Scrollable body ── */}
+      <div style={{ overflowY: "auto", flex: 1, padding: "18px 22px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {/* Contact + quick actions */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Contact row */}
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <ContactItem icon="📞" value={client.phone} href={client.phone ? `tel:${client.phone}` : undefined} />
+            <ContactItem icon="✉" value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {client.phone && (
+              <QuickBtn href={`https://wa.me/972${client.phone.replace(/^0/, "").replace(/\D/g, "")}`} color="#25D366" icon="💬" label="WhatsApp" />
+            )}
+            {client.phone && <CopyBtn text={client.phone} label="טלפון" icon="📋" />}
+            {client.email && (
+              <QuickBtn href={`mailto:${client.email}`} color="#3B82F6" icon="✉" label="מייל" />
+            )}
+            <QuickBtn onClick={onOpenMeetingForm} color="#F59E0B" icon="📅" label="פגישה" />
+          </div>
+        </div>
+
+        {/* Meeting form */}
+        {showMeetingForm && (
+          <MeetingForm
             client={client}
             projects={projects}
-            finances={finances}
-            sessions={sessions}
-            deliveries={deliveries}
-            loading={loading}
-            onClose={onClose}
-            onEdit={onEdit}
-            openProject={openProject}
+            onClose={onCloseMeetingForm}
+            onSaved={onAddMeeting}
           />
+        )}
+
+        {/* Notes */}
+        {client.notes && (
+          <SectionCard title="הערות">
+            <div style={{ fontSize: 13, color: "#999", lineHeight: 1.6 }}>{client.notes}</div>
+          </SectionCard>
+        )}
+
+        {loading ? (
+          <div style={{ textAlign: "center", color: "#444", fontSize: 13, padding: "24px 0" }}>טוען נתונים...</div>
+        ) : (
+          <>
+            {/* Finance summary */}
+            {totalAgreed > 0 ? (
+              <SectionCard title="כספים">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: totalExpected > 0 ? 10 : 0 }}>
+                  <StatCard label="סוכם" value={fmtMoney(totalAgreed, currency)} color="#A855F7" />
+                  <StatCard label="שולם" value={fmtMoney(totalPaid, currency)} color="#10B981" />
+                  <StatCard label="יתרה" value={fmtMoney(totalBalance, currency)} color={totalBalance <= 0 ? "#10B981" : "#EF4444"} />
+                  <StatCard label="רווח" value={fmtMoney(totalPaid - totalExpenses, currency)} color={(totalPaid - totalExpenses) >= 0 ? "#10B981" : "#EF4444"} />
+                </div>
+                {totalExpected > 0 && (
+                  <div style={{ fontSize: 12, color: "#555", borderTop: "1px solid #222", paddingTop: 8 }}>
+                    תשלום צפוי: <span style={{ color: "#3B82F6", fontWeight: 600 }}>{fmtMoney(totalExpected, currency)}</span>
+                  </div>
+                )}
+              </SectionCard>
+            ) : (
+              <EmptyState icon="₪" text="אין נתונים כספיים עדיין" />
+            )}
+
+            {/* Projects */}
+            {projects.length > 0 ? (
+              <SectionCard title={`פרויקטים (${projects.length})`}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {projects.map((p) => {
+                    const fin = finances.find((f) => f.projectId === p.id);
+                    const balance = fin ? fin.agreedPrice - fin.totalPaid : 0;
+                    const sColor = PROJECT_STATUS_COLOR[p.status] ?? "#6B7280";
+                    return (
+                      <ProjectRow
+                        key={p.id}
+                        project={p}
+                        balance={balance}
+                        fin={fin}
+                        statusColor={sColor}
+                        onOpen={() => openProject(p.id)}
+                      />
+                    );
+                  })}
+                </div>
+              </SectionCard>
+            ) : (
+              <EmptyState icon="♫" text="אין פרויקטים מקושרים" />
+            )}
+
+            {/* Sessions */}
+            {sessions.length > 0 ? (
+              <SectionCard title={`סשנים (${sessions.length})`}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
+                  <StatCard label="סה״כ"     value={String(sessions.length)}         color="#A855F7" small />
+                  <StatCard label="התקיימו"  value={String(completedSessions)}        color="#10B981" small />
+                  <StatCard label="מתוכננים" value={String(plannedSessions)}           color="#3B82F6" small />
+                </div>
+                {lastSession && <InfoRow label="סשן אחרון" value={fmtDate(lastSession.date)} />}
+                {nextSession  && <InfoRow label="סשן הבא" value={`${fmtDate(nextSession.date)}${nextSession.start_time ? ` ב-${nextSession.start_time.slice(0,5)}` : ""}`} color="#3B82F6" />}
+              </SectionCard>
+            ) : (
+              <EmptyState icon="🎵" text="אין סשנים עדיין" />
+            )}
+
+            {/* Meetings */}
+            <SectionCard
+              title="פגישות"
+              action={<QuickBtn onClick={onOpenMeetingForm} color="#F59E0B" icon="+" label="פגישה חדשה" small />}
+            >
+              {upcomingMeetings.length === 0 && pastMeetings.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#444", padding: "8px 0" }}>אין פגישות עדיין</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {upcomingMeetings.map((m) => (
+                    <MeetingRow key={m.id} meeting={m} projects={projects} onUpdate={onUpdateMeeting} onDelete={onRemoveMeeting} />
+                  ))}
+                  {pastMeetings.map((m) => (
+                    <MeetingRow key={m.id} meeting={m} projects={projects} onUpdate={onUpdateMeeting} onDelete={onRemoveMeeting} dim />
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+
+            {/* Deliveries */}
+            {deliveries.length > 0 && (
+              <SectionCard title={`מסירות (${deliveries.length})`}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {deliveries.map((d) => {
+                    const proj = projects.find((p) => p.id === d.projectId);
+                    return <DeliveryRow key={d.projectId} delivery={d} projectName={proj?.name} />;
+                  })}
+                </div>
+              </SectionCard>
+            )}
+          </>
+        )}
+
+        {client.created_at && (
+          <div style={{ fontSize: 11, color: "#2A2A2A", textAlign: "center" }}>
+            נוסף: {fmtDate(client.created_at.slice(0, 10))}
+          </div>
         )}
       </div>
     </>
   );
-
-  return createPortal(drawer, document.body);
 }
 
-// ─── DrawerContent ────────────────────────────────────────────────────────────
+// ─── MeetingForm ──────────────────────────────────────────────────────────────
 
-function DrawerContent({
-  client, projects, finances, sessions, deliveries, loading,
-  onClose, onEdit, openProject,
-}: {
-  client: Client;
-  projects: Project[];
-  finances: ProjectFinance[];
-  sessions: Session[];
-  deliveries: DeliveryRecord[];
-  loading: boolean;
-  onClose: () => void;
-  onEdit: (client: Client) => void;
-  openProject: (id: string) => void;
+function MeetingForm({ client, projects, onClose, onSaved }: {
+  client: Client; projects: Project[];
+  onClose: () => void; onSaved: (m: Meeting) => void;
 }) {
   const today = new Date().toISOString().split("T")[0];
+  const [date, setDate]         = useState(today);
+  const [time, setTime]         = useState("10:00");
+  const [duration, setDuration] = useState(60);
+  const [location, setLocation] = useState("פגישה פנים אל פנים");
+  const [notes, setNotes]       = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [addCal, setAddCal]     = useState(false);
+  const [saving, setSaving]     = useState(false);
 
-  // ── Derived stats ────────────────────────────────────────────────────────
-  const totalAgreed    = finances.reduce((s, f) => s + f.agreedPrice, 0);
-  const totalPaid      = finances.reduce((s, f) => s + f.totalPaid, 0);
-  const totalExpected  = finances.reduce((s, f) => s + f.totalExpected, 0);
-  const totalBalance   = totalAgreed - totalPaid;
-  const totalExpenses  = finances.reduce((s, f) => s + f.totalExpenses, 0);
-  const totalProfit    = totalPaid - totalExpenses;
-
-  // Primary currency (most common)
-  const currency = finances.length > 0 ? (finances[0].currency ?? "₪") : "₪";
-
-  const completedSessions = sessions.filter((s) => s.status === "התקיים").length;
-  const plannedSessions   = sessions.filter((s) => s.status === "מתוכנן").length;
-
-  const nextSession = sessions
-    .filter((s) => s.status === "מתוכנן" && s.date && s.date >= today)
-    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
-
-  const lastSession = sessions
-    .filter((s) => s.status === "התקיים" && s.date)
-    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))[0];
-
-  // Most recent project (for quick action)
-  const activeProjects = projects.filter(
-    (p) => p.status !== "הושלם" && p.status !== "בהשהייה"
-  );
-  const lastProject = activeProjects[0] ?? projects[0];
-
-  const typeColor   = TYPE_COLORS[client.type]   ?? TYPE_COLORS["אחר"];
-  const statusColor = STATUS_COLORS[client.status] ?? STATUS_COLORS["חדש"];
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: client.id, clientName: client.name, projectId: projectId || null, date, time, duration, location, notes, addToCalendar: addCal }),
+      });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error);
+      onSaved(d.meeting);
+      onClose();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "שגיאה");
+    } finally { setSaving(false); }
+  }
 
   return (
-    <div style={{ padding: "20px 20px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ background: "#1A1A1A", border: "1px solid #F59E0B33", borderRadius: 14, padding: "16px 18px" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B", marginBottom: 14 }}>📅 קביעת פגישה עם {client.name}</div>
 
-      {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#F0F0F0", marginBottom: 8, lineHeight: 1.2 }}>
-            {client.name}
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Chip bg={typeColor.bg} color={typeColor.color}>{client.type}</Chip>
-            <Chip bg={statusColor.bg} color={statusColor.color}>{client.status}</Chip>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-          <button
-            onClick={() => onEdit(client)}
-            title="עריכה"
-            style={iconBtnStyle}
-          >
-            ✎
-          </button>
-          <button
-            onClick={onClose}
-            title="סגור"
-            style={{ ...iconBtnStyle, fontSize: 18 }}
-          >
-            ×
-          </button>
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <FormField label="תאריך">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
+        </FormField>
+        <FormField label="שעה">
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
+        </FormField>
+        <FormField label="משך">
+          <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={inp}>
+            {DURATIONS.map((d) => <option key={d} value={d}>{d} דקות</option>)}
+          </select>
+        </FormField>
+        <FormField label="מיקום">
+          <select value={location} onChange={(e) => setLocation(e.target.value)} style={inp}>
+            {LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </FormField>
       </div>
 
-      {/* ── Contact info ── */}
-      {(client.phone || client.email) && (
-        <Card>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {client.phone && (
-              <ContactRow
-                icon="📞"
-                label={client.phone}
-                href={`tel:${client.phone}`}
-                dir="ltr"
-              />
-            )}
-            {client.email && (
-              <ContactRow
-                icon="✉"
-                label={client.email}
-                href={`mailto:${client.email}`}
-                dir="ltr"
-              />
-            )}
-          </div>
-        </Card>
+      {projects.length > 0 && (
+        <FormField label="קשר לפרויקט (אופציונלי)">
+          <select value={projectId} onChange={(e) => setProjectId(e.target.value)} style={{ ...inp, marginBottom: 10 }}>
+            <option value="">— ללא פרויקט —</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </FormField>
       )}
 
-      {/* ── Quick actions ── */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {client.phone && (
-          <QuickBtn
-            href={`https://wa.me/972${client.phone.replace(/^0/, "").replace(/-/g, "")}`}
-            color="#25D366"
-            icon="💬"
-            label="WhatsApp"
-          />
-        )}
-        {client.phone && (
-          <CopyBtn text={client.phone} label="העתק טלפון" icon="📋" />
-        )}
-        {lastProject && (
-          <QuickBtn
-            onClick={() => { onClose(); setTimeout(() => openProject(lastProject.id), 50); }}
-            color="#3B82F6"
-            icon="♫"
-            label="פתח פרויקט"
-          />
+      <FormField label="הערות">
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="נושא הפגישה, הכנות, שאלות..." style={{ ...inp, resize: "vertical", minHeight: 52, marginBottom: 10 }} />
+      </FormField>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#777", cursor: "pointer", marginBottom: 14 }}>
+        <input type="checkbox" checked={addCal} onChange={(e) => setAddCal(e.target.checked)} style={{ accentColor: "#F59E0B" }} />
+        הוסף ליומן Google Calendar
+      </label>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={save} disabled={saving}
+          style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.12)", color: "#F59E0B", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: saving ? 0.6 : 1 }}
+        >
+          {saving ? "שומר..." : "✓ שמור פגישה"}
+        </button>
+        <button onClick={onClose} style={{ padding: "9px 16px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#141414", color: "#555", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── ProjectRow with action menu ──────────────────────────────────────────────
+
+function ProjectRow({ project: p, balance, fin, statusColor, onOpen }: {
+  project: Project; balance: number; fin?: ProjectFinance;
+  statusColor: string; onOpen: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div style={{ position: "relative", background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+      {/* Project info — clickable */}
+      <div onClick={onOpen} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 13, color: "#D8D8D8", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+          <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}30`, whiteSpace: "nowrap", flexShrink: 0 }}>{p.status}</span>
+        </div>
+        {p.deadline && (
+          <div style={{ fontSize: 10, color: "#444", marginTop: 2 }}>דדליין: {fmtDate(p.deadline)}</div>
         )}
       </div>
 
-      {/* ── Notes ── */}
-      {client.notes && (
-        <Card>
-          <div style={{ fontSize: 11, color: "#555", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-            הערות
-          </div>
-          <div style={{ fontSize: 13, color: "#999", lineHeight: 1.6 }}>{client.notes}</div>
-        </Card>
+      {/* Balance badge */}
+      {fin && fin.agreedPrice > 0 && (
+        <span style={{ fontSize: 11, color: balance <= 0 ? "#10B981" : "#EF4444", flexShrink: 0, fontWeight: 600 }}>
+          {balance <= 0 ? "✓ שולם" : fmtMoney(balance, fin.currency)}
+        </span>
       )}
 
-      {loading && (
-        <div style={{ textAlign: "center", color: "#444", fontSize: 13, padding: "20px 0" }}>
-          טוען נתונים...
-        </div>
-      )}
+      {/* Action menu button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+        style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #2A2A2A", background: "#111", color: "#555", fontSize: 14, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        ⋯
+      </button>
 
-      {!loading && (
+      {/* Dropdown menu */}
+      {menuOpen && (
         <>
-          {/* ── Finance summary ── */}
-          {totalAgreed > 0 && (
-            <Section title="כספים">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                <StatCard label="סוכם" value={`${totalAgreed.toLocaleString()}${currency}`} color="#A855F7" />
-                <StatCard label="שולם" value={`${totalPaid.toLocaleString()}${currency}`} color="#10B981" />
-                <StatCard
-                  label="יתרה"
-                  value={`${totalBalance.toLocaleString()}${currency}`}
-                  color={totalBalance <= 0 ? "#10B981" : "#EF4444"}
-                />
-                <StatCard
-                  label="רווח"
-                  value={`${totalProfit.toLocaleString()}${currency}`}
-                  color={totalProfit >= 0 ? "#10B981" : "#EF4444"}
-                />
-              </div>
-              {totalExpected > 0 && (
-                <div style={{ fontSize: 12, color: "#555", paddingTop: 4 }}>
-                  תשלום צפוי: <span style={{ color: "#3B82F6" }}>{totalExpected.toLocaleString()}{currency}</span>
-                </div>
-              )}
-            </Section>
-          )}
-
-          {/* ── Projects ── */}
-          {projects.length > 0 && (
-            <Section title={`פרויקטים (${projects.length})`}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {projects.map((p) => {
-                  const fin = finances.find((f) => f.projectId === p.id);
-                  const balance = fin ? fin.agreedPrice - fin.totalPaid : 0;
-                  const statusColor = PROJECT_STATUS_COLOR[p.status] ?? "#6B7280";
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => { onClose(); setTimeout(() => openProject(p.id), 50); }}
-                      style={{
-                        width: "100%", textAlign: "right", background: "#1A1A1A",
-                        border: "1px solid #252525", borderRadius: 10,
-                        padding: "9px 12px", cursor: "pointer", fontFamily: "inherit",
-                        display: "flex", alignItems: "center", gap: 8,
-                        transition: "border-color 0.15s",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#333")}
-                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#252525")}
-                    >
-                      <span style={{ flex: 1, fontSize: 13, color: "#D8D8D8", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {p.name}
-                      </span>
-                      <span style={{
-                        fontSize: 10, padding: "2px 8px", borderRadius: 20,
-                        background: `${statusColor}18`, color: statusColor,
-                        border: `1px solid ${statusColor}30`, whiteSpace: "nowrap", flexShrink: 0,
-                      }}>
-                        {p.status}
-                      </span>
-                      {fin && fin.agreedPrice > 0 && (
-                        <span style={{
-                          fontSize: 11, color: balance <= 0 ? "#10B981" : "#EF4444",
-                          flexShrink: 0, fontWeight: 600,
-                        }}>
-                          {balance <= 0 ? "✓" : `${balance.toLocaleString()}${fin.currency}`}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </Section>
-          )}
-
-          {/* ── Sessions ── */}
-          {sessions.length > 0 && (
-            <Section title={`סשנים (${sessions.length})`}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
-                <StatCard label="סה״כ" value={String(sessions.length)} color="#A855F7" small />
-                <StatCard label="התקיימו" value={String(completedSessions)} color="#10B981" small />
-                <StatCard label="מתוכננים" value={String(plannedSessions)} color="#3B82F6" small />
-              </div>
-
-              {lastSession && (
-                <InfoRow label="סשן אחרון" value={formatDate(lastSession.date)} />
-              )}
-              {nextSession && (
-                <InfoRow
-                  label="הבא"
-                  value={`${formatDate(nextSession.date)}${nextSession.start_time ? ` ב-${nextSession.start_time.slice(0, 5)}` : ""}`}
-                  color="#3B82F6"
-                />
-              )}
-            </Section>
-          )}
-
-          {/* ── Deliveries ── */}
-          {deliveries.length > 0 && (
-            <Section title={`מסירות ללקוח (${deliveries.length})`}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {deliveries.map((d) => {
-                  const proj = projects.find((p) => p.id === d.projectId);
-                  const [copied, setCopied] = useState(false);
-                  const copy = () => {
-                    navigator.clipboard.writeText(d.deliveryLink).then(() => {
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 1800);
-                    }).catch(() => {});
-                  };
-                  return (
-                    <div
-                      key={d.projectId}
-                      style={{
-                        background: "#111", border: "1px solid #222", borderRadius: 10,
-                        padding: "9px 12px", display: "flex", alignItems: "center", gap: 8,
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: "#D0D0D0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {proj?.name ?? d.projectId}
-                        </div>
-                        {d.deliveredAt && (
-                          <div style={{ fontSize: 10, color: "#444" }}>
-                            נמסר {d.deliveredAt.split("-").reverse().join(".")}
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={copy}
-                        style={{
-                          padding: "4px 9px", borderRadius: 7, cursor: "pointer",
-                          fontFamily: "inherit", fontSize: 11, fontWeight: 600,
-                          border: copied ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(168,85,247,0.3)",
-                          background: copied ? "rgba(16,185,129,0.1)" : "rgba(168,85,247,0.08)",
-                          color: copied ? "#10B981" : "#C084FC",
-                          transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0,
-                        }}
-                      >
-                        {copied ? "✓" : "📋"} {copied ? "הועתק" : "לינק"}
-                      </button>
-                      {d.deliveryLink && (
-                        <a
-                          href={d.deliveryLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            padding: "4px 9px", borderRadius: 7, fontSize: 11,
-                            border: "1px solid #222", background: "#1A1A1A",
-                            color: "#555", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
-                          }}
-                        >
-                          ↗
-                        </a>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </Section>
-          )}
-
-          {/* Empty state */}
-          {projects.length === 0 && !loading && (
-            <div style={{ textAlign: "center", color: "#444", fontSize: 12, padding: "12px 0" }}>
-              אין פרויקטים מקושרים ללקוח זה
-            </div>
-          )}
+          <div style={{ position: "fixed", inset: 0, zIndex: 100 }} onClick={() => setMenuOpen(false)} />
+          <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 101, marginTop: 4, background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 10, padding: 4, minWidth: 160, boxShadow: "0 8px 32px rgba(0,0,0,0.8)" }}>
+            {[
+              { icon: "♫", label: "פתח פרויקט", action: () => { setMenuOpen(false); onOpen(); } },
+              { icon: "₪", label: "פתח כספים", action: () => { setMenuOpen(false); onOpen(); } },
+            ].map(({ icon, label, action }) => (
+              <button key={label} onClick={action} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px", borderRadius: 7, border: "none", background: "none", color: "#CCC", fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "right" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#252525"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+              >
+                <span>{icon}</span> {label}
+              </button>
+            ))}
+          </div>
         </>
       )}
+    </div>
+  );
+}
 
-      {/* ── Footer ── */}
-      {client.created_at && (
-        <div style={{ fontSize: 11, color: "#333", textAlign: "center", marginTop: 4 }}>
-          נוסף: {formatDate(client.created_at)}
+// ─── MeetingRow ───────────────────────────────────────────────────────────────
+
+function MeetingRow({ meeting: m, projects, onUpdate, onDelete, dim }: {
+  meeting: Meeting; projects: Project[];
+  onUpdate: (m: Meeting) => void; onDelete: (id: string) => void; dim?: boolean;
+}) {
+  const proj = projects.find((p) => p.id === m.project_id);
+  const statusColor = MEETING_STATUS_COLOR[m.status] ?? "#6B7280";
+
+  async function changeStatus(status: Meeting["status"]) {
+    const res = await fetch(`/api/meetings/${m.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    const d = await res.json();
+    if (d.meeting) onUpdate(d.meeting);
+  }
+  async function del() {
+    if (!confirm("למחוק פגישה זו?")) return;
+    await fetch(`/api/meetings/${m.id}`, { method: "DELETE" });
+    onDelete(m.id);
+  }
+
+  return (
+    <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 10, padding: "9px 12px", opacity: dim ? 0.55 : 1 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#D0D0D0" }}>
+              {fmtDate(m.date)}{m.time ? ` · ${m.time.slice(0, 5)}` : ""}
+            </span>
+            <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 20, background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}30` }}>{m.status}</span>
+          </div>
+          <div style={{ fontSize: 11, color: "#555" }}>
+            {m.location}{proj ? ` · ${proj.name}` : ""}
+            {m.duration ? ` · ${m.duration} דק׳` : ""}
+          </div>
+          {m.notes && <div style={{ fontSize: 11, color: "#444", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.notes}</div>}
         </div>
-      )}
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          {m.status === "נקבעה" && (
+            <button onClick={() => changeStatus("התקיימה")} title="סמן כהתקיימה" style={{ ...smBtn, color: "#10B981", borderColor: "rgba(16,185,129,0.3)" }}>✓</button>
+          )}
+          {m.status === "נקבעה" && (
+            <button onClick={() => changeStatus("בוטלה")} title="בטל" style={{ ...smBtn, color: "#EF4444", borderColor: "rgba(239,68,68,0.3)" }}>✕</button>
+          )}
+          <button onClick={del} title="מחק" style={{ ...smBtn, color: "#444" }}>🗑</button>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── DeliveryRow ──────────────────────────────────────────────────────────────
 
-function formatDate(date: string | null | undefined): string {
-  if (!date) return "—";
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return date.slice(0, 10);
-  return d.toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" });
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function Card({ children }: { children: React.ReactNode }) {
+function DeliveryRow({ delivery: d, projectName }: { delivery: DeliveryRecord; projectName?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => { navigator.clipboard.writeText(d.deliveryLink).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); }).catch(() => {}); };
   return (
-    <div style={{
-      background: "#1A1A1A", border: "1px solid #252525",
-      borderRadius: 12, padding: "14px 14px",
-    }}>
-      {children}
+    <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: "#D0D0D0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{projectName ?? d.projectId}</div>
+        {d.deliveredAt && <div style={{ fontSize: 10, color: "#444" }}>נמסר {fmtDate(d.deliveredAt.slice(0, 10))}</div>}
+      </div>
+      <button onClick={copy} style={{ padding: "4px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 600, border: copied ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(168,85,247,0.3)", background: copied ? "rgba(16,185,129,0.1)" : "rgba(168,85,247,0.08)", color: copied ? "#10B981" : "#C084FC", transition: "all 0.15s", whiteSpace: "nowrap" }}>
+        {copied ? "✓ הועתק" : "📋 לינק"}
+      </button>
+      {d.deliveryLink && <a href={d.deliveryLink} target="_blank" rel="noopener noreferrer" style={{ padding: "4px 9px", borderRadius: 7, fontSize: 11, border: "1px solid #222", background: "#1A1A1A", color: "#555", textDecoration: "none" }}>↗</a>}
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// ─── Small helpers ────────────────────────────────────────────────────────────
+
+function SectionCard({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div>
-      <div style={{ fontSize: 11, color: "#444", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
-        {title}
+    <div style={{ background: "#1A1A1A", border: "1px solid #222", borderRadius: 14, padding: "14px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em" }}>{title}</div>
+        {action}
       </div>
       {children}
+    </div>
+  );
+}
+
+function EmptyState({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div style={{ background: "#1A1A1A", border: "1px solid #1E1E1E", borderRadius: 14, padding: "18px 16px", textAlign: "center", color: "#333", fontSize: 12 }}>
+      <div style={{ fontSize: 20, marginBottom: 6 }}>{icon}</div>
+      {text}
     </div>
   );
 }
 
 function Chip({ children, bg, color }: { children: React.ReactNode; bg: string; color: string }) {
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center",
-      padding: "3px 10px", borderRadius: 20,
-      background: bg, color,
-      border: `1px solid ${color}30`,
-      fontSize: 11, fontWeight: 600,
-    }}>
+    <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 10px", borderRadius: 20, background: bg, color, border: `1px solid ${color}30`, fontSize: 11, fontWeight: 600 }}>
       {children}
     </span>
   );
@@ -628,13 +639,9 @@ function Chip({ children, bg, color }: { children: React.ReactNode; bg: string; 
 
 function StatCard({ label, value, color, small }: { label: string; value: string; color: string; small?: boolean }) {
   return (
-    <div style={{
-      background: "#111", border: "1px solid #222", borderRadius: 10,
-      padding: small ? "8px 10px" : "10px 12px",
-      display: "flex", flexDirection: "column", gap: 3,
-    }}>
-      <div style={{ fontSize: 10, color: "#444", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-      <div style={{ fontSize: small ? 14 : 16, fontWeight: 700, color }}>{value}</div>
+    <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 10, padding: small ? "8px 10px" : "10px 12px" }}>
+      <div style={{ fontSize: 10, color: "#444", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: small ? 14 : 15, fontWeight: 700, color }}>{value}</div>
     </div>
   );
 }
@@ -648,85 +655,58 @@ function InfoRow({ label, value, color }: { label: string; value: string; color?
   );
 }
 
-function ContactRow({ icon, label, href, dir }: { icon: string; label: string; href: string; dir?: string }) {
-  return (
-    <a
-      href={href}
-      style={{
-        display: "flex", alignItems: "center", gap: 8,
-        color: "#888", fontSize: 13, textDecoration: "none",
-        direction: dir as "ltr" | "rtl" | undefined,
-      }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#C0C0C0")}
-      onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#888")}
-    >
-      <span style={{ fontSize: 14, flexShrink: 0 }}>{icon}</span>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+function ContactItem({ icon, value, href }: { icon: string; value?: string; href?: string }) {
+  const text = value || "לא הוגדר";
+  const style: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: value ? "#A0A0A0" : "#333", direction: "ltr", textDecoration: "none" };
+  return href ? (
+    <a href={href} style={style} onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#D0D0D0"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = value ? "#A0A0A0" : "#333"; }}>
+      <span>{icon}</span><span>{text}</span>
     </a>
+  ) : (
+    <span style={style}><span>{icon}</span><span>{text}</span></span>
   );
 }
 
-function QuickBtn({
-  href, onClick, color, icon, label,
-}: {
-  href?: string; onClick?: () => void; color: string; icon: string; label: string;
-}) {
-  const style: React.CSSProperties = {
-    display: "inline-flex", alignItems: "center", gap: 6,
-    padding: "7px 14px", borderRadius: 10,
-    border: `1px solid ${color}30`,
-    background: `${color}10`, color,
-    fontSize: 12, fontWeight: 600, cursor: "pointer",
-    fontFamily: "inherit", textDecoration: "none",
-    whiteSpace: "nowrap",
-  };
-
-  if (href) {
-    return (
-      <a href={href} target="_blank" rel="noopener noreferrer" style={style}>
-        {icon} {label}
-      </a>
-    );
-  }
-  return (
-    <button onClick={onClick} style={style}>
-      {icon} {label}
-    </button>
-  );
+function QuickBtn({ href, onClick, color, icon, label, small }: { href?: string; onClick?: () => void; color: string; icon: string; label: string; small?: boolean }) {
+  const s: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, padding: small ? "5px 10px" : "7px 14px", borderRadius: 10, border: `1px solid ${color}30`, background: `${color}10`, color, fontSize: small ? 11 : 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textDecoration: "none", whiteSpace: "nowrap" };
+  return href ? <a href={href} target="_blank" rel="noopener noreferrer" style={s}>{icon} {label}</a>
+    : <button onClick={onClick} style={s}>{icon} {label}</button>;
 }
 
 function CopyBtn({ text, label, icon }: { text: string; label: string; icon: string }) {
   const [copied, setCopied] = useState(false);
-
-  const copy = () => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    }).catch(() => {});
-  };
-
+  const copy = () => { navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); }).catch(() => {}); };
   return (
-    <button
-      onClick={copy}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 6,
-        padding: "7px 14px", borderRadius: 10,
-        border: copied ? "1px solid rgba(16,185,129,0.35)" : "1px solid #2A2A2A",
-        background: copied ? "rgba(16,185,129,0.1)" : "#1A1A1A",
-        color: copied ? "#10B981" : "#777",
-        fontSize: 12, fontWeight: 600, cursor: "pointer",
-        fontFamily: "inherit", whiteSpace: "nowrap",
-        transition: "all 0.15s",
-      }}
-    >
+    <button onClick={copy} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 10, border: copied ? "1px solid rgba(16,185,129,0.35)" : "1px solid #2A2A2A", background: copied ? "rgba(16,185,129,0.1)" : "#1A1A1A", color: copied ? "#10B981" : "#777", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "all 0.15s" }}>
       {copied ? "✓" : icon} {copied ? "הועתק" : label}
     </button>
   );
 }
 
-const iconBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, borderRadius: 8,
-  border: "1px solid #2A2A2A", background: "#1A1A1A",
-  color: "#666", fontSize: 16, cursor: "pointer",
+function IconBtn({ onClick, title, children, style }: { onClick: () => void; title: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <button onClick={onClick} title={title} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #2A2A2A", background: "#1A1A1A", color: "#666", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style }}>
+      {children}
+    </button>
+  );
+}
+
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+const inp: React.CSSProperties = {
+  width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A",
+  background: "#111", color: "#E0E0E0", fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+};
+
+const smBtn: React.CSSProperties = {
+  width: 24, height: 24, borderRadius: 6, border: "1px solid #2A2A2A",
+  background: "#1A1A1A", fontSize: 12, cursor: "pointer",
   display: "flex", alignItems: "center", justifyContent: "center",
 };
