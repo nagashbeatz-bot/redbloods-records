@@ -54,16 +54,18 @@ export default function UploadButton({
   const [copied,     setCopied]     = useState(false);
   const { refresh } = useProjects();
 
-  const reset = (delay = 4000) =>
+  const reset = (delay = 2000) =>
     setTimeout(() => { setState("idle"); setErrorMsg(null); setProgress(0); }, delay);
+
+  const resetError = () => { setState("idle"); setErrorMsg(null); setProgress(0); };
 
   // ── Core upload logic (accepts a raw File) ──────────────────────────────────
   const processFile = async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (!AUDIO_EXTS.includes(`.${ext}`)) {
       setState("error");
-      setErrorMsg("יש לבחור קובץ אודיו (MP3, WAV, M4A)");
-      reset(3500);
+      setErrorMsg(`סוג קובץ לא נתמך: .${ext} — יש לבחור MP3, WAV, M4A, FLAC`);
+      reset(15000);
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -96,9 +98,11 @@ export default function UploadButton({
             url = json.shareUrl ?? "";
             if (!ok) throw new Error(json.error || "שגיאה בהעלאה");
           } catch (err) {
+            const msg = err instanceof Error ? err.message : "שגיאה בהעלאה";
+            console.error("[UploadButton] server error:", msg);
             setState("error");
-            setErrorMsg(err instanceof Error ? err.message : "שגיאה בהעלאה");
-            reset();
+            setErrorMsg(msg);
+            reset(15000);
             resolve();
             return;
           }
@@ -121,17 +125,19 @@ export default function UploadButton({
         } else {
           let msg = "שגיאה בהעלאה";
           try { msg = JSON.parse(xhr.responseText).error ?? msg; } catch {}
+          console.error("[UploadButton] HTTP error:", xhr.status, msg);
           setState("error");
           setErrorMsg(msg);
-          reset();
+          reset(15000);
         }
         resolve();
       };
 
       xhr.onerror = () => {
+        console.error("[UploadButton] network error / timeout");
         setState("error");
-        setErrorMsg("שגיאת חיבור");
-        reset();
+        setErrorMsg("שגיאת רשת — נסה שוב");
+        reset(15000);
         resolve();
       };
 
@@ -274,12 +280,23 @@ export default function UploadButton({
         {/* Error tooltip */}
         {state === "error" && errorMsg && (
           <div style={{
-            position: "absolute", bottom: "calc(100% + 6px)", right: 0,
-            background: "#2A1010", border: "1px solid #5A1A1A", color: "#FF6B6B",
-            fontSize: 11, padding: "4px 10px", borderRadius: 6,
-            whiteSpace: "nowrap", zIndex: 200, pointerEvents: "none",
+            position: "fixed",
+            bottom: 24, left: "50%", transform: "translateX(-50%)",
+            background: "#2A1010", border: "1px solid rgba(239,68,68,0.4)", color: "#FF8080",
+            fontSize: 13, fontWeight: 500, padding: "12px 18px", borderRadius: 12,
+            zIndex: 99999, boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+            display: "flex", alignItems: "center", gap: 12, maxWidth: "90vw",
+            direction: "rtl",
           }}>
-            {errorMsg}
+            <span style={{ fontSize: 16 }}>⚠</span>
+            <span style={{ flex: 1 }}>{errorMsg}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); resetError(); }}
+              style={{
+                background: "none", border: "none", color: "#EF4444",
+                cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0,
+              }}
+            >✕</button>
           </div>
         )}
 
