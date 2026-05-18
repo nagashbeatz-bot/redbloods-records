@@ -423,18 +423,18 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
       .catch(() => {});
   }, []);
 
-  // Optimistic patch: update local work state immediately
-  const handlePatch = useCallback(async (id: string, fields: Record<string, unknown>) => {
+  // Optimistic patch: update local state immediately, fire API in background
+  const handlePatch = useCallback((id: string, fields: Record<string, unknown>) => {
+    // Update UI immediately — no loading state, no re-fetch
     setWork((prev) => prev.map((w) => w.id === id ? { ...w, ...fields } as VendorWork : w));
-    await fetch(`/api/vendor/victor/work/${id}`, {
+    // Fire-and-forget — user never waits
+    fetch(`/api/vendor/victor/work/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fields),
-    });
-    // Refresh stats after any mutation
-    void fetchData();
-    onStatsRefresh();
-  }, [fetchData, onStatsRefresh]);
+    }).then(() => onStatsRefresh()).catch(() => {});
+    return Promise.resolve();
+  }, [onStatsRefresh]);
 
   const saveSettings = async () => {
     setSaving(true); setSaveMsg("");
