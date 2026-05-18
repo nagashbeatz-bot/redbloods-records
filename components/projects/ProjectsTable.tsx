@@ -863,25 +863,9 @@ export default function ProjectsTable() {
                   </div>
                 )}
 
-                {/* ── Status + Finance badge ── */}
+                {/* ── Status ── */}
                 <div style={{ ...cell, gap: 6 }} onClick={(e) => e.stopPropagation()}>
                   <StatusDropdown projectId={p.id} status={p.status} small />
-                  {(() => {
-                    const fin = financeSummary[p.id];
-                    if (!fin || fin.agreed <= 0) return null;
-                    const pct = fin.paid / fin.agreed;
-                    const label = pct >= 1 ? "שולם" : fin.paid > 0 ? "חלקי" : "לא שולם";
-                    const color = pct >= 1 ? "#10B981" : fin.paid > 0 ? "#F59E0B" : "#EF4444";
-                    return (
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, color,
-                        background: `${color}14`, border: `1px solid ${color}35`,
-                        borderRadius: 100, padding: "2px 7px", whiteSpace: "nowrap", flexShrink: 0,
-                      }}>
-                        {pct < 1 && fin.paid === 0 ? "לא שולם" : pct >= 1 ? "✓ שולם" : `חלקי ${Math.round(pct * 100)}%`}
-                      </span>
-                    );
-                  })()}
                 </div>
 
                 {/* ── Type — hidden on mobile and ultra-compact ── */}
