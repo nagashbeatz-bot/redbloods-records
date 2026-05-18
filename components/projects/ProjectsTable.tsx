@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
@@ -15,6 +16,24 @@ import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
 import ActionMenu from "@/components/project/ActionMenu";
 import NotesCellEdit from "@/components/ui/NotesCellEdit";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
+
+// ── Open project from URL param (?open=<id>) ──────────────────────────────────
+function OpenProjectFromURL() {
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  const { openProject } = useGlobalProjectDrawer();
+
+  useEffect(() => {
+    const id = searchParams.get("open");
+    if (id) {
+      openProject(id);
+      router.replace("/projects");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
 
 type FilterStatus = ProjectStatus | "כל הסטטוסים" | "באיחור" | "קרובים לדדליין";
 
@@ -484,6 +503,9 @@ export default function ProjectsTable() {
 
   return (
     <div>
+      <Suspense fallback={null}>
+        <OpenProjectFromURL />
+      </Suspense>
       {/* Filters row 1 — status */}
       <div className="flex flex-wrap gap-2 mb-3">
         {FILTER_OPTIONS.map((opt) => (
