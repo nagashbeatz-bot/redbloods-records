@@ -114,12 +114,9 @@ export default function VictorCard() {
         ) : stats ? (
           <>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-              <StatBox label="פעילים"           value={stats.active}         color="#A855F7" />
-              <StatBox label="הושלמו"           value={stats.completed}      color="#10B981" />
-              <StatBox label="בוטלו"            value={stats.cancelled}      color="#555" />
-              <StatBox label="דורשים בדיקה"     value={stats.needsReview}    color="#F59E0B" />
-              <StatBox label="תקועים"           value={stats.stuck}          color={stats.stuck > 0 ? "#EF4444" : "#555"} />
-              <StatBox label="נכנסו לפרויקט"   value={stats.enteredProject} color="#2DD4BF" />
+              <StatBox label="פעילים"  value={stats.active}    color="#A855F7" />
+              <StatBox label="הושלמו"  value={stats.completed} color="#10B981" />
+              <StatBox label="בוטלו"   value={stats.cancelled} color="#555" />
             </div>
 
             {/* Pace bar */}
