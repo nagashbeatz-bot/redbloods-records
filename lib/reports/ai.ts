@@ -47,6 +47,44 @@ export async function getRecommendations(
     );
   }
 
+  // Evening-specific context (uses new field names from ReportData v2)
+  if (reportType === "evening") {
+    if ((data.sessionsDone ?? []).length > 0) {
+      contextLines.push(
+        `סשנים שהתקיימו היום: ${(data.sessionsDone ?? [])
+          .map((s) => `${s.projectName}${s.artist ? ` (${s.artist})` : ""}`)
+          .join(", ")}`
+      );
+    }
+    if ((data.sessionsNeedingUpdate ?? []).length > 0) {
+      contextLines.push(
+        `סשנים שעברו ודורשים עדכון: ${(data.sessionsNeedingUpdate ?? [])
+          .map((s) => s.projectName).join(", ")}`
+      );
+    }
+    if ((data.tomorrowSessions ?? []).length > 0) {
+      contextLines.push(
+        `סשנים מחר: ${(data.tomorrowSessions ?? [])
+          .map((s) => `${s.projectName}${s.startTime ? ` ב-${s.startTime.slice(0, 5)}` : ""}`)
+          .join(", ")}`
+      );
+    }
+    const totalIn  = (data.txReceivedToday ?? []).reduce((s, t) => s + t.amount, 0);
+    const totalOut = (data.txExpensesToday ?? []).reduce((s, t) => s + t.amount, 0);
+    const totalPending = (data.txPendingAddedToday ?? []).reduce((s, t) => s + t.amount, 0);
+    if (totalIn + totalOut + totalPending > 0) {
+      contextLines.push(`תנועות כספיות שנרשמו היום: התקבל ${totalIn}₪, צפוי חדש ${totalPending}₪, הוצאות ${totalOut}₪`);
+    }
+    if ((data.completedTodayProjects ?? []).length > 0) {
+      contextLines.push(
+        `פרויקטים שהסתיימו היום: ${(data.completedTodayProjects ?? []).map((p) => p.name).join(", ")}`
+      );
+    }
+    if ((data.activityItems ?? []).length > 0) {
+      contextLines.push(`פעולות שבוצעו היום: ${(data.activityItems ?? []).length} פעולות`);
+    }
+  }
+
   const forTomorrow = reportType === "evening";
   const prompt = `אתה מנהל תפעול של סטודיו מוזיקה "Redbloods Records".
 

@@ -115,3 +115,85 @@ export interface MondayColumnMap {
   parentProject: string;  // שייך ל — empty string if column not yet added
 }
 
+// ── Vendor / Team types ────────────────────────────────────────────────────────
+
+export type VictorStatus =
+  | "לא נשלח"
+  | "נשלח לויקטור"
+  | "בעבודה אצל ויקטור"
+  | "מחכה לקבצים"
+  | "הוחזר מויקטור"
+  | "דורש תיקונים"
+  | "אושר"
+  | "לא רלוונטי";
+
+export const VICTOR_STATUSES: VictorStatus[] = [
+  "לא נשלח",
+  "נשלח לויקטור",
+  "בעבודה אצל ויקטור",
+  "מחכה לקבצים",
+  "הוחזר מויקטור",
+  "דורש תיקונים",
+  "אושר",
+  "לא רלוונטי",
+];
+
+/** Statuses that mean "active / in Victor's court" → used for stuck detection */
+export const VICTOR_ACTIVE_STATUSES = new Set<VictorStatus>([
+  "נשלח לויקטור",
+  "בעבודה אצל ויקטור",
+  "מחכה לקבצים",
+]);
+
+export type VictorQuality = "מצוין" | "אושר" | "חלקי" | "דורש תיקון" | "נדחה";
+export type VictorEntered = "כן" | "לא" | "חלקית";
+
+export interface VendorWork {
+  id: string;
+  vendorName: string;
+  projectId: string;
+  projectName: string;   // joined from projects table
+  artist: string;        // joined from projects table
+  status: VictorStatus;
+  sentDate: string | null;           // YYYY-MM-DD
+  internalDeadline: string | null;   // YYYY-MM-DD
+  returnedDate: string | null;       // YYYY-MM-DD
+  dropboxFolder: string | null;      // base path, e.g. "Victor/Shalev - HaMida"
+  dropboxShareLink: string | null;   // public share link to base folder
+  quality: VictorQuality | null;
+  enteredProject: VictorEntered | null;
+  notes: string;
+  filesSent: FileLink[];
+  filesReceived: FileLink[];
+  isStuck: boolean;                  // computed
+  daysSinceSent: number | null;      // computed
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VendorSettings {
+  monthlyGoal: number;       // target approved projects per month
+  monthlySalary: number;     // e.g. 550
+  salaryCurrency: string;    // "$"
+  salaryPayDay: number;      // day of month, e.g. 10
+  stuckAfterDays: number;    // default 5
+}
+
+export interface VictorMonthStats {
+  month: string;             // "YYYY-MM"
+  goal: number;
+  sent: number;
+  inProgress: number;        // currently in active statuses
+  returned: number;          // returned (any terminal/returned status)
+  approved: number;
+  needsFix: number;
+  rejected: number;
+  enteredProject: number;    // entered_project = "כן" or "חלקית"
+  stuck: number;             // computed
+  expectedByNow: number;     // pace target for today's date
+  successRate: number;       // approved / max(returned,1) * 100
+  paymentStatus: string;     // "שולם" | "צפוי" | "לא שולם"
+  monthlySalary: number;
+  salaryCurrency: string;
+}
+

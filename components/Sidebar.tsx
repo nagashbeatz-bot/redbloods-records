@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 const NAV_MAIN = [
   { href: "/dashboard", label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" }, // sky-blue
   { href: "/projects",  label: "פרויקטים", icon: "♫", iconColor: "#60A5FA" }, // blue-400
-  { href: "/clients",   label: "לקוחות",   icon: "👥", iconColor: "#C084FC" }, // purple-400
+  { href: "/clients",   label: "לקוחות",   icon: "☆", iconColor: "#C084FC" }, // purple-400
+  { href: "/team",      label: "צוות",     icon: "👥", iconColor: "#A855F7" }, // purple
   { href: "/finance",   label: "כספים",    icon: "₪", iconColor: "#34D399" }, // emerald-400
   { href: "/insights",  label: "תובנות",   icon: "◎", iconColor: "#2DD4BF" }, // teal-400
 ];

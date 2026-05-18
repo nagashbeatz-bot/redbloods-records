@@ -1904,6 +1904,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             </div>
           </CollapsibleCard>
 
+          {/* ── Victor section ──────────────────────────────────────────── */}
+          <VictorSection project={project} />
+
         </div>
 
       {/* ── Past-date confirmation modal ──────────────────────────────── */}
@@ -2335,3 +2338,252 @@ function SessionForm({
     </div>
   );
 }
+
+// ── Victor Section (self-contained, lazy-loaded) ──────────────────────────────
+
+import type { VendorWork, VictorStatus, VictorQuality, VictorEntered } from "@/lib/types";
+import { VICTOR_STATUSES } from "@/lib/types";
+import { useRef, useCallback } from "react";
+
+const VICTOR_STATUS_COLOR: Record<VictorStatus, string> = {
+  "לא נשלח":            "#555",
+  "נשלח לויקטור":       "#3B82F6",
+  "בעבודה אצל ויקטור": "#A855F7",
+  "מחכה לקבצים":        "#F59E0B",
+  "הוחזר מויקטור":      "#2DD4BF",
+  "דורש תיקונים":       "#F59E0B",
+  "אושר":               "#10B981",
+  "לא רלוונטי":         "#444",
+};
+
+function VictorSection({ project }: { project: { id: string; name: string; artist: string } }) {
+  const [open, setOpen]           = useState(false);
+  const [work, setWork]           = useState<VendorWork | null | undefined>(undefined);
+  const [loading, setLoading]     = useState(false);
+  const [creating, setCreating]   = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [copied, setCopied]       = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const uploadRef                 = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    if (work !== undefined) return;
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/vendor/victor/work?projectId=${project.id}`);
+      const data = await res.json() as { ok: boolean; work: VendorWork | null };
+      setWork(data.ok ? data.work : null);
+    } catch {
+      setWork(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [project.id, work]);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  const handleSend = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      const folderRes = await fetch("/api/dropbox/vendor-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorName: "Victor", artistName: project.artist || project.name, projectName: project.name }),
+      });
+      const folderData = await folderRes.json() as { ok: boolean; folderPath?: string; shareLink?: string };
+
+      const workRes = await fetch("/api/vendor/victor/work", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId:        project.id,
+          status:           "נשלח לויקטור",
+          sentDate:         new Date().toISOString().split("T")[0],
+          dropboxFolder:    folderData.ok ? folderData.folderPath : null,
+          dropboxShareLink: folderData.ok ? folderData.shareLink  : null,
+        }),
+      });
+      const workData = await workRes.json() as { ok: boolean; work: VendorWork };
+      if (!workData.ok) throw new Error("יצירת רשומה נכשלה");
+      setWork(workData.work);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const patch = async (fields: Record<string, unknown>) => {
+    if (!work) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/vendor/victor/work/${work.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      setWork((prev) => prev ? { ...prev, ...fields } as VendorWork : prev);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !work) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file",          file);
+      fd.append("workId",        work.id);
+      fd.append("dropboxFolder", work.dropboxFolder ?? "Victor");
+      fd.append("subFolder",     "01_From_Redbloods");
+      const res  = await fetch("/api/dropbox/vendor-upload", { method: "POST", body: fd });
+      const data = await res.json() as { ok: boolean; file: VendorWork["filesSent"][0] };
+      if (data.ok) setWork((prev) => prev ? { ...prev, filesSent: [...prev.filesSent, data.file] } : prev);
+    } finally {
+      setUploading(false);
+      if (uploadRef.current) uploadRef.current.value = "";
+    }
+  };
+
+  const copyLink = async () => {
+    if (!work?.dropboxShareLink) return;
+    await navigator.clipboard.writeText(work.dropboxShareLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div style={{ background: "#1C1C1C", border: "1px solid #252525", borderRadius: 14, marginBottom: 10, overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "right", fontFamily: "inherit" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#A855F7" }}>🎛 שליחה לויקטור</span>
+          {work && (
+            <span style={{ fontSize: 10, color: VICTOR_STATUS_COLOR[work.status], background: `${VICTOR_STATUS_COLOR[work.status]}18`, border: `1px solid ${VICTOR_STATUS_COLOR[work.status]}33`, borderRadius: 5, padding: "1px 7px" }}>
+              {work.status}
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: 13, color: "#444", display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", lineHeight: 1 }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "0 16px 14px" }}>
+          <div style={{ height: 1, background: "#252525", marginBottom: 14 }} />
+
+          {loading ? (
+            <div style={{ fontSize: 12, color: "#555" }}>טוען...</div>
+          ) : work === null ? (
+            <>
+              <div style={{ fontSize: 12, color: "#555", marginBottom: 12 }}>הפרויקט טרם נשלח לויקטור. לחץ ליצירת תיקיית Dropbox ורשומת מעקב.</div>
+              {error && <div style={{ fontSize: 11, color: "#EF4444", marginBottom: 8 }}>{error}</div>}
+              <button onClick={handleSend} disabled={creating}
+                style={{ width: "100%", padding: "9px 0", borderRadius: 10, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: creating ? "wait" : "pointer", background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)", color: "#A855F7", opacity: creating ? 0.7 : 1 }}>
+                {creating ? "יוצר תיקייה..." : "📤 שלח לויקטור"}
+              </button>
+            </>
+          ) : work ? (
+            <>
+              {/* Status */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סטטוס</div>
+                <select value={work.status} onChange={(e) => patch({ status: e.target.value as VictorStatus })}
+                  style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: VICTOR_STATUS_COLOR[work.status], fontSize: 12, padding: "5px 8px", fontFamily: "inherit" }}>
+                  {VICTOR_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              {/* Dates */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תאריך שליחה</div>
+                  <div style={{ fontSize: 12, color: "#888" }}>{work.sentDate ? work.sentDate.split("-").reverse().join(".") : "—"}</div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>דדליין פנימי</div>
+                  <input type="date" value={work.internalDeadline ?? ""} onChange={(e) => patch({ internalDeadline: e.target.value || null })}
+                    style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 6px", fontFamily: "inherit" }} />
+                </div>
+              </div>
+
+              {/* Dropbox links */}
+              {work.dropboxFolder && (
+                <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                  <button onClick={copyLink}
+                    style={{ flex: 1, padding: "6px 8px", borderRadius: 8, fontFamily: "inherit", fontSize: 11, cursor: "pointer", background: "#1A1A1A", border: "1px solid #2A2A2A", color: copied ? "#10B981" : "#888" }}>
+                    {copied ? "✓ הועתק" : "📋 העתק לינק"}
+                  </button>
+                  {work.dropboxShareLink && (
+                    <a href={work.dropboxShareLink} target="_blank" rel="noopener noreferrer"
+                      style={{ flex: 1, padding: "6px 8px", borderRadius: 8, fontSize: 11, textDecoration: "none", textAlign: "center", background: "#1A1A1A", border: "1px solid #2A2A2A", color: "#3B82F6" }}>
+                      ↗ פתח בדרופבוקס
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* File upload */}
+              <div style={{ marginBottom: 10 }}>
+                <input ref={uploadRef} type="file" style={{ display: "none" }} onChange={handleFileUpload} />
+                <button onClick={() => uploadRef.current?.click()} disabled={uploading || !work.dropboxFolder}
+                  style={{ width: "100%", padding: "7px 0", borderRadius: 8, fontFamily: "inherit", fontSize: 12, cursor: (uploading || !work.dropboxFolder) ? "default" : "pointer", background: "#1A1A1A", border: "1px solid #2A2A2A", color: "#888", opacity: work.dropboxFolder ? 1 : 0.5 }}>
+                  {uploading ? "מעלה..." : "⬆ העלה קובץ → 01_From_Redbloods"}
+                </button>
+                {work.filesSent.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    {work.filesSent.map((f, i) => <div key={i} style={{ fontSize: 11, color: "#555", padding: "2px 0" }}>📎 {f.name}</div>)}
+                  </div>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות לויקטור</div>
+                <textarea value={work.notes}
+                  onChange={(e) => setWork((prev) => prev ? { ...prev, notes: e.target.value } : prev)}
+                  onBlur={() => patch({ notes: work.notes })}
+                  rows={2}
+                  style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "6px 8px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+
+              {/* After return */}
+              {(["הוחזר מויקטור","דורש תיקונים","אושר"] as VictorStatus[]).includes(work.status) && (
+                <>
+                  <div style={{ height: 1, background: "#252525", margin: "10px 0 12px" }} />
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 8 }}>לאחר החזרה</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תוצאה / איכות</div>
+                      <select value={work.quality ?? ""} onChange={(e) => patch({ quality: (e.target.value as VictorQuality) || null })}
+                        style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "5px 6px", fontFamily: "inherit" }}>
+                        <option value="">—</option>
+                        {(["מצוין","אושר","חלקי","דורש תיקון","נדחה"] as VictorQuality[]).map((q) => <option key={q}>{q}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>נכנס לפרויקט</div>
+                      <select value={work.enteredProject ?? ""} onChange={(e) => patch({ enteredProject: (e.target.value as VictorEntered) || null })}
+                        style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "5px 6px", fontFamily: "inherit" }}>
+                        <option value="">—</option>
+                        {(["כן","לא","חלקית"] as VictorEntered[]).map((v) => <option key={v}>{v}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {saving && <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>שומר...</div>}
+            </>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
