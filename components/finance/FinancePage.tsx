@@ -6,7 +6,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type PaymentStatus = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "התקבל" | "לבדיקה";
-type Period        = "month" | "prev-month" | "30days" | "year" | "custom";
+type Period        = "prev-month" | "month" | "next-month" | "3months" | "custom";
 type SortMode      = "date-desc" | "date-asc" | "amount-desc" | "project" | "status" | "type";
 type Scope         = "project" | "general";
 type SourceFilter  = "all" | "project" | "general";
@@ -61,11 +61,11 @@ const PAYMENT_METHODS   = ["ביט", "העברה בנקאית", "מזומן", "P
 const HEB_MONTHS        = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
 
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
-  { key: "month",      label: "החודש" },
-  { key: "prev-month", label: "חודש קודם" },
-  { key: "30days",     label: "30 יום" },
-  { key: "year",       label: "שנה נוכחית" },
-  { key: "custom",     label: "מותאם אישית" },
+  { key: "prev-month",  label: "חודש קודם" },
+  { key: "month",       label: "חודש נוכחי" },
+  { key: "next-month",  label: "חודש הבא" },
+  { key: "3months",     label: "3 חודשים" },
+  { key: "custom",      label: "מותאם אישית" },
 ];
 
 const STATUS_COLOR: Record<string, string> = {
@@ -83,19 +83,18 @@ function getRange(period: Period, customFrom = "", customTo = ""): { from: Date 
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   switch (period) {
-    case "month":
-      return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59) };
     case "prev-month": {
       const pm = m === 0 ? 11 : m - 1;
       const py = m === 0 ? y - 1 : y;
       return { from: new Date(py, pm, 1), to: new Date(py, pm + 1, 0, 23, 59, 59) };
     }
-    case "30days": {
-      const from = new Date(now); from.setDate(from.getDate() - 30);
-      return { from, to: new Date(y, m, now.getDate(), 23, 59, 59) };
-    }
-    case "year":
-      return { from: new Date(y, 0, 1), to: new Date(y, 11, 31, 23, 59, 59) };
+    case "month":
+      return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59) };
+    case "next-month":
+      return { from: new Date(y, m + 1, 1), to: new Date(y, m + 2, 0, 23, 59, 59) };
+    case "3months":
+      // Current month + next 2 months
+      return { from: new Date(y, m, 1), to: new Date(y, m + 3, 0, 23, 59, 59) };
     case "custom":
       if (customFrom && customTo)
         return { from: new Date(customFrom), to: new Date(customTo + "T23:59:59") };
@@ -107,23 +106,22 @@ function getCompRange(period: Period): { from: Date | null; to: Date | null } {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   switch (period) {
-    case "month": {
-      const pm = m === 0 ? 11 : m - 1;
-      const py = m === 0 ? y - 1 : y;
-      return { from: new Date(py, pm, 1), to: new Date(py, pm + 1, 0, 23, 59, 59) };
-    }
     case "prev-month": {
-      const pm = m <= 1 ? (m === 0 ? 10 : 11) : m - 2;
-      const py = m <= 1 ? y - 1 : y;
-      return { from: new Date(py, pm, 1), to: new Date(py, pm + 1, 0, 23, 59, 59) };
+      // 2 months ago
+      return { from: new Date(y, m - 2, 1), to: new Date(y, m - 1, 0, 23, 59, 59) };
     }
-    case "30days": {
-      const from = new Date(now); from.setDate(from.getDate() - 60);
-      const to   = new Date(now); to.setDate(to.getDate() - 30);
-      return { from, to };
+    case "month": {
+      // Previous month
+      return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0, 23, 59, 59) };
     }
-    case "year":
-      return { from: new Date(y - 1, 0, 1), to: new Date(y - 1, 11, 31, 23, 59, 59) };
+    case "next-month": {
+      // Current month (compare next month to current)
+      return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59) };
+    }
+    case "3months": {
+      // Previous 3 months
+      return { from: new Date(y, m - 3, 1), to: new Date(y, m, 0, 23, 59, 59) };
+    }
     default:
       return { from: null, to: null };
   }
@@ -131,27 +129,37 @@ function getCompRange(period: Period): { from: Date | null; to: Date | null } {
 
 function getCompLabel(period: Period): string {
   switch (period) {
-    case "month":      return "מול חודש קודם";
-    case "prev-month": return "מול חודשיים קודמים";
-    case "30days":     return "מול 30 יום קודמים";
-    case "year":       return "מול שנה קודמת";
-    default:           return "";
+    case "prev-month":  return "מול חודשיים קודמים";
+    case "month":       return "מול חודש קודם";
+    case "next-month":  return "מול החודש הנוכחי";
+    case "3months":     return "מול 3 חודשים קודמים";
+    default:            return "";
   }
 }
 
-function getPeriodTitle(period: Period, customFrom = "", customTo = ""): { heading: string; sub: string } {
+function getPeriodTitle(period: Period, customFrom = "", customTo = ""): string {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   switch (period) {
-    case "month":      return { heading: "חודש נוכחי",      sub: `${HEB_MONTHS[m]} ${y}` };
     case "prev-month": {
       const pm = m === 0 ? 11 : m - 1;
       const py = m === 0 ? y - 1 : y;
-      return { heading: "חודש קודם", sub: `${HEB_MONTHS[pm]} ${py}` };
+      return `${HEB_MONTHS[pm]} ${py}`;
     }
-    case "30days":     return { heading: "30 ימים אחרונים", sub: "" };
-    case "year":       return { heading: "שנה נוכחית",       sub: `${y}` };
-    case "custom":     return { heading: "מותאם אישית",      sub: customFrom && customTo ? `${fmtDate(customFrom)} – ${fmtDate(customTo)}` : "" };
+    case "month":
+      return `${HEB_MONTHS[m]} ${y}`;
+    case "next-month": {
+      const nm = (m + 1) % 12;
+      const ny = m === 11 ? y + 1 : y;
+      return `${HEB_MONTHS[nm]} ${ny}`;
+    }
+    case "3months": {
+      const endMonth = (m + 2) % 12;
+      const endYear  = m + 2 > 11 ? y + 1 : y;
+      return `${HEB_MONTHS[m]} עד ${HEB_MONTHS[endMonth]} ${endYear}`;
+    }
+    case "custom":
+      return customFrom && customTo ? `${fmtDate(customFrom)} עד ${fmtDate(customTo)}` : "מותאם אישית";
   }
 }
 
@@ -626,10 +634,10 @@ export default function FinancePage() {
   };
 
   // ── Period computations ────────────────────────────────────────────────────
-  const range     = getRange(period, customFrom, customTo);
-  const compRange = getCompRange(period);
-  const compLabel = getCompLabel(period);
-  const { heading: periodHeading, sub: periodSub } = getPeriodTitle(period, customFrom, customTo);
+  const range       = getRange(period, customFrom, customTo);
+  const compRange   = getCompRange(period);
+  const compLabel   = getCompLabel(period);
+  const periodTitle = getPeriodTitle(period, customFrom, customTo);
 
   const periodTx = transactions.filter((t) => inRange(t.date, range));
   const compTx   = transactions.filter((t) => inRange(t.date, compRange));
@@ -799,13 +807,10 @@ export default function FinancePage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>
             כספים
-            {periodHeading && (
-              <span style={{ fontSize: 15, fontWeight: 400, color: "#555", marginRight: 10 }}>— {periodHeading}</span>
+            {periodTitle && (
+              <span style={{ fontSize: 15, fontWeight: 400, color: "#555", marginRight: 10 }}>— {periodTitle}</span>
             )}
           </h1>
-          {periodSub && (
-            <p style={{ fontSize: 13, color: "#666", margin: "4px 0 0", fontWeight: 500 }}>{periodSub}</p>
-          )}
         </div>
         <button onClick={openAdd} style={{
           display: "flex", alignItems: "center", gap: 7,
@@ -1052,7 +1057,7 @@ export default function FinancePage() {
       ) : filtered.length === 0 ? (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, padding: "60px", textAlign: "center", color: "#444", fontSize: 13 }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
-          {transactions.length === 0 ? "אין תנועות כספיות עדיין" : `אין תנועות ב${periodHeading}`}
+          {transactions.length === 0 ? "אין תנועות כספיות עדיין" : `אין תנועות — ${periodTitle}`}
           <div style={{ marginTop: 14 }}>
             <button onClick={openAdd} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.35)", background: "rgba(59,130,246,0.08)", color: "#3B82F6", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
               + הוסף תנועה
