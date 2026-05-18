@@ -17,7 +17,8 @@ interface Transaction {
 }
 interface Session {
   id: string; project_id: string; date: string | null;
-  start_time: string | null; end_time: string | null; status: string; notes: string;
+  start_time: string | null; end_time: string | null;
+  status: string; session_type: string; notes: string;
 }
 interface FinanceSetting { project_id: string; agreedPrice: number; currency: string; }
 interface DeliveryRecord {
@@ -34,6 +35,11 @@ interface Meeting {
   status: "נקבעה" | "התקיימה" | "בוטלה"; calendar_event_id: string | null;
   created_at: string;
 }
+
+type FormMode = "meeting" | "session" | null;
+type SavedResult =
+  | { type: "meeting"; data: Meeting }
+  | { type: "session"; data: Session };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -57,8 +63,16 @@ const PROJECT_STATUS_COLOR: Record<string, string> = {
 const MEETING_STATUS_COLOR: Record<Meeting["status"], string> = {
   "נקבעה": "#3B82F6", "התקיימה": "#10B981", "בוטלה": "#6B7280",
 };
-const LOCATIONS = ["פגישה פנים אל פנים", "זום", "טלפון", "סטודיו", "אחר"];
-const DURATIONS = [30, 45, 60, 90, 120];
+const SESSION_STATUS_COLOR: Record<string, string> = {
+  "מתוכנן":  "#3B82F6",
+  "התקיים":  "#10B981",
+  "בוטל":    "#6B7280",
+  "לא הגיע": "#EF4444",
+};
+const MEETING_LOCATIONS = ["פגישה פנים אל פנים", "זום", "טלפון", "סטודיו", "אחר"];
+const SESSION_LOCATIONS  = ["סטודיו", "סטודיו ביתי", "זום", "אחר"];
+const MEETING_DURATIONS  = [30, 45, 60, 90, 120];
+const SESSION_DURATIONS  = [60, 90, 120, 180, 240, 300, 360];
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return "—";
@@ -67,6 +81,11 @@ function fmtDate(d: string | null | undefined): string {
 }
 function fmtMoney(n: number, cur = "₪") {
   return `${n.toLocaleString("he-IL", { maximumFractionDigits: 0 })}${cur}`;
+}
+function calcEndTime(startTime: string, durationMin: number): string {
+  const [h, m] = startTime.split(":").map(Number);
+  const total = h * 60 + m + durationMin;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
 // ─── ClientDrawer (center modal) ──────────────────────────────────────────────
@@ -86,7 +105,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
   const [meetings,   setMeetings]   = useState<Meeting[]>([]);
   const [loading,    setLoading]    = useState(false);
   const [mounted,    setMounted]    = useState(false);
-  const [showMeetingForm, setShowMeetingForm] = useState(false);
+  const [formMode,   setFormMode]   = useState<FormMode>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -115,9 +134,9 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
       );
       const projectIds = new Set(clientProjects.map((p) => p.id));
 
-      const allTx: Transaction[]       = txRes.transactions ?? [];
+      const allTx: Transaction[]          = txRes.transactions ?? [];
       const allSettings: FinanceSetting[] = txRes.settings ?? [];
-      const allSessions: Session[]     = sessRes.sessions ?? [];
+      const allSessions: Session[]        = sessRes.sessions ?? [];
 
       const finMap = new Map<string, ProjectFinance>();
       for (const p of clientProjects) {
@@ -150,9 +169,17 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
   useEffect(() => { if (client) loadData(client); }, [client, loadData]);
 
-  const addMeeting = useCallback((m: Meeting) => setMeetings((prev) => [...prev, m]), []);
-  const updateMeeting = useCallback((m: Meeting) => setMeetings((prev) => prev.map((x) => x.id === m.id ? m : x)), []);
-  const removeMeeting = useCallback((id: string) => setMeetings((prev) => prev.filter((x) => x.id !== id)), []);
+  const addMeeting    = useCallback((m: Meeting)  => setMeetings((prev) => [...prev, m]), []);
+  const updateMeeting = useCallback((m: Meeting)  => setMeetings((prev) => prev.map((x) => x.id === m.id ? m : x)), []);
+  const removeMeeting = useCallback((id: string)  => setMeetings((prev) => prev.filter((x) => x.id !== id)), []);
+  const addSession    = useCallback((s: Session)  => setSessions((prev) => [...prev, s]), []);
+  const updateSession = useCallback((s: Session)  => setSessions((prev) => prev.map((x) => x.id === s.id ? s : x)), []);
+  const removeSession = useCallback((id: string)  => setSessions((prev) => prev.filter((x) => x.id !== id)), []);
+
+  const handleFormSaved = useCallback((result: SavedResult) => {
+    if (result.type === "meeting") addMeeting(result.data);
+    else addSession(result.data);
+  }, [addMeeting, addSession]);
 
   if (!mounted || !client) return null;
 
@@ -173,15 +200,17 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
           deliveries={deliveries}
           meetings={meetings}
           loading={loading}
-          showMeetingForm={showMeetingForm}
+          formMode={formMode}
           onClose={onClose}
           onEdit={onEdit}
           openProject={(id) => { onClose(); setTimeout(() => openProject(id), 50); }}
-          onOpenMeetingForm={() => setShowMeetingForm(true)}
-          onCloseMeetingForm={() => setShowMeetingForm(false)}
-          onAddMeeting={addMeeting}
+          onOpenForm={setFormMode}
+          onCloseForm={() => setFormMode(null)}
+          onFormSaved={handleFormSaved}
           onUpdateMeeting={updateMeeting}
           onRemoveMeeting={removeMeeting}
+          onUpdateSession={updateSession}
+          onRemoveSession={removeSession}
         />
       </div>
     </div>
@@ -194,16 +223,19 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
 function ModalContent({
   client, projects, finances, sessions, deliveries, meetings, loading,
-  showMeetingForm, onClose, onEdit, openProject,
-  onOpenMeetingForm, onCloseMeetingForm, onAddMeeting, onUpdateMeeting, onRemoveMeeting,
+  formMode, onClose, onEdit, openProject,
+  onOpenForm, onCloseForm, onFormSaved,
+  onUpdateMeeting, onRemoveMeeting,
+  onUpdateSession, onRemoveSession,
 }: {
   client: Client; projects: Project[]; finances: ProjectFinance[];
   sessions: Session[]; deliveries: DeliveryRecord[]; meetings: Meeting[];
-  loading: boolean; showMeetingForm: boolean;
+  loading: boolean; formMode: FormMode;
   onClose: () => void; onEdit: (c: Client) => void; openProject: (id: string) => void;
-  onOpenMeetingForm: () => void; onCloseMeetingForm: () => void;
-  onAddMeeting: (m: Meeting) => void; onUpdateMeeting: (m: Meeting) => void;
-  onRemoveMeeting: (id: string) => void;
+  onOpenForm: (mode: "meeting" | "session") => void; onCloseForm: () => void;
+  onFormSaved: (r: SavedResult) => void;
+  onUpdateMeeting: (m: Meeting) => void; onRemoveMeeting: (id: string) => void;
+  onUpdateSession: (s: Session) => void; onRemoveSession: (id: string) => void;
 }) {
   const today = new Date().toISOString().split("T")[0];
 
@@ -216,11 +248,22 @@ function ModalContent({
 
   const completedSessions = sessions.filter((s) => s.status === "התקיים").length;
   const plannedSessions   = sessions.filter((s) => s.status === "מתוכנן").length;
-  const nextSession = sessions.filter((s) => s.status === "מתוכנן" && s.date && s.date >= today).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
-  const lastSession = sessions.filter((s) => s.status === "התקיים" && s.date).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))[0];
 
-  const upcomingMeetings = meetings.filter((m) => m.status === "נקבעה" && m.date && m.date >= today).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
-  const pastMeetings     = meetings.filter((m) => m.status !== "נקבעה" || !m.date || m.date < today).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, 5);
+  const upcomingSessions = sessions
+    .filter((s) => s.status === "מתוכנן" && s.date && s.date >= today)
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+  const pastSessions = sessions
+    .filter((s) => s.status !== "מתוכנן" || (s.date && s.date < today))
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    .slice(0, 5);
+
+  const upcomingMeetings = meetings
+    .filter((m) => m.status === "נקבעה" && m.date && m.date >= today)
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
+  const pastMeetings = meetings
+    .filter((m) => m.status !== "נקבעה" || !m.date || m.date < today)
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    .slice(0, 5);
 
   const typeColor   = TYPE_COLORS[client.type]    ?? TYPE_COLORS["אחר"];
   const statusColor = STATUS_COLORS[client.status] ?? STATUS_COLORS["חדש"];
@@ -249,13 +292,11 @@ function ModalContent({
 
         {/* Contact + quick actions */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* Contact row */}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             <ContactItem icon="📞" value={client.phone} href={client.phone ? `tel:${client.phone}` : undefined} />
             <ContactItem icon="✉" value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
           </div>
 
-          {/* Action buttons */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {client.phone && (
               <QuickBtn href={`https://wa.me/972${client.phone.replace(/^0/, "").replace(/\D/g, "")}`} color="#25D366" icon="💬" label="WhatsApp" />
@@ -264,17 +305,28 @@ function ModalContent({
             {client.email && (
               <QuickBtn href={`mailto:${client.email}`} color="#3B82F6" icon="✉" label="מייל" />
             )}
-            <QuickBtn onClick={onOpenMeetingForm} color="#F59E0B" icon="📅" label="פגישה" />
+            {/* Two separate action buttons */}
+            <QuickBtn
+              onClick={() => onOpenForm("meeting")}
+              color="#F59E0B" icon="📅" label="פגישה"
+              active={formMode === "meeting"}
+            />
+            <QuickBtn
+              onClick={() => onOpenForm("session")}
+              color="#A855F7" icon="🎵" label="סשן"
+              active={formMode === "session"}
+            />
           </div>
         </div>
 
-        {/* Meeting form */}
-        {showMeetingForm && (
-          <MeetingForm
+        {/* Activity form (meeting or session) */}
+        {formMode !== null && (
+          <ActivityForm
+            initialMode={formMode}
             client={client}
             projects={projects}
-            onClose={onCloseMeetingForm}
-            onSaved={onAddMeeting}
+            onClose={onCloseForm}
+            onSaved={onFormSaved}
           />
         )}
 
@@ -315,15 +367,11 @@ function ModalContent({
                   {projects.map((p) => {
                     const fin = finances.find((f) => f.projectId === p.id);
                     const balance = fin ? fin.agreedPrice - fin.totalPaid : 0;
-                    const sColor = PROJECT_STATUS_COLOR[p.status] ?? "#6B7280";
+                    const sColor  = PROJECT_STATUS_COLOR[p.status] ?? "#6B7280";
                     return (
                       <ProjectRow
-                        key={p.id}
-                        project={p}
-                        balance={balance}
-                        fin={fin}
-                        statusColor={sColor}
-                        onOpen={() => openProject(p.id)}
+                        key={p.id} project={p} balance={balance} fin={fin}
+                        statusColor={sColor} onOpen={() => openProject(p.id)}
                       />
                     );
                   })}
@@ -334,24 +382,46 @@ function ModalContent({
             )}
 
             {/* Sessions */}
-            {sessions.length > 0 ? (
-              <SectionCard title={`סשנים (${sessions.length})`}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
-                  <StatCard label="סה״כ"     value={String(sessions.length)}         color="#A855F7" small />
-                  <StatCard label="התקיימו"  value={String(completedSessions)}        color="#10B981" small />
-                  <StatCard label="מתוכננים" value={String(plannedSessions)}           color="#3B82F6" small />
-                </div>
-                {lastSession && <InfoRow label="סשן אחרון" value={fmtDate(lastSession.date)} />}
-                {nextSession  && <InfoRow label="סשן הבא" value={`${fmtDate(nextSession.date)}${nextSession.start_time ? ` ב-${nextSession.start_time.slice(0,5)}` : ""}`} color="#3B82F6" />}
-              </SectionCard>
-            ) : (
-              <EmptyState icon="🎵" text="אין סשנים עדיין" />
-            )}
+            <SectionCard
+              title={`סשנים (${sessions.length})`}
+              action={
+                <QuickBtn onClick={() => onOpenForm("session")} color="#A855F7" icon="+" label="סשן חדש" small />
+              }
+            >
+              {sessions.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#444", padding: "8px 0" }}>אין סשנים עדיין</div>
+              ) : (
+                <>
+                  {/* Stats row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
+                    <StatCard label="סה״כ"     value={String(sessions.length)}  color="#A855F7" small />
+                    <StatCard label="התקיימו"  value={String(completedSessions)} color="#10B981" small />
+                    <StatCard label="מתוכננים" value={String(plannedSessions)}   color="#3B82F6" small />
+                  </div>
+                  {/* Upcoming sessions */}
+                  {upcomingSessions.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 6 }}>
+                      {upcomingSessions.map((s) => (
+                        <SessionRow key={s.id} session={s} projects={projects} onUpdate={onUpdateSession} onDelete={onRemoveSession} />
+                      ))}
+                    </div>
+                  )}
+                  {/* Past sessions */}
+                  {pastSessions.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {pastSessions.map((s) => (
+                        <SessionRow key={s.id} session={s} projects={projects} onUpdate={onUpdateSession} onDelete={onRemoveSession} dim />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </SectionCard>
 
             {/* Meetings */}
             <SectionCard
               title="פגישות"
-              action={<QuickBtn onClick={onOpenMeetingForm} color="#F59E0B" icon="+" label="פגישה חדשה" small />}
+              action={<QuickBtn onClick={() => onOpenForm("meeting")} color="#F59E0B" icon="+" label="פגישה חדשה" small />}
             >
               {upcomingMeetings.length === 0 && pastMeetings.length === 0 ? (
                 <div style={{ fontSize: 12, color: "#444", padding: "8px 0" }}>אין פגישות עדיין</div>
@@ -391,88 +461,330 @@ function ModalContent({
   );
 }
 
-// ─── MeetingForm ──────────────────────────────────────────────────────────────
+// ─── ActivityForm (meeting + session, with toggle) ────────────────────────────
 
-function MeetingForm({ client, projects, onClose, onSaved }: {
-  client: Client; projects: Project[];
-  onClose: () => void; onSaved: (m: Meeting) => void;
+function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
+  initialMode: "meeting" | "session";
+  client: Client;
+  projects: Project[];
+  onClose: () => void;
+  onSaved: (r: SavedResult) => void;
 }) {
   const today = new Date().toISOString().split("T")[0];
-  const [date, setDate]         = useState(today);
-  const [time, setTime]         = useState("10:00");
-  const [duration, setDuration] = useState(60);
-  const [location, setLocation] = useState("פגישה פנים אל פנים");
-  const [notes, setNotes]       = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [addCal, setAddCal]     = useState(false);
-  const [saving, setSaving]     = useState(false);
+  const [mode, setMode] = useState<"meeting" | "session">(initialMode);
+
+  // Shared fields
+  const [date,     setDate]     = useState(today);
+  const [time,     setTime]     = useState("10:00");
+  const [notes,    setNotes]    = useState("");
+  const [addCal,   setAddCal]   = useState(false);
+  const [saving,   setSaving]   = useState(false);
+
+  // Meeting-specific
+  const [duration,    setDuration]    = useState(60);
+  const [location,    setLocation]    = useState("פגישה פנים אל פנים");
+  const [meetProject, setMeetProject] = useState("");
+
+  // Session-specific
+  const [sessProjectId, setSessProjectId] = useState(projects[0]?.id ?? "");
+  const [sessDuration,  setSessDuration]  = useState(120);
+  const [sessLocation,  setSessLocation]  = useState("סטודיו");
+
+  // Optional payment (session only)
+  const [showPayment,      setShowPayment]      = useState(false);
+  const [paymentAmount,    setPaymentAmount]    = useState("");
+  const [paymentCurrency,  setPaymentCurrency]  = useState("₪");
+
+  const accent = mode === "meeting" ? "#F59E0B" : "#A855F7";
 
   async function save() {
     setSaving(true);
     try {
-      const res = await fetch("/api/meetings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: client.id, clientName: client.name, projectId: projectId || null, date, time, duration, location, notes, addToCalendar: addCal }),
-      });
-      const d = await res.json();
-      if (d.error) throw new Error(d.error);
-      onSaved(d.meeting);
-      onClose();
+      if (mode === "meeting") {
+        const res = await fetch("/api/meetings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: client.id, clientName: client.name,
+            projectId: meetProject || null,
+            date, time, duration, location, notes, addToCalendar: addCal,
+          }),
+        });
+        const d = await res.json();
+        if (d.error) throw new Error(d.error);
+        onSaved({ type: "meeting", data: d.meeting });
+        onClose();
+
+      } else {
+        // Session
+        if (!sessProjectId) { alert("יש לבחור פרויקט לסשן"); return; }
+        const endTime = calcEndTime(time, sessDuration);
+        const res = await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: sessProjectId,
+            date, startTime: time, endTime,
+            status: "מתוכנן", sessionType: sessLocation,
+            notes, addToCalendar: addCal,
+          }),
+        });
+        const d = await res.json();
+        if (d.error) throw new Error(d.error);
+
+        // Optional linked payment
+        if (showPayment && paymentAmount && Number(paymentAmount) > 0) {
+          await fetch("/api/transactions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              scope: "project", projectId: sessProjectId,
+              type: "income", date,
+              description: "תשלום בסשן",
+              artist: client.name,
+              amount: Number(paymentAmount),
+              currency: paymentCurrency,
+              paymentStatus: "צפוי",
+              linkedSessionId: d.session.id,
+            }),
+          }).catch(() => {});
+        }
+
+        onSaved({ type: "session", data: d.session });
+        onClose();
+      }
     } catch (e) {
       alert(e instanceof Error ? e.message : "שגיאה");
     } finally { setSaving(false); }
   }
 
   return (
-    <div style={{ background: "#1A1A1A", border: "1px solid #F59E0B33", borderRadius: 14, padding: "16px 18px" }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B", marginBottom: 14 }}>📅 קביעת פגישה עם {client.name}</div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-        <FormField label="תאריך">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
-        </FormField>
-        <FormField label="שעה">
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
-        </FormField>
-        <FormField label="משך">
-          <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={inp}>
-            {DURATIONS.map((d) => <option key={d} value={d}>{d} דקות</option>)}
-          </select>
-        </FormField>
-        <FormField label="מיקום">
-          <select value={location} onChange={(e) => setLocation(e.target.value)} style={inp}>
-            {LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
-        </FormField>
+    <div style={{ background: "#1A1A1A", border: `1px solid ${accent}33`, borderRadius: 14, padding: "16px 18px" }}>
+      {/* Mode toggle */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {(["meeting", "session"] as const).map((m) => {
+          const col  = m === "meeting" ? "#F59E0B" : "#A855F7";
+          const lbl  = m === "meeting" ? "📅 פגישה" : "🎵 סשן";
+          const active = mode === m;
+          return (
+            <button key={m} type="button" onClick={() => setMode(m)} style={{
+              flex: 1, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer",
+              background: active ? `${col}18` : "#111",
+              color: active ? col : "#555",
+              outline: active ? `1.5px solid ${col}40` : "1.5px solid #252525",
+              fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+              transition: "all 0.15s",
+            }}>
+              {lbl}
+            </button>
+          );
+        })}
       </div>
 
-      {projects.length > 0 && (
-        <FormField label="קשר לפרויקט (אופציונלי)">
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)} style={{ ...inp, marginBottom: 10 }}>
-            <option value="">— ללא פרויקט —</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </FormField>
+      {/* Form title */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: accent, marginBottom: 14 }}>
+        {mode === "meeting"
+          ? `📅 קביעת פגישה עם ${client.name}`
+          : `🎵 קביעת סשן עם ${client.name}`}
+      </div>
+
+      {/* ── Meeting fields ── */}
+      {mode === "meeting" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <FormField label="תאריך">
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
+            </FormField>
+            <FormField label="שעה">
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
+            </FormField>
+            <FormField label="משך">
+              <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={inp}>
+                {MEETING_DURATIONS.map((d) => <option key={d} value={d}>{d} דקות</option>)}
+              </select>
+            </FormField>
+            <FormField label="מיקום">
+              <select value={location} onChange={(e) => setLocation(e.target.value)} style={inp}>
+                {MEETING_LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </FormField>
+          </div>
+
+          {projects.length > 0 && (
+            <FormField label="קשר לפרויקט (אופציונלי)">
+              <select value={meetProject} onChange={(e) => setMeetProject(e.target.value)} style={{ ...inp, marginBottom: 10 }}>
+                <option value="">— ללא פרויקט —</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </FormField>
+          )}
+
+          <FormField label="הערות">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+              placeholder="נושא הפגישה, הכנות, שאלות..."
+              style={{ ...inp, resize: "vertical", minHeight: 52, marginBottom: 10 }} />
+          </FormField>
+        </>
       )}
 
-      <FormField label="הערות">
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="נושא הפגישה, הכנות, שאלות..." style={{ ...inp, resize: "vertical", minHeight: 52, marginBottom: 10 }} />
-      </FormField>
+      {/* ── Session fields ── */}
+      {mode === "session" && (
+        <>
+          <FormField label="פרויקט *">
+            <select value={sessProjectId} onChange={(e) => setSessProjectId(e.target.value)}
+              style={{ ...inp, marginBottom: 10, borderColor: !sessProjectId ? "rgba(168,85,247,0.5)" : "#2A2A2A" }}>
+              <option value="">— בחר פרויקט —</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </FormField>
 
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <FormField label="תאריך">
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
+            </FormField>
+            <FormField label="שעת התחלה">
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inp, colorScheme: "dark" }} />
+            </FormField>
+            <FormField label="משך">
+              <select value={sessDuration} onChange={(e) => setSessDuration(Number(e.target.value))} style={inp}>
+                {SESSION_DURATIONS.map((d) => <option key={d} value={d}>{d >= 60 ? `${d / 60} שעות` : `${d} דקות`}</option>)}
+              </select>
+            </FormField>
+            <FormField label="מיקום">
+              <select value={sessLocation} onChange={(e) => setSessLocation(e.target.value)} style={inp}>
+                {SESSION_LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </FormField>
+          </div>
+
+          {time && (
+            <div style={{ fontSize: 11, color: "#555", marginBottom: 10, marginTop: -6 }}>
+              שעת סיום משוערת: <span style={{ color: "#777" }}>{calcEndTime(time, sessDuration)}</span>
+            </div>
+          )}
+
+          <FormField label="הערות">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+              placeholder="נושא הסשן, הכנות, ציוד..."
+              style={{ ...inp, resize: "vertical", minHeight: 52, marginBottom: 10 }} />
+          </FormField>
+
+          {/* Optional payment */}
+          <div style={{ marginBottom: 10 }}>
+            <button type="button" onClick={() => setShowPayment((v) => !v)} style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "5px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+              background: showPayment ? "rgba(16,185,129,0.1)" : "transparent",
+              color: showPayment ? "#10B981" : "#444",
+              fontSize: 11, fontFamily: "inherit",
+              outline: showPayment ? "1px solid rgba(16,185,129,0.3)" : "1px solid #252525",
+            }}>
+              💰 {showPayment ? "הסתר תשלום" : "הוסף תשלום צפוי"}
+            </button>
+            {showPayment && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>סכום צפוי</div>
+                  <input type="number" min={0} value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="0" style={inp} />
+                </div>
+                <div style={{ width: 60 }}>
+                  <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>מטבע</div>
+                  <select value={paymentCurrency} onChange={(e) => setPaymentCurrency(e.target.value)} style={inp}>
+                    {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Calendar + Buttons */}
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#777", cursor: "pointer", marginBottom: 14 }}>
-        <input type="checkbox" checked={addCal} onChange={(e) => setAddCal(e.target.checked)} style={{ accentColor: "#F59E0B" }} />
-        הוסף ליומן Google Calendar
+        <input type="checkbox" checked={addCal} onChange={(e) => setAddCal(e.target.checked)} style={{ accentColor: accent }} />
+        הוסף ל-Google Calendar
       </label>
 
       <div style={{ display: "flex", gap: 8 }}>
         <button
-          onClick={save} disabled={saving}
-          style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.12)", color: "#F59E0B", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: saving ? 0.6 : 1 }}
+          onClick={save} disabled={saving || (mode === "session" && !sessProjectId)}
+          style={{
+            flex: 1, padding: "9px 0", borderRadius: 10,
+            border: `1px solid ${accent}40`,
+            background: `${accent}12`,
+            color: (saving || (mode === "session" && !sessProjectId)) ? "#444" : accent,
+            fontSize: 13, fontWeight: 600,
+            cursor: (saving || (mode === "session" && !sessProjectId)) ? "not-allowed" : "pointer",
+            fontFamily: "inherit",
+            opacity: (saving || (mode === "session" && !sessProjectId)) ? 0.6 : 1,
+          }}
         >
-          {saving ? "שומר..." : "✓ שמור פגישה"}
+          {saving ? "שומר..." : mode === "meeting" ? "✓ שמור פגישה" : "✓ שמור סשן"}
         </button>
         <button onClick={onClose} style={{ padding: "9px 16px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#141414", color: "#555", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── SessionRow ───────────────────────────────────────────────────────────────
+
+function SessionRow({ session: s, projects, onUpdate, onDelete, dim }: {
+  session: Session; projects: Project[];
+  onUpdate: (s: Session) => void; onDelete: (id: string) => void; dim?: boolean;
+}) {
+  const proj        = projects.find((p) => p.id === s.project_id);
+  const statusColor = SESSION_STATUS_COLOR[s.status] ?? "#6B7280";
+
+  async function changeStatus(status: string) {
+    const res = await fetch(`/api/sessions/${s.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    const d = await res.json();
+    if (d.session) onUpdate(d.session);
+  }
+  async function del() {
+    if (!confirm("למחוק סשן זה?")) return;
+    await fetch(`/api/sessions/${s.id}`, { method: "DELETE" });
+    onDelete(s.id);
+  }
+
+  return (
+    <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 10, padding: "9px 12px", opacity: dim ? 0.55 : 1 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#D0D0D0" }}>
+              {fmtDate(s.date)}{s.start_time ? ` · ${s.start_time.slice(0, 5)}` : ""}
+            </span>
+            <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 20, background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}30` }}>
+              {s.status}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: "#555" }}>
+            {proj?.name ?? "—"}
+            {s.session_type && s.session_type !== "סשן" ? ` · ${s.session_type}` : ""}
+            {s.start_time && s.end_time ? ` · ${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}` : ""}
+          </div>
+          {s.notes && <div style={{ fontSize: 11, color: "#444", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.notes}</div>}
+        </div>
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          {s.status === "מתוכנן" && (
+            <button onClick={() => changeStatus("התקיים")} title="סמן כהתקיים"
+              style={{ ...smBtn, color: "#10B981", borderColor: "rgba(16,185,129,0.3)" }}>✓</button>
+          )}
+          {s.status === "מתוכנן" && (
+            <button onClick={() => changeStatus("לא הגיע")} title="לא הגיע"
+              style={{ ...smBtn, color: "#F59E0B", borderColor: "rgba(245,158,11,0.3)", fontSize: 10, fontWeight: 700 }}>!</button>
+          )}
+          {s.status === "מתוכנן" && (
+            <button onClick={() => changeStatus("בוטל")} title="בטל"
+              style={{ ...smBtn, color: "#EF4444", borderColor: "rgba(239,68,68,0.3)" }}>✕</button>
+          )}
+          <button onClick={del} title="מחק" style={{ ...smBtn, color: "#444" }}>🗑</button>
+        </div>
       </div>
     </div>
   );
@@ -488,25 +800,20 @@ function ProjectRow({ project: p, balance, fin, statusColor, onOpen }: {
 
   return (
     <div style={{ position: "relative", background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-      {/* Project info — clickable */}
       <div onClick={onOpen} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 13, color: "#D8D8D8", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
           <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 20, background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}30`, whiteSpace: "nowrap", flexShrink: 0 }}>{p.status}</span>
         </div>
-        {p.deadline && (
-          <div style={{ fontSize: 10, color: "#444", marginTop: 2 }}>דדליין: {fmtDate(p.deadline)}</div>
-        )}
+        {p.deadline && <div style={{ fontSize: 10, color: "#444", marginTop: 2 }}>דדליין: {fmtDate(p.deadline)}</div>}
       </div>
 
-      {/* Balance badge */}
       {fin && fin.agreedPrice > 0 && (
         <span style={{ fontSize: 11, color: balance <= 0 ? "#10B981" : "#EF4444", flexShrink: 0, fontWeight: 600 }}>
           {balance <= 0 ? "✓ שולם" : fmtMoney(balance, fin.currency)}
         </span>
       )}
 
-      {/* Action menu button */}
       <button
         onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
         style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #2A2A2A", background: "#111", color: "#555", fontSize: 14, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -514,16 +821,16 @@ function ProjectRow({ project: p, balance, fin, statusColor, onOpen }: {
         ⋯
       </button>
 
-      {/* Dropdown menu */}
       {menuOpen && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 100 }} onClick={() => setMenuOpen(false)} />
           <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 101, marginTop: 4, background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 10, padding: 4, minWidth: 160, boxShadow: "0 8px 32px rgba(0,0,0,0.8)" }}>
             {[
               { icon: "♫", label: "פתח פרויקט", action: () => { setMenuOpen(false); onOpen(); } },
-              { icon: "₪", label: "פתח כספים", action: () => { setMenuOpen(false); onOpen(); } },
+              { icon: "₪", label: "פתח כספים",  action: () => { setMenuOpen(false); onOpen(); } },
             ].map(({ icon, label, action }) => (
-              <button key={label} onClick={action} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px", borderRadius: 7, border: "none", background: "none", color: "#CCC", fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "right" }}
+              <button key={label} onClick={action}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px", borderRadius: 7, border: "none", background: "none", color: "#CCC", fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "right" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#252525"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
               >
@@ -543,11 +850,14 @@ function MeetingRow({ meeting: m, projects, onUpdate, onDelete, dim }: {
   meeting: Meeting; projects: Project[];
   onUpdate: (m: Meeting) => void; onDelete: (id: string) => void; dim?: boolean;
 }) {
-  const proj = projects.find((p) => p.id === m.project_id);
+  const proj        = projects.find((p) => p.id === m.project_id);
   const statusColor = MEETING_STATUS_COLOR[m.status] ?? "#6B7280";
 
   async function changeStatus(status: Meeting["status"]) {
-    const res = await fetch(`/api/meetings/${m.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    const res = await fetch(`/api/meetings/${m.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
     const d = await res.json();
     if (d.meeting) onUpdate(d.meeting);
   }
@@ -646,17 +956,8 @@ function StatCard({ label, value, color, small }: { label: string; value: string
   );
 }
 
-function InfoRow({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: "1px solid #1E1E1E" }}>
-      <span style={{ fontSize: 12, color: "#555" }}>{label}</span>
-      <span style={{ fontSize: 12, color: color ?? "#999", fontWeight: 500 }}>{value}</span>
-    </div>
-  );
-}
-
 function ContactItem({ icon, value, href }: { icon: string; value?: string; href?: string }) {
-  const text = value || "לא הוגדר";
+  const text  = value || "לא הוגדר";
   const style: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: value ? "#A0A0A0" : "#333", direction: "ltr", textDecoration: "none" };
   return href ? (
     <a href={href} style={style} onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#D0D0D0"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = value ? "#A0A0A0" : "#333"; }}>
@@ -667,9 +968,20 @@ function ContactItem({ icon, value, href }: { icon: string; value?: string; href
   );
 }
 
-function QuickBtn({ href, onClick, color, icon, label, small }: { href?: string; onClick?: () => void; color: string; icon: string; label: string; small?: boolean }) {
-  const s: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 5, padding: small ? "5px 10px" : "7px 14px", borderRadius: 10, border: `1px solid ${color}30`, background: `${color}10`, color, fontSize: small ? 11 : 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textDecoration: "none", whiteSpace: "nowrap" };
-  return href ? <a href={href} target="_blank" rel="noopener noreferrer" style={s}>{icon} {label}</a>
+function QuickBtn({ href, onClick, color, icon, label, small, active }: {
+  href?: string; onClick?: () => void; color: string; icon: string;
+  label: string; small?: boolean; active?: boolean;
+}) {
+  const s: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 5,
+    padding: small ? "5px 10px" : "7px 14px", borderRadius: 10,
+    border: active ? `1.5px solid ${color}50` : `1px solid ${color}30`,
+    background: active ? `${color}20` : `${color}10`,
+    color, fontSize: small ? 11 : 12, fontWeight: 600,
+    cursor: "pointer", fontFamily: "inherit", textDecoration: "none", whiteSpace: "nowrap",
+  };
+  return href
+    ? <a href={href} target="_blank" rel="noopener noreferrer" style={s}>{icon} {label}</a>
     : <button onClick={onClick} style={s}>{icon} {label}</button>;
 }
 

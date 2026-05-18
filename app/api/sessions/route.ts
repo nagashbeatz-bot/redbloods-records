@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { projectId, date, startTime, endTime, status, sessionType, notes, calendarEventId } = body;
+    const { projectId, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar } = body;
 
     if (!projectId) {
       return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
@@ -86,6 +86,28 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) throw new Error(error.message);
+
+    // Optionally create Google Calendar event
+    if (addToCalendar && date && startTime) {
+      try {
+        const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
+        if (await isConnected()) {
+          const calStart = `${date}T${startTime}:00`;
+          const calEnd   = endTime
+            ? `${date}T${endTime}:00`
+            : (() => { const d = new Date(calStart); d.setHours(d.getHours() + 1); return d.toISOString().slice(0, 19); })();
+          const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
+          const summary = proj
+            ? `סשן: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}`
+            : "סשן";
+          const event = await createCalendarEvent(summary, calStart, calEnd, notes ? { description: notes } : undefined);
+          const calId  = (event as { id?: string }).id ?? null;
+          if (calId) {
+            await supabase.from("sessions").update({ calendar_event_id: calId }).eq("id", data.id);
+          }
+        }
+      } catch { /* calendar optional */ }
+    }
 
     return NextResponse.json({ session: data });
   } catch (err) {
