@@ -58,8 +58,9 @@ export interface Project {
   name: string;
   artist: string;
   status: ProjectStatus;
-  startDate: string | null;    // תאריך תחילת פרויקט
-  deadline: string | null;     // תאריך סיום / דדליין
+  startDate: string | null;    // תאריך תחילת פרויקט (אוטומטי = היום ביצירה)
+  deadline: string | null;     // דדליין — תאריך יעד בלבד
+  endDate: string | null;      // תאריך סיום בפועל (אוטומטי כשסטטוס = הושלם)
   notes: string;
   files: FileLink[];
   isOverdue: boolean;

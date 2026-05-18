@@ -29,10 +29,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "שם הפרויקט חסר" }, { status: 400 });
     }
 
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
     const project = await createProject({
       name:           name.trim(),
       artist:         artist?.trim()        || "",
       status:         status                || "לא התחיל",
+      start_date:     today,
       deadline:       deadline              || null,
       notes:          notes?.trim()         || "",
       project_type:   projectType           || "",

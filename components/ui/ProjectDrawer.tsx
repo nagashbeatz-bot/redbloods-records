@@ -866,7 +866,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               <StatusDropdown projectId={project.id} status={project.status} small />
             </Row>
             <Divider />
-            <Row label="תאריך תחילה">
+            <Row label="תאריך התחלה">
               <InlineCellEdit value={project.startDate || ""} onSave={(v) => updateProjectField(project.id, "startDate", v)} type="date">
                 <span style={{ fontSize: 12, color: "#888" }}>
                   {project.startDate
@@ -876,10 +876,31 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               </InlineCellEdit>
             </Row>
             <Divider />
-            <Row label="תאריך סיום">
+            <Row label="דדליין">
               <InlineCellEdit value={project.deadline || ""} onSave={(v) => updateProjectField(project.id, "deadline", v)} type="date">
                 <span style={{ fontSize: 12, color: deadlineColor }}>{deadlineLabel(project.deadline)}</span>
               </InlineCellEdit>
+            </Row>
+            <Divider />
+            <Row label="תאריך סיום">
+              <span style={{ fontSize: 12, color: project.endDate ? "#6EE7B7" : "#444" }}>
+                {project.endDate
+                  ? new Date(project.endDate + "T00:00:00").toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" })
+                  : "לא הושלם עדיין"}
+              </span>
+            </Row>
+            <Divider />
+            <Row label="משך פרויקט">
+              {(() => {
+                if (!project.startDate) return <span style={{ fontSize: 12, color: "#444" }}>—</span>;
+                const start = new Date(project.startDate + "T00:00:00").getTime();
+                const end   = project.endDate
+                  ? new Date(project.endDate + "T00:00:00").getTime()
+                  : Date.now();
+                const days  = Math.max(0, Math.round((end - start) / 86400000));
+                const label = project.endDate ? `${days} ימים` : `${days} ימים עד עכשיו`;
+                return <span style={{ fontSize: 12, color: "#888" }}>{label}</span>;
+              })()}
             </Row>
             <Divider />
             <Row label="סוג">

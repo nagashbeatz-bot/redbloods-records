@@ -44,7 +44,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         oldArtist = current?.artist ?? "";
       }
 
-      await updateProject(id, { [col]: value || (field === "deadline" || field === "startDate" ? null : "") } as Parameters<typeof updateProject>[1]);
+      const patch: Parameters<typeof updateProject>[1] = {
+        [col]: value || (field === "deadline" || field === "startDate" ? null : ""),
+      };
+
+      // Auto-manage end_date when status changes
+      if (field === "status") {
+        const today = new Date().toISOString().split("T")[0];
+        patch.end_date = value === "הושלם" ? today : null;
+      }
+
+      await updateProject(id, patch);
 
       // Sync artist changes to clients table (fire-and-forget)
       if (field === "artist") {
@@ -70,10 +80,14 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       oldArtistFull = current?.artist ?? "";
     }
 
+    const today = new Date().toISOString().split("T")[0];
     await updateProject(id, {
       ...(name           !== undefined && { name:           name.trim() }),
       ...(artist         !== undefined && { artist:         artist.trim() }),
-      ...(status         !== undefined && { status }),
+      ...(status         !== undefined && {
+        status,
+        end_date: status === "הושלם" ? today : null,
+      }),
       ...(startDate      !== undefined && { start_date:     startDate || null }),
       ...(deadline       !== undefined && { deadline:       deadline || null }),
       ...(notes          !== undefined && { notes:          notes.trim() }),

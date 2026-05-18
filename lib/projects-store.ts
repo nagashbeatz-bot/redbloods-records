@@ -13,6 +13,7 @@ interface DbProject {
   status:         string;
   start_date:     string | null;
   deadline:       string | null;
+  end_date:       string | null;
   notes:          string;
   project_type:   string;
   parent_project: string;
@@ -38,6 +39,7 @@ function dbToProject(db: DbProject): Project {
     status:        db.status as ProjectStatus,
     startDate:     db.start_date ?? null,
     deadline:      db.deadline,
+    endDate:       db.end_date ?? null,
     notes:         db.notes,
     files,
     isOverdue:     isOverdue(db.deadline),
@@ -131,6 +133,7 @@ export async function updateProject(
     status:         string;
     start_date:     string | null;
     deadline:       string | null;
+    end_date:       string | null;
     notes:          string;
     project_type:   string;
     parent_project: string;
