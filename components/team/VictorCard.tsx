@@ -125,27 +125,26 @@ export default function VictorCard() {
               background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10,
               padding: "10px 14px", marginBottom: 10,
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: "#666" }}>
-                  קצב מול יעד — {heMonth(month)}
-                </span>
-                <span style={{ fontSize: 11, color: pace, fontWeight: 700 }}>
-                  {stats.paceValue} / {stats.expectedByNow} צפוי עד עכשיו
+              <div style={{ marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: pace, fontWeight: 700 }}>
+                  {stats.paceValue > stats.expectedByNow
+                    ? `מעל הקצב — ${stats.paceValue} בפועל מתוך ${stats.expectedByNow} צפוי עד היום`
+                    : stats.paceValue === stats.expectedByNow
+                    ? `בקצב טוב — ${stats.paceValue} בפועל מתוך ${stats.expectedByNow} צפוי עד היום`
+                    : `מתחת לקצב — ${stats.paceValue} בפועל מתוך ${stats.expectedByNow} צפוי עד היום`}
                 </span>
               </div>
               <div style={{ height: 4, background: "#252525", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{
                   height: "100%", borderRadius: 4,
                   background: pace,
-                  width: `${Math.min(100, stats.expectedByNow > 0 ? (stats.approved / stats.expectedByNow) * 100 : 100)}%`,
+                  width: `${Math.min(100, stats.expectedByNow > 0 ? (stats.paceValue / stats.expectedByNow) * 100 : 100)}%`,
                   transition: "width 0.4s",
                 }} />
               </div>
-              {belowPace && (
-                <div style={{ fontSize: 10, color: "#EF4444", marginTop: 5 }}>
-                  ⚠ ויקטור מתחת לקצב החודשי — יעד: {stats.goal}
-                </div>
-              )}
+              <div style={{ marginTop: 6, fontSize: 10, color: "#444" }}>
+                יעד חודשי: {stats.goal} פרויקטים · הקצב מחושב לפי פעילים + הושלמו בחודש הנוכחי
+              </div>
             </div>
           </>
         ) : (

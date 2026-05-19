@@ -562,18 +562,28 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
 
                   <SectionTitle>קצב מול יעד — פעיל + הושלם</SectionTitle>
                   <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                      <span style={{ fontSize: 12, color: "#666" }}>פעיל + הושלם (לא בוטל)</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: stats.paceValue >= stats.expectedByNow ? "#10B981" : "#EF4444" }}>
-                        {stats.paceValue} / {stats.expectedByNow} צפוי
-                      </span>
+                    <div style={{ marginBottom: 8 }}>
+                      {(() => {
+                        const color = stats.paceValue > stats.expectedByNow ? "#10B981"
+                          : stats.paceValue >= stats.expectedByNow * 0.9 ? "#10B981"
+                          : stats.paceValue >= stats.expectedByNow * 0.6 ? "#F59E0B"
+                          : "#EF4444";
+                        const label = stats.paceValue > stats.expectedByNow
+                          ? `מעל הקצב — ${stats.paceValue} בפועל מתוך ${stats.expectedByNow} צפוי עד היום`
+                          : stats.paceValue >= stats.expectedByNow
+                          ? `בקצב טוב — ${stats.paceValue} בפועל מתוך ${stats.expectedByNow} צפוי עד היום`
+                          : `מתחת לקצב — ${stats.paceValue} בפועל מתוך ${stats.expectedByNow} צפוי עד היום`;
+                        return <span style={{ fontSize: 13, fontWeight: 700, color }}>{label}</span>;
+                      })()}
                     </div>
                     <div style={{ height: 6, background: "#252525", borderRadius: 4, overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 4, background: stats.paceValue >= stats.expectedByNow ? "#10B981" : stats.paceValue >= stats.expectedByNow * 0.6 ? "#F59E0B" : "#EF4444", width: `${Math.min(100, stats.expectedByNow > 0 ? (stats.paceValue / stats.expectedByNow) * 100 : 100)}%` }} />
+                      <div style={{ height: "100%", borderRadius: 4,
+                        background: stats.paceValue >= stats.expectedByNow ? "#10B981" : stats.paceValue >= stats.expectedByNow * 0.6 ? "#F59E0B" : "#EF4444",
+                        width: `${Math.min(100, stats.expectedByNow > 0 ? (stats.paceValue / stats.expectedByNow) * 100 : 100)}%` }} />
                     </div>
-                    {stats.paceValue < stats.expectedByNow && (
-                      <div style={{ fontSize: 11, color: "#EF4444", marginTop: 6 }}>⚠ מתחת לקצב — יעד חודשי: {stats.goal}</div>
-                    )}
+                    <div style={{ marginTop: 8, fontSize: 11, color: "#444" }}>
+                      יעד חודשי: {stats.goal} פרויקטים · הקצב מחושב לפי פעילים + הושלמו בחודש הנוכחי
+                    </div>
                   </div>
 
                   <SectionTitle>תשלום {heMonth(month)}</SectionTitle>
