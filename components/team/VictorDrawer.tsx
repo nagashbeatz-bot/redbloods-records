@@ -388,7 +388,6 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   const [salCurrency, setSalCurrency] = useState("$");
   const [payDay,      setPayDay]      = useState("");
   const [stuckDays,   setStuckDays]   = useState("");
-  const [paceMetric,  setPaceMetric]  = useState<"הושלמו" | "אושרו" | "נכנסו לפרויקט בפועל">("נכנסו לפרויקט בפועל");
   const [payStatus,   setPayStatus]   = useState("צפוי");
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState("");
@@ -407,7 +406,6 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
         setSalary(String(data.stats.monthlySalary));
         setSalCurrency(data.stats.salaryCurrency);
         setPayStatus(data.stats.paymentStatus);
-        setPaceMetric(data.stats.paceMetric);
       }
     } finally { setLoading(false); }
   }, [month]);
@@ -448,7 +446,6 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
           salaryCurrency: salCurrency,
           salaryPayDay:   Number(payDay),
           stuckAfterDays: Number(stuckDays),
-          paceMetric,
         }),
       });
       setSaveMsg("נשמר ✓");
@@ -563,10 +560,10 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                   <StatRow label="אושרו"               value={stats.approved}        color="#10B981" />
                   <StatRow label="נכנסו לפרויקט בפועל" value={stats.enteredProject}  color="#2DD4BF" />
 
-                  <SectionTitle>קצב מול יעד — {stats.paceMetric}</SectionTitle>
+                  <SectionTitle>קצב מול יעד — פעיל + הושלם</SectionTitle>
                   <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "12px 14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                      <span style={{ fontSize: 12, color: "#666" }}>{stats.paceMetric}</span>
+                      <span style={{ fontSize: 12, color: "#666" }}>פעיל + הושלם (לא בוטל)</span>
                       <span style={{ fontSize: 13, fontWeight: 700, color: stats.paceValue >= stats.expectedByNow ? "#10B981" : "#EF4444" }}>
                         {stats.paceValue} / {stats.expectedByNow} צפוי
                       </span>
@@ -608,14 +605,6 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                         style={{ width: "100%", background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 8, color: "#D0D0D0", fontSize: 13, padding: "7px 10px", fontFamily: "inherit" }} />
                     </div>
                   ))}
-
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>מדד יעד חודשי (קצב)</div>
-                    <select value={paceMetric} onChange={(e) => setPaceMetric(e.target.value as typeof paceMetric)}
-                      style={{ width: "100%", background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 8, color: "#D0D0D0", fontSize: 13, padding: "7px 10px", fontFamily: "inherit" }}>
-                      {(["הושלמו", "אושרו", "נכנסו לפרויקט בפועל"] as const).map((m) => <option key={m}>{m}</option>)}
-                    </select>
-                  </div>
 
                   <SectionTitle>שכר ותשלום</SectionTitle>
                   <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>

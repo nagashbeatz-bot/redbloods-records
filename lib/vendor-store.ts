@@ -16,7 +16,6 @@ import type {
   VictorStatus,
   VictorWorkState,
   VictorOutcome,
-  VictorPaceMetric,
 } from "@/lib/types";
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -27,7 +26,6 @@ const DEFAULT_SETTINGS: VendorSettings = {
   salaryCurrency: "$",
   salaryPayDay:   10,
   stuckAfterDays: 5,
-  paceMetric:     "נכנסו לפרויקט בפועל",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -286,12 +284,8 @@ export async function getVictorMonthStats(month: string): Promise<VictorMonthSta
   const enteredMonth   = all.filter((w) => w.outcome === "נכנס לפרויקט בפועל"    && inMonth(w));
 
   // ── Pace ────────────────────────────────────────────────────────────────────
-
-  const pm = settings.paceMetric as VictorPaceMetric;
-  const paceValue =
-    pm === "הושלמו"                ? completedMonth.length :
-    pm === "אושרו"                 ? approvedMonth.length  :
-    /* נכנסו לפרויקט בפועל */        enteredMonth.length;
+  // paceValue = records sent this month that are NOT בוטל (פעיל + הושלם)
+  const paceValue = sentThisMonth.filter((w) => w.status !== "בוטל").length;
 
   const now        = new Date();
   const curMonth   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -306,7 +300,6 @@ export async function getVictorMonthStats(month: string): Promise<VictorMonthSta
   return {
     month,
     goal:          settings.monthlyGoal,
-    paceMetric:    pm,
     sent:          sentThisMonth.length,
     active:        activeAll.length,
     completed:     completedMonth.length,

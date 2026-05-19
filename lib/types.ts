@@ -144,9 +144,6 @@ export const VICTOR_OUTCOMES: VictorOutcome[] = [
   "אושר", "נכנס לפרויקט בפועל", "חלקית", "לא נכנס לפרויקט", "נדחה",
 ];
 
-/** Pace metric setting — what counts toward the monthly goal */
-export type VictorPaceMetric = "הושלמו" | "אושרו" | "נכנסו לפרויקט בפועל";
-
 export interface VendorWork {
   id: string;
   vendorName: string;
@@ -176,13 +173,11 @@ export interface VendorSettings {
   salaryCurrency: string;        // "$"
   salaryPayDay: number;          // day of month, e.g. 10
   stuckAfterDays: number;        // default 5
-  paceMetric: VictorPaceMetric;  // what to measure for pace — default "נכנסו לפרויקט בפועל"
 }
 
 export interface VictorMonthStats {
   month: string;              // "YYYY-MM"
   goal: number;
-  paceMetric: VictorPaceMetric;
 
   // Status counts (records in this month)
   sent: number;               // sentDate in month
