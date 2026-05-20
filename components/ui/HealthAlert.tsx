@@ -6,6 +6,29 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { checkHealth, checkFinanceHealth, ProjectIssue, FinanceSummary } from "@/lib/health";
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
 
+// ── Mobile summary: group issues into up to 3 category lines ─────────────────
+function buildSummaryLines(issues: ProjectIssue[]): string[] {
+  const counts: Record<string, number> = {};
+  for (const i of issues) {
+    const key =
+      i.type === "overdue_active"    ? "overdue"   :
+      i.type === "missing_deadline"  ? "deadline"  :
+      (i.type === "unpaid_in_mix" || i.type === "payment_overdue" || i.type === "open_balance" || i.type === "negative_profit")
+                                     ? "finance"   :
+      i.type === "missing_type"      ? "type"      :
+      i.type === "missing_artist"    ? "artist"    : "other";
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  const lines: string[] = [];
+  if (counts.overdue)  lines.push(`${counts.overdue} פרויקט${counts.overdue > 1 ? "ים" : ""} עבר${counts.overdue > 1 ? "ו" : ""} דדליין`);
+  if (counts.finance)  lines.push(`${counts.finance} בעי${counts.finance > 1 ? "ות" : "ה"} כספי${counts.finance > 1 ? "ות" : "ת"}`);
+  if (counts.deadline) lines.push(`${counts.deadline} פרויקט${counts.deadline > 1 ? "ים" : ""} ללא תאריך יעד`);
+  if (counts.type)     lines.push(`${counts.type} פרויקט${counts.type > 1 ? "ים" : ""} ללא סוג`);
+  if (counts.artist)   lines.push(`${counts.artist} פרויקט${counts.artist > 1 ? "ים" : ""} ללא אמן`);
+  if (counts.other)    lines.push(`${counts.other} בעי${counts.other > 1 ? "ות" : "ה"} נוספ${counts.other > 1 ? "ות" : "ת"}`);
+  return lines.slice(0, 3);
+}
+
 const TYPE_COLORS: Record<string, string> = {
   "שיר": "#3B82F6", "EP": "#A855F7", "אלבום": "#EC4899",
   "קליפ": "#F59E0B", "רידים": "#10B981", "אחר": "#6B7280",
@@ -195,6 +218,14 @@ function ActionBtn({
 
 export default function HealthAlert() {
   const { projects } = useProjects();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // ── Finance summaries (loaded once, used for finance health checks) ──────
   const [financeSummaries, setFinanceSummaries] = useState<FinanceSummary[]>([]);
@@ -212,9 +243,7 @@ export default function HealthAlert() {
           project_id: string; agreedPrice: number; currency: string;
         }> = d.settings ?? [];
 
-        // Build per-project map
         const map = new Map<string, FinanceSummary>();
-
         const ensure = (pid: string) => {
           if (!map.has(pid)) {
             map.set(pid, { projectId: pid, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, totalExpenses: 0, overduePayment: false });
@@ -235,16 +264,14 @@ export default function HealthAlert() {
             s.totalExpenses += t.amount;
           }
         }
-
         for (const setting of settings) {
           const s = ensure(setting.project_id);
           s.agreedPrice = setting.agreedPrice ?? 0;
           s.currency    = setting.currency    ?? "₪";
         }
-
         setFinanceSummaries(Array.from(map.values()));
       })
-      .catch(() => {}); // non-fatal — health alert still works without finance data
+      .catch(() => {});
   }, []);
 
   // ── Merge project + finance issues ───────────────────────────────────────
@@ -268,15 +295,85 @@ export default function HealthAlert() {
   const snooze = (issue: ProjectIssue) =>
     setSnoozed((prev) => new Set([...prev, `${issue.id}-${issue.type}`]));
 
-  // Collapse automatically when all issues resolved/snoozed
   const highCount = issues.filter((i) => i.priority === "high").length;
-  const medCount = issues.filter((i) => i.priority === "medium").length;
+  const medCount  = issues.filter((i) => i.priority === "medium").length;
 
   if (dismissed || issues.length === 0) return null;
 
   const borderColor = highCount > 0 ? "#EF444440" : "#F59E0B40";
-  const accentColor = highCount > 0 ? "#EF4444" : "#F59E0B";
+  const accentColor = highCount > 0 ? "#EF4444"   : "#F59E0B";
 
+  // ── Mobile layout ─────────────────────────────────────────────────────────
+  if (isMobile) {
+    const summaryLines = buildSummaryLines(issues);
+    return (
+      <div style={{
+        borderRadius: 16,
+        border: `1px solid ${borderColor}`,
+        background: "#161616",
+        overflow: "hidden",
+      }}>
+        {/* Compact card header */}
+        <div style={{ padding: "12px 14px 10px", display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <span style={{ fontSize: 14, color: accentColor, marginTop: 1 }}>⚠</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#D0D0D0", marginBottom: 5 }}>
+              {issues.length === 1 ? "פריט אחד דורש טיפול" : `${issues.length} דברים דורשים טיפול`}
+            </div>
+            {/* 2-3 summary lines */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {summaryLines.map((line) => (
+                <div key={line} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 4, height: 4, borderRadius: "50%", background: accentColor, flexShrink: 0, display: "inline-block" }} />
+                  <span style={{ fontSize: 12, color: "#888" }}>{line}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Dismiss × */}
+          <button
+            onClick={() => setDismissed(true)}
+            style={{ background: "none", border: "none", color: "#444", cursor: "pointer", fontSize: 18, padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* "פתח טיפול" button */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            width: "100%", padding: "10px 14px",
+            borderTop: "1px solid #222",
+            borderRight: "none", borderBottom: "none", borderLeft: "none",
+            background: expanded ? "#1A1A1A" : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            color: accentColor, fontSize: 12, fontWeight: 700,
+            cursor: "pointer", fontFamily: "inherit",
+          }}
+        >
+          <span>{expanded ? "סגור טיפול" : "פתח טיפול"}</span>
+          <span style={{ fontSize: 10 }}>{expanded ? "▲" : "▼"}</span>
+        </button>
+
+        {/* Expanded issues list */}
+        {expanded && (
+          <div style={{ maxHeight: 340, overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
+            {issues.map((issue) => (
+              <IssueRow
+                key={`${issue.id}-${issue.type}`}
+                issue={issue}
+                onFixed={snooze}
+                onSnooze={snooze}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Desktop layout (unchanged) ─────────────────────────────────────────────
   return (
     <div
       style={{
