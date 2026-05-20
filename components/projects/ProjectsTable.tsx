@@ -347,49 +347,70 @@ function MobileProjectCard({
   const dueSoon = days !== null && days >= 0 && days <= 7 && p.status !== "הושלם";
   const fin = financeSummary[p.id];
   const balance = fin ? fin.agreed - fin.paid : 0;
-  const sc = STATUS_COLORS[p.status] ?? { bg: "#1A1A1A", color: "#888" };
+  const sc = STATUS_COLORS[p.status] ?? { bg: "rgba(75,85,99,0.15)", color: "#6B7280" };
 
   return (
     <button
       onClick={() => openProject(p.id)}
       style={{
         width: "100%", textAlign: "right", direction: "rtl",
-        background: "#1A1A1A", border: `1px solid ${overdue ? "rgba(239,68,68,0.3)" : "#252525"}`,
+        background: "#1A1A1A", border: "1px solid #252525",
         borderRadius: 14, padding: "14px 16px",
         cursor: "pointer", fontFamily: "inherit",
-        display: "flex", flexDirection: "column", gap: 8,
-        transition: "background 0.15s",
+        display: "flex", flexDirection: "column", gap: 6,
       }}
     >
-      {/* Row 1: name + status badge */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0", flex: 1, lineHeight: 1.3 }}>
-          {p.name}
-        </span>
+      {/* Row 1: project name */}
+      <div style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0", lineHeight: 1.3, textAlign: "right" }}>
+        {p.name}
+      </div>
+
+      {/* Row 2: artist */}
+      {p.artist && (
+        <div style={{ fontSize: 13, color: "#666", textAlign: "right" }}>{p.artist}</div>
+      )}
+
+      {/* Row 3: status + deadline tag */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+        {/* Status badge */}
         <span style={{
-          fontSize: 12, fontWeight: 600, borderRadius: 8, padding: "3px 10px",
-          background: sc.bg, color: sc.color, flexShrink: 0, whiteSpace: "nowrap",
+          fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "2px 9px",
+          background: sc.bg, color: sc.color, whiteSpace: "nowrap",
         }}>
           {p.status}
         </span>
-      </div>
 
-      {/* Row 2: artist + type */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 13, color: "#888", flex: 1 }}>{p.artist || "—"}</span>
-        {p.projectType && <ProjectTypeBadge type={p.projectType} />}
-      </div>
+        {/* Deadline tag — muted, not screaming */}
+        {overdue && (
+          <span style={{
+            fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "2px 9px",
+            background: "rgba(239,68,68,0.08)", color: "#EF4444",
+            border: "1px solid rgba(239,68,68,0.2)", whiteSpace: "nowrap",
+          }}>
+            {deadlineLabel(p.deadline)}
+          </span>
+        )}
+        {!overdue && dueSoon && (
+          <span style={{
+            fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "2px 9px",
+            background: "rgba(245,158,11,0.08)", color: "#F59E0B",
+            border: "1px solid rgba(245,158,11,0.2)", whiteSpace: "nowrap",
+          }}>
+            עוד {days} {days === 1 ? "יום" : "ימים"}
+          </span>
+        )}
+        {!overdue && !dueSoon && p.deadline && (
+          <span style={{ fontSize: 11, color: "#444" }}>
+            {deadlineLabel(p.deadline)}
+          </span>
+        )}
 
-      {/* Row 3: deadline + balance */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{
-          fontSize: 12, fontWeight: 600,
-          color: overdue ? "#EF4444" : dueSoon ? "#F59E0B" : "#555",
-        }}>
-          {p.deadline ? deadlineLabel(p.deadline) : "ללא דדליין"}
-        </span>
+        {/* Balance */}
         {fin && balance > 0 && (
-          <span style={{ fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 600,
+            color: "#F59E0B", marginRight: "auto",
+          }}>
             יתרה: {fin.currency}{balance.toLocaleString()}
           </span>
         )}

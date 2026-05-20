@@ -74,8 +74,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <header
-          className="h-14 flex items-center justify-between px-6 border-b sticky top-0 z-40"
-          style={{ background: "#141414", borderColor: "#2A2A2A" }}
+          className="flex items-center justify-between px-4 md:px-6 border-b sticky top-0 z-40"
+          style={{
+            background: "#141414", borderColor: "#2A2A2A",
+            paddingTop: "max(14px, env(safe-area-inset-top))",
+            paddingBottom: 14,
+            minHeight: 56,
+          }}
         >
           {/* Left side — Jahkno Radio trigger (hidden on mobile) */}
           <div className="hidden md:block">
@@ -129,7 +134,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             style={{
               background: "#141414",
               borderColor: "#2A2A2A",
-              height: `calc(100vh - 56px)`,
+              height: `calc(100dvh - 56px)`,
               width: chatOpen ? CHAT_WIDTH : 0,
               opacity: chatOpen ? 1 : 0,
               pointerEvents: chatOpen ? "auto" : "none",

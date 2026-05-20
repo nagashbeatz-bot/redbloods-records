@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body   { margin:0; padding:0; background:#0D0D0D; font-family:Arial,Helvetica,sans-serif; direction:rtl; color:#E0E0E0; }
+  .wrap  { max-width:600px; margin:0 auto; padding:20px 12px 40px; }
+  .card  { background:#141414; border:1px solid #252525; border-radius:14px; padding:20px 24px; margin-bottom:16px; }
+  .head  { background:linear-gradient(135deg,#1a0a2e,#0a1a2e); border:1px solid #2A2A2A; border-radius:14px; padding:24px 28px; margin-bottom:20px; }
+  h1     { margin:0 0 4px; font-size:22px; font-weight:800; color:#F0F0F0; }
+  .sub   { font-size:13px; color:#555; margin:0; }
+  h2     { font-size:13px; font-weight:700; color:#888; letter-spacing:.06em; text-transform:uppercase; margin:0 0 12px; }
+  .row   { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #1E1E1E; font-size:13px; }
+  .row:last-child { border-bottom:none; }
+  .lbl   { color:#666; }
+  .val   { color:#D0D0D0; font-weight:500; text-align:left; direction:ltr; }
+  .val.hi{ color:#C084FC; font-weight:700; }
+  .val.r { color:#EF4444; }
+  .val.a { color:#F59E0B; }
+  .val.g { color:#10B981; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+  .empty { color:#444; font-size:13px; font-style:italic; padding:4px 0; }
+  .rec   { background:#1A1A1A; border-radius:10px; padding:10px 14px; margin-bottom:8px; font-size:13px; color:#D0D0D0; }
+  .rec .n{ color:#A855F7; font-weight:700; margin-left:8px; }
+  .cal   { background:#111827; border-radius:10px; padding:10px 14px; margin-bottom:8px; }
+  .footer{ text-align:center; font-size:11px; color:#333; margin-top:24px; }
+  .tag   { color:#3B82F6; font-size:11px; }
+  .sep   { height:1px; background:#1A1A1A; margin:16px 0; }
+  .ovd   { color:#EF4444; }
+  .soon  { color:#F59E0B; }
+  .today { color:#C084FC; }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <!-- 1. כותרת -->
+    <div class="head">
+      <h1>🌙 סיכום יום</h1>
+      <p class="sub">יום שלישי, 19 במאי 2026</p>
+    </div>
+
+    <!-- 2. מה קרה היום בפועל — קובייה ראשית -->
+    <div class="card"><h2>⚡ מה קרה היום בפועל</h2><div style="font-size:11px;font-weight:700;color:#10B981;letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px;">💰 כספים</div>
+        <div style="padding:7px 0;border-bottom:1px solid #1E1E1E;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;color:#D0D0D0;">התקבל: סגירת יתרה</span>
+            <span style="color:#10B981;font-weight:700;font-size:13px;white-space:nowrap;">+1,800 ₪</span>
+          </div>
+          <div style="font-size:11px;color:#555;margin-top:2px;">המימד החמישי · שימי מטרו</div>
+        </div><div style="font-size:11px;font-weight:700;color:#3B82F6;letter-spacing:.05em;text-transform:uppercase;margin:14px 0 8px;padding-top:4px;border-top:1px solid #1E1E1E;">📅 סשנים</div>
+        <div style="padding:7px 0;border-bottom:1px solid #1E1E1E;">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="font-size:13px;color:#D0D0D0;"><span style="color:#3B82F6;margin-left:6px;">📅</span>נקבע: פרויקט לא ידוע</span>
+            <span style="font-size:12px;color:#3B82F6;white-space:nowrap;">20.05.2026 · 16:00 – –19:00</span>
+          </div>
+        </div></div>
+
+    <!-- 3. מה היה אמור לקרות ולא נסגר -->
+    <div class="card"><h2>📋 מה היה אמור לקרות ולא נסגר</h2><div style="font-size:11px;font-weight:700;color:#3B82F6;letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px;">📅 יומן</div><div class="row">
+        <span class="lbl">סשן רוני נגה ונגש ביטס</span>
+        <span class="val" style="color:#3B82F6;font-size:12px;">11:00 – 13:00</span>
+      </div><div style="font-size:11px;font-weight:700;color:#F59E0B;letter-spacing:.05em;text-transform:uppercase;margin:14px 0 8px;padding-top:4px;border-top:1px solid #1E1E1E;">💳 תשלומים צפויים שלא התקבלו</div><div class="row">
+        <span class="lbl">תשלום צפוי לסשן — המימד החמישי · שימי מטרו</span>
+        <span class="val a">1,400 ₪ · צפוי</span>
+      </div><div style="font-size:11px;font-weight:700;color:#C084FC;letter-spacing:.05em;text-transform:uppercase;margin:14px 0 8px;padding-top:4px;border-top:1px solid #1E1E1E;">⏰ דדליין היום — עדיין פתוח</div><div class="row">
+        <span class="lbl today">הדיבור שלי — טל צגאי</span>
+        <span class="val hi">לא התחיל</span>
+      </div></div>
+
+    <!-- 4. דדליינים (overdue + מחר בלבד — היום מטופל בחלק הקודם) -->
+    <div class="card"><h2>⏰ דדליינים</h2><div style="font-size:11px;font-weight:700;color:#EF4444;letter-spacing:.05em;text-transform:uppercase;margin:14px 0 8px;padding-top:4px;border-top:1px solid #1E1E1E;">עברו דדליין</div>
+      <div style="padding:10px 0;border-bottom:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">מה באלי</span>
+          <span style="font-size:12px;color:#EF4444;font-weight:700;white-space:nowrap;margin-right:8px;">עבר לפני 1 ימ</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">יהב פלאח</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 18.05.2026</span>
+          <span style="font-size:11px;color:#888;">מחכה למיקס</span>
+        </div>
+      </div>
+      <div style="padding:10px 0;border-bottom:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">פרנציפ</span>
+          <span style="font-size:12px;color:#EF4444;font-weight:700;white-space:nowrap;margin-right:8px;">עבר לפני 1 ימ</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">שליו טסמה</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 18.05.2026</span>
+          <span style="font-size:11px;color:#888;">בהשהייה</span>
+        </div>
+      </div>
+      <div style="padding:10px 0;border-bottom:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">קסם</span>
+          <span style="font-size:12px;color:#EF4444;font-weight:700;white-space:nowrap;margin-right:8px;">עבר לפני 1 ימ</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">חיים באינסאי</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 18.05.2026</span>
+          <span style="font-size:11px;color:#888;">בעבודה</span>
+        </div>
+      </div>
+      <div style="padding:10px 0;border-bottom:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">כולם יודעים</span>
+          <span style="font-size:12px;color:#EF4444;font-weight:700;white-space:nowrap;margin-right:8px;">עבר לפני 1 ימ</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">מאור אהרון</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 18.05.2026</span>
+          <span style="font-size:11px;color:#888;">במיקס</span>
+        </div>
+      </div>
+      <div style="padding:10px 0;border-bottom:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">פפארצי</span>
+          <span style="font-size:12px;color:#EF4444;font-weight:700;white-space:nowrap;margin-right:8px;">עבר לפני 1 ימ</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">נגש ביטס, אבי מולה, שליו טסמה</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 18.05.2026</span>
+          <span style="font-size:11px;color:#888;">במיקס</span>
+        </div>
+      </div>
+      <div style="padding:10px 0;border-bottom:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">Tasty</span>
+          <span style="font-size:12px;color:#EF4444;font-weight:700;white-space:nowrap;margin-right:8px;">עבר לפני 1 ימ</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">לירון נתניה</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 18.05.2026</span>
+          <span style="font-size:11px;color:#888;">בהשהייה</span>
+        </div>
+      </div>
+      <div style="padding:10px 0;border-bottom:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">יהלום</span>
+          <span style="font-size:12px;color:#EF4444;font-weight:700;white-space:nowrap;margin-right:8px;">עבר לפני 1 ימ</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">רוני נגה</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 18.05.2026</span>
+          <span style="font-size:11px;color:#888;">בעבודה</span>
+        </div>
+      </div><div style="height:8px;"></div><div style="font-size:11px;font-weight:700;color:#F59E0B;letter-spacing:.05em;text-transform:uppercase;margin:14px 0 8px;padding-top:4px;border-top:1px solid #1E1E1E;">דדליין מחר</div>
+      <div style="padding:10px 0;border-bottom:1px solid #1E1E1E;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span style="font-size:13px;color:#D0D0D0;font-weight:600;">המימד החמישי</span>
+          <span style="font-size:12px;color:#F59E0B;font-weight:700;white-space:nowrap;margin-right:8px;">מחר</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:2px;">שימי מטרו</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:11px;color:#555;">דדליין: 20.05.2026</span>
+          <span style="font-size:11px;color:#888;">במיקס</span>
+        </div>
+      </div></div>
+
+    <!-- 5. סשנים מחר -->
+    <div class="card"><h2>📅 סשנים מחר</h2><div class="row">
+      <span class="lbl">יהלום — רוני נגה · סשן</span>
+      <span class="val">11:00 – –13:00</span>
+    </div></div>
+
+    <!-- 6. מצב כללי -->
+    <div class="card">
+      <h2>📊 מצב כללי</h2>
+      <div class="row"><span class="lbl">פרויקטים פעילים</span><span class="val ">8</span></div>
+      <div class="row"><span class="lbl">פתוחים עם דדליין שעבר</span><span class="val r">7</span></div>
+      <div class="row"><span class="lbl">חסרי מידע</span><span class="val ">0</span></div>
+    </div>
+
+    <!-- 7. פעולות מומלצות למחר -->
+    
+    <div class="card">
+      <h2>⚡ פעולות מומלצות למחר</h2>
+      <div class="rec"><span class="n">1.</span>בדוק את הציוד לקראת הסשן של יהלום מחר</div><div class="rec"><span class="n">2.</span>שלח תזכורת ללקוחות על הדדליינים הקרובים</div><div class="rec"><span class="n">3.</span>פרסם תמונות מהסשן של רוני נגה ונגש ביטס ברשתות החברתיות</div>
+    </div>
+
+    <div class="footer">
+      Redbloods OS · דוח ערב אוטומטי · 1:22:56
+    </div>
+  </div>
+</body>
+</html>
