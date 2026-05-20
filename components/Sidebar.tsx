@@ -60,6 +60,7 @@ const MORE_ITEMS = [
   { href: "/insights",      label: "תובנות",   icon: "◎", iconColor: "#2DD4BF" },
   { href: "/setup/dropbox", label: "Dropbox",   icon: "📦", iconColor: undefined },
   { href: "/setup/reports", label: "דוחות",    icon: "📧", iconColor: undefined },
+  { href: "/push-test",     label: "🔔 התראות", icon: "🔔", iconColor: "#F59E0B" },
 ];
 
 // ── "More" bottom sheet ───────────────────────────────────────────────────────
