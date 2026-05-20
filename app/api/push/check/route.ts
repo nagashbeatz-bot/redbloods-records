@@ -1,8 +1,7 @@
 /**
  * POST /api/push/check
- * Called once per app load. Checks for urgent items and sends push
- * notifications. Uses a "last sent" key in the settings KV table to
- * avoid spamming — at most one batch per 30 minutes.
+ * Called once per app load. Throttled to 30 min server-side.
+ * Uses same concise notification format as /api/push/cron.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -34,111 +33,112 @@ async function setLastSent() {
 
 export async function POST(req: NextRequest) {
   try {
-    // Throttle: max once per THROTTLE_MINUTES
     const last = await getLastSent();
-    const now = new Date();
-    if (last) {
-      const diffMin = (now.getTime() - last.getTime()) / 60000;
-      if (diffMin < THROTTLE_MINUTES) {
-        return NextResponse.json({ skipped: true, nextInMin: Math.ceil(THROTTLE_MINUTES - diffMin) });
-      }
+    const now  = new Date();
+    if (last && (now.getTime() - last.getTime()) / 60000 < THROTTLE_MINUTES) {
+      return NextResponse.json({ skipped: true });
     }
 
-    // Load projects
+    const today = now.toISOString().split("T")[0];
+    const notifications: Array<{ title: string; body: string; url: string; tag: string }> = [];
+
     const { data: projects } = await supabase
       .from("projects")
       .select("id, name, artist, status, deadline")
       .neq("status", "הושלם")
       .neq("status", "בהשהייה");
 
-    if (!projects?.length) {
-      return NextResponse.json({ ok: true, notifications: 0 });
-    }
+    const all = projects ?? [];
 
-    const today = now.toISOString().split("T")[0];
-    const notifications: Array<{ title: string; body: string; url: string; tag: string }> = [];
-
-    // ── 1. Overdue projects ──────────────────────────────────────────────────
-    const overdue = projects.filter(
-      (p) => p.deadline && p.deadline < today,
-    );
+    // ── Overdue ───────────────────────────────────────────────────────────────
+    const overdue = all.filter((p) => p.deadline && p.deadline < today);
     if (overdue.length === 1) {
-      const p = overdue[0];
       notifications.push({
-        title: "⚠ פרויקט עבר דדליין",
-        body: `${p.name}${p.artist ? ` — ${p.artist}` : ""} עבר את התאריך`,
+        title: `⚠ דדליין עבר — ${overdue[0].name}`,
+        body: "פתח כדי לראות את הפרויקט ולסדר עדיפויות",
         url: "/dashboard",
         tag: "overdue",
       });
     } else if (overdue.length > 1) {
       notifications.push({
-        title: `⚠ ${overdue.length} פרויקטים עברו דדליין`,
-        body: overdue.map((p) => p.name).join(", "),
+        title: `⚠ דדליין עבר — ${overdue.length} פרויקטים`,
+        body: "פתח כדי לראות את הפרויקטים ולסדר עדיפויות",
         url: "/dashboard",
         tag: "overdue",
       });
     }
 
-    // ── 2. Due in 1–3 days ───────────────────────────────────────────────────
-    const soon = projects.filter((p) => {
+    // ── Due soon ──────────────────────────────────────────────────────────────
+    const soon = all.filter((p) => {
       if (!p.deadline || p.deadline <= today) return false;
-      const diff = Math.round(
-        (new Date(p.deadline).getTime() - now.getTime()) / 86400000,
-      );
+      const diff = Math.round((new Date(p.deadline).getTime() - now.getTime()) / 86400000);
       return diff >= 1 && diff <= 3;
     });
-    for (const p of soon) {
-      const diff = Math.round(
-        (new Date(p.deadline!).getTime() - now.getTime()) / 86400000,
-      );
+    if (soon.length === 1) {
+      const diff = Math.round((new Date(soon[0].deadline!).getTime() - now.getTime()) / 86400000);
       notifications.push({
-        title: "⏳ דדליין מתקרב",
-        body: `${p.name} — עוד ${diff === 1 ? "יום אחד" : `${diff} ימים`}`,
+        title: `⏳ דדליין מתקרב: ${soon[0].name}`,
+        body: `עוד ${diff === 1 ? "יום אחד" : `${diff} ימים`} — כדאי לבדוק סטטוס`,
         url: "/dashboard",
-        tag: `soon-${p.id}`,
+        tag: "due-soon",
+      });
+    } else if (soon.length > 1) {
+      notifications.push({
+        title: `⏳ ${soon.length} דדליינים מתקרבים`,
+        body: "פתח כדי לראות מה צריך טיפול השבוע",
+        url: "/dashboard",
+        tag: "due-soon",
       });
     }
 
-    // ── 3. Sessions today ────────────────────────────────────────────────────
+    // ── Sessions today ────────────────────────────────────────────────────────
     const { data: sessions } = await supabase
       .from("sessions")
-      .select("id, project_id, date, start_time, projects(name, artist)")
+      .select("id, start_time, projects(name, artist)")
       .eq("date", today)
       .eq("status", "מתוכנן");
 
     for (const s of sessions ?? []) {
-      const proj = Array.isArray(s.projects) ? s.projects[0] : s.projects;
-      const name = proj?.name ?? "סשן";
-      const artist = proj?.artist ? ` עם ${proj.artist}` : "";
-      const time = s.start_time ? ` בשעה ${s.start_time.slice(0, 5)}` : "";
+      const proj   = Array.isArray(s.projects) ? s.projects[0] : s.projects;
+      const name   = proj?.name   ?? "סשן";
+      const artist = proj?.artist ?? "";
+      const time   = s.start_time ? `ב־${s.start_time.slice(0, 5)}` : "היום";
       notifications.push({
-        title: "🎵 סשן היום",
-        body: `${name}${artist}${time}`,
+        title: `🎵 סשן ${time}`,
+        body: artist ? `${artist} — ${name}` : name,
         url: "/setup/calendar",
         tag: `session-${s.id}`,
       });
     }
 
-    // ── 4. Overdue payments ──────────────────────────────────────────────────
+    // ── Overdue payments ──────────────────────────────────────────────────────
     const { data: txns } = await supabase
       .from("transactions")
-      .select("id, project_id, amount, currency, date, projects(name)")
+      .select("id, amount, currency, projects(name)")
       .eq("type", "income")
       .eq("payment_status", "צפוי")
       .lt("date", today);
 
-    if (txns?.length) {
-      const total = txns.reduce((s, t) => s + (t.amount ?? 0), 0);
-      const currency = txns[0]?.currency ?? "₪";
+    if (txns?.length === 1) {
+      const t    = txns[0];
+      const proj = Array.isArray(t.projects) ? t.projects[0] : t.projects;
       notifications.push({
         title: "💸 תשלום בפיגור",
-        body: `${txns.length} תשלום${txns.length > 1 ? "ים" : ""} — סה״כ ${total.toLocaleString("he-IL")} ${currency}`,
+        body: `${(t.amount ?? 0).toLocaleString("he-IL")}${t.currency ?? "₪"} — ${proj?.name ?? ""}`,
+        url: "/finance",
+        tag: "payments",
+      });
+    } else if ((txns?.length ?? 0) > 1) {
+      const total    = (txns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
+      const currency = txns![0]?.currency ?? "₪";
+      notifications.push({
+        title: `💸 ${txns!.length} תשלומים בפיגור`,
+        body: `סה״כ ${total.toLocaleString("he-IL")}${currency} — פתח כדי לעדכן מה התקבל`,
         url: "/finance",
         tag: "payments",
       });
     }
 
-    // ── Send all ─────────────────────────────────────────────────────────────
     await setLastSent();
 
     let sent = 0;
