@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { createPortal } from "react-dom";
 import Sidebar from "./Sidebar";
 import ChatPanel from "./ai/ChatPanel";
 import MiniPlayer from "./ui/MiniPlayer";
@@ -9,6 +10,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 import GlobalProjectDrawerProvider from "@/components/GlobalProjectDrawer";
+import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel (left side in RTL)
 const SIDEBAR_WIDTH = 224; // px — navigation sidebar (right side in RTL, w-56)
@@ -201,6 +203,115 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         <MiniPlayer mobile />
       </div>
+
+      {/* Mobile FAB — only on mobile, inside GlobalProjectDrawerProvider */}
+      <MobileFAB playerVisible={playerVisible} />
     </div>
+  );
+}
+
+// ── Mobile FAB + Quick-actions bottom sheet ───────────────────────────────────
+
+function MobileFAB({ playerVisible }: { playerVisible: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { openProject } = useGlobalProjectDrawer();
+  const pathname = usePathname();
+
+  // FAB bottom: above nav (56px) + safe-area + optional player (50px)
+  const fabBottom = playerVisible
+    ? `calc(56px + 50px + 12px + env(safe-area-inset-bottom))`
+    : `calc(56px + 12px + env(safe-area-inset-bottom))`;
+
+  function sendQuickPrompt(text: string) {
+    setOpen(false);
+    window.dispatchEvent(new CustomEvent("rb:quicksend", { detail: text }));
+  }
+
+  const actions = [
+    { icon: "♫", label: "פרויקט חדש",      color: "#3B82F6", action: () => { setOpen(false); window.dispatchEvent(new CustomEvent("rb:new-project")); } },
+    { icon: "📅", label: "קבע סשן",          color: "#60A5FA", action: () => sendQuickPrompt("קבע לי סשן חדש") },
+    { icon: "₪",  label: "הוסף תשלום",       color: "#34D399", action: () => sendQuickPrompt("הוסף תשלום לפרויקט") },
+    { icon: "💸", label: "הוסף הוצאה",       color: "#F59E0B", action: () => sendQuickPrompt("הוסף הוצאה") },
+    { icon: "📦", label: "העלה קובץ",         color: "#A855F7", action: () => sendQuickPrompt("העלה קובץ לפרויקט") },
+    { icon: "👥", label: "שלח לויקטור",      color: "#EC4899", action: () => sendQuickPrompt("שלח פרויקט לויקטור") },
+  ];
+
+  if (typeof document === "undefined") return null;
+
+  return (
+    <>
+      {/* FAB button */}
+      <button
+        className="md:hidden fixed z-[9900]"
+        onClick={() => setOpen(true)}
+        style={{
+          bottom: fabBottom,
+          left: 16,
+          width: 52, height: 52,
+          borderRadius: "50%",
+          background: "linear-gradient(135deg, #3B82F6, #A855F7)",
+          border: "none",
+          color: "#fff",
+          fontSize: 24, fontWeight: 300, lineHeight: 1,
+          cursor: "pointer",
+          boxShadow: "0 4px 20px rgba(59,130,246,0.4)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "transform 0.15s, box-shadow 0.15s",
+        }}
+        aria-label="פעולות מהירות"
+      >
+        +
+      </button>
+
+      {/* Bottom sheet */}
+      {open && createPortal(
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99980,
+            background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="rb-sheet-in"
+            style={{
+              position: "absolute", bottom: 0, left: 0, right: 0,
+              background: "#141414", borderTop: "1px solid #2A2A2A",
+              borderRadius: "20px 20px 0 0",
+              paddingBottom: "env(safe-area-inset-bottom)",
+            }}
+          >
+            {/* Handle */}
+            <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 2px" }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: "#333" }} />
+            </div>
+            <div style={{ padding: "8px 0", fontSize: 11, color: "#444", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: "center" }}>
+              פעולות מהירות
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 16px 16px" }}>
+              {actions.map(({ icon, label, color, action }) => (
+                <button
+                  key={label}
+                  onClick={action}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "16px 16px", borderRadius: 14,
+                    background: "#1A1A1A", border: `1px solid #252525`,
+                    color: "#CCC", fontSize: 14, fontWeight: 600,
+                    cursor: "pointer", fontFamily: "inherit",
+                    textAlign: "right",
+                  }}
+                >
+                  <span style={{ fontSize: 22, color }}>{icon}</span>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

@@ -59,7 +59,7 @@ export default function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="px-6 py-8 max-w-5xl mx-auto space-y-8">
+      <div className="px-3 py-4 md:px-6 md:py-8 max-w-5xl mx-auto space-y-4 md:space-y-8">
         <div style={{ height: 52 }} />
         <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -120,7 +120,7 @@ export default function DashboardContent() {
   const hasRemainingRow = secNotStarted || secDone;
 
   return (
-    <div className="px-6 py-8 max-w-5xl mx-auto space-y-8">
+    <div className="px-3 py-4 md:px-6 md:py-8 max-w-5xl mx-auto space-y-4 md:space-y-8">
 
       {/* Daily header */}
       <DailyHeader />

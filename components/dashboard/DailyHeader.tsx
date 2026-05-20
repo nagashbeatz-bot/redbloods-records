@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
+import { useRadio } from "@/components/radio/RadioProvider";
 
 export default function DailyHeader() {
   const { projects } = useProjects();
+  const radio = useRadio();
   const [time, setTime] = useState("");
   const [dateLabel, setDateLabel] = useState("");
 
@@ -45,70 +47,91 @@ export default function DailyHeader() {
     );
   }
 
-  return (
-    <div className="flex items-start justify-between">
-      <div>
-        <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-2xl font-bold" style={{ color: "#F0F0F0" }}>
-            {greeting} ✦
-          </h1>
-        </div>
-        <p className="text-sm" style={{ color: "#555" }}>
-          {dateLabel}
-          {dateLabel && " · "}
-          <span style={{ fontVariantNumeric: "tabular-nums" }}>{time}</span>
-        </p>
+  const isRadioPlaying = radio?.playing ?? false;
+  function handleRadioToggle() {
+    if (!radio) return;
+    isRadioPlaying ? radio.stop() : radio.play();
+  }
 
-        {/* Status line */}
-        <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-          {overdue > 0 && (
-            <span
-              className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border"
+  return (
+    <div style={{ direction: "rtl" }}>
+      {/* ── Top row: greeting + radio (mobile) / greeting + "order day" (desktop) ── */}
+      <div className="flex items-start justify-between gap-3">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <h1 className="text-xl md:text-2xl font-bold" style={{ color: "#F0F0F0" }}>
+              {greeting} ✦
+            </h1>
+            {/* LISTEN button — mobile only, next to greeting */}
+            <button
+              className="md:hidden inline-flex items-center gap-1.5"
+              onClick={handleRadioToggle}
               style={{
-                color: "#EF4444",
-                background: "rgba(239,68,68,0.08)",
-                borderColor: "rgba(239,68,68,0.25)",
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.06em",
+                padding: "4px 10px", borderRadius: 20,
+                border: `1px solid ${isRadioPlaying ? "rgba(236,72,153,0.5)" : "#333"}`,
+                background: isRadioPlaying ? "rgba(236,72,153,0.12)" : "#1A1A1A",
+                color: isRadioPlaying ? "#EC4899" : "#666",
+                cursor: "pointer", fontFamily: "inherit",
+                transition: "all 0.2s",
               }}
             >
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#EF4444", display: "inline-block" }} />
-              {overdue} {overdue === 1 ? "פרויקט עבר" : "פרויקטים עברו"} דדליין
-            </span>
-          )}
-          {active > 0 && (
-            <span
-              className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border"
-              style={{
-                color: "#3B82F6",
-                background: "rgba(59,130,246,0.08)",
-                borderColor: "rgba(59,130,246,0.2)",
-              }}
-            >
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#3B82F6", display: "inline-block" }} />
-              {active} {active === 1 ? "פרויקט" : "פרויקטים"} בעבודה פעילה
-            </span>
-          )}
-          {overdue === 0 && active === 0 && (
-            <span className="text-sm" style={{ color: "#555" }}>הכל תחת שליטה 🎵</span>
-          )}
+              {isRadioPlaying ? "◼ LIVE" : "▶ LISTEN"}
+            </button>
+          </div>
+          <p className="text-xs md:text-sm" style={{ color: "#555" }}>
+            {dateLabel}
+            {dateLabel && " · "}
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>{time}</span>
+          </p>
         </div>
+
+        {/* "Order day" — desktop only */}
+        <button
+          onClick={handleOrderDay}
+          className="hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all mt-1"
+          style={{
+            background: "rgba(59,130,246,0.08)",
+            borderColor: "rgba(59,130,246,0.25)",
+            color: "#3B82F6", cursor: "pointer", whiteSpace: "nowrap",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.15)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.08)"; }}
+        >
+          <span>✦</span>
+          סדר לי את היום
+        </button>
       </div>
 
-      {/* Quick action button */}
+      {/* ── Status pills ── */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {overdue > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border"
+            style={{ color: "#EF4444", background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.25)" }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#EF4444", display: "inline-block" }} />
+            {overdue} {overdue === 1 ? "פרויקט עבר" : "פרויקטים עברו"} דדליין
+          </span>
+        )}
+        {active > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border"
+            style={{ color: "#3B82F6", background: "rgba(59,130,246,0.08)", borderColor: "rgba(59,130,246,0.2)" }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#3B82F6", display: "inline-block" }} />
+            {active} {active === 1 ? "פרויקט" : "פרויקטים"} בעבודה פעילה
+          </span>
+        )}
+        {overdue === 0 && active === 0 && (
+          <span className="text-sm" style={{ color: "#555" }}>הכל תחת שליטה 🎵</span>
+        )}
+      </div>
+
+      {/* ── Mobile "order day" button — full width ── */}
       <button
         onClick={handleOrderDay}
-        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all mt-1"
+        className="md:hidden w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-semibold"
         style={{
           background: "rgba(59,130,246,0.08)",
           borderColor: "rgba(59,130,246,0.25)",
-          color: "#3B82F6",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.15)";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.08)";
+          color: "#3B82F6", cursor: "pointer", fontFamily: "inherit",
         }}
       >
         <span>✦</span>
