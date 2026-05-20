@@ -205,6 +205,15 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const { projects, updateProjectField, refresh } = useProjects();
   const player = usePlayerSafe();
 
+  // ── Mobile detection ───────────────────────────────────────────────────────
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   // ── Finance state ──────────────────────────────────────────────────────────
   const [transactions,          setTransactions]          = useState<Transaction[]>([]);
   const [agreedPrice,           setAgreedPrice]           = useState(0);
@@ -810,18 +819,26 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
   return createPortal(
     <div dir="rtl" style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: "absolute", inset: 0,
-          background: "rgba(0,0,0,0.55)",
-          backdropFilter: "blur(2px)",
-        }}
-      />
+      {/* Backdrop — hidden on mobile (full screen has no backdrop) */}
+      {!isMobile && (
+        <div
+          onClick={onClose}
+          style={{
+            position: "absolute", inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(2px)",
+          }}
+        />
+      )}
 
-      {/* Panel */}
-      <div style={{
+      {/* Panel — side drawer on desktop, full-screen slide-up on mobile */}
+      <div style={isMobile ? {
+        position: "absolute", inset: 0,
+        background: "#0D0D0D",
+        display: "flex", flexDirection: "column", zIndex: 100000,
+        animation: "rb-drawer-up 300ms cubic-bezier(.32,.72,0,1) forwards",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      } : {
         position: "absolute", top: 0, right: 0, bottom: 0, width: 460,
         background: "#141414", borderLeft: "1px solid #252525",
         display: "flex", flexDirection: "column", zIndex: 100000,
@@ -901,29 +918,50 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 16px", height: 52, borderBottom: "1px solid #252525", flexShrink: 0,
+          padding: isMobile ? "0 16px" : "0 16px",
+          paddingTop: isMobile ? "env(safe-area-inset-top)" : undefined,
+          height: isMobile ? 56 : 52,
+          borderBottom: "1px solid #252525", flexShrink: 0,
+          background: isMobile ? "#141414" : undefined,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
-              onClick={onClose}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 20, lineHeight: 1, padding: "2px 4px" }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#CCC")}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
-            >×</button>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#777" }}>פרטי פרויקט</span>
-          </div>
-          <Link
-            href={`/projects/${project.id}`}
-            style={{ fontSize: 11, color: "#444", textDecoration: "none" }}
-            onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#888")}
-            onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#444")}
-          >
-            פתח עמוד מלא ↗
-          </Link>
+          {isMobile ? (
+            /* Mobile header: ← back button on right (RTL), project name centered */
+            <>
+              <button
+                onClick={onClose}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#3B82F6", fontSize: 15, fontWeight: 600, padding: "8px 4px 8px 12px", fontFamily: "inherit", minWidth: 44, minHeight: 44, display: "flex", alignItems: "center" }}
+              >
+                ← חזור
+              </button>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0", flex: 1, textAlign: "center" }}>פרטי פרויקט</span>
+              <div style={{ minWidth: 44 }} />
+            </>
+          ) : (
+            /* Desktop header */
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  onClick={onClose}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 20, lineHeight: 1, padding: "2px 4px" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#CCC")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
+                >×</button>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#777" }}>פרטי פרויקט</span>
+              </div>
+              <Link
+                href={`/projects/${project.id}`}
+                style={{ fontSize: 11, color: "#444", textDecoration: "none" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#888")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#444")}
+              >
+                פתח עמוד מלא ↗
+              </Link>
+            </>
+          )}
         </div>
 
         {/* ── Scrollable body ──────────────────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? 16 : 14, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
 
           {/* ── Quick actions ──────────────────────────────────────────────── */}
           <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>

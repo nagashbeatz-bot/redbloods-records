@@ -322,6 +322,82 @@ function NewProjectModal({
   );
 }
 
+// ── Mobile project card ───────────────────────────────────────────────────────
+
+const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+  "בעבודה":     { bg: "rgba(59,130,246,0.15)",  color: "#60A5FA" },
+  "מחכה למיקס": { bg: "rgba(245,158,11,0.15)",  color: "#FBBF24" },
+  "במיקס":      { bg: "rgba(168,85,247,0.15)",  color: "#C084FC" },
+  "הושלם":      { bg: "rgba(16,185,129,0.15)",  color: "#34D399" },
+  "בהשהייה":    { bg: "rgba(107,114,128,0.15)", color: "#9CA3AF" },
+  "לא התחיל":   { bg: "rgba(75,85,99,0.15)",    color: "#6B7280" },
+};
+
+function MobileProjectCard({
+  p,
+  openProject,
+  financeSummary,
+}: {
+  p: import("@/lib/types").Project;
+  openProject: (id: string) => void;
+  financeSummary: Record<string, { paid: number; agreed: number; currency: string }>;
+}) {
+  const days = daysUntilDeadline(p.deadline);
+  const overdue = p.isOverdue && p.status !== "הושלם";
+  const dueSoon = days !== null && days >= 0 && days <= 7 && p.status !== "הושלם";
+  const fin = financeSummary[p.id];
+  const balance = fin ? fin.agreed - fin.paid : 0;
+  const sc = STATUS_COLORS[p.status] ?? { bg: "#1A1A1A", color: "#888" };
+
+  return (
+    <button
+      onClick={() => openProject(p.id)}
+      style={{
+        width: "100%", textAlign: "right", direction: "rtl",
+        background: "#1A1A1A", border: `1px solid ${overdue ? "rgba(239,68,68,0.3)" : "#252525"}`,
+        borderRadius: 14, padding: "14px 16px",
+        cursor: "pointer", fontFamily: "inherit",
+        display: "flex", flexDirection: "column", gap: 8,
+        transition: "background 0.15s",
+      }}
+    >
+      {/* Row 1: name + status badge */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0", flex: 1, lineHeight: 1.3 }}>
+          {p.name}
+        </span>
+        <span style={{
+          fontSize: 12, fontWeight: 600, borderRadius: 8, padding: "3px 10px",
+          background: sc.bg, color: sc.color, flexShrink: 0, whiteSpace: "nowrap",
+        }}>
+          {p.status}
+        </span>
+      </div>
+
+      {/* Row 2: artist + type */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 13, color: "#888", flex: 1 }}>{p.artist || "—"}</span>
+        {p.projectType && <ProjectTypeBadge type={p.projectType} />}
+      </div>
+
+      {/* Row 3: deadline + balance */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{
+          fontSize: 12, fontWeight: 600,
+          color: overdue ? "#EF4444" : dueSoon ? "#F59E0B" : "#555",
+        }}>
+          {p.deadline ? deadlineLabel(p.deadline) : "ללא דדליין"}
+        </span>
+        {fin && balance > 0 && (
+          <span style={{ fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>
+            יתרה: {fin.currency}{balance.toLocaleString()}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectsTable() {
@@ -683,8 +759,28 @@ export default function ProjectsTable() {
         </p>
       </div>
 
-      {/* Table */}
-      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "#252525" }}>
+      {/* ── Mobile: card list ─────────────────────────────────────────────── */}
+      {isMobile && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "#555", fontSize: 14 }}>
+              אין פרויקטים מתאימים
+            </div>
+          ) : (
+            filtered.map((p) => (
+              <MobileProjectCard
+                key={p.id}
+                p={p}
+                openProject={openProject}
+                financeSummary={financeSummary}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Desktop: table ────────────────────────────────────────────────── */}
+      {!isMobile && <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "#252525" }}>
         {/* Header */}
         <div
           className="grid py-3 border-b tbl-header"
@@ -973,7 +1069,7 @@ export default function ProjectsTable() {
             );
           })
         )}
-      </div>
+      </div>}
 
       {/* ── Delete confirmation popup ── */}
       {confirmDeleteId && typeof document !== "undefined" && createPortal(

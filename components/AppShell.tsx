@@ -65,7 +65,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "#0D0D0D" }}>
+    <div className="flex overflow-hidden" style={{ background: "#0D0D0D", height: "100dvh" }}>
       <Sidebar onOpenChat={() => setChatOpen(true)} />
 
       <main className="flex-1 flex flex-col min-w-0">
@@ -104,13 +104,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {/* Page content — bottom padding when player visible */}
           <div
             ref={contentRef}
-            className="flex-1 overflow-auto pb-16 md:pb-0"
+            className="flex-1 overflow-auto"
             style={{
               paddingBottom: playerVisible
                 ? isMobile
-                  ? MOBILE_NAV_H + MOBILE_PLAYER_H + 8
+                  ? MOBILE_NAV_H + MOBILE_PLAYER_H + 16
                   : PLAYER_H + 8
-                : undefined,
+                : isMobile
+                  ? `calc(${MOBILE_NAV_H}px + env(safe-area-inset-bottom))`
+                  : undefined,
             }}
           >
             <GlobalProjectDrawerProvider>
@@ -188,11 +190,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <MiniPlayer />
       </div>
 
-      {/* Mobile: full-width player — sits above bottom nav (56 px) */}
+      {/* Mobile: full-width player — sits above bottom nav */}
       <div
         className="fixed left-0 right-0 z-50 md:hidden"
         style={{
-          bottom: 56,
+          bottom: `calc(56px + env(safe-area-inset-bottom))`,
           transform: playerVisible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.25s",
         }}

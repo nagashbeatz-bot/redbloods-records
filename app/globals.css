@@ -31,7 +31,9 @@ body {
   background-color: #0D0D0D;
   color: #F0F0F0;
   font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif;
-  min-height: 100vh;
+  min-height: 100dvh;
+  /* prevent elastic scroll bounce revealing white BG on iOS */
+  overscroll-behavior: none;
 }
 
 ::-webkit-scrollbar {
@@ -97,6 +99,38 @@ input, textarea, select, button {
   animation: none;
   transform: scaleY(0.08);
   transition: transform 0.6s ease;
+}
+
+/* ── Mobile / iOS Safari utilities ──────────────────────────────────────── */
+
+/* Prevent iOS tap highlight */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Safe-area helpers — use as padding-bottom classes */
+.pb-safe  { padding-bottom: env(safe-area-inset-bottom); }
+.pb-safe-nav { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+
+/* 100dvh for layouts — accounts for iOS Safari address bar */
+.h-dvh  { height: 100dvh; }
+.min-h-dvh { min-height: 100dvh; }
+
+/* Touch target minimum */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Bottom sheet animation */
+@keyframes rb-sheet-in {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.rb-sheet-in { animation: rb-sheet-in 280ms cubic-bezier(.32,.72,0,1) forwards; }
+
+/* Full-screen drawer slide-up on mobile */
+@keyframes rb-drawer-up {
+  from { transform: translateY(100%); opacity: 0.8; }
+  to   { transform: translateY(0);    opacity: 1;   }
 }
 
 /* ── Focus ring — applied to all interactive fields ─────────────────────── */
