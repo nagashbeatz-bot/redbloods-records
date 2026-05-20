@@ -14,10 +14,14 @@ interface GlobalDrawerCtx {
 
 const Ctx = createContext<GlobalDrawerCtx | null>(null);
 
+const NOOP: GlobalDrawerCtx = {
+  openProject: () => {},
+  closeProject: () => {},
+  drawerProjectId: null,
+};
+
 export function useGlobalProjectDrawer(): GlobalDrawerCtx {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useGlobalProjectDrawer must be used within GlobalProjectDrawerProvider");
-  return ctx;
+  return useContext(Ctx) ?? NOOP;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────

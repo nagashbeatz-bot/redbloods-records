@@ -1,3 +1,4 @@
+import "server-only";
 /**
  * Google Calendar read-only integration — SERVER ONLY.
  * Tokens are stored in .calendar-token.json (gitignored).
