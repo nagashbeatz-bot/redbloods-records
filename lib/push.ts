@@ -19,16 +19,18 @@ export interface PushSubscriptionRow {
   auth: string;
 }
 
-export async function saveSubscription(sub: PushSubscription) {
-  const key  = sub.getKey("p256dh");
-  const auth = sub.getKey("auth");
-  if (!key || !auth) throw new Error("Invalid subscription keys");
+// PushSubscription.toJSON() shape sent from the client
+interface PushSubJSON {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
 
-  const p256dh = Buffer.from(key).toString("base64");
-  const authB64 = Buffer.from(auth).toString("base64");
+export async function saveSubscription(sub: PushSubJSON) {
+  const { endpoint, keys } = sub;
+  if (!keys?.p256dh || !keys?.auth) throw new Error("Invalid subscription keys");
 
   await supabase.from("push_subscriptions").upsert(
-    { endpoint: sub.endpoint, p256dh, auth: authB64 },
+    { endpoint, p256dh: keys.p256dh, auth: keys.auth },
     { onConflict: "endpoint" },
   );
 }
