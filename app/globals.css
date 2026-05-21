@@ -114,6 +114,17 @@ input, textarea, select, button {
 .h-dvh  { height: 100dvh; }
 .min-h-dvh { min-height: 100dvh; }
 
+/*
+  Mobile content wrapper — reserves bottom-nav space via CSS (not JS).
+  This ensures correct layout on FIRST PAINT before any useEffect runs.
+  Applied only on screens < 768px via media query.
+*/
+@media (max-width: 767px) {
+  .mobile-nav-gap {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+}
+
 /* Touch target minimum */
 .touch-target {
   min-height: 44px;

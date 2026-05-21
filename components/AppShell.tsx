@@ -38,6 +38,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // Set --app-height CSS variable for accurate iOS Safari viewport height.
+  // Uses requestAnimationFrame so the value reflects the final rendered height,
+  // not the pre-render estimate. Also updates on resize and orientation change.
+  useEffect(() => {
+    const setHeight = () => {
+      requestAnimationFrame(() => {
+        document.documentElement.style.setProperty(
+          "--app-height",
+          `${window.innerHeight}px`
+        );
+      });
+    };
+    setHeight();
+    window.addEventListener("resize", setHeight);
+    window.addEventListener("orientationchange", () => setTimeout(setHeight, 200));
+    return () => {
+      window.removeEventListener("resize", setHeight);
+    };
+  }, []);
+
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [pathname]);
@@ -68,7 +88,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="flex overflow-hidden" style={{ background: "#0D0D0D", height: "100dvh" }}>
+    <div className="flex overflow-hidden" style={{ background: "#0D0D0D", height: "var(--app-height, 100dvh)" }}>
       <Sidebar onOpenChat={() => setChatOpen(true)} />
 
       <main className="flex-1 flex flex-col min-w-0">
@@ -109,13 +129,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/*
-          Pad OUTER container by bottom-nav height on mobile so the scroll area
-          never physically extends behind the fixed nav — fixes iOS touch capture.
+          .mobile-nav-gap reserves bottom-nav space via CSS media query — NOT JS.
+          Applied on first paint before any useEffect runs, fixing iOS first-load gap.
         */}
-        <div
-          className="flex flex-1 min-h-0"
-          style={isMobile ? { paddingBottom: `calc(${MOBILE_NAV_H}px + env(safe-area-inset-bottom))` } : undefined}
-        >
+        <div className="flex flex-1 min-h-0 mobile-nav-gap">
           {/* Page content — extra padding when player is visible */}
           <div
             ref={contentRef}
