@@ -25,12 +25,27 @@ html {
   direction: rtl;
   background-color: #0D0D0D;
   color: #F0F0F0;
+  /*
+    height: 100% creates a CSS cascade from the real viewport.
+    This is the most reliable fix for iOS PWA first-load height —
+    avoids JS timing issues with window.innerHeight settling late.
+    -webkit-fill-available: iOS-specific — fills the true available
+    area (excl. address bar / home indicator) before JS runs.
+  */
+  height: -webkit-fill-available;
+  height: 100%;
 }
 
 body {
   background-color: #0D0D0D;
   color: #F0F0F0;
   font-family: 'Heebo', 'Arial Hebrew', Arial, sans-serif;
+  /*
+    height: 100% inherits from html (= real viewport height, no JS needed).
+    min-height fallbacks keep body tall on desktop/non-PWA.
+  */
+  height: 100%;
+  min-height: -webkit-fill-available;
   min-height: 100dvh;
   /* prevent elastic scroll bounce revealing white BG on iOS */
   overscroll-behavior: none;

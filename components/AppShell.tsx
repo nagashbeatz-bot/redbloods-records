@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import Sidebar from "./Sidebar";
+import MobileNav from "./MobileNav";
 import ChatPanel from "./ai/ChatPanel";
 import MiniPlayer from "./ui/MiniPlayer";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -26,6 +27,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);
   const [isMobile, setIsMobile] = useState(false);
+
+  // iOS PWA: viewport height is computed incorrectly on the very first frame
+  // (a known WebKit bug — window.innerHeight starts wrong and stays wrong until
+  // user interaction; polling doesn't help). We hide the shell for 600ms:
+  // the iOS launch animation takes ~400ms, and the viewport settles shortly after.
+  // AppShell mounts once — this delay fires only on initial app launch.
+  const [viewportReady, setViewportReady] = useState(false);
+  useEffect(() => {
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (!isIOS) { setViewportReady(true); return; }
+
+    const t = setTimeout(() => {
+      document.documentElement.getBoundingClientRect(); // force reflow
+      setViewportReady(true);
+    }, 600);
+    return () => clearTimeout(t);
+  }, []);
 
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -130,93 +148,106 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="flex overflow-hidden" style={{ background: "#0D0D0D", height: "var(--app-height, 100dvh)" }}>
-      <Sidebar onOpenChat={() => setChatOpen(true)} />
+    // AppShell root: position:fixed inset:0 fills the real viewport on iOS PWA.
+    // flex-col so MobileNav (last child) sits at the physical bottom of the screen
+    // without needing position:fixed — eliminating the iOS first-frame height bug.
+    <div
+      className="flex flex-col"
+      style={{
+        background: "#0D0D0D",
+        position: "fixed",
+        top: 0, left: 0, right: 0, bottom: 0,
+        opacity: viewportReady ? 1 : 0,
+        transition: viewportReady ? "opacity 0.15s ease-in" : undefined,
+      }}
+    >
+      {/* Inner row: desktop sidebar + main content */}
+      <div className="flex flex-1 min-h-0">
+        <Sidebar onOpenChat={() => setChatOpen(true)} />
 
-      <main className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <header
-          className="flex items-center justify-between px-4 md:px-6 border-b sticky top-0 z-40"
-          style={{
-            background: "#141414", borderColor: "#2A2A2A",
-            paddingTop: "max(14px, env(safe-area-inset-top))",
-            paddingBottom: 14,
-            minHeight: 56,
-          }}
-        >
-          {/* Left side — Jahkno Radio trigger (hidden on mobile) */}
-          <div className="hidden md:block">
-            <JahknoRadioPlayer
-              playerOffset={playerVisible ? PLAYER_H : 0}
-              sidebarWidth={SIDEBAR_WIDTH}
-            />
-          </div>
-
-          {/* Mobile left placeholder */}
-          <div className="md:hidden" />
-
-          {/* Right side — AI agent toggle */}
-          <button
-            onClick={() => setChatOpen(!chatOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Top bar */}
+          <header
+            className="flex items-center justify-between px-4 md:px-6 border-b flex-shrink-0"
             style={{
-              background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
-              borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
-              color: chatOpen ? "#3B82F6" : "#888",
+              background: "#141414", borderColor: "#2A2A2A",
+              paddingTop: "max(14px, env(safe-area-inset-top))",
+              paddingBottom: 14,
+              minHeight: 56,
             }}
           >
-            <span>✦</span>
-            {chatOpen ? "סגור סוכן" : "סוכן AI"}
-          </button>
-        </header>
-
-        {/*
-          .mobile-nav-gap reserves bottom-nav space via CSS media query — NOT JS.
-          Applied on first paint before any useEffect runs, fixing iOS first-load gap.
-        */}
-        <div className="flex flex-1 min-h-0 mobile-nav-gap">
-          {/* Page content — extra padding when player is visible */}
-          <div
-            ref={contentRef}
-            className="flex-1 overflow-auto"
-            style={{
-              paddingBottom: playerVisible
-                ? isMobile
-                  ? MOBILE_PLAYER_H + 16   // nav height already handled by outer container
-                  : PLAYER_H + 8
-                : undefined,
-            }}
-          >
-            <GlobalProjectDrawerProvider>
-              {children}
-            </GlobalProjectDrawerProvider>
-          </div>
-
-          {/* Chat sidebar */}
-          <div
-            className="hidden md:flex flex-col border-r flex-shrink-0 sticky top-14 overflow-hidden transition-all duration-300"
-            style={{
-              background: "#141414",
-              borderColor: "#2A2A2A",
-              height: `calc(100dvh - 56px)`,
-              width: chatOpen ? CHAT_WIDTH : 0,
-              opacity: chatOpen ? 1 : 0,
-              pointerEvents: chatOpen ? "auto" : "none",
-            }}
-          >
-            {chatOpen && (
-              <ChatPanel
-                projects={projects}
-                onClose={() => setChatOpen(false)}
-                pendingPrompt={pendingPrompt}
-                onPromptConsumed={() => setPendingPrompt(undefined)}
-                currentPage={pathname}
-                selectedProjectId={selectedProjectId ?? undefined}
+            {/* Left side — Jahkno Radio trigger (hidden on mobile) */}
+            <div className="hidden md:block">
+              <JahknoRadioPlayer
+                playerOffset={playerVisible ? PLAYER_H : 0}
+                sidebarWidth={SIDEBAR_WIDTH}
               />
-            )}
+            </div>
+
+            {/* Mobile left placeholder */}
+            <div className="md:hidden" />
+
+            {/* Right side — AI agent toggle */}
+            <button
+              onClick={() => setChatOpen(!chatOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
+              style={{
+                background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
+                borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
+                color: chatOpen ? "#3B82F6" : "#888",
+              }}
+            >
+              <span>✦</span>
+              {chatOpen ? "סגור סוכן" : "סוכן AI"}
+            </button>
+          </header>
+
+          <div className="flex flex-1 min-h-0">
+            {/* Page content */}
+            <div
+              ref={contentRef}
+              className="flex-1 overflow-auto"
+              style={{
+                paddingBottom: playerVisible
+                  ? isMobile
+                    ? MOBILE_PLAYER_H + 16
+                    : PLAYER_H + 8
+                  : undefined,
+              }}
+            >
+              <GlobalProjectDrawerProvider>
+                {children}
+              </GlobalProjectDrawerProvider>
+            </div>
+
+            {/* Chat sidebar (desktop) */}
+            <div
+              className="hidden md:flex flex-col border-r flex-shrink-0 overflow-hidden transition-all duration-300"
+              style={{
+                background: "#141414",
+                borderColor: "#2A2A2A",
+                width: chatOpen ? CHAT_WIDTH : 0,
+                opacity: chatOpen ? 1 : 0,
+                pointerEvents: chatOpen ? "auto" : "none",
+              }}
+            >
+              {chatOpen && (
+                <ChatPanel
+                  projects={projects}
+                  onClose={() => setChatOpen(false)}
+                  pendingPrompt={pendingPrompt}
+                  onPromptConsumed={() => setPendingPrompt(undefined)}
+                  currentPage={pathname}
+                  selectedProjectId={selectedProjectId ?? undefined}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
+
+      {/* Mobile bottom nav — in layout flow, always at real viewport bottom */}
+      <MobileNav onOpenChat={() => setChatOpen(true)} />
 
       {/* Mobile chat overlay */}
       {chatOpen && (
