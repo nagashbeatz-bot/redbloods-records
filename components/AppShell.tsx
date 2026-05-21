@@ -14,12 +14,10 @@ import GlobalProjectDrawerProvider from "@/components/GlobalProjectDrawer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import PushManager from "@/components/PushManager";
 
-const CHAT_WIDTH    = 320; // px — agent chat panel (left side in RTL)
-const SIDEBAR_WIDTH = 224; // px — navigation sidebar (right side in RTL, w-56)
-const PLAYER_H      = 60;  // px — mini player height
-
-const MOBILE_NAV_H = 56; // px — bottom nav height on mobile
-const MOBILE_PLAYER_H = 50; // px — compact mobile player height
+const CHAT_WIDTH    = 320; // px — agent chat panel
+const SIDEBAR_WIDTH = 224; // px — desktop sidebar (w-56)
+const PLAYER_H      = 60;  // px — desktop mini player
+const MOBILE_PLAYER_H = 50; // px — mobile mini player
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
@@ -27,24 +25,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);
   const [isMobile, setIsMobile] = useState(false);
-
-  // iOS PWA: viewport height is computed incorrectly on the very first frame
-  // (a known WebKit bug — window.innerHeight starts wrong and stays wrong until
-  // user interaction; polling doesn't help). We hide the shell for 600ms:
-  // the iOS launch animation takes ~400ms, and the viewport settles shortly after.
-  // AppShell mounts once — this delay fires only on initial app launch.
-  const [viewportReady, setViewportReady] = useState(false);
-  useEffect(() => {
-    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    if (!isIOS) { setViewportReady(true); return; }
-
-    const t = setTimeout(() => {
-      document.documentElement.getBoundingClientRect(); // force reflow
-      setViewportReady(true);
-    }, 600);
-    return () => clearTimeout(t);
-  }, []);
-
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -57,62 +37,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Set --app-height CSS variable for accurate iOS Safari / PWA viewport height.
-  //
-  // iOS PWA settles its viewport asynchronously after launch — window.innerHeight
-  // can be wrong for up to ~400ms on first paint. We:
-  //   1. Set immediately (no rAF) so the value is available as early as possible
-  //   2. Set after one rAF for the first painted frame
-  //   3. Retry at 100ms + 400ms to catch iOS settling (key fix for first-load gap)
-  //   4. Listen to resize / orientationchange / visibilitychange / pageshow
+  // Scroll content to top on route change (instant — not smooth, to avoid iOS touch lock)
   useEffect(() => {
-    function setHeight() {
-      document.documentElement.style.setProperty(
-        "--app-height",
-        `${window.innerHeight}px`
-      );
-    }
-
-    // Immediate + rAF
-    setHeight();
-    requestAnimationFrame(setHeight);
-
-    // iOS PWA viewport settling — needs multiple retries
-    const t1 = setTimeout(setHeight, 100);
-    const t2 = setTimeout(setHeight, 400);
-
-    // Orientation: iOS needs ~500ms after rotation to report correct dimensions
-    function onOrientationChange() {
-      setTimeout(setHeight, 500);
-    }
-
-    // Returning from background (app switcher, notifications)
-    function onVisibilityChange() {
-      if (document.visibilityState === "visible") setHeight();
-    }
-
-    window.addEventListener("resize",            setHeight);
-    window.addEventListener("orientationchange", onOrientationChange);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("pageshow",          setHeight); // iOS back-cache
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      window.removeEventListener("resize",            setHeight);
-      window.removeEventListener("orientationchange", onOrientationChange);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("pageshow",          setHeight);
-    };
-  }, []);
-
-  useEffect(() => {
-    // Use instant scroll — smooth scroll locks iOS touch routing to the scroll
-    // container during the animation, making the bottom nav unresponsive.
     contentRef.current?.scrollTo(0, 0);
   }, [pathname]);
 
-  // Auto-mark past sessions as "התקיים" on every app load (global — all projects)
+  // Auto-mark past sessions as "התקיים" on every app load
   useEffect(() => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -123,7 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientNow }),
-    }).catch(() => {}); // fire-and-forget, non-fatal
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -137,7 +67,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("rb:quicksend", handler);
   }, []);
 
-  // Track which project is open in the drawer — passed to ChatPanel for context
   useEffect(() => {
     const handler = (e: Event) => {
       const id = (e as CustomEvent<string | null>).detail;
@@ -148,46 +77,58 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    // AppShell root: position:fixed inset:0 fills the real viewport on iOS PWA.
-    // flex-col so MobileNav (last child) sits at the physical bottom of the screen
-    // without needing position:fixed — eliminating the iOS first-frame height bug.
+    /*
+      Root shell: position fixed + inset 0 fills the exact visual viewport on
+      iOS PWA without any JavaScript. The browser always computes fixed insets
+      correctly from frame 0 — no timers, no opacity hacks, no polling needed.
+
+      flex-col so MobileNav (last child) anchors to the real bottom of the
+      viewport by layout flow, not by position:fixed.
+    */
     <div
-      className="flex flex-col"
       style={{
-        background: "#0D0D0D",
         position: "fixed",
-        top: 0, left: 0, right: 0, bottom: 0,
-        opacity: viewportReady ? 1 : 0,
-        transition: viewportReady ? "opacity 0.15s ease-in" : undefined,
+        inset: 0,
+        display: "flex",
+        flexDirection: "column",
+        background: "#0D0D0D",
       }}
     >
-      {/* Inner row: desktop sidebar + main content */}
-      <div className="flex flex-1 min-h-0">
+      {/* ── Inner row: sidebar (desktop) + main content ── */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+
+        {/* Desktop sidebar — hidden on mobile */}
         <Sidebar onOpenChat={() => setChatOpen(true)} />
 
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Main column: header + scrollable content + desktop chat panel */}
+        <main
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            overflow: "hidden",
+          }}
+        >
           {/* Top bar */}
           <header
-            className="flex items-center justify-between px-4 md:px-6 border-b flex-shrink-0"
+            className="flex items-center justify-between px-4 md:px-6 border-b"
             style={{
-              background: "#141414", borderColor: "#2A2A2A",
+              background: "#141414",
+              borderColor: "#2A2A2A",
               paddingTop: "max(14px, env(safe-area-inset-top))",
               paddingBottom: 14,
               minHeight: 56,
+              flexShrink: 0,
             }}
           >
-            {/* Left side — Jahkno Radio trigger (hidden on mobile) */}
             <div className="hidden md:block">
               <JahknoRadioPlayer
                 playerOffset={playerVisible ? PLAYER_H : 0}
                 sidebarWidth={SIDEBAR_WIDTH}
               />
             </div>
-
-            {/* Mobile left placeholder */}
             <div className="md:hidden" />
-
-            {/* Right side — AI agent toggle */}
             <button
               onClick={() => setChatOpen(!chatOpen)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
@@ -202,16 +143,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </header>
 
-          <div className="flex flex-1 min-h-0">
-            {/* Page content */}
+          {/* Content row: page + desktop chat sidebar */}
+          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+            {/* Scrollable page content */}
             <div
               ref={contentRef}
-              className="flex-1 overflow-auto"
               style={{
+                flex: 1,
+                overflowY: "auto",
+                overflowX: "hidden",
                 paddingBottom: playerVisible
-                  ? isMobile
-                    ? MOBILE_PLAYER_H + 16
-                    : PLAYER_H + 8
+                  ? isMobile ? MOBILE_PLAYER_H + 16 : PLAYER_H + 8
                   : undefined,
               }}
             >
@@ -220,7 +162,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </GlobalProjectDrawerProvider>
             </div>
 
-            {/* Chat sidebar (desktop) */}
+            {/* Desktop chat panel */}
             <div
               className="hidden md:flex flex-col border-r flex-shrink-0 overflow-hidden transition-all duration-300"
               style={{
@@ -246,12 +188,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      {/* Mobile bottom nav — in layout flow, always at real viewport bottom */}
+      {/*
+        Mobile bottom nav — in layout flow (NOT position:fixed).
+        Because the root shell is position:fixed inset:0, this flex child
+        always sits at the real bottom of the viewport on first render,
+        with no JavaScript, no timers, and no viewport hacks.
+        Hidden on desktop via md:hidden inside MobileNav.
+      */}
       <MobileNav onOpenChat={() => setChatOpen(true)} />
 
-      {/* Mobile chat overlay */}
+      {/* ── Overlays & floating elements ── */}
+
+      {/* Mobile: full-screen chat */}
       {chatOpen && (
-        <div className="md:hidden fixed inset-0 z-50" style={{ background: "#0D0D0D" }}>
+        <div
+          className="md:hidden"
+          style={{ position: "fixed", inset: 0, zIndex: 50, background: "#0D0D0D" }}
+        >
           <div style={{ position: "absolute", top: 12, left: 12, zIndex: 51 }}>
             <button
               onClick={() => setChatOpen(false)}
@@ -276,15 +229,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/*
-        Mini Player — RTL layout:
-          RIGHT side = Sidebar (w-56 = 224px) — navigation, in-flow
-          LEFT  side = Chat panel (320px) — agent, in-flow
-
-        The player must avoid overlapping the chat panel on the left.
-        We set:  left = CHAT_WIDTH when chat open, 0 when closed
-                 right = SIDEBAR_WIDTH (always — sidebar is always visible)
-      */}
+      {/* Desktop mini player */}
       <div
         className="fixed bottom-0 z-50 hidden md:block"
         style={{
@@ -297,7 +242,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <MiniPlayer />
       </div>
 
-      {/* Mobile: full-width player — sits above bottom nav */}
+      {/* Mobile mini player — above bottom nav */}
       <div
         className="fixed left-0 right-0 z-50 md:hidden"
         style={{
@@ -309,23 +254,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <MiniPlayer mobile />
       </div>
 
-      {/* Mobile FAB — only on mobile, inside GlobalProjectDrawerProvider */}
       <MobileFAB playerVisible={playerVisible} />
-
-      {/* Push Notifications manager — invisible, runs once on mount */}
       <PushManager />
     </div>
   );
 }
 
-// ── Mobile FAB + Quick-actions bottom sheet ───────────────────────────────────
+// ── Mobile FAB ────────────────────────────────────────────────────────────────
 
 function MobileFAB({ playerVisible }: { playerVisible: boolean }) {
   const [open, setOpen] = useState(false);
   const { openProject } = useGlobalProjectDrawer();
   const pathname = usePathname();
 
-  // FAB bottom: above nav (56px) + safe-area + optional player (50px)
   const fabBottom = playerVisible
     ? `calc(56px + 50px + 12px + env(safe-area-inset-bottom))`
     : `calc(56px + 12px + env(safe-area-inset-bottom))`;
@@ -336,30 +277,26 @@ function MobileFAB({ playerVisible }: { playerVisible: boolean }) {
   }
 
   const actions = [
-    { icon: "♫", label: "פרויקט חדש",      color: "#3B82F6", action: () => { setOpen(false); window.dispatchEvent(new CustomEvent("rb:new-project")); } },
-    { icon: "📅", label: "קבע סשן",          color: "#60A5FA", action: () => sendQuickPrompt("קבע לי סשן חדש") },
-    { icon: "₪",  label: "הוסף תשלום",       color: "#34D399", action: () => sendQuickPrompt("הוסף תשלום לפרויקט") },
-    { icon: "💸", label: "הוסף הוצאה",       color: "#F59E0B", action: () => sendQuickPrompt("הוסף הוצאה") },
-    { icon: "📦", label: "העלה קובץ",         color: "#A855F7", action: () => sendQuickPrompt("העלה קובץ לפרויקט") },
-    { icon: "👥", label: "שלח לויקטור",      color: "#EC4899", action: () => sendQuickPrompt("שלח פרויקט לויקטור") },
+    { icon: "♫", label: "פרויקט חדש",  color: "#3B82F6", action: () => { setOpen(false); window.dispatchEvent(new CustomEvent("rb:new-project")); } },
+    { icon: "📅", label: "קבע סשן",     color: "#60A5FA", action: () => sendQuickPrompt("קבע לי סשן חדש") },
+    { icon: "₪",  label: "הוסף תשלום", color: "#34D399", action: () => sendQuickPrompt("הוסף תשלום לפרויקט") },
+    { icon: "💸", label: "הוסף הוצאה", color: "#F59E0B", action: () => sendQuickPrompt("הוסף הוצאה") },
+    { icon: "📦", label: "העלה קובץ",  color: "#A855F7", action: () => sendQuickPrompt("העלה קובץ לפרויקט") },
+    { icon: "👥", label: "שלח לויקטור",color: "#EC4899", action: () => sendQuickPrompt("שלח פרויקט לויקטור") },
   ];
 
   if (typeof document === "undefined") return null;
 
   return (
     <>
-      {/* FAB button */}
       <button
         className="md:hidden fixed z-[9900]"
         onClick={() => setOpen(true)}
         style={{
-          bottom: fabBottom,
-          left: 16,
-          width: 52, height: 52,
-          borderRadius: "50%",
+          bottom: fabBottom, left: 16,
+          width: 52, height: 52, borderRadius: "50%",
           background: "linear-gradient(135deg, #3B82F6, #A855F7)",
-          border: "none",
-          color: "#fff",
+          border: "none", color: "#fff",
           fontSize: 24, fontWeight: 300, lineHeight: 1,
           cursor: "pointer",
           boxShadow: "0 4px 20px rgba(59,130,246,0.4)",
@@ -371,7 +308,6 @@ function MobileFAB({ playerVisible }: { playerVisible: boolean }) {
         +
       </button>
 
-      {/* Bottom sheet */}
       {open && createPortal(
         <div
           onClick={() => setOpen(false)}
@@ -390,7 +326,6 @@ function MobileFAB({ playerVisible }: { playerVisible: boolean }) {
               paddingBottom: "env(safe-area-inset-bottom)",
             }}
           >
-            {/* Handle */}
             <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 2px" }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: "#333" }} />
             </div>
@@ -405,7 +340,7 @@ function MobileFAB({ playerVisible }: { playerVisible: boolean }) {
                   style={{
                     display: "flex", alignItems: "center", gap: 12,
                     padding: "16px 16px", borderRadius: 14,
-                    background: "#1A1A1A", border: `1px solid #252525`,
+                    background: "#1A1A1A", border: "1px solid #252525",
                     color: "#CCC", fontSize: 14, fontWeight: 600,
                     cursor: "pointer", fontFamily: "inherit",
                     textAlign: "right",
