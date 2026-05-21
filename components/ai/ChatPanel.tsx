@@ -11,6 +11,8 @@ interface ChatPanelProps {
   pendingPrompt?: string;
   /** Called after the pending prompt has been consumed */
   onPromptConsumed?: () => void;
+  /** Current pathname — passed to API for page-aware context */
+  currentPage?: string;
 }
 
 const SUGGESTED = [
@@ -110,14 +112,7 @@ interface BulkProgress {
   failed: number;
 }
 
-type AIProvider = "groq";
-
-const PROVIDER_COLOR: Record<AIProvider, string> = {
-  groq: "#10B981",
-};
-const PROVIDER_LABEL: Record<AIProvider, string> = {
-  groq: "Groq",
-};
+type AIProvider = "openai" | "groq";
 
 interface LocalMessage extends ChatMessage {
   pendingAction?: MondayUpdateAction;
@@ -128,7 +123,7 @@ interface LocalMessage extends ChatMessage {
   provider?: AIProvider;  // which provider answered this message
 }
 
-export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptConsumed }: ChatPanelProps) {
+export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptConsumed, currentPage }: ChatPanelProps) {
   const { updateProjectField, createProject } = useProjects();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState("");
@@ -171,11 +166,11 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages, projects }),
+        body: JSON.stringify({ messages: apiMessages, projects, currentPage }),
       });
       const data = await res.json();
       const raw: string = data.content || "שגיאה בתגובה.";
-      const provider: AIProvider = "groq";
+      const provider: AIProvider = (data.provider as AIProvider) ?? "openai";
       setActiveProvider(provider);
 
       const { text, action, bulkAction, createAction } = parseAgentMessage(raw);
@@ -315,24 +310,19 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
           </div>
           <div>
             <div className="text-sm font-semibold" style={{ color: "#E8E8E8" }}>
-              סוכן Redbloods
+              מאי AI
             </div>
             <div className="flex items-center gap-1.5 text-xs" style={{ color: "#555" }}>
-              {/* Provider dot — pulses while loading */}
               <span
                 className={loading ? "animate-pulse" : ""}
                 style={{
-                  display: "inline-block",
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: loading ? "#555" : PROVIDER_COLOR.groq,
-                  boxShadow: !loading ? `0 0 4px ${PROVIDER_COLOR.groq}55` : "none",
-                  flexShrink: 0,
-                  transition: "background 0.4s, box-shadow 0.4s",
+                  display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+                  background: loading ? "#555" : "#3B82F6",
+                  boxShadow: !loading ? "0 0 4px #3B82F655" : "none",
+                  flexShrink: 0, transition: "background 0.4s, box-shadow 0.4s",
                 }}
               />
-              {loading ? "Groq מגיב..." : `Groq · ${projects.length} פרויקטים`}
+              {loading ? "מאי מגיבה..." : `${projects.length} פרויקטים פעילים`}
             </div>
           </div>
         </div>
@@ -353,7 +343,7 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
           <div className="text-center py-6">
             <div className="text-2xl mb-2" style={{ opacity: 0.4 }}>♫</div>
             <p className="text-xs" style={{ color: "#555" }}>
-              שאל על הפרויקטים, דדליינים ואמנים
+              שאל את מאי AI כל שאלה על העסק
             </p>
           </div>
         )}
@@ -373,20 +363,7 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
                 >
                   <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{msg.content}</p>
                 </div>
-                {/* Provider tag — only for assistant messages with known provider */}
-                {msg.role === "assistant" && msg.provider && (
-                  <div
-                    className="flex items-center gap-1"
-                    style={{ opacity: 0.45, fontSize: 10, color: PROVIDER_COLOR.groq }}
-                  >
-                    <span style={{
-                      width: 4, height: 4, borderRadius: "50%",
-                      background: PROVIDER_COLOR.groq,
-                      display: "inline-block", flexShrink: 0,
-                    }} />
-                    {PROVIDER_LABEL.groq}
-                  </div>
-                )}
+                {/* Provider not shown in UI — internal tracking only */}
               </div>
             </div>
 
@@ -637,7 +614,7 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-            placeholder="שאל על הפרויקטים..."
+            placeholder="שאל את מאי AI..."
             className="flex-1 text-sm bg-transparent outline-none text-right"
             style={{ color: "#E0E0E0" }}
             dir="rtl"

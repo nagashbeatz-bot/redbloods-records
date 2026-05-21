@@ -6,6 +6,7 @@ import ProjectSection from "@/components/dashboard/ProjectSection";
 import DailyHeader from "@/components/dashboard/DailyHeader";
 import HealthAlert from "@/components/ui/HealthAlert";
 import CalendarWidget from "@/components/dashboard/CalendarWidget";
+import AgentSummaryCard from "@/components/dashboard/AgentSummaryCard";
 import { SkeletonSection } from "@/components/ui/Skeleton";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { Project } from "@/lib/types";
@@ -133,6 +134,9 @@ export default function DashboardContent() {
 
       {/* Calendar */}
       <CalendarWidget />
+
+      {/* Agent summary */}
+      <AgentSummaryCard />
 
       {/* Urgent — stacked (not grid), show only non-empty */}
       {hasUrgent && (

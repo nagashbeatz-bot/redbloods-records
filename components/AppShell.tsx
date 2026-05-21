@@ -170,6 +170,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 onClose={() => setChatOpen(false)}
                 pendingPrompt={pendingPrompt}
                 onPromptConsumed={() => setPendingPrompt(undefined)}
+                currentPage={pathname}
               />
             )}
           </div>
@@ -197,6 +198,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             onClose={() => setChatOpen(false)}
             pendingPrompt={pendingPrompt}
             onPromptConsumed={() => setPendingPrompt(undefined)}
+            currentPage={pathname}
           />
         </div>
       )}
