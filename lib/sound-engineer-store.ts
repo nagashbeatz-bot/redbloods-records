@@ -21,11 +21,16 @@ import type {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Maps (agreedPrice, amountPaid) → expense payment_status.
+ * Uses "שולם" (not "התקבל") — "התקבל" is reserved for income from clients.
+ * "לא שולם" = haven't paid yet (expense owed but not sent).
+ */
 function paymentStatusFromAmounts(agreed: number, paid: number): string {
-  if (agreed <= 0) return "צפוי";
-  if (paid >= agreed) return "התקבל";
-  if (paid > 0)      return "חלקי";
-  return "צפוי";
+  if (agreed <= 0) return "לא שולם";
+  if (paid >= agreed) return "שולם";
+  if (paid > 0)       return "חלקי";
+  return "לא שולם";
 }
 
 function mapRow(
@@ -98,8 +103,8 @@ async function syncTransaction(work: {
     payment_method: "",
     receipt_ref:    "",
     notes:          work.amountPaid > 0
-      ? `שולם ${work.amountPaid}${work.currency} מתוך ${work.agreedPrice}${work.currency}`
-      : "",
+      ? `שולם ${work.currency}${work.amountPaid} מתוך ${work.currency}${work.agreedPrice}`
+      : `ממתין לתשלום — ${work.currency}${work.agreedPrice}`,
     linked_session_id: "",
   };
 
