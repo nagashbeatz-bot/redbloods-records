@@ -13,6 +13,10 @@ interface ChatPanelProps {
   onPromptConsumed?: () => void;
   /** Current pathname — passed to API for page-aware context */
   currentPage?: string;
+  /** Open project ID — injects full project detail context */
+  selectedProjectId?: string;
+  /** Open client ID — injects full client detail context */
+  selectedClientId?: string;
 }
 
 const SUGGESTED = [
@@ -123,7 +127,7 @@ interface LocalMessage extends ChatMessage {
   provider?: AIProvider;  // which provider answered this message
 }
 
-export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptConsumed, currentPage }: ChatPanelProps) {
+export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptConsumed, currentPage, selectedProjectId, selectedClientId }: ChatPanelProps) {
   const { updateProjectField, createProject } = useProjects();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState("");
@@ -166,7 +170,7 @@ export default function ChatPanel({ projects, onClose, pendingPrompt, onPromptCo
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages, projects, currentPage }),
+        body: JSON.stringify({ messages: apiMessages, projects, currentPage, selectedProjectId, selectedClientId }),
       });
       const data = await res.json();
       const raw: string = data.content || "שגיאה בתגובה.";
