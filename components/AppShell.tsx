@@ -28,6 +28,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [isMobile, setIsMobile] = useState(false);
 
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
@@ -87,6 +88,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("rb:quicksend", handler);
     return () => window.removeEventListener("rb:quicksend", handler);
+  }, []);
+
+  // Track which project is open in the drawer — passed to ChatPanel for context
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent<string | null>).detail;
+      setSelectedProjectId(id ?? null);
+    };
+    window.addEventListener("rb:project-selected", handler);
+    return () => window.removeEventListener("rb:project-selected", handler);
   }, []);
 
   return (
@@ -171,6 +182,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 pendingPrompt={pendingPrompt}
                 onPromptConsumed={() => setPendingPrompt(undefined)}
                 currentPage={pathname}
+                selectedProjectId={selectedProjectId ?? undefined}
               />
             )}
           </div>
@@ -199,6 +211,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             pendingPrompt={pendingPrompt}
             onPromptConsumed={() => setPendingPrompt(undefined)}
             currentPage={pathname}
+            selectedProjectId={selectedProjectId ?? undefined}
           />
         </div>
       )}

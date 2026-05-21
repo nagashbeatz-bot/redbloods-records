@@ -618,10 +618,12 @@ async function buildProjectDetailContext(
     }
 
     // Victor work for this project
+    let victorConnected = false;
     try {
       const { getVictorWorkForProject } = await import("@/lib/vendor-store");
       const vw = await getVictorWorkForProject(projectId);
       if (vw) {
+        victorConnected = true;
         lines.push(`ויקטור: ${vw.status}${vw.workState ? ` — ${vw.workState}` : ""}${vw.isStuck ? " ⚠ תקוע" : ""}`);
         if (vw.sentDate)     lines.push(`  נשלח: ${vw.sentDate}${vw.daysSinceSent !== null ? ` (לפני ${vw.daysSinceSent} ימים)` : ""}`);
         if (vw.returnedDate) lines.push(`  חזר: ${vw.returnedDate}`);
@@ -629,6 +631,23 @@ async function buildProjectDetailContext(
         if (vw.notes)        lines.push(`  הערות: ${vw.notes}`);
       }
     } catch { /* ignore */ }
+
+    // ── Explicit "missing" summary — helps AI answer "מה חסר?" ──────────────
+    const missing: string[] = [];
+    if (!proj.artist)                    missing.push("אמן לא מוגדר");
+    if (!proj.deadline)                  missing.push("דדליין לא מוגדר");
+    if (!proj.project_type)              missing.push("סוג פרויקט לא מוגדר");
+    if (!finance || !(finance as Record<string,unknown>)?.agreedPrice) missing.push("מחיר לא הוגדר");
+    if (!(sessions ?? []).length)        missing.push("אין סשנים מתועדים");
+    if (!(sessions ?? []).some((s) => s.date > today)) missing.push("אין סשן המשך מתוכנן");
+    if (!victorConnected)                missing.push("לא נשלח לויקטור");
+    if (!proj.notes)                     missing.push("אין הערות");
+
+    if (missing.length > 0) {
+      lines.push(`\nחסר בפרויקט: ${missing.join(" · ")}`);
+    } else {
+      lines.push(`\nהפרויקט מלא — אין שדות חסרים ברורים.`);
+    }
 
     return lines.join("\n");
   } catch {

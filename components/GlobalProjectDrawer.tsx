@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import ProjectDrawer from "@/components/ui/ProjectDrawer";
 
@@ -39,6 +39,13 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
 
   const openProject = useCallback((id: string) => setDrawerProjectId(id), []);
   const closeProject = useCallback(() => setDrawerProjectId(null), []);
+
+  // Broadcast selected project to AppShell so ChatPanel can receive it
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("rb:project-selected", { detail: drawerProjectId })
+    );
+  }, [drawerProjectId]);
 
   return (
     <Ctx.Provider value={{ openProject, closeProject, drawerProjectId }}>
