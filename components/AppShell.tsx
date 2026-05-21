@@ -108,19 +108,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        <div className="flex flex-1 min-h-0">
-          {/* Page content — bottom padding when player visible */}
+        {/*
+          Pad OUTER container by bottom-nav height on mobile so the scroll area
+          never physically extends behind the fixed nav — fixes iOS touch capture.
+        */}
+        <div
+          className="flex flex-1 min-h-0"
+          style={isMobile ? { paddingBottom: `calc(${MOBILE_NAV_H}px + env(safe-area-inset-bottom))` } : undefined}
+        >
+          {/* Page content — extra padding when player is visible */}
           <div
             ref={contentRef}
             className="flex-1 overflow-auto"
             style={{
               paddingBottom: playerVisible
                 ? isMobile
-                  ? MOBILE_NAV_H + MOBILE_PLAYER_H + 16
+                  ? MOBILE_PLAYER_H + 16   // nav height already handled by outer container
                   : PLAYER_H + 8
-                : isMobile
-                  ? `calc(${MOBILE_NAV_H}px + env(safe-area-inset-bottom))`
-                  : undefined,
+                : undefined,
             }}
           >
             <GlobalProjectDrawerProvider>
