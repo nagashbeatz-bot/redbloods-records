@@ -349,73 +349,290 @@ function MobileProjectCard({
   const balance = fin ? fin.agreed - fin.paid : 0;
   const sc = STATUS_COLORS[p.status] ?? { bg: "rgba(75,85,99,0.15)", color: "#6B7280" };
 
+  const player = usePlayerSafe();
+  const latestAudio = getLatestAudioFile(p.files);
+  const isLoaded  = player?.track?.projectId === p.id;
+  const isPlaying = isLoaded && player!.playing;
+
   return (
-    <button
-      onClick={() => openProject(p.id)}
+    <div
       style={{
-        width: "100%", textAlign: "right", direction: "rtl",
         background: "#1A1A1A", border: "1px solid #252525",
-        borderRadius: 14, padding: "14px 16px",
-        cursor: "pointer", fontFamily: "inherit",
-        display: "flex", flexDirection: "column", gap: 6,
+        borderRadius: 14, overflow: "hidden",
       }}
     >
-      {/* Row 1: project name */}
-      <div style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0", lineHeight: 1.3, textAlign: "right" }}>
-        {p.name}
+      <button
+        onClick={() => openProject(p.id)}
+        style={{
+          width: "100%", textAlign: "right", direction: "rtl",
+          background: "none", border: "none",
+          padding: "14px 16px",
+          cursor: "pointer", fontFamily: "inherit",
+          display: "flex", flexDirection: "column", gap: 7,
+        }}
+      >
+        {/* Row 1: name + play button */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, width: "100%" }}>
+          <div style={{
+            fontSize: 16, fontWeight: 700, color: "#F0F0F0",
+            lineHeight: 1.3, flex: 1, textAlign: "right",
+            wordBreak: "break-word",
+          }}>
+            {p.name}
+          </div>
+          {/* Play button — 44px touch target */}
+          {latestAudio && player && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (isLoaded) {
+                    isPlaying ? player.pause() : player.resume();
+                  } else {
+                    const url = await getFreshPlayUrl(latestAudio);
+                    player.play({
+                      projectId: p.id, projectName: p.name,
+                      artist: p.artist, fileName: latestAudio.name, url,
+                    });
+                  }
+                }}
+                style={{
+                  width: 36, height: 36, borderRadius: "50%", border: "none",
+                  cursor: "pointer", flexShrink: 0,
+                  background: isLoaded ? "rgba(59,130,246,0.25)" : "rgba(255,255,255,0.08)",
+                  color: isLoaded ? "#3B82F6" : "#888",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 13, transition: "all 0.15s",
+                }}
+              >
+                {isPlaying ? "⏸" : "▶"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Row 2: artist */}
+        {p.artist && (
+          <div style={{ fontSize: 13, color: "#666", textAlign: "right" }}>{p.artist}</div>
+        )}
+
+        {/* Row 3: status + deadline tags */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "3px 10px",
+            background: sc.bg, color: sc.color, whiteSpace: "nowrap",
+          }}>
+            {p.status}
+          </span>
+
+          {overdue && (
+            <span style={{
+              fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "3px 10px",
+              background: "rgba(239,68,68,0.08)", color: "#EF4444",
+              border: "1px solid rgba(239,68,68,0.2)", whiteSpace: "nowrap",
+            }}>
+              {deadlineLabel(p.deadline)}
+            </span>
+          )}
+          {!overdue && dueSoon && (
+            <span style={{
+              fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "3px 10px",
+              background: "rgba(245,158,11,0.08)", color: "#F59E0B",
+              border: "1px solid rgba(245,158,11,0.2)", whiteSpace: "nowrap",
+            }}>
+              עוד {days} {days === 1 ? "יום" : "ימים"}
+            </span>
+          )}
+          {!overdue && !dueSoon && p.deadline && (
+            <span style={{ fontSize: 11, color: "#444" }}>
+              {deadlineLabel(p.deadline)}
+            </span>
+          )}
+
+          {fin && balance > 0 && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#F59E0B", marginRight: "auto" }}>
+              יתרה: {fin.currency}{balance.toLocaleString()}
+            </span>
+          )}
+        </div>
+      </button>
+    </div>
+  );
+}
+
+// ── Mobile filter bottom sheet ────────────────────────────────────────────────
+
+function MobileFilterSheet({
+  onClose,
+  statusFilter, setStatusFilter,
+  typeFilter, setTypeFilter,
+  artistFilter, setArtistFilter,
+  sortBy, setSortBy,
+  artists,
+  showHidden, setShowHidden,
+}: {
+  onClose: () => void;
+  statusFilter: FilterStatus; setStatusFilter: (v: FilterStatus) => void;
+  typeFilter: ProjectType | ""; setTypeFilter: (v: ProjectType | "") => void;
+  artistFilter: string; setArtistFilter: (v: string) => void;
+  sortBy: string; setSortBy: (v: string) => void;
+  artists: string[];
+  showHidden: boolean; setShowHidden: (v: boolean) => void;
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 99980,
+        background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="rb-sheet-in"
+        style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          background: "#141414", borderTop: "1px solid #2A2A2A",
+          borderRadius: "20px 20px 0 0",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          maxHeight: "85dvh", overflowY: "auto",
+          direction: "rtl",
+        }}
+      >
+        {/* Handle */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 4px" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "#333" }} />
+        </div>
+        <div style={{ padding: "4px 16px 8px", fontSize: 14, fontWeight: 700, color: "#E8E8E8", textAlign: "right" }}>
+          פילטרים ומיון
+        </div>
+
+        <div style={{ padding: "0 16px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Status */}
+          <div>
+            <div style={{ fontSize: 11, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, textAlign: "right" }}>סטטוס</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setStatusFilter(opt)}
+                  style={{
+                    padding: "6px 12px", borderRadius: 10, fontSize: 12, fontWeight: 600,
+                    border: "1px solid",
+                    background: statusFilter === opt ? "rgba(59,130,246,0.15)" : "#1A1A1A",
+                    borderColor: statusFilter === opt ? "rgba(59,130,246,0.4)" : "#2A2A2A",
+                    color: statusFilter === opt ? "#3B82F6" : "#777",
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Type */}
+          <div>
+            <div style={{ fontSize: 11, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, textAlign: "right" }}>סוג</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {(["", ...PROJECT_TYPES] as (ProjectType | "")[]).map((t) => {
+                const label = t === "" ? "כל הסוגים" : t;
+                const color = t ? (TYPE_COLORS[t] ?? "#6B7280") : "#A855F7";
+                const active = typeFilter === t;
+                return (
+                  <button
+                    key={t || "all"}
+                    onClick={() => setTypeFilter(active && t !== "" ? "" : t)}
+                    style={{
+                      padding: "6px 12px", borderRadius: 10, fontSize: 12, fontWeight: 600,
+                      border: "1px solid",
+                      background: active ? `${color}18` : "#1A1A1A",
+                      borderColor: active ? `${color}40` : "#2A2A2A",
+                      color: active ? color : "#777",
+                      cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Artist */}
+          <div>
+            <div style={{ fontSize: 11, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, textAlign: "right" }}>אמן</div>
+            <select
+              value={artistFilter}
+              onChange={(e) => setArtistFilter(e.target.value)}
+              style={{
+                width: "100%", background: "#1A1A1A", border: "1px solid #2A2A2A",
+                borderRadius: 10, color: artistFilter ? "#F0F0F0" : "#666",
+                fontSize: 13, padding: "10px 12px", direction: "rtl",
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="">כל האמנים</option>
+              {artists.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+
+          {/* Sort */}
+          <div>
+            <div style={{ fontSize: 11, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10, textAlign: "right" }}>מיון</div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                width: "100%", background: "#1A1A1A", border: "1px solid #2A2A2A",
+                borderRadius: 10, color: "#F0F0F0",
+                fontSize: 13, padding: "10px 12px", direction: "rtl",
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="updated">עודכן לאחרונה</option>
+              <option value="urgency">דחיפות</option>
+              <option value="deadline">דדליין</option>
+              <option value="name">שם פרויקט</option>
+              <option value="artist">אמן</option>
+              <option value="status">סטטוס</option>
+            </select>
+          </div>
+
+          {/* Hidden projects toggle */}
+          <div>
+            <button
+              onClick={() => { setShowHidden(!showHidden); onClose(); }}
+              style={{
+                width: "100%", padding: "11px 16px", borderRadius: 12,
+                border: `1px solid ${showHidden ? "rgba(107,114,128,0.5)" : "#2A2A2A"}`,
+                background: showHidden ? "rgba(107,114,128,0.15)" : "#1A1A1A",
+                color: showHidden ? "#9CA3AF" : "#555",
+                fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                textAlign: "right",
+              }}
+            >
+              {showHidden ? "← חזור לפרויקטים" : "🚫 הצג מוסתרים"}
+            </button>
+          </div>
+
+          {/* Close */}
+          <button
+            onClick={onClose}
+            style={{
+              width: "100%", padding: "13px 0", borderRadius: 14,
+              border: "none", background: "rgba(59,130,246,0.15)",
+              color: "#3B82F6", fontSize: 14, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            סגור
+          </button>
+        </div>
       </div>
-
-      {/* Row 2: artist */}
-      {p.artist && (
-        <div style={{ fontSize: 13, color: "#666", textAlign: "right" }}>{p.artist}</div>
-      )}
-
-      {/* Row 3: status + deadline tag */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-        {/* Status badge */}
-        <span style={{
-          fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "2px 9px",
-          background: sc.bg, color: sc.color, whiteSpace: "nowrap",
-        }}>
-          {p.status}
-        </span>
-
-        {/* Deadline tag — muted, not screaming */}
-        {overdue && (
-          <span style={{
-            fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "2px 9px",
-            background: "rgba(239,68,68,0.08)", color: "#EF4444",
-            border: "1px solid rgba(239,68,68,0.2)", whiteSpace: "nowrap",
-          }}>
-            {deadlineLabel(p.deadline)}
-          </span>
-        )}
-        {!overdue && dueSoon && (
-          <span style={{
-            fontSize: 11, fontWeight: 600, borderRadius: 8, padding: "2px 9px",
-            background: "rgba(245,158,11,0.08)", color: "#F59E0B",
-            border: "1px solid rgba(245,158,11,0.2)", whiteSpace: "nowrap",
-          }}>
-            עוד {days} {days === 1 ? "יום" : "ימים"}
-          </span>
-        )}
-        {!overdue && !dueSoon && p.deadline && (
-          <span style={{ fontSize: 11, color: "#444" }}>
-            {deadlineLabel(p.deadline)}
-          </span>
-        )}
-
-        {/* Balance */}
-        {fin && balance > 0 && (
-          <span style={{
-            fontSize: 11, fontWeight: 600,
-            color: "#F59E0B", marginRight: "auto",
-          }}>
-            יתרה: {fin.currency}{balance.toLocaleString()}
-          </span>
-        )}
-      </div>
-    </button>
+    </div>,
+    document.body
   );
 }
 
@@ -443,6 +660,7 @@ export default function ProjectsTable() {
   const [showHidden,    setShowHidden]    = useState(false);
   const [hiddenProjects, setHiddenProjects] = useState<import("@/lib/types").Project[]>([]);
   const [hiddenLoading,  setHiddenLoading]  = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   const fetchHidden = useCallback(() => {
     setHiddenLoading(true);
@@ -603,182 +821,240 @@ export default function ProjectsTable() {
       return 0;
     });
 
+  const hasActiveFilters = statusFilter !== "כל הסטטוסים" || typeFilter !== "" || artistFilter !== "" || sortBy !== "updated" || showHidden;
+
   return (
-    <div>
+    <div style={{ overflowX: "hidden" }}>
       <Suspense fallback={null}>
         <OpenProjectFromURL />
       </Suspense>
-      {/* Filters row 1 — status */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {FILTER_OPTIONS.map((opt) => (
+
+      {/* ── Mobile filter sheet ─────────────────────────────────────────────── */}
+      {filterSheetOpen && isMobile && (
+        <MobileFilterSheet
+          onClose={() => setFilterSheetOpen(false)}
+          statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+          typeFilter={typeFilter} setTypeFilter={setTypeFilter}
+          artistFilter={artistFilter} setArtistFilter={setArtistFilter}
+          sortBy={sortBy} setSortBy={(v) => setSortBy(v as typeof sortBy)}
+          artists={artists}
+          showHidden={showHidden} setShowHidden={(v) => {
+            setShowHidden(v);
+            if (v) { setStatusFilter("כל הסטטוסים"); setTypeFilter(""); setParentFilter(""); setArtistFilter(""); }
+          }}
+        />
+      )}
+
+      {/* ── Mobile: compact header bar ──────────────────────────────────────── */}
+      {isMobile && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
           <button
-            key={opt}
-            onClick={() => setStatusFilter(opt)}
-            className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
+            onClick={() => setShowNewProject(true)}
             style={{
-              background: statusFilter === opt ? "rgba(59,130,246,0.12)" : "#1A1A1A",
-              borderColor: statusFilter === opt ? "rgba(59,130,246,0.35)" : "#252525",
-              color: statusFilter === opt ? "#3B82F6" : "#666",
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "9px 14px", borderRadius: 12,
+              border: "1px solid rgba(59,130,246,0.35)",
+              background: "rgba(59,130,246,0.08)",
+              color: "#3B82F6", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit",
             }}
           >
-            {opt}
+            <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+            חדש
           </button>
-        ))}
-      </div>
 
-      {/* Hidden-mode toggle — sits after status row, before type row */}
-      <div className="flex items-center gap-2 mb-2">
-        <button
-          onClick={() => {
-            setShowHidden((v) => !v);
-            setStatusFilter("כל הסטטוסים");
-            setTypeFilter("");
-            setParentFilter("");
-            setArtistFilter("");
-          }}
-          className="px-3 py-1 rounded-lg border text-xs font-medium transition-all"
-          style={{
-            background: showHidden ? "rgba(107,114,128,0.15)" : "transparent",
-            borderColor: showHidden ? "rgba(107,114,128,0.5)" : "#252525",
-            color: showHidden ? "#9CA3AF" : "#444",
-          }}
-        >
-          {showHidden ? "← חזור לפרויקטים" : "🚫 מוסתרים"}
-          {!showHidden && hiddenProjects.length === 0 && projects.length > 0 ? "" : ""}
-        </button>
-        {showHidden && (
-          <span style={{ fontSize: 11, color: "#555" }}>
-            {hiddenLoading ? "טוען..." : `${hiddenProjects.length} פרויקטים מוסתרים`}
+          <span style={{ flex: 1, fontSize: 12, color: "#555", textAlign: "center" }}>
+            {filtered.length} פרויקטים
           </span>
-        )}
-      </div>
 
-      {/* Filters row 2 + 3 — hidden when in hidden-mode */}
-      {!showHidden && <><div className="flex flex-wrap items-center gap-2 mb-2">
-        {/* Project type filter */}
-        <div className="flex flex-wrap gap-1.5">
           <button
-            onClick={() => setTypeFilter("")}
-            className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-all"
+            onClick={() => setFilterSheetOpen(true)}
             style={{
-              background: typeFilter === "" ? "rgba(168,85,247,0.12)" : "#1A1A1A",
-              borderColor: typeFilter === "" ? "rgba(168,85,247,0.35)" : "#252525",
-              color: typeFilter === "" ? "#A855F7" : "#555",
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "9px 14px", borderRadius: 12,
+              border: "1px solid",
+              borderColor: hasActiveFilters ? "rgba(168,85,247,0.4)" : "#252525",
+              background: hasActiveFilters ? "rgba(168,85,247,0.12)" : "#1A1A1A",
+              color: hasActiveFilters ? "#A855F7" : "#666",
+              fontSize: 13, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit",
             }}
           >
-            כל הסוגים
+            ⚙ פילטרים
+            {hasActiveFilters && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#A855F7", display: "inline-block" }} />}
           </button>
-          {PROJECT_TYPES.map((t) => {
-            const color = TYPE_COLORS[t] ?? "#6B7280";
-            const active = typeFilter === t;
-            return (
-              <button
-                key={t}
-                onClick={() => setTypeFilter(active ? "" : t)}
-                className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-all"
-                style={{
-                  background: active ? `${color}18` : "#1A1A1A",
-                  borderColor: active ? `${color}40` : "#252525",
-                  color: active ? color : "#555",
-                }}
-              >
-                {t}
-              </button>
-            );
-          })}
         </div>
-      </div>
+      )}
 
-      {/* Filters row 3 — parent project + artist + sort + setup */}
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        {/* Parent project filter */}
-        <select
-          value={parentFilter}
-          onChange={(e) => setParentFilter(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border text-xs font-medium"
-          style={{
-            background: "#1A1A1A",
-            borderColor: parentFilter ? "rgba(16,185,129,0.4)" : "#252525",
-            color: parentFilter ? "#10B981" : "#666",
-          }}
-        >
-          <option value="">כל השיוכים</option>
-          <option value={NO_AFFILIATION}>{NO_AFFILIATION}</option>
-          {uniqueParents.map((v) => (
-            <option key={v} value={v}>{v}</option>
+      {/* ── Desktop: full filter rows ───────────────────────────────────────── */}
+      {!isMobile && <>
+        {/* Filters row 1 — status */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt}
+              onClick={() => setStatusFilter(opt)}
+              className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
+              style={{
+                background: statusFilter === opt ? "rgba(59,130,246,0.12)" : "#1A1A1A",
+                borderColor: statusFilter === opt ? "rgba(59,130,246,0.35)" : "#252525",
+                color: statusFilter === opt ? "#3B82F6" : "#666",
+              }}
+            >
+              {opt}
+            </button>
           ))}
-        </select>
+        </div>
 
-        <div className="flex gap-2 mr-auto">
+        {/* Hidden-mode toggle */}
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            onClick={() => {
+              setShowHidden((v) => !v);
+              setStatusFilter("כל הסטטוסים");
+              setTypeFilter("");
+              setParentFilter("");
+              setArtistFilter("");
+            }}
+            className="px-3 py-1 rounded-lg border text-xs font-medium transition-all"
+            style={{
+              background: showHidden ? "rgba(107,114,128,0.15)" : "transparent",
+              borderColor: showHidden ? "rgba(107,114,128,0.5)" : "#252525",
+              color: showHidden ? "#9CA3AF" : "#444",
+            }}
+          >
+            {showHidden ? "← חזור לפרויקטים" : "🚫 מוסתרים"}
+          </button>
+          {showHidden && (
+            <span style={{ fontSize: 11, color: "#555" }}>
+              {hiddenLoading ? "טוען..." : `${hiddenProjects.length} פרויקטים מוסתרים`}
+            </span>
+          )}
+        </div>
+
+        {/* Filters row 2 + 3 */}
+        {!showHidden && <><div className="flex flex-wrap items-center gap-2 mb-2">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setTypeFilter("")}
+              className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-all"
+              style={{
+                background: typeFilter === "" ? "rgba(168,85,247,0.12)" : "#1A1A1A",
+                borderColor: typeFilter === "" ? "rgba(168,85,247,0.35)" : "#252525",
+                color: typeFilter === "" ? "#A855F7" : "#555",
+              }}
+            >
+              כל הסוגים
+            </button>
+            {PROJECT_TYPES.map((t) => {
+              const color = TYPE_COLORS[t] ?? "#6B7280";
+              const active = typeFilter === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTypeFilter(active ? "" : t)}
+                  className="px-2.5 py-1 rounded-lg border text-xs font-medium transition-all"
+                  style={{
+                    background: active ? `${color}18` : "#1A1A1A",
+                    borderColor: active ? `${color}40` : "#252525",
+                    color: active ? color : "#555",
+                  }}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 mb-5">
           <select
-            value={artistFilter}
-            onChange={(e) => setArtistFilter(e.target.value)}
+            value={parentFilter}
+            onChange={(e) => setParentFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg border text-xs font-medium"
             style={{
               background: "#1A1A1A",
-              borderColor: "#252525",
-              color: artistFilter ? "#F0F0F0" : "#666",
+              borderColor: parentFilter ? "rgba(16,185,129,0.4)" : "#252525",
+              color: parentFilter ? "#10B981" : "#666",
             }}
           >
-            <option value="">כל האמנים</option>
-            {artists.map((a) => (
-              <option key={a} value={a}>{a}</option>
+            <option value="">כל השיוכים</option>
+            <option value={NO_AFFILIATION}>{NO_AFFILIATION}</option>
+            {uniqueParents.map((v) => (
+              <option key={v} value={v}>{v}</option>
             ))}
           </select>
 
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="px-3 py-1.5 rounded-lg border text-xs font-medium"
+          <div className="flex gap-2 mr-auto">
+            <select
+              value={artistFilter}
+              onChange={(e) => setArtistFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border text-xs font-medium"
+              style={{
+                background: "#1A1A1A",
+                borderColor: "#252525",
+                color: artistFilter ? "#F0F0F0" : "#666",
+              }}
+            >
+              <option value="">כל האמנים</option>
+              {artists.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="px-3 py-1.5 rounded-lg border text-xs font-medium"
+              style={{
+                background: "#1A1A1A",
+                borderColor: sortBy !== "updated" ? "rgba(168,85,247,0.4)" : "#252525",
+                color: sortBy !== "updated" ? "#A855F7" : "#666",
+              }}
+            >
+              <option value="updated">מיון: עודכן לאחרונה</option>
+              <option value="urgency">מיון: דחיפות</option>
+              <option value="deadline">מיון: דדליין</option>
+              <option value="name">מיון: שם פרויקט</option>
+              <option value="artist">מיון: אמן</option>
+              <option value="status">מיון: סטטוס</option>
+            </select>
+          </div>
+        </div>
+        </>}
+
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => setShowNewProject(true)}
             style={{
-              background: "#1A1A1A",
-              borderColor: sortBy !== "updated" ? "rgba(168,85,247,0.4)" : "#252525",
-              color: sortBy !== "updated" ? "#A855F7" : "#666",
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "7px 14px", borderRadius: 10,
+              border: "1px solid rgba(59,130,246,0.35)",
+              background: "rgba(59,130,246,0.08)",
+              color: "#3B82F6", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              Object.assign((e.currentTarget as HTMLElement).style, {
+                background: "rgba(59,130,246,0.15)",
+                borderColor: "rgba(59,130,246,0.55)",
+              });
+            }}
+            onMouseLeave={(e) => {
+              Object.assign((e.currentTarget as HTMLElement).style, {
+                background: "rgba(59,130,246,0.08)",
+                borderColor: "rgba(59,130,246,0.35)",
+              });
             }}
           >
-            <option value="updated">מיון: עודכן לאחרונה</option>
-            <option value="urgency">מיון: דחיפות</option>
-            <option value="deadline">מיון: דדליין</option>
-            <option value="name">מיון: שם פרויקט</option>
-            <option value="artist">מיון: אמן</option>
-            <option value="status">מיון: סטטוס</option>
-          </select>
-
+            <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+            פרויקט חדש
+          </button>
+          <p className="text-xs" style={{ color: "#555" }}>
+            {filtered.length} {showHidden ? "פרויקטים מוסתרים" : "פרויקטים"}
+          </p>
         </div>
-      </div>
       </>}
-
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={() => setShowNewProject(true)}
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "7px 14px", borderRadius: 10,
-            border: "1px solid rgba(59,130,246,0.35)",
-            background: "rgba(59,130,246,0.08)",
-            color: "#3B82F6", fontSize: 13, fontWeight: 600,
-            cursor: "pointer", transition: "all 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            Object.assign((e.currentTarget as HTMLElement).style, {
-              background: "rgba(59,130,246,0.15)",
-              borderColor: "rgba(59,130,246,0.55)",
-            });
-          }}
-          onMouseLeave={(e) => {
-            Object.assign((e.currentTarget as HTMLElement).style, {
-              background: "rgba(59,130,246,0.08)",
-              borderColor: "rgba(59,130,246,0.35)",
-            });
-          }}
-        >
-          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-          פרויקט חדש
-        </button>
-        <p className="text-xs" style={{ color: "#555" }}>
-          {filtered.length} {showHidden ? "פרויקטים מוסתרים" : "פרויקטים"}
-        </p>
-      </div>
 
       {/* ── Mobile: card list ─────────────────────────────────────────────── */}
       {isMobile && (
