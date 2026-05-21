@@ -1945,6 +1945,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           {/* ── Victor section ──────────────────────────────────────────── */}
           <VictorSection project={project} />
 
+          {/* ── Sound Engineer section ───────────────────────────────────── */}
+          <SoundEngineerSection project={project} />
+
         </div>
 
       {/* ── Past-date confirmation modal ──────────────────────────────── */}
@@ -2379,9 +2382,9 @@ function SessionForm({
 
 // ── Victor Section (self-contained, lazy-loaded) ──────────────────────────────
 
-import type { VendorWork, VictorStatus } from "@/lib/types";
-import { VICTOR_STATUSES } from "@/lib/types";
-import { useRef, useCallback } from "react";
+import type { VendorWork, VictorStatus, SoundEngineerWork } from "@/lib/types";
+import { VICTOR_STATUSES, SOUND_ENGINEER_STATUSES, SOUND_ENGINEER_WORK_TYPES } from "@/lib/types";
+import { useRef, useCallback, type ChangeEvent } from "react";
 
 function vsColor(s: VictorStatus): string {
   return s === "פעיל" ? "#A855F7" : s === "הושלם" ? "#10B981" : "#555";
@@ -2593,3 +2596,384 @@ function VictorSection({ project }: { project: { id: string; name: string; artis
   );
 }
 
+// ── Sound Engineer Section (self-contained, lazy-loaded) ─────────────────────
+
+type SoundEngineerDraft = {
+  engineerName: string;
+  workType: string;
+  status: string;
+  agreedPrice: string;
+  currency: string;
+  amountPaid: string;
+  sentDate: string;
+  internalDeadline: string;
+  filesLink: string;
+  notes: string;
+};
+
+function seStatusColor(s: string): string {
+  if (s === "אושר")    return "#10B981";
+  if (s === "חזר")     return "#3B82F6";
+  if (s === "בתהליך")  return "#F59E0B";
+  if (s === "נשלח")    return "#A855F7";
+  if (s === "בוטל")    return "#6B7280";
+  return "#555";
+}
+
+const ENGINEER_SUGGESTIONS = ["Bill", "Steven"];
+const CURRENCIES = ["$", "₪", "€"];
+
+function SoundEngineerSection({ project }: { project: { id: string; name: string; artist: string } }) {
+  const [open, setOpen]         = useState(false);
+  const [work, setWork]         = useState<SoundEngineerWork | null | undefined>(undefined);
+  const [loading, setLoading]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [syncing, setSyncing]   = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [copied, setCopied]     = useState(false);
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [editingPaid,  setEditingPaid]  = useState(false);
+  const [priceDraft,   setPriceDraft]   = useState("");
+  const [paidDraft,    setPaidDraft]    = useState("");
+
+  const [draft, setDraft] = useState<SoundEngineerDraft>({
+    engineerName: "", workType: "מיקס", status: "לא נשלח",
+    agreedPrice: "", currency: "$", amountPaid: "0",
+    sentDate: "", internalDeadline: "", filesLink: "", notes: "",
+  });
+
+  const load = useCallback(async () => {
+    if (work !== undefined) return;
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/sound-engineer?projectId=${project.id}`);
+      const data = await res.json() as { ok: boolean; work: SoundEngineerWork | null };
+      setWork(data.ok ? data.work : null);
+    } catch {
+      setWork(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [project.id, work]);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  const handleCreate = async () => {
+    if (!draft.engineerName.trim()) { setError("שם איש הסאונד חסר"); return; }
+    setCreating(true); setError(null);
+    try {
+      const res = await fetch("/api/sound-engineer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId:        project.id,
+          engineerName:     draft.engineerName.trim(),
+          workType:         draft.workType,
+          status:           draft.status,
+          agreedPrice:      Number(draft.agreedPrice)  || 0,
+          currency:         draft.currency,
+          amountPaid:       Number(draft.amountPaid)   || 0,
+          sentDate:         draft.sentDate             || null,
+          internalDeadline: draft.internalDeadline     || null,
+          filesLink:        draft.filesLink.trim()     || null,
+          notes:            draft.notes,
+        }),
+      });
+      const data = await res.json() as { ok: boolean; work: SoundEngineerWork; error?: string };
+      if (!data.ok) throw new Error(data.error ?? "יצירה נכשלה");
+      setWork(data.work);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const patch = async (fields: Record<string, unknown>) => {
+    if (!work) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sound-engineer/${work.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      const data = await res.json() as { ok: boolean; work: SoundEngineerWork };
+      if (data.ok) setWork(data.work);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSync = async () => {
+    if (!work) return;
+    setSyncing(true); setError(null);
+    try {
+      const res = await fetch(`/api/sound-engineer/${work.id}`, { method: "POST" });
+      const data = await res.json() as { ok: boolean; txId: string | null; error?: string };
+      if (!data.ok) throw new Error(data.error ?? "סנכרון נכשל");
+      if (data.txId) setWork((prev) => prev ? { ...prev, linkedTransactionId: data.txId } : prev);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!work?.filesLink) return;
+    await navigator.clipboard.writeText(work.filesLink);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  const balance       = work ? Math.max(0, work.agreedPrice - work.amountPaid) : 0;
+  const hasTransaction = !!(work?.linkedTransactionId);
+
+  return (
+    <div style={{ background: "#1C1C1C", border: "1px solid #252525", borderRadius: 14, marginBottom: 10, overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "right", fontFamily: "inherit" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#60A5FA" }}>🎚 איש סאונד חיצוני</span>
+          {work && (
+            <>
+              <span style={{ fontSize: 10, color: "#888" }}>{work.engineerName}</span>
+              <span style={{ fontSize: 10, color: seStatusColor(work.status), background: `${seStatusColor(work.status)}18`, border: `1px solid ${seStatusColor(work.status)}33`, borderRadius: 5, padding: "1px 7px" }}>
+                {work.status}
+              </span>
+              {work.agreedPrice > 0 && balance > 0 && (
+                <span style={{ fontSize: 10, color: "#F59E0B", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 5, padding: "1px 7px" }}>
+                  יתרה {work.currency}{balance}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        <span style={{ fontSize: 13, color: "#444", display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", lineHeight: 1 }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "0 16px 14px" }}>
+          <div style={{ height: 1, background: "#252525", marginBottom: 14 }} />
+
+          {loading ? (
+            <div style={{ fontSize: 12, color: "#555" }}>טוען...</div>
+
+          ) : work === null ? (
+            /* ── CREATE FORM ─────────────────────────────────────────────── */
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 12, color: "#555", marginBottom: 2 }}>הגדר איש סאונד חיצוני לפרויקט זה.</div>
+
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>שם איש הסאונד</div>
+                <input list="se-names-create" value={draft.engineerName}
+                  onChange={(e) => setDraft({ ...draft, engineerName: e.target.value })}
+                  placeholder="Bill / Steven / אחר..." className="rb-session-input"
+                  style={{ width: "100%", boxSizing: "border-box" }} />
+                <datalist id="se-names-create">{ENGINEER_SUGGESTIONS.map((n) => <option key={n} value={n} />)}</datalist>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סוג עבודה</div>
+                  <select value={draft.workType} onChange={(e) => setDraft({ ...draft, workType: e.target.value })} className="rb-session-input" style={{ width: "100%" }}>
+                    {SOUND_ENGINEER_WORK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סטטוס</div>
+                  <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })} className="rb-session-input" style={{ width: "100%" }}>
+                    {SOUND_ENGINEER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 2 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>מחיר שסוכם</div>
+                  <input type="number" min="0" value={draft.agreedPrice} onChange={(e) => setDraft({ ...draft, agreedPrice: e.target.value })} placeholder="0" className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>מטבע</div>
+                  <select value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value })} className="rb-session-input" style={{ width: "100%" }}>
+                    {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תאריך שליחה</div>
+                  <input type="date" value={draft.sentDate} onChange={(e) => setDraft({ ...draft, sentDate: e.target.value })} className="rb-session-input" style={{ width: "100%" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>דדליין פנימי</div>
+                  <input type="date" value={draft.internalDeadline} onChange={(e) => setDraft({ ...draft, internalDeadline: e.target.value })} className="rb-session-input" style={{ width: "100%" }} />
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>לינק קבצים (Dropbox / Drive)</div>
+                <input type="url" value={draft.filesLink} onChange={(e) => setDraft({ ...draft, filesLink: e.target.value })} placeholder="https://..." className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+              </div>
+
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות</div>
+                <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={2}
+                  style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "6px 8px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+
+              {error && <div style={{ fontSize: 11, color: "#EF4444" }}>{error}</div>}
+
+              <button onClick={handleCreate} disabled={creating || !draft.engineerName.trim()}
+                style={{ padding: "9px 0", borderRadius: 10, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: (creating || !draft.engineerName.trim()) ? "default" : "pointer", background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.35)", color: "#60A5FA", opacity: (creating || !draft.engineerName.trim()) ? 0.55 : 1 }}>
+                {creating ? "יוצר..." : "🎚 הגדר איש סאונד"}
+              </button>
+            </div>
+
+          ) : work ? (
+            /* ── RECORD EXISTS ───────────────────────────────────────────── */
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 2 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>איש סאונד</div>
+                  <input list="se-names-edit" defaultValue={work.engineerName}
+                    onBlur={(e) => { if (e.target.value !== work.engineerName) patch({ engineerName: e.target.value }); }}
+                    className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+                  <datalist id="se-names-edit">{ENGINEER_SUGGESTIONS.map((n) => <option key={n} value={n} />)}</datalist>
+                </div>
+                <div style={{ flex: 2 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סוג עבודה</div>
+                  <select value={work.workType} onChange={(e) => patch({ workType: e.target.value })} className="rb-session-input" style={{ width: "100%" }}>
+                    {SOUND_ENGINEER_WORK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סטטוס</div>
+                <select value={work.status} onChange={(e) => patch({ status: e.target.value })}
+                  style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: seStatusColor(work.status), fontSize: 12, padding: "5px 8px", fontFamily: "inherit" }}>
+                  {SOUND_ENGINEER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              {/* Finance */}
+              <div style={{ background: "#141414", borderRadius: 10, padding: "10px 12px", display: "flex", gap: 12 }}>
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>מחיר שסוכם</div>
+                  {editingPrice ? (
+                    <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+                      <input autoFocus type="number" min="0" value={priceDraft}
+                        onChange={(e) => setPriceDraft(e.target.value)}
+                        onBlur={() => { const n = Number(priceDraft); if (!isNaN(n)) patch({ agreedPrice: n }); setEditingPrice(false); }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { const n = Number(priceDraft); if (!isNaN(n)) patch({ agreedPrice: n }); setEditingPrice(false); } if (e.key === "Escape") setEditingPrice(false); }}
+                        style={{ width: 60, background: "#0D0D0D", border: "1px solid #3B82F6", borderRadius: 5, color: "#E0E0E0", fontSize: 12, padding: "2px 5px", fontFamily: "inherit", textAlign: "center" }}
+                      />
+                      <select value={work.currency} onChange={(e) => patch({ currency: e.target.value })}
+                        style={{ background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 5, color: "#888", fontSize: 11, fontFamily: "inherit" }}>
+                        {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+                      </select>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setPriceDraft(String(work.agreedPrice)); setEditingPrice(true); }}
+                      style={{ fontSize: 14, fontWeight: 700, color: work.agreedPrice > 0 ? "#E0E0E0" : "#555", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+                      {work.agreedPrice > 0 ? `${work.currency}${work.agreedPrice}` : "—"}
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>שולם</div>
+                  {editingPaid ? (
+                    <input autoFocus type="number" min="0" value={paidDraft}
+                      onChange={(e) => setPaidDraft(e.target.value)}
+                      onBlur={() => { const n = Number(paidDraft); if (!isNaN(n)) patch({ amountPaid: n }); setEditingPaid(false); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { const n = Number(paidDraft); if (!isNaN(n)) patch({ amountPaid: n }); setEditingPaid(false); } if (e.key === "Escape") setEditingPaid(false); }}
+                      style={{ width: 70, background: "#0D0D0D", border: "1px solid #3B82F6", borderRadius: 5, color: "#E0E0E0", fontSize: 12, padding: "2px 5px", fontFamily: "inherit", textAlign: "center" }}
+                    />
+                  ) : (
+                    <button onClick={() => { setPaidDraft(String(work.amountPaid)); setEditingPaid(true); }}
+                      style={{ fontSize: 14, fontWeight: 700, color: work.amountPaid > 0 ? "#10B981" : "#555", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+                      {work.amountPaid > 0 ? `${work.currency}${work.amountPaid}` : "₀"}
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>יתרה</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: balance > 0 ? "#F59E0B" : "#10B981" }}>
+                    {balance > 0 ? `${work.currency}${balance}` : "✓ סגור"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction sync */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: hasTransaction ? "rgba(16,185,129,0.06)" : "rgba(245,158,11,0.06)", border: `1px solid ${hasTransaction ? "rgba(16,185,129,0.2)" : "rgba(245,158,11,0.25)"}`, borderRadius: 8 }}>
+                <span style={{ fontSize: 11, color: hasTransaction ? "#10B981" : "#F59E0B" }}>
+                  {hasTransaction ? "✓ רשומה כהוצאה בכספים" : "⚠ לא נרשם כהוצאה"}
+                </span>
+                <button onClick={handleSync} disabled={syncing || work.agreedPrice <= 0}
+                  style={{ fontSize: 11, color: "#888", background: "none", border: "none", cursor: work.agreedPrice <= 0 ? "default" : "pointer", fontFamily: "inherit", opacity: work.agreedPrice <= 0 ? 0.4 : 1 }}>
+                  {syncing ? "מסנכרן..." : hasTransaction ? "↻ עדכן" : "סנכרן ←"}
+                </button>
+              </div>
+
+              {/* Dates */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תאריך שליחה</div>
+                  <input type="date" key={`sd-${work.id}`} defaultValue={work.sentDate ?? ""}
+                    onBlur={(e) => patch({ sentDate: e.target.value || null })} className="rb-session-input" style={{ width: "100%" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>דדליין פנימי</div>
+                  <input type="date" key={`dl-${work.id}`} defaultValue={work.internalDeadline ?? ""}
+                    onBlur={(e) => patch({ internalDeadline: e.target.value || null })} className="rb-session-input" style={{ width: "100%" }} />
+                </div>
+              </div>
+
+              {/* Files link */}
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>לינק קבצים</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input type="url" key={`fl-${work.id}`} defaultValue={work.filesLink ?? ""}
+                    onBlur={(e) => { if (e.target.value !== (work.filesLink ?? "")) patch({ filesLink: e.target.value || null }); }}
+                    placeholder="https://..." className="rb-session-input" style={{ flex: 1, boxSizing: "border-box" }} />
+                  {work.filesLink && (
+                    <>
+                      <button onClick={copyLink} style={{ padding: "0 10px", borderRadius: 7, fontFamily: "inherit", fontSize: 11, cursor: "pointer", background: "#1A1A1A", border: "1px solid #2A2A2A", color: copied ? "#10B981" : "#888" }}>
+                        {copied ? "✓" : "📋"}
+                      </button>
+                      <a href={work.filesLink} target="_blank" rel="noopener noreferrer"
+                        style={{ padding: "0 10px", display: "flex", alignItems: "center", borderRadius: 7, fontSize: 11, textDecoration: "none", background: "#1A1A1A", border: "1px solid #2A2A2A", color: "#3B82F6" }}>
+                        ↗
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות</div>
+                <textarea key={`notes-${work.id}`} defaultValue={work.notes}
+                  onBlur={(e) => { if (e.target.value !== work.notes) patch({ notes: e.target.value }); }}
+                  rows={2}
+                  style={{ width: "100%", background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "6px 8px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+
+              {saving && <div style={{ fontSize: 11, color: "#555" }}>שומר...</div>}
+              {error  && <div style={{ fontSize: 11, color: "#EF4444" }}>{error}</div>}
+            </div>
+
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}

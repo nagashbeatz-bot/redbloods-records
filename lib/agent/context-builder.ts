@@ -632,16 +632,74 @@ async function buildProjectDetailContext(
       }
     } catch { /* ignore */ }
 
+    // Sound engineer work for this project
+    let soundEngineerConnected = false;
+    let soundEngineerBalance = 0;
+    let soundEngineerHasTx = false;
+    try {
+      const { getSoundEngineerWorkForProject } = await import("@/lib/sound-engineer-store");
+      const sw = await getSoundEngineerWorkForProject(projectId);
+      if (sw) {
+        soundEngineerConnected = true;
+        soundEngineerBalance   = sw.balance;
+        soundEngineerHasTx     = !!sw.linkedTransactionId;
+        lines.push(`איש סאונד חיצוני: ${sw.engineerName} — ${sw.workType} | סטטוס: ${sw.status}`);
+        if (sw.agreedPrice > 0) {
+          lines.push(`  מחיר: ${sw.currency}${sw.agreedPrice} | שולם: ${sw.currency}${sw.amountPaid} | יתרה: ${sw.currency}${sw.balance}`);
+          lines.push(`  הוצאה בכספים: ${sw.linkedTransactionId ? "✓ רשומה" : "⚠ לא נרשמה — לסנכרן"}`);
+        } else {
+          lines.push(`  מחיר: לא הוגדר`);
+        }
+        if (sw.internalDeadline) lines.push(`  דדליין פנימי: ${sw.internalDeadline}`);
+        if (sw.filesLink)        lines.push(`  לינק קבצים: קיים`);
+        if (sw.notes)            lines.push(`  הערות: ${sw.notes}`);
+      }
+    } catch { /* ignore */ }
+
     // ── Explicit "missing" summary — helps AI answer "מה חסר?" ──────────────
+    // Checks are context-aware: different checks per project status
+    const status: string = (proj.status as string) ?? "";
+    const isMixStage = status === "מחכה למיקס" || status === "במיקס";
+    const isDone     = status === "הושלם";
+
     const missing: string[] = [];
-    if (!proj.artist)                    missing.push("אמן לא מוגדר");
-    if (!proj.deadline)                  missing.push("דדליין לא מוגדר");
-    if (!proj.project_type)              missing.push("סוג פרויקט לא מוגדר");
-    if (!finance || !(finance as Record<string,unknown>)?.agreedPrice) missing.push("מחיר לא הוגדר");
-    if (!(sessions ?? []).length)        missing.push("אין סשנים מתועדים");
-    if (!(sessions ?? []).some((s) => s.date > today)) missing.push("אין סשן המשך מתוכנן");
-    if (!victorConnected)                missing.push("לא נשלח לויקטור");
-    if (!proj.notes)                     missing.push("אין הערות");
+
+    // Always required
+    if (!proj.artist)       missing.push("אמן לא מוגדר");
+    if (!proj.project_type) missing.push("סוג פרויקט לא מוגדר");
+    if (!proj.notes)        missing.push("אין הערות");
+
+    // Financial basics
+    if (!finance || !(finance as Record<string, unknown>)?.agreedPrice) {
+      missing.push("מחיר לא הוגדר");
+    }
+
+    // Session checks (not for completed/held projects)
+    if (!isDone && status !== "בהשהייה") {
+      if (!proj.deadline)  missing.push("דדליין לא מוגדר");
+      if (!(sessions ?? []).length) missing.push("אין סשנים מתועדים");
+      if (!(sessions ?? []).some((s) => s.date > today)) missing.push("אין סשן המשך מתוכנן");
+    }
+
+    // Mix stage checks
+    if (isMixStage) {
+      if (!soundEngineerConnected)        missing.push("לא הוגדר איש סאונד חיצוני");
+      else if (soundEngineerBalance > 0 && !soundEngineerHasTx)
+                                          missing.push(`יתרה לאיש הסאונד (${soundEngineerBalance}) לא נרשמה כהוצאה`);
+      else if (soundEngineerBalance > 0)  missing.push(`יתרה פתוחה לאיש הסאונד: ${soundEngineerBalance}`);
+    }
+
+    // Victor check (always)
+    if (!victorConnected) missing.push("לא נשלח לויקטור");
+
+    // Completion checks
+    if (isDone) {
+      // Check all income received
+      const allPaid = (txns ?? [])
+        .filter((t) => t.type !== "הוצאה")
+        .every((t) => PAID_STATUSES.has(t.payment_status));
+      if (!allPaid) missing.push("יש תשלום לא מסומן כהתקבל (בדוק סגירה פיננסית)");
+    }
 
     if (missing.length > 0) {
       lines.push(`\nחסר בפרויקט: ${missing.join(" · ")}`);

@@ -248,6 +248,51 @@ export interface BusinessMemoryEntry {
   updatedAt: string;
 }
 
+// ── Sound Engineer / External Mix types ──────────────────────────────────────
+
+export type SoundEngineerStatus =
+  | "לא נשלח"
+  | "נשלח"
+  | "בתהליך"
+  | "חזר"
+  | "אושר"
+  | "בוטל";
+
+export type SoundEngineerWorkType =
+  | "מיקס"
+  | "מאסטר"
+  | "מיקס + מאסטר"
+  | "תיקונים";
+
+export const SOUND_ENGINEER_STATUSES: SoundEngineerStatus[] = [
+  "לא נשלח", "נשלח", "בתהליך", "חזר", "אושר", "בוטל",
+];
+
+export const SOUND_ENGINEER_WORK_TYPES: SoundEngineerWorkType[] = [
+  "מיקס", "מאסטר", "מיקס + מאסטר", "תיקונים",
+];
+
+export interface SoundEngineerWork {
+  id: string;
+  projectId: string;
+  projectName: string;           // joined from projects
+  artist: string;                // joined from projects
+  engineerName: string;          // "Bill" | "Steven" | custom
+  workType: SoundEngineerWorkType;
+  status: SoundEngineerStatus;
+  agreedPrice: number;
+  currency: string;              // "$" | "₪" | "€"
+  amountPaid: number;
+  balance: number;               // computed: agreedPrice - amountPaid
+  sentDate: string | null;       // YYYY-MM-DD
+  internalDeadline: string | null;
+  filesLink: string | null;      // Dropbox / Drive / any URL
+  notes: string;
+  linkedTransactionId: string | null;  // references transactions(id)
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Input to create an alert (before DB insertion) */
 export interface AlertInput {
   type: string;
