@@ -238,11 +238,12 @@ export default function Sidebar({ onOpenChat }: Props) {
       </aside>
 
       {/* ── Mobile bottom nav — 5 tabs ──────────────────────────────────── */}
+      {/* md:hidden must not be overridden by inline display — keep display out of style */}
       <nav
-        className="md:hidden fixed bottom-0 right-0 left-0 z-50 border-t"
+        className="md:hidden fixed bottom-0 right-0 left-0 z-50 border-t grid"
         style={{
           background: "#141414", borderColor: "#2A2A2A",
-          display: "grid", gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateColumns: "repeat(5, 1fr)",
           paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
