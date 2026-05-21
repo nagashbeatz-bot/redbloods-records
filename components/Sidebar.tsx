@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -22,8 +22,8 @@ const NAV_SETTINGS = [
 
 // ── Desktop sidebar nav link ──────────────────────────────────────────────────
 
-function NavLink({ href, label, icon, iconColor, pathname }: {
-  href: string; label: string; icon: string; iconColor?: string; pathname: string;
+function NavLink({ href, label, icon, iconColor, pathname, badge }: {
+  href: string; label: string; icon: string; iconColor?: string; pathname: string; badge?: number;
 }) {
   const active = pathname === href || pathname.startsWith(href + "/");
   return (
@@ -40,7 +40,17 @@ function NavLink({ href, label, icon, iconColor, pathname }: {
       <span className="text-base" style={iconColor ? { color: iconColor, opacity: active ? 1 : 0.85 } : undefined}>
         {icon}
       </span>
-      {label}
+      <span style={{ flex: 1 }}>{label}</span>
+      {badge != null && badge > 0 && (
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: "#141414",
+          background: "#EF4444", borderRadius: 10,
+          padding: "1px 6px", minWidth: 18, textAlign: "center",
+          lineHeight: "16px",
+        }}>
+          {badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -65,10 +75,11 @@ const MORE_ITEMS = [
 
 // ── "More" bottom sheet ───────────────────────────────────────────────────────
 
-function MoreSheet({ onClose, onOpenChat, pathname }: {
+function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
   onClose: () => void;
   onOpenChat?: () => void;
   pathname: string;
+  insightsBadge?: number;
 }) {
   return createPortal(
     <div
@@ -98,6 +109,7 @@ function MoreSheet({ onClose, onOpenChat, pathname }: {
         <div style={{ padding: "4px 16px 8px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
           {MORE_ITEMS.map(({ href, label, icon, iconColor }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
+            const badge = href === "/insights" ? (insightsBadge ?? 0) : 0;
             return (
               <Link
                 key={href}
@@ -110,11 +122,20 @@ function MoreSheet({ onClose, onOpenChat, pathname }: {
                   border: `1px solid ${active ? "rgba(59,130,246,0.3)" : "#252525"}`,
                   color: active ? "#3B82F6" : "#AAA",
                   fontSize: 15, fontWeight: 600,
-                  textDecoration: "none",
+                  textDecoration: "none", position: "relative",
                 }}
               >
                 <span style={{ fontSize: 20, ...(iconColor ? { color: iconColor } : {}) }}>{icon}</span>
-                {label}
+                <span style={{ flex: 1 }}>{label}</span>
+                {badge > 0 && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: "#141414",
+                    background: "#EF4444", borderRadius: 10,
+                    padding: "1px 6px", minWidth: 18, textAlign: "center",
+                  }}>
+                    {badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -148,6 +169,14 @@ interface Props {
 export default function Sidebar({ onOpenChat }: Props) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/agent/alerts?status=new&count=1")
+      .then((r) => r.json())
+      .then((d) => setUnreadAlerts(d.count ?? 0))
+      .catch(() => { /* ignore */ });
+  }, []);
 
   // Is any "more" item currently active?
   const moreActive = MORE_ITEMS.some(
@@ -181,7 +210,15 @@ export default function Sidebar({ onOpenChat }: Props) {
         <nav className="flex-1 px-3 py-4">
           <div className="space-y-1">
             {NAV_MAIN.map(({ href, label, icon, iconColor }) => (
-              <NavLink key={href} href={href} label={label} icon={icon} iconColor={iconColor} pathname={pathname} />
+              <NavLink
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                iconColor={iconColor}
+                pathname={pathname}
+                badge={href === "/insights" ? unreadAlerts : undefined}
+              />
             ))}
           </div>
           <div className="mt-5 mb-2 px-3" style={{ fontSize: 10, fontWeight: 700, color: "#4A4A4A", letterSpacing: "0.08em", textTransform: "uppercase" }}>
@@ -252,6 +289,7 @@ export default function Sidebar({ onOpenChat }: Props) {
           onClose={() => setMoreOpen(false)}
           onOpenChat={onOpenChat}
           pathname={pathname}
+          insightsBadge={unreadAlerts}
         />
       )}
     </>

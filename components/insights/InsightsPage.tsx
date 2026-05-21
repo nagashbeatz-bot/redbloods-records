@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
-import type { Project } from "@/lib/types";
+import type { Project, AgentAlert, AlertStatus } from "@/lib/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Period = "month" | "prev-month" | "30days" | "year" | "custom";
@@ -179,6 +179,113 @@ function ActionBtn({ label, onClick, variant = "ghost" }: { label: string; onCli
     >
       {label}
     </button>
+  );
+}
+
+// ── Agent alert severity config ───────────────────────────────────────────────
+const AGENT_SEV_COLOR = {
+  urgent:    "#EF4444",
+  important: "#F97316",
+  warning:   "#F59E0B",
+  info:      "#3B82F6",
+} as const;
+const AGENT_SEV_LABEL = {
+  urgent:    "דחוף",
+  important: "חשוב",
+  warning:   "אזהרה",
+  info:      "מידע",
+} as const;
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 2)  return "עכשיו";
+  if (mins < 60) return `לפני ${mins} דקות`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `לפני ${hrs} שעות`;
+  const days = Math.floor(hrs / 24);
+  return `לפני ${days} ימים`;
+}
+
+// ── Agent alert card ──────────────────────────────────────────────────────────
+function AgentAlertCard({
+  alert, onAction, updating,
+}: {
+  alert: AgentAlert;
+  onAction: (id: string, status: AlertStatus) => void;
+  updating: boolean;
+}) {
+  const color = AGENT_SEV_COLOR[alert.severity] ?? "#3B82F6";
+  const label = AGENT_SEV_LABEL[alert.severity] ?? alert.severity;
+  return (
+    <div style={{
+      background: `${color}08`,
+      border: `1px solid ${color}22`,
+      borderRadius: 12,
+      padding: "12px 14px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+      opacity: updating ? 0.5 : 1,
+      transition: "opacity 0.15s",
+    }}>
+      {/* Top row: severity badge + title + time */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, color, flexShrink: 0,
+          background: `${color}18`, border: `1px solid ${color}33`,
+          borderRadius: 5, padding: "2px 6px", marginTop: 1,
+        }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#D0D0D0", flex: 1, lineHeight: 1.4 }}>
+          {alert.title}
+        </span>
+        <span style={{ fontSize: 10, color: "#444", flexShrink: 0, marginTop: 2 }}>
+          {timeAgo(alert.createdAt)}
+        </span>
+      </div>
+      {/* Message */}
+      <div style={{ fontSize: 12, color: "#888", lineHeight: 1.5, paddingRight: 2 }}>
+        {alert.message}
+      </div>
+      {/* Action buttons */}
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        <button
+          onClick={() => onAction(alert.id, "handled")}
+          disabled={updating}
+          style={{
+            padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+            border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)",
+            color: "#10B981", cursor: updating ? "not-allowed" : "pointer", fontFamily: "inherit",
+          }}
+        >
+          ✓ טופל
+        </button>
+        <button
+          onClick={() => onAction(alert.id, "dismissed")}
+          disabled={updating}
+          style={{
+            padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+            border: "1px solid #2A2A2A", background: "#1A1A1A",
+            color: "#666", cursor: updating ? "not-allowed" : "pointer", fontFamily: "inherit",
+          }}
+        >
+          ✗ דחה
+        </button>
+        <button
+          onClick={() => onAction(alert.id, "ignored")}
+          disabled={updating}
+          style={{
+            padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+            border: "1px solid #2A2A2A", background: "#1A1A1A",
+            color: "#555", cursor: updating ? "not-allowed" : "pointer", fontFamily: "inherit",
+          }}
+        >
+          👁 התעלם
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -462,6 +569,13 @@ export default function InsightsPage() {
   const [loaded,       setLoaded]       = useState(false);
   const [activeModal,  setActiveModal]  = useState<ModalKey | null>(null);
 
+  // Agent alerts
+  const [agentAlerts,       setAgentAlerts]       = useState<AgentAlert[]>([]);
+  const [agentAlertsLoaded, setAgentAlertsLoaded] = useState(false);
+  const [updatingIds,       setUpdatingIds]       = useState<Set<string>>(new Set());
+  const [snapshotCopied,    setSnapshotCopied]    = useState(false);
+  const [snapshotLoading,   setSnapshotLoading]   = useState(false);
+
   const [period,     setPeriod]     = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo,   setCustomTo]   = useState("");
@@ -479,6 +593,49 @@ export default function InsightsPage() {
       setClients(c.clients ?? []);
       setLoaded(true);
     }).catch(() => setLoaded(true));
+  }, []);
+
+  // Fetch agent alerts separately
+  useEffect(() => {
+    fetch("/api/agent/alerts?status=new&limit=20")
+      .then((r) => r.json())
+      .then((data) => {
+        setAgentAlerts(data.alerts ?? []);
+        setAgentAlertsLoaded(true);
+      })
+      .catch(() => setAgentAlertsLoaded(true));
+  }, []);
+
+  const handleAlertAction = useCallback(async (id: string, status: AlertStatus) => {
+    setUpdatingIds((prev) => new Set(prev).add(id));
+    try {
+      await fetch(`/api/agent/alerts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      setAgentAlerts((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      // ignore
+    } finally {
+      setUpdatingIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  }, []);
+
+  const handleSnapshot = useCallback(async () => {
+    setSnapshotLoading(true);
+    try {
+      const res = await fetch("/api/agent/context");
+      if (!res.ok) throw new Error("שגיאה");
+      const text = await res.text();
+      await navigator.clipboard.writeText(text);
+      setSnapshotCopied(true);
+      setTimeout(() => setSnapshotCopied(false), 3000);
+    } catch {
+      alert("שגיאה ביצירת תמונת מצב");
+    } finally {
+      setSnapshotLoading(false);
+    }
   }, []);
 
   const openModal = useCallback((key: ModalKey) => setActiveModal(key), []);
@@ -687,6 +844,56 @@ export default function InsightsPage() {
         <div style={{ color: "#444", fontSize: 13, padding: "60px", textAlign: "center" }}>טוען נתונים...</div>
       ) : (
         <>
+          {/* 🤖 התראות סוכן */}
+          {(agentAlertsLoaded || agentAlerts.length > 0) && (
+            <div style={{ background: "#181818", border: "1px solid #252525", borderRadius: 16, padding: "16px 18px", marginBottom: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: agentAlerts.length > 0 ? 12 : 0 }}>
+                <button
+                  onClick={handleSnapshot}
+                  disabled={snapshotLoading}
+                  style={{
+                    padding: "5px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600,
+                    border: snapshotCopied ? "1px solid rgba(16,185,129,0.4)" : "1px solid #2A2A2A",
+                    background: snapshotCopied ? "rgba(16,185,129,0.1)" : "#1A1A1A",
+                    color: snapshotCopied ? "#10B981" : "#666",
+                    cursor: snapshotLoading ? "wait" : "pointer",
+                    fontFamily: "inherit", transition: "all 0.2s",
+                  }}
+                >
+                  {snapshotCopied ? "✓ הועתק!" : snapshotLoading ? "מכין..." : "📋 צור תמונת מצב"}
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#555", letterSpacing: "0.05em" }}>🤖 התראות סוכן</span>
+                  {agentAlerts.length > 0 && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: "#141414",
+                      background: "#EF4444", borderRadius: 10,
+                      padding: "1px 6px", minWidth: 18, textAlign: "center",
+                    }}>
+                      {agentAlerts.length}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {agentAlerts.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {agentAlerts.map((a) => (
+                    <AgentAlertCard
+                      key={a.id}
+                      alert={a}
+                      onAction={handleAlertAction}
+                      updating={updatingIds.has(a.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: "center", color: "#444", fontSize: 12, padding: "16px 0" }}>
+                  ✓ אין התראות פעילות
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ⚠ מה דורש תשומת לב */}
           {displayAlerts.length > 0 && (
             <div style={{ background: "#181818", border: "1px solid #2A2A2A", borderRadius: 16, padding: "16px 18px", marginBottom: 24 }}>

@@ -203,3 +203,61 @@ export interface VictorMonthStats {
   salaryCurrency: string;
 }
 
+// ── Agent / Proactive intelligence types ──────────────────────────────────────
+
+export type AlertSeverity = "info" | "warning" | "important" | "urgent";
+export type AlertStatus   = "new" | "handled" | "dismissed" | "ignored";
+
+export interface AgentAlert {
+  id: string;
+  type: string;
+  severity: AlertSeverity;
+  title: string;
+  message: string;
+  relatedProjectId: string | null;
+  relatedClientId: string | null;
+  metadata: Record<string, unknown>;
+  suggestedActions: string[];
+  source: "scheduled" | "manual" | "chat";
+  status: AlertStatus;
+  sentNotification: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BusinessGoals {
+  monthlyRevenue:      { target: number; currency: string };
+  weeklySessions:      { target: number };
+  monthlyVictor:       { target: number };
+  monthlyCompletions:  { target: number };
+}
+
+export interface GoalsProgress {
+  monthlyRevenue:     { target: number; currency: string; actual: number; expectedByNow: number; pct: number };
+  weeklySessions:     { target: number; actual: number; pct: number };
+  monthlyVictor:      { target: number; actual: number; expectedByNow: number; pct: number };
+  monthlyCompletions: { target: number; actual: number; expectedByNow: number; pct: number };
+}
+
+export interface BusinessMemoryEntry {
+  key: string;
+  value: string;
+  category: string;
+  relatedId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Input to create an alert (before DB insertion) */
+export interface AlertInput {
+  type: string;
+  severity: AlertSeverity;
+  title: string;
+  message: string;
+  relatedProjectId?: string | null;
+  relatedClientId?: string | null;
+  metadata?: Record<string, unknown>;
+  suggestedActions?: string[];
+  source?: "scheduled" | "manual" | "chat";
+}
+
