@@ -96,54 +96,45 @@ ${contextLines.join("\n")}
 אל תחזור על מה שכתבת כבר בדוח. התמקד בצעד הבא הכי חשוב.
 החזר JSON בלבד: {"recommendations": ["...", "...", "..."]}`;
 
-  // Try Groq first
-  if (process.env.GROQ_API_KEY) {
+  // Try OpenAI (primary)
+  if (process.env.OPENAI_API_KEY) {
     try {
-      const OpenAI = (await import("openai")).default;
-      const client = new OpenAI({
-        apiKey:  process.env.GROQ_API_KEY,
-        baseURL: "https://api.groq.com/openai/v1",
-      });
-      const res = await client.chat.completions.create({
-        model:           process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
-        messages:        [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens:      220,
-        temperature:     0.65,
-      });
-      const parsed = JSON.parse(res.choices[0].message.content ?? "{}");
-      if (
-        Array.isArray(parsed.recommendations) &&
-        parsed.recommendations.length >= 3
-      ) {
-        return parsed.recommendations.slice(0, 3);
+      const { openAIJSON, resolveModel } = await import("@/lib/providers/openai");
+      const model = resolveModel("default");
+      const { data, inputTokens, outputTokens } = await openAIJSON<{ recommendations: string[] }>(
+        prompt, { model, maxTokens: 250, temperature: 0.65 }
+      );
+      // Track usage (fire-and-forget)
+      void (async () => {
+        try {
+          const { trackAIUsage } = await import("@/lib/agent/budget");
+          await trackAIUsage({ provider: "openai", model, action: `${reportType}_report_recommendations`, source: "report", inputTokens, outputTokens });
+        } catch { /* ignore */ }
+      })();
+      if (Array.isArray(data.recommendations) && data.recommendations.length >= 3) {
+        return data.recommendations.slice(0, 3);
       }
     } catch {
-      /* fall through to OpenAI */
+      /* fall through to Groq */
     }
   }
 
-  // Try OpenAI fallback
-  if (process.env.OPENAI_API_KEY) {
+  // Groq fallback (optional — only if GROQ_API_KEY set)
+  if (process.env.GROQ_API_KEY) {
     try {
       const OpenAI = (await import("openai")).default;
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const res = await client.chat.completions.create({
-        model:           process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-        messages:        [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens:      220,
-        temperature:     0.65,
+      const client = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });
+      const model  = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
+      const res    = await client.chat.completions.create({
+        model, messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" }, max_tokens: 220, temperature: 0.65,
       });
       const parsed = JSON.parse(res.choices[0].message.content ?? "{}");
-      if (
-        Array.isArray(parsed.recommendations) &&
-        parsed.recommendations.length >= 3
-      ) {
+      if (Array.isArray(parsed.recommendations) && parsed.recommendations.length >= 3) {
         return parsed.recommendations.slice(0, 3);
       }
     } catch {
-      /* fall through to generic */
+      /* fall through to static */
     }
   }
 

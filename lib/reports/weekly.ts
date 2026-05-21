@@ -213,6 +213,27 @@ async function getWeeklyRecommendations(data: WeeklyData): Promise<string[]> {
 
   const prompt = `אתה מנהל תפעול של סטודיו מוזיקה "Redbloods Records". סיכום שבועי:\n${ctx}\n\nתן בדיוק 3 המלצות עדיפות לשבוע הבא. כל המלצה: משפט אחד, עברית, קצר ומעשי. החזר JSON בלבד: {"recommendations": ["...", "...", "..."]}`;
 
+  // OpenAI primary
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const { openAIJSON, resolveModel } = await import("@/lib/providers/openai");
+      const model = resolveModel("default");
+      const { data, inputTokens, outputTokens } = await openAIJSON<{ recommendations: string[] }>(
+        prompt, { model, maxTokens: 250, temperature: 0.65 }
+      );
+      void (async () => {
+        try {
+          const { trackAIUsage } = await import("@/lib/agent/budget");
+          await trackAIUsage({ provider: "openai", model, action: "weekly_report_recommendations", source: "report", inputTokens, outputTokens });
+        } catch { /* ignore */ }
+      })();
+      if (Array.isArray(data.recommendations) && data.recommendations.length >= 3) {
+        return data.recommendations.slice(0, 3);
+      }
+    } catch { /* fallthrough to Groq */ }
+  }
+
+  // Groq fallback (optional)
   if (process.env.GROQ_API_KEY) {
     try {
       const OpenAI = (await import("openai")).default;
@@ -227,7 +248,7 @@ async function getWeeklyRecommendations(data: WeeklyData): Promise<string[]> {
       if (Array.isArray(parsed.recommendations) && parsed.recommendations.length >= 3) {
         return parsed.recommendations.slice(0, 3);
       }
-    } catch { /* fallthrough */ }
+    } catch { /* fallthrough to static */ }
   }
 
   // Static fallback
