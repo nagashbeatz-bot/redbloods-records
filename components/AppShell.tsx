@@ -39,23 +39,52 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Set --app-height CSS variable for accurate iOS Safari viewport height.
-  // Uses requestAnimationFrame so the value reflects the final rendered height,
-  // not the pre-render estimate. Also updates on resize and orientation change.
+  // Set --app-height CSS variable for accurate iOS Safari / PWA viewport height.
+  //
+  // iOS PWA settles its viewport asynchronously after launch — window.innerHeight
+  // can be wrong for up to ~400ms on first paint. We:
+  //   1. Set immediately (no rAF) so the value is available as early as possible
+  //   2. Set after one rAF for the first painted frame
+  //   3. Retry at 100ms + 400ms to catch iOS settling (key fix for first-load gap)
+  //   4. Listen to resize / orientationchange / visibilitychange / pageshow
   useEffect(() => {
-    const setHeight = () => {
-      requestAnimationFrame(() => {
-        document.documentElement.style.setProperty(
-          "--app-height",
-          `${window.innerHeight}px`
-        );
-      });
-    };
+    function setHeight() {
+      document.documentElement.style.setProperty(
+        "--app-height",
+        `${window.innerHeight}px`
+      );
+    }
+
+    // Immediate + rAF
     setHeight();
-    window.addEventListener("resize", setHeight);
-    window.addEventListener("orientationchange", () => setTimeout(setHeight, 200));
+    requestAnimationFrame(setHeight);
+
+    // iOS PWA viewport settling — needs multiple retries
+    const t1 = setTimeout(setHeight, 100);
+    const t2 = setTimeout(setHeight, 400);
+
+    // Orientation: iOS needs ~500ms after rotation to report correct dimensions
+    function onOrientationChange() {
+      setTimeout(setHeight, 500);
+    }
+
+    // Returning from background (app switcher, notifications)
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") setHeight();
+    }
+
+    window.addEventListener("resize",            setHeight);
+    window.addEventListener("orientationchange", onOrientationChange);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow",          setHeight); // iOS back-cache
+
     return () => {
-      window.removeEventListener("resize", setHeight);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener("resize",            setHeight);
+      window.removeEventListener("orientationchange", onOrientationChange);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow",          setHeight);
     };
   }, []);
 
