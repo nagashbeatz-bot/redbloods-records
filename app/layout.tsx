@@ -37,6 +37,11 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/apple-icon.png" />
       </head>
       <body className="min-h-screen" suppressHydrationWarning>
+        {/* Set --app-height synchronously before first paint so the layout
+            is correct on frame 0 (before any useEffect runs). */}
+        <script dangerouslySetInnerHTML={{ __html:
+          "document.documentElement.style.setProperty('--app-height',window.innerHeight+'px');"
+        }} />
         <ProjectsProvider>
           <PlayerProvider>
             <RadioProvider>

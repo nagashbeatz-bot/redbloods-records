@@ -59,7 +59,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    // Use instant scroll — smooth scroll locks iOS touch routing to the scroll
+    // container during the animation, making the bottom nav unresponsive.
+    contentRef.current?.scrollTo(0, 0);
   }, [pathname]);
 
   // Auto-mark past sessions as "התקיים" on every app load (global — all projects)
