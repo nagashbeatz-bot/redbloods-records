@@ -89,6 +89,11 @@ export default function MobileTestPage() {
   const [history, setHistory] = useState<Snapshot[]>([]);
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [showNav, setShowNav] = useState(true);
+  const [pwaDebug, setPwaDebug] = useState(false);
+
+  useEffect(() => {
+    setPwaDebug(localStorage.getItem("rb_debug") === "1");
+  }, []);
 
   const take = useCallback(() => {
     const s = measure(shellRef, navRef);
@@ -310,6 +315,33 @@ export default function MobileTestPage() {
               ))}
             </Section>
           )}
+
+          {/* ── PWA Debug Toggle ── */}
+          <Section title="📱 הפעלת Debug ב-PWA">
+            <div style={{ padding: "12px 12px" }}>
+              <p style={{ fontSize: 12, color: "#AAA", lineHeight: 1.7, marginBottom: 10 }}>
+                כדי לראות את ה-debug overlay בתוך ה-PWA (מסך הבית),
+                הפעל כאן ← פתח את ה-PWA ← הoverlay יופיע אוטומטית.
+              </p>
+              <button
+                onClick={() => {
+                  const next = !pwaDebug;
+                  if (next) localStorage.setItem("rb_debug", "1");
+                  else localStorage.removeItem("rb_debug");
+                  setPwaDebug(next);
+                }}
+                style={{
+                  width: "100%", padding: "12px 16px", borderRadius: 12,
+                  background: pwaDebug ? "#052e16" : "#1A1A1A",
+                  border: `1px solid ${pwaDebug ? "#16a34a" : "#333"}`,
+                  color: pwaDebug ? "#4ade80" : "#AAA",
+                  fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {pwaDebug ? "✓ Debug PWA פעיל — לחץ לכיבוי" : "הפעל Debug ב-PWA"}
+              </button>
+            </div>
+          </Section>
 
           {/* ── Instructions ── */}
           <Section title="📋 איך לקרוא תוצאות">

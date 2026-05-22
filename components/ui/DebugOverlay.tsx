@@ -114,7 +114,13 @@ export default function DebugOverlay({
   navRef: React.RefObject<HTMLElement | null>;
 }) {
   const searchParams = useSearchParams();
-  const enabled = searchParams.get("debug") === "1";
+  // Enabled via ?debug=1 in URL OR localStorage (for PWA where there's no URL bar)
+  const urlEnabled = searchParams.get("debug") === "1";
+  const [lsEnabled, setLsEnabled] = useState(false);
+  useEffect(() => {
+    setLsEnabled(localStorage.getItem("rb_debug") === "1");
+  }, []);
+  const enabled = urlEnabled || lsEnabled;
 
   const [initial, setInitial] = useState<Snap | null>(null);
   const [live, setLive] = useState<Snap | null>(null);
