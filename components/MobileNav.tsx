@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -110,7 +110,13 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
 // without depending on iOS fixed-positioning or env(safe-area-inset-bottom)
 // being computed correctly on the first frame.
 
-export default function MobileNav({ onOpenChat }: { onOpenChat?: () => void }) {
+export default function MobileNav({
+  onOpenChat,
+  navRef,
+}: {
+  onOpenChat?: () => void;
+  navRef?: RefObject<HTMLElement | null>;
+}) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
@@ -134,6 +140,7 @@ export default function MobileNav({ onOpenChat }: { onOpenChat?: () => void }) {
         so it is always at the actual bottom of the viewport.
       */}
       <nav
+        ref={navRef}
         className="md:hidden border-t grid flex-shrink-0"
         style={{
           background: "#141414",

@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
+import { Suspense } from "react";
 import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
 import ChatPanel from "./ai/ChatPanel";
 import MiniPlayer from "./ui/MiniPlayer";
+import DebugOverlay from "./ui/DebugOverlay";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
@@ -28,6 +30,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const mobileNavRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -86,6 +90,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       viewport by layout flow, not by position:fixed.
     */
     <div
+      ref={shellRef}
       style={{
         position: "fixed",
         inset: 0,
@@ -195,7 +200,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         with no JavaScript, no timers, and no viewport hacks.
         Hidden on desktop via md:hidden inside MobileNav.
       */}
-      <MobileNav onOpenChat={() => setChatOpen(true)} />
+      <MobileNav onOpenChat={() => setChatOpen(true)} navRef={mobileNavRef} />
 
       {/* ── Overlays & floating elements ── */}
 
@@ -256,6 +261,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <MobileFAB playerVisible={playerVisible} />
       <PushManager />
+
+      {/* Debug overlay — only active when ?debug=1 in URL */}
+      <Suspense fallback={null}>
+        <DebugOverlay shellRef={shellRef} navRef={mobileNavRef} />
+      </Suspense>
     </div>
   );
 }
