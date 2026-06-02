@@ -51,9 +51,17 @@ export async function POST(req: NextRequest) {
         if (await isConnected()) {
           const start = `${date}T${time}:00`;
           const durationMin = duration ?? 60;
-          const endDate = new Date(`${date}T${time}:00`);
-          endDate.setMinutes(endDate.getMinutes() + durationMin);
-          const end = endDate.toISOString().slice(0, 19); // RFC3339 requires seconds
+          // Compute end time as Israel local time — avoid UTC conversion entirely.
+          // Both start and end are sent with timeZone:"Asia/Jerusalem" so they
+          // must be expressed in Israel local time, not UTC.
+          const [hh, mm] = time.split(":").map(Number);
+          const endTotalMin = hh * 60 + mm + durationMin;
+          const endHh = String(Math.floor(endTotalMin / 60) % 24).padStart(2, "0");
+          const endMm = String(endTotalMin % 60).padStart(2, "0");
+          const endDateStr = endTotalMin >= 1440
+            ? new Date(new Date(date + "T00:00:00Z").getTime() + 86_400_000).toISOString().split("T")[0]
+            : date;
+          const end = `${endDateStr}T${endHh}:${endMm}:00`;
           const summary = `פגישה עם ${clientName}${location ? ` — ${location}` : ""}`;
           const event = await createCalendarEvent(summary, start, end, notes ? { description: notes } : undefined);
           calendarEventId = (event as { id?: string }).id ?? null;
