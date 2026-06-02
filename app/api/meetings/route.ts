@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
           const durationMin = duration ?? 60;
           const endDate = new Date(`${date}T${time}:00`);
           endDate.setMinutes(endDate.getMinutes() + durationMin);
-          const end = endDate.toISOString().slice(0, 16);
+          const end = endDate.toISOString().slice(0, 19); // RFC3339 requires seconds
           const summary = `פגישה עם ${clientName}${location ? ` — ${location}` : ""}`;
           const event = await createCalendarEvent(summary, start, end, notes ? { description: notes } : undefined);
           calendarEventId = (event as { id?: string }).id ?? null;
