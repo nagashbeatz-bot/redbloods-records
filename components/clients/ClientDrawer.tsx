@@ -513,6 +513,9 @@ function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
         const d = await res.json();
         if (d.error) throw new Error(d.error);
         onSaved({ type: "meeting", data: d.meeting });
+        if (d.calendarError) {
+          alert(`הפגישה נשמרה ✓\n\nלא נוספה ל-Google Calendar:\n${d.calendarError}\n\nניתן למחוק וליצור מחדש לאחר חיבור היומן.`);
+        }
         onClose();
 
       } else {

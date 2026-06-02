@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
 
     // Optionally create Google Calendar event
     let calendarEventId: string | null = null;
+    let calendarError: string | null = null;
     if (addToCalendar && date && time) {
       try {
         const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
@@ -59,11 +60,19 @@ export async function POST(req: NextRequest) {
           if (calendarEventId) {
             await supabase.from("meetings").update({ calendar_event_id: calendarEventId }).eq("id", data.id);
           }
+        } else {
+          calendarError = "Google Calendar לא מחובר";
         }
-      } catch { /* calendar optional */ }
+      } catch (err) {
+        calendarError = err instanceof Error ? err.message : "שגיאה ביצירת אירוע ביומן";
+      }
     }
 
-    return NextResponse.json({ ok: true, meeting: { ...data, calendar_event_id: calendarEventId } });
+    return NextResponse.json({
+      ok: true,
+      meeting: { ...data, calendar_event_id: calendarEventId },
+      calendarError,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: 500 });
