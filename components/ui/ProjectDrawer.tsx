@@ -1651,6 +1651,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             promotingId={promotingId}
             promotingDate={promotingDate}
             setPromotingDate={setPromotingDate}
+            onCancelPromote={() => { setPromotingId(null); setPromotingDate(""); }}
+            onStartPromote={(id) => { setPromotingId(id); setPromotingDate(new Date().toISOString().split("T")[0]); }}
             onAddClipItem={() => { setClipItemDraft(emptyClipItemDraft()); setAddingClipItem(true); }}
             onSaveClipItem={handleAddClipItem}
             onCancelClipItem={() => { setAddingClipItem(false); setClipItemDraft(emptyClipItemDraft()); }}
@@ -2288,7 +2290,7 @@ function ClipSection({
   transactions, clipItems, clipItemsLoaded, filmingSessions,
   open, onToggle, onAddClipExpense,
   addingClipItem, clipItemDraft, setClipItemDraft, clipItemSaving,
-  promotingId, promotingDate, setPromotingDate,
+  promotingId, promotingDate, setPromotingDate, onCancelPromote, onStartPromote,
   onAddClipItem, onSaveClipItem, onCancelClipItem, onDeleteClipItem, onPromoteClipItem,
   onAddFilmingDay, onDeleteFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
   filmingSaving, onSaveFilmingDay, onCancelFilmingDay,
@@ -2307,6 +2309,8 @@ function ClipSection({
   promotingId: string | null;
   promotingDate: string;
   setPromotingDate: (d: string) => void;
+  onCancelPromote: () => void;
+  onStartPromote: (id: string) => void;
   onAddClipItem: () => void;
   onSaveClipItem: () => void;
   onCancelClipItem: () => void;
@@ -2409,13 +2413,13 @@ function ClipSection({
                             style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.5)", background: promotingDate ? "rgba(245,158,11,0.2)" : "rgba(245,158,11,0.05)", color: promotingDate ? "#F59E0B" : "#666", cursor: promotingDate ? "pointer" : "not-allowed", fontFamily: "inherit" }}
                           >✓</button>
                           <button
-                            onClick={() => { setPromotingId(null); setPromotingDate(""); }}
+                            onClick={onCancelPromote}
                             style={{ fontSize: 11, background: "none", border: "none", color: "#555", cursor: "pointer", padding: "0 2px" }}
                           >✕</button>
                         </div>
                       ) : (
                         <button
-                          onClick={() => { setPromotingId(item.id); setPromotingDate(new Date().toISOString().split("T")[0]); }}
+                          onClick={() => onStartPromote(item.id)}
                           title="העבר לכספים — יש לבחור תאריך"
                           style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.1)", color: "#F59E0B", cursor: "pointer", fontFamily: "inherit" }}
                         >→ כספים</button>
