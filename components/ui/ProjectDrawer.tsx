@@ -686,6 +686,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       const data = await res.json();
       if (!data.session) return;
       setSessions((prev) => [...prev, data.session]);
+      if (data.calendarError) {
+        alert(`יום הצילום נשמר ✓\n\nלא נוסף ל-Google Calendar:\n${data.calendarError}\n\nניתן למחוק וליצור מחדש לאחר בדיקת חיבור היומן.`);
+      }
 
       // Create linked expense if requested
       if (filmingDraft.createExpense && Number(filmingDraft.cost) > 0) {

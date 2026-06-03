@@ -91,14 +91,23 @@ export async function POST(req: NextRequest) {
     if (error) throw new Error(error.message);
 
     // Optionally create Google Calendar event
+    let calendarError: string | null = null;
     if (addToCalendar && date && startTime) {
       try {
         const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
         if (await isConnected()) {
           const calStart = `${date}T${startTime}:00`;
-          const calEnd   = endTime
-            ? `${date}T${endTime}:00`
-            : (() => { const d = new Date(calStart); d.setHours(d.getHours() + 1); return d.toISOString().slice(0, 19); })();
+          // Compute end in Israel local time — same approach as meetings to avoid timezone confusion
+          let calEnd: string;
+          if (endTime) {
+            calEnd = `${date}T${endTime}:00`;
+          } else {
+            const [hh, mm] = startTime.split(":").map(Number);
+            const endTotalMin = hh * 60 + mm + 60; // default +1 hour
+            const eHh = String(Math.floor(endTotalMin / 60) % 24).padStart(2, "0");
+            const eMm = String(endTotalMin % 60).padStart(2, "0");
+            calEnd = `${date}T${eHh}:${eMm}:00`;
+          }
           const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
           const isFilming = sessionType === "צילום קליפ";
           const summary = proj
@@ -111,8 +120,12 @@ export async function POST(req: NextRequest) {
           if (calId) {
             await supabase.from("sessions").update({ calendar_event_id: calId }).eq("id", data.id);
           }
+        } else {
+          calendarError = "Google Calendar לא מחובר";
         }
-      } catch { /* calendar optional */ }
+      } catch (err) {
+        calendarError = err instanceof Error ? err.message : "שגיאה ביצירת אירוע ביומן";
+      }
     }
 
     // Bump project's updated_at so it rises to top of "עודכן לאחרונה" sort
@@ -120,7 +133,7 @@ export async function POST(req: NextRequest) {
     // Auto-fill start_date from earliest session if not yet set
     ensureProjectStartDate(projectId).catch(() => {});
 
-    return NextResponse.json({ session: data });
+    return NextResponse.json({ session: data, calendarError });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[sessions POST]", msg);
