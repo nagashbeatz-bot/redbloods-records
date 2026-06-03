@@ -1709,6 +1709,10 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               setTxDraft({ ...emptyTxDraft(), type: "expense", expenseScope: "קליפ" });
             }}
             onAddFilmingDay={() => { setFilmingDraft(emptyFilmingDraft()); setAddingFilmingDay(true); }}
+            onDeleteFilmingDay={(id) => {
+              setSessions((prev) => prev.filter((s) => s.id !== id));
+              fetch(`/api/sessions/${id}`, { method: "DELETE" });
+            }}
             addingFilmingDay={addingFilmingDay}
             filmingDraft={filmingDraft}
             setFilmingDraft={setFilmingDraft}
@@ -2121,7 +2125,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
 function ClipSection({
   transactions, filmingSessions, open, onToggle, onAddClipExpense,
-  onAddFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
+  onAddFilmingDay, onDeleteFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
   filmingSaving, onSaveFilmingDay, onCancelFilmingDay,
 }: {
   transactions: Transaction[];
@@ -2130,6 +2134,7 @@ function ClipSection({
   onToggle: () => void;
   onAddClipExpense: () => void;
   onAddFilmingDay: () => void;
+  onDeleteFilmingDay: (id: string) => void;
   addingFilmingDay: boolean;
   filmingDraft: FilmingDayDraft;
   setFilmingDraft: (d: FilmingDayDraft) => void;
@@ -2182,9 +2187,18 @@ function ClipSection({
                       </div>
                     )}
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: `${statusColor}18`, border: `1px solid ${statusColor}35`, borderRadius: 5, padding: "1px 6px" }}>
-                    {s.status}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: `${statusColor}18`, border: `1px solid ${statusColor}35`, borderRadius: 5, padding: "1px 6px" }}>
+                      {s.status}
+                    </span>
+                    <button
+                      onClick={() => onDeleteFilmingDay(s.id)}
+                      title="מחק יום צילום"
+                      style={{ background: "none", border: "none", color: "#555", fontSize: 14, cursor: "pointer", padding: "0 2px", lineHeight: 1 }}
+                      onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                      onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
+                    >✕</button>
+                  </div>
                 </div>
               );
             })}
