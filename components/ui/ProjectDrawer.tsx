@@ -2307,7 +2307,7 @@ function ClipSection({
   const pending = clipExp.filter((t) => !PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
 
   // Clip item (planning) computed values
-  const activeItems   = clipItems.filter((i) => i.status !== "בוטל");
+  const activeItems   = clipItems.filter((i) => i.status !== "בוטל" && i.status !== "הועבר לכספים");
   const totalPlanned  = activeItems.reduce((s, i) => s + i.amount, 0);
   const totalSynced   = activeItems.filter((i) => i.linked_transaction_id).reduce((s, i) => s + i.amount, 0);
   const totalUnsynced = activeItems.filter((i) => i.status === "תכנון בלבד").reduce((s, i) => s + i.amount, 0);
