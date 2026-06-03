@@ -60,11 +60,18 @@ export default function InlineCellEdit({
     if (!editing) setDraft(value);
   }, [value, editing]);
 
-  // Focus input when entering edit mode; auto-open native select picker
+  // Focus input when entering edit mode; auto-open native picker for select + date
   useEffect(() => {
     if (editing) {
       setTimeout(() => {
         inputRef.current?.focus();
+        // Auto-open native date calendar (Chrome 99+, Safari 15.4+, Edge 99+)
+        if (type === "date" && inputRef.current) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (inputRef.current as any).showPicker?.();
+          } catch { /* not supported — user sees the focused input */ }
+        }
         if (selectRef.current) {
           selectRef.current.focus();
           try {
@@ -74,7 +81,7 @@ export default function InlineCellEdit({
         }
       }, 30);
     }
-  }, [editing]);
+  }, [editing, type]);
 
   const commit = async (val: string) => {
     if (committingRef.current) return;

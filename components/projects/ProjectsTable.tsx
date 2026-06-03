@@ -13,6 +13,7 @@ import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components
 import UploadButton from "@/components/ui/UploadButton";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
+import DatePickerInput from "@/components/ui/DatePickerInput";
 import ActionMenu from "@/components/project/ActionMenu";
 import NotesCellEdit from "@/components/ui/NotesCellEdit";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
@@ -283,7 +284,7 @@ function NewProjectModal({
               {/* Deadline */}
               <div>
                 <label style={labelStyle}>דדליין</label>
-                <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={{ ...inputStyle, colorScheme: "dark" }} />
+                <DatePickerInput value={deadline} onChange={setDeadline} style={{ ...inputStyle }} />
               </div>
 
               {/* Notes */}

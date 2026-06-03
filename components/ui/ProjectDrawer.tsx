@@ -14,6 +14,7 @@ import NotesCellEdit from "@/components/ui/NotesCellEdit";
 import UploadButton from "@/components/ui/UploadButton";
 import CopyLinkButton from "@/components/ui/CopyLinkButton";
 import ActionMenu from "@/components/project/ActionMenu";
+import DatePickerInput from "@/components/ui/DatePickerInput";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
@@ -2695,7 +2696,7 @@ function FilmingDayForm({
   return (
     <div className="rb-form-card" style={{ marginBottom: 6 }}>
       {/* Date */}
-      <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+      <DatePickerInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })}
         className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
 
       {/* Start + End time */}
@@ -2838,7 +2839,7 @@ function DrawerTxForm({
 
       {/* Date + Description */}
       <div style={{ display: "flex", gap: 6 }}>
-        <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+        <DatePickerInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })}
           className="rb-session-input" style={{ width: 120 }} />
         <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
           placeholder="תיאור" className="rb-session-input" style={{ flex: 1 }} />
@@ -3116,10 +3117,9 @@ function SessionForm({
   return (
     <div className="rb-form-card">
       {/* Date row */}
-      <input
-        type="date"
+      <DatePickerInput
         value={draft.date}
-        onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+        onChange={(v) => setDraft({ ...draft, date: v })}
         className="rb-session-input"
         style={{ width: "100%", boxSizing: "border-box" }}
       />
