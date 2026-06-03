@@ -25,6 +25,7 @@ export async function PATCH(
   if (body.scope           !== undefined) patch.scope             = body.scope;
   if (body.project_id      !== undefined) patch.project_id        = body.project_id;
   if (body.linkedSessionId !== undefined) patch.linked_session_id = body.linkedSessionId;
+  if (body.expenseScope    !== undefined) patch.expense_scope     = body.expenseScope;
 
   const { data, error } = await supabase
     .from("transactions")

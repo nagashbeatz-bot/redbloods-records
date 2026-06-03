@@ -550,10 +550,10 @@ async function buildProjectDetailContext(
       supabase.from("projects").select("*").eq("id", projectId).single(),
       supabase.from("settings").select("value").eq("key", `finance_${projectId}`).maybeSingle(),
       supabase.from("transactions")
-        .select("amount, currency, type, payment_status, date, description")
+        .select("amount, currency, type, payment_status, date, description, expense_scope, category")
         .eq("project_id", projectId)
         .order("date", { ascending: false })
-        .limit(20),
+        .limit(50),
       supabase.from("sessions")
         .select("date, start_time, end_time, status, session_type, notes")
         .eq("project_id", projectId)
@@ -699,6 +699,21 @@ async function buildProjectDetailContext(
         .filter((t) => t.type !== "הוצאה")
         .every((t) => PAID_STATUSES.has(t.payment_status));
       if (!allPaid) missing.push("יש תשלום לא מסומן כהתקבל (בדוק סגירה פיננסית)");
+    }
+
+    // Clip expenses summary
+    const clipExp = (txns ?? []).filter((t) => t.type === "expense" && (t as Record<string, unknown>).expense_scope === "קליפ");
+    if (clipExp.length > 0) {
+      const clipPaid    = clipExp.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
+      const clipPending = clipExp.filter((t) => !PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
+      lines.push(`\nהוצאות קליפ (${clipExp.length} פריטים):`);
+      lines.push(`  שולם: ${fmt(clipPaid)}₪ | צפוי / לא שולם: ${fmt(clipPending)}₪ | סה"כ: ${fmt(clipPaid + clipPending)}₪`);
+      const topClip = [...clipExp].sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0)).slice(0, 5);
+      topClip.forEach((t) => {
+        const cat  = (t as Record<string, unknown>).category as string || "";
+        const desc = t.description || cat || "הוצאת קליפ";
+        lines.push(`  • ${fmt(t.amount ?? 0)}${t.currency ?? "₪"} — ${desc} [${t.payment_status}]`);
+      });
     }
 
     if (missing.length > 0) {

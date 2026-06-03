@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   const {
     projectId, scope, type, date, description, artist, amount,
     currency, paymentStatus, paymentMethod, receiptRef, notes, category,
-    linkedSessionId,
+    linkedSessionId, expenseScope,
   } = body;
 
   const txScope = scope ?? "project";
@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
       notes:             notes             || "",
       category:          category          || "",
       linked_session_id: linkedSessionId   || "",
+      expense_scope:     type === "expense" ? (expenseScope || "כללי") : "כללי",
     })
     .select()
     .single();

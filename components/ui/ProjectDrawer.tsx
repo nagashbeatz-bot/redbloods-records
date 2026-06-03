@@ -35,6 +35,7 @@ interface Transaction {
   notes: string;
   category: string;
   linked_session_id: string;
+  expense_scope: string;
 }
 
 interface TxDraft {
@@ -49,6 +50,7 @@ interface TxDraft {
   notes: string;
   category: string;
   linkedSessionId: string;
+  expenseScope: string;
 }
 
 interface Session {
@@ -88,6 +90,11 @@ const TIME_SLOTS: string[] = Array.from({ length: 48 }, (_, i) => {
   return `${String(h).padStart(2, "0")}:${m}`;
 });
 const EXPENSE_CATS      = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
+const EXPENSE_SCOPES    = ["כללי", "קליפ", "מיקס / מאסטר", "שיווק", "סשן", "נסיעות", "ציוד", "אחר"];
+const CLIP_EXPENSE_CATS = [
+  "צילום קליפ", "עריכת קליפ", "ציוד צילום", "תאורה", "לוקיישן",
+  "דוגמניות / משתתפים", "איפור / סטיילינג", "הסעות", "אוכל / הפקה", "אביזרים", "אחר",
+];
 
 const STATUS_COLOR: Record<SessionStatus, string> = {
   "מתוכנן":  "#3B82F6",
@@ -108,7 +115,7 @@ const PMT_COLOR: Record<PaymentStatus, string> = {
 };
 
 function emptyTxDraft(): TxDraft {
-  return { type: "income", date: "", description: "", artist: "", amount: "", currency: "₪", paymentStatus: "צפוי", paymentMethod: "", notes: "", category: "", linkedSessionId: "" };
+  return { type: "income", date: "", description: "", artist: "", amount: "", currency: "₪", paymentStatus: "צפוי", paymentMethod: "", notes: "", category: "", linkedSessionId: "", expenseScope: "כללי" };
 }
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
@@ -656,6 +663,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           notes:           txDraft.notes,
           category:        txDraft.category,
           linkedSessionId: txDraft.linkedSessionId || "",
+          expenseScope:    txDraft.type === "expense" ? (txDraft.expenseScope || "כללי") : "כללי",
         }),
       });
       const data = await res.json();
@@ -687,6 +695,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           notes:           editTxDraft.notes,
           category:        editTxDraft.category,
           linkedSessionId: editTxDraft.linkedSessionId || "",
+          expenseScope:    editTxDraft.type === "expense" ? (editTxDraft.expenseScope || "כללי") : "כללי",
         }),
       });
       const data = await res.json();
@@ -730,6 +739,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       notes:           tx.notes,
       category:        tx.category,
       linkedSessionId: tx.linked_session_id ?? "",
+      expenseScope:    tx.expense_scope ?? "כללי",
     });
   }
 
@@ -1591,6 +1601,18 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             )}
           </CollapsibleCard>
 
+          {/* ── קליפ / צילום ─────────────────────────────────────────── */}
+          <ClipSection
+            transactions={transactions}
+            open={openSections.has("clip")}
+            onToggle={() => toggleSection("clip")}
+            onAddClipExpense={() => {
+              toggleSection("finance");
+              setAddingTx("expense");
+              setTxDraft({ ...emptyTxDraft(), type: "expense", expenseScope: "קליפ" });
+            }}
+          />
+
           {/* ── קבצים ────────────────────────────────────────────────────── */}
           <CollapsibleCard
             label="קבצים"
@@ -1991,6 +2013,84 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   );
 }
 
+// ── Clip / Video section ──────────────────────────────────────────────────────
+
+function ClipSection({
+  transactions, open, onToggle, onAddClipExpense,
+}: {
+  transactions: Transaction[];
+  open: boolean;
+  onToggle: () => void;
+  onAddClipExpense: () => void;
+}) {
+  const clipExp = transactions.filter((t) => t.type === "expense" && t.expense_scope === "קליפ");
+  const PAID = new Set(["שולם", "התקבל"]);
+  const paid    = clipExp.filter((t) => PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const pending = clipExp.filter((t) => !PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const total   = paid + pending;
+  const badge   = clipExp.length > 0 ? `${clipExp.length} הוצאות` : undefined;
+
+  return (
+    <CollapsibleCard label="קליפ / צילום" badge={badge} open={open} onToggle={onToggle}>
+      {clipExp.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#555", textAlign: "center", padding: "8px 0 4px" }}>
+          אין עדיין הוצאות קליפ לפרויקט הזה
+        </div>
+      ) : (
+        <>
+          {/* Summary row */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            {[
+              { label: "שולם", value: paid, color: "#10B981" },
+              { label: "צפוי / לא שולם", value: pending, color: "#F59E0B" },
+              { label: "סה״כ", value: total, color: "#F0F0F0" },
+            ].map(({ label, value, color }) => (
+              <div key={label} style={{ flex: 1, minWidth: 80, background: "#1A1A1A", borderRadius: 8, padding: "8px 10px", border: "1px solid #252525" }}>
+                <div style={{ fontSize: 10, color: "#666", marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color }}>{value.toLocaleString()}₪</div>
+              </div>
+            ))}
+          </div>
+          {/* Expense list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+            {clipExp.map((t) => {
+              const isPaid = PAID.has(t.payment_status);
+              return (
+                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, border: "1px solid #252525" }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#CCC" }}>{t.description || t.category || "הוצאת קליפ"}</div>
+                    {t.category && t.description && (
+                      <div style={{ fontSize: 10, color: "#555" }}>{t.category}</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "left", flexShrink: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: isPaid ? "#10B981" : "#F59E0B" }}>
+                      {t.amount.toLocaleString()}{t.currency}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#555" }}>{t.payment_status}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+      <button
+        onClick={onAddClipExpense}
+        style={{
+          width: "100%", padding: "8px 0", borderRadius: 9,
+          border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.07)",
+          color: "#A855F7", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+        }}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(168,85,247,0.14)")}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(168,85,247,0.07)")}
+      >
+        🎬 + הוסף הוצאה לקליפ
+      </button>
+    </CollapsibleCard>
+  );
+}
+
 // ── Inline transaction form (add / edit) ─────────────────────────────────────
 function DrawerTxForm({
   draft, setDraft, saving, onSave, onCancel, balanceHint, balanceCurrency, sessions,
@@ -2088,7 +2188,9 @@ function DrawerTxForm({
           <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}
             className="rb-session-input" style={{ flex: 1 }}>
             <option value="">קטגוריה</option>
-            {EXPENSE_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+            {(draft.expenseScope === "קליפ" ? CLIP_EXPENSE_CATS : EXPENSE_CATS).map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         )}
       </div>
@@ -2099,6 +2201,21 @@ function DrawerTxForm({
         <option value="">אמצעי תשלום (אופציונלי)</option>
         {PMT_METHOD_OPTS.map((m) => <option key={m} value={m}>{m}</option>)}
       </select>
+
+      {/* Expense scope — only for expenses */}
+      {!isIncome && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, color: "#666", flexShrink: 0 }}>שייך ל:</span>
+          <select
+            value={draft.expenseScope}
+            onChange={(e) => setDraft({ ...draft, expenseScope: e.target.value, category: "" })}
+            className="rb-session-input"
+            style={{ flex: 1 }}
+          >
+            {EXPENSE_SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Session link — shown when status = "התקבל" and there are completed sessions */}
       {isIncome && isReceived && completedSessions.length > 0 && (
