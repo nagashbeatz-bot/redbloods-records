@@ -9,9 +9,12 @@ type Ctx = { params: Promise<{ id: string }> };
  * Creates a real transaction from a planning clip_item.
  * Sets clip_item.status = "הועבר לכספים" and stores the new transaction ID.
  */
-export async function POST(_req: NextRequest, ctx: Ctx) {
+export async function POST(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
+    const body = await req.json().catch(() => ({}));
+    const { date } = body as { date?: string };
+    if (!date) return NextResponse.json({ error: "תאריך חובה" }, { status: 400 });
 
     // Fetch the clip_item
     const { data: item, error: fetchErr } = await supabase
@@ -34,7 +37,7 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
         project_id:     item.project_id,
         scope:          "project",
         type:           "expense",
-        date:           null,
+        date:           date || null,
         description:    item.description || item.category || "הוצאת קליפ",
         artist:         "",
         amount:         item.amount,

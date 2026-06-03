@@ -284,6 +284,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [clipItemDraft,    setClipItemDraft]    = useState<ClipItemDraft>(emptyClipItemDraft());
   const [clipItemSaving,   setClipItemSaving]   = useState(false);
   const [promotingId,      setPromotingId]      = useState<string | null>(null);
+  const [promotingDate,    setPromotingDate]    = useState<string>("");
 
   // ── Filming day state ─────────────────────────────────────────────────────
   const [addingFilmingDay, setAddingFilmingDay] = useState(false);
@@ -758,19 +759,25 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     await fetch(`/api/clip-items/${id}`, { method: "DELETE" });
   }
 
-  async function handlePromoteClipItem(id: string) {
+  async function handlePromoteClipItem(id: string, date: string) {
+    if (!date) return;
     setPromotingId(id);
     try {
-      const res = await fetch(`/api/clip-items/${id}/promote`, { method: "POST" });
+      const res = await fetch(`/api/clip-items/${id}/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
       const data = await res.json();
       if (data.error === "already_promoted") return;
-      // Remove from planning list — now lives as a transaction in finance
       if (data.deleted) {
         setClipItems((prev) => prev.filter((i) => i.id !== id));
       }
       if (data.transaction) {
         setTransactions((prev) => [data.transaction, ...prev]);
       }
+      setPromotingId(null);
+      setPromotingDate("");
     } finally {
       setPromotingId(null);
     }
@@ -850,6 +857,10 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // ── Finance CRUD ───────────────────────────────────────────────────────────
   async function handleAddTx() {
+    if (txDraft.type === "expense" && !txDraft.date) {
+      alert("תאריך חובה להוצאה");
+      return;
+    }
     setTxSaving(true);
     try {
       const res = await fetch("/api/transactions", {
@@ -884,6 +895,10 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   async function handleUpdateTx() {
     if (!editingTxId) return;
+    if (editTxDraft.type === "expense" && !editTxDraft.date) {
+      alert("תאריך חובה להוצאה");
+      return;
+    }
     setEditTxSaving(true);
     try {
       const res = await fetch(`/api/transactions/${editingTxId}`, {
@@ -1634,6 +1649,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             setClipItemDraft={setClipItemDraft}
             clipItemSaving={clipItemSaving}
             promotingId={promotingId}
+            promotingDate={promotingDate}
+            setPromotingDate={setPromotingDate}
             onAddClipItem={() => { setClipItemDraft(emptyClipItemDraft()); setAddingClipItem(true); }}
             onSaveClipItem={handleAddClipItem}
             onCancelClipItem={() => { setAddingClipItem(false); setClipItemDraft(emptyClipItemDraft()); }}
@@ -2270,7 +2287,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 function ClipSection({
   transactions, clipItems, clipItemsLoaded, filmingSessions,
   open, onToggle, onAddClipExpense,
-  addingClipItem, clipItemDraft, setClipItemDraft, clipItemSaving, promotingId,
+  addingClipItem, clipItemDraft, setClipItemDraft, clipItemSaving,
+  promotingId, promotingDate, setPromotingDate,
   onAddClipItem, onSaveClipItem, onCancelClipItem, onDeleteClipItem, onPromoteClipItem,
   onAddFilmingDay, onDeleteFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
   filmingSaving, onSaveFilmingDay, onCancelFilmingDay,
@@ -2287,11 +2305,13 @@ function ClipSection({
   setClipItemDraft: (d: ClipItemDraft) => void;
   clipItemSaving: boolean;
   promotingId: string | null;
+  promotingDate: string;
+  setPromotingDate: (d: string) => void;
   onAddClipItem: () => void;
   onSaveClipItem: () => void;
   onCancelClipItem: () => void;
   onDeleteClipItem: (id: string) => void;
-  onPromoteClipItem: (id: string) => void;
+  onPromoteClipItem: (id: string, date: string) => void;
   onAddFilmingDay: () => void;
   onDeleteFilmingDay: (id: string) => void;
   addingFilmingDay: boolean;
@@ -2373,14 +2393,33 @@ function ClipSection({
                     <span style={{ fontSize: 12, fontWeight: 700, color: sc }}>{item.amount.toLocaleString()}{item.currency}</span>
                     <span style={{ fontSize: 9, fontWeight: 700, color: sc, background: `${sc}18`, border: `1px solid ${sc}35`, borderRadius: 4, padding: "1px 5px" }}>{item.status}</span>
                     {item.status === "תכנון בלבד" && (
-                      <button
-                        onClick={() => onPromoteClipItem(item.id)}
-                        disabled={isPromoting}
-                        title="העבר לכספים"
-                        style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.1)", color: "#F59E0B", cursor: isPromoting ? "default" : "pointer", fontFamily: "inherit" }}
-                      >
-                        {isPromoting ? "..." : "→ כספים"}
-                      </button>
+                      promotingId === item.id ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <input
+                            type="date"
+                            value={promotingDate}
+                            onChange={(e) => setPromotingDate(e.target.value)}
+                            className="rb-session-input"
+                            style={{ width: 110, padding: "2px 5px", fontSize: 10 }}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => onPromoteClipItem(item.id, promotingDate)}
+                            disabled={!promotingDate}
+                            style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.5)", background: promotingDate ? "rgba(245,158,11,0.2)" : "rgba(245,158,11,0.05)", color: promotingDate ? "#F59E0B" : "#666", cursor: promotingDate ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                          >✓</button>
+                          <button
+                            onClick={() => { setPromotingId(null); setPromotingDate(""); }}
+                            style={{ fontSize: 11, background: "none", border: "none", color: "#555", cursor: "pointer", padding: "0 2px" }}
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setPromotingId(item.id); setPromotingDate(new Date().toISOString().split("T")[0]); }}
+                          title="העבר לכספים — יש לבחור תאריך"
+                          style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.1)", color: "#F59E0B", cursor: "pointer", fontFamily: "inherit" }}
+                        >→ כספים</button>
+                      )
                     )}
                     <button
                       onClick={() => onDeleteClipItem(item.id)}
