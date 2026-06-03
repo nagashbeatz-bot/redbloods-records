@@ -36,7 +36,7 @@ interface Meeting {
   created_at: string;
 }
 
-type FormMode = "meeting" | "session" | null;
+type FormMode = "meeting" | "session" | "newProject" | null;
 type SavedResult =
   | { type: "meeting"; data: Meeting }
   | { type: "session"; data: Session };
@@ -181,6 +181,10 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
     else addSession(result.data);
   }, [addMeeting, addSession]);
 
+  const handleProjectCreated = useCallback((p: Project) => {
+    setProjects((prev) => [p, ...prev]);
+  }, []);
+
   if (!mounted || !client) return null;
 
   const modal = (
@@ -207,6 +211,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
           onOpenForm={setFormMode}
           onCloseForm={() => setFormMode(null)}
           onFormSaved={handleFormSaved}
+          onProjectCreated={handleProjectCreated}
           onUpdateMeeting={updateMeeting}
           onRemoveMeeting={removeMeeting}
           onUpdateSession={updateSession}
@@ -224,7 +229,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 function ModalContent({
   client, projects, finances, sessions, deliveries, meetings, loading,
   formMode, onClose, onEdit, openProject,
-  onOpenForm, onCloseForm, onFormSaved,
+  onOpenForm, onCloseForm, onFormSaved, onProjectCreated,
   onUpdateMeeting, onRemoveMeeting,
   onUpdateSession, onRemoveSession,
 }: {
@@ -232,8 +237,9 @@ function ModalContent({
   sessions: Session[]; deliveries: DeliveryRecord[]; meetings: Meeting[];
   loading: boolean; formMode: FormMode;
   onClose: () => void; onEdit: (c: Client) => void; openProject: (id: string) => void;
-  onOpenForm: (mode: "meeting" | "session") => void; onCloseForm: () => void;
+  onOpenForm: (mode: FormMode) => void; onCloseForm: () => void;
   onFormSaved: (r: SavedResult) => void;
+  onProjectCreated: (p: Project) => void;
   onUpdateMeeting: (m: Meeting) => void; onRemoveMeeting: (id: string) => void;
   onUpdateSession: (s: Session) => void; onRemoveSession: (id: string) => void;
 }) {
@@ -320,7 +326,7 @@ function ModalContent({
         </div>
 
         {/* Activity form (meeting or session) */}
-        {formMode !== null && (
+        {(formMode === "meeting" || formMode === "session") && (
           <ActivityForm
             initialMode={formMode}
             client={client}
@@ -361,9 +367,25 @@ function ModalContent({
             )}
 
             {/* Projects */}
-            {projects.length > 0 ? (
-              <SectionCard title={`פרויקטים (${projects.length})`}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <SectionCard
+              title={`פרויקטים (${projects.length})`}
+              action={
+                <QuickBtn
+                  onClick={() => onOpenForm(formMode === "newProject" ? null : "newProject")}
+                  color="#3B82F6" icon="+" label="פרויקט חדש" small
+                  active={formMode === "newProject"}
+                />
+              }
+            >
+              {formMode === "newProject" && (
+                <NewProjectForm
+                  client={client}
+                  onClose={() => onCloseForm()}
+                  onCreated={(p) => { onProjectCreated(p); onCloseForm(); openProject(p.id); }}
+                />
+              )}
+              {projects.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: formMode === "newProject" ? 12 : 0 }}>
                   {projects.map((p) => {
                     const fin = finances.find((f) => f.projectId === p.id);
                     const balance = fin ? fin.agreedPrice - fin.totalPaid : 0;
@@ -376,10 +398,10 @@ function ModalContent({
                     );
                   })}
                 </div>
-              </SectionCard>
-            ) : (
-              <EmptyState icon="♫" text="אין פרויקטים מקושרים" />
-            )}
+              ) : (
+                !formMode && <div style={{ fontSize: 12, color: "#444", padding: "8px 0" }}>אין פרויקטים מקושרים</div>
+              )}
+            </SectionCard>
 
             {/* Sessions */}
             <SectionCard
@@ -1003,6 +1025,140 @@ function IconBtn({ onClick, title, children, style }: { onClick: () => void; tit
     <button onClick={onClick} title={title} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #2A2A2A", background: "#1A1A1A", color: "#666", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", ...style }}>
       {children}
     </button>
+  );
+}
+
+// ─── NewProjectForm ───────────────────────────────────────────────────────────
+
+const PROJECT_TYPES_LIST = ["שיר", "קליפ", "EP", "אלבום", "רידים", "אחר"] as const;
+const PROJECT_INIT_STATUSES = ["לא התחיל", "בעבודה"] as const;
+
+function NewProjectForm({ client, onClose, onCreated }: {
+  client: Client;
+  onClose: () => void;
+  onCreated: (p: Project) => void;
+}) {
+  const [name,        setName]        = useState("");
+  const [projectType, setProjectType] = useState<string>("שיר");
+  const [status,      setStatus]      = useState<string>("לא התחיל");
+  const [deadline,    setDeadline]    = useState("");
+  const [notes,       setNotes]       = useState("");
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setError("חובה להזין שם פרויקט"); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name:        name.trim(),
+          artist:      client.name,   // ← קשר לקוח דרך artist
+          projectType,
+          status,
+          deadline:    deadline || null,
+          notes:       notes.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.id) throw new Error(data.error ?? "שגיאה ביצירת הפרויקט");
+      onCreated({
+        id: data.id, name: name.trim(), artist: client.name,
+        status, deadline: deadline || null, project_type: projectType,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={{ background: "#111", border: "1px solid #2A2A2A", borderRadius: 12, padding: "14px 14px 12px", display: "flex", flexDirection: "column", gap: 10, marginBottom: 4 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>
+        פרויקט חדש עבור {client.name}
+      </div>
+
+      {/* שם פרויקט */}
+      <div>
+        <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>שם הפרויקט *</div>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="שם הפרויקט"
+          style={{ ...inp }}
+          disabled={saving}
+        />
+      </div>
+
+      {/* שורה: סוג + סטטוס */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>סוג</div>
+          <select value={projectType} onChange={(e) => setProjectType(e.target.value)} style={{ ...inp }} disabled={saving}>
+            {PROJECT_TYPES_LIST.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>סטטוס</div>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...inp }} disabled={saving}>
+            {PROJECT_INIT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* דדליין */}
+      <div>
+        <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>דדליין (אופציונלי)</div>
+        <input
+          type="date"
+          value={deadline}
+          onChange={(e) => setDeadline(e.target.value)}
+          style={{ ...inp, colorScheme: "dark" }}
+          disabled={saving}
+        />
+      </div>
+
+      {/* הערות */}
+      <div>
+        <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>הערות</div>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="הערות לפרויקט..."
+          rows={2}
+          style={{ ...inp, resize: "none", lineHeight: 1.5 }}
+          disabled={saving}
+        />
+      </div>
+
+      {/* Artist (locked) */}
+      <div style={{ fontSize: 11, color: "#444", display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ color: "#333" }}>♫</span>
+        <span>אמן: </span>
+        <span style={{ color: "#666", fontWeight: 600 }}>{client.name}</span>
+        <span style={{ marginRight: "auto", fontSize: 10, color: "#2A2A2A" }}>(נקבע אוטומטית)</span>
+      </div>
+
+      {error && <div style={{ fontSize: 11, color: "#EF4444" }}>{error}</div>}
+
+      {/* Buttons */}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 2 }}>
+        <button type="button" onClick={onClose} disabled={saving}
+          style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid #2A2A2A", background: "none", color: "#555", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+          ביטול
+        </button>
+        <button type="submit" disabled={saving || !name.trim()}
+          style={{ padding: "7px 16px", borderRadius: 9, border: "none", background: saving ? "#1E3A5F" : "#2563EB", color: saving ? "#4A7FC0" : "#FFF", fontSize: 12, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", transition: "background 0.15s" }}>
+          {saving ? "יוצר..." : "צור פרויקט ←"}
+        </button>
+      </div>
+    </form>
   );
 }
 

@@ -5,12 +5,16 @@
  * 1. Registers the service worker
  * 2. Requests notification permission (once, on first visit)
  * 3. Subscribes to Web Push and saves subscription to server
- * 4. Calls /api/push/check to fire any pending alerts (throttled server-side)
+ *
+ * NOTE: Does NOT call /api/push/check on page load.
+ * Push notifications are sent only via cron / agent (server-side).
+ * Localhost is silenced unless NEXT_PUBLIC_ALLOW_LOCAL_PUSH=true.
  */
 
 import { useEffect } from "react";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
+const ALLOW_LOCAL_PUSH = process.env.NEXT_PUBLIC_ALLOW_LOCAL_PUSH === "true";
 
 function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -28,6 +32,13 @@ export default function PushManager() {
       !("serviceWorker" in navigator) ||
       !("PushManager" in window)
     ) return;
+
+    // Silence push registration on localhost/development unless explicitly allowed.
+    // This prevents local dev runs from sending real push notifications.
+    const isLocal =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    if (isLocal && !ALLOW_LOCAL_PUSH) return;
 
     (async () => {
       try {
@@ -55,8 +66,7 @@ export default function PushManager() {
           body: JSON.stringify(sub.toJSON()),
         });
 
-        // 5. Trigger check for pending alerts (throttled to 30 min server-side)
-        fetch("/api/push/check", { method: "POST" }).catch(() => {});
+        // Push notifications are sent only via cron / agent — NOT on page load.
       } catch (e) {
         // Non-fatal — push notifications are optional
         console.warn("Push setup failed:", e);
