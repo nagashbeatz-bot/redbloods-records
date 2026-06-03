@@ -2300,6 +2300,45 @@ function FilmingDayForm({
   onCancel: () => void;
 }) {
   const hasCost = Number(draft.cost) > 0;
+
+  // ── Calendar conflict check ──────────────────────────────────────────────
+  const [conflictCheck, setConflictCheck] = useState<{ conflict: boolean; names: string[] } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    if (!draft.date || !draft.startTime) { setConflictCheck(null); return; }
+    const tid = setTimeout(async () => {
+      setChecking(true);
+      try {
+        // Compute Israel UTC offset for the chosen date (handles DST: +3 summer / +2 winter)
+        const ilDate = new Date(`${draft.date}T12:00:00Z`);
+        const ilHour = Number(new Intl.DateTimeFormat("en", { timeZone: "Asia/Jerusalem", hour: "numeric", hour12: false }).format(ilDate));
+        const offsetH = ilHour - 12;
+        const offsetStr = `${offsetH >= 0 ? "+" : "-"}${String(Math.abs(offsetH)).padStart(2, "0")}:00`;
+        const startISO = `${draft.date}T${draft.startTime}:00${offsetStr}`;
+        // End: use endTime if set, else +1h
+        let endISO: string;
+        if (draft.endTime) {
+          endISO = `${draft.date}T${draft.endTime}:00${offsetStr}`;
+        } else {
+          const [hh, mm] = draft.startTime.split(":").map(Number);
+          const eMin = hh * 60 + mm + 60;
+          endISO = `${draft.date}T${String(Math.floor(eMin / 60) % 24).padStart(2, "0")}:${String(eMin % 60).padStart(2, "0")}:00${offsetStr}`;
+        }
+        const res = await fetch("/api/calendar/check-slot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ start: startISO, end: endISO, requiresBuffer: false }),
+        });
+        const data = await res.json();
+        if (data.error) { setConflictCheck(null); return; }
+        setConflictCheck({ conflict: data.hardConflict, names: data.conflictNames ?? [] });
+      } catch { setConflictCheck(null); }
+      finally { setChecking(false); }
+    }, 600);
+    return () => clearTimeout(tid);
+  }, [draft.date, draft.startTime, draft.endTime]);
+
   return (
     <div className="rb-form-card" style={{ marginBottom: 6 }}>
       {/* Date */}
@@ -2319,6 +2358,23 @@ function FilmingDayForm({
           {TIME_SLOTS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
+
+      {/* Calendar conflict warning */}
+      {checking && (
+        <div style={{ fontSize: 10, color: "#555", padding: "4px 2px" }}>בודק זמינות ביומן...</div>
+      )}
+      {!checking && conflictCheck?.conflict && (
+        <div style={{
+          padding: "8px 10px", borderRadius: 8, fontSize: 11,
+          background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#EF4444",
+        }}>
+          ⚠ התנגשות ביומן{conflictCheck.names.length > 0 ? `: "${conflictCheck.names.join('", "')}"` : ""}
+          <div style={{ fontSize: 10, color: "#F87171", marginTop: 2 }}>ניתן לשמור בכל זאת — רק הערה</div>
+        </div>
+      )}
+      {!checking && conflictCheck && !conflictCheck.conflict && draft.date && draft.startTime && (
+        <div style={{ fontSize: 10, color: "#10B981", padding: "2px 2px" }}>✓ הזמן פנוי ביומן</div>
+      )}
 
       {/* Photographer */}
       <input type="text" value={draft.photographer} onChange={(e) => setDraft({ ...draft, photographer: e.target.value })}
