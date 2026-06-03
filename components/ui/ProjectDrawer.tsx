@@ -1555,16 +1555,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 )}
 
                 {/* Expenses — non-clip only; clip expenses shown in קליפ / צילום section */}
-                {(nonClipExpenses.length > 0 || clipExpenseList.length > 0) && (
+                {nonClipExpenses.length > 0 && (
                   <div>
                     <div style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700, marginBottom: 6, letterSpacing: "0.05em" }}>הוצאות</div>
-                    {/* Clip expenses summary row (not detailed list) */}
-                    {clipExpenseList.length > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 6, background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.15)", marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, color: "#A855F7" }}>🎬 הוצאות קליפ ({clipExpenseList.length})</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: "#A855F7" }}>−{totalClipExp.toLocaleString()}{finCurrency}</span>
-                      </div>
-                    )}
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       {nonClipExpenses.map((tx) => (
                         <div key={tx.id}>
