@@ -40,6 +40,16 @@ export async function PATCH(
   const pid = (data as { project_id?: string | null }).project_id;
   if (pid) touchProject(pid).catch(() => {});
 
+  // Auto-sync: if payment_status changed to PAID, update linked clip_item → "שולם"
+  const PAID_STATUSES = new Set(["שולם", "התקבל"]);
+  if (patch.payment_status && PAID_STATUSES.has(patch.payment_status as string)) {
+    supabase
+      .from("clip_items")
+      .update({ status: "שולם", updated_at: new Date().toISOString() })
+      .eq("linked_transaction_id", id)
+      .then(() => { /* sync ok */ }, () => { /* ignore */ });
+  }
+
   return NextResponse.json({ transaction: data });
 }
 

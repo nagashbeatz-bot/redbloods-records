@@ -53,6 +53,34 @@ interface TxDraft {
   expenseScope: string;
 }
 
+type ClipItemStatus = "תכנון בלבד" | "הועבר לכספים" | "שולם" | "בוטל";
+
+interface ClipItem {
+  id: string;
+  project_id: string;
+  category: string;
+  description: string;
+  amount: number;
+  currency: string;
+  status: ClipItemStatus;
+  linked_transaction_id: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ClipItemDraft {
+  category: string;
+  description: string;
+  amount: string;
+  currency: string;
+  notes: string;
+}
+
+function emptyClipItemDraft(): ClipItemDraft {
+  return { category: "", description: "", amount: "", currency: "₪", notes: "" };
+}
+
 interface Session {
   id: string;
   project_id: string;
@@ -249,6 +277,14 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // ── Clip items (planning) state ───────────────────────────────────────────
+  const [clipItems,        setClipItems]        = useState<ClipItem[]>([]);
+  const [clipItemsLoaded,  setClipItemsLoaded]  = useState(false);
+  const [addingClipItem,   setAddingClipItem]   = useState(false);
+  const [clipItemDraft,    setClipItemDraft]    = useState<ClipItemDraft>(emptyClipItemDraft());
+  const [clipItemSaving,   setClipItemSaving]   = useState(false);
+  const [promotingId,      setPromotingId]      = useState<string | null>(null);
+
   // ── Filming day state ─────────────────────────────────────────────────────
   const [addingFilmingDay, setAddingFilmingDay] = useState(false);
   const [filmingDraft,     setFilmingDraft]     = useState<FilmingDayDraft>(emptyFilmingDraft());
@@ -278,7 +314,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // ── Collapsible sections ──────────────────────────────────────────────────
   const [openSections, setOpenSections] = useState<Set<string>>(
-    new Set(["summary", "finance", "files"])
+    new Set(["summary"])
   );
   function toggleSection(id: string) {
     setOpenSections((prev) => {
@@ -537,6 +573,32 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       .catch(() => setFinLoaded(true));
   }, [projectId]);
 
+  // ── Fetch clip items ───────────────────────────────────────────────────────
+  useEffect(() => {
+    setClipItemsLoaded(false);
+    setClipItems([]);
+    fetch(`/api/clip-items?projectId=${projectId}`)
+      .then((r) => r.json())
+      .then((d) => { setClipItems(d.clipItems ?? []); setClipItemsLoaded(true); })
+      .catch(() => setClipItemsLoaded(true));
+  }, [projectId]);
+
+  // ── Auto-open sections after data loads ───────────────────────────────────
+  useEffect(() => {
+    if (!finLoaded) return;
+    const hasFinancialContent = financeException || transactions.length > 0;
+    if (hasFinancialContent) setOpenSections((prev) => new Set([...prev, "finance"]));
+  }, [finLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!clipItemsLoaded) return;
+    const hasClipContent =
+      project?.projectType === "קליפ" ||
+      clipItems.length > 0 ||
+      filmingSessions.length > 0;
+    if (hasClipContent) setOpenSections((prev) => new Set([...prev, "clip"]));
+  }, [clipItemsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Delivery state ─────────────────────────────────────────────────────────
   interface DeliveryFile { name: string; path: string; }
   interface DeliveryState {
@@ -662,6 +724,55 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   async function handleDeleteSession(id: string) {
     setSessions((prev) => prev.filter((s) => s.id !== id)); // optimistic
     await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+  }
+
+  // ── Clip item CRUD ────────────────────────────────────────────────────────
+  async function handleAddClipItem() {
+    setClipItemSaving(true);
+    try {
+      const res = await fetch("/api/clip-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId:   projectId,
+          category:    clipItemDraft.category,
+          description: clipItemDraft.description,
+          amount:      Number(clipItemDraft.amount) || 0,
+          currency:    clipItemDraft.currency,
+          notes:       clipItemDraft.notes,
+        }),
+      });
+      const data = await res.json();
+      if (data.clipItem) {
+        setClipItems((prev) => [...prev, data.clipItem]);
+        setClipItemDraft(emptyClipItemDraft());
+        setAddingClipItem(false);
+      }
+    } finally {
+      setClipItemSaving(false);
+    }
+  }
+
+  async function handleDeleteClipItem(id: string) {
+    setClipItems((prev) => prev.filter((i) => i.id !== id));
+    await fetch(`/api/clip-items/${id}`, { method: "DELETE" });
+  }
+
+  async function handlePromoteClipItem(id: string) {
+    setPromotingId(id);
+    try {
+      const res = await fetch(`/api/clip-items/${id}/promote`, { method: "POST" });
+      const data = await res.json();
+      if (data.error === "already_promoted") return;
+      if (data.clipItem) {
+        setClipItems((prev) => prev.map((i) => i.id === id ? data.clipItem : i));
+      }
+      if (data.transaction) {
+        setTransactions((prev) => [data.transaction, ...prev]);
+      }
+    } finally {
+      setPromotingId(null);
+    }
   }
 
   async function handleAddFilmingDay() {
@@ -794,6 +905,13 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       const data = await res.json();
       if (data.transaction) {
         setTransactions((prev) => prev.map((t) => t.id === editingTxId ? data.transaction : t));
+        // Auto-sync clip item status if transaction marked as paid
+        const PAID = new Set(["שולם", "התקבל"]);
+        if (PAID.has(data.transaction.payment_status)) {
+          setClipItems((prev) => prev.map((ci) =>
+            ci.linked_transaction_id === editingTxId ? { ...ci, status: "שולם" as ClipItemStatus } : ci
+          ));
+        }
         setEditingTxId(null);
       }
     } finally {
@@ -848,6 +966,13 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           : t
       )
     );
+    // Auto-sync clip item if marked as paid
+    const PAID_SET = new Set<PaymentStatus>(["שולם", "התקבל"]);
+    if (PAID_SET.has(newStatus)) {
+      setClipItems((prev) => prev.map((ci) =>
+        ci.linked_transaction_id === tx.id ? { ...ci, status: "שולם" as ClipItemStatus } : ci
+      ));
+    }
     await fetch(`/api/transactions/${tx.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1175,219 +1300,6 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             </div>
           )}
 
-          {/* ── סשנים ────────────────────────────────────────────────────── */}
-          <CollapsibleCard
-            label="סשנים"
-            badge={`${done}/${sessionLimit}${nextSession && !openSections.has("sessions") ? ` · הבא: ${fmtDate(nextSession.date)}` : ""}`}
-            open={openSections.has("sessions")}
-            onToggle={() => toggleSection("sessions")}
-          >
-            {/* Header row */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>מעקב סשנים</span>
-              <button
-                onClick={() => { setAddingSession(true); setAddDraft(emptyDraft()); }}
-                style={{ fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.16)")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.08)")}
-              >+ הוסף סשן</button>
-            </div>
-
-            {/* Next session highlight */}
-            {nextSession ? (
-              <div style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
-                <div style={{ fontSize: 10, color: "#3B82F6", fontWeight: 700, marginBottom: 4 }}>סשן הבא</div>
-                <div style={{ fontSize: 13, color: "#CCC", fontWeight: 600 }}>
-                  {fmtDate(nextSession.date)}
-                  {nextSession.start_time && (
-                    <span style={{ fontSize: 12, color: "#888", fontWeight: 400, marginRight: 8 }}>
-                      {nextSession.start_time}{nextSession.end_time ? `–${nextSession.end_time}` : ""}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : sessionsLoaded && project.status !== "הושלם" && (
-              <div style={{ fontSize: 11, color: "#444", marginBottom: 12 }}>אין סשן עתידי</div>
-            )}
-
-            {/* Progress bar */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: overLimit ? "#EF4444" : "#E8E8E8" }}>
-                  סשנים: {done}/{sessionLimit}
-                </span>
-                {overLimit && (
-                  <span style={{ fontSize: 11, color: "#EF4444", fontWeight: 600 }}>⚠ חריגה!</span>
-                )}
-              </div>
-              <div style={{ height: 6, background: "#252525", borderRadius: 3, overflow: "hidden" }}>
-                <div style={{
-                  height: "100%", borderRadius: 3,
-                  width: `${progress}%`,
-                  background: overLimit ? "#EF4444" : "#3B82F6",
-                  transition: "width 0.3s ease",
-                }} />
-              </div>
-            </div>
-
-            {/* Stats row */}
-            <div style={{
-              display: "flex", gap: 16, fontSize: 11, color: "#666", marginBottom: 10,
-            }}>
-              <span>התקיימו: <strong style={{ color: "#10B981" }}>{done}</strong></span>
-              <span>מתוכננים: <strong style={{ color: "#3B82F6" }}>{planned}</strong></span>
-              <span>נותרו: <strong style={{ color: "#F0F0F0" }}>{remaining}</strong></span>
-            </div>
-
-            {/* Limit row */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#555", marginBottom: 14 }}>
-              <span>מגבלת סשנים:</span>
-              {editingLimit ? (
-                <input
-                  autoFocus
-                  type="number"
-                  min={0}
-                  value={limitDraft}
-                  onChange={(e) => setLimitDraft(e.target.value)}
-                  onBlur={() => handleLimitSave(limitDraft)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleLimitSave(limitDraft);
-                    if (e.key === "Escape") setEditingLimit(false);
-                  }}
-                  style={{ ...INPUT_S, width: 52 }}
-                />
-              ) : (
-                <button
-                  onClick={() => { setLimitDraft(String(sessionLimit)); setEditingLimit(true); }}
-                  style={{
-                    background: "rgba(255,255,255,0.05)", border: "1px solid #2A2A2A",
-                    borderRadius: 6, padding: "2px 10px", color: "#DDD", fontSize: 12,
-                    cursor: "pointer", fontFamily: "inherit",
-                  }}
-                  title="לחץ לעריכה"
-                >
-                  {sessionLimit}
-                </button>
-              )}
-            </div>
-
-            {/* Session list */}
-            {!sessionsLoaded ? (
-              <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
-            ) : sessions.length === 0 && !addingSession ? (
-              <div style={{ fontSize: 11, color: "#444" }}>אין סשנים עדיין</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {sessions.filter((s) => s.session_type !== "צילום קליפ").map((s) => (
-                  <div key={s.id}>
-                    {editingId === s.id ? (
-                      /* ── Inline edit form ── */
-                      <SessionForm
-                        draft={editDraft}
-                        setDraft={setEditDraft}
-                        saving={editSaving}
-                        onSave={handleUpdateSession}
-                        onCancel={() => setEditingId(null)}
-                      />
-                    ) : (
-                      /* ── Session row ── */
-                      <div style={{
-                        display: "flex", alignItems: "flex-start", gap: 8,
-                        padding: "6px 8px", borderRadius: 8,
-                        background: "rgba(255,255,255,0.02)",
-                        border: "1px solid #222",
-                      }}>
-                        {/* Color dot */}
-                        <div style={{
-                          width: 7, height: 7, borderRadius: "50%",
-                          background: STATUS_COLOR[s.status], flexShrink: 0, marginTop: 4,
-                        }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, color: "#CCC", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                            <span style={{ fontWeight: 600 }}>{s.date ? fmtDate(s.date) : "—"}</span>
-                            {(s.start_time || s.end_time) && (
-                              <span style={{ color: "#666", fontSize: 11 }}>
-                                {s.start_time || ""}{ s.end_time ? `–${s.end_time}` : ""}
-                              </span>
-                            )}
-                            <span style={{
-                              fontSize: 10, fontWeight: 600,
-                              color: STATUS_COLOR[s.status],
-                              background: `${STATUS_COLOR[s.status]}18`,
-                              border: `1px solid ${STATUS_COLOR[s.status]}35`,
-                              borderRadius: 5, padding: "1px 6px",
-                            }}>
-                              {s.status}
-                            </span>
-                            {/* Clickable type badge — cycles through types */}
-                            <button
-                              onClick={async () => {
-                                const cur = (s.session_type ?? "סשן") as SessionType;
-                                const next = CYCLE_TYPES[(CYCLE_TYPES.indexOf(cur as "סשן"|"ניקוי מיקס"|"חזרה") + 1) % CYCLE_TYPES.length];
-                                setSessions((prev) => prev.map((x) => x.id === s.id ? { ...x, session_type: next } : x));
-                                await fetch(`/api/sessions/${s.id}`, {
-                                  method: "PATCH",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ sessionType: next }),
-                                });
-                              }}
-                              title="לחץ לשינוי סוג"
-                              style={{
-                                fontSize: 10, fontWeight: 600, cursor: "pointer",
-                                borderRadius: 5, padding: "1px 6px", border: "none",
-                                ...((() => {
-                                  const t = (s.session_type ?? "סשן") as SessionType;
-                                  if (t === "חזרה")      return { color: "#F59E0B", background: "rgba(245,158,11,0.12)", outline: "1px solid rgba(245,158,11,0.3)" };
-                                  if (t === "ניקוי מיקס") return { color: "#A855F7", background: "rgba(168,85,247,0.12)", outline: "1px solid rgba(168,85,247,0.3)" };
-                                  return { color: "#3B82F6", background: "rgba(59,130,246,0.10)", outline: "1px solid rgba(59,130,246,0.25)" };
-                                })()),
-                              }}
-                            >
-                              {s.session_type ?? "סשן"}
-                            </button>
-                          </div>
-                          {s.notes && (
-                            <div style={{ fontSize: 11, color: "#555", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {s.notes}
-                            </div>
-                          )}
-                        </div>
-                        {/* Actions */}
-                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                          <button
-                            onClick={() => startEdit(s)}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "2px 4px" }}
-                            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
-                            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
-                            title="ערוך"
-                          >✏</button>
-                          <button
-                            onClick={() => handleDeleteSession(s.id)}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "2px 4px" }}
-                            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
-                            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
-                            title="מחק"
-                          >×</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Add form */}
-                {addingSession && (
-                  <SessionForm
-                    draft={addDraft}
-                    setDraft={setAddDraft}
-                    saving={addSaving}
-                    onSave={handleAddSession}
-                    onCancel={() => setAddingSession(false)}
-                  />
-                )}
-              </div>
-            )}
-          </CollapsibleCard>
-
           {/* ── כספים ───────────────────────────────────────────────────── */}
           <CollapsibleCard
             label="כספים"
@@ -1700,6 +1612,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           {/* ── קליפ / צילום ─────────────────────────────────────────── */}
           <ClipSection
             transactions={transactions}
+            clipItems={clipItems}
+            clipItemsLoaded={clipItemsLoaded}
             filmingSessions={filmingSessions}
             open={openSections.has("clip")}
             onToggle={() => toggleSection("clip")}
@@ -1708,6 +1622,16 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               setAddingTx("expense");
               setTxDraft({ ...emptyTxDraft(), type: "expense", expenseScope: "קליפ" });
             }}
+            addingClipItem={addingClipItem}
+            clipItemDraft={clipItemDraft}
+            setClipItemDraft={setClipItemDraft}
+            clipItemSaving={clipItemSaving}
+            promotingId={promotingId}
+            onAddClipItem={() => { setClipItemDraft(emptyClipItemDraft()); setAddingClipItem(true); }}
+            onSaveClipItem={handleAddClipItem}
+            onCancelClipItem={() => { setAddingClipItem(false); setClipItemDraft(emptyClipItemDraft()); }}
+            onDeleteClipItem={handleDeleteClipItem}
+            onPromoteClipItem={handlePromoteClipItem}
             onAddFilmingDay={() => { setFilmingDraft(emptyFilmingDraft()); setAddingFilmingDay(true); }}
             onDeleteFilmingDay={(id) => {
               setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -1720,6 +1644,219 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             onSaveFilmingDay={handleAddFilmingDay}
             onCancelFilmingDay={() => { setAddingFilmingDay(false); setFilmingDraft(emptyFilmingDraft()); }}
           />
+
+          {/* ── סשנים ────────────────────────────────────────────────────── */}
+          <CollapsibleCard
+            label="סשנים"
+            badge={`${done}/${sessionLimit}${nextSession && !openSections.has("sessions") ? ` · הבא: ${fmtDate(nextSession.date)}` : ""}`}
+            open={openSections.has("sessions")}
+            onToggle={() => toggleSection("sessions")}
+          >
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#888" }}>מעקב סשנים</span>
+              <button
+                onClick={() => { setAddingSession(true); setAddDraft(emptyDraft()); }}
+                style={{ fontSize: 11, color: "#3B82F6", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.16)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.08)")}
+              >+ הוסף סשן</button>
+            </div>
+
+            {/* Next session highlight */}
+            {nextSession ? (
+              <div style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                <div style={{ fontSize: 10, color: "#3B82F6", fontWeight: 700, marginBottom: 4 }}>סשן הבא</div>
+                <div style={{ fontSize: 13, color: "#CCC", fontWeight: 600 }}>
+                  {fmtDate(nextSession.date)}
+                  {nextSession.start_time && (
+                    <span style={{ fontSize: 12, color: "#888", fontWeight: 400, marginRight: 8 }}>
+                      {nextSession.start_time}{nextSession.end_time ? `–${nextSession.end_time}` : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : sessionsLoaded && project.status !== "הושלם" && (
+              <div style={{ fontSize: 11, color: "#444", marginBottom: 12 }}>אין סשן עתידי</div>
+            )}
+
+            {/* Progress bar */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: overLimit ? "#EF4444" : "#E8E8E8" }}>
+                  סשנים: {done}/{sessionLimit}
+                </span>
+                {overLimit && (
+                  <span style={{ fontSize: 11, color: "#EF4444", fontWeight: 600 }}>⚠ חריגה!</span>
+                )}
+              </div>
+              <div style={{ height: 6, background: "#252525", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{
+                  height: "100%", borderRadius: 3,
+                  width: `${progress}%`,
+                  background: overLimit ? "#EF4444" : "#3B82F6",
+                  transition: "width 0.3s ease",
+                }} />
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div style={{
+              display: "flex", gap: 16, fontSize: 11, color: "#666", marginBottom: 10,
+            }}>
+              <span>התקיימו: <strong style={{ color: "#10B981" }}>{done}</strong></span>
+              <span>מתוכננים: <strong style={{ color: "#3B82F6" }}>{planned}</strong></span>
+              <span>נותרו: <strong style={{ color: "#F0F0F0" }}>{remaining}</strong></span>
+            </div>
+
+            {/* Limit row */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#555", marginBottom: 14 }}>
+              <span>מגבלת סשנים:</span>
+              {editingLimit ? (
+                <input
+                  autoFocus
+                  type="number"
+                  min={0}
+                  value={limitDraft}
+                  onChange={(e) => setLimitDraft(e.target.value)}
+                  onBlur={() => handleLimitSave(limitDraft)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleLimitSave(limitDraft);
+                    if (e.key === "Escape") setEditingLimit(false);
+                  }}
+                  style={{ ...INPUT_S, width: 52 }}
+                />
+              ) : (
+                <button
+                  onClick={() => { setLimitDraft(String(sessionLimit)); setEditingLimit(true); }}
+                  style={{
+                    background: "rgba(255,255,255,0.05)", border: "1px solid #2A2A2A",
+                    borderRadius: 6, padding: "2px 10px", color: "#DDD", fontSize: 12,
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}
+                  title="לחץ לעריכה"
+                >
+                  {sessionLimit}
+                </button>
+              )}
+            </div>
+
+            {/* Session list */}
+            {!sessionsLoaded ? (
+              <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
+            ) : sessions.length === 0 && !addingSession ? (
+              <div style={{ fontSize: 11, color: "#444" }}>אין סשנים עדיין</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {sessions.filter((s) => s.session_type !== "צילום קליפ").map((s) => (
+                  <div key={s.id}>
+                    {editingId === s.id ? (
+                      /* ── Inline edit form ── */
+                      <SessionForm
+                        draft={editDraft}
+                        setDraft={setEditDraft}
+                        saving={editSaving}
+                        onSave={handleUpdateSession}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    ) : (
+                      /* ── Session row ── */
+                      <div style={{
+                        display: "flex", alignItems: "flex-start", gap: 8,
+                        padding: "6px 8px", borderRadius: 8,
+                        background: "rgba(255,255,255,0.02)",
+                        border: "1px solid #222",
+                      }}>
+                        {/* Color dot */}
+                        <div style={{
+                          width: 7, height: 7, borderRadius: "50%",
+                          background: STATUS_COLOR[s.status], flexShrink: 0, marginTop: 4,
+                        }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: "#CCC", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 600 }}>{s.date ? fmtDate(s.date) : "—"}</span>
+                            {(s.start_time || s.end_time) && (
+                              <span style={{ color: "#666", fontSize: 11 }}>
+                                {s.start_time || ""}{ s.end_time ? `–${s.end_time}` : ""}
+                              </span>
+                            )}
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              color: STATUS_COLOR[s.status],
+                              background: `${STATUS_COLOR[s.status]}18`,
+                              border: `1px solid ${STATUS_COLOR[s.status]}35`,
+                              borderRadius: 5, padding: "1px 6px",
+                            }}>
+                              {s.status}
+                            </span>
+                            {/* Clickable type badge — cycles through types */}
+                            <button
+                              onClick={async () => {
+                                const cur = (s.session_type ?? "סשן") as SessionType;
+                                const next = CYCLE_TYPES[(CYCLE_TYPES.indexOf(cur as "סשן"|"ניקוי מיקס"|"חזרה") + 1) % CYCLE_TYPES.length];
+                                setSessions((prev) => prev.map((x) => x.id === s.id ? { ...x, session_type: next } : x));
+                                await fetch(`/api/sessions/${s.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ sessionType: next }),
+                                });
+                              }}
+                              title="לחץ לשינוי סוג"
+                              style={{
+                                fontSize: 10, fontWeight: 600, cursor: "pointer",
+                                borderRadius: 5, padding: "1px 6px", border: "none",
+                                ...((() => {
+                                  const t = (s.session_type ?? "סשן") as SessionType;
+                                  if (t === "חזרה")      return { color: "#F59E0B", background: "rgba(245,158,11,0.12)", outline: "1px solid rgba(245,158,11,0.3)" };
+                                  if (t === "ניקוי מיקס") return { color: "#A855F7", background: "rgba(168,85,247,0.12)", outline: "1px solid rgba(168,85,247,0.3)" };
+                                  return { color: "#3B82F6", background: "rgba(59,130,246,0.10)", outline: "1px solid rgba(59,130,246,0.25)" };
+                                })()),
+                              }}
+                            >
+                              {s.session_type ?? "סשן"}
+                            </button>
+                          </div>
+                          {s.notes && (
+                            <div style={{ fontSize: 11, color: "#555", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {s.notes}
+                            </div>
+                          )}
+                        </div>
+                        {/* Actions */}
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          <button
+                            onClick={() => startEdit(s)}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "2px 4px" }}
+                            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
+                            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
+                            title="ערוך"
+                          >✏</button>
+                          <button
+                            onClick={() => handleDeleteSession(s.id)}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "2px 4px" }}
+                            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
+                            title="מחק"
+                          >×</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Add form */}
+                {addingSession && (
+                  <SessionForm
+                    draft={addDraft}
+                    setDraft={setAddDraft}
+                    saving={addSaving}
+                    onSave={handleAddSession}
+                    onCancel={() => setAddingSession(false)}
+                  />
+                )}
+              </div>
+            )}
+          </CollapsibleCard>
 
           {/* ── קבצים ────────────────────────────────────────────────────── */}
           <CollapsibleCard
@@ -2124,15 +2261,30 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 // ── Clip / Video section ──────────────────────────────────────────────────────
 
 function ClipSection({
-  transactions, filmingSessions, open, onToggle, onAddClipExpense,
+  transactions, clipItems, clipItemsLoaded, filmingSessions,
+  open, onToggle, onAddClipExpense,
+  addingClipItem, clipItemDraft, setClipItemDraft, clipItemSaving, promotingId,
+  onAddClipItem, onSaveClipItem, onCancelClipItem, onDeleteClipItem, onPromoteClipItem,
   onAddFilmingDay, onDeleteFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
   filmingSaving, onSaveFilmingDay, onCancelFilmingDay,
 }: {
   transactions: Transaction[];
+  clipItems: ClipItem[];
+  clipItemsLoaded: boolean;
   filmingSessions: Session[];
   open: boolean;
   onToggle: () => void;
   onAddClipExpense: () => void;
+  addingClipItem: boolean;
+  clipItemDraft: ClipItemDraft;
+  setClipItemDraft: (d: ClipItemDraft) => void;
+  clipItemSaving: boolean;
+  promotingId: string | null;
+  onAddClipItem: () => void;
+  onSaveClipItem: () => void;
+  onCancelClipItem: () => void;
+  onDeleteClipItem: (id: string) => void;
+  onPromoteClipItem: (id: string) => void;
   onAddFilmingDay: () => void;
   onDeleteFilmingDay: (id: string) => void;
   addingFilmingDay: boolean;
@@ -2143,22 +2295,124 @@ function ClipSection({
   onCancelFilmingDay: () => void;
 }) {
   const clipExp = transactions.filter((t) => t.type === "expense" && t.expense_scope === "קליפ");
-  const PAID = new Set(["שולם", "התקבל"]);
+  const PAID = new Set<string>(["שולם", "התקבל"]);
   const paid    = clipExp.filter((t) => PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const pending = clipExp.filter((t) => !PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const total   = paid + pending;
+
+  // Clip item (planning) computed values
+  const activeItems   = clipItems.filter((i) => i.status !== "בוטל");
+  const totalPlanned  = activeItems.reduce((s, i) => s + i.amount, 0);
+  const totalSynced   = activeItems.filter((i) => i.linked_transaction_id).reduce((s, i) => s + i.amount, 0);
+  const totalUnsynced = activeItems.filter((i) => i.status === "תכנון בלבד").reduce((s, i) => s + i.amount, 0);
 
   const badgeParts: string[] = [];
-  if (filmingSessions.length > 0) badgeParts.push(`${filmingSessions.length} ימי צילום`);
-  if (clipExp.length > 0)         badgeParts.push(`${clipExp.length} הוצאות`);
+  if (activeItems.length > 0)      badgeParts.push(`${activeItems.length} תכנון`);
+  if (filmingSessions.length > 0)  badgeParts.push(`${filmingSessions.length} ימי צילום`);
+  if (clipExp.length > 0)          badgeParts.push(`${clipExp.length} הוצאות`);
   const badge = badgeParts.length > 0 ? badgeParts.join(" · ") : undefined;
+
+  const ITEM_STATUS_COLOR: Record<ClipItemStatus, string> = {
+    "תכנון בלבד":    "#3B82F6",
+    "הועבר לכספים":  "#F59E0B",
+    "שולם":           "#10B981",
+    "בוטל":           "#6B7280",
+  };
 
   const today = new Date().toISOString().split("T")[0];
 
   return (
     <CollapsibleCard label="קליפ / צילום" badge={badge} open={open} onToggle={onToggle}>
 
-      {/* ── Filming days ── */}
+      {/* ── 1. Planning items (clip_items) ── */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 10, color: "#3B82F6", fontWeight: 700, letterSpacing: "0.05em", marginBottom: 6 }}>
+          תכנון תקציב קליפ
+        </div>
+
+        {/* Summary strip */}
+        {activeItems.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+            {[
+              { label: "מתוכנן",         value: totalPlanned,  color: "#3B82F6" },
+              { label: "הועבר לכספים",   value: totalSynced,   color: "#F59E0B" },
+              { label: "שולם",           value: paid,          color: "#10B981" },
+              { label: "לא מסונכרן",     value: totalUnsynced, color: "#6B7280" },
+            ].map(({ label, value, color }) => value > 0 ? (
+              <div key={label} style={{ background: "#1A1A1A", borderRadius: 7, padding: "5px 9px", border: "1px solid #252525" }}>
+                <div style={{ fontSize: 9, color: "#555", marginBottom: 1 }}>{label}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color }}>{value.toLocaleString()}₪</div>
+              </div>
+            ) : null)}
+          </div>
+        )}
+
+        {/* Item list */}
+        {!clipItemsLoaded ? (
+          <div style={{ fontSize: 11, color: "#444", marginBottom: 6 }}>טוען...</div>
+        ) : activeItems.length === 0 && !addingClipItem ? (
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>אין פריטי תכנון עדיין</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
+            {activeItems.map((item) => {
+              const sc = ITEM_STATUS_COLOR[item.status];
+              const isPromoting = promotingId === item.id;
+              return (
+                <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, border: "1px solid #252525" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: "#CCC" }}>{item.description || item.category || "פריט קליפ"}</div>
+                    {item.category && item.description && <div style={{ fontSize: 10, color: "#555" }}>{item.category}</div>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: sc }}>{item.amount.toLocaleString()}{item.currency}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: sc, background: `${sc}18`, border: `1px solid ${sc}35`, borderRadius: 4, padding: "1px 5px" }}>{item.status}</span>
+                    {item.status === "תכנון בלבד" && (
+                      <button
+                        onClick={() => onPromoteClipItem(item.id)}
+                        disabled={isPromoting}
+                        title="העבר לכספים"
+                        style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 5, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.1)", color: "#F59E0B", cursor: isPromoting ? "default" : "pointer", fontFamily: "inherit" }}
+                      >
+                        {isPromoting ? "..." : "→ כספים"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onDeleteClipItem(item.id)}
+                      style={{ background: "none", border: "none", color: "#555", fontSize: 14, cursor: "pointer", padding: "0 2px" }}
+                      onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                      onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
+                    >✕</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add clip item form or button */}
+        {addingClipItem ? (
+          <ClipItemForm
+            draft={clipItemDraft}
+            setDraft={setClipItemDraft}
+            saving={clipItemSaving}
+            onSave={onSaveClipItem}
+            onCancel={onCancelClipItem}
+          />
+        ) : (
+          <button
+            onClick={onAddClipItem}
+            style={{ width: "100%", padding: "7px 0", borderRadius: 9, border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.07)", color: "#3B82F6", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.14)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.07)")}
+          >
+            + הוסף פריט לתכנון
+          </button>
+        )}
+      </div>
+
+      {/* ── Divider ── */}
+      <div style={{ height: 1, background: "#1E1E1E", margin: "10px 0" }} />
+
+      {/* ── 2. Filming days ── */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10, color: "#A855F7", fontWeight: 700, letterSpacing: "0.05em", marginBottom: 6 }}>
           ימי צילום
@@ -2244,7 +2498,7 @@ function ClipSection({
             {[
               { label: "שולם", value: paid, color: "#10B981" },
               { label: "צפוי / לא שולם", value: pending, color: "#F59E0B" },
-              { label: "סה״כ", value: total, color: "#F0F0F0" },
+              { label: "סה״כ", value: paid + pending, color: "#F0F0F0" },
             ].map(({ label, value, color }) => (
               <div key={label} style={{ flex: 1, minWidth: 80, background: "#1A1A1A", borderRadius: 8, padding: "8px 10px", border: "1px solid #252525" }}>
                 <div style={{ fontSize: 10, color: "#666", marginBottom: 3 }}>{label}</div>
@@ -2285,6 +2539,55 @@ function ClipSection({
         ₪ + הוסף הוצאה לקליפ
       </button>
     </CollapsibleCard>
+  );
+}
+
+// ── Clip item planning form ────────────────────────────────────────────────────
+
+function ClipItemForm({
+  draft, setDraft, saving, onSave, onCancel,
+}: {
+  draft: ClipItemDraft;
+  setDraft: (d: ClipItemDraft) => void;
+  saving: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="rb-form-card" style={{ marginBottom: 6 }}>
+      {/* Category */}
+      <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+        className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }}>
+        <option value="">קטגוריה</option>
+        {CLIP_EXPENSE_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      {/* Description */}
+      <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+        placeholder="ספק / תיאור (יאיר, סטודיו X...)" className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+      {/* Amount + currency */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
+          placeholder="סכום" min={0} className="rb-session-input" style={{ flex: 1 }} />
+        <select value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
+          className="rb-session-input" style={{ width: 50 }}>
+          {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      {/* Notes */}
+      <input type="text" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+        placeholder="הערות (אופציונלי)" className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+      {/* Buttons */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={onSave} disabled={saving}
+          style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: saving ? "#1A1A1A" : "#3B82F6", color: saving ? "#555" : "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "inherit" }}>
+          {saving ? "שומר..." : "הוסף לתכנון"}
+        </button>
+        <button onClick={onCancel}
+          style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#888", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+          ביטול
+        </button>
+      </div>
+    </div>
   );
 }
 

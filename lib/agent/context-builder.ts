@@ -701,6 +701,22 @@ async function buildProjectDetailContext(
       if (!allPaid) missing.push("יש תשלום לא מסומן כהתקבל (בדוק סגירה פיננסית)");
     }
 
+    // Clip planning items
+    const { data: clipItems } = await supabase
+      .from("clip_items")
+      .select("category, description, amount, currency, status, linked_transaction_id")
+      .eq("project_id", projectId)
+      .neq("status", "בוטל");
+    if (clipItems && clipItems.length > 0) {
+      const totalPlanned  = clipItems.reduce((s: number, i: Record<string, unknown>) => s + ((i.amount as number) ?? 0), 0);
+      const totalSynced   = clipItems.filter((i: Record<string, unknown>) => i.linked_transaction_id).reduce((s: number, i: Record<string, unknown>) => s + ((i.amount as number) ?? 0), 0);
+      const totalUnsynced = clipItems.filter((i: Record<string, unknown>) => i.status === "תכנון בלבד").reduce((s: number, i: Record<string, unknown>) => s + ((i.amount as number) ?? 0), 0);
+      const totalPaidItems = clipItems.filter((i: Record<string, unknown>) => i.status === "שולם").reduce((s: number, i: Record<string, unknown>) => s + ((i.amount as number) ?? 0), 0);
+      lines.push(`\nתכנון תקציב קליפ (${clipItems.length} פריטים):`);
+      lines.push(`  מתוכנן: ${fmt(totalPlanned)}₪ | הועבר לכספים: ${fmt(totalSynced)}₪ | שולם: ${fmt(totalPaidItems)}₪`);
+      if (totalUnsynced > 0) lines.push(`  ⚠ ${fmt(totalUnsynced)}₪ בתכנון שעדיין לא עברו לכספים`);
+    }
+
     // Filming days summary
     const filmingDays = (sessions ?? []).filter((s) => s.session_type === "צילום קליפ");
     if (filmingDays.length > 0) {
