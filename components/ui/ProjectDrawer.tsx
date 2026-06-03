@@ -1022,12 +1022,15 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const filmingSessions = sessions.filter((s) => s.session_type === "צילום קליפ");
 
   // ── Finance computed ──────────────────────────────────────────────────────
-  const incomeList  = transactions.filter((t) => t.type === "income");
-  const expenseList = transactions.filter((t) => t.type === "expense");
-  const totalPaid   = incomeList.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExp    = expenseList.reduce((s, t) => s + t.amount, 0);
-  const balance     = agreedPrice - totalPaid;
-  const profit      = totalPaid - totalExp;
+  const incomeList       = transactions.filter((t) => t.type === "income");
+  const expenseList      = transactions.filter((t) => t.type === "expense");
+  const clipExpenseList  = expenseList.filter((t) => t.expense_scope === "קליפ");
+  const nonClipExpenses  = expenseList.filter((t) => t.expense_scope !== "קליפ");
+  const totalPaid        = incomeList.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExp         = expenseList.reduce((s, t) => s + t.amount, 0);
+  const totalClipExp     = clipExpenseList.reduce((s, t) => s + t.amount, 0);
+  const balance          = agreedPrice - totalPaid;
+  const profit           = totalPaid - totalExp;
 
   // ── Files ─────────────────────────────────────────────────────────────────
   const allFiles = [...project.files].reverse(); // newest first
@@ -1362,12 +1365,13 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
             {/* Stats rows */}
             {[
-              { label: "שולם עד עכשיו",    value: totalPaid,  color: "#10B981", prefix: "" },
-              { label: "יתרה לתשלום",       value: balance,    color: balance > 0 ? "#EF4444" : "#10B981", prefix: "" },
-              { label: "הוצאות",            value: totalExp,   color: "#F59E0B", prefix: "−" },
-              { label: "רווח משוער",        value: profit,     color: profit >= 0 ? "#10B981" : "#EF4444", prefix: "" },
-            ].map(({ label, value, color, prefix }) => (
-              <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #1E1E1E" }}>
+              { label: "שולם עד עכשיו",    value: totalPaid,    color: "#10B981", prefix: "",  sub: null },
+              { label: "יתרה לתשלום",       value: balance,      color: balance > 0 ? "#EF4444" : "#10B981", prefix: "", sub: null },
+              { label: "הוצאות סה״כ",       value: totalExp,     color: "#F59E0B", prefix: "−", sub: totalClipExp > 0 ? `מתוכן קליפ: ${totalClipExp.toLocaleString()}₪` : null },
+              { label: "רווח משוער",        value: profit,       color: profit >= 0 ? "#10B981" : "#EF4444", prefix: "", sub: null },
+            ].map(({ label, value, color, prefix, sub }) => (
+              <div key={label} style={{ padding: "6px 0", borderBottom: "1px solid #1E1E1E" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, color: "#666" }}>{label}</span>
                   {label === "יתרה לתשלום" && balance > 0 && (
@@ -1398,6 +1402,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                   )}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color }}>{prefix}{value.toLocaleString()}{finCurrency}</div>
+                </div>
+                {sub && <div style={{ fontSize: 10, color: "#A855F7", marginTop: 2, paddingRight: 2 }}>🎬 {sub}</div>}
               </div>
             ))}
 
@@ -1548,12 +1554,19 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                   </div>
                 )}
 
-                {/* Expenses */}
-                {expenseList.length > 0 && (
+                {/* Expenses — non-clip only; clip expenses shown in קליפ / צילום section */}
+                {(nonClipExpenses.length > 0 || clipExpenseList.length > 0) && (
                   <div>
                     <div style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700, marginBottom: 6, letterSpacing: "0.05em" }}>הוצאות</div>
+                    {/* Clip expenses summary row (not detailed list) */}
+                    {clipExpenseList.length > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 6, background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.15)", marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: "#A855F7" }}>🎬 הוצאות קליפ ({clipExpenseList.length})</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#A855F7" }}>−{totalClipExp.toLocaleString()}{finCurrency}</span>
+                      </div>
+                    )}
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      {expenseList.map((tx) => (
+                      {nonClipExpenses.map((tx) => (
                         <div key={tx.id}>
                           {editingTxId === tx.id ? (
                             <DrawerTxForm draft={editTxDraft} setDraft={setEditTxDraft} saving={editTxSaving} onSave={handleUpdateTx} onCancel={() => setEditingTxId(null)} sessions={sessions} />
