@@ -52,24 +52,13 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
 
     if (txErr || !tx) return NextResponse.json({ error: txErr?.message ?? "failed to create transaction" }, { status: 500 });
 
-    // Update clip_item: status + linked_transaction_id
-    const { data: updatedItem, error: updateErr } = await supabase
-      .from("clip_items")
-      .update({
-        status:                "הועבר לכספים",
-        linked_transaction_id: tx.id,
-        updated_at:            new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    // Delete clip_item — it's now represented by the transaction in finance
+    await supabase.from("clip_items").delete().eq("id", id);
 
     // Bump project updated_at
     touchProject(item.project_id).catch(() => {});
 
-    return NextResponse.json({ clipItem: updatedItem, transaction: tx });
+    return NextResponse.json({ deleted: true, transaction: tx });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "שגיאת שרת" }, { status: 500 });
   }

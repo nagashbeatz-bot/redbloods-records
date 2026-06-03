@@ -764,8 +764,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       const res = await fetch(`/api/clip-items/${id}/promote`, { method: "POST" });
       const data = await res.json();
       if (data.error === "already_promoted") return;
-      if (data.clipItem) {
-        setClipItems((prev) => prev.map((i) => i.id === id ? data.clipItem : i));
+      // Remove from planning list — now lives as a transaction in finance
+      if (data.deleted) {
+        setClipItems((prev) => prev.filter((i) => i.id !== id));
       }
       if (data.transaction) {
         setTransactions((prev) => [data.transaction, ...prev]);
