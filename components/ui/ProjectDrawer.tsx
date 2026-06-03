@@ -17,7 +17,7 @@ import ActionMenu from "@/components/project/ActionMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
-type SessionType    = "סשן" | "ניקוי מיקס" | "חזרה";
+type SessionType    = "סשן" | "ניקוי מיקס" | "חזרה" | "צילום קליפ";
 type PaymentStatus  = "שולם" | "התקבל" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "לבדיקה";
 
 interface Transaction {
@@ -62,6 +62,8 @@ interface Session {
   status: SessionStatus;
   session_type: SessionType;
   notes: string;
+  photographer?: string;
+  location?: string;
 }
 
 interface Draft {
@@ -73,9 +75,35 @@ interface Draft {
   notes: string;
 }
 
+interface FilmingDayDraft {
+  date: string;
+  startTime: string;
+  endTime: string;
+  photographer: string;
+  location: string;
+  cost: string;
+  currency: string;
+  status: SessionStatus;
+  addToCalendar: boolean;
+  createExpense: boolean;
+}
+
+function emptyFilmingDraft(): FilmingDayDraft {
+  return {
+    date: "", startTime: "", endTime: "",
+    photographer: "", location: "",
+    cost: "", currency: "₪",
+    status: "מתוכנן",
+    addToCalendar: true,
+    createExpense: true,
+  };
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const STATUS_OPTIONS:   SessionStatus[]   = ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"];
-const TYPE_OPTIONS:     SessionType[]     = ["סשן", "ניקוי מיקס", "חזרה"];
+const TYPE_OPTIONS:     SessionType[]     = ["סשן", "ניקוי מיקס", "חזרה", "צילום קליפ"];
+// Cycling types for session row badge — excludes "צילום קליפ" (those live in ClipSection)
+const CYCLE_TYPES:      SessionType[]     = ["סשן", "ניקוי מיקס", "חזרה"];
 // Quick-change options shown in the status dropdown (income)
 const PMT_STATUS_OPTS:  PaymentStatus[]   = ["התקבל", "צפוי", "חלקי", "בוטל", "לבדיקה"];
 // Statuses that count as "paid" in totalPaid calculation
@@ -220,6 +248,11 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  // ── Filming day state ─────────────────────────────────────────────────────
+  const [addingFilmingDay, setAddingFilmingDay] = useState(false);
+  const [filmingDraft,     setFilmingDraft]     = useState<FilmingDayDraft>(emptyFilmingDraft());
+  const [filmingSaving,    setFilmingSaving]    = useState(false);
 
   // ── Finance state ──────────────────────────────────────────────────────────
   const [transactions,          setTransactions]          = useState<Transaction[]>([]);
@@ -631,6 +664,63 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     await fetch(`/api/sessions/${id}`, { method: "DELETE" });
   }
 
+  async function handleAddFilmingDay() {
+    setFilmingSaving(true);
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          date:          filmingDraft.date     || null,
+          startTime:     filmingDraft.startTime || null,
+          endTime:       filmingDraft.endTime   || null,
+          status:        filmingDraft.status,
+          sessionType:   "צילום קליפ",
+          notes:         filmingDraft.location,
+          photographer:  filmingDraft.photographer,
+          location:      filmingDraft.location,
+          addToCalendar: filmingDraft.addToCalendar,
+        }),
+      });
+      const data = await res.json();
+      if (!data.session) return;
+      setSessions((prev) => [...prev, data.session]);
+
+      // Create linked expense if requested
+      if (filmingDraft.createExpense && Number(filmingDraft.cost) > 0) {
+        const desc = filmingDraft.photographer
+          ? `${filmingDraft.photographer} — צילום קליפ`
+          : "צילום קליפ";
+        const txRes = await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            type:            "expense",
+            date:            filmingDraft.date || null,
+            description:     desc,
+            amount:          Number(filmingDraft.cost),
+            currency:        filmingDraft.currency,
+            paymentStatus:   "לא שולם",
+            category:        "צילום קליפ",
+            expenseScope:    "קליפ",
+            linkedSessionId: data.session.id,
+          }),
+        });
+        const txData = await txRes.json();
+        if (txData.transaction) {
+          setTransactions((prev) => [txData.transaction, ...prev]);
+        }
+      }
+
+      setFilmingDraft(emptyFilmingDraft());
+      setAddingFilmingDay(false);
+    } finally {
+      setFilmingSaving(false);
+    }
+  }
+
   async function handleLimitSave(val: string) {
     const n = parseInt(val, 10);
     if (isNaN(n) || n < 0) { setEditingLimit(false); return; }
@@ -798,6 +888,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       notes:       s.notes,
     });
   }
+
+  // ── Filming days ─────────────────────────────────────────────────────────
+  const filmingSessions = sessions.filter((s) => s.session_type === "צילום קליפ");
 
   // ── Finance computed ──────────────────────────────────────────────────────
   const incomeList  = transactions.filter((t) => t.type === "income");
@@ -1182,7 +1275,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               <div style={{ fontSize: 11, color: "#444" }}>אין סשנים עדיין</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {sessions.map((s) => (
+                {sessions.filter((s) => s.session_type !== "צילום קליפ").map((s) => (
                   <div key={s.id}>
                     {editingId === s.id ? (
                       /* ── Inline edit form ── */
@@ -1227,7 +1320,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                             <button
                               onClick={async () => {
                                 const cur = (s.session_type ?? "סשן") as SessionType;
-                                const next = TYPE_OPTIONS[(TYPE_OPTIONS.indexOf(cur) + 1) % TYPE_OPTIONS.length];
+                                const next = CYCLE_TYPES[(CYCLE_TYPES.indexOf(cur as "סשן"|"ניקוי מיקס"|"חזרה") + 1) % CYCLE_TYPES.length];
                                 setSessions((prev) => prev.map((x) => x.id === s.id ? { ...x, session_type: next } : x));
                                 await fetch(`/api/sessions/${s.id}`, {
                                   method: "PATCH",
@@ -1604,6 +1697,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           {/* ── קליפ / צילום ─────────────────────────────────────────── */}
           <ClipSection
             transactions={transactions}
+            filmingSessions={filmingSessions}
             open={openSections.has("clip")}
             onToggle={() => toggleSection("clip")}
             onAddClipExpense={() => {
@@ -1611,6 +1705,13 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               setAddingTx("expense");
               setTxDraft({ ...emptyTxDraft(), type: "expense", expenseScope: "קליפ" });
             }}
+            onAddFilmingDay={() => { setFilmingDraft(emptyFilmingDraft()); setAddingFilmingDay(true); }}
+            addingFilmingDay={addingFilmingDay}
+            filmingDraft={filmingDraft}
+            setFilmingDraft={setFilmingDraft}
+            filmingSaving={filmingSaving}
+            onSaveFilmingDay={handleAddFilmingDay}
+            onCancelFilmingDay={() => { setAddingFilmingDay(false); setFilmingDraft(emptyFilmingDraft()); }}
           />
 
           {/* ── קבצים ────────────────────────────────────────────────────── */}
@@ -2016,26 +2117,109 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 // ── Clip / Video section ──────────────────────────────────────────────────────
 
 function ClipSection({
-  transactions, open, onToggle, onAddClipExpense,
+  transactions, filmingSessions, open, onToggle, onAddClipExpense,
+  onAddFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
+  filmingSaving, onSaveFilmingDay, onCancelFilmingDay,
 }: {
   transactions: Transaction[];
+  filmingSessions: Session[];
   open: boolean;
   onToggle: () => void;
   onAddClipExpense: () => void;
+  onAddFilmingDay: () => void;
+  addingFilmingDay: boolean;
+  filmingDraft: FilmingDayDraft;
+  setFilmingDraft: (d: FilmingDayDraft) => void;
+  filmingSaving: boolean;
+  onSaveFilmingDay: () => void;
+  onCancelFilmingDay: () => void;
 }) {
   const clipExp = transactions.filter((t) => t.type === "expense" && t.expense_scope === "קליפ");
   const PAID = new Set(["שולם", "התקבל"]);
   const paid    = clipExp.filter((t) => PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const pending = clipExp.filter((t) => !PAID.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const total   = paid + pending;
-  const badge   = clipExp.length > 0 ? `${clipExp.length} הוצאות` : undefined;
+
+  const badgeParts: string[] = [];
+  if (filmingSessions.length > 0) badgeParts.push(`${filmingSessions.length} ימי צילום`);
+  if (clipExp.length > 0)         badgeParts.push(`${clipExp.length} הוצאות`);
+  const badge = badgeParts.length > 0 ? badgeParts.join(" · ") : undefined;
+
+  const today = new Date().toISOString().split("T")[0];
 
   return (
     <CollapsibleCard label="קליפ / צילום" badge={badge} open={open} onToggle={onToggle}>
-      {clipExp.length === 0 ? (
-        <div style={{ fontSize: 12, color: "#555", textAlign: "center", padding: "8px 0 4px" }}>
-          אין עדיין הוצאות קליפ לפרויקט הזה
+
+      {/* ── Filming days ── */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: "#A855F7", fontWeight: 700, letterSpacing: "0.05em", marginBottom: 6 }}>
+          ימי צילום
         </div>
+        {filmingSessions.length === 0 && !addingFilmingDay ? (
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>אין ימי צילום מתוכננים</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
+            {filmingSessions.map((s) => {
+              const isPast = s.date && s.date < today;
+              const statusColor = s.status === "התקיים" ? "#10B981"
+                : s.status === "בוטל" || s.status === "נדחה" ? "#6B7280"
+                : isPast ? "#F59E0B" : "#3B82F6";
+              return (
+                <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, border: "1px solid #252525" }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "#CCC", fontWeight: 600 }}>
+                      {s.date ? s.date.split("-").reverse().join("/") : "—"}
+                      {s.start_time && <span style={{ color: "#888", fontWeight: 400, marginRight: 6 }}>{s.start_time}{s.end_time ? `–${s.end_time}` : ""}</span>}
+                    </div>
+                    {(s.photographer || s.location) && (
+                      <div style={{ fontSize: 10, color: "#666", marginTop: 1 }}>
+                        {s.photographer && <span>📷 {s.photographer}</span>}
+                        {s.photographer && s.location && <span style={{ color: "#444" }}> · </span>}
+                        {s.location && <span>📍 {s.location}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: `${statusColor}18`, border: `1px solid ${statusColor}35`, borderRadius: 5, padding: "1px 6px" }}>
+                    {s.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {addingFilmingDay ? (
+          <FilmingDayForm
+            draft={filmingDraft}
+            setDraft={setFilmingDraft}
+            saving={filmingSaving}
+            onSave={onSaveFilmingDay}
+            onCancel={onCancelFilmingDay}
+          />
+        ) : (
+          <button
+            onClick={onAddFilmingDay}
+            style={{
+              width: "100%", padding: "7px 0", borderRadius: 9,
+              border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.07)",
+              color: "#A855F7", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(168,85,247,0.14)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(168,85,247,0.07)")}
+          >
+            🎬 + קבע יום צילום
+          </button>
+        )}
+      </div>
+
+      {/* ── Divider ── */}
+      <div style={{ height: 1, background: "#1E1E1E", margin: "10px 0" }} />
+
+      {/* ── Clip expenses ── */}
+      <div style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700, letterSpacing: "0.05em", marginBottom: 6 }}>
+        הוצאות קליפ
+      </div>
+      {clipExp.length === 0 ? (
+        <div style={{ fontSize: 11, color: "#555", marginBottom: 8 }}>אין עדיין הוצאות קליפ</div>
       ) : (
         <>
           {/* Summary row */}
@@ -2047,7 +2231,7 @@ function ClipSection({
             ].map(({ label, value, color }) => (
               <div key={label} style={{ flex: 1, minWidth: 80, background: "#1A1A1A", borderRadius: 8, padding: "8px 10px", border: "1px solid #252525" }}>
                 <div style={{ fontSize: 10, color: "#666", marginBottom: 3 }}>{label}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color }}>{value.toLocaleString()}₪</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color }}>{value.toLocaleString()}₪</div>
               </div>
             ))}
           </div>
@@ -2059,14 +2243,10 @@ function ClipSection({
                 <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, border: "1px solid #252525" }}>
                   <div>
                     <div style={{ fontSize: 12, color: "#CCC" }}>{t.description || t.category || "הוצאת קליפ"}</div>
-                    {t.category && t.description && (
-                      <div style={{ fontSize: 10, color: "#555" }}>{t.category}</div>
-                    )}
+                    {t.category && t.description && <div style={{ fontSize: 10, color: "#555" }}>{t.category}</div>}
                   </div>
                   <div style={{ textAlign: "left", flexShrink: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: isPaid ? "#10B981" : "#F59E0B" }}>
-                      {t.amount.toLocaleString()}{t.currency}
-                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: isPaid ? "#10B981" : "#F59E0B" }}>{t.amount.toLocaleString()}{t.currency}</div>
                     <div style={{ fontSize: 10, color: "#555" }}>{t.payment_status}</div>
                   </div>
                 </div>
@@ -2078,16 +2258,102 @@ function ClipSection({
       <button
         onClick={onAddClipExpense}
         style={{
-          width: "100%", padding: "8px 0", borderRadius: 9,
-          border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.07)",
-          color: "#A855F7", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+          width: "100%", padding: "7px 0", borderRadius: 9,
+          border: "1px solid rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.07)",
+          color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
         }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(168,85,247,0.14)")}
-        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(168,85,247,0.07)")}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.14)")}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.07)")}
       >
-        🎬 + הוסף הוצאה לקליפ
+        ₪ + הוסף הוצאה לקליפ
       </button>
     </CollapsibleCard>
+  );
+}
+
+// ── Filming day form ───────────────────────────────────────────────────────────
+
+function FilmingDayForm({
+  draft, setDraft, saving, onSave, onCancel,
+}: {
+  draft: FilmingDayDraft;
+  setDraft: (d: FilmingDayDraft) => void;
+  saving: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const hasCost = Number(draft.cost) > 0;
+  return (
+    <div className="rb-form-card" style={{ marginBottom: 6 }}>
+      {/* Date */}
+      <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+        className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+
+      {/* Start + End time */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <select value={draft.startTime} onChange={(e) => setDraft({ ...draft, startTime: e.target.value })}
+          className="rb-session-input" style={{ flex: 1 }}>
+          <option value="">שעת התחלה</option>
+          {TIME_SLOTS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={draft.endTime} onChange={(e) => setDraft({ ...draft, endTime: e.target.value })}
+          className="rb-session-input" style={{ flex: 1 }}>
+          <option value="">שעת סיום</option>
+          {TIME_SLOTS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+
+      {/* Photographer */}
+      <input type="text" value={draft.photographer} onChange={(e) => setDraft({ ...draft, photographer: e.target.value })}
+        placeholder="צלם (יאיר / שלומי / ...)" className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+
+      {/* Location */}
+      <input type="text" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })}
+        placeholder="לוקיישן / הערות" className="rb-session-input" style={{ width: "100%", boxSizing: "border-box" }} />
+
+      {/* Cost + currency + status */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input type="number" value={draft.cost} onChange={(e) => setDraft({ ...draft, cost: e.target.value })}
+          placeholder="עלות צילום" min={0} className="rb-session-input" style={{ flex: 1 }} />
+        <select value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
+          className="rb-session-input" style={{ width: 50 }}>
+          {["₪", "$", "€"].map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as SessionStatus })}
+          className="rb-session-input" style={{ flex: 1 }}>
+          {(["מתוכנן", "התקיים", "בוטל", "נדחה"] as SessionStatus[]).map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Checkboxes */}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#AAA", cursor: "pointer" }}>
+          <input type="checkbox" checked={draft.addToCalendar} onChange={(e) => setDraft({ ...draft, addToCalendar: e.target.checked })}
+            style={{ accentColor: "#3B82F6" }} />
+          הוסף ליומן Google
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: hasCost ? "#AAA" : "#555", cursor: hasCost ? "pointer" : "not-allowed" }}>
+          <input type="checkbox" checked={draft.createExpense && hasCost} disabled={!hasCost}
+            onChange={(e) => setDraft({ ...draft, createExpense: e.target.checked })}
+            style={{ accentColor: "#F59E0B" }} />
+          צור הוצאה מקושרת{hasCost ? "" : " (הכנס עלות)"}
+        </label>
+      </div>
+
+      {/* Buttons */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={onSave} disabled={saving}
+          style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: saving ? "#1A1A1A" : "#3B82F6", color: saving ? "#555" : "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "default" : "pointer", fontFamily: "inherit" }}>
+          {saving ? "שומר..." : "שמור יום צילום"}
+        </button>
+        <button onClick={onCancel}
+          style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#888", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+          ביטול
+        </button>
+      </div>
+    </div>
   );
 }
 

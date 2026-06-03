@@ -10,15 +10,17 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const body = await req.json();
-    const { date, startTime, endTime, status, sessionType, notes } = body;
+    const { date, startTime, endTime, status, sessionType, notes, photographer, location } = body;
 
     const patch: Record<string, unknown> = {};
-    if (date        !== undefined) patch.date         = date        || null;
-    if (startTime   !== undefined) patch.start_time   = startTime   || null;
-    if (endTime     !== undefined) patch.end_time     = endTime     || null;
-    if (status      !== undefined) patch.status       = status;
-    if (sessionType !== undefined) patch.session_type = sessionType;
-    if (notes       !== undefined) patch.notes        = notes;
+    if (date         !== undefined) patch.date         = date        || null;
+    if (startTime    !== undefined) patch.start_time   = startTime   || null;
+    if (endTime      !== undefined) patch.end_time     = endTime     || null;
+    if (status       !== undefined) patch.status       = status;
+    if (sessionType  !== undefined) patch.session_type = sessionType;
+    if (notes        !== undefined) patch.notes        = notes;
+    if (photographer !== undefined) patch.photographer = photographer;
+    if (location     !== undefined) patch.location     = location;
 
     const { data, error } = await supabase
       .from("sessions")

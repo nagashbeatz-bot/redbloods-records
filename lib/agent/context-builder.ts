@@ -555,7 +555,7 @@ async function buildProjectDetailContext(
         .order("date", { ascending: false })
         .limit(50),
       supabase.from("sessions")
-        .select("date, start_time, end_time, status, session_type, notes")
+        .select("date, start_time, end_time, status, session_type, notes, photographer, location")
         .eq("project_id", projectId)
         .order("date", { ascending: false })
         .limit(10),
@@ -699,6 +699,24 @@ async function buildProjectDetailContext(
         .filter((t) => t.type !== "הוצאה")
         .every((t) => PAID_STATUSES.has(t.payment_status));
       if (!allPaid) missing.push("יש תשלום לא מסומן כהתקבל (בדוק סגירה פיננסית)");
+    }
+
+    // Filming days summary
+    const filmingDays = (sessions ?? []).filter((s) => s.session_type === "צילום קליפ");
+    if (filmingDays.length > 0) {
+      lines.push(`\nימי צילום (${filmingDays.length}):`);
+      filmingDays.slice(0, 5).forEach((s) => {
+        const row = s as Record<string, unknown>;
+        const parts = [
+          s.date,
+          row.photographer ? `צלם: ${row.photographer}` : null,
+          row.location     ? `מיקום: ${row.location}` : null,
+          `[${s.status}]`,
+        ].filter(Boolean);
+        lines.push(`  • ${parts.join(" | ")}`);
+      });
+      const nextFilming = filmingDays.find((s) => s.date && s.date >= today);
+      if (nextFilming) lines.push(`  יום צילום הבא: ${nextFilming.date}`);
     }
 
     // Clip expenses summary

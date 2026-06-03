@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { projectId, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar } = body;
+    const { projectId, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar, photographer, location } = body;
 
     if (!projectId) {
       return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
@@ -82,6 +82,8 @@ export async function POST(req: NextRequest) {
         session_type:      sessionType       || "סשן",
         notes:             notes             || "",
         calendar_event_id: calendarEventId   || null,
+        photographer:      photographer      || "",
+        location:          location          || "",
       })
       .select()
       .single();
@@ -98,9 +100,12 @@ export async function POST(req: NextRequest) {
             ? `${date}T${endTime}:00`
             : (() => { const d = new Date(calStart); d.setHours(d.getHours() + 1); return d.toISOString().slice(0, 19); })();
           const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
+          const isFilming = sessionType === "צילום קליפ";
           const summary = proj
-            ? `סשן: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}`
-            : "סשן";
+            ? isFilming
+              ? `צילום קליפ: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}${photographer ? ` (${photographer})` : ""}`
+              : `סשן: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}`
+            : isFilming ? "צילום קליפ" : "סשן";
           const event = await createCalendarEvent(summary, calStart, calEnd, notes ? { description: notes } : undefined);
           const calId  = (event as { id?: string }).id ?? null;
           if (calId) {
