@@ -650,15 +650,22 @@ function CollectionDetailModal({
 }) {
   if (typeof document === "undefined") return null;
 
-  const rows = Object.entries(financeSummary)
+  const knownIds = new Set(projects.map((p) => p.id));
+
+  const allRows = Object.entries(financeSummary)
     .map(([projectId, fin]) => {
       const project = projects.find((p) => p.id === projectId);
       const remaining = Math.max(0, fin.agreed - fin.paid);
-      return { projectId, project, fin, remaining };
+      return { projectId, project, fin, remaining, isKnown: knownIds.has(projectId) };
     })
-    .filter((r) => r.fin.agreed > 0 || r.fin.paid > 0)
-    .sort((a, b) => b.remaining - a.remaining);
+    .filter((r) => r.fin.agreed > 0 || r.fin.paid > 0);
 
+  // Known = project exists in loaded projects list
+  const rows = allRows.filter((r) => r.isKnown).sort((a, b) => b.remaining - a.remaining);
+  // Orphaned = settings/transactions for deleted or hidden projects
+  const orphaned = allRows.filter((r) => !r.isKnown).sort((a, b) => b.remaining - a.remaining);
+
+  // Total = only known projects (matches the card value exactly)
   const total = rows.reduce((s, r) => s + r.remaining, 0);
 
   const cell: React.CSSProperties = {
@@ -747,12 +754,36 @@ function CollectionDetailModal({
           </table>
         </div>
 
+        {/* Orphaned section — not counted in total */}
+        {orphaned.length > 0 && (
+          <div style={{ borderTop: "1px solid #252525", padding: "12px 24px 8px", flexShrink: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#EF4444", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+              ⚠ חריגים לבדיקה — לא נספרים בסכום ({orphaned.length})
+            </div>
+            <p style={{ fontSize: 10, color: "#555", margin: "0 0 8px" }}>
+              נתונים כספיים שאינם משויכים לפרויקט קיים — פרויקטים שנמחקו, הוסתרו, או שגיאת ID.
+            </p>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <tbody>
+                {orphaned.map(({ projectId, fin, remaining }) => (
+                  <tr key={projectId}>
+                    <td style={{ padding: "5px 8px", fontSize: 11, color: "#777", fontFamily: "monospace" }}>{projectId.slice(0, 12)}…</td>
+                    <td style={{ padding: "5px 8px", fontSize: 11, color: "#555" }}>מוסכם: {fin.agreed > 0 ? `${fin.currency}${fin.agreed.toLocaleString()}` : "—"}</td>
+                    <td style={{ padding: "5px 8px", fontSize: 11, color: "#555" }}>התקבל: {fin.paid > 0 ? `${fin.currency}${fin.paid.toLocaleString()}` : "0"}</td>
+                    <td style={{ padding: "5px 8px", fontSize: 11, color: "#EF4444" }}>{remaining > 0 ? `יתרה: ${fin.currency}${remaining.toLocaleString()}` : "שולם"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {/* Footer */}
         <div style={{ padding: "12px 24px", borderTop: "1px solid #1E1E1E", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <p style={{ fontSize: 10, color: "#444", margin: 0 }}>
             נוסחה: max(0, agreedPrice − paidIncome) · מקור: טבלת settings + transactions
           </p>
-          <span style={{ fontSize: 11, color: "#555" }}>{rows.length} פרויקטים</span>
+          <span style={{ fontSize: 11, color: "#555" }}>{rows.length} פרויקטים · {orphaned.length > 0 ? `${orphaned.length} חריגים` : "אין חריגים"}</span>
         </div>
       </div>
     </div>,
@@ -1096,7 +1127,11 @@ export default function ProjectsTable() {
                 {
                   label: "לגבייה",
                   value: (() => {
-                    const total = Object.values(financeSummary).reduce((s, f) => s + Math.max(0, f.agreed - f.paid), 0);
+                    // Only include projects that actually exist — orphaned settings/transactions are excluded
+                    const knownIds = new Set(projects.map((p) => p.id));
+                    const total = Object.entries(financeSummary)
+                      .filter(([id]) => knownIds.has(id))
+                      .reduce((s, [, f]) => s + Math.max(0, f.agreed - f.paid), 0);
                     return total > 0 ? `₪${total.toLocaleString()}` : "—";
                   })(),
                   color: "#F59E0B",
