@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
-import ProposalsSection, { type Proposal } from "@/components/clients/ProposalsSection";
+import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,8 +192,16 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
   const handleProposalAdd      = useCallback((p: Proposal) => setProposals((prev) => [p, ...prev]), []);
   const handleProposalUpdate   = useCallback((p: Proposal) => setProposals((prev) => prev.map((x) => x.id === p.id ? p : x)), []);
   const handleProposalDelete   = useCallback((id: string) => setProposals((prev) => prev.filter((x) => x.id !== id)), []);
-  const handleProposalConverted = useCallback((proposalId: string, projectId: string) => {
-    setProposals((prev) => prev.map((p) => p.id === proposalId ? { ...p, status: "סגר" as const, linked_project_id: projectId } : p));
+  const handleProposalConverted = useCallback((proposalId: string, projectId: string, newProject: NewProject) => {
+    // Mark proposal as closed
+    setProposals((prev) => prev.map((p) =>
+      p.id === proposalId ? { ...p, status: "סגר" as const, linked_project_id: projectId } : p
+    ));
+    // Add new project to the list immediately — no extra fetch needed
+    setProjects((prev) => {
+      if (prev.some((p) => p.id === projectId)) return prev; // guard duplicate
+      return [{ ...newProject, projectType: newProject.project_type }, ...prev];
+    });
   }, []);
 
   if (!mounted || !client) return null;
@@ -261,7 +269,7 @@ function ModalContent({
   onProposalAdd: (p: Proposal) => void;
   onProposalUpdate: (p: Proposal) => void;
   onProposalDelete: (id: string) => void;
-  onProposalConverted: (proposalId: string, projectId: string) => void;
+  onProposalConverted: (proposalId: string, projectId: string, project: NewProject) => void;
   onUpdateMeeting: (m: Meeting) => void; onRemoveMeeting: (id: string) => void;
   onUpdateSession: (s: Session) => void; onRemoveSession: (id: string) => void;
 }) {

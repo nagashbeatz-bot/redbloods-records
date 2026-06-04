@@ -6,6 +6,13 @@ import type { Client } from "@/lib/clients-store";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** Minimal project shape returned by the convert endpoint */
+export interface NewProject {
+  id: string; name: string; artist: string; status: string;
+  deadline: string | null; project_type: string;
+  isOverdue: boolean; isDueSoon: boolean;
+}
+
 export interface Proposal {
   id: string;
   client_id: string;
@@ -181,7 +188,7 @@ function ProposalRow({ proposal, onUpdate, onDelete, onConverted, openProject }:
   proposal: Proposal;
   onUpdate: (p: Proposal) => void;
   onDelete: (id: string) => void;
-  onConverted: (proposalId: string, projectId: string) => void;
+  onConverted: (proposalId: string, projectId: string, project: NewProject) => void;
   openProject: (id: string) => void;
 }) {
   const [editing,    setEditing]    = useState(false);
@@ -229,7 +236,7 @@ function ProposalRow({ proposal, onUpdate, onDelete, onConverted, openProject }:
       const res = await fetch(`/api/proposals/${proposal.id}/convert`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה");
-      onConverted(proposal.id, data.projectId);
+      onConverted(proposal.id, data.projectId, data.project);
       setConverting(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -342,7 +349,7 @@ export default function ProposalsSection({ client, proposals, onUpdate, onAdd, o
   onUpdate: (p: Proposal) => void;
   onAdd: (p: Proposal) => void;
   onDelete: (id: string) => void;
-  onConverted: (proposalId: string, projectId: string) => void;
+  onConverted: (proposalId: string, projectId: string, project: NewProject) => void;
   openProject: (id: string) => void;
 }) {
   const [showForm, setShowForm] = useState(false);

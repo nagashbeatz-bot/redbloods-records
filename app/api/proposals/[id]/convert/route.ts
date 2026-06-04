@@ -77,7 +77,20 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
       })
       .eq("id", id);
 
-    return NextResponse.json({ ok: true, projectId: project.id });
+    return NextResponse.json({
+      ok: true,
+      projectId: project.id,
+      project: {
+        id:           project.id,
+        name:         project.name,
+        artist:       project.artist,
+        status:       project.status,
+        deadline:     project.deadline  ?? null,
+        project_type: (project.projectType as string) ?? "",
+        isOverdue:    false,
+        isDueSoon:    false,
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[proposals convert]", msg);
