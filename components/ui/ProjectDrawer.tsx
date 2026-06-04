@@ -1692,6 +1692,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             filmingSaving={filmingSaving}
             onSaveFilmingDay={handleAddFilmingDay}
             onCancelFilmingDay={() => { setAddingFilmingDay(false); setFilmingDraft(emptyFilmingDraft()); }}
+            onEditTx={startEditTx}
+            onDeleteTx={handleDeleteTx}
           />
 
           {/* ── סשנים ────────────────────────────────────────────────────── */}
@@ -2317,6 +2319,7 @@ function ClipSection({
   onAddClipItem, onSaveClipItem, onCancelClipItem, onDeleteClipItem, onPromoteClipItem,
   onAddFilmingDay, onDeleteFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
   filmingSaving, onSaveFilmingDay, onCancelFilmingDay,
+  onEditTx, onDeleteTx,
 }: {
   transactions: Transaction[];
   clipItems: ClipItem[];
@@ -2347,6 +2350,8 @@ function ClipSection({
   filmingSaving: boolean;
   onSaveFilmingDay: () => void;
   onCancelFilmingDay: () => void;
+  onEditTx: (tx: Transaction) => void;
+  onDeleteTx: (id: string) => void;
 }) {
   const clipExp = transactions.filter((t) => t.type === "expense" && t.expense_scope === "קליפ");
   const PAID = new Set<string>(["שולם", "התקבל"]);
@@ -2584,8 +2589,8 @@ function ClipSection({
             {clipExp.map((t) => {
               const isPaid = PAID.has(t.payment_status);
               return (
-                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, border: "1px solid #252525" }}>
-                  <div>
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, border: "1px solid #252525" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: "#CCC" }}>{t.description || t.category || "הוצאת קליפ"}</div>
                     {t.category && t.description && <div style={{ fontSize: 10, color: "#555" }}>{t.category}</div>}
                   </div>
@@ -2593,6 +2598,8 @@ function ClipSection({
                     <div style={{ fontSize: 13, fontWeight: 700, color: isPaid ? "#10B981" : "#F59E0B" }}>{t.amount.toLocaleString()}{t.currency}</div>
                     <div style={{ fontSize: 10, color: "#555" }}>{t.payment_status}</div>
                   </div>
+                  <button onClick={() => onEditTx(t)} style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: 12, padding: "1px 4px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#CCC")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#888")}>✏</button>
+                  <button onClick={() => onDeleteTx(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: 14, padding: "1px 4px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#888")}>×</button>
                 </div>
               );
             })}
