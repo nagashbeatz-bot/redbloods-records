@@ -195,7 +195,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
   const handleProposalConverted = useCallback((proposalId: string, projectId: string, newProject: NewProject) => {
     // Mark proposal as closed
     setProposals((prev) => prev.map((p) =>
-      p.id === proposalId ? { ...p, status: "סגר" as const, linked_project_id: projectId } : p
+      p.id === proposalId ? { ...p, status: "נסגר" as const, linked_project_id: projectId } : p
     ));
     // Add new project to the list immediately — no extra fetch needed
     setProjects((prev) => {

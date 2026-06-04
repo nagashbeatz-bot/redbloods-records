@@ -31,16 +31,16 @@ export type ProposalStatus =
   | "הצעה נשלחה"
   | "ממתין לתשובה"
   | "צריך פולואפ"
-  | "סגר"
-  | "לא סגר"
+  | "נסגר"
+  | "לא נסגר"
   | "לחזור בעתיד";
 
 const STATUSES: ProposalStatus[] = [
   "הצעה נשלחה",
   "ממתין לתשובה",
   "צריך פולואפ",
-  "סגר",
-  "לא סגר",
+  "נסגר",
+  "לא נסגר",
   "לחזור בעתיד",
 ];
 
@@ -48,8 +48,8 @@ const STATUS_COLOR: Record<ProposalStatus, { bg: string; color: string }> = {
   "הצעה נשלחה":    { bg: "rgba(59,130,246,0.12)",  color: "#60A5FA" },
   "ממתין לתשובה":  { bg: "rgba(245,158,11,0.12)",  color: "#FBBF24" },
   "צריך פולואפ":   { bg: "rgba(239,68,68,0.12)",   color: "#F87171" },
-  "סגר":           { bg: "rgba(16,185,129,0.12)",  color: "#34D399" },
-  "לא סגר":        { bg: "rgba(107,114,128,0.12)", color: "#6B7280" },
+  "נסגר":          { bg: "rgba(16,185,129,0.12)",  color: "#34D399" },
+  "לא נסגר":       { bg: "rgba(107,114,128,0.12)", color: "#6B7280" },
   "לחזור בעתיד":  { bg: "rgba(168,85,247,0.12)",  color: "#C084FC" },
 };
 
@@ -354,8 +354,8 @@ export default function ProposalsSection({ client, proposals, onUpdate, onAdd, o
 }) {
   const [showForm, setShowForm] = useState(false);
 
-  const open   = proposals.filter((p) => !["סגר", "לא סגר"].includes(p.status));
-  const closed = proposals.filter((p) =>  ["סגר", "לא סגר"].includes(p.status));
+  const open   = proposals.filter((p) => !["נסגר", "לא נסגר"].includes(p.status));
+  const closed = proposals.filter((p) =>  ["נסגר", "לא נסגר"].includes(p.status));
 
   return (
     <div style={{ background: "#1A1A1A", border: "1px solid #222", borderRadius: 14, padding: "14px 16px" }}>

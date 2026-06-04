@@ -7,7 +7,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 /**
  * POST /api/proposals/[id]/convert
- * Creates a real project from a proposal and marks it as "סגר".
+ * Creates a real project from a proposal and marks it as "נסגר".
  * Also saves the agreed price to the finance settings if amount > 0.
  */
 export async function POST(_req: NextRequest, ctx: Ctx) {
@@ -71,7 +71,7 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     await supabase
       .from("proposals")
       .update({
-        status:             "סגר",
+        status:             "נסגר",
         linked_project_id:  project.id,
         updated_at:         new Date().toISOString(),
       })
