@@ -843,7 +843,7 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
     setForm((f) => {
       const next = { ...f, [k]: v };
       if (k === "related_type") next.related_id = "";
-      if ((k === "due_date" || k === "start_time") && !v) next.addToCalendar = false;
+      if (k === "due_date" && !v) next.addToCalendar = false;
       return next;
     });
     if (k === "start_time") setTimeError(null);
@@ -869,7 +869,7 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
     ? computeEnd(form.start_time, form.duration, form.custom_end)
     : "";
 
-  const canAddToCalendar = !!(form.due_date && form.start_time && !timeError && !endErr);
+  const canAddToCalendar = !!form.due_date;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -885,28 +885,6 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
     try {
       // effectiveEnd already computed above; fallback to +30 if somehow empty
       const calEnd = effectiveEnd || addMinutes(form.start_time, 30);
-
-      if (form.addToCalendar && canAddToCalendar) {
-        const startIso = buildIso(form.due_date, form.start_time);
-        const endIso   = buildIso(form.due_date, calEnd);
-
-        setCalStatus("checking");
-        const slotRes  = await fetch("/api/calendar/check-slot", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ start: startIso, end: endIso, requiresBuffer: false }),
-        });
-        const slotData = await slotRes.json();
-
-        if (slotData.error === "not_connected") {
-          setError("היומן לא מחובר. הסר את הסימון 'הוסף ליומן' או התחבר ליומן תחילה.");
-          setSaving(false); setCalStatus(null); return;
-        }
-        if (slotData.hardConflict || (slotData.conflictNames?.length ?? 0) > 0) {
-          const name = slotData.conflictNames?.[0] ?? "אירוע קיים";
-          setError(`יש לך כבר משהו בזמן הזה: "${name}". לבחור שעה אחרת?`);
-          setSaving(false); setCalStatus(null); return;
-        }
-      }
 
       const taskRes  = await fetch("/api/tasks", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -927,27 +905,24 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
       if (form.addToCalendar && canAddToCalendar) {
         setCalStatus("creating");
         try {
-          const startIso = buildIso(form.due_date, form.start_time);
-          const endIso   = buildIso(form.due_date, calEnd);
-
           const relatedName =
             form.related_type === "client"  ? clients.find((c) => c.id === form.related_id)?.name ?? null :
             form.related_type === "project" ? projects.find((p) => p.id === form.related_id)?.name ?? null :
             null;
-          const publicDescription = buildCalendarDescription(
+          const taskNotes = buildCalendarDescription(
             form.notes.trim() || null, form.related_type, relatedName,
           );
 
-          const evRes  = await fetch("/api/calendar/create-event", {
+          const gtRes = await fetch("/api/calendar/create-task", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ summary: task.title, start: startIso, end: endIso, publicDescription }),
+            body: JSON.stringify({ title: task.title, due: form.due_date, notes: taskNotes }),
           });
-          const evData = await evRes.json();
+          const gtData = await gtRes.json();
 
-          if (evRes.ok && evData.event?.id) {
+          if (gtRes.ok && gtData.task?.id) {
             const patchRes  = await fetch(`/api/tasks/${task.id}`, {
               method: "PATCH", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ calendar_event_id: evData.event.id }),
+              body: JSON.stringify({ calendar_event_id: gtData.task.id }),
             });
             const patchData = await patchRes.json();
             if (patchRes.ok) task = patchData.task;
@@ -1074,13 +1049,9 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
               style={{ width: 14, height: 14, accentColor: "#2563EB", cursor: "pointer" }}
             />
             <span style={{ fontSize: 12, color: form.addToCalendar ? "#60A5FA" : "#666" }}>
-              📅 הוסף ליומן Google
+              📋 הוסף כמשימה ב-Google
             </span>
           </label>
-        ) : (form.due_date || form.start_time) ? (
-          <div style={{ fontSize: 11, color: "#333" }}>
-            כדי להוסיף ליומן — צריך לבחור גם תאריך וגם שעה
-          </div>
         ) : null}
       </div>
 
