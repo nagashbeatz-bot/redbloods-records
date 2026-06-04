@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
+import { useProjects } from "@/components/ProjectsProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ interface ClientDrawerProps {
 
 export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerProps) {
   const { openProject } = useGlobalProjectDrawer();
+  const { refresh: refreshGlobalProjects } = useProjects();
   const [projects,   setProjects]   = useState<Project[]>([]);
   const [finances,   setFinances]   = useState<ProjectFinance[]>([]);
   const [sessions,   setSessions]   = useState<Session[]>([]);
@@ -197,12 +199,14 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
     setProposals((prev) => prev.map((p) =>
       p.id === proposalId ? { ...p, status: "נסגר" as const, linked_project_id: projectId } : p
     ));
-    // Add new project to the list immediately — no extra fetch needed
+    // Add to local ClientDrawer list immediately
     setProjects((prev) => {
-      if (prev.some((p) => p.id === projectId)) return prev; // guard duplicate
+      if (prev.some((p) => p.id === projectId)) return prev;
       return [{ ...newProject, projectType: newProject.project_type }, ...prev];
     });
-  }, []);
+    // Refresh global ProjectsProvider so ProjectDrawer can find the project
+    refreshGlobalProjects().catch(() => {});
+  }, [refreshGlobalProjects]);
 
   if (!mounted || !client) return null;
 
@@ -226,7 +230,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
           formMode={formMode}
           onClose={onClose}
           onEdit={onEdit}
-          openProject={(id) => { onClose(); setTimeout(() => openProject(id), 50); }}
+          openProject={(id) => { if (!id) return; onClose(); setTimeout(() => openProject(id), 300); }}
           onOpenForm={setFormMode}
           onCloseForm={() => setFormMode(null)}
           proposals={proposals}

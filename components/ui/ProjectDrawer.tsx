@@ -645,7 +645,29 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   }, [onClose]);
 
   const project = projects.find((p) => p.id === projectId);
-  if (!project || typeof document === "undefined") return null;
+
+  // If project not in context yet (e.g. just created via proposal convert),
+  // trigger a refresh and show a loading skeleton instead of crashing.
+  useEffect(() => {
+    if (!project && projectId) {
+      refresh();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  if (typeof document === "undefined") return null;
+  if (!project) {
+    // Show a slim loading overlay while the context refreshes
+    return createPortal(
+      <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}
+        onClick={onClose}>
+        <div style={{ background: "#141414", border: "1px solid #262626", borderRadius: 16, padding: "32px 48px", color: "#555", fontSize: 13 }}>
+          טוען פרויקט...
+        </div>
+      </div>,
+      document.body
+    );
+  }
 
   // ── Player ─────────────────────────────────────────────────────────────────
   const latestAudio = getLatestAudioFile(project.files);
