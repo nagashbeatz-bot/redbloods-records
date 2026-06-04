@@ -9,15 +9,6 @@ type EngineerOption = (typeof ENGINEER_OPTIONS)[number];
 
 const WORK_TYPES: SoundEngineerWorkType[] = ["מיקס", "מאסטר", "מיקס + מאסטר"];
 
-function addMinutes(time: string, mins: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const total = h * 60 + m + mins;
-  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
-
-function buildIso(date: string, time: string): string {
-  return new Date(`${date}T${time}:00`).toISOString();
-}
 
 interface Props {
   projectId: string;
@@ -38,8 +29,6 @@ export default function MixSetupModal({
   const [workType, setWorkType] = useState<SoundEngineerWorkType>("מיקס");
   const [mixDeadline, setMixDeadline] = useState("");
   const [createFollowUp, setCreateFollowUp] = useState(false);
-  const [syncCalendar, setSyncCalendar] = useState(false);
-  const [startTime, setStartTime] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,14 +44,7 @@ export default function MixSetupModal({
 
   const effectiveEngineer =
     engineer === "אחר" ? customEngineer.trim() : engineer;
-  const canSync = createFollowUp && !!mixDeadline;
-
   async function handleConfirm() {
-    if (syncCalendar && !startTime) {
-      setError("נא להזין שעת התחלה לסנכרון ליומן");
-      return;
-    }
-
     setSaving(true);
     setError(null);
 
@@ -85,7 +67,7 @@ export default function MixSetupModal({
         });
       }
 
-      // 3. Follow-up task
+      // 3. Follow-up task (no time — date only)
       if (createFollowUp && mixDeadline) {
         const taskRes = await fetch("/api/tasks", {
           method: "POST",
@@ -95,41 +77,13 @@ export default function MixSetupModal({
             related_type: "project",
             related_id: projectId,
             due_date: mixDeadline,
-            start_time: startTime || null,
-            end_time: startTime ? addMinutes(startTime, 30) : null,
+            start_time: null,
+            end_time: null,
             notes: notes.trim() || null,
           }),
         });
         const taskData = await taskRes.json();
         if (!taskRes.ok) throw new Error(taskData.error ?? "שגיאה ביצירת משימה");
-
-        // 3a. Calendar sync (non-fatal if fails)
-        if (syncCalendar && startTime && taskData.task?.id) {
-          try {
-            const startIso = buildIso(mixDeadline, startTime);
-            const endIso = buildIso(mixDeadline, addMinutes(startTime, 30));
-            const evRes = await fetch("/api/calendar/create-event", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                summary: `מעקב מיקס ראשון — ${projectName}`,
-                start: startIso,
-                end: endIso,
-                publicDescription: `משימה מתוך Redbloods OS\nקשור ל: פרויקט - ${projectName}`,
-              }),
-            });
-            const evData = await evRes.json();
-            if (evRes.ok && evData.event?.id) {
-              await fetch(`/api/tasks/${taskData.task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ calendar_event_id: evData.event.id }),
-              });
-            }
-          } catch {
-            // non-fatal — task was created successfully
-          }
-        }
       }
 
       onClose();
@@ -163,6 +117,7 @@ export default function MixSetupModal({
     border: "1px solid #2A2A2A",
     borderRadius: 10,
     color: "#E0E0E0",
+    colorScheme: "dark",
     fontSize: 13,
     padding: "9px 12px",
     outline: "none",
@@ -336,13 +291,7 @@ export default function MixSetupModal({
             <input
               type="checkbox"
               checked={createFollowUp}
-              onChange={(e) => {
-                setCreateFollowUp(e.target.checked);
-                if (!e.target.checked) {
-                  setSyncCalendar(false);
-                  setStartTime("");
-                }
-              }}
+              onChange={(e) => setCreateFollowUp(e.target.checked)}
               style={{
                 width: 16,
                 height: 16,
@@ -363,51 +312,7 @@ export default function MixSetupModal({
           )}
         </div>
 
-        {/* ── 6. Calendar sync (only if createFollowUp + mixDeadline) ── */}
-        {canSync && (
-          <div style={sec}>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                cursor: "pointer",
-                marginBottom: syncCalendar ? 10 : 0,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={syncCalendar}
-                onChange={(e) => {
-                  setSyncCalendar(e.target.checked);
-                  if (!e.target.checked) setStartTime("");
-                }}
-                style={{
-                  width: 16,
-                  height: 16,
-                  accentColor: "#A855F7",
-                  cursor: "pointer",
-                }}
-              />
-              <span style={{ fontSize: 13, color: "#C0C0C0" }}>
-                📅 סנכרן ליומן Google
-              </span>
-            </label>
-            {syncCalendar && (
-              <div style={{ paddingRight: 26 }}>
-                <span style={fieldLabel}>שעת התחלה</span>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  style={{ ...inp, width: "auto" }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── 7. Notes ── */}
+        {/* ── 6. Notes ── */}
         <div style={sec}>
           <span style={fieldLabel}>הערות / קישור לקבצים</span>
           <textarea
