@@ -8,6 +8,7 @@ const NAV_MAIN = [
   { href: "/dashboard", label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
   { href: "/projects",  label: "פרויקטים", icon: "♫", iconColor: "#60A5FA" },
   { href: "/clients",   label: "לקוחות",   icon: "☆", iconColor: "#C084FC" },
+  { href: "/tasks",     label: "משימות",   icon: "✓", iconColor: "#F59E0B" },
   { href: "/team",      label: "צוות",     icon: "👥", iconColor: "#A855F7" },
   { href: "/finance",   label: "כספים",    icon: "₪", iconColor: "#34D399" },
   { href: "/insights",  label: "תובנות",   icon: "◎", iconColor: "#2DD4BF" },

@@ -14,6 +14,7 @@ const MOBILE_TABS = [
 
 const MORE_ITEMS = [
   { href: "/clients",       label: "לקוחות",   icon: "☆", iconColor: "#C084FC" },
+  { href: "/tasks",         label: "משימות",   icon: "✓", iconColor: "#F59E0B" },
   { href: "/team",          label: "צוות",     icon: "👥", iconColor: "#A855F7" },
   { href: "/insights",      label: "תובנות",   icon: "◎", iconColor: "#2DD4BF" },
   { href: "/setup/dropbox", label: "Dropbox",   icon: "📦", iconColor: undefined },
