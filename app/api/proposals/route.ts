@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { createTask } from "@/lib/tasks-store";
 
 // GET /api/proposals?clientId=xxx
 export async function GET(req: NextRequest) {
@@ -46,6 +47,25 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) throw new Error(error.message);
+
+    // Create follow-up task if followup_date is set
+    if (data.followup_date) {
+      try {
+        const { data: clientData } = await supabase
+          .from("clients")
+          .select("name")
+          .eq("id", clientId)
+          .single();
+        const clientName = clientData?.name ?? "";
+        await createTask({
+          title:        `מעקב הצעת מחיר - ${clientName}`,
+          related_type: "client",
+          related_id:   clientId,
+          due_date:     data.followup_date,
+        });
+      } catch { /* task creation is non-critical */ }
+    }
+
     return NextResponse.json({ proposal: data });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

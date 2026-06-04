@@ -55,6 +55,12 @@ const STATUS_COLOR: Record<ProposalStatus, { bg: string; color: string }> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function todayPlus3(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 3);
+  return d.toISOString().split("T")[0];
+}
+
 function fmtDate(d: string | null): string {
   if (!d) return "—";
   const [y, m, day] = d.split("-");
@@ -84,7 +90,7 @@ function NewProposalForm({ client, onSaved, onClose }: {
   const [currency,     setCurrency]     = useState("₪");
   const [status,       setStatus]       = useState<ProposalStatus>("ממתין לתשובה");
   const [sentDate,     setSentDate]     = useState(new Date().toISOString().split("T")[0]);
-  const [followupDate, setFollowupDate] = useState("");
+  const [followupDate, setFollowupDate] = useState(todayPlus3());
   const [notes,        setNotes]        = useState("");
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState<string | null>(null);
@@ -194,7 +200,7 @@ function ProposalRow({ proposal, onUpdate, onDelete, onConverted, openProject }:
   const [editing,    setEditing]    = useState(false);
   const [converting, setConverting] = useState(false);
   const [deleting,   setDeleting]   = useState(false);
-  const [draft,      setDraft]      = useState({ ...proposal });
+  const [draft,      setDraft]      = useState<Proposal>({ ...proposal, followup_date: proposal.followup_date ?? todayPlus3() });
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState<string | null>(null);
 
@@ -267,7 +273,7 @@ function ProposalRow({ proposal, onUpdate, onDelete, onConverted, openProject }:
           placeholder="הערות..." rows={2} style={{ ...inp, resize: "none" }} />
         {error && <div style={{ fontSize: 11, color: "#EF4444" }}>{error}</div>}
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-          <button onClick={() => { setEditing(false); setDraft({ ...proposal }); }} disabled={saving}
+          <button onClick={() => { setEditing(false); setDraft({ ...proposal, followup_date: proposal.followup_date ?? todayPlus3() } as Proposal); }} disabled={saving}
             style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #2A2A2A", background: "none", color: "#555", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
             ביטול
           </button>
