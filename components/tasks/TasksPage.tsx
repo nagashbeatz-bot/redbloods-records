@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 
-// ── Types (client-safe, no server-only import) ────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type TaskStatus      = "פתוח" | "בוצע" | "בוטל";
 type TaskRelatedType = "general" | "client" | "project";
@@ -56,6 +58,33 @@ function fmtTime(t: string): string {
   return t.slice(0, 5); // "HH:MM"
 }
 
+/** Validate HH:MM format (00:00–23:59). Returns error message or null. */
+function validateTime(val: string): string | null {
+  if (!val) return null;
+  if (!/^\d{2}:\d{2}$/.test(val)) return "פורמט שעה לא תקין — השתמש ב-HH:MM";
+  const [h, m] = val.split(":").map(Number);
+  if (h > 23 || m > 59) return "שעה לא תקינה";
+  return null;
+}
+
+/**
+ * Build a UTC ISO string from a date+time in the user's local timezone.
+ * Uses browser local time — correct for Israel including DST (winter UTC+2, summer UTC+3).
+ * Matches the approach used by ScheduleModal (Date.toISOString()).
+ */
+function buildIso(date: string, time: string): string {
+  return new Date(`${date}T${time}:00`).toISOString();
+}
+
+/** Add minutes to a HH:MM string, returns new HH:MM. */
+function addMinutes(time: string, mins: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + mins;
+  const nh = Math.floor(total / 60) % 24;
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
 const inp: React.CSSProperties = {
   width: "100%", padding: "7px 10px", borderRadius: 8,
   border: "1px solid #2A2A2A", background: "#111", color: "#E0E0E0",
@@ -66,18 +95,21 @@ const inp: React.CSSProperties = {
 // ── Quick-create form ─────────────────────────────────────────────────────────
 
 interface FormState {
-  title:        string;
-  notes:        string;
-  related_type: TaskRelatedType;
-  related_id:   string;
-  due_date:     string;
-  start_time:   string;
+  title:          string;
+  notes:          string;
+  related_type:   TaskRelatedType;
+  related_id:     string;
+  due_date:       string;
+  start_time:     string;
+  addToCalendar:  boolean;
 }
 
 const EMPTY_FORM: FormState = {
   title: "", notes: "", related_type: "general",
-  related_id: "", due_date: "", start_time: "",
+  related_id: "", due_date: "", start_time: "", addToCalendar: false,
 };
+
+type CalStatus = null | "checking" | "creating";
 
 function TaskForm({ clients, projects, onSaved, onClose }: {
   clients:  NamedItem[];
@@ -85,18 +117,26 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
   onSaved:  (t: Task) => void;
   onClose:  () => void;
 }) {
-  const [form,   setForm]   = useState<FormState>({ ...EMPTY_FORM });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState<string | null>(null);
+  const [form,        setForm]        = useState<FormState>({ ...EMPTY_FORM });
+  const [saving,      setSaving]      = useState(false);
+  const [calStatus,   setCalStatus]   = useState<CalStatus>(null);
+  const [error,       setError]       = useState<string | null>(null);
+  const [timeError,   setTimeError]   = useState<string | null>(null);
+  // task created but calendar event failed — waiting for user to acknowledge
+  const [pendingTask, setPendingTask] = useState<Task | null>(null);
 
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((f) => {
       const next = { ...f, [k]: v };
-      // clear related_id when switching type
       if (k === "related_type") next.related_id = "";
+      // uncheck calendar if date/time cleared
+      if ((k === "due_date" || k === "start_time") && !v) next.addToCalendar = false;
       return next;
     });
+    if (k === "start_time") setTimeError(null);
   }
+
+  const canAddToCalendar = !!(form.due_date && form.start_time && !timeError);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,9 +145,38 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
       setError(`חובה לבחור ${RELATED_LABELS[form.related_type]}`);
       return;
     }
+    const tErr = validateTime(form.start_time);
+    if (tErr) { setTimeError(tErr); return; }
+
     setSaving(true); setError(null);
     try {
-      const res = await fetch("/api/tasks", {
+      // ── 1. If "הוסף ליומן": check slot BEFORE creating task ──────────────
+      if (form.addToCalendar && canAddToCalendar) {
+        const startIso = buildIso(form.due_date, form.start_time);
+        const endTime  = addMinutes(form.start_time, 30);
+        const endIso   = buildIso(form.due_date, endTime);
+
+        setCalStatus("checking");
+        const slotRes = await fetch("/api/calendar/check-slot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ start: startIso, end: endIso, requiresBuffer: false }),
+        });
+        const slotData = await slotRes.json();
+
+        if (slotData.error === "not_connected") {
+          setError("היומן לא מחובר. הסר את הסימון 'הוסף ליומן' או התחבר ליומן תחילה.");
+          setSaving(false); setCalStatus(null); return;
+        }
+        if (slotData.hardConflict || (slotData.conflictNames?.length ?? 0) > 0) {
+          const name = slotData.conflictNames?.[0] ?? "אירוע קיים";
+          setError(`יש לך כבר משהו בזמן הזה: "${name}". לבחור שעה אחרת?`);
+          setSaving(false); setCalStatus(null); return;
+        }
+      }
+
+      // ── 2. Create task ────────────────────────────────────────────────────
+      const taskRes = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -119,13 +188,59 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
           start_time:   form.start_time   || null,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "שגיאה");
-      onSaved(data.task);
+      const taskData = await taskRes.json();
+      if (!taskRes.ok) throw new Error(taskData.error ?? "שגיאה ביצירת משימה");
+      let task: Task = taskData.task;
+
+      // ── 3. If "הוסף ליומן": create event + patch task ────────────────────
+      if (form.addToCalendar && canAddToCalendar) {
+        setCalStatus("creating");
+        try {
+          const startIso = buildIso(form.due_date, form.start_time);
+          const endIso   = buildIso(form.due_date, addMinutes(form.start_time, 30));
+
+          const evRes = await fetch("/api/calendar/create-event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ summary: task.title, start: startIso, end: endIso }),
+          });
+          const evData = await evRes.json();
+
+          if (evRes.ok && evData.event?.id) {
+            const patchRes = await fetch(`/api/tasks/${task.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ calendar_event_id: evData.event.id }),
+            });
+            const patchData = await patchRes.json();
+            if (patchRes.ok) task = patchData.task;
+          } else {
+            // create-event returned an error — task saved, calendar not
+            setSaving(false); setCalStatus(null);
+            setPendingTask(task);
+            setError("המשימה נוצרה, אבל לא נוספה ליומן");
+            return;
+          }
+        } catch {
+          // Network/unexpected error — task saved, calendar not
+          setSaving(false); setCalStatus(null);
+          setPendingTask(task);
+          setError("המשימה נוצרה, אבל לא נוספה ליומן");
+          return;
+        }
+      }
+
+      onSaved(task);
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false); setCalStatus(null);
+    }
   }
+
+  const calLabel = calStatus === "checking" ? "בודק זמינות..."
+                 : calStatus === "creating"  ? "יוצר אירוע..."
+                 : "שומר...";
 
   return (
     <form
@@ -194,13 +309,39 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
         <div>
           <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>שעה</div>
           <input
-            type="time"
+            type="text"
             value={form.start_time}
             onChange={(e) => set("start_time", e.target.value)}
-            style={inp}
+            onBlur={() => { const err = validateTime(form.start_time); setTimeError(err); }}
+            placeholder="14:00"
+            maxLength={5}
+            style={{ ...inp, borderColor: timeError ? "#EF4444" : "#2A2A2A" }}
             disabled={saving}
           />
+          {timeError && <div style={{ fontSize: 10, color: "#EF4444", marginTop: 3 }}>{timeError}</div>}
         </div>
+      </div>
+
+      {/* הוסף ליומן */}
+      <div>
+        {canAddToCalendar ? (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={form.addToCalendar}
+              onChange={(e) => set("addToCalendar", e.target.checked)}
+              disabled={saving}
+              style={{ width: 14, height: 14, accentColor: "#2563EB", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 12, color: form.addToCalendar ? "#60A5FA" : "#666" }}>
+              📅 הוסף ליומן Google
+            </span>
+          </label>
+        ) : (form.due_date || form.start_time) ? (
+          <div style={{ fontSize: 11, color: "#333" }}>
+            כדי להוסיף ליומן — צריך לבחור גם תאריך וגם שעה
+          </div>
+        ) : null}
       </div>
 
       {/* הערות */}
@@ -216,17 +357,33 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
         />
       </div>
 
-      {error && <div style={{ fontSize: 11, color: "#EF4444" }}>{error}</div>}
+      {error && (
+        <div style={{ fontSize: 11, lineHeight: 1.4, color: pendingTask ? "#FBBF24" : "#EF4444" }}>
+          {error}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" onClick={onClose} disabled={saving}
           style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid #2A2A2A", background: "none", color: "#555", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
           ביטול
         </button>
-        <button type="submit" disabled={saving || !form.title.trim()}
-          style={{ padding: "7px 16px", borderRadius: 9, border: "none", background: saving ? "#1E3A5F" : "#2563EB", color: saving ? "#4A7FC0" : "#FFF", fontSize: 12, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-          {saving ? "שומר..." : "הוסף משימה"}
-        </button>
+
+        {/* If calendar failed but task saved — show acknowledge button */}
+        {pendingTask ? (
+          <button
+            type="button"
+            onClick={() => { onSaved(pendingTask); setPendingTask(null); }}
+            style={{ padding: "7px 16px", borderRadius: 9, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.1)", color: "#FBBF24", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            הוסף לרשימה ✓
+          </button>
+        ) : (
+          <button type="submit" disabled={saving || !form.title.trim()}
+            style={{ padding: "7px 16px", borderRadius: 9, border: "none", background: saving ? "#1E3A5F" : "#2563EB", color: saving ? "#4A7FC0" : "#FFF", fontSize: 12, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+            {saving ? calLabel : "הוסף משימה"}
+          </button>
+        )}
       </div>
     </form>
   );
@@ -234,37 +391,50 @@ function TaskForm({ clients, projects, onSaved, onClose }: {
 
 // ── Task row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, relatedName, today, onStatusChange }: {
-  task:          Task;
-  relatedName:   string | null;
-  today:         string;
-  onStatusChange: (id: string, status: TaskStatus) => void;
+function TaskRow({ task, relatedName, today }: {
+  task:        Task;
+  relatedName: string | null;
+  today:       string;
 }) {
+  const { openProject }  = useGlobalProjectDrawer();
+  const router           = useRouter();
   const [cycling, setCycling] = useState(false);
-  const sc = STATUS_COLOR[task.status];
-  const isOverdue = task.due_date && task.due_date < today && task.status === "פתוח";
+  const [localStatus, setLocalStatus] = useState<TaskStatus>(task.status);
+
+  const sc       = STATUS_COLOR[localStatus];
+  const isOverdue = task.due_date && task.due_date < today && localStatus === "פתוח";
 
   async function cycleStatus() {
     if (cycling) return;
     setCycling(true);
-    const next = STATUS_NEXT[task.status];
+    const next = STATUS_NEXT[localStatus];
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: next }),
       });
-      if (res.ok) onStatusChange(task.id, next);
+      if (res.ok) setLocalStatus(next);
     } catch { /* ignore */ }
     finally { setCycling(false); }
+  }
+
+  function handleRelatedClick() {
+    if (!task.related_id) return;
+    if (task.related_type === "project") {
+      openProject(task.related_id);
+    } else if (task.related_type === "client") {
+      router.push(`/clients?open=${task.related_id}`);
+    }
   }
 
   return (
     <div
       style={{
-        background: "#1A1A1A", border: `1px solid ${isOverdue ? "rgba(239,68,68,0.2)" : "#252525"}`,
+        background: "#1A1A1A",
+        border: `1px solid ${isOverdue ? "rgba(239,68,68,0.2)" : "#252525"}`,
         borderRadius: 10, padding: "10px 12px", direction: "rtl",
-        opacity: task.status === "בוטל" ? 0.5 : 1,
+        opacity: localStatus === "בוטל" ? 0.5 : 1,
         transition: "opacity 150ms",
       }}
     >
@@ -273,7 +443,7 @@ function TaskRow({ task, relatedName, today, onStatusChange }: {
         <button
           onClick={cycleStatus}
           disabled={cycling}
-          title={`לחץ לשינוי סטטוס → ${STATUS_NEXT[task.status]}`}
+          title={`לחץ לשינוי סטטוס → ${STATUS_NEXT[localStatus]}`}
           style={{
             flexShrink: 0, marginTop: 1,
             padding: "2px 8px", borderRadius: 20,
@@ -286,34 +456,49 @@ function TaskRow({ task, relatedName, today, onStatusChange }: {
             opacity: cycling ? 0.6 : 1,
           }}
         >
-          {task.status}
+          {localStatus}
         </button>
 
         {/* Content */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
             fontSize: 13, fontWeight: 500, lineHeight: 1.3,
-            textDecoration: task.status === "בוצע" ? "line-through" : "none",
-            color: task.status === "בוטל" ? "#555" : task.status === "בוצע" ? "#888" : "#D8D8D8",
+            textDecoration: localStatus === "בוצע" ? "line-through" : "none",
+            color: localStatus === "בוטל" ? "#555" : localStatus === "בוצע" ? "#888" : "#D8D8D8",
           }}>
             {task.title}
           </div>
 
           {/* Meta row */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginTop: 4, fontSize: 11 }}>
-            {/* Related */}
-            {relatedName && (
-              <span style={{ color: task.related_type === "client" ? "#C084FC" : "#60A5FA" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginTop: 4, fontSize: 11, alignItems: "center" }}>
+            {/* Related — clickable */}
+            {relatedName && task.related_id && (
+              <button
+                onClick={handleRelatedClick}
+                style={{
+                  background: "none", border: "none", padding: 0,
+                  fontFamily: "inherit", fontSize: 11,
+                  color: task.related_type === "client" ? "#C084FC" : "#60A5FA",
+                  cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted",
+                }}
+              >
                 {task.related_type === "client" ? "👤" : "♫"} {relatedName}
-              </span>
+              </button>
             )}
+
             {/* Due date */}
             {task.due_date && (
               <span style={{ color: isOverdue ? "#F87171" : task.due_date === today ? "#FBBF24" : "#555" }}>
-                {isOverdue ? "⚠ " : task.due_date === today ? "📌 " : ""}
+                {isOverdue && "⚠ "}
+                {task.due_date === today && "📌 "}
                 {fmtDate(task.due_date)}
                 {task.start_time && ` · ${fmtTime(task.start_time)}`}
               </span>
+            )}
+
+            {/* Calendar indicator */}
+            {task.calendar_event_id && (
+              <span title="מקושר ליומן Google" style={{ color: "#4A4A4A", fontSize: 11 }}>📅</span>
             )}
           </div>
 
@@ -337,14 +522,13 @@ const FILTER_TABS: FilterTab[] = ["הכל", "פתוח", "בוצע", "בוטל"];
 export default function TasksPage() {
   const today = new Date().toISOString().split("T")[0];
 
-  const [tasks,     setTasks]     = useState<Task[]>([]);
-  const [clients,   setClients]   = useState<NamedItem[]>([]);
-  const [projects,  setProjects]  = useState<NamedItem[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [showForm,  setShowForm]  = useState(false);
-  const [filter,    setFilter]    = useState<FilterTab>("פתוח");
+  const [tasks,    setTasks]    = useState<Task[]>([]);
+  const [clients,  setClients]  = useState<NamedItem[]>([]);
+  const [projects, setProjects] = useState<NamedItem[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [filter,   setFilter]   = useState<FilterTab>("פתוח");
 
-  // Load tasks + clients + projects
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -358,7 +542,6 @@ export default function TasksPage() {
       ]);
       setTasks(tData.tasks ?? []);
       setClients((cData.clients ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
-      // /api/projects returns a direct array (not {projects:[...]})
       const projArr: { id: string; name: string }[] = Array.isArray(pData) ? pData : (pData.projects ?? []);
       setProjects(projArr.map((p) => ({ id: p.id, name: p.name })));
     } catch { /* ignore */ }
@@ -367,7 +550,6 @@ export default function TasksPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Build lookup maps
   const clientMap  = new Map(clients.map((c) => [c.id, c.name]));
   const projectMap = new Map(projects.map((p) => [p.id, p.name]));
 
@@ -378,10 +560,8 @@ export default function TasksPage() {
     return null;
   }
 
-  // Filter tasks
   const filtered = tasks.filter((t) => filter === "הכל" || t.status === filter);
 
-  // Counts per tab
   const counts: Record<FilterTab, number> = {
     "הכל":  tasks.length,
     "פתוח": tasks.filter((t) => t.status === "פתוח").length,
@@ -389,18 +569,12 @@ export default function TasksPage() {
     "בוטל": tasks.filter((t) => t.status === "בוטל").length,
   };
 
-  function handleStatusChange(id: string, status: TaskStatus) {
-    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status } : t));
-  }
-
   function handleSaved(task: Task) {
     setTasks((prev) => [task, ...prev]);
     setShowForm(false);
-    // Switch to "פתוח" tab so the new task is visible
     setFilter("פתוח");
   }
 
-  // Sort: overdue first, then by due_date asc, then created_at desc
   const sorted = [...filtered].sort((a, b) => {
     const aOver = a.due_date && a.due_date < today && a.status === "פתוח" ? 0 : 1;
     const bOver = b.due_date && b.due_date < today && b.status === "פתוח" ? 0 : 1;
@@ -411,22 +585,20 @@ export default function TasksPage() {
     return b.created_at.localeCompare(a.created_at);
   });
 
+  const overdueCount = tasks.filter(
+    (t) => t.due_date && t.due_date < today && t.status === "פתוח"
+  ).length;
+
   return (
-    <div
-      className="px-3 py-3 md:px-6 md:py-8 max-w-3xl mx-auto"
-      dir="rtl"
-      style={{ minHeight: "100dvh" }}
-    >
+    <div className="px-3 py-3 md:px-6 md:py-8 max-w-3xl mx-auto" dir="rtl" style={{ minHeight: "100dvh" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "#E0E0E0", margin: 0 }}>משימות</h1>
           <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>
             {counts["פתוח"]} פתוחות
-            {tasks.filter((t) => t.due_date && t.due_date < today && t.status === "פתוח").length > 0 && (
-              <span style={{ color: "#F87171", marginRight: 8 }}>
-                · {tasks.filter((t) => t.due_date && t.due_date < today && t.status === "פתוח").length} באיחור
-              </span>
+            {overdueCount > 0 && (
+              <span style={{ color: "#F87171", marginRight: 8 }}>· {overdueCount} באיחור</span>
             )}
           </div>
         </div>
@@ -448,12 +620,7 @@ export default function TasksPage() {
       {/* Quick create form */}
       {showForm && (
         <div style={{ marginBottom: 16 }}>
-          <TaskForm
-            clients={clients}
-            projects={projects}
-            onSaved={handleSaved}
-            onClose={() => setShowForm(false)}
-          />
+          <TaskForm clients={clients} projects={projects} onSaved={handleSaved} onClose={() => setShowForm(false)} />
         </div>
       )}
 
@@ -471,14 +638,11 @@ export default function TasksPage() {
                 background: active ? "rgba(59,130,246,0.15)" : "#1A1A1A",
                 color: active ? "#60A5FA" : "#555",
                 fontSize: 12, fontWeight: active ? 600 : 400,
-                cursor: "pointer", fontFamily: "inherit",
-                transition: "all 120ms",
+                cursor: "pointer", fontFamily: "inherit", transition: "all 120ms",
               }}
             >
               {tab}
-              {counts[tab] > 0 && (
-                <span style={{ marginRight: 5, fontSize: 10, opacity: 0.7 }}>({counts[tab]})</span>
-              )}
+              {counts[tab] > 0 && <span style={{ marginRight: 5, fontSize: 10, opacity: 0.7 }}>({counts[tab]})</span>}
             </button>
           );
         })}
@@ -499,7 +663,6 @@ export default function TasksPage() {
               task={task}
               relatedName={getRelatedName(task)}
               today={today}
-              onStatusChange={handleStatusChange}
             />
           ))}
         </div>
