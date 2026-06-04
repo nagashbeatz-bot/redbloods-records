@@ -651,10 +651,18 @@ export async function createCalendarEvent(
   opts?: {
     attendees?:    { email: string }[];
     description?:  string;
+    allDay?:       boolean;   // use date-only format (YYYY-MM-DD) for all-day events
   }
 ): Promise<{ id: string; htmlLink: string }> {
   const auth     = await getAuthenticatedClient();
   const calendar = google.calendar({ version: "v3", auth });
+
+  const startField = opts?.allDay
+    ? { date: startIso }
+    : { dateTime: startIso, timeZone: "Asia/Jerusalem" };
+  const endField = opts?.allDay
+    ? { date: endIso }
+    : { dateTime: endIso, timeZone: "Asia/Jerusalem" };
 
   const res = await calendar.events.insert({
     calendarId:  CALENDAR_ID,
@@ -662,8 +670,8 @@ export async function createCalendarEvent(
     requestBody: {
       summary,
       description:              opts?.description,
-      start: { dateTime: startIso, timeZone: "Asia/Jerusalem" },
-      end:   { dateTime: endIso,   timeZone: "Asia/Jerusalem" },
+      start: startField,
+      end:   endField,
       attendees:                opts?.attendees,
       guestsCanSeeOtherGuests:  false,
     },

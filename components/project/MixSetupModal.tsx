@@ -29,6 +29,7 @@ export default function MixSetupModal({
   const [workType, setWorkType] = useState<SoundEngineerWorkType>("מיקס");
   const [mixDeadline, setMixDeadline] = useState("");
   const [createFollowUp, setCreateFollowUp] = useState(false);
+  const [syncCalendar, setSyncCalendar] = useState(false);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export default function MixSetupModal({
         });
       }
 
-      // 3. Follow-up task (no time — date only)
+      // 3. Follow-up task (date only — no time)
       if (createFollowUp && mixDeadline) {
         const taskRes = await fetch("/api/tasks", {
           method: "POST",
@@ -84,6 +85,38 @@ export default function MixSetupModal({
         });
         const taskData = await taskRes.json();
         if (!taskRes.ok) throw new Error(taskData.error ?? "שגיאה ביצירת משימה");
+
+        // 3a. All-day calendar event (non-fatal if fails)
+        if (syncCalendar && taskData.task?.id) {
+          try {
+            // Google all-day events: end = day after start
+            const endDate = new Date(mixDeadline);
+            endDate.setDate(endDate.getDate() + 1);
+            const endDateStr = endDate.toISOString().split("T")[0];
+
+            const evRes = await fetch("/api/calendar/create-event", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                summary: `מעקב מיקס ראשון — ${projectName}`,
+                start: mixDeadline,
+                end: endDateStr,
+                allDay: true,
+                publicDescription: `משימה מתוך Redbloods OS\nקשור ל: פרויקט - ${projectName}`,
+              }),
+            });
+            const evData = await evRes.json();
+            if (evRes.ok && evData.event?.id) {
+              await fetch(`/api/tasks/${taskData.task.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ calendar_event_id: evData.event.id }),
+              });
+            }
+          } catch {
+            // non-fatal — task created successfully
+          }
+        }
       }
 
       onClose();
@@ -312,7 +345,22 @@ export default function MixSetupModal({
           )}
         </div>
 
-        {/* ── 6. Notes ── */}
+        {/* ── 6. Calendar sync (only when createFollowUp + mixDeadline) ── */}
+        {createFollowUp && !!mixDeadline && (
+          <div style={{ ...sec, paddingRight: 26, marginTop: -10 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={syncCalendar}
+                onChange={(e) => setSyncCalendar(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: "#A855F7", cursor: "pointer" }}
+              />
+              <span style={{ fontSize: 12, color: "#888" }}>📅 הוסף ליומן Google (אירוע יום שלם)</span>
+            </label>
+          </div>
+        )}
+
+        {/* ── 7. Notes ── */}
         <div style={sec}>
           <span style={fieldLabel}>הערות / קישור לקבצים</span>
           <textarea

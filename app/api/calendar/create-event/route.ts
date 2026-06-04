@@ -7,9 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { summary, start, end, artistEmail, publicDescription } = await req.json() as {
+    const { summary, start, end, artistEmail, publicDescription, allDay } = await req.json() as {
       summary: string; start: string; end: string;
-      artistEmail?: string; publicDescription?: string;
+      artistEmail?: string; publicDescription?: string; allDay?: boolean;
     };
 
     if (!summary || !start || !end) {
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     const event = await createCalendarEvent(summary, start, end, {
       attendees:   artistEmail ? [{ email: artistEmail }] : undefined,
       description: publicDescription,
+      allDay,
     });
     return NextResponse.json({ ok: true, event, inviteSent: !!artistEmail });
   } catch (err) {
