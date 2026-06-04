@@ -1582,8 +1582,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                 </div>
                               </div>
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#10B981", flexShrink: 0 }}>+{tx.amount.toLocaleString()}{tx.currency}</span>
-                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
-                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
+                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: 12, padding: "1px 4px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#CCC")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#888")}>✏</button>
+                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: 14, padding: "1px 4px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#888")}>×</button>
                             </div>
                           )}
                         </div>
@@ -1641,8 +1641,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                 </div>
                               </div>
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#F59E0B", flexShrink: 0 }}>−{tx.amount.toLocaleString()}{tx.currency}</span>
-                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 11, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>✏</button>
-                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "1px 3px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}>×</button>
+                              <button onClick={() => startEditTx(tx)} style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: 12, padding: "1px 4px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#CCC")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#888")}>✏</button>
+                              <button onClick={() => handleDeleteTx(tx.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: 14, padding: "1px 4px" }} onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")} onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#888")}>×</button>
                             </div>
                           )}
                         </div>
