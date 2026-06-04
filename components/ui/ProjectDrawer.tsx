@@ -3480,7 +3480,10 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
     try {
       const res  = await fetch(`/api/sound-engineer?projectId=${project.id}`);
       const data = await res.json() as { ok: boolean; work: SoundEngineerWork | null };
-      setWork(data.ok ? data.work : null);
+      const fetched = data.ok ? data.work : null;
+      setWork(fetched);
+      // Auto-open if a record exists
+      if (fetched) setOpen(true);
     } catch {
       setWork(null);
     } finally {
@@ -3488,7 +3491,8 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
     }
   }, [project.id, work]);
 
-  useEffect(() => { if (open) load(); }, [open, load]);
+  // Load on mount (not only when opened) so the header badge and auto-open work
+  useEffect(() => { load(); }, [load]);
 
   const handleCreate = async () => {
     if (!draft.engineerName.trim()) { setError("שם איש הסאונד חסר"); return; }

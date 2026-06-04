@@ -245,11 +245,13 @@ export default function MixSetupModal({
                 background: "rgba(245,158,11,0.08)",
                 border: "1px solid rgba(245,158,11,0.2)",
                 borderRadius: 8,
-                padding: "6px 10px",
+                padding: "8px 10px",
                 marginBottom: 8,
+                lineHeight: 1.6,
               }}
             >
-              כבר קיים איש סאונד לפרויקט הזה. לא נוצר שיוך חדש.
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>כבר קיים איש סאונד לפרויקט הזה.</div>
+              <div style={{ color: "#888" }}>לעריכה: פתח את הפרויקט ← גלול ל-<strong style={{ color: "#60A5FA" }}>🎚 איש סאונד חיצוני</strong></div>
             </div>
           )}
           <div
