@@ -1,12 +1,11 @@
 /**
  * PATCH /api/tasks/[id] — partial update of a task
- *
- * All fields optional. updated_at is always refreshed.
- * No DELETE — use status "בוטל" to cancel a task.
+ * DELETE /api/tasks/[id] — permanently delete a task
  */
 import { NextRequest, NextResponse } from "next/server";
 import {
   patchTask,
+  deleteTask,
   validateRelated,
   TASK_STATUSES,
   TASK_RELATED_TYPES,
@@ -87,6 +86,20 @@ export async function PATCH(
     return NextResponse.json({ task });
   } catch (e) {
     console.error(`[PATCH /api/tasks/${id}]`, e);
+    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  try {
+    await deleteTask(id);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error(`[DELETE /api/tasks/${id}]`, e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
   }
 }

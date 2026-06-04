@@ -373,12 +373,13 @@ function DurationPicker({ startTime, duration, customEnd, onDuration, onCustomEn
 
 // ── TaskDetailModal ───────────────────────────────────────────────────────────
 
-function TaskDetailModal({ task, clients, projects, onClose, onUpdated }: {
+function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDeleted }: {
   task:      Task;
   clients:   NamedItem[];
   projects:  NamedItem[];
   onClose:   () => void;
   onUpdated: (t: Task) => void;
+  onDeleted: (id: string) => void;
 }) {
   const { openProject } = useGlobalProjectDrawer();
   const router          = useRouter();
@@ -402,10 +403,12 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated }: {
     ) === "custom" ? fmtTime(task.end_time) : ""
   );
   const [notes,     setNotes]     = useState(task.notes ?? "");
-  const [timeErr,   setTimeErr]   = useState<string | null>(null);
-  const [endErr,    setEndErr]    = useState<string | null>(null);
-  const [saving,    setSaving]    = useState(false);
-  const [error,     setError]     = useState<string | null>(null);
+  const [timeErr,      setTimeErr]      = useState<string | null>(null);
+  const [endErr,       setEndErr]       = useState<string | null>(null);
+  const [saving,       setSaving]       = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [confirmDel,   setConfirmDel]   = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
 
   const effectiveEnd = startTime && !timeErr
     ? computeEnd(startTime, duration, customEnd)
@@ -442,6 +445,20 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated }: {
     if (!relId) return;
     if (relType === "project") openProject(relId);
     else if (relType === "client") router.push(`/clients?open=${relId}`);
+  }
+
+  async function handleDelete() {
+    setDeleting(true); setError(null);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "שגיאה"); }
+      onDeleted(task.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאת מחיקה");
+      setConfirmDel(false);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleSave() {
@@ -696,24 +713,64 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated }: {
           </div>
         )}
 
+        {/* Confirm delete */}
+        {confirmDel && (
+          <div style={{
+            background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: 12, padding: "12px 14px",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+          }}>
+            <span style={{ fontSize: 12, color: "#FCA5A5" }}>מחיקה זו בלתי הפיכה. להמשיך?</span>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button type="button" onClick={() => setConfirmDel(false)} disabled={deleting}
+                style={{ ...MODAL_SECONDARY, padding: "6px 14px", fontSize: 12 }}>
+                ביטול
+              </button>
+              <button type="button" onClick={handleDelete} disabled={deleting}
+                style={{
+                  padding: "6px 14px", borderRadius: 100, fontSize: 12, fontWeight: 600,
+                  border: "1.5px solid rgba(239,68,68,0.5)", background: "rgba(239,68,68,0.15)",
+                  color: "#F87171", cursor: deleting ? "not-allowed" : "pointer",
+                  fontFamily: "inherit", opacity: deleting ? 0.5 : 1,
+                }}>
+                {deleting ? "מוחק..." : "מחק"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 4 }}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
           <button
             type="button"
-            onClick={onClose}
-            disabled={saving}
-            style={{ ...MODAL_SECONDARY, opacity: saving ? 0.5 : 1 }}
+            onClick={() => { setConfirmDel(true); setError(null); }}
+            disabled={saving || deleting || confirmDel}
+            style={{
+              padding: "8px 14px", borderRadius: 100, fontSize: 12,
+              border: "1.5px solid #2A2A2A", background: "none",
+              color: "#555", cursor: "pointer", fontFamily: "inherit",
+            }}
           >
-            ביטול
+            🗑 מחק
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !title.trim()}
-            style={{ ...MODAL_PRIMARY, opacity: (saving || !title.trim()) ? 0.5 : 1 }}
-          >
-            {saving ? "שומר..." : "שמור שינויים"}
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving || deleting}
+              style={{ ...MODAL_SECONDARY, opacity: (saving || deleting) ? 0.5 : 1 }}
+            >
+              ביטול
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || deleting || !title.trim()}
+              style={{ ...MODAL_PRIMARY, opacity: (saving || deleting || !title.trim()) ? 0.5 : 1 }}
+            >
+              {saving ? "שומר..." : "שמור שינויים"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1235,6 +1292,11 @@ export default function TasksPage() {
     setDetailTask(null);
   }
 
+  function handleDeleted(id: string) {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    setDetailTask(null);
+  }
+
   const sorted = [...filtered].sort((a, b) => {
     const aOver = a.due_date && a.due_date < today && a.status === "פתוח" ? 0 : 1;
     const bOver = b.due_date && b.due_date < today && b.status === "פתוח" ? 0 : 1;
@@ -1337,6 +1399,7 @@ export default function TasksPage() {
           projects={projects}
           onClose={() => setDetailTask(null)}
           onUpdated={handleUpdated}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
