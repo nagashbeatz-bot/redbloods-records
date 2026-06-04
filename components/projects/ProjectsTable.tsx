@@ -36,10 +36,11 @@ function OpenProjectFromURL() {
   return null;
 }
 
-type FilterStatus = ProjectStatus | "כל הסטטוסים" | "באיחור" | "קרובים לדדליין";
+type FilterStatus = ProjectStatus | "פעילים" | "כל הסטטוסים" | "באיחור" | "קרובים לדדליין";
 
 const FILTER_OPTIONS: FilterStatus[] = [
-  "כל הסטטוסים",
+  "פעילים",         // default — all statuses except "הושלם"
+  "כל הסטטוסים",   // truly all, including completed
   "באיחור",
   "קרובים לדדליין",
   ...ALL_STATUSES,
@@ -796,7 +797,7 @@ function CollectionDetailModal({
 export default function ProjectsTable() {
   const { projects, loading, updateProjectField, createProject, deleteProject, refresh } = useProjects();
   const player = usePlayerSafe();
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>("כל הסטטוסים");
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>("פעילים");
   const [typeFilter, setTypeFilter] = useState<ProjectType | "">("");
   const [parentFilter, setParentFilter] = useState("");
   const [artistFilter, setArtistFilter] = useState("");
@@ -945,6 +946,7 @@ export default function ProjectsTable() {
       }
       if (parentFilter === NO_AFFILIATION && !isNoAffiliation(p.parentProject)) return false;
       if (parentFilter && parentFilter !== NO_AFFILIATION && p.parentProject !== parentFilter) return false;
+      if (statusFilter === "פעילים") return p.status !== "הושלם";
       if (statusFilter === "כל הסטטוסים") return true;
       if (statusFilter === "באיחור") return p.isOverdue && p.status !== "הושלם";
       if (statusFilter === "קרובים לדדליין") {
@@ -977,7 +979,7 @@ export default function ProjectsTable() {
       return 0;
     });
 
-  const hasActiveFilters = statusFilter !== "כל הסטטוסים" || typeFilter !== "" || artistFilter !== "" || sortBy !== "updated" || showHidden;
+  const hasActiveFilters = statusFilter !== "פעילים" || typeFilter !== "" || artistFilter !== "" || sortBy !== "updated" || showHidden;
 
   return (
     <div style={{ overflowX: "hidden" }}>
@@ -996,7 +998,7 @@ export default function ProjectsTable() {
           artists={artists}
           showHidden={showHidden} setShowHidden={(v) => {
             setShowHidden(v);
-            if (v) { setStatusFilter("כל הסטטוסים"); setTypeFilter(""); setParentFilter(""); setArtistFilter(""); }
+            if (v) { setStatusFilter("פעילים"); setTypeFilter(""); setParentFilter(""); setArtistFilter(""); }
           }}
         />
       )}
@@ -1061,7 +1063,7 @@ export default function ProjectsTable() {
               <button
                 onClick={() => {
                   setShowHidden((v) => !v);
-                  setStatusFilter("כל הסטטוסים");
+                  setStatusFilter("פעילים");
                   setTypeFilter("");
                   setParentFilter("");
                   setArtistFilter("");

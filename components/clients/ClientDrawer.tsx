@@ -191,6 +191,18 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
     setProjects((prev) => [p, ...prev]);
   }, []);
 
+  const handleRestoreProject = useCallback(async (projectId: string) => {
+    setProjects((prev) => prev.map((p) => p.id === projectId ? { ...p, status: "בעבודה" } : p));
+    await fetch(`/api/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "בעבודה" }),
+    }).catch(() => {
+      // Revert on failure
+      setProjects((prev) => prev.map((p) => p.id === projectId ? { ...p, status: "הושלם" } : p));
+    });
+  }, []);
+
   const handleProposalAdd      = useCallback((p: Proposal) => setProposals((prev) => [p, ...prev]), []);
   const handleProposalUpdate   = useCallback((p: Proposal) => setProposals((prev) => prev.map((x) => x.id === p.id ? p : x)), []);
   const handleProposalDelete   = useCallback((id: string) => setProposals((prev) => prev.filter((x) => x.id !== id)), []);
@@ -244,6 +256,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
           onRemoveMeeting={removeMeeting}
           onUpdateSession={updateSession}
           onRemoveSession={removeSession}
+          onRestoreProject={handleRestoreProject}
         />
       </div>
     </div>
@@ -261,6 +274,7 @@ function ModalContent({
   onProposalAdd, onProposalUpdate, onProposalDelete, onProposalConverted,
   onUpdateMeeting, onRemoveMeeting,
   onUpdateSession, onRemoveSession,
+  onRestoreProject,
 }: {
   client: Client; projects: Project[]; finances: ProjectFinance[];
   sessions: Session[]; deliveries: DeliveryRecord[]; meetings: Meeting[];
@@ -276,6 +290,7 @@ function ModalContent({
   onProposalConverted: (proposalId: string, projectId: string, project: NewProject) => void;
   onUpdateMeeting: (m: Meeting) => void; onRemoveMeeting: (id: string) => void;
   onUpdateSession: (s: Session) => void; onRemoveSession: (id: string) => void;
+  onRestoreProject: (id: string) => void;
 }) {
   const today = new Date().toISOString().split("T")[0];
 
@@ -428,6 +443,7 @@ function ModalContent({
                       <ProjectRow
                         key={p.id} project={p} balance={balance} fin={fin}
                         statusColor={sColor} onOpen={() => openProject(p.id)}
+                        onRestore={p.status === "הושלם" ? () => onRestoreProject(p.id) : undefined}
                       />
                     );
                   })}
@@ -862,11 +878,21 @@ function SessionRow({ session: s, projects, onUpdate, onDelete, dim }: {
 
 // ─── ProjectRow with action menu ──────────────────────────────────────────────
 
-function ProjectRow({ project: p, balance, fin, statusColor, onOpen }: {
+function ProjectRow({ project: p, balance, fin, statusColor, onOpen, onRestore }: {
   project: Project; balance: number; fin?: ProjectFinance;
-  statusColor: string; onOpen: () => void;
+  statusColor: string; onOpen: () => void; onRestore?: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const menuItems = [
+    { icon: "♫", label: "פתח פרויקט", action: () => { setMenuOpen(false); onOpen(); } },
+    { icon: "₪", label: "פתח כספים",  action: () => { setMenuOpen(false); onOpen(); } },
+    ...(p.status === "הושלם" && onRestore ? [{
+      icon: "↩", label: "החזר לעבודה",
+      action: () => { setMenuOpen(false); onRestore(); },
+      color: "#60A5FA",
+    }] : []),
+  ];
 
   return (
     <div style={{ position: "relative", background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -895,12 +921,9 @@ function ProjectRow({ project: p, balance, fin, statusColor, onOpen }: {
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 100 }} onClick={() => setMenuOpen(false)} />
           <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 101, marginTop: 4, background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 10, padding: 4, minWidth: 160, boxShadow: "0 8px 32px rgba(0,0,0,0.8)" }}>
-            {[
-              { icon: "♫", label: "פתח פרויקט", action: () => { setMenuOpen(false); onOpen(); } },
-              { icon: "₪", label: "פתח כספים",  action: () => { setMenuOpen(false); onOpen(); } },
-            ].map(({ icon, label, action }) => (
+            {menuItems.map(({ icon, label, action, color }) => (
               <button key={label} onClick={action}
-                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px", borderRadius: 7, border: "none", background: "none", color: "#CCC", fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "right" }}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px", borderRadius: 7, border: "none", background: "none", color: color ?? "#CCC", fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "right" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#252525"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
               >
