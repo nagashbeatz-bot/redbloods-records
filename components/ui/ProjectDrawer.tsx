@@ -1723,48 +1723,6 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             )}
           </CollapsibleCard>
 
-          {/* ── קליפ / צילום ─────────────────────────────────────────── */}
-          <ClipSection
-            transactions={transactions}
-            clipItems={clipItems}
-            clipItemsLoaded={clipItemsLoaded}
-            filmingSessions={filmingSessions}
-            open={openSections.has("clip")}
-            onToggle={() => toggleSection("clip")}
-            onAddClipExpense={() => {
-              toggleSection("finance");
-              setAddingTx("expense");
-              setTxDraft({ ...emptyTxDraft(), type: "expense", expenseScope: "קליפ" });
-            }}
-            addingClipItem={addingClipItem}
-            clipItemDraft={clipItemDraft}
-            setClipItemDraft={setClipItemDraft}
-            clipItemSaving={clipItemSaving}
-            promotingId={promotingId}
-            promotingDate={promotingDate}
-            setPromotingDate={setPromotingDate}
-            onCancelPromote={() => { setPromotingId(null); setPromotingDate(""); }}
-            onStartPromote={(id) => { setPromotingId(id); setPromotingDate(new Date().toISOString().split("T")[0]); }}
-            onAddClipItem={() => { setClipItemDraft(emptyClipItemDraft()); setAddingClipItem(true); }}
-            onSaveClipItem={handleAddClipItem}
-            onCancelClipItem={() => { setAddingClipItem(false); setClipItemDraft(emptyClipItemDraft()); }}
-            onDeleteClipItem={handleDeleteClipItem}
-            onPromoteClipItem={handlePromoteClipItem}
-            onAddFilmingDay={() => { setFilmingDraft(emptyFilmingDraft()); setAddingFilmingDay(true); }}
-            onDeleteFilmingDay={(id) => {
-              setSessions((prev) => prev.filter((s) => s.id !== id));
-              fetch(`/api/sessions/${id}`, { method: "DELETE" });
-            }}
-            addingFilmingDay={addingFilmingDay}
-            filmingDraft={filmingDraft}
-            setFilmingDraft={setFilmingDraft}
-            filmingSaving={filmingSaving}
-            onSaveFilmingDay={handleAddFilmingDay}
-            onCancelFilmingDay={() => { setAddingFilmingDay(false); setFilmingDraft(emptyFilmingDraft()); }}
-            onEditTx={startEditTx}
-            onDeleteTx={handleDeleteTx}
-          />
-
           {/* ── סשנים ────────────────────────────────────────────────────── */}
           <CollapsibleCard
             label="סשנים"
@@ -1976,6 +1934,80 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 )}
               </div>
             )}
+          </CollapsibleCard>
+
+          {/* ── פעולות ───────────────────────────────────────────────────── */}
+          <CollapsibleCard label="פעולות" open={openSections.has("actions")} onToggle={() => toggleSection("actions")}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+
+              {/* Create delivery folder */}
+              {(!delivery || delivery.deliveryStatus === "not_created") && (
+                deliveryLoading ? (
+                  <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
+                ) : (
+                  <button onClick={handleCreateDelivery} disabled={deliveryCreating}
+                    style={{ width: "100%", padding: "9px 0", borderRadius: 10, border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.08)", color: "#C084FC", cursor: deliveryCreating ? "wait" : "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", opacity: deliveryCreating ? 0.6 : 1 }}>
+                    {deliveryCreating ? "יוצר תיקייה..." : "+ צור תיקיית מסירה ללקוח"}
+                  </button>
+                )
+              )}
+
+              {/* Delivery created — upload + mark delivered */}
+              {delivery && delivery.deliveryStatus !== "not_created" && !deliveryConfirmDelete && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDeliveryDragOver(true); }}
+                    onDragLeave={() => setDeliveryDragOver(false)}
+                    onDrop={handleDeliveryDrop}
+                    onClick={() => { const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.onchange = () => { if (inp.files) handleDeliveryUploadFiles(inp.files); }; inp.click(); }}
+                    style={{ border: `1.5px dashed ${deliveryDragOver ? "#A855F7" : "#2A2A2A"}`, borderRadius: 10, padding: "12px 10px", textAlign: "center", background: deliveryDragOver ? "rgba(168,85,247,0.06)" : "transparent", transition: "all 0.15s", cursor: "pointer" }}
+                  >
+                    {deliveryUploading ? <span style={{ fontSize: 12, color: "#A855F7" }}>מעלה...</span> : <span style={{ fontSize: 11, color: "#555" }}>☁ העלה קבצי מסירה</span>}
+                  </div>
+                  {delivery.files.length > 0 && delivery.files.map((f) => (
+                    <div key={f.path} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: "1px solid #1E1E1E" }}>
+                      <span style={{ fontSize: 10, color: "#555" }}>♪</span>
+                      <span style={{ flex: 1, fontSize: 11, color: "#C0C0C0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                    </div>
+                  ))}
+                  {delivery.deliveryStatus === "ready" && (
+                    <button onClick={handleDeliveryMarkDelivered}
+                      style={{ width: "100%", padding: "8px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#10B981", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
+                      ✓ סמן כנמסר ללקוח
+                    </button>
+                  )}
+                  <button onClick={() => setDeliveryConfirmDelete(true)}
+                    style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#555", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+                    🗑 מחק תיקיית מסירה
+                  </button>
+                </div>
+              )}
+
+              {/* Delete confirm */}
+              {deliveryConfirmDelete && (
+                <div>
+                  <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 8, lineHeight: 1.6 }}>
+                    למחוק תיקיית מסירה מדרופבוקס?<br /><span style={{ color: "#666", fontSize: 11 }}>כל הקבצים ב-05_Delivery יימחקו לצמיתות.</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={handleDeliveryDeleteFolder} disabled={deliveryDeleting}
+                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.1)", color: "#EF4444", cursor: deliveryDeleting ? "wait" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", opacity: deliveryDeleting ? 0.6 : 1 }}>
+                      {deliveryDeleting ? "מוחק..." : "מחק"}
+                    </button>
+                    <button onClick={() => setDeliveryConfirmDelete(false)}
+                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>ביטול</button>
+                  </div>
+                </div>
+              )}
+
+              {deliveryError && <div style={{ fontSize: 11, color: "#EF4444", background: "#2A1010", border: "1px solid #5A1A1A", borderRadius: 6, padding: "4px 10px" }}>{deliveryError}</div>}
+
+              <div style={{ height: 1, background: "#252525" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
+                <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
+              </div>
+            </div>
           </CollapsibleCard>
 
           {/* ── קבצים ────────────────────────────────────────────────────── */}
@@ -2255,85 +2287,53 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             {project.files.length === 0 && <div style={{ fontSize: 11, color: "#444" }}>אין קבצים</div>}
           </CollapsibleCard>
 
-          {/* ── פעולות ───────────────────────────────────────────────────── */}
-          <CollapsibleCard label="פעולות" open={openSections.has("actions")} onToggle={() => toggleSection("actions")}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-
-              {/* Create delivery folder */}
-              {(!delivery || delivery.deliveryStatus === "not_created") && (
-                deliveryLoading ? (
-                  <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
-                ) : (
-                  <button onClick={handleCreateDelivery} disabled={deliveryCreating}
-                    style={{ width: "100%", padding: "9px 0", borderRadius: 10, border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.08)", color: "#C084FC", cursor: deliveryCreating ? "wait" : "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", opacity: deliveryCreating ? 0.6 : 1 }}>
-                    {deliveryCreating ? "יוצר תיקייה..." : "+ צור תיקיית מסירה ללקוח"}
-                  </button>
-                )
-              )}
-
-              {/* Delivery created — upload + mark delivered */}
-              {delivery && delivery.deliveryStatus !== "not_created" && !deliveryConfirmDelete && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setDeliveryDragOver(true); }}
-                    onDragLeave={() => setDeliveryDragOver(false)}
-                    onDrop={handleDeliveryDrop}
-                    onClick={() => { const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.onchange = () => { if (inp.files) handleDeliveryUploadFiles(inp.files); }; inp.click(); }}
-                    style={{ border: `1.5px dashed ${deliveryDragOver ? "#A855F7" : "#2A2A2A"}`, borderRadius: 10, padding: "12px 10px", textAlign: "center", background: deliveryDragOver ? "rgba(168,85,247,0.06)" : "transparent", transition: "all 0.15s", cursor: "pointer" }}
-                  >
-                    {deliveryUploading ? <span style={{ fontSize: 12, color: "#A855F7" }}>מעלה...</span> : <span style={{ fontSize: 11, color: "#555" }}>☁ העלה קבצי מסירה</span>}
-                  </div>
-                  {delivery.files.length > 0 && delivery.files.map((f) => (
-                    <div key={f.path} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: "1px solid #1E1E1E" }}>
-                      <span style={{ fontSize: 10, color: "#555" }}>♪</span>
-                      <span style={{ flex: 1, fontSize: 11, color: "#C0C0C0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                    </div>
-                  ))}
-                  {delivery.deliveryStatus === "ready" && (
-                    <button onClick={handleDeliveryMarkDelivered}
-                      style={{ width: "100%", padding: "8px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#10B981", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
-                      ✓ סמן כנמסר ללקוח
-                    </button>
-                  )}
-                  <button onClick={() => setDeliveryConfirmDelete(true)}
-                    style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#555", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
-                    🗑 מחק תיקיית מסירה
-                  </button>
-                </div>
-              )}
-
-              {/* Delete confirm */}
-              {deliveryConfirmDelete && (
-                <div>
-                  <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 8, lineHeight: 1.6 }}>
-                    למחוק תיקיית מסירה מדרופבוקס?<br /><span style={{ color: "#666", fontSize: 11 }}>כל הקבצים ב-05_Delivery יימחקו לצמיתות.</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={handleDeliveryDeleteFolder} disabled={deliveryDeleting}
-                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.1)", color: "#EF4444", cursor: deliveryDeleting ? "wait" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", opacity: deliveryDeleting ? 0.6 : 1 }}>
-                      {deliveryDeleting ? "מוחק..." : "מחק"}
-                    </button>
-                    <button onClick={() => setDeliveryConfirmDelete(false)}
-                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>ביטול</button>
-                  </div>
-                </div>
-              )}
-
-              {deliveryError && <div style={{ fontSize: 11, color: "#EF4444", background: "#2A1010", border: "1px solid #5A1A1A", borderRadius: 6, padding: "4px 10px" }}>{deliveryError}</div>}
-
-              <div style={{ height: 1, background: "#252525" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
-                <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
-              </div>
-            </div>
-          </CollapsibleCard>
-
-          {/* ── Victor section ──────────────────────────────────────────── */}
-          <VictorSection project={project} />
+          {/* ── קליפ / צילום ────────────────────────────────────────────── */}
+          <ClipSection
+            transactions={transactions}
+            clipItems={clipItems}
+            clipItemsLoaded={clipItemsLoaded}
+            filmingSessions={filmingSessions}
+            open={openSections.has("clip")}
+            onToggle={() => toggleSection("clip")}
+            onAddClipExpense={() => {
+              toggleSection("finance");
+              setAddingTx("expense");
+              setTxDraft({ ...emptyTxDraft(), type: "expense", expenseScope: "קליפ" });
+            }}
+            addingClipItem={addingClipItem}
+            clipItemDraft={clipItemDraft}
+            setClipItemDraft={setClipItemDraft}
+            clipItemSaving={clipItemSaving}
+            promotingId={promotingId}
+            promotingDate={promotingDate}
+            setPromotingDate={setPromotingDate}
+            onCancelPromote={() => { setPromotingId(null); setPromotingDate(""); }}
+            onStartPromote={(id) => { setPromotingId(id); setPromotingDate(new Date().toISOString().split("T")[0]); }}
+            onAddClipItem={() => { setClipItemDraft(emptyClipItemDraft()); setAddingClipItem(true); }}
+            onSaveClipItem={handleAddClipItem}
+            onCancelClipItem={() => { setAddingClipItem(false); setClipItemDraft(emptyClipItemDraft()); }}
+            onDeleteClipItem={handleDeleteClipItem}
+            onPromoteClipItem={handlePromoteClipItem}
+            onAddFilmingDay={() => { setFilmingDraft(emptyFilmingDraft()); setAddingFilmingDay(true); }}
+            onDeleteFilmingDay={(id) => {
+              setSessions((prev) => prev.filter((s) => s.id !== id));
+              fetch(`/api/sessions/${id}`, { method: "DELETE" });
+            }}
+            addingFilmingDay={addingFilmingDay}
+            filmingDraft={filmingDraft}
+            setFilmingDraft={setFilmingDraft}
+            filmingSaving={filmingSaving}
+            onSaveFilmingDay={handleAddFilmingDay}
+            onCancelFilmingDay={() => { setAddingFilmingDay(false); setFilmingDraft(emptyFilmingDraft()); }}
+            onEditTx={startEditTx}
+            onDeleteTx={handleDeleteTx}
+          />
 
           {/* ── Sound Engineer section ───────────────────────────────────── */}
           <SoundEngineerSection project={project} />
+
+          {/* ── Victor section ──────────────────────────────────────────── */}
+          <VictorSection project={project} />
 
         </div>
 
