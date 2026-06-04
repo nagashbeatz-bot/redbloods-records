@@ -381,7 +381,7 @@ function ModalContent({
                 <NewProjectForm
                   client={client}
                   onClose={() => onCloseForm()}
-                  onCreated={(p) => { onProjectCreated(p); onCloseForm(); openProject(p.id); }}
+                  onCreated={(p) => { onProjectCreated(p); onCloseForm(); }}
                 />
               )}
               {projects.length > 0 ? (
