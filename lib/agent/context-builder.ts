@@ -113,6 +113,36 @@ export async function buildAgentContext(params: ContextParams): Promise<string> 
     if (ctx) sections.push(ctx);
   }
 
+  // 3b ── Proposals overview (always included — brief, high value) ─────────
+  try {
+    const { data: allProposals } = await supabase
+      .from("proposals")
+      .select("id, title, amount, currency, status, followup_date, client_id")
+      .order("followup_date", { ascending: true, nullsFirst: false });
+
+    const CLOSED = new Set(["נסגר", "לא נסגר"]);
+    const open = (allProposals ?? []).filter((p) => !CLOSED.has(p.status));
+    if (open.length > 0) {
+      const overdue  = open.filter((p) => p.followup_date && p.followup_date < today);
+      const todayDue = open.filter((p) => p.followup_date === today);
+      const potential = open.filter((p) => p.currency === "₪").reduce((s, p) => s + (p.amount ?? 0), 0);
+      const lines = [`== הצעות מחיר פתוחות (${open.length}) ==`];
+      if (overdue.length)  lines.push(`⚠ עבר תאריך מעקב: ${overdue.length}`);
+      if (todayDue.length) lines.push(`📌 מעקב היום: ${todayDue.length}`);
+      if (potential > 0)   lines.push(`פוטנציאל: ${fmt(potential)}₪`);
+      lines.push("הצעות (עד 8 הכי דחופות):");
+      [...overdue, ...todayDue, ...open.filter((p) => !overdue.includes(p) && !todayDue.includes(p))]
+        .slice(0, 8)
+        .forEach((p) => {
+          const fu = p.followup_date
+            ? (p.followup_date < today ? ` ⚠ מעקב פג (${p.followup_date})` : ` | מעקב: ${p.followup_date}`)
+            : "";
+          lines.push(`  • ${p.title} | ${p.status}${p.amount > 0 ? ` | ${fmt(p.amount)}${p.currency}` : ""}${fu}`);
+        });
+      sections.push(lines.join("\n"));
+    }
+  } catch { /* ignore */ }
+
   // 4 ── Selected entity context (always, regardless of page) ──────────────
   if (selectedProjectId) {
     const ctx = await buildProjectDetailContext(selectedProjectId, today, month);
@@ -432,6 +462,28 @@ async function buildClientDetailContext(clientId: string): Promise<string> {
 
       const pending = (txns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
       if (pending > 0) lines.push(`יתרה פתוחה: ${fmt(pending)}₪`);
+    }
+
+    // Proposals for this client
+    const { data: props } = await supabase
+      .from("proposals")
+      .select("title, amount, currency, status, followup_date")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
+
+    if (props && props.length > 0) {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const CLOSED = new Set(["נסגר", "לא נסגר"]);
+      const open   = props.filter((p) => !CLOSED.has(p.status));
+      if (open.length > 0) {
+        lines.push(`\nהצעות מחיר פתוחות (${open.length}):`);
+        open.forEach((p) => {
+          const fu = p.followup_date
+            ? (p.followup_date < todayStr ? ` ⚠ פג מעקב (${p.followup_date})` : ` | מעקב: ${p.followup_date}`)
+            : "";
+          lines.push(`  • ${p.title} | ${p.status}${p.amount > 0 ? ` | ${fmt(p.amount)}${p.currency}` : ""}${fu}`);
+        });
+      }
     }
 
     return lines.join("\n");

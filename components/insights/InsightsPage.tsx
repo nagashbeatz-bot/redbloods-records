@@ -11,7 +11,15 @@ type ModalKey =
   | "open-balance" | "in-mix-unpaid"
   | "overdue" | "due-today" | "due-this-week" | "no-deadline"
   | "over-limit" | "at-limit" | "one-before-limit"
-  | "no-email" | "risky";
+  | "no-email" | "risky"
+  | "proposals-open" | "proposals-followup";
+
+interface ProposalRow {
+  id: string; client_id: string; client_name: string; client_status: string;
+  title: string; amount: number; currency: string; status: string;
+  sent_date: string | null; followup_date: string | null; notes: string;
+  linked_project_id: string | null;
+}
 
 interface Session {
   id: string; project_id: string; date: string | null;
@@ -297,6 +305,7 @@ function InsightDetailModal({
   projectsWithOpenBalance, projectsInMixUnpaid,
   projectsOverLimit, projectsAtLimit, projectsOneBeforeLimit,
   clientsNoEmail, riskyProjects,
+  openProposals, followupOverdue, followupToday, todayStr,
 }: {
   modalKey: ModalKey; onClose: () => void;
   projects: Project[];
@@ -309,6 +318,8 @@ function InsightDetailModal({
   projectsInMixUnpaid: Project[]; projectsOverLimit: Project[];
   projectsAtLimit: Project[]; projectsOneBeforeLimit: Project[];
   clientsNoEmail: Client[]; riskyProjects: { project: Project; reason: string }[];
+  openProposals: ProposalRow[]; followupOverdue: ProposalRow[];
+  followupToday: ProposalRow[]; todayStr: string;
 }) {
   const router = useRouter();
 
@@ -332,8 +343,10 @@ function InsightDetailModal({
     "over-limit":        { title: "פרויקטים שחרגו ממכסת סשנים",     icon: "⚡" },
     "at-limit":          { title: "פרויקטים שהגיעו למכסה",           icon: "🟡" },
     "one-before-limit":  { title: "פרויקט אחד לפני מכסה",           icon: "🔵" },
-    "no-email":          { title: "לקוחות / אמנים ללא כתובת מייל",  icon: "📧" },
-    "risky":             { title: "סיכון רווחיות",                    icon: "⚡" },
+    "no-email":           { title: "לקוחות / אמנים ללא כתובת מייל",  icon: "📧" },
+    "risky":              { title: "סיכון רווחיות",                    icon: "⚡" },
+    "proposals-open":     { title: "הצעות מחיר פתוחות",               icon: "📋" },
+    "proposals-followup": { title: "הצעות — דורשות פולואפ",           icon: "⏰" },
   };
 
   const { title, icon } = MODAL_META[modalKey];
@@ -498,6 +511,14 @@ function InsightDetailModal({
       case "in-mix-unpaid":
         if (!projectsInMixUnpaid.length) return <Empty />;
         return projectsInMixUnpaid.map((p) => <FinRow key={p.id} p={p} />);
+      case "proposals-open":
+        if (!openProposals.length) return <Empty />;
+        return openProposals.map((p) => <ProposalInsightRow key={p.id} p={p} today={todayStr} />);
+      case "proposals-followup": {
+        const followupList = [...followupOverdue, ...followupToday.filter((p) => !followupOverdue.some((o) => o.id === p.id))];
+        if (!followupList.length) return <Empty />;
+        return followupList.map((p) => <ProposalInsightRow key={p.id} p={p} today={todayStr} />);
+      }
       case "overdue":
         if (!overdue.length) return <Empty />;
         return overdue.map((p) => <DeadlineRow key={p.id} p={p} />);
@@ -528,6 +549,37 @@ function InsightDetailModal({
       default:
         return <Empty />;
     }
+  }
+
+  function ProposalInsightRow({ p, today }: { p: ProposalRow; today: string }) {
+    const isOverdue = !!p.followup_date && p.followup_date < today;
+    const isToday   = p.followup_date === today;
+    const followupColor = isOverdue ? "#EF4444" : isToday ? "#F59E0B" : "#555";
+    return (
+      <div style={{ padding: "10px 0", borderBottom: "1px solid #1E1E1E", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#D8D8D8" }}>{p.title}</div>
+            <div style={{ fontSize: 11, color: "#666" }}>{p.client_name}</div>
+          </div>
+          <div style={{ textAlign: "left", flexShrink: 0 }}>
+            {p.amount > 0 && (
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#A855F7" }}>
+                {p.amount.toLocaleString("he-IL")}{p.currency}
+              </div>
+            )}
+            <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>{p.status}</div>
+          </div>
+        </div>
+        {p.followup_date && (
+          <div style={{ fontSize: 11, color: followupColor }}>
+            {isOverdue ? "⚠ עבר תאריך מעקב: " : isToday ? "📌 מעקב היום: " : "מעקב: "}
+            {p.followup_date}
+          </div>
+        )}
+        {p.notes && <div style={{ fontSize: 11, color: "#444", lineHeight: 1.4 }}>{p.notes}</div>}
+      </div>
+    );
   }
 
   function Empty() {
@@ -580,17 +632,21 @@ export default function InsightsPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo,   setCustomTo]   = useState("");
 
+  const [proposals, setProposals] = useState<ProposalRow[]>([]);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/sessions?all=1").then((r) => r.json()),
       fetch("/api/transactions?all=1").then((r) => r.json()),
       fetch("/api/clients").then((r) => r.json()),
-    ]).then(([s, t, c]) => {
+      fetch("/api/proposals/all").then((r) => r.json()),
+    ]).then(([s, t, c, p]) => {
       setSessions(s.sessions ?? []);
       setLimits(s.limits ?? {});
       setTransactions(t.transactions ?? []);
       setFinSettings(t.settings ?? []);
       setClients(c.clients ?? []);
+      setProposals(p.proposals ?? []);
       setLoaded(true);
     }).catch(() => setLoaded(true));
   }, []);
@@ -688,6 +744,14 @@ export default function InsightsPage() {
   const projectsInMixUnpaid = projects.filter((p) =>
     ["מחכה למיקס","במיקס"].includes(p.status) && projectsWithOpenBalance.some((op) => op.id === p.id)
   );
+
+  // ── Proposals ────────────────────────────────────────────────────────────────
+  const CLOSED_PROPOSAL = new Set(["נסגר", "לא נסגר"]);
+  const todayStr = new Date().toISOString().split("T")[0];
+  const openProposals    = proposals.filter((p) => !CLOSED_PROPOSAL.has(p.status));
+  const followupOverdue  = openProposals.filter((p) => p.followup_date && p.followup_date < todayStr);
+  const followupToday    = openProposals.filter((p) => p.followup_date === todayStr);
+  const proposalPotential = openProposals.filter((p) => p.currency === "₪").reduce((s, p) => s + (p.amount ?? 0), 0);
 
   // ── Deadlines ────────────────────────────────────────────────────────────────
   const overdue     = projects.filter((p) => p.isOverdue && p.status !== "הושלם");
@@ -796,6 +860,7 @@ export default function InsightsPage() {
     projectsWithOpenBalance, projectsInMixUnpaid,
     projectsOverLimit, projectsAtLimit, projectsOneBeforeLimit,
     clientsNoEmail, riskyProjects: topRiskyProjects,
+    openProposals, followupOverdue, followupToday, todayStr,
     onClose: closeModal,
   };
 
@@ -974,6 +1039,36 @@ export default function InsightsPage() {
                 color={projectsInMixUnpaid.length > 0 ? "#EF4444" : "#555"}
                 onClick={projectsInMixUnpaid.length > 0 ? () => openModal("in-mix-unpaid") : undefined}
               />
+            </Card>
+
+            {/* הצעות מחיר */}
+            <Card title="הצעות מחיר" icon="📋">
+              <StatRow
+                label="הצעות פתוחות"
+                value={openProposals.length}
+                color={openProposals.length > 0 ? "#A855F7" : "#555"}
+                onClick={openProposals.length > 0 ? () => openModal("proposals-open") : undefined}
+              />
+              <StatRow
+                label="עבר תאריך מעקב"
+                value={followupOverdue.length}
+                color={followupOverdue.length > 0 ? "#EF4444" : "#555"}
+                onClick={followupOverdue.length > 0 ? () => openModal("proposals-followup") : undefined}
+              />
+              <StatRow
+                label="מעקב היום"
+                value={followupToday.length}
+                color={followupToday.length > 0 ? "#F59E0B" : "#555"}
+                onClick={followupToday.length > 0 ? () => openModal("proposals-followup") : undefined}
+              />
+              {proposalPotential > 0 && (
+                <StatRow
+                  label="פוטנציאל ₪"
+                  value={proposalPotential.toLocaleString("he-IL") + "₪"}
+                  color="#A855F7"
+                  sub="סכום הצעות פתוחות"
+                />
+              )}
             </Card>
 
             {/* דד-ליינים */}

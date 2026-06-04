@@ -1,8 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Project } from "@/lib/types";
 import { daysUntilDeadline } from "@/lib/utils";
+
+// ── Proposal stats ────────────────────────────────────────────────────────────
+
+interface ProposalStats {
+  open: number;       // not נסגר / לא נסגר
+  followupToday: number;
+  overdue: number;    // followup_date passed, still open
+  totalAmount: number;
+}
+
+const CLOSED_STATUSES = new Set(["נסגר", "לא נסגר"]);
+
+function useProposalStats(): ProposalStats {
+  const [stats, setStats] = useState<ProposalStats>({ open: 0, followupToday: 0, overdue: 0, totalAmount: 0 });
+
+  useEffect(() => {
+    fetch("/api/proposals/all")
+      .then((r) => r.json())
+      .then((data) => {
+        const proposals: Array<{ status: string; followup_date: string | null; amount: number; currency: string }> =
+          data.proposals ?? [];
+        const today = new Date().toISOString().split("T")[0];
+        const open  = proposals.filter((p) => !CLOSED_STATUSES.has(p.status));
+        const followupToday = open.filter((p) => p.followup_date === today).length;
+        const overdue       = open.filter((p) => p.followup_date && p.followup_date < today).length;
+        const totalAmount   = open.filter((p) => p.currency === "₪").reduce((s, p) => s + (p.amount ?? 0), 0);
+        setStats({ open: open.length, followupToday, overdue, totalAmount });
+      })
+      .catch(() => {});
+  }, []);
+
+  return stats;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -93,8 +126,54 @@ function MobileStatPill({
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+// ── Proposals card ────────────────────────────────────────────────────────────
+
+function ProposalsCard({ stats }: { stats: ProposalStats }) {
+  const urgentColor = stats.overdue > 0 ? "#EF4444" : stats.followupToday > 0 ? "#F59E0B" : "#A855F7";
+  const urgentCount = stats.overdue + stats.followupToday;
+
+  return (
+    <button
+      style={{
+        background: "#141414", border: `1px solid ${urgentCount > 0 ? urgentColor + "40" : "#252525"}`,
+        borderRadius: 16, padding: "14px 16px", textAlign: "right", cursor: "default",
+        display: "flex", flexDirection: "column", gap: 6, fontFamily: "inherit",
+        transition: "border-color 0.2s",
+      }}
+    >
+      <div style={{ fontSize: 11, color: "#444", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        📋 הצעות מחיר
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "#555" }}>פתוחות</span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: stats.open > 0 ? "#A855F7" : "#333" }}>{stats.open}</span>
+        </div>
+        {stats.followupToday > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#F59E0B" }}>פולואפ היום</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B" }}>{stats.followupToday}</span>
+          </div>
+        )}
+        {stats.overdue > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#EF4444" }}>עבר תאריך מעקב</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#EF4444" }}>{stats.overdue}</span>
+          </div>
+        )}
+        {stats.totalAmount > 0 && (
+          <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>
+            פוטנציאל: <span style={{ color: "#888", fontWeight: 600 }}>{stats.totalAmount.toLocaleString("he-IL")}₪</span>
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 export default function StatsGrid({ projects }: { projects: Project[] }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const proposalStats = useProposalStats();
 
   const total    = projects.length;
   const active   = projects.filter((p) => p.status === "בעבודה" || p.status === "מחכה למיקס" || p.status === "במיקס").length;
@@ -111,7 +190,7 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
   return (
     <>
       {/* ── Desktop: 4/8-col grid ── */}
-      <div className="hidden md:grid grid-cols-4 xl:grid-cols-8 gap-3">
+      <div className="hidden md:grid grid-cols-4 xl:grid-cols-9 gap-3">
         <StatCard label="סה״כ"          count={total}   color="#F0F0F0" icon="◈" />
         <StatCard label="פעילים"        count={active}  color="#3B82F6" icon="▶"  sectionId="section-active" />
         <StatCard label="מחכה למיקס"   count={waitMix} color="#F59E0B" icon="🎚" dim sectionId="section-wait-mix" />
@@ -120,6 +199,7 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
         <StatCard label="הושלמו"       count={done}    color="#10B981" icon="✓"  dim sectionId="section-done" />
         <StatCard label="עברו דדליין"  count={overdue} color="#EF4444" icon="⚠" dim sectionId="section-overdue" />
         <StatCard label="קרוב לדדליין" count={dueSoon} color="#F97316" icon="⏳" dim sectionId="section-due-soon" />
+        <ProposalsCard stats={proposalStats} />
       </div>
 
       {/* ── Mobile: 4 key pills + accordion ── */}
@@ -153,6 +233,9 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
             <MobileStatPill label="במיקס"        count={inMix}   color="#A855F7" icon="🎛" dim sectionId="section-in-mix" />
             <MobileStatPill label="בהשהייה"     count={onHold}  color="#6B7280" icon="⏸" dim sectionId="section-on-hold" />
             <MobileStatPill label="הושלמו"      count={done}    color="#10B981" icon="✓"  dim sectionId="section-done" />
+            <div style={{ gridColumn: "1 / -1" }}>
+              <ProposalsCard stats={proposalStats} />
+            </div>
           </div>
         )}
       </div>
