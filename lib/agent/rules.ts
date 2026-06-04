@@ -136,13 +136,32 @@ export function checkSessionsNeedingUpdate(
 
 // ── 4. Overdue payments ───────────────────────────────────────────────────────
 
+const FULLY_PAID_STATUSES = new Set(["שולם", "התקבל"]);
+
 export function checkOverduePayments(
-  transactions: Array<{ id: string; projectName: string; amount: number; currency: string; date: string | null; type: string; paymentStatus: string }>
+  transactions: Array<{ id: string; projectId: string | null; projectName: string; amount: number; currency: string; date: string | null; type: string; paymentStatus: string }>,
+  financeMap: Map<string, { agreedPrice?: number | null }>
 ): AlertInput[] {
   const today = new Date().toISOString().split("T")[0];
-  const overdue = transactions.filter(
-    (t) => t.type !== "הוצאה" && t.date && t.date < today && !PAID_STATUSES.has(t.paymentStatus)
-  );
+
+  // Compute total paid income per project (same statuses as ProjectDrawer)
+  const paidByProject = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.projectId && t.type !== "הוצאה" && FULLY_PAID_STATUSES.has(t.paymentStatus)) {
+      paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
+    }
+  }
+
+  const overdue = transactions.filter((t) => {
+    if (t.type === "הוצאה" || !t.date || t.date >= today || PAID_STATUSES.has(t.paymentStatus)) return false;
+    // Skip if project is already fully paid or overpaid
+    if (t.projectId) {
+      const agreedPrice = financeMap.get(t.projectId)?.agreedPrice ?? null;
+      const paidIncome  = paidByProject.get(t.projectId) ?? 0;
+      if (agreedPrice != null && paidIncome >= agreedPrice) return false;
+    }
+    return true;
+  });
   if (overdue.length === 0) return [];
   const total = overdue.reduce((s, t) => s + t.amount, 0);
   const currency = overdue[0]?.currency ?? "₪";

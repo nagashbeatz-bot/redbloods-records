@@ -90,6 +90,7 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false });
     const txns = (rawTxns ?? []).map((t) => ({
       id:            t.id,
+      projectId:     t.project_id as string | null,
       projectName:   projects.find((p) => p.id === t.project_id)?.name ?? "פרויקט",
       amount:        t.amount,
       currency:      t.currency,
@@ -182,7 +183,7 @@ export async function GET(req: NextRequest) {
       ...checkOverdueProjects(projects),
       ...checkDueSoonProjects(projects),
       ...checkSessionsNeedingUpdate(todaySessions),
-      ...checkOverduePayments(txns),
+      ...checkOverduePayments(txns, financeMap),
       ...checkProjectsNoPricing(activeProjects, financeMap),
       ...checkVictorStuck(vendorWork, stuckAfterDays),
       ...checkVictorBelowPace(victorStats, victorStats?.goal ?? 0),
