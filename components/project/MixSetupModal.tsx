@@ -69,6 +69,7 @@ export default function MixSetupModal({
       }
 
       // 3. Follow-up task (date only — no time)
+      let createdTaskId: string | null = null;
       if (createFollowUp && mixDeadline) {
         const taskRes = await fetch("/api/tasks", {
           method: "POST",
@@ -85,37 +86,36 @@ export default function MixSetupModal({
         });
         const taskData = await taskRes.json();
         if (!taskRes.ok) throw new Error(taskData.error ?? "שגיאה ביצירת משימה");
+        createdTaskId = taskData.task?.id ?? null;
+      }
 
-        // 3a. All-day calendar event (non-fatal if fails)
-        if (syncCalendar && taskData.task?.id) {
-          try {
-            // Google all-day events: end = day after start
-            const endDate = new Date(mixDeadline);
-            endDate.setDate(endDate.getDate() + 1);
-            const endDateStr = endDate.toISOString().split("T")[0];
+      // 4. Calendar sync — all-day event (runs whenever syncCalendar + mixDeadline, with or without task)
+      if (syncCalendar && mixDeadline) {
+        const endDate = new Date(mixDeadline);
+        endDate.setDate(endDate.getDate() + 1);
+        const endDateStr = endDate.toISOString().split("T")[0];
 
-            const evRes = await fetch("/api/calendar/create-event", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                summary: `מעקב מיקס ראשון — ${projectName}`,
-                start: mixDeadline,
-                end: endDateStr,
-                allDay: true,
-                publicDescription: `משימה מתוך Redbloods OS\nקשור ל: פרויקט - ${projectName}`,
-              }),
-            });
-            const evData = await evRes.json();
-            if (evRes.ok && evData.event?.id) {
-              await fetch(`/api/tasks/${taskData.task.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ calendar_event_id: evData.event.id }),
-              });
-            }
-          } catch {
-            // non-fatal — task created successfully
-          }
+        const evRes = await fetch("/api/calendar/create-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            summary: `מעקב מיקס ראשון — ${projectName}`,
+            start: mixDeadline,
+            end: endDateStr,
+            allDay: true,
+            publicDescription: `משימה מתוך Redbloods OS\nקשור ל: פרויקט - ${projectName}`,
+          }),
+        });
+        const evData = await evRes.json();
+        if (!evRes.ok) throw new Error(evData.error ?? "שגיאה ביצירת אירוע ביומן");
+
+        // Link calendar event to task if one was created
+        if (evData.event?.id && createdTaskId) {
+          await fetch(`/api/tasks/${createdTaskId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ calendar_event_id: evData.event.id }),
+          });
         }
       }
 
@@ -345,8 +345,8 @@ export default function MixSetupModal({
           )}
         </div>
 
-        {/* ── 6. Calendar sync (only when createFollowUp + mixDeadline) ── */}
-        {createFollowUp && !!mixDeadline && (
+        {/* ── 6. Calendar sync (whenever mixDeadline is set) ── */}
+        {!!mixDeadline && (
           <div style={{ ...sec, paddingRight: 26, marginTop: -10 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
               <input
