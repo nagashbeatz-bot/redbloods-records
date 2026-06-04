@@ -89,32 +89,29 @@ export default function MixSetupModal({
         createdTaskId = taskData.task?.id ?? null;
       }
 
-      // 4. Calendar sync — all-day event (runs whenever syncCalendar + mixDeadline, with or without task)
+      // 4. Google Task sync (runs whenever syncCalendar + mixDeadline, with or without follow-up task)
       if (syncCalendar && mixDeadline) {
-        const endDate = new Date(mixDeadline);
-        endDate.setDate(endDate.getDate() + 1);
-        const endDateStr = endDate.toISOString().split("T")[0];
-
-        const evRes = await fetch("/api/calendar/create-event", {
+        const gtRes = await fetch("/api/calendar/create-task", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            summary: `מעקב מיקס ראשון — ${projectName}`,
-            start: mixDeadline,
-            end: endDateStr,
-            allDay: true,
-            publicDescription: `משימה מתוך Redbloods OS\nקשור ל: פרויקט - ${projectName}`,
+            title: `מעקב מיקס ראשון — ${projectName}`,
+            due: mixDeadline,
+            notes: `פרויקט: ${projectName}${notes.trim() ? `\n${notes.trim()}` : ""}`,
           }),
         });
-        const evData = await evRes.json();
-        if (!evRes.ok) throw new Error(evData.error ?? "שגיאה ביצירת אירוע ביומן");
+        const gtData = await gtRes.json();
+        if (!gtRes.ok) {
+          if (gtData.needsReauth) throw new Error("נדרש חיבור מחדש לגוגל (הרשאת Tasks חסרה). עבור להגדרות → נתק → חבר מחדש.");
+          throw new Error(gtData.error ?? "שגיאה ביצירת משימה ביומן");
+        }
 
-        // Link calendar event to task if one was created
-        if (evData.event?.id && createdTaskId) {
+        // Link Google Task id to our task record
+        if (gtData.task?.id && createdTaskId) {
           await fetch(`/api/tasks/${createdTaskId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ calendar_event_id: evData.event.id }),
+            body: JSON.stringify({ calendar_event_id: gtData.task.id }),
           });
         }
       }
@@ -355,8 +352,7 @@ export default function MixSetupModal({
                 onChange={(e) => setSyncCalendar(e.target.checked)}
                 style={{ width: 16, height: 16, accentColor: "#A855F7", cursor: "pointer" }}
               />
-              <span style={{ fontSize: 13, color: "#C0C0C0" }}>📅 הוסף ליומן Google</span>
-              <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>(אירוע יום שלם)</span>
+              <span style={{ fontSize: 13, color: "#C0C0C0" }}>📋 הוסף כמשימה ביומן Google</span>
             </label>
           </div>
         )}

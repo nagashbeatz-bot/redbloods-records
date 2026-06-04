@@ -21,6 +21,7 @@ const TOKEN_PATH  = path.join(process.cwd(), ".calendar-token.json");
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/tasks",
 ];
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID ?? "primary";
 
@@ -763,4 +764,31 @@ export async function hasWritePermission(): Promise<boolean> {
   const scope = (token as Record<string, unknown>).scope;
   if (typeof scope !== "string") return false;
   return scope.includes("calendar.events") || scope.includes("calendar") && !scope.includes("readonly");
+}
+
+// ─── Google Tasks ─────────────────────────────────────────────────────────────
+
+/**
+ * Creates a task in the user's default Google Tasks list.
+ * Returns the task id (used as calendar_event_id on our tasks table).
+ * due must be YYYY-MM-DD — stored as midnight UTC per Google Tasks spec.
+ */
+export async function createGoogleTask(
+  title: string,
+  due: string,          // YYYY-MM-DD
+  notes?: string,
+): Promise<{ id: string }> {
+  const auth  = await getAuthenticatedClient();
+  const tasks = google.tasks({ version: "v1", auth });
+
+  const res = await tasks.tasks.insert({
+    tasklist: "@default",
+    requestBody: {
+      title,
+      notes,
+      due: `${due}T00:00:00.000Z`,
+    },
+  });
+
+  return { id: res.data.id! };
 }
