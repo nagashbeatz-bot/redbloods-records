@@ -792,3 +792,10 @@ export async function createGoogleTask(
 
   return { id: res.data.id! };
 }
+
+/** Deletes a task from the user's default Google Tasks list by task id. */
+export async function deleteGoogleTask(taskId: string): Promise<void> {
+  const auth  = await getAuthenticatedClient();
+  const tasks = google.tasks({ version: "v1", auth });
+  await tasks.tasks.delete({ tasklist: "@default", task: taskId });
+}

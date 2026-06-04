@@ -9,6 +9,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import StatusBadge from "./Badge";
 import MixSetupModal from "@/components/project/MixSetupModal";
+import MixRevertModal from "@/components/project/MixRevertModal";
 
 const EXCEPTION_PRESETS = [
   "לקוח VIP",
@@ -43,6 +44,8 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
   const [showDeliveryPrompt, setShowDeliveryPrompt] = useState(false);
   // Mix setup modal
   const [showMixSetup, setShowMixSetup] = useState(false);
+  // Mix revert modal
+  const [mixRevertTarget, setMixRevertTarget] = useState<ProjectStatus | null>(null);
   const triggerRef                  = useRef<HTMLButtonElement>(null);
   const errorTimer                  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,6 +111,12 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     e.preventDefault();
     setOpen(false);
     if (next === status || saving) return;
+
+    // Revert from "במיקס" — show MixRevertModal before updating
+    if (status === "במיקס" && next !== "במיקס") {
+      setMixRevertTarget(next);
+      return;
+    }
 
     // Pre-mix payment check (only "במיקס" and "מחכה למיקס")
     if (MIX_STATUSES.includes(next)) {
@@ -298,6 +307,21 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Mix revert modal */}
+      {mixRevertTarget && (
+        <MixRevertModal
+          projectId={projectId}
+          projectName={projectName}
+          nextStatus={mixRevertTarget}
+          onConfirm={async () => {
+            const target = mixRevertTarget;
+            setMixRevertTarget(null);
+            if (target) await doUpdate(target);
+          }}
+          onCancel={() => setMixRevertTarget(null)}
+        />
       )}
 
       {/* Mix setup modal */}
