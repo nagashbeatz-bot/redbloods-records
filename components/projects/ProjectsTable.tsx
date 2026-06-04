@@ -716,7 +716,7 @@ export default function ProjectsTable() {
         const map: Record<string, { paid: number; agreed: number; currency: string }> = {};
         (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
           if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, currency: "₪" };
-          if (t.type === "income" && t.payment_status === "שולם") map[t.project_id].paid += t.amount;
+          if (t.type === "income" && ["התקבל", "שולם"].includes(t.payment_status)) map[t.project_id].paid += t.amount;
         });
         (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; currency: string }) => {
           if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, currency: "₪" };
