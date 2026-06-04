@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
+import ProposalsSection, { type Proposal } from "@/components/clients/ProposalsSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
   const [sessions,   setSessions]   = useState<Session[]>([]);
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
   const [meetings,   setMeetings]   = useState<Meeting[]>([]);
+  const [proposals,  setProposals]  = useState<Proposal[]>([]);
   const [loading,    setLoading]    = useState(false);
   const [mounted,    setMounted]    = useState(false);
   const [formMode,   setFormMode]   = useState<FormMode>(null);
@@ -118,14 +120,15 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
   const loadData = useCallback(async (c: Client) => {
     setLoading(true);
-    setProjects([]); setFinances([]); setSessions([]); setDeliveries([]); setMeetings([]);
+    setProjects([]); setFinances([]); setSessions([]); setDeliveries([]); setMeetings([]); setProposals([]);
     try {
-      const [projRes, txRes, sessRes, delivRes, meetRes] = await Promise.all([
+      const [projRes, txRes, sessRes, delivRes, meetRes, propRes] = await Promise.all([
         fetch("/api/projects").then((r) => r.json()),
         fetch("/api/transactions?all=1").then((r) => r.json()),
         fetch("/api/sessions?all=1").then((r) => r.json()),
         fetch("/api/delivery?all=1").then((r) => r.json()).catch(() => ({ deliveries: [] })),
         fetch(`/api/meetings?clientId=${c.id}`).then((r) => r.json()).catch(() => ({ meetings: [] })),
+        fetch(`/api/proposals?clientId=${c.id}`).then((r) => r.json()).catch(() => ({ proposals: [] })),
       ]);
 
       const allProjects: Project[] = Array.isArray(projRes) ? projRes : (projRes.projects ?? []);
@@ -164,6 +167,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
         (d: DeliveryRecord) => projectIds.has(d.projectId) && d.deliveryStatus !== "not_created" && d.deliveryLink
       ));
       setMeetings(meetRes.meetings ?? []);
+      setProposals(propRes.proposals ?? []);
     } catch { /* non-fatal */ } finally { setLoading(false); }
   }, []);
 
@@ -183,6 +187,13 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
   const handleProjectCreated = useCallback((p: Project) => {
     setProjects((prev) => [p, ...prev]);
+  }, []);
+
+  const handleProposalAdd      = useCallback((p: Proposal) => setProposals((prev) => [p, ...prev]), []);
+  const handleProposalUpdate   = useCallback((p: Proposal) => setProposals((prev) => prev.map((x) => x.id === p.id ? p : x)), []);
+  const handleProposalDelete   = useCallback((id: string) => setProposals((prev) => prev.filter((x) => x.id !== id)), []);
+  const handleProposalConverted = useCallback((proposalId: string, projectId: string) => {
+    setProposals((prev) => prev.map((p) => p.id === proposalId ? { ...p, status: "סגר" as const, linked_project_id: projectId } : p));
   }, []);
 
   if (!mounted || !client) return null;
@@ -210,8 +221,13 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
           openProject={(id) => { onClose(); setTimeout(() => openProject(id), 50); }}
           onOpenForm={setFormMode}
           onCloseForm={() => setFormMode(null)}
+          proposals={proposals}
           onFormSaved={handleFormSaved}
           onProjectCreated={handleProjectCreated}
+          onProposalAdd={handleProposalAdd}
+          onProposalUpdate={handleProposalUpdate}
+          onProposalDelete={handleProposalDelete}
+          onProposalConverted={handleProposalConverted}
           onUpdateMeeting={updateMeeting}
           onRemoveMeeting={removeMeeting}
           onUpdateSession={updateSession}
@@ -227,19 +243,25 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 // ─── ModalContent ─────────────────────────────────────────────────────────────
 
 function ModalContent({
-  client, projects, finances, sessions, deliveries, meetings, loading,
+  client, projects, finances, sessions, deliveries, meetings, proposals, loading,
   formMode, onClose, onEdit, openProject,
   onOpenForm, onCloseForm, onFormSaved, onProjectCreated,
+  onProposalAdd, onProposalUpdate, onProposalDelete, onProposalConverted,
   onUpdateMeeting, onRemoveMeeting,
   onUpdateSession, onRemoveSession,
 }: {
   client: Client; projects: Project[]; finances: ProjectFinance[];
   sessions: Session[]; deliveries: DeliveryRecord[]; meetings: Meeting[];
+  proposals: Proposal[];
   loading: boolean; formMode: FormMode;
   onClose: () => void; onEdit: (c: Client) => void; openProject: (id: string) => void;
   onOpenForm: (mode: FormMode) => void; onCloseForm: () => void;
   onFormSaved: (r: SavedResult) => void;
   onProjectCreated: (p: Project) => void;
+  onProposalAdd: (p: Proposal) => void;
+  onProposalUpdate: (p: Proposal) => void;
+  onProposalDelete: (id: string) => void;
+  onProposalConverted: (proposalId: string, projectId: string) => void;
   onUpdateMeeting: (m: Meeting) => void; onRemoveMeeting: (id: string) => void;
   onUpdateSession: (s: Session) => void; onRemoveSession: (id: string) => void;
 }) {
@@ -402,6 +424,17 @@ function ModalContent({
                 !formMode && <div style={{ fontSize: 12, color: "#444", padding: "8px 0" }}>אין פרויקטים מקושרים</div>
               )}
             </SectionCard>
+
+            {/* Proposals */}
+            <ProposalsSection
+              client={client}
+              proposals={proposals}
+              onAdd={onProposalAdd}
+              onUpdate={onProposalUpdate}
+              onDelete={onProposalDelete}
+              onConverted={onProposalConverted}
+              openProject={openProject}
+            />
 
             {/* Sessions */}
             <SectionCard
