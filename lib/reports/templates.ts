@@ -138,7 +138,7 @@ function morningSessionsCard(data: ReportData): string {
   const total = upcoming.length + needingUpdate.length;
 
   if (total === 0) {
-    return `<div class="card"><h2>📅 סשנים היום</h2><div class="empty">אין סשנים מתוכננים להיום</div></div>`;
+    return `<div class="card"><h2>סשנים היום</h2><div class="empty">אין סשנים מתוכננים להיום</div></div>`;
   }
 
   let inner = "";
@@ -179,7 +179,7 @@ function morningSessionsCard(data: ReportData): string {
     });
   }
 
-  return `<div class="card"><h2>📅 סשנים היום</h2>${inner}</div>`;
+  return `<div class="card"><h2>סשנים היום</h2>${inner}</div>`;
 }
 
 /** Deadlines consolidated: due today + overdue + due soon — one card, sub-groups, rich detail */
@@ -189,7 +189,7 @@ function morningDeadlinesCard(data: ReportData): string {
   const soon    = data.dueSoonProjects;
 
   if (today.length + overdue.length + soon.length === 0) {
-    return `<div class="card"><h2>⏰ דדליינים</h2><div class="empty">אין דדליינים דחופים ✓</div></div>`;
+    return `<div class="card"><h2>דדליינים</h2><div class="empty">אין דדליינים דחופים ✓</div></div>`;
   }
 
   function deadlineRow(p: ReportProject, urgency: "today" | "overdue" | "soon"): string {
@@ -234,7 +234,7 @@ function morningDeadlinesCard(data: ReportData): string {
     soon.forEach((p) => { inner += deadlineRow(p, "soon"); });
   }
 
-  return `<div class="card"><h2>⏰ דדליינים</h2>${inner}</div>`;
+  return `<div class="card"><h2>דדליינים</h2>${inner}</div>`;
 }
 
 // ─── Evening report ───────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ export function generateEveningReport(
   const html = shell(`
     <!-- 1. כותרת -->
     <div class="head">
-      <h1>🌙 סיכום יום</h1>
+      <h1>סיכום יום</h1>
       <p class="sub">${date}</p>
     </div>
 
@@ -271,16 +271,20 @@ export function generateEveningReport(
 
     <!-- 6. מצב כללי -->
     <div class="card">
-      <h2>📊 מצב כללי</h2>
+      <h2>מצב כללי</h2>
       ${stat("פרויקטים פעילים", String(data.activeProjects.length))}
-      ${stat("פתוחים עם דדליין שעבר", String(data.overdueProjects.length), data.overdueProjects.length > 0 ? "r" : "g")}
+      ${stat("פתוחים עם דדליין שעבר", String(data.overdueProjects.filter(p => p.status !== "בהשהייה").length), data.overdueProjects.filter(p => p.status !== "בהשהייה").length > 0 ? "r" : "g")}
+      ${stat("בהשהייה עם דדליין שעבר", String(data.overdueProjects.filter(p => p.status === "בהשהייה").length), data.overdueProjects.filter(p => p.status === "בהשהייה").length > 0 ? "a" : "g")}
       ${stat("חסרי מידע", String(data.missingInfoProjects.length), data.missingInfoProjects.length > 0 ? "a" : "")}
     </div>
 
     <!-- 7. ויקטור — רק אם יש משהו לדווח -->
     ${victorBlock(data)}
 
-    <!-- 8. פעולות מומלצות למחר -->
+    <!-- 8. חריגים לבדיקה — רק אם יש -->
+    ${anomaliesSection(data)}
+
+    <!-- 9. פעולות מומלצות למחר -->
     ${recommendationsSection(recommendations, "פעולות מומלצות למחר")}
 
     <div class="footer">
@@ -315,14 +319,29 @@ function subheadFirst(text: string, color = "#888"): string {
 
 // ─── Section: מה קרה היום בפועל ──────────────────────────────────────────────
 
+function txRow(label: string, amount: number, currency: string, color: string, sign: "+" | "-" | "", detail: string): string {
+  return `
+    <div style="padding:7px 0;border-bottom:1px solid #1E1E1E;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:#D0D0D0;">${label}</span>
+        <span style="color:${color};font-weight:700;font-size:13px;white-space:nowrap;">${fmtMoney(amount, currency, sign)}</span>
+      </div>
+      ${detail ? `<div style="font-size:11px;color:#555;margin-top:2px;">${detail}</div>` : ""}
+    </div>`;
+}
+
 function todayMainCard(data: ReportData): string {
-  const hasFinance  = data.txReceivedToday.length + data.txPendingAddedToday.length + data.txExpensesToday.length > 0;
+  const txExpensesPaid    = data.txExpensesPaidToday    ?? [];
+  const txExpensesPending = data.txExpensesPendingToday ?? [];
+  const hasIncome   = data.txReceivedToday.length + data.txPendingAddedToday.length > 0;
+  const hasExpenses = txExpensesPaid.length + txExpensesPending.length > 0;
+  const hasFinance  = hasIncome || hasExpenses;
   const hasSessions = data.sessionsDone.length + data.sessionsNeedingUpdate.length +
                       data.sessionsCancelled.length + data.sessionsFutureScheduled.length > 0;
   const hasProjects = data.createdTodayProjects.length + data.completedTodayProjects.length > 0;
 
   if (!hasFinance && !hasSessions && !hasProjects) {
-    return `<div class="card"><h2>⚡ מה קרה היום בפועל</h2><div class="empty">לא זוהו פעולות שבוצעו היום</div></div>`;
+    return `<div class="card"><h2>מה קרה היום בפועל</h2><div class="empty">לא זוהו פעולות שבוצעו היום</div></div>`;
   }
 
   let inner = "";
@@ -336,63 +355,51 @@ function todayMainCard(data: ReportData): string {
 
   // ── כספים ──────────────────────────────────────────────────────────────────
   if (hasFinance) {
-    inner += sh("💰 כספים", "#10B981");
+    inner += sh("כספים", "#10B981");
 
-    data.txReceivedToday.forEach((t) => {
-      const label  = t.description || t.projectName;
-      const detail = [
-        t.projectName !== label ? t.projectName : "",
-        t.artist,
-        t.paymentMethod,
-      ].filter(Boolean).join(" · ");
-      inner += `
-        <div style="padding:7px 0;border-bottom:1px solid #1E1E1E;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:13px;color:#D0D0D0;">התקבל: ${label}</span>
-            <span style="color:#10B981;font-weight:700;font-size:13px;white-space:nowrap;">${fmtMoney(t.amount, t.currency, "+")}</span>
-          </div>
-          ${detail ? `<div style="font-size:11px;color:#555;margin-top:2px;">${detail}</div>` : ""}
-        </div>`;
-    });
+    // הכנסות
+    if (hasIncome) {
+      inner += `<div style="font-size:11px;color:#10B981;font-weight:600;margin:8px 0 4px;">הכנסות</div>`;
+      data.txReceivedToday.forEach((t) => {
+        const label  = t.description || t.projectName;
+        const detail = [t.projectName !== label ? t.projectName : "", t.artist, t.paymentMethod].filter(Boolean).join(" · ");
+        inner += txRow(`התקבל: ${label}`, t.amount, t.currency, "#10B981", "+", detail);
+      });
+      data.txPendingAddedToday.forEach((t) => {
+        const label  = t.description || t.projectName;
+        const detail = [t.projectName !== label ? t.projectName : "", t.artist].filter(Boolean).join(" · ");
+        inner += txRow(`הכנסה צפויה: ${label}`, t.amount, t.currency, "#F59E0B", "", detail + (detail ? " · " : "") + "לגבייה");
+      });
+    }
 
-    data.txPendingAddedToday.forEach((t) => {
-      const label  = t.description || t.projectName;
-      const detail = [t.projectName !== label ? t.projectName : "", t.artist].filter(Boolean).join(" · ");
-      inner += `
-        <div style="padding:7px 0;border-bottom:1px solid #1E1E1E;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:13px;color:#D0D0D0;">נוסף צפוי: ${label}</span>
-            <span style="color:#F59E0B;font-size:13px;white-space:nowrap;">${fmtMoney(t.amount, t.currency)}</span>
-          </div>
-          ${detail ? `<div style="font-size:11px;color:#555;margin-top:2px;">${detail}</div>` : ""}
-        </div>`;
-    });
+    // הוצאות
+    if (hasExpenses) {
+      inner += `<div style="font-size:11px;color:#EF4444;font-weight:600;margin:8px 0 4px;">הוצאות</div>`;
+      txExpensesPaid.forEach((t) => {
+        const label  = t.description || t.projectName;
+        const detail = [t.projectName !== label ? t.projectName : "", t.artist, "שולם"].filter(Boolean).join(" · ");
+        inner += txRow(`שולם: ${label}`, t.amount, t.currency, "#EF4444", "-", detail);
+      });
+      txExpensesPending.forEach((t) => {
+        const label  = t.description || t.projectName;
+        const detail = [t.projectName !== label ? t.projectName : "", t.artist, t.paymentStatus || "לתשלום"].filter(Boolean).join(" · ");
+        inner += txRow(`לתשלום: ${label}`, t.amount, t.currency, "#F59E0B", "", detail);
+      });
+    }
 
-    data.txExpensesToday.forEach((t) => {
-      const label  = t.description || t.projectName;
-      const paid   = ["שולם","שולמה","התקבל"].includes(t.paymentStatus) ? "שולמה" : t.paymentStatus || "צפויה";
-      const detail = [t.projectName !== label ? t.projectName : "", t.artist, paid].filter(Boolean).join(" · ");
-      inner += `
-        <div style="padding:7px 0;border-bottom:1px solid #1E1E1E;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:13px;color:#D0D0D0;">הוצאה: ${label}</span>
-            <span style="color:#EF4444;font-size:13px;white-space:nowrap;">${fmtMoney(t.amount, t.currency, "-")}</span>
-          </div>
-          ${detail ? `<div style="font-size:11px;color:#555;margin-top:2px;">${detail}</div>` : ""}
-        </div>`;
-    });
-
-    // Finance totals if multiple
-    const totalIn  = data.txReceivedToday.reduce((s, t) => s + t.amount, 0);
+    // Finance totals if multiple items
+    const totalIn      = data.txReceivedToday.reduce((s, t) => s + t.amount, 0);
     const totalPending = data.txPendingAddedToday.reduce((s, t) => s + t.amount, 0);
-    const totalOut = data.txExpensesToday.reduce((s, t) => s + t.amount, 0);
-    const cur = (data.txReceivedToday[0] ?? data.txPendingAddedToday[0] ?? data.txExpensesToday[0])?.currency ?? "₪";
-    const txCount = data.txReceivedToday.length + data.txPendingAddedToday.length + data.txExpensesToday.length;
+    const totalExpPaid = txExpensesPaid.reduce((s, t) => s + t.amount, 0);
+    const totalExpPend = txExpensesPending.reduce((s, t) => s + t.amount, 0);
+    const cur = (data.txReceivedToday[0] ?? data.txPendingAddedToday[0] ?? txExpensesPaid[0] ?? txExpensesPending[0])?.currency ?? "₪";
+    const txCount = data.txReceivedToday.length + data.txPendingAddedToday.length + txExpensesPaid.length + txExpensesPending.length;
     if (txCount > 1) {
-      inner += `<div style="display:flex;gap:16px;padding:6px 0;font-size:12px;">`;
+      inner += `<div style="display:flex;gap:16px;padding:6px 0;font-size:12px;flex-wrap:wrap;">`;
       if (totalIn > 0)      inner += `<span style="color:#10B981;">${fmtMoney(totalIn, cur, "+")} התקבל</span>`;
-      if (totalPending > 0) inner += `<span style="color:#F59E0B;">${fmtMoney(totalPending, cur)} צפוי</span>`;
-      if (totalOut > 0)     inner += `<span style="color:#EF4444;">${fmtMoney(totalOut, cur, "-")} הוצאות</span>`;
+      if (totalPending > 0) inner += `<span style="color:#F59E0B;">${fmtMoney(totalPending, cur)} צפוי לגבייה</span>`;
+      if (totalExpPaid > 0) inner += `<span style="color:#EF4444;">${fmtMoney(totalExpPaid, cur, "-")} שולם</span>`;
+      if (totalExpPend > 0) inner += `<span style="color:#F59E0B;">${fmtMoney(totalExpPend, cur)} לתשלום</span>`;
       inner += `</div>`;
     }
   }
@@ -468,7 +475,7 @@ function todayMainCard(data: ReportData): string {
     });
   }
 
-  return `<div class="card"><h2>⚡ מה קרה היום בפועל</h2>${inner}</div>`;
+  return `<div class="card"><h2>מה קרה היום בפועל</h2>${inner}</div>`;
 }
 
 // ─── Section: מה היה אמור לקרות ולא נסגר ────────────────────────────────────
@@ -482,7 +489,8 @@ function openItemsCard(data: ReportData): string {
   const createdTodayIds = new Set([
     ...data.txReceivedToday,
     ...data.txPendingAddedToday,
-    ...data.txExpensesToday,
+    ...(data.txExpensesPaidToday ?? []),
+    ...(data.txExpensesPendingToday ?? []),
   ].map((t) => t.id));
   const PAID = new Set(["שולם","שולמה","התקבל","שולם חלקית"]);
   const unpaidExpectedToday = data.txExpectedToday.filter(
@@ -558,13 +566,13 @@ function openItemsCard(data: ReportData): string {
     });
   }
 
-  return `<div class="card"><h2>📋 מה היה אמור לקרות ולא נסגר</h2>${inner}</div>`;
+  return `<div class="card"><h2>מה היה אמור לקרות ולא נסגר</h2>${inner}</div>`;
 }
 
 // Section 6: Tomorrow's sessions
 function tomorrowSessionsSection(sessions: ReportSession[]): string {
   if (sessions.length === 0) {
-    return `<div class="card"><h2>📅 סשנים מחר</h2><div class="empty">אין סשנים מתוכננים למחר</div></div>`;
+    return `<div class="card"><h2>סשנים מחר</h2><div class="empty">אין סשנים מתוכננים למחר</div></div>`;
   }
   const rows = sessions.map((s) => {
     const time = fmtSessionTime(s);
@@ -573,7 +581,7 @@ function tomorrowSessionsSection(sessions: ReportSession[]): string {
       <span class="val">${time || s.status}</span>
     </div>`;
   }).join("");
-  return `<div class="card"><h2>📅 סשנים מחר</h2>${rows}</div>`;
+  return `<div class="card"><h2>סשנים מחר</h2>${rows}</div>`;
 }
 
 function fmtDeadlineDate(iso: string | null): string {
@@ -590,7 +598,7 @@ function deadlinesSection(
 ): string {
   const hasAny = overdue.length + dueToday.length + dueTomorrow.length > 0;
   if (!hasAny) {
-    return `<div class="card"><h2>⏰ דדליינים</h2><div class="empty">אין דדליינים דחופים ✓</div></div>`;
+    return `<div class="card"><h2>דדליינים</h2><div class="empty">אין דדליינים דחופים ✓</div></div>`;
   }
 
   function deadlineCard(p: ReportProject, urgency: "today" | "overdue" | "tomorrow"): string {
@@ -626,8 +634,25 @@ function deadlinesSection(
   }
 
   if (overdue.length > 0) {
-    inner += subhead("עברו דדליין", "#EF4444");
-    overdue.forEach((p) => { inner += deadlineCard(p, "overdue"); });
+    const overdueActive  = [...overdue].filter(p => p.status !== "בהשהייה")
+      .sort((a, b) => (a.daysUntil ?? 0) - (b.daysUntil ?? 0));
+    const overdueOnHold  = [...overdue].filter(p => p.status === "בהשהייה")
+      .sort((a, b) => (a.daysUntil ?? 0) - (b.daysUntil ?? 0));
+
+    if (overdueActive.length > 0) {
+      inner += subhead("עברו דדליין — פעיל (דורש טיפול)", "#EF4444");
+      overdueActive.slice(0, 8).forEach((p) => { inner += deadlineCard(p, "overdue"); });
+      if (overdueActive.length > 8) {
+        inner += `<div style="font-size:11px;color:#555;padding:4px 0;">ועוד ${overdueActive.length - 8} פרויקטים...</div>`;
+      }
+    }
+    if (overdueOnHold.length > 0) {
+      inner += subhead("עברו דדליין — בהשהייה (לא דחוף, לבדוק)", "#F59E0B");
+      overdueOnHold.slice(0, 5).forEach((p) => { inner += deadlineCard(p, "overdue"); });
+      if (overdueOnHold.length > 5) {
+        inner += `<div style="font-size:11px;color:#555;padding:4px 0;">ועוד ${overdueOnHold.length - 5} פרויקטים...</div>`;
+      }
+    }
     if (dueTomorrow.length > 0) inner += `<div style="height:8px;"></div>`;
   }
 
@@ -639,7 +664,31 @@ function deadlinesSection(
   // Remove last border
   inner = inner.replace(/border-bottom:1px solid #1E1E1E;(?=[^}]*<\/div>\s*(?:<div style="height|<\/div>\s*<\/div>))/g, "border-bottom:none;");
 
-  return `<div class="card"><h2>⏰ דדליינים</h2>${inner}</div>`;
+  return `<div class="card"><h2>דדליינים</h2>${inner}</div>`;
+}
+
+// ─── Section: חריגים לבדיקה ──────────────────────────────────────────────────
+
+function anomaliesSection(data: ReportData): string {
+  const orphaned = data.orphanedSessions ?? [];
+  if (orphaned.length === 0) return "";
+
+  let rows = "";
+  orphaned.forEach((s) => {
+    const time = s.startTime ? ` · ${s.startTime.slice(0, 5)}` : "";
+    const rawId = s.rawProjectId ? ` (project_id: ${s.rawProjectId})` : " (ללא project_id)";
+    rows += `<div style="padding:7px 0;border-bottom:1px solid #1E1E1E;border-right:3px solid #F59E0B;padding-right:8px;">
+      <div style="font-size:13px;color:#D0D0D0;">סשן ללא פרויקט מזוהה · ${s.date}${time}</div>
+      <div style="font-size:11px;color:#555;margin-top:2px;">${s.sessionType || s.status}${rawId}</div>
+    </div>`;
+  });
+
+  return `
+    <div class="card">
+      <h2>חריגים לבדיקה</h2>
+      <div style="font-size:12px;color:#888;margin-bottom:8px;">הפריטים הבאים לא שויכו לפרויקט תקף — לא נכללים בסיכום</div>
+      ${rows}
+    </div>`;
 }
 
 // ─── Victor block ─────────────────────────────────────────────────────────────
@@ -662,7 +711,7 @@ function victorBlock(data: ReportData): string {
 
   return `
     <div class="card">
-      <h2>🎛 ויקטור — ${monthLabel}</h2>
+      <h2>ויקטור — ${monthLabel}</h2>
       ${lines}
     </div>`;
 }
@@ -746,7 +795,7 @@ function calendarSection(
 function recommendationsSection(recs: string[], title: string): string {
   return `
     <div class="card">
-      <h2>⚡ ${title}</h2>
+      <h2>${title}</h2>
       ${recs
         .map(
           (r, i) =>
@@ -850,25 +899,33 @@ function buildEveningText(data: ReportData, recs: string[]): string {
   lines.push("");
 
   // 3. כספים היום
-  const hasFinance = data.txReceivedToday.length + data.txPendingAddedToday.length + data.txExpensesToday.length > 0;
+  const txExpPaid    = data.txExpensesPaidToday    ?? [];
+  const txExpPending = data.txExpensesPendingToday ?? [];
+  const hasFinance = data.txReceivedToday.length + data.txPendingAddedToday.length + txExpPaid.length + txExpPending.length > 0;
   if (hasFinance) {
-    lines.push("💰 כספים היום:");
+    lines.push("כספים היום:");
     if (data.txReceivedToday.length) {
-      lines.push("  התקבל:");
+      lines.push("  הכנסות שהתקבלו:");
       data.txReceivedToday.forEach((t) =>
-        lines.push(`    • ${fmtMoney(t.amount, t.currency, "+")} — ${t.projectName}${t.description ? ` (${t.description})` : ""}`)
+        lines.push(`    + ${fmtMoney(t.amount, t.currency, "+")} — ${t.projectName}${t.description ? ` (${t.description})` : ""}`)
       );
     }
     if (data.txPendingAddedToday.length) {
-      lines.push("  נוסף כצפוי:");
+      lines.push("  הכנסות צפויות (לגבייה):");
       data.txPendingAddedToday.forEach((t) =>
-        lines.push(`    • ${fmtMoney(t.amount, t.currency)} — ${t.projectName}`)
+        lines.push(`    ~ ${fmtMoney(t.amount, t.currency)} — ${t.projectName}`)
       );
     }
-    if (data.txExpensesToday.length) {
-      lines.push("  הוצאות:");
-      data.txExpensesToday.forEach((t) =>
-        lines.push(`    • ${fmtMoney(t.amount, t.currency, "-")} — ${t.projectName}`)
+    if (txExpPaid.length) {
+      lines.push("  הוצאות ששולמו:");
+      txExpPaid.forEach((t) =>
+        lines.push(`    - ${fmtMoney(t.amount, t.currency, "-")} — ${t.description || t.projectName}`)
+      );
+    }
+    if (txExpPending.length) {
+      lines.push("  הוצאות לתשלום:");
+      txExpPending.forEach((t) =>
+        lines.push(`    ~ ${fmtMoney(t.amount, t.currency)} — ${t.description || t.projectName}`)
       );
     }
     lines.push("");

@@ -17,6 +17,15 @@ import type {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Normalize transaction type — DB stores both Hebrew ("הוצאה"/"הכנסה") and
+ * English ("expense"/"income") values depending on the code path that created them.
+ * sound-engineer-store and clip-items use English; ProjectDrawer uses Hebrew.
+ */
+function isExpenseType(type: string): boolean {
+  return type === "הוצאה" || type === "expense";
+}
+
 /** True if a HH:MM time string refers to a moment already past (server time) */
 function hasTimePassed(timeStr: string | null): boolean {
   if (!timeStr) return true; // no time → treat as past for safety
@@ -108,18 +117,21 @@ export async function fetchReportData(): Promise<ReportData> {
   );
 
   function sessionFromRow(s: Record<string, unknown>): ReportSession {
-    const proj = projectMap.get(s.project_id as string);
+    const rawProjectId = (s.project_id as string | null) ?? null;
+    const proj = rawProjectId ? projectMap.get(rawProjectId) : undefined;
     return {
-      id:          s.id          as string,
-      projectName: proj?.name    ?? "פרויקט לא ידוע",
-      artist:      proj?.artist  ?? "",
-      date:        (s.date       as string) ?? todayStr,
-      startTime:   (s.start_time as string | null) ?? null,
-      endTime:     (s.end_time   as string | null) ?? null,
-      status:      (s.status     as string) ?? "",
-      sessionType: (s.session_type as string) ?? "",
-      notes:       (s.notes      as string) ?? "",
-      createdAt:   (s.created_at as string) ?? "",
+      id:              s.id          as string,
+      projectName:     proj?.name    ?? "פרויקט לא ידוע",
+      artist:          proj?.artist  ?? "",
+      date:            (s.date       as string) ?? todayStr,
+      startTime:       (s.start_time as string | null) ?? null,
+      endTime:         (s.end_time   as string | null) ?? null,
+      status:          (s.status     as string) ?? "",
+      sessionType:     (s.session_type as string) ?? "",
+      notes:           (s.notes      as string) ?? "",
+      createdAt:       (s.created_at as string) ?? "",
+      hasValidProject: !!proj,
+      rawProjectId,
     };
   }
 
@@ -150,14 +162,18 @@ export async function fetchReportData(): Promise<ReportData> {
 
   const todaySessionsAll = (rawTodaySessions ?? []).map(sessionFromRow);
 
-  const sessionsDone           = todaySessionsAll.filter(
+  // Separate orphaned sessions (no valid project) from valid ones
+  const orphanedSessions    = todaySessionsAll.filter((s) => !s.hasValidProject);
+  const todaySessionsValid  = todaySessionsAll.filter((s) => s.hasValidProject);
+
+  const sessionsDone           = todaySessionsValid.filter(
     (s) => s.status === "הושלם" || s.status === "בוצע"
   );
-  const sessionsCancelled      = todaySessionsAll.filter((s) => s.status === "בוטל");
-  const sessionsNeedingUpdate  = todaySessionsAll.filter(
+  const sessionsCancelled      = todaySessionsValid.filter((s) => s.status === "בוטל");
+  const sessionsNeedingUpdate  = todaySessionsValid.filter(
     (s) => s.status === "נקבע" && hasTimePassed(s.startTime)
   );
-  const sessionsUpcoming       = todaySessionsAll.filter(
+  const sessionsUpcoming       = todaySessionsValid.filter(
     (s) => s.status === "נקבע" && !hasTimePassed(s.startTime)
   );
 
@@ -170,7 +186,10 @@ export async function fetchReportData(): Promise<ReportData> {
     .gt("date", todayStr)   // only future dates (not today's sessions)
     .order("date", { ascending: true });
 
-  const sessionsFutureScheduled = (rawCreatedTodaySessions ?? []).map(sessionFromRow);
+  const sessionsFutureScheduledAll = (rawCreatedTodaySessions ?? []).map(sessionFromRow);
+  const sessionsFutureScheduled    = sessionsFutureScheduledAll.filter((s) => s.hasValidProject);
+  // Add orphaned future sessions to the orphaned pool
+  sessionsFutureScheduledAll.filter((s) => !s.hasValidProject).forEach((s) => orphanedSessions.push(s));
 
   // ── Sessions: date = tomorrow ─────────────────────────────────────────────
   const { data: rawTomorrowSessions } = await supabase
@@ -179,7 +198,7 @@ export async function fetchReportData(): Promise<ReportData> {
     .eq("date", tomorrowStr)
     .order("start_time", { ascending: true });
 
-  const tomorrowSessions = (rawTomorrowSessions ?? []).map(sessionFromRow);
+  const tomorrowSessions = (rawTomorrowSessions ?? []).map(sessionFromRow).filter((s) => s.hasValidProject);
 
   // ── Transactions added today (by created_at) ──────────────────────────────
   const { data: rawTxCreatedToday } = await supabase
@@ -193,13 +212,19 @@ export async function fetchReportData(): Promise<ReportData> {
 
   const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"]);
 
-  const txReceivedToday     = txCreatedToday.filter(
-    (t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.paymentStatus)
+  // Use isExpenseType() to handle both Hebrew ("הוצאה") and English ("expense") type values
+  const txReceivedToday        = txCreatedToday.filter(
+    (t) => !isExpenseType(t.type) && PAID_STATUSES.has(t.paymentStatus)
   );
-  const txPendingAddedToday = txCreatedToday.filter(
-    (t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.paymentStatus)
+  const txPendingAddedToday    = txCreatedToday.filter(
+    (t) => !isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus)
   );
-  const txExpensesToday     = txCreatedToday.filter((t) => t.type === "הוצאה");
+  const txExpensesPaidToday    = txCreatedToday.filter(
+    (t) => isExpenseType(t.type) && PAID_STATUSES.has(t.paymentStatus)
+  );
+  const txExpensesPendingToday = txCreatedToday.filter(
+    (t) => isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus)
+  );
 
   // ── Transactions expected today (by payment date) ─────────────────────────
   const { data: rawTxExpectedToday } = await supabase
@@ -272,7 +297,7 @@ export async function fetchReportData(): Promise<ReportData> {
   // Payments received today — brief line only (full details are in "כספים היום")
   txReceivedToday.forEach((t) => {
     activityItems.push({
-      icon: "💵",
+      icon: "+",
       text: `התקבל תשלום — ${t.projectName}${t.artist ? ` · ${t.artist}` : ""}`,
     });
   });
@@ -280,15 +305,16 @@ export async function fetchReportData(): Promise<ReportData> {
   // Pending payments added today — brief line
   txPendingAddedToday.forEach((t) => {
     activityItems.push({
-      icon: "📋",
-      text: `נוסף תשלום צפוי — ${t.projectName}${t.artist ? ` · ${t.artist}` : ""}`,
+      icon: "~",
+      text: `נוסף הכנסה צפויה — ${t.projectName}${t.artist ? ` · ${t.artist}` : ""}`,
     });
   });
 
   // Expenses added today — brief line
+  const txExpensesToday = [...txExpensesPaidToday, ...txExpensesPendingToday];
   txExpensesToday.forEach((t) => {
     activityItems.push({
-      icon: "💸",
+      icon: "-",
       text: `הוצאה נוספה — ${t.projectName}${t.description ? ` · ${t.description}` : ""}`,
     });
   });
@@ -334,11 +360,13 @@ export async function fetchReportData(): Promise<ReportData> {
     sessionsFutureScheduled,
     txReceivedToday,
     txPendingAddedToday,
-    txExpensesToday,
+    txExpensesPaidToday,
+    txExpensesPendingToday,
     txExpectedToday,
     tomorrowSessions,
     completedTodayProjects,
     createdTodayProjects,
+    orphanedSessions,
     victorSummary,
   };
 }

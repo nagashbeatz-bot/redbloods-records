@@ -37,6 +37,10 @@ export interface ReportSession {
   sessionType: string;
   notes: string;
   createdAt: string;  // when this session record was created in the system
+  /** False when session has no valid project_id in the system */
+  hasValidProject: boolean;
+  /** Raw project_id from DB — useful for debugging orphaned sessions */
+  rawProjectId: string | null;
 }
 
 export interface ReportTransaction {
@@ -90,12 +94,14 @@ export interface ReportData {
   /** Sessions created today but scheduled for a future date */
   sessionsFutureScheduled: ReportSession[];
 
-  /** Transactions added to the system today (created_at = today), type ≠ הוצאה, status = שולם */
+  /** Transactions added today, type = income / הכנסה, status = received */
   txReceivedToday:     ReportTransaction[];
-  /** Transactions added today, type ≠ הוצאה, status ≠ שולם (pending/expected) */
+  /** Transactions added today, type = income / הכנסה, status = pending */
   txPendingAddedToday: ReportTransaction[];
-  /** Transactions added today, type = הוצאה */
-  txExpensesToday:     ReportTransaction[];
+  /** Transactions added today, type = expense / הוצאה, status = paid */
+  txExpensesPaidToday: ReportTransaction[];
+  /** Transactions added today, type = expense / הוצאה, status = pending/unpaid */
+  txExpensesPendingToday: ReportTransaction[];
 
   /** Transactions with date = today (planned for today — may or may not match created_at) */
   txExpectedToday:     ReportTransaction[];
@@ -107,6 +113,9 @@ export interface ReportData {
   completedTodayProjects: ReportProject[];
   /** Projects created today */
   createdTodayProjects:   ReportProject[];
+
+  /** Sessions with no valid project_id — displayed in anomalies section */
+  orphanedSessions:    ReportSession[];
 
   /** Victor summary — only included when there's something to flag */
   victorSummary?: {
