@@ -22,11 +22,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "not_connected" }, { status: 400 });
     }
 
-    const event = await createCalendarEvent(summary, start, end,
-      artistEmail
-        ? { attendees: [{ email: artistEmail }], description: publicDescription }
-        : undefined
-    );
+    const event = await createCalendarEvent(summary, start, end, {
+      attendees:   artistEmail ? [{ email: artistEmail }] : undefined,
+      description: publicDescription,
+    });
     return NextResponse.json({ ok: true, event, inviteSent: !!artistEmail });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
