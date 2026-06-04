@@ -637,6 +637,129 @@ function MobileFilterSheet({
   );
 }
 
+// ── Collection detail modal ───────────────────────────────────────────────────
+// paidIncome = income transactions with payment_status "התקבל" or legacy "שולם"
+function CollectionDetailModal({
+  financeSummary,
+  projects,
+  onClose,
+}: {
+  financeSummary: Record<string, { paid: number; agreed: number; currency: string }>;
+  projects: import("@/lib/types").Project[];
+  onClose: () => void;
+}) {
+  if (typeof document === "undefined") return null;
+
+  const rows = Object.entries(financeSummary)
+    .map(([projectId, fin]) => {
+      const project = projects.find((p) => p.id === projectId);
+      const remaining = Math.max(0, fin.agreed - fin.paid);
+      return { projectId, project, fin, remaining };
+    })
+    .filter((r) => r.fin.agreed > 0 || r.fin.paid > 0)
+    .sort((a, b) => b.remaining - a.remaining);
+
+  const total = rows.reduce((s, r) => s + r.remaining, 0);
+
+  const cell: React.CSSProperties = {
+    padding: "10px 12px", fontSize: 12, borderBottom: "1px solid #1E1E1E", verticalAlign: "middle",
+  };
+  const hCell: React.CSSProperties = {
+    padding: "8px 12px", fontSize: 10, fontWeight: 700, color: "#555",
+    letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid #252525",
+    textAlign: "right",
+  };
+
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#141414", border: "1px solid #2A2A2A", borderRadius: 18, width: "min(960px, 95vw)", maxHeight: "80vh", display: "flex", flexDirection: "column", direction: "rtl", boxShadow: "0 24px 64px rgba(0,0,0,0.85)" }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 14px", borderBottom: "1px solid #222", flexShrink: 0 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F0F0F0", margin: 0 }}>פירוט גבייה</h2>
+            <p style={{ fontSize: 11, color: "#555", margin: "3px 0 0" }}>
+              paidIncome = סטטוסים "התקבל" + "שולם" (legacy) על עסקאות הכנסה בלבד
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>סה״כ לגבייה</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#F59E0B" }}>₪{total.toLocaleString()}</div>
+            </div>
+            <button
+              onClick={onClose}
+              style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid #2A2A2A", background: "#1A1A1A", color: "#666", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
+            >✕</button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead style={{ position: "sticky", top: 0, background: "#141414", zIndex: 1 }}>
+              <tr>
+                {["שם פרויקט", "אמן / לקוח", "מחיר מוסכם", "התקבל בפועל", "יתרה לגבייה", "סטטוס"].map((h) => (
+                  <th key={h} style={hCell}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={6} style={{ ...cell, textAlign: "center", color: "#555" }}>אין נתונים</td></tr>
+              ) : rows.map(({ projectId, project, fin, remaining }) => {
+                const overpaid = fin.paid > fin.agreed && fin.agreed > 0;
+                const fullyPaid = !overpaid && fin.paid >= fin.agreed && fin.agreed > 0;
+                const noAgreed = fin.agreed === 0;
+                const statusLabel = overpaid ? "שולם ביתר" : fullyPaid ? "שולם ✓" : noAgreed ? "אין מחיר מוסכם" : "יתרה פתוחה";
+                const statusColor = overpaid ? "#A855F7" : fullyPaid ? "#34D399" : noAgreed ? "#555" : "#F59E0B";
+                const rowBg = remaining > 0 ? "transparent" : fullyPaid ? "rgba(52,211,153,0.03)" : "transparent";
+
+                return (
+                  <tr key={projectId} style={{ background: rowBg }}>
+                    <td style={{ ...cell, color: "#E8E8E8", fontWeight: 600 }}>
+                      {project?.name ?? <span style={{ color: "#555", fontStyle: "italic" }}>פרויקט לא ידוע ({projectId.slice(0, 6)})</span>}
+                    </td>
+                    <td style={{ ...cell, color: "#888" }}>{project?.artist || "—"}</td>
+                    <td style={{ ...cell, color: "#CCC", textAlign: "left" }}>
+                      {fin.agreed > 0 ? `${fin.currency}${fin.agreed.toLocaleString()}` : <span style={{ color: "#444" }}>—</span>}
+                    </td>
+                    <td style={{ ...cell, color: fin.paid > 0 ? "#34D399" : "#555", textAlign: "left" }}>
+                      {fin.paid > 0 ? `${fin.currency}${fin.paid.toLocaleString()}` : "0"}
+                    </td>
+                    <td style={{ ...cell, fontWeight: 700, textAlign: "left", color: remaining > 0 ? "#F59E0B" : "#34D399" }}>
+                      {remaining > 0 ? `${fin.currency}${remaining.toLocaleString()}` : "0"}
+                    </td>
+                    <td style={{ ...cell }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: statusColor, background: `${statusColor}15`, border: `1px solid ${statusColor}30`, borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>
+                        {statusLabel}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "12px 24px", borderTop: "1px solid #1E1E1E", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <p style={{ fontSize: 10, color: "#444", margin: 0 }}>
+            נוסחה: max(0, agreedPrice − paidIncome) · מקור: טבלת settings + transactions
+          </p>
+          <span style={{ fontSize: 11, color: "#555" }}>{rows.length} פרויקטים</span>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjectsTable() {
@@ -656,6 +779,7 @@ export default function ProjectsTable() {
   const [confirmDeleteName, setConfirmDeleteName] = useState("");
   const [clientNames, setClientNames] = useState<string[]>([]);
   const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; currency: string }>>({});
+  const [showCollectionDetail, setShowCollectionDetail] = useState(false);
 
   // ── Hidden-projects mode ────────────────────────────────────────────────────
   const [showHidden,    setShowHidden]    = useState(false);
@@ -977,24 +1101,33 @@ export default function ProjectsTable() {
                   })(),
                   color: "#F59E0B",
                 },
-              ].map(({ label, value, color }) => (
-                <div
-                  key={label}
-                  style={{
-                    background: "#141414",
-                    border: "1px solid #252525",
-                    borderRadius: 12,
-                    padding: "12px 16px",
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: "#444", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
-                    {label}
+              ].map(({ label, value, color }) => {
+                const isClickable = label === "לגבייה";
+                return (
+                  <div
+                    key={label}
+                    onClick={isClickable ? () => setShowCollectionDetail(true) : undefined}
+                    style={{
+                      background: "#141414",
+                      border: `1px solid ${isClickable ? "rgba(245,158,11,0.25)" : "#252525"}`,
+                      borderRadius: 12,
+                      padding: "12px 16px",
+                      cursor: isClickable ? "pointer" : "default",
+                      transition: "border-color 0.15s",
+                    }}
+                    onMouseEnter={isClickable ? (e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(245,158,11,0.5)"; } : undefined}
+                    onMouseLeave={isClickable ? (e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(245,158,11,0.25)"; } : undefined}
+                  >
+                    <div style={{ fontSize: 10, color: "#444", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                      {label}
+                      {isClickable && <span style={{ fontSize: 9, color: "#666" }}>↗</span>}
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color }}>
+                      {value}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color }}>
-                    {value}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1482,6 +1615,14 @@ export default function ProjectsTable() {
           </div>
         </div>,
         document.body
+      )}
+
+      {showCollectionDetail && typeof document !== "undefined" && (
+        <CollectionDetailModal
+          financeSummary={financeSummary}
+          projects={projects}
+          onClose={() => setShowCollectionDetail(false)}
+        />
       )}
 
       {showNewProject && typeof document !== "undefined" && (
