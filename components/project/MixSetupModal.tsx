@@ -347,7 +347,7 @@ export default function MixSetupModal({
 
         {/* ── 6. Calendar sync (whenever mixDeadline is set) ── */}
         {!!mixDeadline && (
-          <div style={{ ...sec, paddingRight: 26, marginTop: -10 }}>
+          <div style={sec}>
             <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -355,7 +355,8 @@ export default function MixSetupModal({
                 onChange={(e) => setSyncCalendar(e.target.checked)}
                 style={{ width: 16, height: 16, accentColor: "#A855F7", cursor: "pointer" }}
               />
-              <span style={{ fontSize: 12, color: "#888" }}>📅 הוסף ליומן Google (אירוע יום שלם)</span>
+              <span style={{ fontSize: 13, color: "#C0C0C0" }}>📅 הוסף ליומן Google</span>
+              <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>(אירוע יום שלם)</span>
             </label>
           </div>
         )}
