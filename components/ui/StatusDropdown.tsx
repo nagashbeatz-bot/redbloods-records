@@ -8,6 +8,7 @@ import { getStatusColor } from "@/lib/utils";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import StatusBadge from "./Badge";
+import MixSetupModal from "@/components/project/MixSetupModal";
 
 const EXCEPTION_PRESETS = [
   "לקוח VIP",
@@ -26,8 +27,9 @@ interface StatusDropdownProps {
 }
 
 export default function StatusDropdown({ projectId, status, small }: StatusDropdownProps) {
-  const { updateProjectField } = useProjects();
-  const { openProject }        = useGlobalProjectDrawer();
+  const { updateProjectField, projects } = useProjects();
+  const { openProject }                  = useGlobalProjectDrawer();
+  const projectName = projects.find((p) => p.id === projectId)?.name ?? "";
   const [open, setOpen]             = useState(false);
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState<string | null>(null);
@@ -39,6 +41,8 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
   const [exceptionReason, setExceptionReason] = useState("");
   // Completion delivery prompt
   const [showDeliveryPrompt, setShowDeliveryPrompt] = useState(false);
+  // Mix setup modal
+  const [showMixSetup, setShowMixSetup] = useState(false);
   const triggerRef                  = useRef<HTMLButtonElement>(null);
   const errorTimer                  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -128,6 +132,12 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
       } catch {
         // Non-fatal — proceed with update even if check fails
       }
+    }
+
+    // Mix setup flow — intercept "במיקס" before direct update
+    if (next === "במיקס") {
+      setShowMixSetup(true);
+      return;
     }
 
     await doUpdate(next);
@@ -290,6 +300,16 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
         document.body
       )}
 
+      {/* Mix setup modal */}
+      {showMixSetup && (
+        <MixSetupModal
+          projectId={projectId}
+          projectName={projectName}
+          onStatusUpdate={() => updateProjectField(projectId, "status", "במיקס")}
+          onClose={() => setShowMixSetup(false)}
+        />
+      )}
+
       {/* Payment warning portal */}
       {paymentWarning && typeof document !== "undefined" && createPortal(
         <div
@@ -439,6 +459,11 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
                         }),
                       });
                     } catch { /* non-fatal */ }
+                    // Mix setup flow — open modal instead of direct update
+                    if (next === "במיקס") {
+                      setShowMixSetup(true);
+                      return;
+                    }
                     await doUpdate(next);
                   }}
                   style={{
