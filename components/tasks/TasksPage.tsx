@@ -408,6 +408,7 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDelete
   const [saving,       setSaving]       = useState(false);
   const [deleting,     setDeleting]     = useState(false);
   const [confirmDel,   setConfirmDel]   = useState(false);
+  const [delCalendar,  setDelCalendar]  = useState(true);
   const [error,        setError]        = useState<string | null>(null);
 
   const effectiveEnd = startTime && !timeErr
@@ -450,6 +451,14 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDelete
   async function handleDelete() {
     setDeleting(true); setError(null);
     try {
+      // מחק מהיומן קודם אם נבחר
+      if (delCalendar && task.calendar_event_id) {
+        const calRes = await fetch(`/api/calendar/events/${task.calendar_event_id}`, { method: "DELETE" });
+        if (!calRes.ok) {
+          const d = await calRes.json();
+          throw new Error(`שגיאה במחיקה מהיומן: ${d.error ?? "שגיאה"}`);
+        }
+      }
       const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "שגיאה"); }
       onDeleted(task.id);
@@ -718,10 +727,27 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDelete
           <div style={{
             background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
             borderRadius: 12, padding: "12px 14px",
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+            display: "flex", flexDirection: "column", gap: 10,
           }}>
             <span style={{ fontSize: 12, color: "#FCA5A5" }}>מחיקה זו בלתי הפיכה. להמשיך?</span>
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+
+            {/* אפשרות מחיקה מיומן — רק אם יש calendar_event_id */}
+            {task.calendar_event_id && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={delCalendar}
+                  onChange={(e) => setDelCalendar(e.target.checked)}
+                  disabled={deleting}
+                  style={{ width: 14, height: 14, accentColor: "#EF4444", cursor: "pointer" }}
+                />
+                <span style={{ fontSize: 12, color: delCalendar ? "#FCA5A5" : "#666" }}>
+                  📅 מחק גם מהיומן Google
+                </span>
+              </label>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button type="button" onClick={() => setConfirmDel(false)} disabled={deleting}
                 style={{ ...MODAL_SECONDARY, padding: "6px 14px", fontSize: 12 }}>
                 ביטול
