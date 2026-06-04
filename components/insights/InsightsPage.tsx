@@ -663,14 +663,16 @@ export default function InsightsPage() {
   const projectsOneBeforeLimit = activeProjects.filter((p) => (sessionsByProject[p.id] ?? 0) === getLimit(p.id) - 1);
 
   // ── Finance ─────────────────────────────────────────────────────────────────
+  // Must match ProjectDrawer's PAID_STATUSES: both "שולם" and "התקבל" count as received.
+  const PAID_STATUSES_SET = new Set(["שולם", "התקבל"]);
   const paidByProject: Record<string, number> = {};
-  transactions.filter((t) => t.type === "income" && t.payment_status === "התקבל").forEach((t) => {
+  transactions.filter((t) => t.type === "income" && PAID_STATUSES_SET.has(t.payment_status)).forEach((t) => {
     paidByProject[t.project_id] = (paidByProject[t.project_id] ?? 0) + t.amount;
   });
 
   const periodIncome    = transactions.filter((t) => t.type === "income"  && inRange(t.date, range));
   const periodExpenses  = transactions.filter((t) => t.type === "expense" && inRange(t.date, range));
-  const incomeReceived  = periodIncome.filter((t) => t.payment_status === "התקבל").reduce((s, t) => s + t.amount, 0);
+  const incomeReceived  = periodIncome.filter((t) => PAID_STATUSES_SET.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const incomeExpected  = periodIncome.filter((t) => ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const expensesPaid    = periodExpenses.filter((t) => t.payment_status === "שולם").reduce((s, t) => s + t.amount, 0);
   const expensesExpected= periodExpenses.filter((t) => ["צפוי","לא שולם","חלקי"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
