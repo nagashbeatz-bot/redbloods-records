@@ -3463,10 +3463,12 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
   const [creating, setCreating] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [copied, setCopied]     = useState(false);
-  const [editingPrice, setEditingPrice] = useState(false);
-  const [editingPaid,  setEditingPaid]  = useState(false);
-  const [priceDraft,   setPriceDraft]   = useState("");
-  const [paidDraft,    setPaidDraft]    = useState("");
+  const [editingPrice,   setEditingPrice]   = useState(false);
+  const [editingPaid,    setEditingPaid]    = useState(false);
+  const [priceDraft,     setPriceDraft]     = useState("");
+  const [paidDraft,      setPaidDraft]      = useState("");
+  const [confirmRemove,  setConfirmRemove]  = useState(false);
+  const [removing,       setRemoving]       = useState(false);
 
   const [draft, setDraft] = useState<SoundEngineerDraft>({
     engineerName: "", workType: "מיקס", status: "לא נשלח",
@@ -3553,6 +3555,22 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
       setError(e instanceof Error ? e.message : "שגיאה");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    if (!work) return;
+    setRemoving(true); setError(null);
+    try {
+      const res = await fetch(`/api/sound-engineer/${work.id}`, { method: "DELETE" });
+      const data = await res.json() as { ok: boolean; error?: string };
+      if (!data.ok) throw new Error(data.error ?? "הסרה נכשלה");
+      setWork(null);
+      setConfirmRemove(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -3804,6 +3822,36 @@ function SoundEngineerSection({ project }: { project: { id: string; name: string
 
               {saving && <div style={{ fontSize: 11, color: "#555" }}>שומר...</div>}
               {error  && <div style={{ fontSize: 11, color: "#EF4444" }}>{error}</div>}
+
+              {/* Remove button */}
+              {!confirmRemove ? (
+                <button
+                  onClick={() => setConfirmRemove(true)}
+                  style={{ marginTop: 4, padding: "6px 12px", borderRadius: 8, fontFamily: "inherit", fontSize: 11, cursor: "pointer", background: "transparent", border: "1px solid #2A2A2A", color: "#555" }}
+                >
+                  🗑 הסר איש סאונד
+                </button>
+              ) : (
+                <div style={{ marginTop: 4, padding: "10px 12px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: "#F87171", marginBottom: 8 }}>האם להסיר את איש הסאונד? הפעולה בלתי הפיכה.</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={handleRemove}
+                      disabled={removing}
+                      style={{ flex: 1, padding: "6px 0", borderRadius: 8, fontFamily: "inherit", fontSize: 11, fontWeight: 700, cursor: removing ? "wait" : "pointer", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)", color: "#F87171", opacity: removing ? 0.6 : 1 }}
+                    >
+                      {removing ? "מסיר..." : "כן, הסר"}
+                    </button>
+                    <button
+                      onClick={() => setConfirmRemove(false)}
+                      disabled={removing}
+                      style={{ flex: 1, padding: "6px 0", borderRadius: 8, fontFamily: "inherit", fontSize: 11, cursor: "pointer", background: "transparent", border: "1px solid #2A2A2A", color: "#555" }}
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
           ) : null}
