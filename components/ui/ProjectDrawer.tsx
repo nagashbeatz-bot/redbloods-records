@@ -1188,75 +1188,123 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           .rb-btn-secondary:hover { border-color: #3A3A3A; color: #AAA; }
         `}</style>
 
-        {/* ── Header ──────────────────────────────────────────────────────── */}
+        {/* ── Top bar (close + link) ─────────────────────────────────────── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: isMobile ? "0 16px" : "0 16px",
+          padding: "0 14px",
           paddingTop: isMobile ? "env(safe-area-inset-top)" : undefined,
-          height: isMobile ? 56 : 52,
-          borderBottom: "1px solid #252525", flexShrink: 0,
+          height: isMobile ? 48 : 44,
+          borderBottom: "1px solid #1E1E1E", flexShrink: 0,
           background: isMobile ? "#141414" : undefined,
         }}>
           {isMobile ? (
-            /* Mobile header: ← back button on right (RTL), project name centered */
             <>
               <button
                 onClick={onClose}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#3B82F6", fontSize: 15, fontWeight: 600, padding: "8px 4px 8px 12px", fontFamily: "inherit", minWidth: 44, minHeight: 44, display: "flex", alignItems: "center" }}
-              >
-                ← חזור
-              </button>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0", flex: 1, textAlign: "center" }}>פרטי פרויקט</span>
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#3B82F6", fontSize: 14, fontWeight: 600, padding: "8px 4px 8px 12px", fontFamily: "inherit", minWidth: 44, minHeight: 44, display: "flex", alignItems: "center" }}
+              >← חזור</button>
               <div style={{ minWidth: 44 }} />
             </>
           ) : (
-            /* Desktop header */
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button
-                  onClick={onClose}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 20, lineHeight: 1, padding: "2px 4px" }}
-                  onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#CCC")}
-                  onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
-                >×</button>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#777" }}>פרטי פרויקט</span>
-              </div>
+              <button
+                onClick={onClose}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 18, lineHeight: 1, padding: "2px 6px 2px 2px", display: "flex", alignItems: "center" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
+              >×</button>
               <Link
                 href={`/projects/${project.id}`}
                 style={{ fontSize: 11, color: "#444", textDecoration: "none" }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#888")}
                 onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#444")}
-              >
-                פתח עמוד מלא ↗
-              </Link>
+              >פתח עמוד מלא ↗</Link>
             </>
           )}
+        </div>
+
+        {/* ── Project identity ─────────────────────────────────────────────── */}
+        <div style={{
+          padding: "14px 16px 12px",
+          borderBottom: "1px solid #1E1E1E",
+          flexShrink: 0,
+        }}>
+          {/* Name */}
+          <div style={{ fontSize: 17, fontWeight: 800, color: "#F0F0F0", lineHeight: 1.25, marginBottom: project.artist ? 4 : 8 }}>
+            {project.name}
+          </div>
+          {/* Artist */}
+          {project.artist && (
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
+              {project.artist}
+            </div>
+          )}
+          {/* Tags row */}
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Status */}
+            {(() => {
+              const statusColors: Record<string, string> = {
+                "בעבודה": "#3B82F6", "הושלם": "#10B981", "בהשהייה": "#6B7280",
+                "ממתין": "#F59E0B", "בוטל": "#EF4444",
+              };
+              const c = statusColors[project.status] ?? "#555";
+              return (
+                <span style={{ fontSize: 10, fontWeight: 700, color: c, background: `${c}18`, border: `1px solid ${c}30`, borderRadius: 5, padding: "2px 8px" }}>
+                  {project.status}
+                </span>
+              );
+            })()}
+            {/* Type */}
+            {project.projectType && (
+              <span style={{ fontSize: 10, color: "#555", background: "#181818", border: "1px solid #252525", borderRadius: 5, padding: "2px 8px" }}>
+                {project.projectType}
+              </span>
+            )}
+            {/* Deadline */}
+            {project.deadline && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: deadlineColor, background: `${deadlineColor}12`, border: `1px solid ${deadlineColor}28`, borderRadius: 5, padding: "2px 8px" }}>
+                {deadlineLabel(project.deadline)}
+              </span>
+            )}
+            {/* Balance alert */}
+            {finLoaded && balance > 0 && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: "#EF4444", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 5, padding: "2px 8px" }}>
+                יתרה: {balance.toLocaleString()}{finCurrency}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* ── Scrollable body ──────────────────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? 16 : 14, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
 
           {/* ── Quick actions ──────────────────────────────────────────────── */}
-          <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
             <button
               onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("sessions"); return n; }); setAddingSession(true); setAddDraft(emptyDraft()); }}
-              style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.07)", color: "#60A5FA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.15)")}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.07)")}
-            >📅 קבע סשן</button>
+              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(59,130,246,0.25)", background: "rgba(59,130,246,0.06)", color: "#60A5FA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.13)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.06)")}
+            >+ סשן</button>
             <button
               onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("finance"); return n; }); setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
-              style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#34D399", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.15)")}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.07)")}
-            >₪ הוסף תשלום</button>
-            <div style={{ flex: 1, display: "flex" }}>
+              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.06)", color: "#34D399", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.13)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.06)")}
+            >+ תשלום</button>
+            <button
+              onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("finance"); return n; }); setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
+              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", background: "rgba(245,158,11,0.06)", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.13)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.06)")}
+            >+ הוצאה</button>
+            <div style={{ display: "flex" }}>
               <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
             </div>
           </div>
 
-          {/* ── תקציר פרויקט ──────────────────────────────────────────────── */}
-          <CollapsibleCard label="תקציר פרויקט" open={openSections.has("summary")} onToggle={() => toggleSection("summary")}>
+          {/* ── פרטים ועריכה ──────────────────────────────────────────────── */}
+          <CollapsibleCard label="פרטים ועריכה" open={openSections.has("summary")} onToggle={() => toggleSection("summary")}>
             <Row label="שם פרויקט">
               <InlineCellEdit value={project.name} onSave={(v) => updateProjectField(project.id, "name", v)} type="text">
                 <span style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8" }}>{project.name}</span>
@@ -1349,6 +1397,27 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             open={openSections.has("finance")}
             onToggle={() => toggleSection("finance")}
           >
+
+            {/* ── Finance summary strip ─────────────────────────────────── */}
+            {finLoaded && (
+              <div style={{
+                display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 1, marginBottom: 14,
+                background: "#111", borderRadius: 10, overflow: "hidden",
+                border: "1px solid #1E1E1E",
+              }}>
+                {[
+                  { label: "מחיר מוסכם", value: agreedPrice > 0 ? `${agreedPrice.toLocaleString()}${finCurrency}` : "—", color: agreedPrice > 0 ? "#CCC" : "#444" },
+                  { label: "התקבל", value: `${totalPaid.toLocaleString()}${finCurrency}`, color: "#10B981" },
+                  { label: balance > 0 ? "יתרה לגבייה" : balance < 0 ? "ביתר" : "מאוזן", value: balance !== 0 ? `${Math.abs(balance).toLocaleString()}${finCurrency}` : "✓", color: balance > 0 ? "#EF4444" : balance < 0 ? "#A855F7" : "#10B981" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ padding: "10px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: "#444", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Finance exception banner */}
             {financeException && (
@@ -1446,19 +1515,19 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             ))}
 
             {/* Action buttons */}
-            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
               <button
                 onClick={() => { setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
-                style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#10B981", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.14)")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.07)")}
-              >+ הוסף תשלום</button>
+                style={{ flex: 1, padding: "5px 0", borderRadius: 7, border: "1px solid rgba(16,185,129,0.2)", background: "none", color: "#10B981", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.08)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "none")}
+              >+ הכנסה</button>
               <button
                 onClick={() => { setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
-                style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "1px solid rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.07)", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.14)")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.07)")}
-              >+ הוסף הוצאה</button>
+                style={{ flex: 1, padding: "5px 0", borderRadius: 7, border: "1px solid rgba(245,158,11,0.2)", background: "none", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.08)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "none")}
+              >+ הוצאה</button>
             </div>
 
             {/* Inline TX form */}
