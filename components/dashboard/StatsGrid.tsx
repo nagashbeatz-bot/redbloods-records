@@ -261,12 +261,12 @@ function ProposalDetailModal({ proposal, today, onClose, onActionDone }: {
 
           {!isClosed && (
             <>
-              {/* ערוך הצעה */}
+              {/* פתח הצעה בלקוח */}
               <button
                 onClick={openClient}
                 style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #2A2A2A", background: "none", color: "#888", fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "right" }}
               >
-                ✎ ערוך הצעה
+                📋 פתח הצעה בלקוח
               </button>
 
               {/* הפוך לפרויקט */}
