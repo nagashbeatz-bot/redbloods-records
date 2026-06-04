@@ -28,6 +28,7 @@ function mapRow(r: Record<string, unknown>): AgentAlert {
     source:           (r.source as AgentAlert["source"]) ?? "scheduled",
     status:           (r.status as AlertStatus) ?? "new",
     sentNotification: (r.sent_notification as boolean) ?? false,
+    entityKey:        (r.entity_key as string | null) ?? null,
     createdAt:        r.created_at as string,
     updatedAt:        r.updated_at as string,
   };
@@ -43,23 +44,38 @@ export async function createAlertIfNotCoolingDown(
   const cooldownH = COOLDOWN_HOURS[input.severity ?? "warning"];
   const cooldownAgo = new Date(Date.now() - cooldownH * 3600 * 1000).toISOString();
 
-  // Check cooldown: same type + same project, not yet dismissed/ignored, within window
-  const query = supabase
-    .from("agent_alerts")
-    .select("id")
-    .eq("type", input.type)
-    .gte("created_at", cooldownAgo)
-    .not("status", "in", '("dismissed","ignored")')
-    .limit(1);
+  // Check cooldown.
+  // If entityKey is present: check by entity_key (most precise — one alert per entity).
+  // Otherwise: check by type + relatedProjectId (existing behavior).
+  let existing: { id: string }[] | null = null;
 
-  if (input.relatedProjectId) {
-    query.eq("related_project_id", input.relatedProjectId);
+  if (input.entityKey) {
+    const { data } = await supabase
+      .from("agent_alerts")
+      .select("id")
+      .eq("entity_key", input.entityKey)
+      .gte("created_at", cooldownAgo)
+      .not("status", "in", '("dismissed","ignored")')
+      .limit(1);
+    existing = data;
   } else {
-    // For non-project alerts (inactivity, goals), also check same type only
-    query.is("related_project_id", null);
+    const query = supabase
+      .from("agent_alerts")
+      .select("id")
+      .eq("type", input.type)
+      .gte("created_at", cooldownAgo)
+      .not("status", "in", '("dismissed","ignored")')
+      .limit(1);
+
+    if (input.relatedProjectId) {
+      query.eq("related_project_id", input.relatedProjectId);
+    } else {
+      query.is("related_project_id", null);
+    }
+    const { data } = await query;
+    existing = data;
   }
 
-  const { data: existing } = await query;
   if (existing && existing.length > 0) {
     return null; // in cooldown
   }
@@ -79,6 +95,7 @@ export async function createAlertIfNotCoolingDown(
       source:             input.source             ?? "scheduled",
       status:             "new",
       sent_notification:  false,
+      entity_key:         input.entityKey          ?? null,
     })
     .select()
     .single();

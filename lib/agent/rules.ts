@@ -43,6 +43,7 @@ export function checkOverdueProjects(
       title: `⚠ דדליין עבר — ${p.name}`,
       message: `הפרויקט "${p.name}"${p.artist ? ` (${p.artist})` : ""} עבר את תאריך היעד שלו. יש לעדכן סטטוס או לקבוע דדליין חדש.`,
       relatedProjectId: p.id,
+      entityKey: `overdue_deadline:${p.id}`,
       suggestedActions: ["עדכן סטטוס", "קבע דדליין חדש", "סמן כהושלם"],
     }),
     (items) => ({
@@ -79,6 +80,7 @@ export function checkDueSoonProjects(
         title: `⏳ דדליין מתקרב — ${p.name}`,
         message: `לפרויקט "${p.name}" נשארו ${diff === 1 ? "יום אחד" : `${diff} ימים`} לדדליין. כדאי לבדוק סטטוס.`,
         relatedProjectId: p.id,
+        entityKey: `deadline_approaching:${p.id}`,
         suggestedActions: ["בדוק סטטוס", "עדכן התקדמות"],
       };
     },
@@ -118,6 +120,7 @@ export function checkSessionsNeedingUpdate(
       title: `📅 סשן עבר — ${s.projectName}`,
       message: `סשן של "${s.projectName}" מתאריך ${s.date} עדיין מסומן כ"נקבע". יש לסמן התקיים / בוטל / לא הגיע.`,
       metadata: { sessionId: s.id, date: s.date },
+      entityKey: `session_needs_update:${s.id}`,
       suggestedActions: ["סמן התקיים", "סמן בוטל"],
     }];
   }
@@ -151,6 +154,7 @@ export function checkOverduePayments(
       title: `💸 תשלום בפיגור — ${t.projectName}`,
       message: `תשלום של ${t.amount.toLocaleString("he-IL")}${t.currency} מפרויקט "${t.projectName}" לא עודכן כהתקבל. האם התשלום הגיע?`,
       metadata: { transactionId: t.id, amount: t.amount, currency: t.currency },
+      entityKey: `payment_overdue:${t.id}`,
       suggestedActions: ["סמן כהתקבל", "שלח תזכורת"],
     }];
   }
@@ -182,6 +186,7 @@ export function checkProjectsNoPricing(
       title: `₪ פרויקט ללא מחיר — ${p.name}`,
       message: `לפרויקט "${p.name}" אין מחיר מוסכם מוגדר. זה עלול לגרום לאי-דיוק בדוחות כספיים ולסיכון בגבייה.`,
       relatedProjectId: p.id,
+      entityKey: `project_no_pricing:${p.id}`,
       suggestedActions: ["הגדר מחיר", "סמן כחינמי", "סמן כחריג"],
     }),
     (items) => ({
@@ -220,6 +225,7 @@ export function checkVictorStuck(
       message: `"${w.projectName}" תקוע אצל ויקטור כבר ${days} ימים. האם לשלוח תזכורת?`,
       relatedProjectId: w.projectId,
       metadata: { vendorWorkId: w.id, daysSinceSent: days },
+      entityKey: `victor_stuck:${w.id}`,
       suggestedActions: ["שלח תזכורת לויקטור", "עדכן סטטוס"],
     }];
   }
@@ -342,6 +348,7 @@ export function checkCompletedNoDelivery(
       title: `📦 פרויקט הושלם ללא תיקיית מסירה — ${p.name}`,
       message: `"${p.name}" הושלם אבל אין תיקיית Dropbox עם קבצי מסירה. כדאי ליצור תיקיה ולהעלות את הגרסה הסופית.`,
       relatedProjectId: p.id,
+      entityKey: `completed_no_delivery:${p.id}`,
       suggestedActions: ["צור תיקיית מסירה", "העלה קבצים"],
     }),
     (items) => ({
@@ -380,6 +387,7 @@ export function checkStaleSessions(
       title: `🎵 פרויקט ללא סשן — ${p.name}`,
       message: `לפרויקט "${p.name}" לא נקבע סשן ב-${days}+ הימים האחרונים. האם הפרויקט בהתקדמות?`,
       relatedProjectId: p.id,
+      entityKey: `stale_session:${p.id}`,
       suggestedActions: ["קבע סשן", "עדכן סטטוס"],
     }),
     (items) => ({

@@ -221,6 +221,7 @@ export interface AgentAlert {
   source: "scheduled" | "manual" | "chat";
   status: AlertStatus;
   sentNotification: boolean;
+  entityKey: string | null;   // e.g. "payment_overdue:tx-id", "overdue_deadline:proj-id"
   createdAt: string;
   updatedAt: string;
 }
@@ -304,5 +305,10 @@ export interface AlertInput {
   metadata?: Record<string, unknown>;
   suggestedActions?: string[];
   source?: "scheduled" | "manual" | "chat";
+  /** Unique key identifying the specific entity this alert is about.
+   *  Format: "<type>:<entity-id>", e.g. "payment_overdue:tx-abc123"
+   *  Used for auto-resolve: if the entity is no longer problematic,
+   *  the alert is automatically marked handled on the next agent/check run. */
+  entityKey?: string | null;
 }
 

@@ -192,6 +192,36 @@ export async function GET(req: NextRequest) {
       ...checkStaleSessions(activeProjects, sessions),
     ];
 
+    // ── Auto-resolve: close alerts whose entity is no longer problematic ────
+    // Only affects alerts that have an entity_key — bulk/aggregate alerts (null key) are untouched.
+    let autoResolved = 0;
+    try {
+      const activeEntityKeys = new Set(
+        allInputs.filter((i) => i.entityKey).map((i) => i.entityKey!)
+      );
+      if (activeEntityKeys.size > 0) {
+        const { data: trackedAlerts } = await supabase
+          .from("agent_alerts")
+          .select("id, entity_key")
+          .eq("status", "new")
+          .not("entity_key", "is", null);
+
+        const toResolve = (trackedAlerts ?? [])
+          .filter((a) => a.entity_key && !activeEntityKeys.has(a.entity_key))
+          .map((a) => a.id);
+
+        if (toResolve.length > 0) {
+          await supabase
+            .from("agent_alerts")
+            .update({ status: "handled", updated_at: new Date().toISOString() })
+            .in("id", toResolve);
+          autoResolved = toResolve.length;
+        }
+      }
+    } catch (e) {
+      console.error("[agent/check] auto-resolve error:", e);
+    }
+
     // ── Persist with cooldown ────────────────────────────────────────────────
 
     const newAlerts: AgentAlert[] = [];
@@ -235,6 +265,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       checkedRules:       allInputs.length,
       newAlerts:          newAlerts.length,
+      autoResolved,
       notificationsSent,
       reportsTriggered,
       time:               now.toISOString(),
