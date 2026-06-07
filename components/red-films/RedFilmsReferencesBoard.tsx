@@ -15,10 +15,17 @@ interface RefImage {
   created_at:   string;
 }
 
-// Convert Dropbox share URL (dl=0) → direct image URL (raw=1)
+// Return a directly renderable image URL.
+// Routes already store dl.dropboxusercontent.com or /api/dropbox/stream — use as-is.
+// Legacy dl=0 URLs (old records) get the domain swap as fallback.
 function toDirectUrl(shareUrl: string): string {
   if (!shareUrl) return "";
-  return shareUrl.replace(/[?&]dl=0/, "?raw=1");
+  if (shareUrl.startsWith("/api/")) return shareUrl;
+  if (shareUrl.includes("dl.dropboxusercontent.com")) return shareUrl;
+  // Legacy: www.dropbox.com share link — convert
+  return shareUrl
+    .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+    .replace(/[?&]dl=0/, "");
 }
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────

@@ -80,7 +80,9 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     const uploaded = (await uploadRes.json()) as { path_display: string };
     const finalPath = uploaded.path_display;
 
-    // ── 2. Create share link ──────────────────────────────────────────────────
+    // ── 2. Create share link → convert to direct image URL ───────────────────
+    // Store a direct-renderable URL (dl.dropboxusercontent.com) so <img src> works.
+    // Fallback to the server-side stream route if share link fails.
     let dropboxUrl = "";
     try {
       const shareRes = await fetch(
@@ -91,14 +93,25 @@ export async function POST(req: NextRequest, ctx: Ctx) {
           body: JSON.stringify({ path: finalPath, settings: { requested_visibility: "public" } }),
         }
       );
+      let rawShareUrl = "";
       if (shareRes.ok) {
-        const sd = (await shareRes.json()) as { url: string };
-        dropboxUrl = sd.url;
+        rawShareUrl = ((await shareRes.json()) as { url: string }).url;
       } else {
         const sd = (await shareRes.json()) as { error?: { shared_link_already_exists?: { metadata?: { url?: string } } } };
-        dropboxUrl = sd?.error?.shared_link_already_exists?.metadata?.url ?? "";
+        rawShareUrl = sd?.error?.shared_link_already_exists?.metadata?.url ?? "";
       }
-    } catch { /* non-fatal */ }
+      if (rawShareUrl) {
+        // Convert to direct image URL: swap domain, strip dl=0 param
+        dropboxUrl = rawShareUrl
+          .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+          .replace(/[?&]dl=0/, "");
+      }
+    } catch { /* non-fatal — fall through to stream fallback */ }
+
+    // If share link failed for any reason, use the server-side stream route
+    if (!dropboxUrl) {
+      dropboxUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
+    }
 
     // ── 3. Save metadata to DB ────────────────────────────────────────────────
     const now = new Date().toISOString();
