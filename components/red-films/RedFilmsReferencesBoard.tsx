@@ -67,12 +67,13 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
       if (e.key === "Escape") { onClose(); return; }
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         e.preventDefault();
+        e.stopPropagation();
         if (e.key === "ArrowRight" && canGoRight) onNavigate(index + 1);
         if (e.key === "ArrowLeft"  && canGoLeft)  onNavigate(index - 1);
       }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true); // capture phase — runs before any other handler
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose, onNavigate, index, canGoRight, canGoLeft]);
 
   async function handleDelete() {
