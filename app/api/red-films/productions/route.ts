@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
         production_type:    body.production_type    ?? "קליפ",
         status:             "רעיון",
         artist_name:        body.artist_name        ?? "",
+        client_id:          body.client_id          ?? null,
+        client_name:        body.client_name        ?? "",
         photographer_name:  body.photographer_name  ?? "יאיר",
         client_source:      "פנימי - לייבל",
         collection_status:  "לא רלוונטי",

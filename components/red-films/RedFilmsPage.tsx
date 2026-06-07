@@ -21,15 +21,19 @@ function fmtNum(n: number) {
 
 // ── New Production Modal ──────────────────────────────────────────────────────
 
+type ClientOption = { id: string; name: string; type: string };
+
 function NewProductionModal({ onClose, onCreate }: {
   onClose: () => void;
   onCreate: (p: Production) => void;
 }) {
-  const [title,   setTitle]   = useState("");
-  const [type,    setType]    = useState("קליפ");
-  const [artist,  setArtist]  = useState("");
-  const [saving,  setSaving]  = useState(false);
-  const [err,     setErr]     = useState("");
+  const [title,          setTitle]          = useState("");
+  const [type,           setType]           = useState("קליפ");
+  const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null);
+  const [clients,        setClients]        = useState<ClientOption[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  const [saving,         setSaving]         = useState(false);
+  const [err,            setErr]            = useState("");
 
   const INPUT_S: React.CSSProperties = {
     background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 8,
@@ -37,16 +41,36 @@ function NewProductionModal({ onClose, onCreate }: {
     fontFamily: "inherit", width: "100%", boxSizing: "border-box",
   };
 
+  useEffect(() => {
+    fetch("/api/clients")
+      .then(r => r.json())
+      .then(d => setClients((d.clients ?? []).map((c: ClientOption) => ({ id: c.id, name: c.name, type: c.type }))))
+      .catch(() => setClients([]))
+      .finally(() => setClientsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) { setErr("שם ההפקה חובה"); return; }
+    if (!title.trim()) { setErr("יש להזין שם הפקה"); return; }
     setSaving(true);
     setErr("");
     try {
       const res = await fetch("/api/red-films/productions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), production_type: type, artist_name: artist.trim() }),
+        body: JSON.stringify({
+          title:        title.trim(),
+          production_type: type,
+          client_id:    selectedClient?.id   ?? null,
+          client_name:  selectedClient?.name ?? "",
+          artist_name:  selectedClient?.name ?? "",
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "יצירה נכשלה");
@@ -58,41 +82,63 @@ function NewProductionModal({ onClose, onCreate }: {
     }
   }
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return createPortal(
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9500, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 16, padding: "24px", width: "min(360px, 90vw)" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 16, padding: "24px", width: "min(380px, 90vw)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: "#F0F0F0", margin: 0 }}>🎬 הפקה חדשה</h2>
           <button onClick={onClose} style={{ color: "#555", background: "none", border: "none", fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+          {/* שם הפקה */}
           <div>
             <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 5 }}>שם ההפקה *</label>
             <input
               style={INPUT_S}
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="פרנציפ - קליפ"
+              placeholder="לדוגמה: פרנציפ - קליפ"
               autoFocus
             />
           </div>
+
+          {/* סוג הפקה */}
           <div>
             <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 5 }}>סוג הפקה</label>
             <select style={{ ...INPUT_S, cursor: "pointer" }} value={type} onChange={e => setType(e.target.value)}>
               {PRODUCTION_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
+
+          {/* אמן / לקוח */}
           <div>
-            <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 5 }}>אמן (אופציונלי)</label>
-            <input style={INPUT_S} value={artist} onChange={e => setArtist(e.target.value)} placeholder="שם האמן..." />
+            <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 5 }}>אמן / לקוח</label>
+            {clientsLoading ? (
+              <div style={{ fontSize: 12, color: "#555", padding: "8px 0" }}>טוען לקוחות...</div>
+            ) : clients.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#666", padding: "8px 0", fontStyle: "italic" }}>
+                לא נמצאו לקוחות. יש להוסיף לקוח בעמוד לקוחות.
+              </div>
+            ) : (
+              <select
+                style={{ ...INPUT_S, cursor: "pointer" }}
+                value={selectedClient?.id ?? ""}
+                onChange={e => {
+                  const found = clients.find(c => c.id === e.target.value) ?? null;
+                  setSelectedClient(found);
+                }}
+              >
+                <option value="">— ללא לקוח —</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                ))}
+              </select>
+            )}
           </div>
+
           {err && <div style={{ fontSize: 12, color: "#F87171" }}>{err}</div>}
+
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" onClick={onClose} style={{ padding: "8px 16px", borderRadius: 8, background: "none", border: "1px solid #333", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
               ביטול
