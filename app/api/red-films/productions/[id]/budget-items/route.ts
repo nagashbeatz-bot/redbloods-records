@@ -46,7 +46,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     if (error) throw error;
     return NextResponse.json({ item: data }, { status: 201 });
   } catch (e) {
-    console.error("[POST budget-items]", e);
-    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[POST budget-items]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
