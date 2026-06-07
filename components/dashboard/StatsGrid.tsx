@@ -479,7 +479,8 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
   const inMix    = projects.filter((p) => p.status === "במיקס").length;
   const onHold   = projects.filter((p) => p.status === "בהשהייה").length;
   const done     = projects.filter((p) => p.status === "הושלם").length;
-  const overdue  = projects.filter((p) => p.isOverdue && p.status !== "הושלם").length;
+  // Consistent with DashboardContent: exclude "בהשהייה" from overdue count
+  const overdue  = projects.filter((p) => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה").length;
   const dueSoon  = projects.filter((p) => {
     const d = daysUntilDeadline(p.deadline);
     return d !== null && d >= 0 && d <= 7 && p.status !== "הושלם";
@@ -490,7 +491,7 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
       {/* ── Desktop: 4/8-col grid ── */}
       <div className="hidden md:grid grid-cols-4 xl:grid-cols-9 gap-3">
         <StatCard label="סה״כ"          count={total}   color="#F0F0F0" icon="◈" />
-        <StatCard label="פעילים"        count={active}  color="#3B82F6" icon="▶"  sectionId="section-active" />
+        <StatCard label="פעילים"        count={active}  color="#3B82F6" icon="▶"  sectionId="section-all-active" />
         <StatCard label="מחכה למיקס"   count={waitMix} color="#F59E0B" icon="🎚" dim sectionId="section-wait-mix" />
         <StatCard label="במיקס"         count={inMix}   color="#A855F7" icon="🎛" dim sectionId="section-in-mix" />
         <StatCard label="בהשהייה"      count={onHold}  color="#6B7280" icon="⏸" dim sectionId="section-on-hold" />
@@ -508,7 +509,7 @@ export default function StatsGrid({ projects }: { projects: Project[] }) {
       {/* ── Mobile: 4 key pills + accordion ── */}
       <div className="md:hidden">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-          <MobileStatPill label="פעילים"       count={active}  color="#3B82F6" icon="▶"  sectionId="section-active" />
+          <MobileStatPill label="פעילים"       count={active}  color="#3B82F6" icon="▶"  sectionId="section-all-active" />
           <MobileStatPill label="עברו דדליין"  count={overdue} color="#EF4444" icon="⚠" dim sectionId="section-overdue" />
           <MobileStatPill label="קרוב לדדליין" count={dueSoon} color="#F97316" icon="⏳" dim sectionId="section-due-soon" />
           <MobileStatPill label="סה״כ"          count={total}   color="#888"    icon="◈" />

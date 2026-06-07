@@ -84,10 +84,17 @@ export default function DashboardContent() {
   }
 
   // ── Filters ────────────────────────────────────────────────────────────────
-  const overdue = projects.filter(
+  const overdueRaw = projects.filter(
     (p) => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה"
   );
-  const dueSoon = projects.filter((p) => {
+  // Most overdue first (most negative daysUntil)
+  const overdue = [...overdueRaw].sort((a, b) => {
+    const da = daysUntilDeadline(a.deadline) ?? 0;
+    const db = daysUntilDeadline(b.deadline) ?? 0;
+    return da - db;
+  });
+
+  const dueSoonRaw = projects.filter((p) => {
     const d = daysUntilDeadline(p.deadline);
     return (
       d !== null &&
@@ -97,6 +104,12 @@ export default function DashboardContent() {
       p.status !== "בהשהייה" &&
       !p.isOverdue
     );
+  });
+  // Soonest deadline first
+  const dueSoon = [...dueSoonRaw].sort((a, b) => {
+    const da = daysUntilDeadline(a.deadline) ?? 7;
+    const db = daysUntilDeadline(b.deadline) ?? 7;
+    return da - db;
   });
   const active     = projects.filter((p) => p.status === "בעבודה");
   const waitMix    = projects.filter((p) => p.status === "מחכה למיקס");
@@ -146,9 +159,11 @@ export default function DashboardContent() {
         </div>
       )}
 
-      {/* Active work row */}
+      {/* Active work row — id covers all active statuses for StatsGrid scroll */}
       {hasActiveRow && (
-        <SectionPair left={secActive} right={secWaitMix} />
+        <div id="section-all-active">
+          <SectionPair left={secActive} right={secWaitMix} />
+        </div>
       )}
 
       {/* Mix row */}
