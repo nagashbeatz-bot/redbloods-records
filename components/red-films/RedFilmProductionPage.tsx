@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, type CSSProperties, type ReactNode } 
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
+import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import RedFilmsReferencesBoard from "./RedFilmsReferencesBoard";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import RedFilmsStatusBadge, {
@@ -121,6 +122,8 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [trashConfirm, setTrashConfirm] = useState(false);
   const [trashing,     setTrashing]     = useState(false);
+
+  const player = usePlayerSafe();
 
   // Drafts
   const [draftSummary, setDraftSummary] = useState<Production | null>(null);
@@ -314,6 +317,57 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         }}>
           🎬 Red Films
         </div>
+
+        {/* Project audio + link — shown only when production is linked to a project */}
+        {prod.project_id && (() => {
+          const linkedProject = projects.find(p => p.id === prod.project_id);
+          if (!linkedProject) return null;
+          const latestAudio = getLatestAudioFile(linkedProject.files ?? []);
+          const isThisPlaying = player?.track?.projectId === prod.project_id && player?.playing;
+          const isThisLoaded  = player?.track?.projectId === prod.project_id;
+
+          async function handlePlay() {
+            if (!player || !latestAudio) return;
+            if (isThisLoaded) {
+              isThisPlaying ? player.pause() : player.resume();
+            } else {
+              const url = await getFreshPlayUrl(latestAudio);
+              player.play({ projectId: linkedProject!.id, projectName: linkedProject!.name, artist: linkedProject!.artist, fileName: latestAudio.name, url });
+            }
+          }
+
+          return (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+              {latestAudio && (
+                <button
+                  onClick={handlePlay}
+                  title={isThisPlaying ? "השהה" : `נגן — ${latestAudio.name}`}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", fontFamily: "inherit", border: "1px solid",
+                    background:   isThisLoaded ? "rgba(59,130,246,0.15)" : "none",
+                    color:        isThisLoaded ? "#60A5FA"               : "#888",
+                    borderColor:  isThisLoaded ? "rgba(59,130,246,0.4)"  : "#333",
+                  }}
+                >
+                  {isThisPlaying ? "⏸" : "▶"} {isThisPlaying ? "מנגן" : "נגן שיר"}
+                </button>
+              )}
+              <button
+                onClick={() => router.push(`/projects`)}
+                title={`פתח פרויקט: ${linkedProject.name}`}
+                style={{
+                  padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit", border: "1px solid #333",
+                  background: "none", color: "#60A5FA",
+                }}
+              >
+                ♫ {linkedProject.name}
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Trash button */}
         {prod.status !== "בוטל" && (
