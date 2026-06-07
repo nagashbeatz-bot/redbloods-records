@@ -24,7 +24,7 @@ function fmtNum(n: number) {
 type ClientOption = { id: string; name: string; type: string };
 type ProjectOption = { id: string; name: string; artist: string };
 
-const PLACEHOLDER_EXAMPLE = "לדוגמה: פרנציפ - קליפ";
+const PLACEHOLDER_EXAMPLE = "לדוגמה: פרנציפ";
 
 function NewProductionModal({ onClose, onCreate, projects }: {
   onClose:  () => void;
@@ -65,13 +65,13 @@ function NewProductionModal({ onClose, onCreate, projects }: {
 
   const selectedProject = projects.find(p => p.id === selectedProjectId) ?? null;
   const titlePlaceholder = selectedProject
-    ? `לדוגמה: ${selectedProject.name} - קליפ`
+    ? `לדוגמה: ${selectedProject.name}`
     : PLACEHOLDER_EXAMPLE;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = title.trim();
-    if (!trimmed || trimmed === PLACEHOLDER_EXAMPLE) {
+    if (!trimmed || trimmed.startsWith("לדוגמה")) {
       setErr("יש להזין שם הפקה");
       return;
     }
@@ -168,8 +168,7 @@ function NewProductionModal({ onClose, onCreate, projects }: {
                     setSelectedProjectId(newId);
                     const proj = projects.find(p => p.id === newId);
                     if (proj) {
-                      const suggested = `${proj.name} - קליפ`;
-                      // Auto-fill only if title is empty or still matches the previous auto-fill
+                      const suggested = proj.name;
                       if (title === "" || title === autoFilledRef.current) {
                         setTitle(suggested);
                         autoFilledRef.current = suggested;
