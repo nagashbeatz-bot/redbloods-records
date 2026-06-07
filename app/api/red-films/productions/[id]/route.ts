@@ -63,30 +63,50 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: "אין שדות לעדכון" }, { status: 400 });
     }
 
-    // אם הסטטוס משתנה ל"מבוטל" — מוחקים מ-Google Tasks את המשימות העתידיות של ההפקה
-    if (body.status === "מבוטל") {
+    // אם הסטטוס משתנה ל"מבוטל" — מטפלים במשימות הקשורות להפקה
+    if (body.status === "בוטל") {
       try {
         const today = new Date().toISOString().split("T")[0];
-        const { data: futureTasks } = await supabase
-          .from("tasks")
-          .select("id, calendar_event_id")
-          .eq("related_type", "red_film_production")
-          .eq("related_id", id)
-          .not("calendar_event_id", "is", null)
-          .gte("due_date", today);
 
-        if (futureTasks && futureTasks.length > 0) {
-          const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
-          if (await isConnected()) {
-            for (const t of futureTasks) {
-              if (t.calendar_event_id) {
-                try { await deleteGoogleTask(t.calendar_event_id); } catch { /* ignore */ }
+        // שולפים את כל המשימות של ההפקה
+        const { data: allTasks } = await supabase
+          .from("tasks")
+          .select("id, due_date, calendar_event_id, status")
+          .eq("related_type", "red_film_production")
+          .eq("related_id", id);
+
+        if (allTasks && allTasks.length > 0) {
+          let googleClient: { isConnected: () => Promise<boolean>; deleteGoogleTask: (id: string) => Promise<void> } | null = null;
+          let googleConnected = false;
+
+          // נטען פעם אחת
+          try {
+            googleClient = await import("@/lib/google-calendar");
+            googleConnected = await googleClient.isConnected();
+          } catch { /* ignore */ }
+
+          for (const t of allTasks) {
+            const isFuture = t.due_date != null && t.due_date >= today;
+            const isPast   = t.due_date != null && t.due_date < today;
+            const noDate   = t.due_date == null;
+
+            if (isPast) continue; // משימות עבר — לא נוגעים
+
+            if (isFuture) {
+              // עתידית: מבטלים בסופרבייס + מוחקים מגוגל אם יש
+              await supabase.from("tasks").update({ status: "בוטל", updated_at: new Date().toISOString() }).eq("id", t.id);
+              if (t.calendar_event_id && googleConnected && googleClient) {
+                try { await googleClient.deleteGoogleTask(t.calendar_event_id); } catch { /* ignore */ }
               }
+            } else if (noDate && !t.calendar_event_id) {
+              // ללא תאריך + ללא Google Task — מבטלים בסופרבייס בלבד
+              await supabase.from("tasks").update({ status: "בוטל", updated_at: new Date().toISOString() }).eq("id", t.id);
             }
+            // ללא תאריך + יש calendar_event_id — לא נוגעים
           }
         }
       } catch (gErr) {
-        console.warn("[PATCH production → מבוטל] Google Tasks cleanup failed (ignored):", gErr);
+        console.warn("[PATCH production → בוטל] tasks cleanup failed (ignored):", gErr);
       }
     }
 
