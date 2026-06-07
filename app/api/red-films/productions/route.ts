@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         artist_name:        body.artist_name        ?? "",
         client_id:          body.client_id          ?? null,
         client_name:        body.client_name        ?? "",
-        photographer_name:  body.photographer_name  ?? "יאיר",
+        photographer_name:  body.photographer_name  ?? "",
         client_source:      "פנימי - לייבל",
         collection_status:  "לא רלוונטי",
         created_at:         now,
