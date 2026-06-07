@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import RedFilmsReferencesBoard from "./RedFilmsReferencesBoard";
+import RedFilmsBudgetItems from "./RedFilmsBudgetItems";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import RedFilmsStatusBadge, {
   PRODUCTION_STATUSES,
@@ -539,12 +540,18 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                       סטטוס גבייה: <span style={{ color: "#CCC" }}>{prod.collection_status}</span>
                     </div>
                   )}
-                  <SDivider />
-                  <div style={{ fontSize: 11, color: "#3A3A3A", fontStyle: "italic" }}>
-                    פריטי תקציב מפורטים יתווספו בשלב הבא
-                  </div>
                 </div>
               )}
+            </SCard>
+
+            {/* 3b. תקציב מפורט */}
+            <SCard>
+              <SectionHeader title="תקציב מפורט" />
+              <RedFilmsBudgetItems
+                productionId={id}
+                generalBudget={prod.general_budget}
+                onBudgetUpdate={newBudget => setProd(p => p ? { ...p, general_budget: newBudget } : p)}
+              />
             </SCard>
 
             {/* 4. קבצים ועריכה */}
