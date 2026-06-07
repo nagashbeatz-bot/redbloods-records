@@ -30,19 +30,46 @@ function toDirectUrl(shareUrl: string): string {
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
-function Lightbox({ image, onClose, onDelete }: {
-  image:    RefImage;
-  onClose:  () => void;
-  onDelete: (id: string) => void;
+function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
+  images:     RefImage[];
+  index:      number;
+  onClose:    () => void;
+  onDelete:   (id: string) => void;
+  onNavigate: (newIndex: number) => void;
 }) {
-  const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const image = images[index];
+  const total = images.length;
+  const hasPrev = index > 0;
+  const hasNext = index < total - 1;
 
+  const [deleting,       setDeleting]       = useState(false);
+  const [confirmDelete,  setConfirmDelete]  = useState(false);
+  const [imgLoaded,      setImgLoaded]      = useState(false);
+
+  // Reset loaded state when image changes
+  useEffect(() => { setImgLoaded(false); setConfirmDelete(false); }, [index]);
+
+  // Preload adjacent images
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const preload = (i: number) => {
+      if (i < 0 || i >= images.length) return;
+      const img = new window.Image();
+      img.src = toStreamUrl(images[i].dropbox_path);
+    };
+    preload(index - 1);
+    preload(index + 1);
+  }, [images, index]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape")      { onClose(); return; }
+      if (e.key === "ArrowRight" && hasNext) onNavigate(index + 1);
+      if (e.key === "ArrowLeft"  && hasPrev) onNavigate(index - 1);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, onNavigate, index, hasPrev, hasNext]);
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -51,12 +78,28 @@ function Lightbox({ image, onClose, onDelete }: {
       const res = await fetch(`/api/red-films/references/${image.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       onDelete(image.id);
-      onClose();
+      // After delete: move to adjacent or close
+      const remaining = total - 1;
+      if (remaining === 0) { onClose(); }
+      else { onNavigate(Math.min(index, remaining - 1)); }
     } catch {
       setDeleting(false);
       setConfirmDelete(false);
     }
   }
+
+  const navBtnStyle = (disabled: boolean) => ({
+    position: "fixed" as const,
+    top: "50%", transform: "translateY(-50%)",
+    background: "rgba(20,20,20,0.85)", border: "1px solid #333",
+    borderRadius: "50%", width: 44, height: 44,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 20, color: disabled ? "#333" : "#CCC",
+    cursor: disabled ? "default" : "pointer",
+    fontFamily: "inherit", transition: "all 0.15s",
+    userSelect: "none" as const,
+    pointerEvents: disabled ? "none" as const : "auto" as const,
+  });
 
   return createPortal(
     <div
@@ -70,29 +113,69 @@ function Lightbox({ image, onClose, onDelete }: {
     >
       {/* Image */}
       <img
+        key={image.id}
         src={toStreamUrl(image.dropbox_path)}
         alt={image.file_name}
+        loading="eager"
         onClick={e => e.stopPropagation()}
+        onLoad={() => setImgLoaded(true)}
         style={{
-          maxWidth: "88vw", maxHeight: "84vh",
+          maxWidth: "82vw", maxHeight: "84vh",
           borderRadius: 12, objectFit: "contain",
           boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
+          opacity: imgLoaded ? 1 : 0.3,
+          transition: "opacity 0.2s",
         }}
       />
 
-      {/* Controls */}
+      {/* Prev arrow */}
+      <button
+        onClick={e => { e.stopPropagation(); if (hasPrev) onNavigate(index - 1); }}
+        style={{ ...navBtnStyle(!hasPrev), right: "auto", left: 16 }}
+      >
+        ‹
+      </button>
+
+      {/* Next arrow */}
+      <button
+        onClick={e => { e.stopPropagation(); if (hasNext) onNavigate(index + 1); }}
+        style={{ ...navBtnStyle(!hasNext), left: "auto", right: 16 }}
+      >
+        ›
+      </button>
+
+      {/* Top bar */}
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
+          position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
           display: "flex", gap: 10, alignItems: "center",
           background: "rgba(20,20,20,0.9)", border: "1px solid #2A2A2A",
           borderRadius: 12, padding: "8px 14px",
+          maxWidth: "min(600px, 80vw)",
         }}
       >
-        <span style={{ fontSize: 11, color: "#555", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {/* Counter */}
+        <span style={{ fontSize: 12, color: "#888", fontWeight: 700, whiteSpace: "nowrap" }}>
+          {index + 1} / {total}
+        </span>
+
+        {/* File name */}
+        <span style={{ fontSize: 11, color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
           {image.file_name}
         </span>
+
+        {/* Open in Dropbox */}
+        <a
+          href={toStreamUrl(image.dropbox_path)}
+          target="_blank" rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "1px solid #333", background: "none", color: "#60A5FA", textDecoration: "none", whiteSpace: "nowrap" }}
+        >
+          פתח ↗
+        </a>
+
+        {/* Delete */}
         <button
           onClick={handleDelete}
           disabled={deleting}
@@ -102,23 +185,21 @@ function Lightbox({ image, onClose, onDelete }: {
             background: confirmDelete ? "rgba(239,68,68,0.15)" : "none",
             color:      confirmDelete ? "#F87171"              : "#666",
             borderColor: confirmDelete ? "rgba(239,68,68,0.4)" : "#333",
-            transition: "all 0.15s",
+            transition: "all 0.15s", whiteSpace: "nowrap",
           }}
         >
-          {deleting ? "מוחק..." : confirmDelete ? "מחק לצמיתות?" : "🗑 מחק"}
+          {deleting ? "מוחק..." : confirmDelete ? "מחק?" : "🗑"}
         </button>
         {confirmDelete && !deleting && (
-          <button
-            onClick={() => setConfirmDelete(false)}
-            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "1px solid #333", background: "none", color: "#555" }}
-          >
+          <button onClick={() => setConfirmDelete(false)}
+            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "1px solid #333", background: "none", color: "#555" }}>
             ביטול
           </button>
         )}
-        <button
-          onClick={onClose}
-          style={{ marginRight: 4, color: "#555", background: "none", border: "none", fontSize: 18, cursor: "pointer", lineHeight: 1 }}
-        >
+
+        {/* Close */}
+        <button onClick={onClose}
+          style={{ color: "#555", background: "none", border: "none", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>
           ✕
         </button>
       </div>
@@ -192,7 +273,7 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
   const [uploading,  setUploading]  = useState(false);
   const [progress,   setProgress]   = useState(0);
   const [uploadErr,  setUploadErr]  = useState<string | null>(null);
-  const [lightbox,   setLightbox]   = useState<RefImage | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -285,6 +366,10 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
     setRefs(prev => prev.filter(r => r.id !== id));
   }
 
+  function handleLightboxDelete(id: string) {
+    setRefs(prev => prev.filter(r => r.id !== id));
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -350,7 +435,7 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
               {refs.map(ref => (
                 <div
                   key={ref.id}
-                  onClick={() => setLightbox(ref)}
+                  onClick={() => setLightboxIndex(refs.indexOf(ref))}
                   style={{
                     breakInside: "avoid",
                     marginBottom: 8,
@@ -406,11 +491,13 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
       )}
 
       {/* Lightbox */}
-      {lightbox && (
+      {lightboxIndex !== null && refs.length > 0 && (
         <Lightbox
-          image={lightbox}
-          onClose={() => setLightbox(null)}
-          onDelete={handleDelete}
+          images={refs}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onDelete={handleLightboxDelete}
+          onNavigate={setLightboxIndex}
         />
       )}
     </div>
