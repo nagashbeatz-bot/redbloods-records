@@ -127,6 +127,46 @@ function Lightbox({ image, onClose, onDelete }: {
   );
 }
 
+// Thumbnail URL via the server proxy (fast, cached, ~50KB vs full size)
+function toThumbUrl(dropboxPath: string): string {
+  return `/api/red-films/references/thumbnail?path=${encodeURIComponent(dropboxPath)}`;
+}
+
+// ── Grid image with skeleton ──────────────────────────────────────────────────
+
+function RefGridImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+  if (errored) return null;
+  return (
+    <div style={{ position: "relative", width: "100%", minHeight: 80, background: "#111", borderRadius: 8 }}>
+      {/* Skeleton shimmer shown until image loads */}
+      {!loaded && (
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: 8,
+          background: "linear-gradient(90deg, #1A1A1A 25%, #252525 50%, #1A1A1A 75%)",
+          backgroundSize: "200% 100%",
+          animation: "rb-shimmer 1.4s ease infinite",
+        }} />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => setErrored(true)}
+        style={{
+          display: "block", width: "100%", height: "auto",
+          opacity: loaded ? 1 : 0,
+          transition: "opacity 0.25s",
+          borderRadius: 8,
+        }}
+      />
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function RedFilmsReferencesBoard({ productionId }: { productionId: string }) {
@@ -235,6 +275,7 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
 
   return (
     <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, padding: "18px 20px" }}>
+      <style>{`@keyframes rb-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -305,15 +346,13 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
                     position: "relative",
                     background: "#111",
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.opacity = "0.85")}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = "0.82")}
                   onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
                 >
-                  <img
-                    src={toDirectUrl(ref.dropbox_url)}
+                  {/* Thumbnail from server proxy — small JPEG, cached 1hr */}
+                  <RefGridImage
+                    src={toThumbUrl(ref.dropbox_path)}
                     alt={ref.file_name}
-                    loading="lazy"
-                    style={{ display: "block", width: "100%", height: "auto" }}
-                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                 </div>
               ))}
