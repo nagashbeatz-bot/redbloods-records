@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, type CSSProperties, type ReactNode } 
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
+import RedFilmsReferencesBoard from "./RedFilmsReferencesBoard";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import RedFilmsStatusBadge, {
   PRODUCTION_STATUSES,
@@ -734,6 +735,11 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
             </SCard>
 
           </div>{/* end right column */}
+        </div>
+
+        {/* ── References board — full width below both columns ── */}
+        <div style={{ marginTop: 16 }}>
+          <RedFilmsReferencesBoard productionId={id} />
         </div>
       </div>
 
