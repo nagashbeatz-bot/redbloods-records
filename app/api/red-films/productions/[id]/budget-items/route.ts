@@ -32,11 +32,12 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       .from("red_films_budget_items")
       .insert({
         production_id: id,
-        name: body.name ?? "",
-        category: body.category ?? "",
+        title: body.title ?? "",
+        category: body.category ?? "אחר",
         planned_amount: Number(body.planned_amount) || 0,
         actual_amount: Number(body.actual_amount) || 0,
-        status: body.status ?? "פעיל",
+        vendor_name: body.vendor_name ?? "",
+        status: body.status ?? "מתוכנן",
         notes: body.notes ?? "",
         created_at: now,
         updated_at: now,
@@ -46,8 +47,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     if (error) throw error;
     return NextResponse.json({ item: data }, { status: 201 });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[POST budget-items]", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[POST budget-items]", e);
+    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
   }
 }

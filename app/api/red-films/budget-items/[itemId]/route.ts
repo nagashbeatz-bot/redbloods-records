@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 type Ctx = { params: Promise<{ itemId: string }> };
 
 const ALLOWED = new Set([
-  "name", "category", "planned_amount", "actual_amount", "status", "notes",
+  "title", "category", "planned_amount", "actual_amount", "vendor_name", "status", "notes",
 ]);
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {

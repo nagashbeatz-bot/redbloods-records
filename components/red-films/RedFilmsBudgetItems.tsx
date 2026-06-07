@@ -8,10 +8,11 @@ import { createPortal } from "react-dom";
 interface BudgetItem {
   id: string;
   production_id: string;
-  name: string;
+  title: string;
   category: string;
   planned_amount: number;
   actual_amount: number;
+  vendor_name: string;
   status: string;
   notes: string;
   created_at: string;
@@ -31,7 +32,7 @@ const CATEGORIES = [
   "שחקנים / מודלים", "קייטרינג", "הובלה / לוגיסטיקה", "שיווק", "אחר",
 ];
 
-const ITEM_STATUSES = ["פעיל", "בוטל"];
+const ITEM_STATUSES = ["מתוכנן", "שולם", "בוטל"];
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
@@ -195,9 +196,10 @@ function ItemRow({
   async function handleSave() {
     setSaving(true);
     await onSave(item.id, {
-      name: draft.name, category: draft.category,
+      title: draft.title, category: draft.category,
       planned_amount: Number(draft.planned_amount) || 0,
       actual_amount: Number(draft.actual_amount) || 0,
+      vendor_name: draft.vendor_name,
       status: draft.status, notes: draft.notes,
     });
     setSaving(false);
@@ -205,13 +207,14 @@ function ItemRow({
   }
 
   const isCancelled = item.status === "בוטל";
+  const isPaid = item.status === "שולם";
 
   if (editing) {
     return (
       <tr style={{ background: "#1A1A1A" }}>
         <td style={{ padding: "8px 10px" }}>
-          <input style={{ ...INPUT_S, width: "100%" }} value={draft.name}
-            onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
+          <input style={{ ...INPUT_S, width: "100%" }} value={draft.title}
+            onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} />
         </td>
         <td style={{ padding: "8px 10px" }}>
           <select style={{ ...SELECT_S, width: "100%" }} value={draft.category}
@@ -251,10 +254,14 @@ function ItemRow({
     );
   }
 
+  const statusColor = isCancelled ? "#555" : isPaid ? "#22C55E" : "#60A5FA";
+  const statusBg    = isCancelled ? "#1A1A1A" : isPaid ? "rgba(34,197,94,0.1)" : "rgba(96,165,250,0.1)";
+  const statusBorder= isCancelled ? "#2A2A2A" : isPaid ? "rgba(34,197,94,0.3)" : "rgba(96,165,250,0.3)";
+
   return (
     <tr style={{ opacity: isCancelled ? 0.45 : 1, borderBottom: "1px solid #1E1E1E" }}>
       <td style={{ padding: "9px 10px", fontSize: 13, color: isCancelled ? "#555" : "#CCC", textDecoration: isCancelled ? "line-through" : "none" }}>
-        {item.name || "—"}
+        {item.title || "—"}
       </td>
       <td style={{ padding: "9px 10px", fontSize: 12, color: "#666" }}>
         {item.category || "—"}
@@ -268,9 +275,7 @@ function ItemRow({
       <td style={{ padding: "9px 10px" }}>
         <span style={{
           fontSize: 11, fontWeight: 700,
-          color: isCancelled ? "#555" : "#22C55E",
-          background: isCancelled ? "#1A1A1A" : "rgba(34,197,94,0.1)",
-          border: `1px solid ${isCancelled ? "#2A2A2A" : "rgba(34,197,94,0.3)"}`,
+          color: statusColor, background: statusBg, border: `1px solid ${statusBorder}`,
           borderRadius: 6, padding: "2px 8px",
         }}>
           {item.status}
@@ -298,17 +303,17 @@ function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promis
   const [open, setOpen]   = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft]   = useState({
-    name: "", category: CATEGORIES[0], planned_amount: 0, actual_amount: 0,
-    status: "פעיל", notes: "",
+    title: "", category: CATEGORIES[0], planned_amount: 0, actual_amount: 0,
+    vendor_name: "", status: "מתוכנן", notes: "",
   });
 
   async function handleAdd() {
-    if (!draft.name.trim()) return;
+    if (!draft.title.trim()) return;
     setSaving(true);
     await onAdd(draft);
     setSaving(false);
     setOpen(false);
-    setDraft({ name: "", category: CATEGORIES[0], planned_amount: 0, actual_amount: 0, status: "פעיל", notes: "" });
+    setDraft({ title: "", category: CATEGORIES[0], planned_amount: 0, actual_amount: 0, vendor_name: "", status: "מתוכנן", notes: "" });
   }
 
   if (!open) {
@@ -336,8 +341,8 @@ function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promis
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>שם הפריט *</div>
-          <input style={INPUT_S} value={draft.name} placeholder="צלם, ציוד, לוקיישן..."
-            onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
+          <input style={INPUT_S} value={draft.title} placeholder="צלם, ציוד, לוקיישן..."
+            onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} />
         </div>
         <div>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>קטגוריה</div>
@@ -364,8 +369,8 @@ function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promis
           style={{ fontSize: 12, color: "#888", background: "none", border: "1px solid #333", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "6px 14px" }}>
           ביטול
         </button>
-        <button onClick={handleAdd} disabled={saving || !draft.name.trim()}
-          style={{ fontSize: 12, color: "#FFF", background: "#3B82F6", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "6px 16px", fontWeight: 700, opacity: saving || !draft.name.trim() ? 0.6 : 1 }}>
+        <button onClick={handleAdd} disabled={saving || !draft.title.trim()}
+          style={{ fontSize: 12, color: "#FFF", background: "#3B82F6", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "6px 16px", fontWeight: 700, opacity: saving || !draft.title.trim() ? 0.6 : 1 }}>
           {saving ? "מוסיף..." : "הוסף"}
         </button>
       </div>
