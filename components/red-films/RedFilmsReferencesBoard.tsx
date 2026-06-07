@@ -104,6 +104,7 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
     fontFamily: "inherit", transition: "all 0.15s",
     userSelect: "none" as const,
     pointerEvents: disabled ? "none" as const : "auto" as const,
+    direction: "ltr" as const,
   });
 
   return createPortal(
