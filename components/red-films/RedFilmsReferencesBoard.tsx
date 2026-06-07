@@ -109,7 +109,7 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
 
   return createPortal(
     <div
-      onClick={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 9800,
         background: "rgba(0,0,0,0.92)", backdropFilter: "blur(6px)",
