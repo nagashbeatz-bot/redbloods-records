@@ -80,35 +80,70 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     const uploaded = (await uploadRes.json()) as { path_display: string };
     const finalPath = uploaded.path_display;
 
-    // ── 2. Create share link → convert to direct image URL ───────────────────
-    // Store a direct-renderable URL (dl.dropboxusercontent.com) so <img src> works.
-    // Fallback to the server-side stream route if share link fails.
+    // ── 2. Generate thumbnail → upload to Dropbox → get CDN URL ─────────────
+    // We store a small thumbnail CDN URL in dropbox_url so the grid loads fast
+    // without a server proxy. The full image stays at dropbox_path / stream route.
     let dropboxUrl = "";
     try {
-      const shareRes = await fetch(
-        "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
-        {
+      // 2a. Get thumbnail binary from Dropbox (w640h480 JPEG)
+      const thumbRes = await fetch("https://content.dropboxapi.com/2/files/get_thumbnail", {
+        method: "POST",
+        headers: {
+          Authorization:     `Bearer ${token}`,
+          "Dropbox-API-Arg": dropboxArg({
+            path:   finalPath,
+            format: { ".tag": "jpeg" },
+            size:   { ".tag": "w640h480" },
+            mode:   { ".tag": "fitone_way" },
+          }),
+        },
+      });
+
+      if (thumbRes.ok) {
+        const thumbBuffer = await thumbRes.arrayBuffer();
+        const thumbFileName = `${ts}_thumb_${safeName.replace(/\.[^.]+$/, "")}.jpg`;
+        const thumbPath = `/Red Films/Productions/${productionId}/references/.thumbs/${thumbFileName}`;
+
+        // 2b. Upload thumbnail to Dropbox
+        const thumbUploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ path: finalPath, settings: { requested_visibility: "public" } }),
+          headers: {
+            Authorization:     `Bearer ${token}`,
+            "Content-Type":    "application/octet-stream",
+            "Dropbox-API-Arg": dropboxArg({ path: thumbPath, mode: "add", autorename: true, mute: true }),
+          },
+          body: thumbBuffer,
+        });
+
+        if (thumbUploadRes.ok) {
+          const thumbUploaded = (await thumbUploadRes.json()) as { path_display: string };
+
+          // 2c. Get share link for thumbnail → convert to CDN URL
+          const thumbShareRes = await fetch(
+            "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ path: thumbUploaded.path_display, settings: { requested_visibility: "public" } }),
+            }
+          );
+          let rawThumbUrl = "";
+          if (thumbShareRes.ok) {
+            rawThumbUrl = ((await thumbShareRes.json()) as { url: string }).url;
+          } else {
+            const sd = (await thumbShareRes.json()) as { error?: { shared_link_already_exists?: { metadata?: { url?: string } } } };
+            rawThumbUrl = sd?.error?.shared_link_already_exists?.metadata?.url ?? "";
+          }
+          if (rawThumbUrl) {
+            dropboxUrl = rawThumbUrl
+              .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+              .replace(/[?&]dl=0/, "");
+          }
         }
-      );
-      let rawShareUrl = "";
-      if (shareRes.ok) {
-        rawShareUrl = ((await shareRes.json()) as { url: string }).url;
-      } else {
-        const sd = (await shareRes.json()) as { error?: { shared_link_already_exists?: { metadata?: { url?: string } } } };
-        rawShareUrl = sd?.error?.shared_link_already_exists?.metadata?.url ?? "";
-      }
-      if (rawShareUrl) {
-        // Convert to direct image URL: swap domain, strip dl=0 param
-        dropboxUrl = rawShareUrl
-          .replace("www.dropbox.com", "dl.dropboxusercontent.com")
-          .replace(/[?&]dl=0/, "");
       }
     } catch { /* non-fatal — fall through to stream fallback */ }
 
-    // If share link failed for any reason, use the server-side stream route
+    // Fallback: no thumbnail → use stream route (served via proxy)
     if (!dropboxUrl) {
       dropboxUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
     }

@@ -70,7 +70,7 @@ function Lightbox({ image, onClose, onDelete }: {
     >
       {/* Image */}
       <img
-        src={toDirectUrl(image.dropbox_url)}
+        src={toStreamUrl(image.dropbox_path)}
         alt={image.file_name}
         onClick={e => e.stopPropagation()}
         style={{
@@ -127,20 +127,28 @@ function Lightbox({ image, onClose, onDelete }: {
   );
 }
 
-// Thumbnail URL via the server proxy (fast, cached, ~50KB vs full size)
+// Thumbnail proxy URL — used as fallback when dropbox_url is unavailable
 function toThumbUrl(dropboxPath: string): string {
   return `/api/red-films/references/thumbnail?path=${encodeURIComponent(dropboxPath)}`;
 }
 
+// Full-resolution stream URL for lightbox
+function toStreamUrl(dropboxPath: string): string {
+  return `/api/dropbox/stream?path=${encodeURIComponent(dropboxPath)}`;
+}
+
 // ── Grid image with skeleton ──────────────────────────────────────────────────
 
-function RefGridImage({ src, alt }: { src: string; alt: string }) {
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
+function RefGridImage({ src, fallbackSrc, alt }: { src: string; fallbackSrc: string; alt: string }) {
+  const [loaded,   setLoaded]   = useState(false);
+  const [errored,  setErrored]  = useState(false);
+  const [useFallback, setUseFallback] = useState(false);
+
+  const activeSrc = useFallback ? fallbackSrc : src;
   if (errored) return null;
+
   return (
     <div style={{ position: "relative", width: "100%", minHeight: 80, background: "#111", borderRadius: 8 }}>
-      {/* Skeleton shimmer shown until image loads */}
       {!loaded && (
         <div style={{
           position: "absolute", inset: 0, borderRadius: 8,
@@ -150,12 +158,18 @@ function RefGridImage({ src, alt }: { src: string; alt: string }) {
         }} />
       )}
       <img
-        src={src}
+        src={activeSrc}
         alt={alt}
         loading="lazy"
         decoding="async"
         onLoad={() => setLoaded(true)}
-        onError={() => setErrored(true)}
+        onError={() => {
+          if (!useFallback && fallbackSrc && fallbackSrc !== src) {
+            setUseFallback(true); // retry with proxy
+          } else {
+            setErrored(true);     // both failed → hide
+          }
+        }}
         style={{
           display: "block", width: "100%", height: "auto",
           opacity: loaded ? 1 : 0,
@@ -349,9 +363,10 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
                   onMouseEnter={e => (e.currentTarget.style.opacity = "0.82")}
                   onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
                 >
-                  {/* Thumbnail from server proxy — small JPEG, cached 1hr */}
+                  {/* Primary: CDN URL (direct, fast). Fallback: thumbnail proxy */}
                   <RefGridImage
-                    src={toThumbUrl(ref.dropbox_path)}
+                    src={toDirectUrl(ref.dropbox_url)}
+                    fallbackSrc={toThumbUrl(ref.dropbox_path)}
                     alt={ref.file_name}
                   />
                 </div>

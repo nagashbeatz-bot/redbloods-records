@@ -43,8 +43,9 @@ export async function GET(req: NextRequest) {
   );
 
   if (!res.ok) {
-    // Thumbnail unavailable (e.g. unsupported format) — tell client to fall back
-    return new NextResponse(null, { status: 404 });
+    // Thumbnail unavailable — redirect to stream route so the full image shows instead of nothing
+    const streamUrl = `/api/dropbox/stream?path=${encodeURIComponent(path)}`;
+    return NextResponse.redirect(new URL(streamUrl, req.url), 302);
   }
 
   const contentType = res.headers.get("Content-Type") ?? "image/jpeg";
