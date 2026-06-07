@@ -89,13 +89,13 @@ function StatCard({ label, count, color, icon, dim, sectionId }: StatCardProps) 
       onMouseLeave={(e) => { if (!clickable) return; const el = e.currentTarget as HTMLDivElement; el.style.borderColor = "#252525"; el.style.background = "#1A1A1A"; }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
-        <span style={{ fontSize: 11, fontWeight: 500, color: "#666", lineHeight: 1.3 }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 500, color: "#777", lineHeight: 1.3 }}>{label}</span>
         <span style={{ fontSize: 15, opacity: 0.6, flexShrink: 0, lineHeight: 1 }}>{icon}</span>
       </div>
       <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color }}>
         {count}
       </div>
-      <div style={{ fontSize: 11, color: clickable ? "#4A4A4A" : "transparent", userSelect: "none", lineHeight: 1 }}>
+      <div style={{ fontSize: 11, color: clickable ? "#555" : "transparent", userSelect: "none", lineHeight: 1 }}>
         ↓ לצפייה
       </div>
     </div>
@@ -122,7 +122,7 @@ function MobileStatPill({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 10, color: "#555", fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 11, color: "#666", fontWeight: 600 }}>{label}</span>
         <span style={{ fontSize: 13, opacity: dim && count === 0 ? 0.3 : 0.7 }}>{icon}</span>
       </div>
       <div style={{

@@ -120,7 +120,7 @@ export default function DailyHeader() {
           </span>
         )}
         {overdue === 0 && active === 0 && (
-          <span className="text-sm" style={{ color: "#555" }}>הכל תחת שליטה 🎵</span>
+          <span className="text-sm" style={{ color: "#666" }}>הכל תחת שליטה 🎵</span>
         )}
       </div>
 

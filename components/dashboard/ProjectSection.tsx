@@ -102,7 +102,7 @@ function ProjectRow({ p, showDeadline, isMobile }: { p: Project; showDeadline: b
 
           {/* Row 2: artist */}
           {p.artist && (
-            <div style={{ fontSize: 12, color: "#666", textAlign: "right" }}>
+            <div style={{ fontSize: 13, color: "#777", textAlign: "right" }}>
               {p.artist}
             </div>
           )}
@@ -115,10 +115,10 @@ function ProjectRow({ p, showDeadline, isMobile }: { p: Project; showDeadline: b
             {p.isOverdue && p.status !== "הושלם" && <OverdueTag small />}
             {showDueSoon && <DueSoonTag days={days!} small />}
             {showDeadline && p.deadline && !p.isOverdue && !showDueSoon && (
-              <span style={{ fontSize: 11, color: "#555" }}>{deadlineLabel(p.deadline)}</span>
+              <span style={{ fontSize: 12, color: "#666" }}>{deadlineLabel(p.deadline)}</span>
             )}
             {showDeadline && p.deadline && p.isOverdue && (
-              <span style={{ fontSize: 11, color: "#EF4444" }}>{deadlineLabel(p.deadline)}</span>
+              <span style={{ fontSize: 12, color: "#EF4444" }}>{deadlineLabel(p.deadline)}</span>
             )}
           </div>
         </button>
@@ -129,8 +129,8 @@ function ProjectRow({ p, showDeadline, isMobile }: { p: Project; showDeadline: b
   // ── Desktop: horizontal row ───────────────────────────────────────────────
   return (
     <div
-      className="flex items-center justify-between px-4 py-3 rounded-xl border transition-all"
-      style={{ background: "#1A1A1A", borderColor: "#252525" }}
+      className="flex items-center justify-between px-4 rounded-xl border transition-all"
+      style={{ background: "#1A1A1A", borderColor: "#252525", paddingTop: 13, paddingBottom: 13 }}
       onMouseEnter={(e) => {
         const el = e.currentTarget as HTMLDivElement;
         el.style.borderColor = "#333";
@@ -154,8 +154,8 @@ function ProjectRow({ p, showDeadline, isMobile }: { p: Project; showDeadline: b
         style={{ background: "none", border: "none", cursor: "pointer", textAlign: "right", padding: 0 }}
       >
         <div className="min-w-0">
-          <div className="font-medium text-sm truncate" style={{ color: "#E8E8E8" }}>{p.name}</div>
-          <div className="text-xs mt-0.5 truncate" style={{ color: "#666" }}>{p.artist}</div>
+          <div className="font-medium truncate" style={{ fontSize: 15, color: "#E8E8E8" }}>{p.name}</div>
+          <div className="truncate" style={{ fontSize: 13, color: "#777", marginTop: 2 }}>{p.artist}</div>
         </div>
       </button>
 
@@ -165,10 +165,10 @@ function ProjectRow({ p, showDeadline, isMobile }: { p: Project; showDeadline: b
         {p.isOverdue && p.status !== "הושלם" && <OverdueTag small />}
         {showDueSoon && <DueSoonTag days={days!} small />}
         {showDeadline && p.deadline && !p.isOverdue && !showDueSoon && (
-          <span className="text-xs" style={{ color: "#555" }}>{deadlineLabel(p.deadline)}</span>
+          <span style={{ fontSize: 12, color: "#666" }}>{deadlineLabel(p.deadline)}</span>
         )}
         {showDeadline && p.deadline && p.isOverdue && (
-          <span className="text-xs" style={{ color: "#EF4444" }}>{deadlineLabel(p.deadline)}</span>
+          <span style={{ fontSize: 12, color: "#EF4444" }}>{deadlineLabel(p.deadline)}</span>
         )}
       </div>
     </div>
