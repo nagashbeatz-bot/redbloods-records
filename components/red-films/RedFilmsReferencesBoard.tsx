@@ -39,8 +39,9 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
 }) {
   const image = images[index];
   const total = images.length;
-  const hasPrev = index > 0;
-  const hasNext = index < total - 1;
+  // ימין = הבא (index גדול יותר), שמאל = קודם (index קטן יותר)
+  const canGoRight = index < total - 1;
+  const canGoLeft  = index > 0;
 
   const [deleting,       setDeleting]       = useState(false);
   const [confirmDelete,  setConfirmDelete]  = useState(false);
@@ -63,13 +64,16 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
   // Keyboard navigation
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape")      { onClose(); return; }
-      if (e.key === "ArrowRight" && hasNext) onNavigate(index + 1);
-      if (e.key === "ArrowLeft"  && hasPrev) onNavigate(index - 1);
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (e.key === "ArrowRight" && canGoRight) onNavigate(index + 1);
+        if (e.key === "ArrowLeft"  && canGoLeft)  onNavigate(index - 1);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, onNavigate, index, hasPrev, hasNext]);
+  }, [onClose, onNavigate, index, canGoRight, canGoLeft]);
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -128,18 +132,18 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
         }}
       />
 
-      {/* Prev arrow */}
+      {/* Left arrow — קודם (index - 1) */}
       <button
-        onClick={e => { e.stopPropagation(); if (hasPrev) onNavigate(index - 1); }}
-        style={{ ...navBtnStyle(!hasPrev), right: "auto", left: 16 }}
+        onClick={e => { e.stopPropagation(); if (canGoLeft) onNavigate(index - 1); }}
+        style={{ ...navBtnStyle(!canGoLeft), right: "auto", left: 16 }}
       >
         ‹
       </button>
 
-      {/* Next arrow */}
+      {/* Right arrow — הבא (index + 1) */}
       <button
-        onClick={e => { e.stopPropagation(); if (hasNext) onNavigate(index + 1); }}
-        style={{ ...navBtnStyle(!hasNext), left: "auto", right: 16 }}
+        onClick={e => { e.stopPropagation(); if (canGoRight) onNavigate(index + 1); }}
+        style={{ ...navBtnStyle(!canGoRight), left: "auto", right: 16 }}
       >
         ›
       </button>
