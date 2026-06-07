@@ -63,6 +63,33 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: "אין שדות לעדכון" }, { status: 400 });
     }
 
+    // אם הסטטוס משתנה ל"מבוטל" — מוחקים מ-Google Tasks את המשימות העתידיות של ההפקה
+    if (body.status === "מבוטל") {
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        const { data: futureTasks } = await supabase
+          .from("tasks")
+          .select("id, calendar_event_id")
+          .eq("related_type", "red_film_production")
+          .eq("related_id", id)
+          .not("calendar_event_id", "is", null)
+          .gte("due_date", today);
+
+        if (futureTasks && futureTasks.length > 0) {
+          const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
+          if (await isConnected()) {
+            for (const t of futureTasks) {
+              if (t.calendar_event_id) {
+                try { await deleteGoogleTask(t.calendar_event_id); } catch { /* ignore */ }
+              }
+            }
+          }
+        }
+      } catch (gErr) {
+        console.warn("[PATCH production → מבוטל] Google Tasks cleanup failed (ignored):", gErr);
+      }
+    }
+
     const { data, error } = await supabase
       .from("red_films_productions")
       .update(patch)
