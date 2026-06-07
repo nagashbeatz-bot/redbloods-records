@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import DatePickerInput from "@/components/ui/DatePickerInput";
@@ -117,6 +118,8 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
   const [saving,  setSaving]  = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [trashConfirm, setTrashConfirm] = useState(false);
+  const [trashing,     setTrashing]     = useState(false);
 
   // Drafts
   const [draftSummary, setDraftSummary] = useState<Production | null>(null);
@@ -233,6 +236,13 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
     if (r) setEditing(null);
   }
 
+  async function moveToTrash() {
+    setTrashing(true);
+    const r = await patch({ status: "בוטל" });
+    setTrashing(false);
+    if (r) router.push("/red-films");
+  }
+
   const projectName = prod?.project_id
     ? (projects.find(p => p.id === prod.project_id)?.name ?? null)
     : null;
@@ -303,6 +313,22 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         }}>
           🎬 Red Films
         </div>
+
+        {/* Trash button */}
+        {prod.status !== "בוטל" && (
+          <button
+            onClick={() => setTrashConfirm(true)}
+            style={{
+              flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
+              padding: "6px 14px", borderRadius: 8,
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)",
+              color: "#F87171", fontSize: 12, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            🗑️ העבר לסל
+          </button>
+        )}
       </div>
 
       {/* ── Error banner ── */}
@@ -710,6 +736,44 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
           </div>{/* end right column */}
         </div>
       </div>
+
+      {/* ── Trash confirmation modal ── */}
+      {trashConfirm && typeof window !== "undefined" && createPortal(
+        <div
+          onClick={() => { if (!trashing) setTrashConfirm(false); }}
+          style={{ position: "fixed", inset: 0, zIndex: 9500, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 16, padding: "28px 24px", width: "min(400px, 90vw)" }}
+          >
+            <h2 style={{ fontSize: 16, fontWeight: 800, color: "#F0F0F0", margin: "0 0 12px" }}>
+              העברת הפקה לסל מיחזור
+            </h2>
+            <p style={{ fontSize: 13, color: "#888", lineHeight: 1.7, margin: "0 0 24px" }}>
+              אתה בטוח שברצונך להעביר את ההפקה הזו לסל המיחזור?<br />
+              ההפקה תוסתר מהרשימה הראשית, אך לא תימחק לצמיתות.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setTrashConfirm(false)}
+                disabled={trashing}
+                style={{ padding: "8px 18px", borderRadius: 8, background: "none", border: "1px solid #333", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                ביטול
+              </button>
+              <button
+                onClick={moveToTrash}
+                disabled={trashing}
+                style={{ padding: "8px 20px", borderRadius: 8, background: "#EF4444", border: "none", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: trashing ? 0.7 : 1 }}
+              >
+                {trashing ? "מעביר..." : "כן, העבר לסל"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

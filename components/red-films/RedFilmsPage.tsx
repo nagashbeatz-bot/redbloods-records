@@ -127,6 +127,7 @@ export default function RedFilmsPage() {
   const [productions, setProductions] = useState<Production[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [creatingNew, setCreatingNew] = useState(false);
+  const [filter,      setFilter]      = useState<"פעילות" | "מבוטלות" | "הכל">("פעילות");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,12 +150,19 @@ export default function RedFilmsPage() {
     router.push(`/red-films/${p.id}`);
   }
 
-  // ── Summary counts ──────────────────────────────────────────────────────────
-  const total      = productions.length;
-  const inPlanning = productions.filter(p => p.status === "בתכנון").length;
-  const shootSet   = productions.filter(p => p.status === "יום צילום נקבע").length;
-  const inEdit     = productions.filter(p => ["בעריכה", "נשלחה גרסה", "תיקונים"].includes(p.status)).length;
-  const published  = productions.filter(p => p.status === "פורסם").length;
+  // ── Summary counts (active only) ────────────────────────────────────────────
+  const active     = productions.filter(p => p.status !== "בוטל");
+  const total      = active.length;
+  const inPlanning = active.filter(p => p.status === "בתכנון").length;
+  const shootSet   = active.filter(p => p.status === "יום צילום נקבע").length;
+  const inEdit     = active.filter(p => ["בעריכה", "נשלחה גרסה", "תיקונים"].includes(p.status)).length;
+  const published  = active.filter(p => p.status === "פורסם").length;
+
+  const visible = filter === "פעילות"
+    ? productions.filter(p => p.status !== "בוטל")
+    : filter === "מבוטלות"
+    ? productions.filter(p => p.status === "בוטל")
+    : productions;
 
   return (
     <div style={{ padding: "20px 16px 100px", maxWidth: 1100, margin: "0 auto" }}>
@@ -191,20 +199,46 @@ export default function RedFilmsPage() {
         <SummaryCard label="פורסם"               value={published}  color="#4ADE80" />
       </div>
 
+      {/* ── Filter tabs ── */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {(["פעילות", "מבוטלות", "הכל"] as const).map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              padding: "5px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit", border: "1px solid",
+              background: filter === f ? "#252525" : "none",
+              color:      filter === f ? "#E8E8E8"  : "#555",
+              borderColor: filter === f ? "#444"    : "#2A2A2A",
+              transition: "all 0.15s",
+            }}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
       {/* ── Productions table ── */}
       {loading ? (
         <div style={{ color: "#555", fontSize: 13, padding: "40px 0", textAlign: "center" }}>טוען הפקות...</div>
-      ) : productions.length === 0 ? (
+      ) : visible.length === 0 ? (
         <div style={{ background: "#1A1A1A", border: "1px dashed #2A2A2A", borderRadius: 14, padding: "48px 24px", textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>🎬</div>
-          <div style={{ fontSize: 15, color: "#888", fontWeight: 600, marginBottom: 6 }}>אין הפקות עדיין</div>
-          <div style={{ fontSize: 13, color: "#555", marginBottom: 20 }}>לחץ "+ הפקה חדשה" כדי להתחיל</div>
-          <button
-            onClick={() => setCreatingNew(true)}
-            style={{ padding: "9px 20px", borderRadius: 10, background: "#3B82F6", border: "none", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-          >
-            + הפקה חדשה
-          </button>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>{filter === "מבוטלות" ? "🗑️" : "🎬"}</div>
+          <div style={{ fontSize: 15, color: "#888", fontWeight: 600, marginBottom: 6 }}>
+            {filter === "מבוטלות" ? "אין הפקות מבוטלות" : "אין הפקות עדיין"}
+          </div>
+          {filter !== "מבוטלות" && (
+            <>
+              <div style={{ fontSize: 13, color: "#555", marginBottom: 20 }}>לחץ "+ הפקה חדשה" כדי להתחיל</div>
+              <button
+                onClick={() => setCreatingNew(true)}
+                style={{ padding: "9px 20px", borderRadius: 10, background: "#3B82F6", border: "none", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                + הפקה חדשה
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, overflow: "hidden" }}>
@@ -223,7 +257,7 @@ export default function RedFilmsPage() {
           </div>
 
           {/* Rows */}
-          {productions.map((p, idx) => (
+          {visible.map((p, idx) => (
             <div
               key={p.id}
               onClick={() => router.push(`/red-films/${p.id}`)}
@@ -231,7 +265,7 @@ export default function RedFilmsPage() {
                 display: "grid",
                 gridTemplateColumns: "2fr 1fr 1.2fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr 60px",
                 gap: 0, padding: "12px 16px",
-                borderBottom: idx < productions.length - 1 ? "1px solid #1E1E1E" : "none",
+                borderBottom: idx < visible.length - 1 ? "1px solid #1E1E1E" : "none",
                 cursor: "pointer", transition: "background 0.15s",
                 fontSize: 12, color: "#CCC", alignItems: "center",
               }}
