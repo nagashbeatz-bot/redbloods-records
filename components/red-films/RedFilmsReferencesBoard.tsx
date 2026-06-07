@@ -217,12 +217,14 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
 
   const onDragOver  = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); if (!uploading) setDragging(true); };
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragging(false); };
-  const onDrop      = (e: React.DragEvent) => {
+  const onDrop      = async (e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation();
     setDragging(false);
     if (uploading) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file) uploadFile(file);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    for (const file of files) {
+      await uploadFile(file);
+    }
   };
 
   function handleDelete(id: string) {
