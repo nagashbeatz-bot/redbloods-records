@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import RedFilmsStatusBadge, { PRODUCTION_TYPES } from "./RedFilmsStatusBadge";
-import RedFilmProductionDrawer, { type Production } from "./RedFilmProductionDrawer";
+import type { Production } from "./RedFilmProductionDrawer";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -121,11 +122,11 @@ function SummaryCard({ label, value, color = "#888" }: { label: string; value: n
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function RedFilmsPage() {
+  const router = useRouter();
   const { projects } = useProjects();
   const [productions, setProductions] = useState<Production[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [creatingNew, setCreatingNew] = useState(false);
-  const [openId,      setOpenId]      = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,17 +144,9 @@ export default function RedFilmsPage() {
   const projectName = (id: string | null) =>
     id ? (projects.find(p => p.id === id)?.name ?? null) : null;
 
-  // Selected production for drawer
-  const openProd = productions.find(p => p.id === openId) ?? null;
-
   function handleCreated(p: Production) {
-    setProductions(prev => [p, ...prev]);
     setCreatingNew(false);
-    setOpenId(p.id); // open drawer immediately
-  }
-
-  function handleUpdated(p: Production) {
-    setProductions(prev => prev.map(x => x.id === p.id ? p : x));
+    router.push(`/red-films/${p.id}`);
   }
 
   // ── Summary counts ──────────────────────────────────────────────────────────
@@ -233,7 +226,7 @@ export default function RedFilmsPage() {
           {productions.map((p, idx) => (
             <div
               key={p.id}
-              onClick={() => setOpenId(p.id)}
+              onClick={() => router.push(`/red-films/${p.id}`)}
               style={{
                 display: "grid",
                 gridTemplateColumns: "2fr 1fr 1.2fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr 60px",
@@ -264,7 +257,7 @@ export default function RedFilmsPage() {
               <div style={{ color: "#888" }}>{p.client_price ? fmtNum(p.client_price) : "—"}</div>
               <div>
                 <button
-                  onClick={e => { e.stopPropagation(); setOpenId(p.id); }}
+                  onClick={e => { e.stopPropagation(); router.push(`/red-films/${p.id}`); }}
                   style={{ padding: "4px 10px", borderRadius: 6, background: "#252525", border: "1px solid #333", color: "#888", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
                 >
                   פתח
@@ -283,15 +276,6 @@ export default function RedFilmsPage() {
         />
       )}
 
-      {/* ── Production drawer ── */}
-      {openProd && (
-        <RedFilmProductionDrawer
-          production={openProd}
-          projectName={projectName(openProd.project_id) ?? undefined}
-          onClose={() => setOpenId(null)}
-          onUpdated={handleUpdated}
-        />
-      )}
     </div>
   );
 }

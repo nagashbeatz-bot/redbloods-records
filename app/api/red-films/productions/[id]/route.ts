@@ -1,12 +1,27 @@
 /**
- * PATCH /api/red-films/productions/[id]
- * Accepts a partial production object — updates only the provided fields.
- * Always bumps updated_at (same pattern as all other routes in the project).
+ * GET   /api/red-films/productions/[id] — fetch single production
+ * PATCH /api/red-films/productions/[id] — update fields
  */
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+export async function GET(_req: NextRequest, ctx: Ctx) {
+  try {
+    const { id } = await ctx.params;
+    const { data, error } = await supabase
+      .from("red_films_productions")
+      .select("*")
+      .eq("id", id)
+      .single();
+    if (error || !data) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
+    return NextResponse.json({ production: data });
+  } catch (e) {
+    console.error("[GET /api/red-films/productions/[id]]", e);
+    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
+  }
+}
 
 // Fields that may be patched — whitelist to prevent injection
 const ALLOWED_FIELDS = new Set([
