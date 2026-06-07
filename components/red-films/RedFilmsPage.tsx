@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
-import RedFilmsStatusBadge, { PRODUCTION_TYPES } from "./RedFilmsStatusBadge";
+import RedFilmsStatusBadge, { PRODUCTION_TYPES, PRODUCTION_STATUSES } from "./RedFilmsStatusBadge";
 import type { Production } from "./RedFilmProductionDrawer";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -266,7 +266,30 @@ function SummaryCard({ label, value, color = "#888" }: { label: string; value: n
   );
 }
 
+// ── Confirm Dialog ────────────────────────────────────────────────────────────
+
+function ConfirmDialog({ title, body, confirmLabel, danger = false, onConfirm, onCancel }: {
+  title: string; body: string; confirmLabel: string; danger?: boolean;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  return createPortal(
+    <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 9600, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 14, padding: 24, width: "min(380px, 90vw)" }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#F0F0F0", marginBottom: 10 }}>{title}</div>
+        <div style={{ fontSize: 13, color: "#888", marginBottom: 22, lineHeight: 1.6 }}>{body}</div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, background: "none", border: "1px solid #333", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
+          <button onClick={onConfirm} style={{ padding: "8px 20px", borderRadius: 8, background: danger ? "#EF4444" : "#3B82F6", border: "none", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
+
+type BulkAction = "trash" | "restore" | "status";
 
 export default function RedFilmsPage() {
   const router = useRouter();
@@ -275,6 +298,12 @@ export default function RedFilmsPage() {
   const [loading,     setLoading]     = useState(true);
   const [creatingNew, setCreatingNew] = useState(false);
   const [filter,      setFilter]      = useState<"פעילות" | "מבוטלות" | "הכל">("פעילות");
+
+  // ── Bulk selection ──────────────────────────────────────────────────────────
+  const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set());
+  const [bulkAction,    setBulkAction]    = useState<BulkAction | null>(null);
+  const [bulkStatus,    setBulkStatus]    = useState<string>("");  // for "status" action
+  const [bulkWorking,   setBulkWorking]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -287,6 +316,9 @@ export default function RedFilmsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Clear selection when filter changes
+  useEffect(() => { setSelectedIds(new Set()); }, [filter]);
 
   // project name lookup
   const projectName = (id: string | null) =>
@@ -310,6 +342,55 @@ export default function RedFilmsPage() {
     : filter === "מבוטלות"
     ? productions.filter(p => p.status === "בוטל")
     : productions;
+
+  // ── Selection helpers ───────────────────────────────────────────────────────
+  const visibleIds   = visible.map(p => p.id);
+  const allSelected  = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+  const someSelected = visibleIds.some(id => selectedIds.has(id)) && !allSelected;
+  const selectedCount = selectedIds.size;
+
+  function toggleOne(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visibleIds));
+    }
+  }
+
+  // ── Bulk API call ───────────────────────────────────────────────────────────
+  async function patchProduction(id: string, body: Record<string, unknown>) {
+    await fetch(`/api/red-films/productions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function executeBulk(newStatus: string) {
+    setBulkWorking(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map(id => patchProduction(id, { status: newStatus })));
+      await load();
+      setSelectedIds(new Set());
+    } finally {
+      setBulkWorking(false);
+      setBulkAction(null);
+      setBulkStatus("");
+    }
+  }
+
+  // ── Action Bar ─────────────────────────────────────────────────────────────
+  const inTrashView = filter === "מבוטלות";
+
+  const COL = "28px 2fr 1fr 1.2fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr 60px";
 
   return (
     <div style={{ padding: "20px 16px 100px", maxWidth: 1100, margin: "0 auto" }}>
@@ -392,61 +473,172 @@ export default function RedFilmsPage() {
 
           {/* Table header */}
           <div style={{
-            display: "grid",
-            gridTemplateColumns: "2fr 1fr 1.2fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr 60px",
+            display: "grid", gridTemplateColumns: COL,
             gap: 0, padding: "10px 16px",
             background: "#161616", borderBottom: "1px solid #222",
-            fontSize: 10, color: "#444", fontWeight: 700,
+            fontSize: 10, color: "#444", fontWeight: 700, alignItems: "center",
           }}>
+            {/* Select-all checkbox */}
+            <div onClick={e => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={el => { if (el) el.indeterminate = someSelected; }}
+                onChange={toggleAll}
+                style={{ cursor: "pointer", accentColor: "#3B82F6", width: 14, height: 14 }}
+              />
+            </div>
             {["שם הפקה", "סוג", "אמן / לקוח", "פרויקט", "צלם", "תאריך", "סטטוס", "תקציב", "מחיר ל״ק", ""].map((h, i) => (
               <div key={i} style={{ paddingRight: i > 0 ? 8 : 0 }}>{h}</div>
             ))}
           </div>
 
           {/* Rows */}
-          {visible.map((p, idx) => (
-            <div
-              key={p.id}
-              onClick={() => router.push(`/red-films/${p.id}`)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 1.2fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr 60px",
-                gap: 0, padding: "12px 16px",
-                borderBottom: idx < visible.length - 1 ? "1px solid #1E1E1E" : "none",
-                cursor: "pointer", transition: "background 0.15s",
-                fontSize: 12, color: "#CCC", alignItems: "center",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#1E1E1E")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-            >
-              <div style={{ fontWeight: 600, color: "#E8E8E8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: 4 }}>
-                {p.title}
+          {visible.map((p, idx) => {
+            const isSelected = selectedIds.has(p.id);
+            return (
+              <div
+                key={p.id}
+                onClick={() => router.push(`/red-films/${p.id}`)}
+                style={{
+                  display: "grid", gridTemplateColumns: COL,
+                  gap: 0, padding: "12px 16px",
+                  borderBottom: idx < visible.length - 1 ? "1px solid #1E1E1E" : "none",
+                  cursor: "pointer", transition: "background 0.15s",
+                  fontSize: 12, color: "#CCC", alignItems: "center",
+                  background: isSelected ? "rgba(59,130,246,0.07)" : "transparent",
+                }}
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#1E1E1E"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = isSelected ? "rgba(59,130,246,0.07)" : "transparent"; }}
+              >
+                {/* Checkbox */}
+                <div onClick={e => { e.stopPropagation(); toggleOne(p.id); }}>
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleOne(p.id)}
+                    style={{ cursor: "pointer", accentColor: "#3B82F6", width: 14, height: 14 }}
+                  />
+                </div>
+                <div style={{ fontWeight: 600, color: "#E8E8E8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: 4 }}>
+                  {p.title}
+                </div>
+                <div style={{ color: "#888" }}>{p.production_type}</div>
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {p.artist_name || p.client_name || <span style={{ color: "#444" }}>—</span>}
+                </div>
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {p.project_id
+                    ? <span style={{ color: "#60A5FA" }}>{projectName(p.project_id) ?? "…"}</span>
+                    : <span style={{ color: "#444" }}>—</span>}
+                </div>
+                <div style={{ color: "#888" }}>{p.photographer_name || "—"}</div>
+                <div style={{ color: "#888" }}>{fmtDate(p.shoot_date)}</div>
+                <div><RedFilmsStatusBadge status={p.status} small /></div>
+                <div style={{ color: "#888" }}>{p.general_budget ? fmtNum(p.general_budget) : "—"}</div>
+                <div style={{ color: "#888" }}>{p.client_price ? fmtNum(p.client_price) : "—"}</div>
+                <div>
+                  <button
+                    onClick={e => { e.stopPropagation(); router.push(`/red-films/${p.id}`); }}
+                    style={{ padding: "4px 10px", borderRadius: 6, background: "#252525", border: "1px solid #333", color: "#888", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    פתח
+                  </button>
+                </div>
               </div>
-              <div style={{ color: "#888" }}>{p.production_type}</div>
-              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {p.artist_name || p.client_name || <span style={{ color: "#444" }}>—</span>}
-              </div>
-              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {p.project_id
-                  ? <span style={{ color: "#60A5FA" }}>{projectName(p.project_id) ?? "…"}</span>
-                  : <span style={{ color: "#444" }}>—</span>}
-              </div>
-              <div style={{ color: "#888" }}>{p.photographer_name || "—"}</div>
-              <div style={{ color: "#888" }}>{fmtDate(p.shoot_date)}</div>
-              <div><RedFilmsStatusBadge status={p.status} small /></div>
-              <div style={{ color: "#888" }}>{p.general_budget ? fmtNum(p.general_budget) : "—"}</div>
-              <div style={{ color: "#888" }}>{p.client_price ? fmtNum(p.client_price) : "—"}</div>
-              <div>
-                <button
-                  onClick={e => { e.stopPropagation(); router.push(`/red-films/${p.id}`); }}
-                  style={{ padding: "4px 10px", borderRadius: 6, background: "#252525", border: "1px solid #333", color: "#888", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  פתח
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+      )}
+
+      {/* ── Action Bar (floating, like Monday) ── */}
+      {selectedCount > 0 && typeof window !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          background: "#1A1A1A", border: "1px solid #333", borderRadius: 14,
+          padding: "10px 18px", display: "flex", alignItems: "center", gap: 14,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.7)", zIndex: 9000,
+          fontSize: 13, color: "#E8E8E8", minWidth: 320,
+        }}>
+          <span style={{ color: "#60A5FA", fontWeight: 700 }}>{selectedCount} הפקות נבחרו</span>
+          <div style={{ width: 1, height: 20, background: "#333" }} />
+
+          {inTrashView ? (
+            /* סל מיחזור — שחזור בלבד */
+            <button
+              onClick={() => setBulkAction("restore")}
+              disabled={bulkWorking}
+              style={{ padding: "6px 14px", borderRadius: 8, background: "#1D4ED8", border: "none", color: "#FFF", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+            >
+              ♻️ שחזר
+            </button>
+          ) : (
+            /* פעילות — העבר לסל + שנה סטטוס */
+            <>
+              <button
+                onClick={() => setBulkAction("trash")}
+                disabled={bulkWorking}
+                style={{ padding: "6px 14px", borderRadius: 8, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", color: "#F87171", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                🗑️ העבר לסל
+              </button>
+              <div style={{ position: "relative" }}>
+                <select
+                  value={bulkStatus}
+                  onChange={e => { setBulkStatus(e.target.value); if (e.target.value) setBulkAction("status"); }}
+                  style={{ padding: "6px 28px 6px 10px", borderRadius: 8, background: "#252525", border: "1px solid #444", color: bulkStatus ? "#E8E8E8" : "#666", fontSize: 12, cursor: "pointer", fontFamily: "inherit", appearance: "none" }}
+                >
+                  <option value="">שנה סטטוס...</option>
+                  {PRODUCTION_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 10, color: "#666" }}>▼</span>
+              </div>
+            </>
+          )}
+
+          <button
+            onClick={() => { setSelectedIds(new Set()); setBulkStatus(""); }}
+            style={{ marginRight: "auto", padding: "4px 10px", borderRadius: 7, background: "none", border: "1px solid #333", color: "#555", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            ✕ בטל בחירה
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Confirm: trash ── */}
+      {bulkAction === "trash" && (
+        <ConfirmDialog
+          title={`להעביר ${selectedCount} הפקות לסל מיחזור?`}
+          body="הפקות אלו יוסתרו מהרשימה הראשית, אך לא יימחקו לצמיתות. משימות עתידיות קשורות יבוטלו."
+          confirmLabel={bulkWorking ? "מעביר..." : "כן, העבר לסל"}
+          danger
+          onConfirm={() => executeBulk("בוטל")}
+          onCancel={() => setBulkAction(null)}
+        />
+      )}
+
+      {/* ── Confirm: restore ── */}
+      {bulkAction === "restore" && (
+        <ConfirmDialog
+          title={`לשחזר ${selectedCount} הפקות?`}
+          body="ההפקות יחזרו לרשימה הפעילה עם סטטוס 'רעיון'. משימות שבוטלו לא ישוחזרו אוטומטית."
+          confirmLabel={bulkWorking ? "משחזר..." : "כן, שחזר"}
+          onConfirm={() => executeBulk("רעיון")}
+          onCancel={() => setBulkAction(null)}
+        />
+      )}
+
+      {/* ── Confirm: change status ── */}
+      {bulkAction === "status" && bulkStatus && (
+        <ConfirmDialog
+          title={`לשנות סטטוס ל-"${bulkStatus}" עבור ${selectedCount} הפקות?`}
+          body={bulkStatus === "בוטל" ? "משימות עתידיות קשורות יבוטלו." : ""}
+          confirmLabel={bulkWorking ? "מעדכן..." : `שנה ל-${bulkStatus}`}
+          danger={bulkStatus === "בוטל"}
+          onConfirm={() => executeBulk(bulkStatus)}
+          onCancel={() => { setBulkAction(null); setBulkStatus(""); }}
+        />
       )}
 
       {/* ── New production modal ── */}
