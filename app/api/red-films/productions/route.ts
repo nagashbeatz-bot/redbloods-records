@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
         title:              title.trim(),
         production_type:    body.production_type    ?? "קליפ",
         status:             "רעיון",
+        project_id:         body.project_id         ?? null,
         artist_name:        body.artist_name        ?? "",
         client_id:          body.client_id          ?? null,
         client_name:        body.client_name        ?? "",

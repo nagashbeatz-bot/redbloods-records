@@ -22,18 +22,24 @@ function fmtNum(n: number) {
 // ── New Production Modal ──────────────────────────────────────────────────────
 
 type ClientOption = { id: string; name: string; type: string };
+type ProjectOption = { id: string; name: string; artist: string };
 
-function NewProductionModal({ onClose, onCreate }: {
-  onClose: () => void;
+const PLACEHOLDER_EXAMPLE = "לדוגמה: פרנציפ - קליפ";
+
+function NewProductionModal({ onClose, onCreate, projects }: {
+  onClose:  () => void;
   onCreate: (p: Production) => void;
+  projects: ProjectOption[];
 }) {
-  const [title,          setTitle]          = useState("");
-  const [type,           setType]           = useState("קליפ");
-  const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null);
-  const [clients,        setClients]        = useState<ClientOption[]>([]);
-  const [clientsLoading, setClientsLoading] = useState(true);
-  const [saving,         setSaving]         = useState(false);
-  const [err,            setErr]            = useState("");
+  const [title,            setTitle]            = useState("");
+  const [type,             setType]             = useState("קליפ");
+  const [mode,             setMode]             = useState<"project" | "manual">("project");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedClient,   setSelectedClient]   = useState<ClientOption | null>(null);
+  const [clients,          setClients]          = useState<ClientOption[]>([]);
+  const [clientsLoading,   setClientsLoading]   = useState(true);
+  const [saving,           setSaving]           = useState(false);
+  const [err,              setErr]              = useState("");
 
   const INPUT_S: React.CSSProperties = {
     background: "#0D0D0D", border: "1px solid #3A3A3A", borderRadius: 8,
@@ -55,41 +61,149 @@ function NewProductionModal({ onClose, onCreate }: {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const selectedProject = projects.find(p => p.id === selectedProjectId) ?? null;
+  const titlePlaceholder = selectedProject
+    ? `לדוגמה: ${selectedProject.name} - קליפ`
+    : PLACEHOLDER_EXAMPLE;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) { setErr("יש להזין שם הפקה"); return; }
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === PLACEHOLDER_EXAMPLE) {
+      setErr("יש להזין שם הפקה");
+      return;
+    }
     setSaving(true);
     setErr("");
     try {
+      let body: Record<string, unknown> = { title: trimmed, production_type: type };
+
+      if (mode === "project") {
+        const proj = selectedProject;
+        const matchedClient = proj
+          ? clients.find(c => c.name === proj.artist) ?? null
+          : null;
+        body = {
+          ...body,
+          project_id:  proj?.id   ?? null,
+          artist_name: proj?.artist ?? "",
+          client_id:   matchedClient?.id   ?? null,
+          client_name: matchedClient?.name ?? "",
+        };
+      } else {
+        body = {
+          ...body,
+          project_id:  null,
+          client_id:   selectedClient?.id   ?? null,
+          client_name: selectedClient?.name ?? "",
+          artist_name: selectedClient?.name ?? "",
+        };
+      }
+
       const res = await fetch("/api/red-films/productions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title:        title.trim(),
-          production_type: type,
-          client_id:    selectedClient?.id   ?? null,
-          client_name:  selectedClient?.name ?? "",
-          artist_name:  selectedClient?.name ?? "",
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "יצירה נכשלה");
       onCreate(data.production);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "שגיאה");
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "שגיאה");
     } finally {
       setSaving(false);
     }
   }
 
+  const TAB_S = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 600,
+    cursor: "pointer", fontFamily: "inherit", border: "1px solid",
+    background:  active ? "#252525" : "none",
+    color:       active ? "#E8E8E8" : "#555",
+    borderColor: active ? "#444"    : "#2A2A2A",
+    transition: "all 0.15s",
+  });
+
   return createPortal(
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9500, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 16, padding: "24px", width: "min(380px, 90vw)" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 16, padding: "24px", width: "min(400px, 92vw)" }}>
+
+        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: "#F0F0F0", margin: 0 }}>🎬 הפקה חדשה</h2>
           <button onClick={onClose} style={{ color: "#555", background: "none", border: "none", fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* מקור הפקה — mode tabs */}
+          <div>
+            <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 8 }}>מקור הפקה</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" style={TAB_S(mode === "project")} onClick={() => setMode("project")}>
+                מתוך פרויקט קיים
+              </button>
+              <button type="button" style={TAB_S(mode === "manual")} onClick={() => setMode("manual")}>
+                ידני / ללא פרויקט
+              </button>
+            </div>
+          </div>
+
+          {/* בחירת פרויקט / לקוח לפי מצב */}
+          {mode === "project" ? (
+            <div>
+              <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 5 }}>פרויקט</label>
+              {projects.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#666", fontStyle: "italic", padding: "8px 0" }}>
+                  לא נמצאו פרויקטים פעילים.
+                </div>
+              ) : (
+                <select
+                  style={{ ...INPUT_S, cursor: "pointer" }}
+                  value={selectedProjectId}
+                  onChange={e => setSelectedProjectId(e.target.value)}
+                >
+                  <option value="">— בחר פרויקט —</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}{p.artist ? ` — ${p.artist}` : ""}</option>
+                  ))}
+                </select>
+              )}
+              {selectedProject && (
+                <div style={{ fontSize: 11, color: "#555", marginTop: 6 }}>
+                  אמן: <span style={{ color: "#A78BFA" }}>{selectedProject.artist || "—"}</span>
+                  {clients.find(c => c.name === selectedProject.artist) && (
+                    <span style={{ color: "#4ADE80", marginRight: 8 }}>✓ לקוח קיים במערכת</span>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 5 }}>אמן / לקוח</label>
+              {clientsLoading ? (
+                <div style={{ fontSize: 12, color: "#555", padding: "8px 0" }}>טוען לקוחות...</div>
+              ) : clients.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#666", fontStyle: "italic", padding: "8px 0" }}>
+                  לא נמצאו לקוחות. יש להוסיף לקוח בעמוד לקוחות.
+                </div>
+              ) : (
+                <select
+                  style={{ ...INPUT_S, cursor: "pointer" }}
+                  value={selectedClient?.id ?? ""}
+                  onChange={e => {
+                    const found = clients.find(c => c.id === e.target.value) ?? null;
+                    setSelectedClient(found);
+                  }}
+                >
+                  <option value="">— ללא לקוח —</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
 
           {/* שם הפקה */}
           <div>
@@ -98,7 +212,7 @@ function NewProductionModal({ onClose, onCreate }: {
               style={INPUT_S}
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="לדוגמה: פרנציפ - קליפ"
+              placeholder={titlePlaceholder}
               autoFocus
             />
           </div>
@@ -111,35 +225,9 @@ function NewProductionModal({ onClose, onCreate }: {
             </select>
           </div>
 
-          {/* אמן / לקוח */}
-          <div>
-            <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 5 }}>אמן / לקוח</label>
-            {clientsLoading ? (
-              <div style={{ fontSize: 12, color: "#555", padding: "8px 0" }}>טוען לקוחות...</div>
-            ) : clients.length === 0 ? (
-              <div style={{ fontSize: 12, color: "#666", padding: "8px 0", fontStyle: "italic" }}>
-                לא נמצאו לקוחות. יש להוסיף לקוח בעמוד לקוחות.
-              </div>
-            ) : (
-              <select
-                style={{ ...INPUT_S, cursor: "pointer" }}
-                value={selectedClient?.id ?? ""}
-                onChange={e => {
-                  const found = clients.find(c => c.id === e.target.value) ?? null;
-                  setSelectedClient(found);
-                }}
-              >
-                <option value="">— ללא לקוח —</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
-                ))}
-              </select>
-            )}
-          </div>
-
           {err && <div style={{ fontSize: 12, color: "#F87171" }}>{err}</div>}
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 2 }}>
             <button type="button" onClick={onClose} style={{ padding: "8px 16px", borderRadius: 8, background: "none", border: "1px solid #333", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
               ביטול
             </button>
@@ -353,6 +441,7 @@ export default function RedFilmsPage() {
         <NewProductionModal
           onClose={() => setCreatingNew(false)}
           onCreate={handleCreated}
+          projects={projects}
         />
       )}
 
