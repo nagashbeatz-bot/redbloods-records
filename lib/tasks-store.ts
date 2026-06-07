@@ -146,6 +146,12 @@ export async function patchTask(id: string, patch: PatchTaskInput): Promise<Task
   return data as Task;
 }
 
+export async function getTask(id: string): Promise<Task | null> {
+  const { data, error } = await supabase.from("tasks").select("*").eq("id", id).single();
+  if (error) return null;
+  return data as Task;
+}
+
 export async function deleteTask(id: string): Promise<void> {
   const { error } = await supabase.from("tasks").delete().eq("id", id);
   if (error) throw new Error(error.message ?? "מחיקת משימה נכשלה");

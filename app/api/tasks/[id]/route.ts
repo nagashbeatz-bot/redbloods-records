@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import {
+  getTask,
   patchTask,
   deleteTask,
   validateRelated,
@@ -96,6 +97,19 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
+    // אם יש Google Task מקושר — מוחקים אותו תחילה
+    const task = await getTask(id);
+    if (task?.calendar_event_id) {
+      try {
+        const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
+        if (await isConnected()) {
+          await deleteGoogleTask(task.calendar_event_id);
+        }
+      } catch (gErr) {
+        console.warn(`[DELETE /api/tasks/${id}] Google Task deletion failed (ignored):`, gErr);
+      }
+    }
+
     await deleteTask(id);
     return NextResponse.json({ ok: true });
   } catch (e) {
