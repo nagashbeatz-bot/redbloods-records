@@ -8,10 +8,10 @@ import { supabase } from "@/lib/supabase";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type TaskStatus      = "פתוח" | "בוצע" | "בוטל";
-export type TaskRelatedType = "general" | "client" | "project";
+export type TaskRelatedType = "general" | "client" | "project" | "red_film_production";
 
 export const TASK_STATUSES: TaskStatus[]           = ["פתוח", "בוצע", "בוטל"];
-export const TASK_RELATED_TYPES: TaskRelatedType[] = ["general", "client", "project"];
+export const TASK_RELATED_TYPES: TaskRelatedType[] = ["general", "client", "project", "red_film_production"];
 
 export interface Task {
   id:                string;
@@ -60,7 +60,7 @@ export function validateRelated(
   if (related_type === "general" && related_id) {
     return "related_id חייב להיות null כאשר related_type הוא general";
   }
-  if ((related_type === "client" || related_type === "project") && !related_id) {
+  if ((related_type === "client" || related_type === "project" || related_type === "red_film_production") && !related_id) {
     return `related_id חובה כאשר related_type הוא ${related_type}`;
   }
   return null;

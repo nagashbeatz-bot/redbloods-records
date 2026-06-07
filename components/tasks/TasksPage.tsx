@@ -8,7 +8,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type TaskStatus      = "פתוח" | "בוצע" | "בוטל";
-type TaskRelatedType = "general" | "client" | "project";
+type TaskRelatedType = "general" | "client" | "project" | "red_film_production";
 
 interface Task {
   id:                string;
@@ -42,9 +42,10 @@ const STATUS_COLOR: Record<TaskStatus, { bg: string; color: string; border: stri
 };
 
 const RELATED_LABELS: Record<TaskRelatedType, string> = {
-  general: "כללי",
-  client:  "לקוח",
-  project: "פרויקט",
+  general:              "כללי",
+  client:               "לקוח",
+  project:              "פרויקט",
+  red_film_production:  "Red Films",
 };
 
 const QUICK_TIMES = ["09:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
@@ -1133,8 +1134,9 @@ function TaskRow({ task, relatedName, today, onOpenDetail }: {
   function handleRelatedClick(e: React.MouseEvent) {
     e.stopPropagation();
     if (!task.related_id) return;
-    if (task.related_type === "project") openProject(task.related_id);
-    else if (task.related_type === "client") router.push(`/clients?open=${task.related_id}`);
+    if (task.related_type === "project")            openProject(task.related_id);
+    else if (task.related_type === "client")        router.push(`/clients?open=${task.related_id}`);
+    else if (task.related_type === "red_film_production") router.push(`/red-films/${task.related_id}`);
   }
 
   return (
@@ -1187,11 +1189,11 @@ function TaskRow({ task, relatedName, today, onOpenDetail }: {
                 style={{
                   background: "none", border: "none", padding: 0,
                   fontFamily: "inherit", fontSize: 11,
-                  color: task.related_type === "client" ? "#C084FC" : "#60A5FA",
+                  color: task.related_type === "client" ? "#C084FC" : task.related_type === "red_film_production" ? "#EC4899" : "#60A5FA",
                   cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted",
                 }}
               >
-                {task.related_type === "client" ? "👤" : "♫"} {relatedName}
+                {task.related_type === "client" ? "👤" : task.related_type === "red_film_production" ? "🎬" : "♫"} {task.related_type === "red_film_production" ? `Red Films / ${relatedName}` : relatedName}
               </button>
             )}
 
@@ -1230,10 +1232,11 @@ const FILTER_TABS: FilterTab[] = ["הכל", "פתוח", "בוצע", "בוטל"];
 export default function TasksPage() {
   const today = new Date().toISOString().split("T")[0];
 
-  const [tasks,      setTasks]      = useState<Task[]>([]);
-  const [clients,    setClients]    = useState<NamedItem[]>([]);
-  const [projects,   setProjects]   = useState<NamedItem[]>([]);
-  const [loading,    setLoading]    = useState(true);
+  const [tasks,       setTasks]       = useState<Task[]>([]);
+  const [clients,     setClients]     = useState<NamedItem[]>([]);
+  const [projects,    setProjects]    = useState<NamedItem[]>([]);
+  const [productions, setProductions] = useState<NamedItem[]>([]);
+  const [loading,     setLoading]     = useState(true);
   const [showForm,   setShowForm]   = useState(false);
   const [filter,     setFilter]     = useState<FilterTab>("פתוח");
   const [detailTask, setDetailTask] = useState<Task | null>(null);
@@ -1241,31 +1244,35 @@ export default function TasksPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tRes, cRes, pRes] = await Promise.all([
+      const [tRes, cRes, pRes, rfRes] = await Promise.all([
         fetch("/api/tasks"),
         fetch("/api/clients"),
         fetch("/api/projects"),
+        fetch("/api/red-films/productions"),
       ]);
-      const [tData, cData, pData] = await Promise.all([
-        tRes.json(), cRes.json(), pRes.json(),
+      const [tData, cData, pData, rfData] = await Promise.all([
+        tRes.json(), cRes.json(), pRes.json(), rfRes.json(),
       ]);
       setTasks(tData.tasks ?? []);
       setClients((cData.clients ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
       const projArr: { id: string; name: string }[] = Array.isArray(pData) ? pData : (pData.projects ?? []);
       setProjects(projArr.map((p) => ({ id: p.id, name: p.name })));
+      setProductions((rfData.productions ?? []).map((p: { id: string; title: string }) => ({ id: p.id, name: p.title })));
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const clientMap  = new Map(clients.map((c) => [c.id, c.name]));
-  const projectMap = new Map(projects.map((p) => [p.id, p.name]));
+  const clientMap     = new Map(clients.map((c) => [c.id, c.name]));
+  const projectMap    = new Map(projects.map((p) => [p.id, p.name]));
+  const productionMap = new Map(productions.map((p) => [p.id, p.name]));
 
   function getRelatedName(task: Task): string | null {
     if (!task.related_id) return null;
-    if (task.related_type === "client")  return clientMap.get(task.related_id)  ?? null;
-    if (task.related_type === "project") return projectMap.get(task.related_id) ?? null;
+    if (task.related_type === "client")             return clientMap.get(task.related_id)     ?? null;
+    if (task.related_type === "project")            return projectMap.get(task.related_id)    ?? null;
+    if (task.related_type === "red_film_production") return productionMap.get(task.related_id) ?? null;
     return null;
   }
 

@@ -7,6 +7,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import RedFilmsReferencesBoard from "./RedFilmsReferencesBoard";
 import RedFilmsBudgetItems from "./RedFilmsBudgetItems";
+import RedFilmsProductionTasks from "./RedFilmsProductionTasks";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import RedFilmsStatusBadge, {
   PRODUCTION_STATUSES,
@@ -489,6 +490,14 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   )}
                 </div>
               )}
+            </SCard>
+
+            {/* 2b. משימות הפקה */}
+            <SCard>
+              <RedFilmsProductionTasks
+                productionId={id}
+                productionTitle={prod.title}
+              />
             </SCard>
 
             {/* 3. תקציב */}
