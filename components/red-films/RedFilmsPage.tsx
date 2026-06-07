@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -35,6 +35,8 @@ function NewProductionModal({ onClose, onCreate, projects }: {
   const [type,             setType]             = useState("קליפ");
   const [mode,             setMode]             = useState<"project" | "manual">("project");
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  // Tracks the last value that was auto-filled — used to detect manual edits
+  const autoFilledRef = useRef("");
   const [selectedClient,   setSelectedClient]   = useState<ClientOption | null>(null);
   const [clients,          setClients]          = useState<ClientOption[]>([]);
   const [clientsLoading,   setClientsLoading]   = useState(true);
@@ -161,7 +163,19 @@ function NewProductionModal({ onClose, onCreate, projects }: {
                 <select
                   style={{ ...INPUT_S, cursor: "pointer" }}
                   value={selectedProjectId}
-                  onChange={e => setSelectedProjectId(e.target.value)}
+                  onChange={e => {
+                    const newId = e.target.value;
+                    setSelectedProjectId(newId);
+                    const proj = projects.find(p => p.id === newId);
+                    if (proj) {
+                      const suggested = `${proj.name} - קליפ`;
+                      // Auto-fill only if title is empty or still matches the previous auto-fill
+                      if (title === "" || title === autoFilledRef.current) {
+                        setTitle(suggested);
+                        autoFilledRef.current = suggested;
+                      }
+                    }
+                  }}
                 >
                   <option value="">— בחר פרויקט —</option>
                   {projects.map(p => (
