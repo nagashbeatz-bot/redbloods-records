@@ -163,7 +163,8 @@ export function checkFinanceHealth(
     }
 
     // Expected payment whose date has already passed (and project is NOT in mix)
-    if (!inMix && fin.overduePayment) {
+    // Only flag if there's actually an outstanding balance — if totalPaid >= agreedPrice, no debt exists
+    if (!inMix && fin.overduePayment && balance > 0) {
       issues.push({
         id: p.id, name: p.name, artist: p.artist,
         type: "payment_overdue",
