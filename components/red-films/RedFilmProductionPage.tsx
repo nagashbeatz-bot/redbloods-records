@@ -18,7 +18,7 @@ import RedFilmsStatusBadge, {
   EDIT_STATUSES,
   CLIENT_SOURCES,
 } from "./RedFilmsStatusBadge";
-import { useProductionLayout } from "@/lib/production-layout";
+import { useProductionLayout, CREATIVE_SECTIONS } from "@/lib/production-layout";
 import type { Production } from "./RedFilmProductionDrawer";
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -294,6 +294,373 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
     );
   }
 
+  // ── Section renderer ─────────────────────────────────────────────────────
+  function renderSection(sId: string) {
+    if (!prod) return null;
+    switch (sId) {
+
+      case "summary": return (
+        <SCard key="summary">
+          <SectionHeader title="סיכום הפקה">
+            <EditActions section="summary" editing={editing} saving={saving}
+              onEdit={() => startEdit("summary")} onSave={saveSummary} onCancel={cancelEdit} />
+          </SectionHeader>
+          {editing === "summary" && draftSummary ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+              <SRow label="שם ההפקה">
+                <input style={INPUT_S} value={draftSummary.title}
+                  onChange={e => setDraftSummary(d => d ? { ...d, title: e.target.value } : d)} />
+              </SRow>
+              <SRow label="סטטוס" half>
+                <select style={SELECT_S} value={draftSummary.status}
+                  onChange={e => setDraftSummary(d => d ? { ...d, status: e.target.value } : d)}>
+                  {PRODUCTION_STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </SRow>
+              <SRow label="סוג הפקה" half>
+                <select style={SELECT_S} value={draftSummary.production_type}
+                  onChange={e => setDraftSummary(d => d ? { ...d, production_type: e.target.value } : d)}>
+                  {PRODUCTION_TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </SRow>
+              <SRow label="אמן" half>
+                <input style={INPUT_S} value={draftSummary.artist_name}
+                  onChange={e => setDraftSummary(d => d ? { ...d, artist_name: e.target.value } : d)} />
+              </SRow>
+              <SRow label="לקוח" half>
+                <input style={INPUT_S} value={draftSummary.client_name}
+                  onChange={e => setDraftSummary(d => d ? { ...d, client_name: e.target.value } : d)} />
+              </SRow>
+              <SRow label="סוג לקוח" half>
+                <select style={SELECT_S} value={draftSummary.client_source}
+                  onChange={e => setDraftSummary(d => d ? { ...d, client_source: e.target.value } : d)}>
+                  {CLIENT_SOURCES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </SRow>
+              <SRow label="צלם" half>
+                <input style={INPUT_S} value={draftSummary.photographer_name}
+                  onChange={e => setDraftSummary(d => d ? { ...d, photographer_name: e.target.value } : d)} />
+              </SRow>
+              <SRow label="במאי / מפיק" half>
+                <input style={INPUT_S} value={draftSummary.director_name}
+                  onChange={e => setDraftSummary(d => d ? { ...d, director_name: e.target.value } : d)} />
+              </SRow>
+              <SRow label="עורך" half>
+                <input style={INPUT_S} value={draftSummary.editor_name}
+                  onChange={e => setDraftSummary(d => d ? { ...d, editor_name: e.target.value } : d)} />
+              </SRow>
+              <SRow label="תאריך צילום" half>
+                <DatePickerInput value={draftSummary.shoot_date ?? ""}
+                  onChange={v => setDraftSummary(d => d ? { ...d, shoot_date: v || null } : d)}
+                  style={{ ...INPUT_S, justifyContent: "space-between" }} />
+              </SRow>
+              <SRow label="לוקיישנים">
+                <input style={INPUT_S} value={draftSummary.locations}
+                  onChange={e => setDraftSummary(d => d ? { ...d, locations: e.target.value } : d)}
+                  placeholder="טיילת, בר, חוף..." />
+              </SRow>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+              {[
+                ["אמן",          prod.artist_name       || "—"],
+                ["לקוח",         prod.client_name       || "—"],
+                ["מקור",         prod.client_source],
+                ["צלם",          prod.photographer_name || "—"],
+                ["במאי / מפיק",  prod.director_name     || "—"],
+                ["עורך",         prod.editor_name       || "—"],
+                ["תאריך צילום",  fmtDate(prod.shoot_date) ?? "—"],
+                ["לוקיישנים",    prod.locations         || "—"],
+              ].map(([lbl, val]) => (
+                <div key={lbl}>
+                  <div style={{ fontSize: 10, color: "#555" }}>{lbl}</div>
+                  <div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{val}</div>
+                </div>
+              ))}
+              {projectName && (
+                <div style={{ gridColumn: "span 4" }}>
+                  <SDivider />
+                  <div style={{ fontSize: 10, color: "#555" }}>פרויקט מקושר</div>
+                  <div style={{ fontSize: 13, color: "#60A5FA", marginTop: 3 }}>♫ {projectName}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </SCard>
+      );
+
+      case "tasks": return (
+        <SCard key="tasks">
+          <RedFilmsProductionTasks productionId={id} productionTitle={prod.title} />
+        </SCard>
+      );
+
+      case "concept": return (
+        <SCard key="concept">
+          <SectionHeader title="קונספט ותסריט">
+            <EditActions section="concept" editing={editing} saving={saving}
+              onEdit={() => startEdit("concept")} onSave={saveConcept} onCancel={cancelEdit} />
+          </SectionHeader>
+          {editing === "concept" && draftConcept ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={{ gridColumn: "span 2" }}>
+                <SLabel>תקציר / קונספט</SLabel>
+                <textarea style={{ ...TEXTAREA_S, minHeight: 80 }} value={draftConcept.concept_summary}
+                  onChange={e => setDraftConcept(d => d ? { ...d, concept_summary: e.target.value } : d)}
+                  placeholder="תאר את הקונספט הכללי..." />
+              </div>
+              <div>
+                <SLabel>וייב / סגנון</SLabel>
+                <input style={INPUT_S} value={draftConcept.concept_vibe}
+                  onChange={e => setDraftConcept(d => d ? { ...d, concept_vibe: e.target.value } : d)}
+                  placeholder="מועדון, קיץ, רומנטי..." />
+              </div>
+              <div>
+                <SLabel>רפרנסים</SLabel>
+                <textarea style={{ ...TEXTAREA_S, minHeight: 48 }} value={draftConcept.ref_links}
+                  onChange={e => setDraftConcept(d => d ? { ...d, ref_links: e.target.value } : d)}
+                  placeholder="קישורים לרפרנסים..." />
+              </div>
+              <SDivider />
+              <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                {[["script_start","התחלה"],["script_middle","אמצע"],["script_end","סוף"]].map(([field, label]) => (
+                  <div key={field}>
+                    <SLabel>{label}</SLabel>
+                    <textarea style={{ ...TEXTAREA_S, minHeight: 60 }}
+                      value={String((draftConcept as unknown as Record<string,unknown>)[field] ?? "")}
+                      onChange={e => setDraftConcept(d => d ? { ...d, [field]: e.target.value } : d)} />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <SLabel>הערות בימוי</SLabel>
+                <textarea style={{ ...TEXTAREA_S, minHeight: 48 }} value={draftConcept.director_notes}
+                  onChange={e => setDraftConcept(d => d ? { ...d, director_notes: e.target.value } : d)} />
+              </div>
+              <div>
+                <SLabel>הערות לצלם</SLabel>
+                <textarea style={{ ...TEXTAREA_S, minHeight: 48 }} value={draftConcept.photographer_notes}
+                  onChange={e => setDraftConcept(d => d ? { ...d, photographer_notes: e.target.value } : d)} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {prod.concept_summary ? (
+                <div>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 6 }}>תקציר</div>
+                  <div style={{ fontSize: 13, color: "#CCC", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{prod.concept_summary}</div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: "#3A3A3A", fontStyle: "italic" }}>אין קונספט עדיין — לחץ ערוך</div>
+              )}
+              {prod.concept_vibe && (
+                <div>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>וייב</div>
+                  <div style={{ fontSize: 13, color: "#A78BFA", fontWeight: 600 }}>{prod.concept_vibe}</div>
+                </div>
+              )}
+              {(prod.script_start || prod.script_middle || prod.script_end) && (
+                <>
+                  <SDivider />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    {[["התחלה",prod.script_start],["אמצע",prod.script_middle],["סוף",prod.script_end]].map(([lbl,val]) => (
+                      <div key={lbl} style={{ background: "#141414", border: "1px solid #1E1E1E", borderRadius: 8, padding: "10px 12px" }}>
+                        <div style={{ fontSize: 10, color: "#555", marginBottom: 6, fontWeight: 700 }}>{lbl}</div>
+                        <div style={{ fontSize: 12, color: val ? "#CCC" : "#333", lineHeight: 1.6, whiteSpace: "pre-wrap", fontStyle: val ? "normal" : "italic" }}>{val || "לא הוזן"}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {(prod.director_notes || prod.photographer_notes) && (
+                <>
+                  <SDivider />
+                  {prod.director_notes && <div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות בימוי</div><div style={{ fontSize: 12, color: "#CCC", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{prod.director_notes}</div></div>}
+                  {prod.photographer_notes && <div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות לצלם</div><div style={{ fontSize: 12, color: "#CCC", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{prod.photographer_notes}</div></div>}
+                </>
+              )}
+              {prod.ref_links && (<><SDivider /><div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>רפרנסים</div><div style={{ fontSize: 12, color: "#60A5FA", whiteSpace: "pre-wrap" }}>{prod.ref_links}</div></div></>)}
+            </div>
+          )}
+        </SCard>
+      );
+
+      case "documents": return <RedFilmsDocuments key="documents" productionId={id} />;
+
+      case "references": return <RedFilmsReferencesBoard key="references" productionId={id} />;
+
+      case "budget": return (
+        <SCard key="budget">
+          <SectionHeader title="תקציב">
+            <EditActions section="budget" editing={editing} saving={saving}
+              onEdit={() => startEdit("budget")} onSave={saveBudget} onCancel={cancelEdit} />
+          </SectionHeader>
+          {editing === "budget" && draftBudget ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+              {([
+                ["general_budget","תקציב כללי ₪"],
+                ["client_price","מחיר ללקוח ₪"],
+                ["advance_required","מקדמה נדרשת ₪"],
+                ["advance_received","מקדמה התקבלה ₪"],
+              ] as const).map(([field, label]) => (
+                <div key={field}>
+                  <SLabel>{label}</SLabel>
+                  <input type="number" style={INPUT_S}
+                    value={(draftBudget as unknown as Record<string,number>)[field] ?? 0}
+                    onChange={e => setDraftBudget(d => d ? { ...d, [field]: +e.target.value } : d)} />
+                </div>
+              ))}
+              <div style={{ gridColumn: "span 4" }}>
+                <SLabel>סטטוס גבייה</SLabel>
+                <select style={{ ...SELECT_S, maxWidth: 240 }} value={draftBudget.collection_status}
+                  onChange={e => setDraftBudget(d => d ? { ...d, collection_status: e.target.value } : d)}>
+                  {COLLECTION_STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 12 }}>
+                {[
+                  ["תקציב",fmtNum(prod.general_budget)],
+                  ["מחיר ל״ק",prod.client_price ? fmtNum(prod.client_price) : "—"],
+                  ["מקדמה נדרשת",prod.advance_required ? fmtNum(prod.advance_required) : "—"],
+                  ["מקדמה התקבלה",prod.advance_received ? fmtNum(prod.advance_received) : "—"],
+                ].map(([lbl,val]) => (
+                  <div key={lbl} style={{ background: "#141414", border: "1px solid #222", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: "#555" }}>{lbl}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#E8E8E8", marginTop: 4 }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+              {prod.collection_status !== "לא רלוונטי" && (
+                <div style={{ fontSize: 12, color: "#888" }}>סטטוס גבייה: <span style={{ color: "#CCC" }}>{prod.collection_status}</span></div>
+              )}
+            </div>
+          )}
+        </SCard>
+      );
+
+      case "budgetItems": return (
+        <SCard key="budgetItems">
+          <SectionHeader title="תקציב מפורט" />
+          <RedFilmsBudgetItems productionId={id} generalBudget={prod.general_budget}
+            onBudgetUpdate={newBudget => setProd(p => p ? { ...p, general_budget: newBudget } : p)} />
+        </SCard>
+      );
+
+      case "files": return (
+        <SCard key="files">
+          <SectionHeader title="קבצים ועריכה">
+            <EditActions section="files" editing={editing} saving={saving}
+              onEdit={() => startEdit("files")} onSave={saveFiles} onCancel={cancelEdit} />
+          </SectionHeader>
+          {editing === "files" && draftFiles ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {([
+                ["files_raw_link","קישור חומרי גלם"],
+                ["files_edit_folder","תיקיית עריכה"],
+                ["version_1_link","גרסה 1"],
+                ["version_2_link","גרסה 2"],
+                ["final_version_link","גרסה מאושרת"],
+              ] as const).map(([field, label]) => (
+                <div key={field}>
+                  <SLabel>{label}</SLabel>
+                  <input style={INPUT_S}
+                    value={String((draftFiles as unknown as Record<string,unknown>)[field] ?? "")}
+                    onChange={e => setDraftFiles(d => d ? { ...d, [field]: e.target.value } : d)}
+                    placeholder="https://..." />
+                </div>
+              ))}
+              <SDivider />
+              <div>
+                <SLabel>סטטוס עריכה</SLabel>
+                <select style={SELECT_S} value={draftFiles.edit_status}
+                  onChange={e => setDraftFiles(d => d ? { ...d, edit_status: e.target.value } : d)}>
+                  {EDIT_STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <SLabel>תאריך פרסום</SLabel>
+                <DatePickerInput value={draftFiles.publish_date ?? ""}
+                  onChange={v => setDraftFiles(d => d ? { ...d, publish_date: v || null } : d)}
+                  style={{ ...INPUT_S, justifyContent: "space-between" }} />
+              </div>
+              <div style={{ gridColumn: "span 2" }}>
+                <SLabel>פורסם איפה</SLabel>
+                <input style={INPUT_S} value={draftFiles.published_where}
+                  onChange={e => setDraftFiles(d => d ? { ...d, published_where: e.target.value } : d)}
+                  placeholder="YouTube, Instagram..." />
+              </div>
+              <div style={{ gridColumn: "span 2" }}>
+                <SLabel>הערות תיקונים</SLabel>
+                <textarea style={{ ...TEXTAREA_S, minHeight: 56 }} value={draftFiles.fix_notes}
+                  onChange={e => setDraftFiles(d => d ? { ...d, fix_notes: e.target.value } : d)} />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 12 }}>
+                {[
+                  ["📁 חומרי גלם",prod.files_raw_link],
+                  ["📂 תיקיית עריכה",prod.files_edit_folder],
+                  ["✅ גרסה מאושרת",prod.final_version_link],
+                ].map(([lbl,val]) => val ? (
+                  <div key={lbl} style={{ background: "#141414", border: "1px solid #222", borderRadius: 8, padding: "8px 12px" }}>
+                    <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>{lbl}</div>
+                    <a href={val} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 11, color: "#60A5FA", wordBreak: "break-all" }}>
+                      {val.length > 40 ? val.slice(0,40)+"..." : val}
+                    </a>
+                  </div>
+                ) : null)}
+              </div>
+              {[["🎬 גרסה 1",prod.version_1_link],["🎬 גרסה 2",prod.version_2_link]].map(([lbl,val]) =>
+                val ? (
+                  <div key={lbl} style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, color: "#555" }}>{lbl}: </span>
+                    <a href={val} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#60A5FA" }}>
+                      {val.length > 50 ? val.slice(0,50)+"..." : val}
+                    </a>
+                  </div>
+                ) : null
+              )}
+              {!prod.files_raw_link && !prod.version_1_link && !prod.final_version_link && (
+                <div style={{ fontSize: 13, color: "#444", fontStyle: "italic", marginBottom: 10 }}>אין קבצים עדיין</div>
+              )}
+              <SDivider />
+              <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+                <div><div style={{ fontSize: 10, color: "#555" }}>סטטוס עריכה</div><div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{prod.edit_status}</div></div>
+                {prod.publish_date && <div><div style={{ fontSize: 10, color: "#555" }}>פרסום מתוכנן</div><div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{fmtDate(prod.publish_date)}</div></div>}
+                {prod.published_where && <div><div style={{ fontSize: 10, color: "#555" }}>פורסם ב</div><div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{prod.published_where}</div></div>}
+              </div>
+            </div>
+          )}
+        </SCard>
+      );
+
+      case "notes": return (
+        <SCard key="notes">
+          <SectionHeader title="הערות">
+            <EditActions section="notes" editing={editing} saving={saving}
+              onEdit={() => startEdit("notes")} onSave={saveNotes} onCancel={cancelEdit} />
+          </SectionHeader>
+          {editing === "notes" ? (
+            <textarea style={{ ...TEXTAREA_S, minHeight: 100 }}
+              value={draftNotes} onChange={e => setDraftNotes(e.target.value)}
+              placeholder="מה חסר, תזכורות, הערות כלליות..." />
+          ) : (
+            <div style={{ fontSize: 13, color: prod.notes ? "#CCC" : "#3A3A3A", lineHeight: 1.7, whiteSpace: "pre-wrap", fontStyle: prod.notes ? "normal" : "italic" }}>
+              {prod.notes || "אין הערות"}
+            </div>
+          )}
+        </SCard>
+      );
+
+      default: return null;
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100%", background: "#111" }}>
@@ -461,375 +828,21 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         </div>
       )}
 
-      {/* ── Body ── */}
-      <div style={{ padding: "24px 28px", width: "100%" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {layout.order
-            .filter(sId => !layout.hidden.includes(sId))
-            .map(sId => {
-              switch (sId) {
-
-                case "summary": return (
-                  <SCard key="summary">
-                    <SectionHeader title="סיכום הפקה">
-                      <EditActions section="summary" editing={editing} saving={saving}
-                        onEdit={() => startEdit("summary")} onSave={saveSummary} onCancel={cancelEdit} />
-                    </SectionHeader>
-                    {editing === "summary" && draftSummary ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-                        <SRow label="שם ההפקה">
-                          <input style={INPUT_S} value={draftSummary.title}
-                            onChange={e => setDraftSummary(d => d ? { ...d, title: e.target.value } : d)} />
-                        </SRow>
-                        <SRow label="סטטוס" half>
-                          <select style={SELECT_S} value={draftSummary.status}
-                            onChange={e => setDraftSummary(d => d ? { ...d, status: e.target.value } : d)}>
-                            {PRODUCTION_STATUSES.map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        </SRow>
-                        <SRow label="סוג הפקה" half>
-                          <select style={SELECT_S} value={draftSummary.production_type}
-                            onChange={e => setDraftSummary(d => d ? { ...d, production_type: e.target.value } : d)}>
-                            {PRODUCTION_TYPES.map(t => <option key={t}>{t}</option>)}
-                          </select>
-                        </SRow>
-                        <SRow label="אמן" half>
-                          <input style={INPUT_S} value={draftSummary.artist_name}
-                            onChange={e => setDraftSummary(d => d ? { ...d, artist_name: e.target.value } : d)} />
-                        </SRow>
-                        <SRow label="לקוח" half>
-                          <input style={INPUT_S} value={draftSummary.client_name}
-                            onChange={e => setDraftSummary(d => d ? { ...d, client_name: e.target.value } : d)} />
-                        </SRow>
-                        <SRow label="סוג לקוח" half>
-                          <select style={SELECT_S} value={draftSummary.client_source}
-                            onChange={e => setDraftSummary(d => d ? { ...d, client_source: e.target.value } : d)}>
-                            {CLIENT_SOURCES.map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        </SRow>
-                        <SRow label="צלם" half>
-                          <input style={INPUT_S} value={draftSummary.photographer_name}
-                            onChange={e => setDraftSummary(d => d ? { ...d, photographer_name: e.target.value } : d)} />
-                        </SRow>
-                        <SRow label="במאי / מפיק" half>
-                          <input style={INPUT_S} value={draftSummary.director_name}
-                            onChange={e => setDraftSummary(d => d ? { ...d, director_name: e.target.value } : d)} />
-                        </SRow>
-                        <SRow label="עורך" half>
-                          <input style={INPUT_S} value={draftSummary.editor_name}
-                            onChange={e => setDraftSummary(d => d ? { ...d, editor_name: e.target.value } : d)} />
-                        </SRow>
-                        <SRow label="תאריך צילום" half>
-                          <DatePickerInput value={draftSummary.shoot_date ?? ""}
-                            onChange={v => setDraftSummary(d => d ? { ...d, shoot_date: v || null } : d)}
-                            style={{ ...INPUT_S, justifyContent: "space-between" }} />
-                        </SRow>
-                        <SRow label="לוקיישנים">
-                          <input style={INPUT_S} value={draftSummary.locations}
-                            onChange={e => setDraftSummary(d => d ? { ...d, locations: e.target.value } : d)}
-                            placeholder="טיילת, בר, חוף..." />
-                        </SRow>
-                      </div>
-                    ) : (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-                        {[
-                          ["אמן",          prod.artist_name       || "—"],
-                          ["לקוח",         prod.client_name       || "—"],
-                          ["מקור",         prod.client_source],
-                          ["צלם",          prod.photographer_name || "—"],
-                          ["במאי / מפיק",  prod.director_name     || "—"],
-                          ["עורך",         prod.editor_name       || "—"],
-                          ["תאריך צילום",  fmtDate(prod.shoot_date) ?? "—"],
-                          ["לוקיישנים",    prod.locations         || "—"],
-                        ].map(([lbl, val]) => (
-                          <div key={lbl}>
-                            <div style={{ fontSize: 10, color: "#555" }}>{lbl}</div>
-                            <div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{val}</div>
-                          </div>
-                        ))}
-                        {projectName && (
-                          <div style={{ gridColumn: "span 4" }}>
-                            <SDivider />
-                            <div style={{ fontSize: 10, color: "#555" }}>פרויקט מקושר</div>
-                            <div style={{ fontSize: 13, color: "#60A5FA", marginTop: 3 }}>♫ {projectName}</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </SCard>
-                );
-
-                case "tasks": return (
-                  <SCard key="tasks">
-                    <RedFilmsProductionTasks productionId={id} productionTitle={prod.title} />
-                  </SCard>
-                );
-
-                case "concept": return (
-                  <SCard key="concept">
-                    <SectionHeader title="קונספט ותסריט">
-                      <EditActions section="concept" editing={editing} saving={saving}
-                        onEdit={() => startEdit("concept")} onSave={saveConcept} onCancel={cancelEdit} />
-                    </SectionHeader>
-                    {editing === "concept" && draftConcept ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                        <div style={{ gridColumn: "span 2" }}>
-                          <SLabel>תקציר / קונספט</SLabel>
-                          <textarea style={{ ...TEXTAREA_S, minHeight: 80 }} value={draftConcept.concept_summary}
-                            onChange={e => setDraftConcept(d => d ? { ...d, concept_summary: e.target.value } : d)}
-                            placeholder="תאר את הקונספט הכללי..." />
-                        </div>
-                        <div>
-                          <SLabel>וייב / סגנון</SLabel>
-                          <input style={INPUT_S} value={draftConcept.concept_vibe}
-                            onChange={e => setDraftConcept(d => d ? { ...d, concept_vibe: e.target.value } : d)}
-                            placeholder="מועדון, קיץ, רומנטי..." />
-                        </div>
-                        <div>
-                          <SLabel>רפרנסים</SLabel>
-                          <textarea style={{ ...TEXTAREA_S, minHeight: 48 }} value={draftConcept.ref_links}
-                            onChange={e => setDraftConcept(d => d ? { ...d, ref_links: e.target.value } : d)}
-                            placeholder="קישורים לרפרנסים..." />
-                        </div>
-                        <SDivider />
-                        <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                          {[["script_start","התחלה"],["script_middle","אמצע"],["script_end","סוף"]].map(([field, label]) => (
-                            <div key={field}>
-                              <SLabel>{label}</SLabel>
-                              <textarea style={{ ...TEXTAREA_S, minHeight: 60 }}
-                                value={String((draftConcept as unknown as Record<string,unknown>)[field] ?? "")}
-                                onChange={e => setDraftConcept(d => d ? { ...d, [field]: e.target.value } : d)} />
-                            </div>
-                          ))}
-                        </div>
-                        <div>
-                          <SLabel>הערות בימוי</SLabel>
-                          <textarea style={{ ...TEXTAREA_S, minHeight: 48 }} value={draftConcept.director_notes}
-                            onChange={e => setDraftConcept(d => d ? { ...d, director_notes: e.target.value } : d)} />
-                        </div>
-                        <div>
-                          <SLabel>הערות לצלם</SLabel>
-                          <textarea style={{ ...TEXTAREA_S, minHeight: 48 }} value={draftConcept.photographer_notes}
-                            onChange={e => setDraftConcept(d => d ? { ...d, photographer_notes: e.target.value } : d)} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                        {prod.concept_summary ? (
-                          <div>
-                            <div style={{ fontSize: 10, color: "#555", marginBottom: 6 }}>תקציר</div>
-                            <div style={{ fontSize: 13, color: "#CCC", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{prod.concept_summary}</div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 13, color: "#3A3A3A", fontStyle: "italic" }}>אין קונספט עדיין — לחץ ערוך</div>
-                        )}
-                        {prod.concept_vibe && (
-                          <div>
-                            <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>וייב</div>
-                            <div style={{ fontSize: 13, color: "#A78BFA", fontWeight: 600 }}>{prod.concept_vibe}</div>
-                          </div>
-                        )}
-                        {(prod.script_start || prod.script_middle || prod.script_end) && (
-                          <>
-                            <SDivider />
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                              {[["התחלה",prod.script_start],["אמצע",prod.script_middle],["סוף",prod.script_end]].map(([lbl,val]) => (
-                                <div key={lbl} style={{ background: "#141414", border: "1px solid #1E1E1E", borderRadius: 8, padding: "10px 12px" }}>
-                                  <div style={{ fontSize: 10, color: "#555", marginBottom: 6, fontWeight: 700 }}>{lbl}</div>
-                                  <div style={{ fontSize: 12, color: val ? "#CCC" : "#333", lineHeight: 1.6, whiteSpace: "pre-wrap", fontStyle: val ? "normal" : "italic" }}>{val || "לא הוזן"}</div>
-                                </div>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                        {(prod.director_notes || prod.photographer_notes) && (
-                          <>
-                            <SDivider />
-                            {prod.director_notes && <div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות בימוי</div><div style={{ fontSize: 12, color: "#CCC", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{prod.director_notes}</div></div>}
-                            {prod.photographer_notes && <div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות לצלם</div><div style={{ fontSize: 12, color: "#CCC", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{prod.photographer_notes}</div></div>}
-                          </>
-                        )}
-                        {prod.ref_links && (<><SDivider /><div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>רפרנסים</div><div style={{ fontSize: 12, color: "#60A5FA", whiteSpace: "pre-wrap" }}>{prod.ref_links}</div></div></>)}
-                      </div>
-                    )}
-                  </SCard>
-                );
-
-                case "documents": return <RedFilmsDocuments key="documents" productionId={id} />;
-
-                case "references": return <RedFilmsReferencesBoard key="references" productionId={id} />;
-
-                case "budget": return (
-                  <SCard key="budget">
-                    <SectionHeader title="תקציב">
-                      <EditActions section="budget" editing={editing} saving={saving}
-                        onEdit={() => startEdit("budget")} onSave={saveBudget} onCancel={cancelEdit} />
-                    </SectionHeader>
-                    {editing === "budget" && draftBudget ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-                        {([
-                          ["general_budget","תקציב כללי ₪"],
-                          ["client_price","מחיר ללקוח ₪"],
-                          ["advance_required","מקדמה נדרשת ₪"],
-                          ["advance_received","מקדמה התקבלה ₪"],
-                        ] as const).map(([field, label]) => (
-                          <div key={field}>
-                            <SLabel>{label}</SLabel>
-                            <input type="number" style={INPUT_S}
-                              value={(draftBudget as unknown as Record<string,number>)[field] ?? 0}
-                              onChange={e => setDraftBudget(d => d ? { ...d, [field]: +e.target.value } : d)} />
-                          </div>
-                        ))}
-                        <div style={{ gridColumn: "span 4" }}>
-                          <SLabel>סטטוס גבייה</SLabel>
-                          <select style={{ ...SELECT_S, maxWidth: 240 }} value={draftBudget.collection_status}
-                            onChange={e => setDraftBudget(d => d ? { ...d, collection_status: e.target.value } : d)}>
-                            {COLLECTION_STATUSES.map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 12 }}>
-                          {[
-                            ["תקציב",fmtNum(prod.general_budget)],
-                            ["מחיר ל״ק",prod.client_price ? fmtNum(prod.client_price) : "—"],
-                            ["מקדמה נדרשת",prod.advance_required ? fmtNum(prod.advance_required) : "—"],
-                            ["מקדמה התקבלה",prod.advance_received ? fmtNum(prod.advance_received) : "—"],
-                          ].map(([lbl,val]) => (
-                            <div key={lbl} style={{ background: "#141414", border: "1px solid #222", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-                              <div style={{ fontSize: 11, color: "#555" }}>{lbl}</div>
-                              <div style={{ fontSize: 16, fontWeight: 800, color: "#E8E8E8", marginTop: 4 }}>{val}</div>
-                            </div>
-                          ))}
-                        </div>
-                        {prod.collection_status !== "לא רלוונטי" && (
-                          <div style={{ fontSize: 12, color: "#888" }}>סטטוס גבייה: <span style={{ color: "#CCC" }}>{prod.collection_status}</span></div>
-                        )}
-                      </div>
-                    )}
-                  </SCard>
-                );
-
-                case "budgetItems": return (
-                  <SCard key="budgetItems">
-                    <SectionHeader title="תקציב מפורט" />
-                    <RedFilmsBudgetItems productionId={id} generalBudget={prod.general_budget}
-                      onBudgetUpdate={newBudget => setProd(p => p ? { ...p, general_budget: newBudget } : p)} />
-                  </SCard>
-                );
-
-                case "files": return (
-                  <SCard key="files">
-                    <SectionHeader title="קבצים ועריכה">
-                      <EditActions section="files" editing={editing} saving={saving}
-                        onEdit={() => startEdit("files")} onSave={saveFiles} onCancel={cancelEdit} />
-                    </SectionHeader>
-                    {editing === "files" && draftFiles ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        {([
-                          ["files_raw_link","קישור חומרי גלם"],
-                          ["files_edit_folder","תיקיית עריכה"],
-                          ["version_1_link","גרסה 1"],
-                          ["version_2_link","גרסה 2"],
-                          ["final_version_link","גרסה מאושרת"],
-                        ] as const).map(([field, label]) => (
-                          <div key={field}>
-                            <SLabel>{label}</SLabel>
-                            <input style={INPUT_S}
-                              value={String((draftFiles as unknown as Record<string,unknown>)[field] ?? "")}
-                              onChange={e => setDraftFiles(d => d ? { ...d, [field]: e.target.value } : d)}
-                              placeholder="https://..." />
-                          </div>
-                        ))}
-                        <SDivider />
-                        <div>
-                          <SLabel>סטטוס עריכה</SLabel>
-                          <select style={SELECT_S} value={draftFiles.edit_status}
-                            onChange={e => setDraftFiles(d => d ? { ...d, edit_status: e.target.value } : d)}>
-                            {EDIT_STATUSES.map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <SLabel>תאריך פרסום</SLabel>
-                          <DatePickerInput value={draftFiles.publish_date ?? ""}
-                            onChange={v => setDraftFiles(d => d ? { ...d, publish_date: v || null } : d)}
-                            style={{ ...INPUT_S, justifyContent: "space-between" }} />
-                        </div>
-                        <div style={{ gridColumn: "span 2" }}>
-                          <SLabel>פורסם איפה</SLabel>
-                          <input style={INPUT_S} value={draftFiles.published_where}
-                            onChange={e => setDraftFiles(d => d ? { ...d, published_where: e.target.value } : d)}
-                            placeholder="YouTube, Instagram..." />
-                        </div>
-                        <div style={{ gridColumn: "span 2" }}>
-                          <SLabel>הערות תיקונים</SLabel>
-                          <textarea style={{ ...TEXTAREA_S, minHeight: 56 }} value={draftFiles.fix_notes}
-                            onChange={e => setDraftFiles(d => d ? { ...d, fix_notes: e.target.value } : d)} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 12 }}>
-                          {[
-                            ["📁 חומרי גלם",prod.files_raw_link],
-                            ["📂 תיקיית עריכה",prod.files_edit_folder],
-                            ["✅ גרסה מאושרת",prod.final_version_link],
-                          ].map(([lbl,val]) => val ? (
-                            <div key={lbl} style={{ background: "#141414", border: "1px solid #222", borderRadius: 8, padding: "8px 12px" }}>
-                              <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>{lbl}</div>
-                              <a href={val} target="_blank" rel="noopener noreferrer"
-                                style={{ fontSize: 11, color: "#60A5FA", wordBreak: "break-all" }}>
-                                {val.length > 40 ? val.slice(0,40)+"..." : val}
-                              </a>
-                            </div>
-                          ) : null)}
-                        </div>
-                        {[["🎬 גרסה 1",prod.version_1_link],["🎬 גרסה 2",prod.version_2_link]].map(([lbl,val]) =>
-                          val ? (
-                            <div key={lbl} style={{ marginBottom: 6 }}>
-                              <span style={{ fontSize: 11, color: "#555" }}>{lbl}: </span>
-                              <a href={val} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#60A5FA" }}>
-                                {val.length > 50 ? val.slice(0,50)+"..." : val}
-                              </a>
-                            </div>
-                          ) : null
-                        )}
-                        {!prod.files_raw_link && !prod.version_1_link && !prod.final_version_link && (
-                          <div style={{ fontSize: 13, color: "#444", fontStyle: "italic", marginBottom: 10 }}>אין קבצים עדיין</div>
-                        )}
-                        <SDivider />
-                        <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-                          <div><div style={{ fontSize: 10, color: "#555" }}>סטטוס עריכה</div><div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{prod.edit_status}</div></div>
-                          {prod.publish_date && <div><div style={{ fontSize: 10, color: "#555" }}>פרסום מתוכנן</div><div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{fmtDate(prod.publish_date)}</div></div>}
-                          {prod.published_where && <div><div style={{ fontSize: 10, color: "#555" }}>פורסם ב</div><div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{prod.published_where}</div></div>}
-                        </div>
-                      </div>
-                    )}
-                  </SCard>
-                );
-
-                case "notes": return (
-                  <SCard key="notes">
-                    <SectionHeader title="הערות">
-                      <EditActions section="notes" editing={editing} saving={saving}
-                        onEdit={() => startEdit("notes")} onSave={saveNotes} onCancel={cancelEdit} />
-                    </SectionHeader>
-                    {editing === "notes" ? (
-                      <textarea style={{ ...TEXTAREA_S, minHeight: 100 }}
-                        value={draftNotes} onChange={e => setDraftNotes(e.target.value)}
-                        placeholder="מה חסר, תזכורות, הערות כלליות..." />
-                    ) : (
-                      <div style={{ fontSize: 13, color: prod.notes ? "#CCC" : "#3A3A3A", lineHeight: 1.7, whiteSpace: "pre-wrap", fontStyle: prod.notes ? "normal" : "italic" }}>
-                        {prod.notes || "אין הערות"}
-                      </div>
-                    )}
-                  </SCard>
-                );
-
-                default: return null;
-              }
-            })}
+      {/* ── Body — 2-column grid ── */}
+      <div style={{ padding: "24px 28px", width: "100%", boxSizing: "border-box" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+          {/* Management column: summary, tasks, budget, budgetItems, files, notes */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {layout.order
+              .filter(sId => !layout.hidden.includes(sId) && !CREATIVE_SECTIONS.has(sId))
+              .map(sId => renderSection(sId))}
+          </div>
+          {/* Creative column: concept, documents, references */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {layout.order
+              .filter(sId => !layout.hidden.includes(sId) && CREATIVE_SECTIONS.has(sId))
+              .map(sId => renderSection(sId))}
+          </div>
         </div>
       </div>
 

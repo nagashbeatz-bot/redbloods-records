@@ -19,6 +19,9 @@ export const DEFAULT_ORDER = [
   "budget", "budgetItems", "files", "notes",
 ];
 
+// Sections that belong in the creative (right) column; everything else goes in management (left)
+export const CREATIVE_SECTIONS = new Set(["concept", "documents", "references"]);
+
 export interface ProductionLayout {
   order: string[];
   hidden: string[];
