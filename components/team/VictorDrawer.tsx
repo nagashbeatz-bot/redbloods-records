@@ -431,7 +431,9 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   const [saveMsg,     setSaveMsg]     = useState("");
 
   // Salary tab state
-  const [salaryYear,    setSalaryYear]    = useState(() => new Date().getFullYear());
+  const SALARY_MIN_YEAR = 2026;
+  const SALARY_MAX_YEAR = 2028;
+  const [salaryYear,    setSalaryYear]    = useState(2026);
   const [salaryMonths,  setSalaryMonths]  = useState<VictorSalaryMonth[]>([]);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [sendingMonth,      setSendingMonth]      = useState<string | null>(null);
@@ -776,16 +778,20 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                 return (
                   <>
                     {/* Year selector */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                      {[salaryYear - 1, salaryYear, salaryYear + 1].map((y) => (
-                        <button key={y} onClick={() => setSalaryYear(y)}
-                          style={{ flex: 1, padding: "6px 0", borderRadius: 8, fontFamily: "inherit", fontSize: 12, fontWeight: y === salaryYear ? 700 : 400, cursor: "pointer",
-                            background: y === salaryYear ? "rgba(168,85,247,0.15)" : "#1A1A1A",
-                            border: `1px solid ${y === salaryYear ? "rgba(168,85,247,0.4)" : "#252525"}`,
-                            color: y === salaryYear ? "#A855F7" : "#555" }}>
-                          {y}
-                        </button>
-                      ))}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 14 }}>
+                      <button
+                        onClick={() => setSalaryYear((y) => Math.max(SALARY_MIN_YEAR, y - 1))}
+                        disabled={salaryYear <= SALARY_MIN_YEAR}
+                        style={{ background: "none", border: "none", color: salaryYear <= SALARY_MIN_YEAR ? "#333" : "#888", fontSize: 18, cursor: salaryYear <= SALARY_MIN_YEAR ? "default" : "pointer", lineHeight: 1, padding: "0 4px" }}>
+                        ›
+                      </button>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#D0D0D0", minWidth: 48, textAlign: "center" }}>{salaryYear}</span>
+                      <button
+                        onClick={() => setSalaryYear((y) => Math.min(SALARY_MAX_YEAR, y + 1))}
+                        disabled={salaryYear >= SALARY_MAX_YEAR}
+                        style={{ background: "none", border: "none", color: salaryYear >= SALARY_MAX_YEAR ? "#333" : "#888", fontSize: 18, cursor: salaryYear >= SALARY_MAX_YEAR ? "default" : "pointer", lineHeight: 1, padding: "0 4px" }}>
+                        ‹
+                      </button>
                     </div>
 
                     {/* Summary boxes */}
