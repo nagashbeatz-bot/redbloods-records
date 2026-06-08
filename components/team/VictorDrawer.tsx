@@ -115,10 +115,29 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatRow({ label, value, color = "#D0D0D0" }: { label: string; value: string | number; color?: string }) {
+function StatRow({ label, value, color = "#D0D0D0", active = false, onClick }: {
+  label: string; value: string | number; color?: string;
+  active?: boolean; onClick?: () => void;
+}) {
+  const clickable = !!onClick;
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #1E1E1E", fontSize: 13 }}>
-      <span style={{ color: "#666" }}>{label}</span>
+    <div
+      onClick={onClick}
+      style={{
+        display: "flex", justifyContent: "space-between",
+        padding: "7px 8px", borderBottom: "1px solid #1E1E1E",
+        fontSize: 13, borderRadius: 6,
+        background: active ? "rgba(168,85,247,0.08)" : "transparent",
+        cursor: clickable ? "pointer" : "default",
+        transition: "background 0.12s",
+      }}
+      onMouseEnter={e => { if (clickable && !active) e.currentTarget.style.background = "#1E1E1E"; }}
+      onMouseLeave={e => { e.currentTarget.style.background = active ? "rgba(168,85,247,0.08)" : "transparent"; }}
+    >
+      <span style={{ color: "#666", display: "flex", alignItems: "center", gap: 6 }}>
+        {clickable && <span style={{ fontSize: 9, color: "#555" }}>▶</span>}
+        {label}
+      </span>
       <span style={{ color, fontWeight: 600 }}>{value}</span>
     </div>
   );
@@ -381,6 +400,7 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState("");
+  const [drillFilter, setDrillFilter]   = useState<string | null>(null);
 
   // Settings
   const [goal,        setGoal]        = useState("");
@@ -550,15 +570,67 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                 <>
                   <div style={{ fontSize: 13, color: "#888", marginBottom: 12 }}>ביטמייקר / מפיק · שכר: {stats.salaryCurrency}{stats.monthlySalary} / חודש</div>
 
-                  <StatRow label="פעילים אצל ויקטור"   value={stats.active}         color="#A855F7" />
-                  <StatRow label="הושלמו החודש"        value={stats.completed}       color="#10B981" />
-                  <StatRow label="בוטלו החודש"         value={stats.cancelled}       color="#555" />
-                  <StatRow label="נשלחו החודש"         value={stats.sent}            color="#3B82F6" />
-                  <StatRow label="דורשים בדיקה"        value={stats.needsReview}     color={stats.needsReview > 0 ? "#F59E0B" : "#555"} />
-                  <StatRow label="דורשים תיקון"        value={stats.needsFix}        color={stats.needsFix > 0 ? "#EF4444" : "#555"} />
-                  <StatRow label="תקועים"              value={stats.stuck}           color={stats.stuck > 0 ? "#EF4444" : "#555"} />
-                  <StatRow label="אושרו"               value={stats.approved}        color="#10B981" />
-                  <StatRow label="נכנסו לפרויקט בפועל" value={stats.enteredProject}  color="#2DD4BF" />
+                  {(() => {
+                    const monthStart = `${month}-01`;
+                    const monthEnd   = `${month}-31`;
+                    const inMonth    = (w: VendorWork) => {
+                      const ref = w.sentDate ?? w.createdAt.slice(0, 10);
+                      return ref >= monthStart && ref <= monthEnd;
+                    };
+                    const drillMap: Record<string, VendorWork[]> = {
+                      "פעילים אצל ויקטור":   work.filter(w => w.status === "פעיל"),
+                      "הושלמו החודש":        work.filter(w => w.status === "הושלם" && inMonth(w)),
+                      "בוטלו החודש":         work.filter(w => w.status === "בוטל"  && inMonth(w)),
+                      "נשלחו החודש":         work.filter(w => w.sentDate != null && w.sentDate >= monthStart && w.sentDate <= monthEnd),
+                      "דורשים בדיקה":        work.filter(w => w.status === "פעיל" && (w.workState === "חזר מויקטור" || w.workState === "דורש בדיקה")),
+                      "דורשים תיקון":        work.filter(w => w.status === "פעיל" && w.workState === "דורש תיקון"),
+                      "תקועים":              work.filter(w => w.isStuck),
+                      "אושרו":               work.filter(w => w.outcome === "אושר" && inMonth(w)),
+                      "נכנסו לפרויקט בפועל": work.filter(w => w.outcome === "נכנס לפרויקט בפועל" && inMonth(w)),
+                    };
+                    const toggle = (label: string) =>
+                      setDrillFilter(prev => prev === label ? null : label);
+                    const drillItems = drillFilter ? (drillMap[drillFilter] ?? []) : [];
+
+                    return (
+                      <>
+                        <StatRow label="פעילים אצל ויקטור"   value={stats.active}         color="#A855F7"  active={drillFilter === "פעילים אצל ויקטור"}   onClick={() => toggle("פעילים אצל ויקטור")} />
+                        <StatRow label="הושלמו החודש"        value={stats.completed}       color="#10B981"  active={drillFilter === "הושלמו החודש"}        onClick={() => toggle("הושלמו החודש")} />
+                        <StatRow label="בוטלו החודש"         value={stats.cancelled}       color="#555"     active={drillFilter === "בוטלו החודש"}         onClick={() => toggle("בוטלו החודש")} />
+                        <StatRow label="נשלחו החודש"         value={stats.sent}            color="#3B82F6"  active={drillFilter === "נשלחו החודש"}         onClick={() => toggle("נשלחו החודש")} />
+                        <StatRow label="דורשים בדיקה"        value={stats.needsReview}     color={stats.needsReview > 0 ? "#F59E0B" : "#555"} active={drillFilter === "דורשים בדיקה"}  onClick={() => toggle("דורשים בדיקה")} />
+                        <StatRow label="דורשים תיקון"        value={stats.needsFix}        color={stats.needsFix > 0 ? "#EF4444" : "#555"}    active={drillFilter === "דורשים תיקון"} onClick={() => toggle("דורשים תיקון")} />
+                        <StatRow label="תקועים"              value={stats.stuck}           color={stats.stuck > 0 ? "#EF4444" : "#555"}       active={drillFilter === "תקועים"}       onClick={() => toggle("תקועים")} />
+                        <StatRow label="אושרו"               value={stats.approved}        color="#10B981"  active={drillFilter === "אושרו"}               onClick={() => toggle("אושרו")} />
+                        <StatRow label="נכנסו לפרויקט בפועל" value={stats.enteredProject}  color="#2DD4BF"  active={drillFilter === "נכנסו לפרויקט בפועל"} onClick={() => toggle("נכנסו לפרויקט בפועל")} />
+
+                        {drillFilter && (
+                          <div style={{ marginTop: 14, marginBottom: 4 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#A855F7" }}>
+                                מציג: {drillFilter} ({drillItems.length})
+                              </span>
+                              <button
+                                onClick={() => setDrillFilter(null)}
+                                style={{ fontSize: 11, color: "#555", background: "none", border: "1px solid #333", borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "inherit" }}
+                              >
+                                הצג הכל ✕
+                              </button>
+                            </div>
+                            {drillItems.length === 0 ? (
+                              <div style={{ color: "#555", fontSize: 13, padding: "10px 0", textAlign: "center" }}>
+                                אין עבודות במדד הזה
+                              </div>
+                            ) : (
+                              drillItems.map(w => (
+                                <WorkRow key={w.id} work={w} onOpenProject={openProject} onPatch={handlePatch} onToast={showToast} />
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <SectionTitle>קצב מול יעד — פעיל + הושלם</SectionTitle>
                   <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "12px 14px" }}>
