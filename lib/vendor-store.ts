@@ -17,6 +17,8 @@ import type {
   VictorStatus,
   VictorWorkState,
   VictorOutcome,
+  VictorSalaryMonth,
+  SalaryStatus,
 } from "@/lib/types";
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -233,6 +235,113 @@ export async function setVictorPaymentStatus(month: string, status: string, paid
       { onConflict: "key" }
     );
 }
+
+// ── Salary months ─────────────────────────────────────────────────────────────
+
+const SALARY_OVERRIDES_KEY = "vendor_victor_salary_overrides";
+
+const HE_MONTHS_SALARY = [
+  "ינואר","פברואר","מרץ","אפריל","מאי","יוני",
+  "יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר",
+];
+
+function salaryLinkedId(workMonth: string) {
+  return `victor_salary_${workMonth}`;
+}
+
+export function salaryDueDate(workMonth: string): string {
+  const [y, m] = workMonth.split("-").map(Number);
+  const dueYear = m === 12 ? y + 1 : y;
+  const dueMon  = m === 12 ? 1 : m + 1;
+  return `${dueYear}-${String(dueMon).padStart(2, "0")}-10`;
+}
+
+export function salaryMonthLabel(workMonth: string): string {
+  const [y, m] = workMonth.split("-").map(Number);
+  return `${HE_MONTHS_SALARY[m - 1]} ${y}`;
+}
+
+export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryMonth[]> {
+  const settings = await getVictorSettings();
+
+  // Salary amount overrides per month
+  const { data: overridesRow } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", SALARY_OVERRIDES_KEY)
+    .maybeSingle();
+  const overrides = (overridesRow?.value ?? {}) as Record<string, number>;
+
+  // All Victor salary transactions (filter in JS to avoid SQL LIKE wildcard issues)
+  const { data: txsRaw } = await supabase
+    .from("transactions")
+    .select("id, linked_session_id, payment_status, amount, currency")
+    .like("linked_session_id", "victor\\_salary\\_%");
+
+  // Build map: workMonth → transaction
+  const txMap = new Map<string, { id: string; paymentStatus: string }>();
+  for (const tx of (txsRaw ?? [])) {
+    const lid = tx.linked_session_id as string | null;
+    if (!lid) continue;
+    // Validate format: "victor_salary_YYYY-MM"
+    const m = /^victor_salary_(\d{4}-\d{2})$/.exec(lid);
+    if (!m) continue;
+    txMap.set(m[1], { id: tx.id as string, paymentStatus: tx.payment_status as string });
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const months: VictorSalaryMonth[] = [];
+  for (let mo = 1; mo <= 12; mo++) {
+    const workMonth = `${year}-${String(mo).padStart(2, "0")}`;
+    const dueDate   = salaryDueDate(workMonth);
+    const amount    = overrides[workMonth] ?? settings.monthlySalary;
+    const currency  = settings.salaryCurrency;
+    const tx        = txMap.get(workMonth);
+
+    let status: SalaryStatus;
+    if (!tx) {
+      const due = new Date(dueDate);
+      status = due <= today ? "לא שולם" : "צפוי";
+    } else {
+      const ps = tx.paymentStatus;
+      if (ps === "שולם" || ps === "התקבל") status = "שולם";
+      else if (ps === "חלקי")              status = "חלקי";
+      else if (ps === "בוטל")              status = "בוטל";
+      else                                 status = "נשלח לכספים";
+    }
+
+    months.push({
+      workMonth,
+      dueDate,
+      amount,
+      currency,
+      status,
+      transactionId:              tx?.id              ?? null,
+      transactionPaymentStatus:   tx?.paymentStatus   ?? null,
+    });
+  }
+
+  return months;
+}
+
+export async function setSalaryAmountOverride(workMonth: string, amount: number): Promise<void> {
+  const { data: existing } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", SALARY_OVERRIDES_KEY)
+    .maybeSingle();
+  const current = (existing?.value ?? {}) as Record<string, number>;
+  await supabase
+    .from("settings")
+    .upsert(
+      { key: SALARY_OVERRIDES_KEY, value: { ...current, [workMonth]: amount } },
+      { onConflict: "key" }
+    );
+}
+
+export { salaryLinkedId };
 
 // ── Monthly stats ─────────────────────────────────────────────────────────────
 

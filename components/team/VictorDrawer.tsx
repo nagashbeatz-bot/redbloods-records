@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import type { VictorMonthStats, VendorWork, VictorStatus } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorStatus, VictorSalaryMonth, SalaryStatus } from "@/lib/types";
 import { VICTOR_STATUSES } from "@/lib/types";
 import { segmentVictorWork } from "@/lib/victor-segments";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
@@ -34,6 +34,24 @@ function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
     </div>,
     document.body
   );
+}
+
+// ── Salary helpers ────────────────────────────────────────────────────────────
+
+function fmtDueDate(d: string): string {
+  const [, m, day] = d.split("-");
+  return `${day}.${m}`;
+}
+
+function salaryStatusBadge(status: SalaryStatus): { label: string; color: string; bg: string } {
+  switch (status) {
+    case "שולם":           return { label: "שולם ✓",        color: "#10B981", bg: "rgba(16,185,129,0.12)" };
+    case "חלקי":           return { label: "חלקי",           color: "#F59E0B", bg: "rgba(245,158,11,0.12)" };
+    case "לא שולם":        return { label: "לא שולם",        color: "#EF4444", bg: "rgba(239,68,68,0.12)" };
+    case "נשלח לכספים":   return { label: "נשלח לכספים",   color: "#3B82F6", bg: "rgba(59,130,246,0.12)" };
+    case "בוטל":           return { label: "בוטל",           color: "#555",    bg: "#1E1E1E" };
+    default:               return { label: "צפוי",           color: "#888",    bg: "#1A1A1A" };
+  }
 }
 
 // ── Mini badge dropdown ───────────────────────────────────────────────────────
@@ -395,7 +413,7 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   const [stats,   setStats]   = useState<VictorMonthStats | null>(null);
   const [work,    setWork]    = useState<VendorWork[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"פרויקטים" | "מדדים" | "הגדרות">("פרויקטים");
+  const [activeTab, setActiveTab] = useState<"פרויקטים" | "מדדים" | "משכורות" | "הגדרות">("פרויקטים");
   const { openProject } = useGlobalProjectDrawer();
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -411,6 +429,13 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   const [payStatus,   setPayStatus]   = useState("צפוי");
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState("");
+
+  // Salary tab state
+  const [salaryYear,    setSalaryYear]    = useState(() => new Date().getFullYear());
+  const [salaryMonths,  setSalaryMonths]  = useState<VictorSalaryMonth[]>([]);
+  const [salaryLoading, setSalaryLoading] = useState(false);
+  const [sendingMonth,  setSendingMonth]  = useState<string | null>(null);
+  const [editAmount,    setEditAmount]    = useState<{ month: string; value: string } | null>(null);
 
   const showToast = useCallback((msg: string) => setToast(msg), []);
 
@@ -431,6 +456,49 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   }, [month]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
+
+  // Salary fetch — triggered when tab is open or year changes
+  const fetchSalary = useCallback(async () => {
+    setSalaryLoading(true);
+    try {
+      const res  = await fetch(`/api/vendor/victor/salary?year=${salaryYear}`);
+      const data = await res.json() as { ok: boolean; months: VictorSalaryMonth[] };
+      if (data.ok) setSalaryMonths(data.months);
+    } finally { setSalaryLoading(false); }
+  }, [salaryYear]);
+
+  useEffect(() => {
+    if (activeTab === "משכורות") void fetchSalary();
+  }, [activeTab, fetchSalary]);
+
+  const sendToFinance = useCallback(async (m: VictorSalaryMonth) => {
+    setSendingMonth(m.workMonth);
+    try {
+      const res  = await fetch("/api/vendor/victor/salary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workMonth: m.workMonth, amount: m.amount, currency: m.currency }),
+      });
+      const data = await res.json() as { ok: boolean; duplicate?: boolean };
+      if (data.ok) {
+        showToast(data.duplicate ? "כבר נשלח לכספים" : `משכורת ${heMonth(m.workMonth)} נשלחה לכספים ✓`);
+        void fetchSalary();
+      } else { showToast("שגיאה בשליחה לכספים"); }
+    } catch { showToast("שגיאת רשת"); }
+    finally  { setSendingMonth(null); }
+  }, [fetchSalary, showToast]);
+
+  const saveAmountOverride = useCallback(async (workMonth: string, amount: number, hasTx: boolean) => {
+    try {
+      await fetch("/api/vendor/victor/salary", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workMonth, amount }),
+      });
+      void fetchSalary();
+      if (hasTx) showToast("הסכום עודכן. לעדכון בכספים — פתח את התנועה ידנית.");
+    } catch { showToast("שגיאת שמירה"); }
+  }, [fetchSalary, showToast]);
 
   useEffect(() => {
     fetch("/api/vendor/victor/settings")
@@ -519,7 +587,7 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
 
           {/* Tabs */}
           <div style={{ display: "flex", borderBottom: "1px solid #252525", padding: "0 20px" }}>
-            {(["פרויקטים", "מדדים", "הגדרות"] as const).map((tab) => (
+            {(["פרויקטים", "מדדים", "משכורות", "הגדרות"] as const).map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: activeTab === tab ? 700 : 400, color: activeTab === tab ? "#A855F7" : "#555", padding: "10px 14px", borderBottom: activeTab === tab ? "2px solid #A855F7" : "2px solid transparent", marginBottom: -1 }}
               >{tab}</button>
@@ -667,6 +735,136 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                   </div>
                 </>
               ) :
+
+              // ── משכורות ─────────────────────────────────────────────────────
+              activeTab === "משכורות" ? (() => {
+                const paidTotal = salaryMonths
+                  .filter((m) => m.status === "שולם")
+                  .reduce((s, m) => s + m.amount, 0);
+                const openTotal = salaryMonths
+                  .filter((m) => m.status !== "שולם" && m.status !== "בוטל")
+                  .reduce((s, m) => s + m.amount, 0);
+                const nextDue = salaryMonths
+                  .filter((m) => m.status !== "שולם" && m.status !== "בוטל")
+                  .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+                const defCurrency = stats?.salaryCurrency ?? "$";
+
+                return (
+                  <>
+                    {/* Year selector */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                      {[salaryYear - 1, salaryYear, salaryYear + 1].map((y) => (
+                        <button key={y} onClick={() => setSalaryYear(y)}
+                          style={{ flex: 1, padding: "6px 0", borderRadius: 8, fontFamily: "inherit", fontSize: 12, fontWeight: y === salaryYear ? 700 : 400, cursor: "pointer",
+                            background: y === salaryYear ? "rgba(168,85,247,0.15)" : "#1A1A1A",
+                            border: `1px solid ${y === salaryYear ? "rgba(168,85,247,0.4)" : "#252525"}`,
+                            color: y === salaryYear ? "#A855F7" : "#555" }}>
+                          {y}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Summary boxes */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+                      {[
+                        { label: "שולם השנה",          val: `${defCurrency}${paidTotal.toLocaleString()}`, color: "#10B981" },
+                        { label: "פתוח לתשלום",         val: `${defCurrency}${openTotal.toLocaleString()}`, color: openTotal > 0 ? "#EF4444" : "#555" },
+                        { label: "התשלום הבא",          val: nextDue ? fmtDueDate(nextDue.dueDate) + `.${nextDue.dueDate.slice(0,4)}` : "—", color: "#F59E0B" },
+                        { label: "משכורת חודשית",       val: `${defCurrency}${stats?.monthlySalary ?? 550}`, color: "#A855F7" },
+                      ].map(({ label, val, color }) => (
+                        <div key={label} style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "10px 12px" }}>
+                          <div style={{ fontSize: 11, color: "#555", marginBottom: 3 }}>{label}</div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Month table */}
+                    {salaryLoading ? (
+                      <div style={{ color: "#444", fontSize: 13, padding: "16px 0" }}>טוען...</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {salaryMonths.map((m) => {
+                          const badge    = salaryStatusBadge(m.status);
+                          const isSending = sendingMonth === m.workMonth;
+                          const isEditing = editAmount?.month === m.workMonth;
+                          const canSend   = m.status === "צפוי" || m.status === "לא שולם";
+
+                          return (
+                            <div key={m.workMonth} style={{
+                              background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10,
+                              padding: "10px 12px",
+                            }}>
+                              {/* Row top */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: "#D0D0D0" }}>{heMonth(m.workMonth)}</span>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 600, borderRadius: 6, padding: "2px 8px",
+                                  background: badge.bg, color: badge.color,
+                                }}>{badge.label}</span>
+                              </div>
+
+                              {/* Row details */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                                  {/* Due date */}
+                                  <span style={{ fontSize: 11, color: "#555" }}>
+                                    צפוי: {fmtDueDate(m.dueDate)}.{m.dueDate.slice(0, 4)}
+                                  </span>
+                                  {/* Editable amount */}
+                                  {isEditing ? (
+                                    <input
+                                      autoFocus
+                                      type="number"
+                                      value={editAmount!.value}
+                                      onChange={(e) => setEditAmount({ month: m.workMonth, value: e.target.value })}
+                                      onBlur={() => {
+                                        const amt = Number(editAmount!.value);
+                                        if (amt > 0 && amt !== m.amount) {
+                                          void saveAmountOverride(m.workMonth, amt, !!m.transactionId);
+                                        }
+                                        setEditAmount(null);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                        if (e.key === "Escape") setEditAmount(null);
+                                      }}
+                                      style={{ width: 70, background: "#141414", border: "1px solid #A855F7", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "2px 6px", fontFamily: "inherit" }}
+                                    />
+                                  ) : (
+                                    <button
+                                      onClick={() => setEditAmount({ month: m.workMonth, value: String(m.amount) })}
+                                      title="לחץ לעריכת סכום"
+                                      style={{ background: "none", border: "none", color: "#A855F7", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+                                      {m.currency}{m.amount.toLocaleString()}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Action */}
+                                <div>
+                                  {canSend ? (
+                                    <button
+                                      onClick={() => void sendToFinance(m)}
+                                      disabled={isSending}
+                                      style={{ fontSize: 11, fontWeight: 700, cursor: isSending ? "wait" : "pointer", fontFamily: "inherit",
+                                        background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)",
+                                        borderRadius: 7, color: "#A855F7", padding: "4px 10px", opacity: isSending ? 0.6 : 1 }}>
+                                      {isSending ? "שולח..." : "שלח לכספים"}
+                                    </button>
+                                  ) : m.status !== "שולם" && m.status !== "בוטל" ? (
+                                    <span style={{ fontSize: 11, color: "#3B82F6" }}>נשלח לכספים</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })() :
 
               // ── הגדרות ──────────────────────────────────────────────────────
               activeTab === "הגדרות" ? (

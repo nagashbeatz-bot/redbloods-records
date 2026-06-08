@@ -203,6 +203,26 @@ export interface VictorMonthStats {
   salaryCurrency: string;
 }
 
+// ── Victor salary types ───────────────────────────────────────────────────────
+
+export type SalaryStatus =
+  | "צפוי"
+  | "לא שולם"
+  | "נשלח לכספים"
+  | "שולם"
+  | "חלקי"
+  | "בוטל";
+
+export interface VictorSalaryMonth {
+  workMonth: string;                    // "2026-06"
+  dueDate: string;                      // "2026-07-10"
+  amount: number;
+  currency: string;
+  status: SalaryStatus;
+  transactionId: string | null;
+  transactionPaymentStatus: string | null;
+}
+
 // ── Agent / Proactive intelligence types ──────────────────────────────────────
 
 export type AlertSeverity = "info" | "warning" | "important" | "urgent";
