@@ -9,6 +9,7 @@
  */
 import "server-only";
 import { supabase } from "@/lib/supabase";
+import { segmentVictorWork } from "@/lib/victor-segments";
 import type {
   VendorWork,
   VendorSettings,
@@ -239,7 +240,6 @@ export async function getVictorMonthStats(month: string): Promise<VictorMonthSta
   const settings   = await getVictorSettings();
   const projectMap = await buildProjectMap();
 
-  // Fetch all Victor work (we filter in-memory for flexibility)
   const { data: rawAll } = await supabase
     .from("vendor_project_work")
     .select("*")
@@ -249,37 +249,13 @@ export async function getVictorMonthStats(month: string): Promise<VictorMonthSta
     mapRow(r as Record<string, unknown>, projectMap, settings.stuckAfterDays)
   );
 
-  const monthStart = `${month}-01`;
-  const monthEnd   = `${month}-31`;
+  const seg = segmentVictorWork(all, month);
 
-  // Helper: record belongs to this month
-  const inMonth = (w: VendorWork) => {
-    const ref = w.sentDate ?? w.createdAt.slice(0, 10);
-    return ref >= monthStart && ref <= monthEnd;
-  };
+  // paceValue = sent this month that are NOT בוטל
+  const paceValue = seg.sentThisMonth.filter((w) => w.status !== "בוטל").length;
 
-  // ── Counts ──────────────────────────────────────────────────────────────────
-
-  const sentThisMonth   = all.filter((w) => w.sentDate && w.sentDate >= monthStart && w.sentDate <= monthEnd);
-  const activeAll       = all.filter((w) => w.status === "פעיל");          // all, no month filter
-  const completedMonth  = all.filter((w) => w.status === "הושלם" && inMonth(w));
-  const cancelledMonth  = all.filter((w) => w.status === "בוטל"  && inMonth(w));
-
-  const needsReview = activeAll.filter(
-    (w) => w.workState === "חזר מויקטור" || w.workState === "דורש בדיקה"
-  );
-  const needsFix    = activeAll.filter((w) => w.workState === "דורש תיקון");
-  const stuckAll    = all.filter((w) => w.isStuck);
-
-  const approvedMonth  = all.filter((w) => w.outcome === "אושר"                  && inMonth(w));
-  const enteredMonth   = all.filter((w) => w.outcome === "נכנס לפרויקט בפועל"    && inMonth(w));
-
-  // ── Pace ────────────────────────────────────────────────────────────────────
-  // paceValue = records sent this month that are NOT בוטל (פעיל + הושלם)
-  const paceValue = sentThisMonth.filter((w) => w.status !== "בוטל").length;
-
-  const now        = new Date();
-  const curMonth   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const now      = new Date();
+  const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   let expectedByNow = settings.monthlyGoal;
   if (month === curMonth) {
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -290,16 +266,16 @@ export async function getVictorMonthStats(month: string): Promise<VictorMonthSta
 
   return {
     month,
-    goal:          settings.monthlyGoal,
-    sent:          sentThisMonth.length,
-    active:        activeAll.length,
-    completed:     completedMonth.length,
-    cancelled:     cancelledMonth.length,
-    needsReview:   needsReview.length,
-    needsFix:      needsFix.length,
-    stuck:         stuckAll.length,
-    approved:      approvedMonth.length,
-    enteredProject: enteredMonth.length,
+    goal:           settings.monthlyGoal,
+    sent:           seg.sentThisMonth.length,
+    active:         seg.pureActive.length,
+    completed:      seg.completed.length,
+    cancelled:      seg.cancelled.length,
+    needsReview:    seg.needsReview.length,
+    needsFix:       seg.needsFix.length,
+    stuck:          seg.stuck.length,
+    approved:       seg.approved.length,
+    enteredProject: seg.entered.length,
     paceValue,
     expectedByNow,
     paymentStatus,

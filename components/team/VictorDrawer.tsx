@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { VictorMonthStats, VendorWork, VictorStatus } from "@/lib/types";
 import { VICTOR_STATUSES } from "@/lib/types";
+import { segmentVictorWork } from "@/lib/victor-segments";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -570,22 +571,17 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                   <div style={{ fontSize: 13, color: "#888", marginBottom: 12 }}>ביטמייקר / מפיק · שכר: {stats.salaryCurrency}{stats.monthlySalary} / חודש</div>
 
                   {(() => {
-                    const monthStart = `${month}-01`;
-                    const monthEnd   = `${month}-31`;
-                    const inMonth    = (w: VendorWork) => {
-                      const ref = w.sentDate ?? w.createdAt.slice(0, 10);
-                      return ref >= monthStart && ref <= monthEnd;
-                    };
+                    const seg = segmentVictorWork(work, month);
                     const drillMap: Record<string, VendorWork[]> = {
-                      "פעילים אצל ויקטור":   work.filter(w => w.status === "פעיל"),
-                      "הושלמו החודש":        work.filter(w => w.status === "הושלם" && inMonth(w)),
-                      "בוטלו החודש":         work.filter(w => w.status === "בוטל"  && inMonth(w)),
-                      "נשלחו החודש":         work.filter(w => w.sentDate != null && w.sentDate >= monthStart && w.sentDate <= monthEnd),
-                      "דורשים בדיקה":        work.filter(w => w.status === "פעיל" && (w.workState === "חזר מויקטור" || w.workState === "דורש בדיקה")),
-                      "דורשים תיקון":        work.filter(w => w.status === "פעיל" && w.workState === "דורש תיקון"),
-                      "תקועים":              work.filter(w => w.isStuck),
-                      "אושרו":               work.filter(w => w.outcome === "אושר" && inMonth(w)),
-                      "נכנסו לפרויקט בפועל": work.filter(w => w.outcome === "נכנס לפרויקט בפועל" && inMonth(w)),
+                      "פעילים החודש":        seg.pureActive,
+                      "הושלמו החודש":        seg.completed,
+                      "בוטלו החודש":         seg.cancelled,
+                      "נשלחו החודש":         seg.sentThisMonth,
+                      "דורשים בדיקה":        seg.needsReview,
+                      "דורשים תיקון":        seg.needsFix,
+                      "תקועים (פתוחים)":     seg.stuck,
+                      "אושרו":               seg.approved,
+                      "נכנסו לפרויקט בפועל": seg.entered,
                     };
                     const toggle = (label: string) =>
                       setDrillFilter(prev => prev === label ? null : label);
@@ -593,13 +589,13 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
 
                     return (
                       <>
-                        <StatRow label="פעילים אצל ויקטור"   value={stats.active}         color="#A855F7"  active={drillFilter === "פעילים אצל ויקטור"}   onClick={() => toggle("פעילים אצל ויקטור")} />
+                        <StatRow label="פעילים החודש"        value={stats.active}         color="#A855F7"  active={drillFilter === "פעילים החודש"}        onClick={() => toggle("פעילים החודש")} />
                         <StatRow label="הושלמו החודש"        value={stats.completed}       color="#10B981"  active={drillFilter === "הושלמו החודש"}        onClick={() => toggle("הושלמו החודש")} />
                         <StatRow label="בוטלו החודש"         value={stats.cancelled}       color="#555"     active={drillFilter === "בוטלו החודש"}         onClick={() => toggle("בוטלו החודש")} />
                         <StatRow label="נשלחו החודש"         value={stats.sent}            color="#3B82F6"  active={drillFilter === "נשלחו החודש"}         onClick={() => toggle("נשלחו החודש")} />
                         <StatRow label="דורשים בדיקה"        value={stats.needsReview}     color={stats.needsReview > 0 ? "#F59E0B" : "#555"} active={drillFilter === "דורשים בדיקה"}  onClick={() => toggle("דורשים בדיקה")} />
-                        <StatRow label="דורשים תיקון"        value={stats.needsFix}        color={stats.needsFix > 0 ? "#EF4444" : "#555"}    active={drillFilter === "דורשים תיקון"} onClick={() => toggle("דורשים תיקון")} />
-                        <StatRow label="תקועים"              value={stats.stuck}           color={stats.stuck > 0 ? "#EF4444" : "#555"}       active={drillFilter === "תקועים"}       onClick={() => toggle("תקועים")} />
+                        <StatRow label="דורשים תיקון"        value={stats.needsFix}        color={stats.needsFix > 0 ? "#EF4444" : "#555"}    active={drillFilter === "דורשים תיקון"}  onClick={() => toggle("דורשים תיקון")} />
+                        <StatRow label="תקועים (פתוחים)"     value={stats.stuck}           color={stats.stuck > 0 ? "#EF4444" : "#555"}       active={drillFilter === "תקועים (פתוחים)"}  onClick={() => toggle("תקועים (פתוחים)")} />
                         <StatRow label="אושרו"               value={stats.approved}        color="#10B981"  active={drillFilter === "אושרו"}               onClick={() => toggle("אושרו")} />
                         <StatRow label="נכנסו לפרויקט בפועל" value={stats.enteredProject}  color="#2DD4BF"  active={drillFilter === "נכנסו לפרויקט בפועל"} onClick={() => toggle("נכנסו לפרויקט בפועל")} />
 
