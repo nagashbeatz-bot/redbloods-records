@@ -22,10 +22,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { workMonth, amount, currency } = (await req.json()) as {
+    const { workMonth, amount, currency, historicPaid = false, paidDate } = (await req.json()) as {
       workMonth: string;
       amount: number;
       currency: string;
+      historicPaid?: boolean;
+      paidDate?: string;
     };
 
     const { supabase } = await import("@/lib/supabase");
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     const linkedId = salaryLinkedId(workMonth);
 
-    // Guard: no duplicate
+    // Guard: no duplicate — if transaction already exists, return it without creating a new one
     const { data: existing } = await supabase
       .from("transactions")
       .select("id, payment_status")
@@ -57,11 +59,11 @@ export async function POST(req: NextRequest) {
         description:       `משכורת Victor — ${monthLabel}`,
         amount:            amount,
         currency:          currency,
-        payment_status:    "לא שולם",
+        payment_status:    historicPaid ? "שולם" : "לא שולם",
         category:          "צוות",
-        date:              dueDate,
+        date:              paidDate ?? dueDate,
         linked_session_id: linkedId,
-        notes:             "",
+        notes:             historicPaid ? "סומן כשולם היסטורית מתוך כרטיס Victor" : "",
         payment_method:    "",
         receipt_ref:       "",
         expense_scope:     "כללי",
