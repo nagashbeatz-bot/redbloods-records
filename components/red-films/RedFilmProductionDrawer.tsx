@@ -51,6 +51,8 @@ export interface Production {
   publish_date: string | null;
   published_where: string;
   notes: string;
+  dropbox_folder_path: string;
+  dropbox_folder_url: string;
   created_at: string;
   updated_at: string;
 }

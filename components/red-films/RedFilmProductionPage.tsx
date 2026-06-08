@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import RedFilmsReferencesBoard from "./RedFilmsReferencesBoard";
+import RedFilmsDocuments from "./RedFilmsDocuments";
 import RedFilmsBudgetItems from "./RedFilmsBudgetItems";
 import RedFilmsProductionTasks from "./RedFilmsProductionTasks";
 import DatePickerInput from "@/components/ui/DatePickerInput";
@@ -124,6 +125,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [trashConfirm, setTrashConfirm] = useState(false);
   const [trashing,     setTrashing]     = useState(false);
+  const [creatingFolder, setCreatingFolder] = useState(false);
 
   const player = usePlayerSafe();
 
@@ -249,6 +251,21 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
     if (r) router.push("/red-films");
   }
 
+  async function createDropboxFolder() {
+    if (!prod) return;
+    setCreatingFolder(true);
+    try {
+      const res  = await fetch(`/api/red-films/productions/${prod.id}/dropbox-folder`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "שגיאה");
+      setProd(p => p ? { ...p, dropbox_folder_url: data.folderUrl, dropbox_folder_path: data.folderPath } : p);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "שגיאה";
+      setSaveErr(msg);
+      setTimeout(() => setSaveErr(null), 4000);
+    } finally { setCreatingFolder(false); }
+  }
+
   const projectName = prod?.project_id
     ? (projects.find(p => p.id === prod.project_id)?.name ?? null)
     : null;
@@ -370,6 +387,37 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
             </div>
           );
         })()}
+
+        {/* Dropbox folder button */}
+        {prod.dropbox_folder_url ? (
+          <a
+            href={prod.dropbox_folder_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
+              padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+              border: "1px solid #333", color: "#888", textDecoration: "none",
+              background: "none", fontFamily: "inherit",
+            }}
+          >
+            📁 פתח תיקייה
+          </a>
+        ) : (
+          <button
+            onClick={createDropboxFolder}
+            disabled={creatingFolder}
+            style={{
+              flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
+              padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+              border: "1px solid #333", color: "#555", background: "none",
+              cursor: creatingFolder ? "default" : "pointer", fontFamily: "inherit",
+              opacity: creatingFolder ? 0.6 : 1,
+            }}
+          >
+            {creatingFolder ? "יוצר..." : "📁 צור תיקיית Dropbox"}
+          </button>
+        )}
 
         {/* Trash button */}
         {prod.status !== "בוטל" && (
@@ -811,6 +859,9 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         <div style={{ marginTop: 16 }}>
           <RedFilmsReferencesBoard productionId={id} />
         </div>
+
+        {/* ── Documents — full width below references ── */}
+        <RedFilmsDocuments productionId={id} />
       </div>
 
       {/* ── Trash confirmation modal ── */}
