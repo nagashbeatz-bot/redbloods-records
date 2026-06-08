@@ -82,29 +82,20 @@ async function buildProjectMap(): Promise<Map<string, { name: string; artist: st
 
 // ── Read ──────────────────────────────────────────────────────────────────────
 
-export async function getVictorWork(month?: string): Promise<VendorWork[]> {
+export async function getVictorWork(_month?: string): Promise<VendorWork[]> {
+  // Always return ALL records — same dataset as getVictorMonthStats.
+  // Month-filtering was causing invalid dates (e.g. June-31) and dataset
+  // mismatches between the stats counts and the drill-down list.
+  // The פרויקטים tab groups by status, not by month, so no month filter needed.
   const settings   = await getVictorSettings();
   const projectMap = await buildProjectMap();
 
-  let query = supabase
+  const { data } = await supabase
     .from("vendor_project_work")
     .select("*")
     .eq("vendor_name", "victor")
     .order("created_at", { ascending: false });
 
-  if (month) {
-    // Include records with sentDate in month OR still active (no month restriction)
-    const start = `${month}-01`;
-    const end   = `${month}-31`;
-    query = supabase
-      .from("vendor_project_work")
-      .select("*")
-      .eq("vendor_name", "victor")
-      .or(`sent_date.gte.${start},sent_date.lte.${end},status.eq.פעיל`)
-      .order("created_at", { ascending: false });
-  }
-
-  const { data } = await query;
   return (data ?? []).map((r) =>
     mapRow(r as Record<string, unknown>, projectMap, settings.stuckAfterDays)
   );
