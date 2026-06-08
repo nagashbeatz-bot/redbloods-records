@@ -438,6 +438,7 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [sendingMonth,      setSendingMonth]      = useState<string | null>(null);
   const [markingPaidMonth,  setMarkingPaidMonth]  = useState<string | null>(null);
+  const [cancelingPaidMonth, setCancelingPaidMonth] = useState<string | null>(null);
   const [editAmount,        setEditAmount]        = useState<{ month: string; value: string } | null>(null);
 
   const showToast = useCallback((msg: string) => setToast(msg), []);
@@ -512,6 +513,27 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
       } else { showToast("שגיאה בסימון"); }
     } catch { showToast("שגיאת רשת"); }
     finally  { setMarkingPaidMonth(null); }
+  }, [fetchSalary, showToast]);
+
+  const cancelHistoricPaid = useCallback(async (m: VictorSalaryMonth) => {
+    if (!m.transactionId) return;
+    setCancelingPaidMonth(m.workMonth);
+    try {
+      const res  = await fetch(`/api/transactions/${m.transactionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentStatus: "בוטל",
+          notes: "בוטל סימון תשלום מתוך כרטיס Victor",
+        }),
+      });
+      const data = await res.json() as { transaction?: unknown };
+      if (data.transaction) {
+        showToast(`${heMonth(m.workMonth)} — סימון התשלום בוטל`);
+        void fetchSalary();
+      } else { showToast("שגיאה בביטול"); }
+    } catch { showToast("שגיאת רשת"); }
+    finally  { setCancelingPaidMonth(null); }
   }, [fetchSalary, showToast]);
 
   const saveAmountOverride = useCallback(async (workMonth: string, amount: number, hasTx: boolean) => {
@@ -815,12 +837,19 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {salaryMonths.map((m) => {
-                          const badge          = salaryStatusBadge(m.status);
-                          const isSending      = sendingMonth === m.workMonth;
-                          const isMarkingPaid  = markingPaidMonth === m.workMonth;
-                          const isEditing      = editAmount?.month === m.workMonth;
-                          // canSend = no transaction yet (both buttons available)
-                          const canSend        = !m.transactionId;
+                          const badge             = salaryStatusBadge(m.status);
+                          const isSending         = sendingMonth === m.workMonth;
+                          const isMarkingPaid     = markingPaidMonth === m.workMonth;
+                          const isCanceling       = cancelingPaidMonth === m.workMonth;
+                          const isEditing         = editAmount?.month === m.workMonth;
+                          const isTxCancelled     = m.transactionPaymentStatus === "בוטל";
+                          // canSend = no transaction, or transaction was cancelled (reuse)
+                          const canSend           = !m.transactionId || isTxCancelled;
+                          // "שולם היסטורית" only for past/due months (dueDate <= today)
+                          const duePast           = new Date(m.dueDate).getTime() <= Date.now();
+                          const canMarkHistoric   = canSend && duePast;
+                          // "בטל סימון" only for months marked שולם with a transaction
+                          const canCancel         = m.status === "שולם" && !!m.transactionId;
 
                           return (
                             <div key={m.workMonth} style={{
@@ -875,28 +904,42 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
 
                                 {/* Action */}
                                 <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
-                                  {canSend ? (
-                                    <>
-                                      <button
-                                        onClick={() => void sendToFinance(m)}
-                                        disabled={isSending || isMarkingPaid}
-                                        style={{ fontSize: 11, fontWeight: 700, cursor: isSending ? "wait" : "pointer", fontFamily: "inherit",
-                                          background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)",
-                                          borderRadius: 7, color: "#A855F7", padding: "4px 10px", opacity: (isSending || isMarkingPaid) ? 0.5 : 1 }}>
-                                        {isSending ? "שולח..." : "שלח לכספים"}
-                                      </button>
-                                      <button
-                                        onClick={() => void markHistoricPaid(m)}
-                                        disabled={isSending || isMarkingPaid}
-                                        style={{ fontSize: 10, fontWeight: 600, cursor: isMarkingPaid ? "wait" : "pointer", fontFamily: "inherit",
-                                          background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)",
-                                          borderRadius: 7, color: "#10B981", padding: "3px 8px", opacity: (isSending || isMarkingPaid) ? 0.5 : 1 }}>
-                                        {isMarkingPaid ? "מסמן..." : "שולם היסטורית"}
-                                      </button>
-                                    </>
-                                  ) : m.status !== "שולם" && m.status !== "בוטל" ? (
+                                  {canSend && (
+                                    <button
+                                      onClick={() => void sendToFinance(m)}
+                                      disabled={isSending || isMarkingPaid || isCanceling}
+                                      style={{ fontSize: 11, fontWeight: 700, cursor: isSending ? "wait" : "pointer", fontFamily: "inherit",
+                                        background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)",
+                                        borderRadius: 7, color: "#A855F7", padding: "4px 10px",
+                                        opacity: (isSending || isMarkingPaid || isCanceling) ? 0.5 : 1 }}>
+                                      {isSending ? "שולח..." : "שלח לכספים"}
+                                    </button>
+                                  )}
+                                  {canMarkHistoric && (
+                                    <button
+                                      onClick={() => void markHistoricPaid(m)}
+                                      disabled={isSending || isMarkingPaid || isCanceling}
+                                      style={{ fontSize: 10, fontWeight: 600, cursor: isMarkingPaid ? "wait" : "pointer", fontFamily: "inherit",
+                                        background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)",
+                                        borderRadius: 7, color: "#10B981", padding: "3px 8px",
+                                        opacity: (isSending || isMarkingPaid || isCanceling) ? 0.5 : 1 }}>
+                                      {isMarkingPaid ? "מסמן..." : "שולם היסטורית"}
+                                    </button>
+                                  )}
+                                  {!canSend && m.status === "נשלח לכספים" && (
                                     <span style={{ fontSize: 11, color: "#3B82F6" }}>נשלח לכספים</span>
-                                  ) : null}
+                                  )}
+                                  {canCancel && (
+                                    <button
+                                      onClick={() => void cancelHistoricPaid(m)}
+                                      disabled={isCanceling || isSending || isMarkingPaid}
+                                      style={{ fontSize: 10, fontWeight: 600, cursor: isCanceling ? "wait" : "pointer", fontFamily: "inherit",
+                                        background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
+                                        borderRadius: 7, color: "#EF4444", padding: "3px 8px",
+                                        opacity: (isCanceling || isSending || isMarkingPaid) ? 0.5 : 1 }}>
+                                      {isCanceling ? "מבטל..." : "בטל סימון תשלום"}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </div>

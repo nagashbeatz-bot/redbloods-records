@@ -308,7 +308,11 @@ export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryM
       const ps = tx.paymentStatus;
       if (ps === "שולם" || ps === "התקבל") status = "שולם";
       else if (ps === "חלקי")              status = "חלקי";
-      else if (ps === "בוטל")              status = "בוטל";
+      else if (ps === "בוטל") {
+        // Cancelled transaction — show status as if no transaction (based on dueDate)
+        const due = new Date(dueDate);
+        status = due <= today ? "לא שולם" : "צפוי";
+      }
       else                                 status = "נשלח לכספים";
     }
 

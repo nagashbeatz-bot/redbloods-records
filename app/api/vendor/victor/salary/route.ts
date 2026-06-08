@@ -33,9 +33,11 @@ export async function POST(req: NextRequest) {
     const { supabase } = await import("@/lib/supabase");
     const { salaryLinkedId, salaryDueDate, salaryMonthLabel } = await import("@/lib/vendor-store");
 
-    const linkedId = salaryLinkedId(workMonth);
+    const linkedId   = salaryLinkedId(workMonth);
+    const dueDate    = salaryDueDate(workMonth);
+    const monthLabel = salaryMonthLabel(workMonth);
 
-    // Guard: no duplicate — if transaction already exists, return it without creating a new one
+    // Guard: no duplicate
     const { data: existing } = await supabase
       .from("transactions")
       .select("id, payment_status")
@@ -43,11 +45,28 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json({ ok: true, transaction: existing, duplicate: true });
+      const ex = existing as { id: string; payment_status: string };
+      if (ex.payment_status !== "בוטל") {
+        // Active transaction exists — no duplicate
+        return NextResponse.json({ ok: true, transaction: existing, duplicate: true });
+      }
+      // Cancelled transaction — reuse it by updating instead of inserting
+      const { data: updated, error: updateErr } = await supabase
+        .from("transactions")
+        .update({
+          payment_status: historicPaid ? "שולם" : "לא שולם",
+          amount,
+          currency,
+          date:  paidDate ?? dueDate,
+          notes: historicPaid ? "סומן כשולם היסטורית מתוך כרטיס Victor" : "",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", ex.id)
+        .select()
+        .single();
+      if (updateErr) return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+      return NextResponse.json({ ok: true, transaction: updated });
     }
-
-    const dueDate    = salaryDueDate(workMonth);
-    const monthLabel = salaryMonthLabel(workMonth);
 
     const { data, error } = await supabase
       .from("transactions")
