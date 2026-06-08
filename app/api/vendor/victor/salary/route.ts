@@ -59,7 +59,6 @@ export async function POST(req: NextRequest) {
           currency,
           date:  paidDate ?? dueDate,
           notes: historicPaid ? "סומן כשולם היסטורית מתוך כרטיס Victor" : "",
-          updated_at: new Date().toISOString(),
         })
         .eq("id", ex.id)
         .select()
