@@ -852,11 +852,11 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
               )}
             </SCard>
 
-            {/* רפרנסים / השראות */}
-            <RedFilmsReferencesBoard productionId={id} />
-
             {/* מסמכי הפקה + PDF preview */}
             <RedFilmsDocuments productionId={id} />
+
+            {/* רפרנסים / השראות */}
+            <RedFilmsReferencesBoard productionId={id} />
 
           </div>{/* end right column */}
         </div>
