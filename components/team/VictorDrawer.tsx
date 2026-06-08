@@ -817,12 +817,11 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
                     </div>
 
                     {/* Summary boxes */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
                       {[
-                        { label: "שולם השנה",          val: `${defCurrency}${paidTotal.toLocaleString()}`, color: "#10B981" },
-                        { label: "פתוח לתשלום",         val: `${defCurrency}${openTotal.toLocaleString()}`, color: openTotal > 0 ? "#EF4444" : "#555" },
-                        { label: "התשלום הבא",          val: nextDue ? fmtDueDate(nextDue.dueDate) + `.${nextDue.dueDate.slice(0,4)}` : "—", color: "#F59E0B" },
-                        { label: "משכורת חודשית",       val: `${defCurrency}${stats?.monthlySalary ?? 550}`, color: "#A855F7" },
+                        { label: "שולם השנה",     val: `${defCurrency}${paidTotal.toLocaleString()}`, color: "#10B981" },
+                        { label: "התשלום הבא",    val: nextDue ? fmtDueDate(nextDue.dueDate) + `.${nextDue.dueDate.slice(0,4)}` : "—", color: "#F59E0B" },
+                        { label: "משכורת חודשית", val: `${defCurrency}${stats?.monthlySalary ?? 550}`, color: "#A855F7" },
                       ].map(({ label, val, color }) => (
                         <div key={label} style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "10px 12px" }}>
                           <div style={{ fontSize: 11, color: "#555", marginBottom: 3 }}>{label}</div>
