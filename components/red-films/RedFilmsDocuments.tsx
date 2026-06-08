@@ -19,6 +19,7 @@ interface Doc {
   file_name: string;
   file_type: string;
   mime_type: string;
+  dropbox_path: string;
   dropbox_url: string;
   notes: string;
   created_at: string;
@@ -29,19 +30,25 @@ function fmtDate(iso: string) {
   return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
 }
 
-function displayName(fileName: string) {
-  // Strip leading timestamp prefix (e.g. "1717123456789_brief.pdf" → "brief.pdf")
-  return fileName.replace(/^\d+_/, "");
+function isPdf(doc: Doc) {
+  return doc.file_name.toLowerCase().endsWith(".pdf") || doc.mime_type === "application/pdf";
+}
+
+function previewDoc(docs: Doc[]): Doc | null {
+  return docs.find(d => d.file_type === "תסריט" && isPdf(d))
+    ?? docs.find(d => isPdf(d))
+    ?? null;
 }
 
 export default function RedFilmsDocuments({ productionId }: { productionId: string }) {
-  const [docs, setDocs]         = useState<Doc[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [dragging, setDragging] = useState(false);
+  const [docs, setDocs]           = useState<Doc[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [dragging, setDragging]   = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("אחר");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId]     = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen]   = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -96,8 +103,81 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
     finally { setDeletingId(null); }
   }
 
+  const preview = previewDoc(docs);
+
   return (
-    <div style={{ marginTop: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {/* ── PDF Preview ───────────────────────────────────────────────────────── */}
+      {!loading && preview && (
+        <div style={{
+          background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14,
+          overflow: "hidden",
+        }}>
+          {/* Preview header */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "12px 16px", borderBottom: previewOpen ? "1px solid #222" : "none",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700,
+                color: TYPE_COLORS[preview.file_type] ?? "#6B7280",
+                background: `${TYPE_COLORS[preview.file_type] ?? "#6B7280"}18`,
+                border: `1px solid ${TYPE_COLORS[preview.file_type] ?? "#6B7280"}33`,
+                borderRadius: 5, padding: "2px 7px",
+              }}>
+                {preview.file_type}
+              </span>
+              <span style={{ fontSize: 12, color: "#CCC", fontWeight: 600 }}>
+                {preview.file_name}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <a
+                href={preview.dropbox_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 11, color: "#60A5FA", textDecoration: "none", padding: "3px 8px", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 5 }}
+              >
+                📁 Dropbox
+              </a>
+              <a
+                href={`/api/dropbox/stream?path=${encodeURIComponent(preview.dropbox_path)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 11, color: "#888", textDecoration: "none", padding: "3px 8px", border: "1px solid #333", borderRadius: 5 }}
+              >
+                ↗ טאב חדש
+              </a>
+              <a
+                href={preview.dropbox_url}
+                download
+                style={{ fontSize: 11, color: "#888", textDecoration: "none", padding: "3px 8px", border: "1px solid #333", borderRadius: 5 }}
+              >
+                ⬇ הורד
+              </a>
+              <button
+                onClick={() => setPreviewOpen(o => !o)}
+                style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 13, padding: "0 4px", lineHeight: 1 }}
+              >
+                {previewOpen ? "▲" : "▼"}
+              </button>
+            </div>
+          </div>
+
+          {/* iframe */}
+          {previewOpen && (
+            <iframe
+              src={`/api/dropbox/stream?path=${encodeURIComponent(preview.dropbox_path)}`}
+              style={{ width: "100%", height: 580, border: "none", display: "block", background: "#111" }}
+              title={preview.file_name}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Documents panel ───────────────────────────────────────────────────── */}
       <div style={{
         background: "#1A1A1A", border: "1px solid #252525",
         borderRadius: 14, padding: "18px 20px",
@@ -106,7 +186,6 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h2 style={{ fontSize: 13, fontWeight: 700, color: "#888", margin: 0 }}>מסמכי הפקה</h2>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {/* Type selector */}
             <select
               value={selectedType}
               onChange={e => setSelectedType(e.target.value)}
@@ -119,7 +198,6 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
               {FILE_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
 
-            {/* Upload button */}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -181,7 +259,6 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                   borderRadius: 8, padding: "8px 12px",
                 }}
               >
-                {/* Type badge */}
                 <span style={{
                   fontSize: 10, fontWeight: 700, color: TYPE_COLORS[doc.file_type] ?? "#6B7280",
                   background: `${TYPE_COLORS[doc.file_type] ?? "#6B7280"}18`,
@@ -191,20 +268,17 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                   {doc.file_type}
                 </span>
 
-                {/* Name */}
                 <span style={{
                   flex: 1, fontSize: 12, color: "#CCC",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>
-                  {displayName(doc.file_name)}
+                  {doc.file_name}
                 </span>
 
-                {/* Date */}
                 <span style={{ fontSize: 11, color: "#444", flexShrink: 0 }}>
                   {fmtDate(doc.created_at)}
                 </span>
 
-                {/* Open */}
                 <a
                   href={doc.dropbox_url}
                   target="_blank"
@@ -218,7 +292,6 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                   פתח
                 </a>
 
-                {/* Delete */}
                 <button
                   onClick={() => remove(doc.id)}
                   disabled={deletingId === doc.id}
@@ -226,8 +299,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                   style={{
                     background: "none", border: "none", cursor: "pointer",
                     color: "#3A3A3A", fontSize: 14, padding: "2px 4px",
-                    opacity: deletingId === doc.id ? 0.4 : 1,
-                    lineHeight: 1,
+                    opacity: deletingId === doc.id ? 0.4 : 1, lineHeight: 1,
                   }}
                 >
                   ✕

@@ -1,7 +1,7 @@
 /**
  * POST /api/red-films/productions/[id]/documents/upload
  * FormData: { file: File, fileType: string, notes?: string }
- * Uploads document to Dropbox, saves metadata to red_films_documents.
+ * Uploads document to Dropbox with auto-generated display name, saves metadata to DB.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
@@ -24,6 +24,30 @@ const ALLOWED_EXTS = new Set([
 ]);
 
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+
+function sanitizeSegment(s: string): string {
+  return s
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildDisplayName(
+  title: string,
+  artistOrClient: string,
+  fileType: string,
+  ext: string
+): string {
+  const today     = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const typeLabel = fileType === "אחר" || !fileType ? "מסמך" : fileType;
+  const parts     = [sanitizeSegment(title)];
+  if (artistOrClient) parts.push(sanitizeSegment(artistOrClient));
+  parts.push(sanitizeSegment(typeLabel));
+  parts.push(today);
+  const base = parts.join(" - ");
+  // Truncate to 120 chars to stay well under Dropbox's path limit
+  return `${base.slice(0, 120)}.${ext}`;
+}
 
 export async function POST(req: NextRequest, ctx: Ctx) {
   try {
@@ -50,13 +74,26 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: "הקובץ גדול מדי — מקסימום 50MB" }, { status: 400 });
     }
 
+    // ── Fetch production details for auto-naming ──────────────────────────────
+    let prodTitle = "הפקה";
+    let artistOrClient = "";
+    try {
+      const { data: prod } = await supabase
+        .from("red_films_productions")
+        .select("title, artist_name, client_name")
+        .eq("id", productionId)
+        .maybeSingle();
+      if (prod) {
+        prodTitle      = (prod.title as string)       || "הפקה";
+        artistOrClient = (prod.artist_name as string) || (prod.client_name as string) || "";
+      }
+    } catch { /* non-fatal — fall back to generic name */ }
+
+    const fileName   = buildDisplayName(prodTitle, artistOrClient, fileType ?? "אחר", ext);
+    const dropboxPath = `/Red Films/Productions/${productionId}/documents/${fileName}`;
+
     const { getDropboxToken } = await import("@/lib/dropbox-token");
     const token = await getDropboxToken();
-
-    const ts       = Date.now();
-    const safeName = file.name.replace(/[^\w.\-]/g, "_");
-    const fileName = `${ts}_${safeName}`;
-    const dropboxPath = `/Red Films/Productions/${productionId}/documents/${fileName}`;
 
     // ── 1. Upload to Dropbox ──────────────────────────────────────────────────
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -80,10 +117,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: `Dropbox: ${detail}` }, { status: 500 });
     }
 
-    const uploaded = (await uploadRes.json()) as { path_display: string };
+    const uploaded  = (await uploadRes.json()) as { path_display: string };
     const finalPath = uploaded.path_display;
 
-    // ── 2. Share link (dl=1 so browser opens/downloads directly) ─────────────
+    // ── 2. Share link (dl=1 for direct download/open) ────────────────────────
     let dropboxUrl = "";
     try {
       const shareRes = await fetch(
@@ -104,7 +141,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         const existing = sd?.error?.shared_link_already_exists?.metadata?.url;
         if (existing) dropboxUrl = existing.replace(/[?&]dl=0/, "?dl=1");
       }
-    } catch { /* non-fatal — fallback to stream */ }
+    } catch { /* non-fatal */ }
 
     if (!dropboxUrl) {
       dropboxUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
