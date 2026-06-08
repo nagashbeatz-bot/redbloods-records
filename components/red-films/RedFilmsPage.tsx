@@ -289,7 +289,7 @@ function ConfirmDialog({ title, body, confirmLabel, danger = false, onConfirm, o
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type BulkAction = "trash" | "restore" | "status";
+type BulkAction = "trash" | "restore" | "status" | "permanent-delete";
 
 export default function RedFilmsPage() {
   const router = useRouter();
@@ -304,6 +304,7 @@ export default function RedFilmsPage() {
   const [bulkAction,    setBulkAction]    = useState<BulkAction | null>(null);
   const [bulkStatus,    setBulkStatus]    = useState<string>("");  // for "status" action
   const [bulkWorking,   setBulkWorking]   = useState(false);
+  const [bulkError,     setBulkError]     = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -376,6 +377,7 @@ export default function RedFilmsPage() {
 
   async function executeBulk(newStatus: string) {
     setBulkWorking(true);
+    setBulkError(null);
     try {
       await Promise.all(Array.from(selectedIds).map(id => patchProduction(id, { status: newStatus })));
       await load();
@@ -384,6 +386,27 @@ export default function RedFilmsPage() {
       setBulkWorking(false);
       setBulkAction(null);
       setBulkStatus("");
+    }
+  }
+
+  async function executePermanentDelete() {
+    setBulkWorking(true);
+    setBulkError(null);
+    try {
+      const res = await fetch("/api/red-films/productions/bulk-permanent-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "שגיאה במחיקה");
+      await load();
+      setSelectedIds(new Set());
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "שגיאה במחיקה");
+    } finally {
+      setBulkWorking(false);
+      setBulkAction(null);
     }
   }
 
@@ -564,14 +587,23 @@ export default function RedFilmsPage() {
           <div style={{ width: 1, height: 20, background: "#333" }} />
 
           {inTrashView ? (
-            /* סל מיחזור — שחזור בלבד */
-            <button
-              onClick={() => setBulkAction("restore")}
-              disabled={bulkWorking}
-              style={{ padding: "6px 14px", borderRadius: 8, background: "#1D4ED8", border: "none", color: "#FFF", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              ♻️ שחזר
-            </button>
+            /* סל מיחזור — שחזור + מחיקה לצמיתות */
+            <>
+              <button
+                onClick={() => setBulkAction("restore")}
+                disabled={bulkWorking}
+                style={{ padding: "6px 14px", borderRadius: 8, background: "#1D4ED8", border: "none", color: "#FFF", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                ♻️ שחזר
+              </button>
+              <button
+                onClick={() => setBulkAction("permanent-delete")}
+                disabled={bulkWorking}
+                style={{ padding: "6px 14px", borderRadius: 8, background: "rgba(239,68,68,0.18)", border: "1px solid rgba(239,68,68,0.4)", color: "#F87171", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                🗑️ מחק לצמיתות
+              </button>
+            </>
           ) : (
             /* פעילות — העבר לסל + שנה סטטוס */
             <>
@@ -639,6 +671,32 @@ export default function RedFilmsPage() {
           onConfirm={() => executeBulk(bulkStatus)}
           onCancel={() => { setBulkAction(null); setBulkStatus(""); }}
         />
+      )}
+
+      {/* ── Confirm: permanent delete ── */}
+      {bulkAction === "permanent-delete" && (
+        <ConfirmDialog
+          title="מחיקה לצמיתות"
+          body={`אתה עומד למחוק לצמיתות ${selectedCount} הפקות.\nפעולה זו אינה ניתנת לשחזור.\n\nייימחקו גם: תמונות רפרנס (כולל Dropbox), פריטי תקציב, ומשימות קשורות.`}
+          confirmLabel={bulkWorking ? "מוחק..." : "מחק לצמיתות"}
+          danger
+          onConfirm={executePermanentDelete}
+          onCancel={() => setBulkAction(null)}
+        />
+      )}
+
+      {/* ── Error banner ── */}
+      {bulkError && typeof window !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)",
+          borderRadius: 10, padding: "10px 18px", zIndex: 9100,
+          fontSize: 13, color: "#F87171", display: "flex", gap: 12, alignItems: "center",
+        }}>
+          <span>{bulkError}</span>
+          <button onClick={() => setBulkError(null)} style={{ background: "none", border: "none", color: "#F87171", cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>,
+        document.body
       )}
 
       {/* ── New production modal ── */}
