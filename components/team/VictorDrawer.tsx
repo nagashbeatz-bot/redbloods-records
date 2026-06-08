@@ -282,7 +282,11 @@ function AddProjectModal({ existingIds, onClose, onAdded, onToast }: AddProjectM
       .finally(() => setLoadingList(false));
   }, []);
 
+  const ALLOWED_STATUSES = ["בעבודה", "בהשהייה"];
+
   const filtered = projects.filter((p) => {
+    if (!ALLOWED_STATUSES.includes(p.status)) return false;
+    if (existingIds.has(p.id)) return false;
     const q = search.trim();
     return !q || p.name.includes(q) || (p.artist ?? "").includes(q);
   });
@@ -353,25 +357,20 @@ function AddProjectModal({ existingIds, onClose, onAdded, onToast }: AddProjectM
           {loadingList ? (
             <div style={{ color: "#444", fontSize: 13, padding: "20px 0" }}>טוען...</div>
           ) : filtered.length === 0 ? (
-            <div style={{ color: "#444", fontSize: 13, padding: "20px 0" }}>לא נמצאו פרויקטים</div>
+            <div style={{ color: "#444", fontSize: 13, padding: "20px 0" }}>אין פרויקטים זמינים לשליחה לויקטור</div>
           ) : filtered.map((p) => {
-            const already  = existingIds.has(p.id);
             const isAdding = adding === p.id;
             return (
-              <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 10px", background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, marginBottom: 6, opacity: already ? 0.45 : 1 }}>
+              <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 10px", background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, marginBottom: 6 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, color: "#D0D0D0", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}{p.artist ? ` — ${p.artist}` : ""}</div>
                   <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>{p.status}</div>
                 </div>
                 <div style={{ flexShrink: 0, marginRight: 8 }}>
-                  {already ? (
-                    <span style={{ fontSize: 11, color: "#555", background: "#1E1E1E", border: "1px solid #2A2A2A", borderRadius: 6, padding: "3px 8px" }}>כבר אצל ויקטור</span>
-                  ) : (
-                    <button onClick={() => addProject(p)} disabled={isAdding}
-                      style={{ fontSize: 12, fontWeight: 700, cursor: isAdding ? "wait" : "pointer", background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)", borderRadius: 7, color: "#A855F7", padding: "4px 12px", fontFamily: "inherit", opacity: isAdding ? 0.6 : 1 }}>
-                      {isAdding ? "שולח..." : "שלח לויקטור"}
-                    </button>
-                  )}
+                  <button onClick={() => addProject(p)} disabled={isAdding}
+                    style={{ fontSize: 12, fontWeight: 700, cursor: isAdding ? "wait" : "pointer", background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)", borderRadius: 7, color: "#A855F7", padding: "4px 12px", fontFamily: "inherit", opacity: isAdding ? 0.6 : 1 }}>
+                    {isAdding ? "שולח..." : "שלח לויקטור"}
+                  </button>
                 </div>
               </div>
             );
