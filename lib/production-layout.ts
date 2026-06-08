@@ -7,6 +7,7 @@ export const SECTION_LABELS: Record<string, string> = {
   tasks:       "משימות הפקה",
   concept:     "קונספט ותסריט",
   documents:   "מסמכי הפקה",
+  youtubeRefs: "רפרנסים מיוטיוב",
   references:  "רפרנסים / השראות",
   budget:      "תקציב",
   budgetItems: "תקציב מפורט",
@@ -15,12 +16,12 @@ export const SECTION_LABELS: Record<string, string> = {
 };
 
 export const DEFAULT_ORDER = [
-  "summary", "tasks", "concept", "documents", "references",
+  "summary", "tasks", "concept", "documents", "youtubeRefs", "references",
   "budget", "budgetItems", "files", "notes",
 ];
 
 // Sections that belong in the creative (right) column; everything else goes in management (left)
-export const CREATIVE_SECTIONS = new Set(["concept", "documents", "references"]);
+export const CREATIVE_SECTIONS = new Set(["concept", "documents", "youtubeRefs", "references"]);
 
 export interface ProductionLayout {
   order: string[];

@@ -7,6 +7,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import RedFilmsReferencesBoard from "./RedFilmsReferencesBoard";
 import RedFilmsDocuments from "./RedFilmsDocuments";
+import RedFilmsYouTubeRefs from "./RedFilmsYouTubeRefs";
 import RedFilmsBudgetItems from "./RedFilmsBudgetItems";
 import RedFilmsProductionTasks from "./RedFilmsProductionTasks";
 import RedFilmsLayoutModal from "./RedFilmsLayoutModal";
@@ -486,6 +487,8 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
       );
 
       case "documents": return <RedFilmsDocuments key="documents" productionId={id} />;
+
+      case "youtubeRefs": return <RedFilmsYouTubeRefs key="youtubeRefs" productionId={id} />;
 
       case "references": return <RedFilmsReferencesBoard key="references" productionId={id} />;
 
