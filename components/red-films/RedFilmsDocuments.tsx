@@ -34,21 +34,36 @@ function isPdf(doc: Doc) {
   return doc.file_name.toLowerCase().endsWith(".pdf") || doc.mime_type === "application/pdf";
 }
 
-function previewDoc(docs: Doc[]): Doc | null {
+function previewCandidate(docs: Doc[]): Doc | null {
   return docs.find(d => d.file_type === "תסריט" && isPdf(d))
     ?? docs.find(d => isPdf(d))
     ?? null;
 }
 
+// Download link: dl=1 forces download
+function downloadUrl(doc: Doc) {
+  return doc.dropbox_url.includes("dl=")
+    ? doc.dropbox_url.replace(/dl=\d/, "dl=1")
+    : doc.dropbox_url + (doc.dropbox_url.includes("?") ? "&dl=1" : "?dl=1");
+}
+
+// View in Dropbox: dl=0 opens web viewer
+function viewUrl(doc: Doc) {
+  return doc.dropbox_url.includes("dl=")
+    ? doc.dropbox_url.replace(/dl=\d/, "dl=0")
+    : doc.dropbox_url + (doc.dropbox_url.includes("?") ? "&dl=0" : "?dl=0");
+}
+
 export default function RedFilmsDocuments({ productionId }: { productionId: string }) {
-  const [docs, setDocs]           = useState<Doc[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [dragging, setDragging]   = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [docs, setDocs]             = useState<Doc[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [dragging, setDragging]     = useState(false);
+  const [uploading, setUploading]   = useState(false);
+  const [uploadErr, setUploadErr]   = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("אחר");
-  const [deletingId, setDeletingId]     = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen]   = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Preview is NOT auto-loaded — user must click
+  const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -95,6 +110,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
 
   async function remove(docId: string) {
     setDeletingId(docId);
+    if (previewDocId === docId) setPreviewDocId(null);
     try {
       const res = await fetch(`/api/red-films/documents/${docId}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -103,39 +119,58 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
     finally { setDeletingId(null); }
   }
 
-  const preview = previewDoc(docs);
+  const candidate = previewCandidate(docs);
+  const previewDoc = previewDocId ? docs.find(d => d.id === previewDocId) ?? null : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-      {/* ── PDF Preview ───────────────────────────────────────────────────────── */}
-      {!loading && preview && (
+      {/* ── PDF Preview card (load-on-demand only) ────────────────────────────── */}
+      {!loading && candidate && (
         <div style={{
-          background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14,
-          overflow: "hidden",
+          background: "#1A1A1A", border: "1px solid #252525",
+          borderRadius: 14, overflow: "hidden",
         }}>
-          {/* Preview header */}
+          {/* Card header */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "12px 16px", borderBottom: previewOpen ? "1px solid #222" : "none",
+            padding: "12px 16px",
+            borderBottom: previewDoc ? "1px solid #222" : "none",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{
                 fontSize: 10, fontWeight: 700,
-                color: TYPE_COLORS[preview.file_type] ?? "#6B7280",
-                background: `${TYPE_COLORS[preview.file_type] ?? "#6B7280"}18`,
-                border: `1px solid ${TYPE_COLORS[preview.file_type] ?? "#6B7280"}33`,
+                color: TYPE_COLORS[candidate.file_type] ?? "#6B7280",
+                background: `${TYPE_COLORS[candidate.file_type] ?? "#6B7280"}18`,
+                border: `1px solid ${TYPE_COLORS[candidate.file_type] ?? "#6B7280"}33`,
                 borderRadius: 5, padding: "2px 7px",
               }}>
-                {preview.file_type}
+                {candidate.file_type}
               </span>
-              <span style={{ fontSize: 12, color: "#CCC", fontWeight: 600 }}>
-                {preview.file_name}
+              <span style={{ fontSize: 12, color: "#AAA", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {candidate.file_name}
               </span>
             </div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+              {/* Toggle preview */}
+              {previewDocId === candidate.id ? (
+                <button
+                  onClick={() => setPreviewDocId(null)}
+                  style={{ fontSize: 11, color: "#888", background: "none", border: "1px solid #333", borderRadius: 5, padding: "3px 8px", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  ▲ סגור תצוגה
+                </button>
+              ) : (
+                <button
+                  onClick={() => setPreviewDocId(candidate.id)}
+                  style={{ fontSize: 11, color: "#A78BFA", fontWeight: 700, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 5, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  ▼ הצג תסריט
+                </button>
+              )}
               <a
-                href={preview.dropbox_url}
+                href={viewUrl(candidate)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ fontSize: 11, color: "#60A5FA", textDecoration: "none", padding: "3px 8px", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 5 }}
@@ -143,35 +178,20 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                 📁 Dropbox
               </a>
               <a
-                href={`/api/dropbox/stream?path=${encodeURIComponent(preview.dropbox_path)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 11, color: "#888", textDecoration: "none", padding: "3px 8px", border: "1px solid #333", borderRadius: 5 }}
-              >
-                ↗ טאב חדש
-              </a>
-              <a
-                href={preview.dropbox_url}
-                download
-                style={{ fontSize: 11, color: "#888", textDecoration: "none", padding: "3px 8px", border: "1px solid #333", borderRadius: 5 }}
+                href={downloadUrl(candidate)}
+                style={{ fontSize: 11, color: "#555", textDecoration: "none", padding: "3px 8px", border: "1px solid #2A2A2A", borderRadius: 5 }}
               >
                 ⬇ הורד
               </a>
-              <button
-                onClick={() => setPreviewOpen(o => !o)}
-                style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 13, padding: "0 4px", lineHeight: 1 }}
-              >
-                {previewOpen ? "▲" : "▼"}
-              </button>
             </div>
           </div>
 
-          {/* iframe */}
-          {previewOpen && (
+          {/* iframe — only rendered after user clicks "הצג תסריט" */}
+          {previewDoc && (
             <iframe
-              src={`/api/dropbox/stream?path=${encodeURIComponent(preview.dropbox_path)}`}
+              src={`/api/red-films/documents/${previewDoc.id}/preview`}
               style={{ width: "100%", height: 580, border: "none", display: "block", background: "#111" }}
-              title={preview.file_name}
+              title={previewDoc.file_name}
             />
           )}
         </div>
@@ -197,7 +217,6 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
             >
               {FILE_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
-
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -216,7 +235,6 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
           </div>
         </div>
 
-        {/* Error */}
         {uploadErr && (
           <div style={{
             background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
@@ -226,7 +244,6 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
           </div>
         )}
 
-        {/* Drop zone */}
         <div
           onDragOver={e => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
@@ -236,14 +253,12 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
             borderRadius: 10, padding: "14px 16px",
             background: dragging ? "rgba(59,130,246,0.05)" : "transparent",
             transition: "all 0.15s", marginBottom: docs.length ? 14 : 0,
-            textAlign: "center", color: dragging ? "#60A5FA" : "#444",
-            fontSize: 12,
+            textAlign: "center", color: dragging ? "#60A5FA" : "#444", fontSize: 12,
           }}
         >
           {uploading ? "מעלה..." : "גרור לכאן קובץ להעלאה"}
         </div>
 
-        {/* Documents list */}
         {loading ? (
           <div style={{ fontSize: 13, color: "#444", padding: "12px 0" }}>טוען...</div>
         ) : docs.length === 0 ? (
@@ -251,14 +266,11 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {docs.map(doc => (
-              <div
-                key={doc.id}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  background: "#141414", border: "1px solid #222",
-                  borderRadius: 8, padding: "8px 12px",
-                }}
-              >
+              <div key={doc.id} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                background: "#141414", border: "1px solid #222",
+                borderRadius: 8, padding: "8px 12px",
+              }}>
                 <span style={{
                   fontSize: 10, fontWeight: 700, color: TYPE_COLORS[doc.file_type] ?? "#6B7280",
                   background: `${TYPE_COLORS[doc.file_type] ?? "#6B7280"}18`,
@@ -267,40 +279,33 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                 }}>
                   {doc.file_type}
                 </span>
-
-                <span style={{
-                  flex: 1, fontSize: 12, color: "#CCC",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
+                <span style={{ flex: 1, fontSize: 12, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {doc.file_name}
                 </span>
-
                 <span style={{ fontSize: 11, color: "#444", flexShrink: 0 }}>
                   {fmtDate(doc.created_at)}
                 </span>
-
+                {isPdf(doc) && (
+                  <button
+                    onClick={() => setPreviewDocId(id => id === doc.id ? null : doc.id)}
+                    style={{ fontSize: 10, color: "#A78BFA", background: "none", border: "1px solid rgba(167,139,250,0.25)", borderRadius: 5, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
+                  >
+                    {previewDocId === doc.id ? "סגור" : "preview"}
+                  </button>
+                )}
                 <a
-                  href={doc.dropbox_url}
+                  href={viewUrl(doc)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{
-                    fontSize: 11, color: "#60A5FA", flexShrink: 0,
-                    textDecoration: "none", padding: "3px 8px",
-                    border: "1px solid rgba(59,130,246,0.3)", borderRadius: 5,
-                  }}
+                  style={{ fontSize: 11, color: "#60A5FA", flexShrink: 0, textDecoration: "none", padding: "3px 8px", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 5 }}
                 >
                   פתח
                 </a>
-
                 <button
                   onClick={() => remove(doc.id)}
                   disabled={deletingId === doc.id}
                   title="הסר מסמך"
-                  style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    color: "#3A3A3A", fontSize: 14, padding: "2px 4px",
-                    opacity: deletingId === doc.id ? 0.4 : 1, lineHeight: 1,
-                  }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#3A3A3A", fontSize: 14, padding: "2px 4px", opacity: deletingId === doc.id ? 0.4 : 1, lineHeight: 1 }}
                 >
                   ✕
                 </button>
