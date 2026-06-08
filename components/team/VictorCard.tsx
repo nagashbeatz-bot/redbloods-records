@@ -169,10 +169,7 @@ export default function VictorCard() {
     setModal({ title, items: seg[key], note });
   }, [work, month]);
 
-  const pace      = stats ? paceColor(stats.paceValue, stats.expectedByNow) : "#888";
-  const payColor  = stats?.paymentStatus === "שולם" ? "#10B981"
-                  : stats?.paymentStatus === "לא שולם" ? "#EF4444"
-                  : "#F59E0B";
+  const pace = stats ? paceColor(stats.paceValue, stats.expectedByNow) : "#888";
 
   return (
     <>
@@ -206,11 +203,6 @@ export default function VictorCard() {
                 color: "#888", fontSize: 11, padding: "3px 8px", fontFamily: "inherit",
               }}
             />
-            {stats && (
-              <div style={{ fontSize: 11, color: payColor, fontWeight: 600 }}>
-                {stats.salaryCurrency}{stats.monthlySalary} · {stats.paymentStatus}
-              </div>
-            )}
           </div>
         </div>
 
