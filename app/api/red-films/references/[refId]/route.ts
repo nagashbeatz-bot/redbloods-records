@@ -1,12 +1,35 @@
 /**
- * DELETE /api/red-films/references/[refId]
- * Deletes image from Dropbox and removes the row from DB.
+ * PATCH  /api/red-films/references/[refId]  — עדכון tag בלבד
+ * DELETE /api/red-films/references/[refId]  — מחיקה מ-Dropbox ו-DB
  */
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
 type Ctx = { params: Promise<{ refId: string }> };
 
+// ── PATCH — update tag only ───────────────────────────────────────────────
+export async function PATCH(req: NextRequest, ctx: Ctx) {
+  try {
+    const { refId } = await ctx.params;
+    const body = await req.json().catch(() => ({}));
+    const tag: string = (body.tag ?? "כללי").trim() || "כללי";
+
+    const { data, error } = await supabase
+      .from("red_films_reference_images")
+      .update({ tag, updated_at: new Date().toISOString() })
+      .eq("id", refId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return NextResponse.json({ reference: data });
+  } catch (e) {
+    console.error("[PATCH /api/red-films/references/[refId]]", e);
+    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
+  }
+}
+
+// ── DELETE ────────────────────────────────────────────────────────────────
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { refId } = await ctx.params;

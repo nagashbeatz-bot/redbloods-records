@@ -3,51 +3,75 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const LOCATION_TAGS = [
+  "כללי",
+  "טיילת בערב",
+  "רכב / מונית",
+  "בר / מועדון",
+  "חוף",
+  "דירה",
+  "אולפן",
+  "אחר",
+];
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface RefImage {
-  id:           string;
+  id:            string;
   production_id: string;
-  file_name:    string;
-  dropbox_path: string;
-  dropbox_url:  string;
-  sort_order:   number;
-  created_at:   string;
+  file_name:     string;
+  dropbox_path:  string;
+  dropbox_url:   string;
+  tag:           string | null;
+  sort_order:    number;
+  created_at:    string;
 }
 
-// Return a directly renderable image URL.
-// Routes already store dl.dropboxusercontent.com or /api/dropbox/stream — use as-is.
-// Legacy dl=0 URLs (old records) get the domain swap as fallback.
+function effectiveTag(ref: RefImage): string {
+  return ref.tag?.trim() || "כללי";
+}
+
+// ── URL helpers ───────────────────────────────────────────────────────────────
+
 function toDirectUrl(shareUrl: string): string {
   if (!shareUrl) return "";
   if (shareUrl.startsWith("/api/")) return shareUrl;
   if (shareUrl.includes("dl.dropboxusercontent.com")) return shareUrl;
-  // Legacy: www.dropbox.com share link — convert
   return shareUrl
     .replace("www.dropbox.com", "dl.dropboxusercontent.com")
     .replace(/[?&]dl=0/, "");
 }
 
+function toThumbUrl(dropboxPath: string): string {
+  return `/api/red-films/references/thumbnail?path=${encodeURIComponent(dropboxPath)}`;
+}
+
+function toStreamUrl(dropboxPath: string): string {
+  return `/api/dropbox/stream?path=${encodeURIComponent(dropboxPath)}`;
+}
+
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
-function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
-  images:     RefImage[];
-  index:      number;
-  onClose:    () => void;
-  onDelete:   (id: string) => void;
-  onNavigate: (newIndex: number) => void;
+function Lightbox({ images, index, onClose, onDelete, onNavigate, onTagChange }: {
+  images:      RefImage[];
+  index:       number;
+  onClose:     () => void;
+  onDelete:    (id: string) => void;
+  onNavigate:  (newIndex: number) => void;
+  onTagChange: (id: string, tag: string) => void;
 }) {
-  const image = images[index];
-  const total = images.length;
-  // ימין = הבא (index גדול יותר), שמאל = קודם (index קטן יותר)
+  const image    = images[index];
+  const total    = images.length;
   const canGoRight = index < total - 1;
   const canGoLeft  = index > 0;
 
-  const [deleting,       setDeleting]       = useState(false);
-  const [confirmDelete,  setConfirmDelete]  = useState(false);
-  const [imgLoaded,      setImgLoaded]      = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [imgLoaded,     setImgLoaded]     = useState(false);
+  const [savingTag,     setSavingTag]     = useState(false);
 
-  // Reset loaded state when image changes
   useEffect(() => { setImgLoaded(false); setConfirmDelete(false); }, [index]);
 
   // Preload adjacent images
@@ -66,13 +90,12 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (e.key === "ArrowRight" && canGoRight) onNavigate(index + 1);
         if (e.key === "ArrowLeft"  && canGoLeft)  onNavigate(index - 1);
       }
     };
-    document.addEventListener("keydown", onKey, true); // capture phase — runs before any other handler
+    document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose, onNavigate, index, canGoRight, canGoLeft]);
 
@@ -83,14 +106,26 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
       const res = await fetch(`/api/red-films/references/${image.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       onDelete(image.id);
-      // After delete: move to adjacent or close
       const remaining = total - 1;
-      if (remaining === 0) { onClose(); }
-      else { onNavigate(Math.min(index, remaining - 1)); }
+      if (remaining === 0) onClose();
+      else onNavigate(Math.min(index, remaining - 1));
     } catch {
       setDeleting(false);
       setConfirmDelete(false);
     }
+  }
+
+  async function handleTagChange(newTag: string) {
+    setSavingTag(true);
+    try {
+      const res = await fetch(`/api/red-films/references/${image.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tag: newTag }),
+      });
+      if (res.ok) onTagChange(image.id, newTag);
+    } catch { /* ignore */ }
+    finally { setSavingTag(false); }
   }
 
   const navBtnStyle = (disabled: boolean) => ({
@@ -129,26 +164,17 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
           maxWidth: "82vw", maxHeight: "84vh",
           borderRadius: 12, objectFit: "contain",
           boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
-          opacity: imgLoaded ? 1 : 0.3,
-          transition: "opacity 0.2s",
+          opacity: imgLoaded ? 1 : 0.3, transition: "opacity 0.2s",
         }}
       />
 
-      {/* Left arrow — קודם (index - 1) */}
-      <button
-        onClick={e => { e.stopPropagation(); if (canGoLeft) onNavigate(index - 1); }}
-        style={{ ...navBtnStyle(!canGoLeft), right: "auto", left: 16 }}
-      >
-        ‹
-      </button>
+      {/* Left arrow */}
+      <button onClick={e => { e.stopPropagation(); if (canGoLeft) onNavigate(index - 1); }}
+        style={{ ...navBtnStyle(!canGoLeft), right: "auto", left: 16 }}>‹</button>
 
-      {/* Right arrow — הבא (index + 1) */}
-      <button
-        onClick={e => { e.stopPropagation(); if (canGoRight) onNavigate(index + 1); }}
-        style={{ ...navBtnStyle(!canGoRight), left: "auto", right: 16 }}
-      >
-        ›
-      </button>
+      {/* Right arrow */}
+      <button onClick={e => { e.stopPropagation(); if (canGoRight) onNavigate(index + 1); }}
+        style={{ ...navBtnStyle(!canGoRight), left: "auto", right: 16 }}>›</button>
 
       {/* Top bar */}
       <div
@@ -158,7 +184,7 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
           display: "flex", gap: 10, alignItems: "center",
           background: "rgba(20,20,20,0.9)", border: "1px solid #2A2A2A",
           borderRadius: 12, padding: "8px 14px",
-          maxWidth: "min(600px, 80vw)",
+          maxWidth: "min(700px, 90vw)",
         }}
       >
         {/* Counter */}
@@ -171,20 +197,31 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
           {image.file_name}
         </span>
 
-        {/* Open in Dropbox */}
-        <a
-          href={toStreamUrl(image.dropbox_path)}
-          target="_blank" rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "1px solid #333", background: "none", color: "#60A5FA", textDecoration: "none", whiteSpace: "nowrap" }}
+        {/* Location tag select */}
+        <select
+          value={effectiveTag(image)}
+          onChange={e => handleTagChange(e.target.value)}
+          disabled={savingTag}
+          title="שנה לוקיישן"
+          style={{
+            background: "#1A1A1A", border: "1px solid #333", borderRadius: 6,
+            color: savingTag ? "#555" : "#AAA", fontSize: 11, padding: "3px 6px",
+            cursor: "pointer", fontFamily: "inherit", outline: "none",
+            flexShrink: 0,
+          }}
         >
+          {LOCATION_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        {/* Open in Dropbox */}
+        <a href={toStreamUrl(image.dropbox_path)} target="_blank" rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "1px solid #333", background: "none", color: "#60A5FA", textDecoration: "none", whiteSpace: "nowrap" }}>
           פתח ↗
         </a>
 
         {/* Delete */}
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
+        <button onClick={handleDelete} disabled={deleting}
           style={{
             padding: "4px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700,
             cursor: deleting ? "wait" : "pointer", fontFamily: "inherit", border: "1px solid",
@@ -192,8 +229,7 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
             color:      confirmDelete ? "#F87171"              : "#666",
             borderColor: confirmDelete ? "rgba(239,68,68,0.4)" : "#333",
             transition: "all 0.15s", whiteSpace: "nowrap",
-          }}
-        >
+          }}>
           {deleting ? "מוחק..." : confirmDelete ? "מחק?" : "🗑"}
         </button>
         {confirmDelete && !deleting && (
@@ -214,21 +250,11 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate }: {
   );
 }
 
-// Thumbnail proxy URL — used as fallback when dropbox_url is unavailable
-function toThumbUrl(dropboxPath: string): string {
-  return `/api/red-films/references/thumbnail?path=${encodeURIComponent(dropboxPath)}`;
-}
-
-// Full-resolution stream URL for lightbox
-function toStreamUrl(dropboxPath: string): string {
-  return `/api/dropbox/stream?path=${encodeURIComponent(dropboxPath)}`;
-}
-
 // ── Grid image with skeleton ──────────────────────────────────────────────────
 
 function RefGridImage({ src, fallbackSrc, alt }: { src: string; fallbackSrc: string; alt: string }) {
-  const [loaded,   setLoaded]   = useState(false);
-  const [errored,  setErrored]  = useState(false);
+  const [loaded,      setLoaded]      = useState(false);
+  const [errored,     setErrored]     = useState(false);
   const [useFallback, setUseFallback] = useState(false);
 
   const activeSrc = useFallback ? fallbackSrc : src;
@@ -245,24 +271,13 @@ function RefGridImage({ src, fallbackSrc, alt }: { src: string; fallbackSrc: str
         }} />
       )}
       <img
-        src={activeSrc}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
+        src={activeSrc} alt={alt} loading="lazy" decoding="async"
         onLoad={() => setLoaded(true)}
         onError={() => {
-          if (!useFallback && fallbackSrc && fallbackSrc !== src) {
-            setUseFallback(true); // retry with proxy
-          } else {
-            setErrored(true);     // both failed → hide
-          }
+          if (!useFallback && fallbackSrc && fallbackSrc !== src) { setUseFallback(true); }
+          else { setErrored(true); }
         }}
-        style={{
-          display: "block", width: "100%", height: "auto",
-          opacity: loaded ? 1 : 0,
-          transition: "opacity 0.25s",
-          borderRadius: 8,
-        }}
+        style={{ display: "block", width: "100%", height: "auto", opacity: loaded ? 1 : 0, transition: "opacity 0.25s", borderRadius: 8 }}
       />
     </div>
   );
@@ -273,13 +288,15 @@ function RefGridImage({ src, fallbackSrc, alt }: { src: string; fallbackSrc: str
 export default function RedFilmsReferencesBoard({ productionId }: { productionId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [refs,       setRefs]       = useState<RefImage[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [dragging,   setDragging]   = useState(false);
-  const [uploading,  setUploading]  = useState(false);
-  const [progress,   setProgress]   = useState(0);
-  const [uploadErr,  setUploadErr]  = useState<string | null>(null);
+  const [refs,          setRefs]          = useState<RefImage[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [dragging,      setDragging]      = useState(false);
+  const [uploading,     setUploading]     = useState(false);
+  const [progress,      setProgress]      = useState(0);
+  const [uploadErr,     setUploadErr]     = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [activeFilter,  setActiveFilter]  = useState<string>("הכל");
+  const [uploadTag,     setUploadTag]     = useState<string>("כללי");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -293,10 +310,21 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Filtered list ─────────────────────────────────────────────────────────
+  const filtered = activeFilter === "הכל"
+    ? refs
+    : refs.filter(r => effectiveTag(r) === activeFilter);
+
+  // Count per tag
+  const counts: Record<string, number> = { "הכל": refs.length };
+  for (const tag of LOCATION_TAGS) {
+    counts[tag] = refs.filter(r => effectiveTag(r) === tag).length;
+  }
+
   // ── Upload ────────────────────────────────────────────────────────────────
 
-  const uploadFile = useCallback(async (file: File) => {
-    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic"];
+  const uploadFile = useCallback(async (file: File, tag: string) => {
+    const allowed = ["image/jpeg","image/png","image/webp","image/gif","image/avif","image/heic"];
     if (!allowed.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|gif|avif|heic)$/i)) {
       setUploadErr("סוג קובץ לא נתמך — יש להעלות תמונה (JPG, PNG, WEBP, GIF)");
       setTimeout(() => setUploadErr(null), 5000);
@@ -308,12 +336,11 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
       return;
     }
 
-    setUploading(true);
-    setProgress(0);
-    setUploadErr(null);
+    setUploading(true); setProgress(0); setUploadErr(null);
 
     const body = new FormData();
     body.append("file", file, file.name);
+    body.append("tag", tag);
 
     await new Promise<void>((resolve) => {
       const xhr = new XMLHttpRequest();
@@ -340,13 +367,12 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
           setUploadErr(msg);
           setTimeout(() => setUploadErr(null), 6000);
         }
-        setUploading(false);
-        setProgress(0);
+        setUploading(false); setProgress(0);
         if (inputRef.current) inputRef.current.value = "";
         resolve();
       };
 
-      xhr.onerror  = () => { setUploadErr("שגיאת רשת"); setUploading(false); resolve(); };
+      xhr.onerror   = () => { setUploadErr("שגיאת רשת"); setUploading(false); resolve(); };
       xhr.ontimeout = () => { setUploadErr("הפעולה ארכה יותר מדי — נסה שוב"); setUploading(false); resolve(); };
 
       xhr.open("POST", `/api/red-films/productions/${productionId}/references/upload`);
@@ -354,26 +380,31 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
     });
   }, [productionId]);
 
-  // ── Drag & drop ──────────────────────────────────────────────────────────
+  // ── Drag & drop ───────────────────────────────────────────────────────────
 
   const onDragOver  = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); if (!uploading) setDragging(true); };
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragging(false); };
   const onDrop      = async (e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    setDragging(false);
+    e.preventDefault(); e.stopPropagation(); setDragging(false);
     if (uploading) return;
-    const files = Array.from(e.dataTransfer.files ?? []);
-    for (const file of files) {
-      await uploadFile(file);
+    for (const file of Array.from(e.dataTransfer.files ?? [])) {
+      await uploadFile(file, uploadTag);
     }
   };
 
-  function handleDelete(id: string) {
-    setRefs(prev => prev.filter(r => r.id !== id));
-  }
-
   function handleLightboxDelete(id: string) {
     setRefs(prev => prev.filter(r => r.id !== id));
+    // adjust lightbox index if needed
+    setLightboxIndex(prev => {
+      if (prev === null) return null;
+      const newFiltered = filtered.filter(r => r.id !== id);
+      if (newFiltered.length === 0) return null;
+      return Math.min(prev, newFiltered.length - 1);
+    });
+  }
+
+  function handleTagChange(id: string, tag: string) {
+    setRefs(prev => prev.map(r => r.id === id ? { ...r, tag } : r));
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -383,7 +414,7 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
       <style>{`@keyframes rb-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <h2 style={{ fontSize: 13, fontWeight: 700, color: "#888", margin: 0 }}>
           רפרנסים / השראות
           {refs.length > 0 && (
@@ -392,27 +423,69 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
             </span>
           )}
         </h2>
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          style={{
-            fontSize: 11, color: uploading ? "#555" : "#888",
-            background: "none", border: "1px solid #333", borderRadius: 6,
-            cursor: uploading ? "wait" : "pointer", fontFamily: "inherit",
-            padding: "4px 10px",
-          }}
-        >
-          {uploading ? `מעלה... ${progress > 0 ? `${progress}%` : ""}` : "↑ הוסף תמונה"}
-        </button>
+
+        {/* Upload controls */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select
+            value={uploadTag}
+            onChange={e => setUploadTag(e.target.value)}
+            disabled={uploading}
+            style={{
+              background: "#0D0D0D", border: "1px solid #333", borderRadius: 6,
+              color: "#888", fontSize: 11, padding: "3px 6px",
+              cursor: "pointer", fontFamily: "inherit", outline: "none",
+            }}
+          >
+            {LOCATION_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            style={{
+              fontSize: 11, color: uploading ? "#555" : "#888",
+              background: "none", border: "1px solid #333", borderRadius: 6,
+              cursor: uploading ? "wait" : "pointer", fontFamily: "inherit",
+              padding: "4px 10px", whiteSpace: "nowrap",
+            }}
+          >
+            {uploading ? `מעלה... ${progress > 0 ? `${progress}%` : ""}` : "↑ הוסף תמונה"}
+          </button>
+        </div>
       </div>
 
       <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); }}
+        ref={inputRef} type="file" accept="image/*" style={{ display: "none" }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f, uploadTag); }}
       />
+
+      {/* Filter bar */}
+      {refs.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+          {["הכל", ...LOCATION_TAGS].map(tag => {
+            const count = counts[tag] ?? 0;
+            const isActive = activeFilter === tag;
+            if (tag !== "הכל" && count === 0) return null;
+            return (
+              <button
+                key={tag}
+                onClick={() => { setActiveFilter(tag); setLightboxIndex(null); }}
+                style={{
+                  fontSize: 11, fontWeight: isActive ? 700 : 400,
+                  padding: "3px 10px", borderRadius: 20,
+                  border: `1px solid ${isActive ? "#60A5FA" : "#2A2A2A"}`,
+                  background: isActive ? "rgba(96,165,250,0.12)" : "transparent",
+                  color: isActive ? "#60A5FA" : "#666",
+                  cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                  transition: "all 0.12s",
+                }}
+              >
+                {tag}{tag !== "הכל" && count > 0 && <span style={{ marginRight: 4, opacity: 0.6 }}>({count})</span>}
+                {tag === "הכל" && <span style={{ marginRight: 4, opacity: 0.6 }}>({count})</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Error banner */}
       {uploadErr && (
@@ -426,35 +499,25 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
         </div>
       )}
 
-      {/* Loading */}
       {loading ? (
         <div style={{ color: "#444", fontSize: 12, padding: "24px 0", textAlign: "center" }}>טוען רפרנסים...</div>
       ) : (
         <>
-          {/* Masonry grid */}
-          {refs.length > 0 && (
-            <div style={{
-              columns: "3 160px",
-              columnGap: 8,
-              marginBottom: 12,
-            }}>
-              {refs.map(ref => (
+          {/* Masonry grid — filtered */}
+          {filtered.length > 0 && (
+            <div style={{ columns: "3 160px", columnGap: 8, marginBottom: 12 }}>
+              {filtered.map((ref, i) => (
                 <div
                   key={ref.id}
-                  onClick={() => setLightboxIndex(refs.indexOf(ref))}
+                  onClick={() => setLightboxIndex(i)}
                   style={{
-                    breakInside: "avoid",
-                    marginBottom: 8,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    cursor: "pointer",
-                    position: "relative",
-                    background: "#111",
+                    breakInside: "avoid", marginBottom: 8,
+                    borderRadius: 8, overflow: "hidden",
+                    cursor: "pointer", position: "relative", background: "#111",
                   }}
                   onMouseEnter={e => (e.currentTarget.style.opacity = "0.82")}
                   onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
                 >
-                  {/* Primary: CDN URL (direct, fast). Fallback: thumbnail proxy */}
                   <RefGridImage
                     src={toDirectUrl(ref.dropbox_url)}
                     fallbackSrc={toThumbUrl(ref.dropbox_path)}
@@ -465,11 +528,15 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
             </div>
           )}
 
+          {filtered.length === 0 && refs.length > 0 && (
+            <div style={{ fontSize: 12, color: "#444", fontStyle: "italic", padding: "16px 0", textAlign: "center" }}>
+              אין תמונות בלוקיישן זה
+            </div>
+          )}
+
           {/* Drop zone */}
           <div
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
+            onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
             onClick={() => { if (!uploading) inputRef.current?.click(); }}
             style={{
               border: `1px dashed ${dragging ? "#60A5FA" : "#2A2A2A"}`,
@@ -482,9 +549,7 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
             }}
           >
             {uploading ? (
-              <div style={{ fontSize: 12, color: "#555" }}>
-                מעלה{progress > 0 ? ` ${progress}%` : "..."} ⏳
-              </div>
+              <div style={{ fontSize: 12, color: "#555" }}>מעלה{progress > 0 ? ` ${progress}%` : "..."} ⏳</div>
             ) : dragging ? (
               <div style={{ fontSize: 13, color: "#60A5FA", fontWeight: 600 }}>שחרר להעלאה ↓</div>
             ) : (
@@ -496,14 +561,15 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
         </>
       )}
 
-      {/* Lightbox */}
-      {lightboxIndex !== null && refs.length > 0 && (
+      {/* Lightbox — uses filtered array so arrows navigate within filter */}
+      {lightboxIndex !== null && filtered.length > 0 && (
         <Lightbox
-          images={refs}
+          images={filtered}
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onDelete={handleLightboxDelete}
           onNavigate={setLightboxIndex}
+          onTagChange={handleTagChange}
         />
       )}
     </div>

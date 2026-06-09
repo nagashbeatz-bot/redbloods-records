@@ -25,6 +25,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     // ── Validate input first (before touching Dropbox) ────────────────────────
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    const tag  = (formData.get("tag") as string | null)?.trim() || "כללי";
 
     if (!file) {
       return NextResponse.json({ error: "קובץ חסר" }, { status: 400 });
@@ -157,6 +158,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         file_name:     fileName,
         dropbox_path:  finalPath,
         dropbox_url:   dropboxUrl,
+        tag,
         sort_order:    0,
         created_at:    now,
         updated_at:    now,
