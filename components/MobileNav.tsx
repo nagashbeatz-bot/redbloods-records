@@ -143,7 +143,7 @@ export default function MobileNav({
       */}
       <nav
         ref={navRef}
-        className="md:hidden border-t grid flex-shrink-0"
+        className="app-shell-nav md:hidden border-t grid flex-shrink-0"
         style={{
           background: "#141414",
           borderColor: "#2A2A2A",

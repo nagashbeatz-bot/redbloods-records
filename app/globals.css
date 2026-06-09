@@ -146,6 +146,48 @@ input, textarea, select, button {
   min-width: 44px;
 }
 
+/*
+  iOS Safari touch-offset fix — mobile body scroll architecture.
+  On mobile, the fixed shell + inner overflow:auto container causes iOS to
+  miscompute touch hit-targets by the scroll offset. Solution: let the body
+  scroll on mobile so iOS uses its native (correct) touch coordinate system.
+  Desktop (≥ 768px) is completely unaffected.
+*/
+@media (max-width: 767px) {
+  html {
+    height: auto !important;
+  }
+
+  body {
+    height: auto !important;
+    overflow-y: auto !important;
+  }
+
+  /* Convert fixed shell to block layout — iOS body scroll takes over */
+  .app-shell-root {
+    position: relative !important;
+    inset: auto !important;
+    min-height: 100dvh;
+  }
+
+  /* Content div: no inner scroll — body scrolls instead */
+  .app-shell-content {
+    overflow-y: visible !important;
+    overflow-x: visible !important;
+    transform: none !important;
+    -webkit-overflow-scrolling: auto !important;
+  }
+
+  /* Bottom nav: fixed to viewport since it's no longer anchored by the shell */
+  .app-shell-nav {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 200;
+  }
+}
+
 /* Bottom sheet animation */
 @keyframes rb-sheet-in {
   from { transform: translateY(100%); }

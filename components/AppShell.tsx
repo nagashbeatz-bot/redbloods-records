@@ -41,9 +41,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Scroll content to top on route change (instant — not smooth, to avoid iOS touch lock)
+  // Scroll to top on route change.
+  // contentRef.scrollTo covers desktop (inner scroll container).
+  // window.scrollTo covers mobile (body scroll after CSS override).
   useEffect(() => {
     contentRef.current?.scrollTo(0, 0);
+    window.scrollTo(0, 0);
   }, [pathname]);
 
   // Auto-mark past sessions as "התקיים" on every app load
@@ -91,6 +94,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     */
     <div
       ref={shellRef}
+      className="app-shell-root"
       style={{
         position: "fixed",
         inset: 0,
@@ -153,28 +157,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {/* Scrollable page content */}
             <div
               ref={contentRef}
+              className="app-shell-content"
               style={{
                 flex: 1,
                 overflowY: "auto",
                 overflowX: "hidden",
                 /*
-                  iOS Safari touch-coordinate fix:
-                  When a non-body div with overflow:auto is inside position:fixed,
-                  iOS fires touch events at (screenY + scrollOffset) instead of
-                  screenY — hitting elements below the visual target.
-
-                  transform:translateZ(0) forces a GPU compositing layer.
-                  iOS then computes touch coords relative to the composited
-                  visual position, which correctly accounts for scroll offset.
-
-                  WebkitOverflowScrolling:touch enables momentum scrolling
-                  (deprecated but still effective on older iOS).
+                  Desktop: inner scroll container.
+                  Mobile: CSS overrides overflow to visible + removes transform,
+                  so the body scrolls instead (iOS touch fix — see globals.css).
+                  paddingBottom reserves space for:
+                    - mobile bottom nav (56px + safe-area) always on mobile
+                    - mini player height when visible
                 */
-                transform: "translateZ(0)",
-                WebkitOverflowScrolling: "touch" as never,
-                paddingBottom: playerVisible
-                  ? isMobile ? MOBILE_PLAYER_H + 16 : PLAYER_H + 8
-                  : undefined,
+                paddingBottom: isMobile
+                  ? playerVisible
+                    ? `calc(56px + ${MOBILE_PLAYER_H + 16}px + env(safe-area-inset-bottom))`
+                    : `calc(56px + env(safe-area-inset-bottom))`
+                  : playerVisible
+                    ? PLAYER_H + 8
+                    : undefined,
               }}
             >
               <GlobalProjectDrawerProvider>
