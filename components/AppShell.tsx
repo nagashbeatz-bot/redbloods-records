@@ -157,6 +157,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 flex: 1,
                 overflowY: "auto",
                 overflowX: "hidden",
+                // iOS Safari: scroll inside fixed container needs this to
+                // keep touch coordinates aligned after scrolling
+                WebkitOverflowScrolling: "touch" as never,
                 paddingBottom: playerVisible
                   ? isMobile ? MOBILE_PLAYER_H + 16 : PLAYER_H + 8
                   : undefined,
@@ -248,12 +251,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Mobile mini player — above bottom nav */}
+      {/* pointer-events:none when hidden — iOS Safari keeps touch hitbox at
+          layout position even after transform, so the invisible wrapper would
+          block taps on content below if pointer-events were left as "auto". */}
       <div
         className="fixed left-0 right-0 z-50 md:hidden"
         style={{
           bottom: `calc(56px + env(safe-area-inset-bottom))`,
           transform: playerVisible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.25s",
+          pointerEvents: playerVisible ? "auto" : "none",
         }}
       >
         <MiniPlayer mobile />

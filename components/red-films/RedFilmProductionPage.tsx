@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, type CSSProperties, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -130,7 +130,15 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
   const [trashing,     setTrashing]     = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const { layout, save: saveLayout, reset: resetLayout } = useProductionLayout();
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const player = usePlayerSafe();
 
@@ -672,155 +680,145 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
         background: "#141414", borderBottom: "1px solid #222",
-        padding: "12px 24px",
-        display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+        padding: isMobile ? "10px 16px" : "12px 24px",
       }}>
-        {/* Back */}
-        <button onClick={() => router.push("/red-films")}
-          style={{ display: "flex", alignItems: "center", gap: 6, color: "#555", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, flexShrink: 0 }}>
-          ← Red Films
-        </button>
+        {/* Row 1: back + title + status */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: isMobile ? 10 : 0 }}>
+          <button onClick={() => router.push("/red-films")}
+            style={{ display: "flex", alignItems: "center", gap: 4, color: "#555", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, flexShrink: 0, minHeight: 44, padding: "0 4px" }}>
+            ← {isMobile ? "" : "Red Films"}
+          </button>
 
-        {/* Title */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <h1 style={{ fontSize: 18, fontWeight: 800, color: "#F0F0F0", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {prod.title}
-            </h1>
-            <RedFilmsStatusBadge status={prod.status} small />
-            {prod.production_type && (
-              <span style={{ fontSize: 11, color: "#555", background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 6, padding: "2px 8px" }}>
-                {prod.production_type}
-              </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <h1 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: "#F0F0F0", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {prod.title}
+              </h1>
+              <RedFilmsStatusBadge status={prod.status} small />
+              {!isMobile && prod.production_type && (
+                <span style={{ fontSize: 11, color: "#555", background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 6, padding: "2px 8px" }}>
+                  {prod.production_type}
+                </span>
+              )}
+            </div>
+            {!isMobile && (
+              <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
+                {prod.photographer_name && <span>📷 {prod.photographer_name}</span>}
+                {prod.shoot_date && <span>📅 {fmtDate(prod.shoot_date)}</span>}
+                {prod.locations && <span>📍 {prod.locations}</span>}
+                {projectName && <span style={{ color: "#60A5FA" }}>♫ {projectName}</span>}
+              </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
-            {prod.photographer_name && <span>📷 {prod.photographer_name}</span>}
-            {prod.shoot_date && <span>📅 {fmtDate(prod.shoot_date)}</span>}
-            {prod.locations && <span>📍 {prod.locations}</span>}
-            {projectName && <span style={{ color: "#60A5FA" }}>♫ {projectName}</span>}
-          </div>
-        </div>
 
-        {/* Red Films logo */}
-        <div style={{
-          flexShrink: 0, fontSize: 11, fontWeight: 700,
-          background: "linear-gradient(135deg, #EC4899, #3B82F6)",
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-        }}>
-          🎬 Red Films
-        </div>
-
-        {/* Project audio + link — shown only when production is linked to a project */}
-        {prod.project_id && (() => {
-          const linkedProject = projects.find(p => p.id === prod.project_id);
-          if (!linkedProject) return null;
-          const latestAudio = getLatestAudioFile(linkedProject.files ?? []);
-          const isThisPlaying = player?.track?.projectId === prod.project_id && player?.playing;
-          const isThisLoaded  = player?.track?.projectId === prod.project_id;
-
-          async function handlePlay() {
-            if (!player || !latestAudio) return;
-            if (isThisLoaded) {
-              isThisPlaying ? player.pause() : player.resume();
-            } else {
-              const url = await getFreshPlayUrl(latestAudio);
-              player.play({ projectId: linkedProject!.id, projectName: linkedProject!.name, artist: linkedProject!.artist, fileName: latestAudio.name, url });
-            }
-          }
-
-          return (
-            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-              {latestAudio && (
-                <button
-                  onClick={handlePlay}
-                  title={isThisPlaying ? "השהה" : `נגן — ${latestAudio.name}`}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
-                    cursor: "pointer", fontFamily: "inherit", border: "1px solid",
-                    background:   isThisLoaded ? "rgba(59,130,246,0.15)" : "none",
-                    color:        isThisLoaded ? "#60A5FA"               : "#888",
-                    borderColor:  isThisLoaded ? "rgba(59,130,246,0.4)"  : "#333",
-                  }}
-                >
-                  {isThisPlaying ? "⏸" : "▶"} {isThisPlaying ? "מנגן" : "נגן שיר"}
-                </button>
-              )}
-              <button
-                onClick={() => router.push(`/projects`)}
-                title={`פתח פרויקט: ${linkedProject.name}`}
-                style={{
-                  padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                  cursor: "pointer", fontFamily: "inherit", border: "1px solid #333",
-                  background: "none", color: "#60A5FA",
-                }}
-              >
-                ♫ {linkedProject.name}
-              </button>
+          {!isMobile && (
+            <div style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, background: "linear-gradient(135deg, #EC4899, #3B82F6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              🎬 Red Films
             </div>
-          );
-        })()}
+          )}
+        </div>
 
-        {/* Layout settings button */}
-        <button
-          onClick={() => setShowLayoutModal(true)}
-          title="התאמת תצוגה"
-          style={{
-            flexShrink: 0, display: "flex", alignItems: "center", gap: 4,
-            padding: "5px 10px", borderRadius: 8, fontSize: 12,
-            border: "1px solid #2A2A2A", color: "#555", background: "none",
-            cursor: "pointer", fontFamily: "inherit",
-          }}
-        >
-          ⚙️
-        </button>
-
-        {/* Dropbox folder button */}
-        {prod.dropbox_folder_url ? (
-          <a
-            href={prod.dropbox_folder_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
-              padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-              border: "1px solid #333", color: "#888", textDecoration: "none",
-              background: "none", fontFamily: "inherit",
-            }}
-          >
-            📁 פתח תיקייה
-          </a>
-        ) : (
-          <button
-            onClick={createDropboxFolder}
-            disabled={creatingFolder}
-            style={{
-              flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
-              padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-              border: "1px solid #333", color: "#555", background: "none",
-              cursor: creatingFolder ? "default" : "pointer", fontFamily: "inherit",
-              opacity: creatingFolder ? 0.6 : 1,
-            }}
-          >
-            {creatingFolder ? "יוצר..." : "📁 צור תיקיית Dropbox"}
-          </button>
+        {/* Row 2 (desktop): action buttons inline */}
+        {!isMobile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+            {prod.project_id && (() => {
+              const linkedProject = projects.find(p => p.id === prod.project_id);
+              if (!linkedProject) return null;
+              const latestAudio = getLatestAudioFile(linkedProject.files ?? []);
+              const isThisPlaying = player?.track?.projectId === prod.project_id && player?.playing;
+              const isThisLoaded  = player?.track?.projectId === prod.project_id;
+              async function handlePlay() {
+                if (!player || !latestAudio) return;
+                if (isThisLoaded) { isThisPlaying ? player.pause() : player.resume(); }
+                else { const url = await getFreshPlayUrl(latestAudio); player.play({ projectId: linkedProject!.id, projectName: linkedProject!.name, artist: linkedProject!.artist, fileName: latestAudio.name, url }); }
+              }
+              return (
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }} key="audio">
+                  {latestAudio && (
+                    <button onClick={handlePlay} title={isThisPlaying ? "השהה" : `נגן — ${latestAudio.name}`}
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "1px solid", background: isThisLoaded ? "rgba(59,130,246,0.15)" : "none", color: isThisLoaded ? "#60A5FA" : "#888", borderColor: isThisLoaded ? "rgba(59,130,246,0.4)" : "#333" }}>
+                      {isThisPlaying ? "⏸" : "▶"} {isThisPlaying ? "מנגן" : "נגן שיר"}
+                    </button>
+                  )}
+                  <button onClick={() => router.push("/projects")} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "1px solid #333", background: "none", color: "#60A5FA" }}>
+                    ♫ {linkedProject.name}
+                  </button>
+                </div>
+              );
+            })()}
+            <button onClick={() => setShowLayoutModal(true)} title="התאמת תצוגה"
+              style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, fontSize: 12, border: "1px solid #2A2A2A", color: "#555", background: "none", cursor: "pointer", fontFamily: "inherit" }}>
+              ⚙️
+            </button>
+            {prod.dropbox_folder_url ? (
+              <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer"
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "1px solid #333", color: "#888", textDecoration: "none", background: "none", fontFamily: "inherit" }}>
+                📁 פתח תיקייה
+              </a>
+            ) : (
+              <button onClick={createDropboxFolder} disabled={creatingFolder}
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "1px solid #333", color: "#555", background: "none", cursor: creatingFolder ? "default" : "pointer", fontFamily: "inherit", opacity: creatingFolder ? 0.6 : 1 }}>
+                {creatingFolder ? "יוצר..." : "📁 צור תיקיית Dropbox"}
+              </button>
+            )}
+            {prod.status !== "בוטל" && (
+              <button onClick={() => setTrashConfirm(true)}
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)", color: "#F87171", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                🗑️ העבר לסל
+              </button>
+            )}
+          </div>
         )}
 
-        {/* Trash button */}
-        {prod.status !== "בוטל" && (
-          <button
-            onClick={() => setTrashConfirm(true)}
-            style={{
-              flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
-              padding: "6px 14px", borderRadius: 8,
-              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)",
-              color: "#F87171", fontSize: 12, fontWeight: 700,
-              cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            🗑️ העבר לסל
-          </button>
+        {/* Row 2 (mobile): action grid */}
+        {isMobile && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            {/* Play */}
+            {prod.project_id && (() => {
+              const linkedProject = projects.find(p => p.id === prod.project_id);
+              if (!linkedProject) return null;
+              const latestAudio = getLatestAudioFile(linkedProject.files ?? []);
+              const isThisPlaying = player?.track?.projectId === prod.project_id && player?.playing;
+              const isThisLoaded  = player?.track?.projectId === prod.project_id;
+              if (!latestAudio) return null;
+              async function handlePlay() {
+                if (!player || !latestAudio) return;
+                if (isThisLoaded) { isThisPlaying ? player.pause() : player.resume(); }
+                else { const url = await getFreshPlayUrl(latestAudio); player.play({ projectId: linkedProject!.id, projectName: linkedProject!.name, artist: linkedProject!.artist, fileName: latestAudio.name, url }); }
+              }
+              return (
+                <button key="play" onClick={handlePlay}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: `1px solid ${isThisLoaded ? "rgba(59,130,246,0.4)" : "#2A2A2A"}`, background: isThisLoaded ? "rgba(59,130,246,0.12)" : "#1A1A1A", color: isThisLoaded ? "#60A5FA" : "#888", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  <span style={{ fontSize: 18 }}>{isThisPlaying ? "⏸" : "▶"}</span>
+                  {isThisPlaying ? "מנגן" : "נגן"}
+                </button>
+              );
+            })()}
+            {/* Dropbox */}
+            {prod.dropbox_folder_url ? (
+              <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: "1px solid #2A2A2A", background: "#1A1A1A", color: "#888", fontSize: 10, fontWeight: 600, textDecoration: "none", fontFamily: "inherit" }}>
+                <span style={{ fontSize: 18 }}>📁</span>תיקייה
+              </a>
+            ) : (
+              <button onClick={createDropboxFolder} disabled={creatingFolder}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: "1px solid #2A2A2A", background: "#1A1A1A", color: creatingFolder ? "#444" : "#888", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                <span style={{ fontSize: 18 }}>📁</span>{creatingFolder ? "יוצר..." : "צור תיקייה"}
+              </button>
+            )}
+            {/* Settings */}
+            <button onClick={() => setShowLayoutModal(true)}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: "1px solid #2A2A2A", background: "#1A1A1A", color: "#888", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+              <span style={{ fontSize: 18 }}>⚙️</span>תצוגה
+            </button>
+            {/* Trash */}
+            {prod.status !== "בוטל" && (
+              <button onClick={() => setTrashConfirm(true)}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#F87171", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                <span style={{ fontSize: 18 }}>🗑️</span>סל
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -831,22 +829,32 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         </div>
       )}
 
-      {/* ── Body — 2-column grid ── */}
-      <div style={{ padding: "24px 28px", width: "100%", boxSizing: "border-box" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
-          {/* Management column: summary, tasks, budget, budgetItems, files, notes */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* ── Body ── */}
+      <div style={{ padding: isMobile ? "12px 12px" : "24px 28px", width: "100%", boxSizing: "border-box" }}>
+        {isMobile ? (
+          /* Mobile: single column, order from layout */
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {layout.order
-              .filter(sId => !layout.hidden.includes(sId) && !CREATIVE_SECTIONS.has(sId))
+              .filter(sId => !layout.hidden.includes(sId))
               .map(sId => renderSection(sId))}
           </div>
-          {/* Creative column: concept, documents, references */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {layout.order
-              .filter(sId => !layout.hidden.includes(sId) && CREATIVE_SECTIONS.has(sId))
-              .map(sId => renderSection(sId))}
+        ) : (
+          /* Desktop: 2-column grid */
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+            {/* Management column */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {layout.order
+                .filter(sId => !layout.hidden.includes(sId) && !CREATIVE_SECTIONS.has(sId))
+                .map(sId => renderSection(sId))}
+            </div>
+            {/* Creative column */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {layout.order
+                .filter(sId => !layout.hidden.includes(sId) && CREATIVE_SECTIONS.has(sId))
+                .map(sId => renderSection(sId))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Layout modal */}

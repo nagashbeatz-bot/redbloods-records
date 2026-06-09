@@ -298,6 +298,14 @@ export default function RedFilmsPage() {
   const [loading,     setLoading]     = useState(true);
   const [creatingNew, setCreatingNew] = useState(false);
   const [filter,      setFilter]      = useState<"פעילות" | "מבוטלות" | "הכל">("פעילות");
+  const [isMobile,    setIsMobile]    = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // ── Bulk selection ──────────────────────────────────────────────────────────
   const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set());
@@ -416,7 +424,7 @@ export default function RedFilmsPage() {
   const COL = "28px 2fr 1fr 1.2fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr 60px";
 
   return (
-    <div style={{ padding: "20px 16px 100px", maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ padding: isMobile ? "16px 12px calc(80px + env(safe-area-inset-bottom))" : "20px 16px 100px", maxWidth: isMobile ? "100%" : 1100, margin: "0 auto" }}>
 
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, gap: 12, flexWrap: "wrap" }}>
@@ -490,6 +498,40 @@ export default function RedFilmsPage() {
               </button>
             </>
           )}
+        </div>
+      ) : isMobile ? (
+        /* ── Mobile card list ── */
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {visible.map(p => (
+            <div
+              key={p.id}
+              onClick={() => router.push(`/red-films/${p.id}`)}
+              style={{
+                background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14,
+                padding: "14px 16px", cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.title}
+                  </div>
+                  {(p.artist_name || p.client_name) && (
+                    <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>
+                      {p.artist_name || p.client_name}
+                    </div>
+                  )}
+                </div>
+                <RedFilmsStatusBadge status={p.status} small />
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "#555" }}>
+                {p.production_type && <span style={{ background: "#141414", border: "1px solid #2A2A2A", borderRadius: 6, padding: "2px 8px", color: "#666" }}>{p.production_type}</span>}
+                {p.shoot_date && <span>📅 {fmtDate(p.shoot_date)}</span>}
+                {p.photographer_name && <span>📷 {p.photographer_name}</span>}
+                {p.general_budget ? <span style={{ color: "#4ADE80" }}>₪{p.general_budget.toLocaleString("he-IL")}</span> : null}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, overflow: "hidden" }}>
