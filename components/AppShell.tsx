@@ -104,13 +104,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }}
     >
       {/* ── Inner row: sidebar (desktop) + main content ── */}
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      <div className="app-shell-row" style={{ display: "flex", flex: 1, minHeight: 0 }}>
 
         {/* Desktop sidebar — hidden on mobile */}
         <Sidebar onOpenChat={() => setChatOpen(true)} />
 
         {/* Main column: header + scrollable content + desktop chat panel */}
         <main
+          className="app-shell-main"
           style={{
             flex: 1,
             display: "flex",

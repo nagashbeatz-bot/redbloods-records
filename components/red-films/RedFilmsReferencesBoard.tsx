@@ -505,7 +505,7 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
         <>
           {/* Masonry grid — filtered */}
           {filtered.length > 0 && (
-            <div style={{ columns: "3 160px", columnGap: 8, marginBottom: 12 }}>
+            <div className="ref-masonry" style={{ columns: "3 160px", columnGap: 8, marginBottom: 12 }}>
               {filtered.map((ref, i) => (
                 <div
                   key={ref.id}
