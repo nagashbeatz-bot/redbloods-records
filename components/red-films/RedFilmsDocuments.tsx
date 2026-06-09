@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 
 const FILE_TYPES = ["תסריט", "בריף", "שוט ליסט", "לו״ז צילום", "אישור / חוזה", "ציוד", "אחר"];
 
@@ -40,19 +41,177 @@ function previewCandidate(docs: Doc[]): Doc | null {
     ?? null;
 }
 
-// Download link: dl=1 forces download
 function downloadUrl(doc: Doc) {
   return doc.dropbox_url.includes("dl=")
     ? doc.dropbox_url.replace(/dl=\d/, "dl=1")
     : doc.dropbox_url + (doc.dropbox_url.includes("?") ? "&dl=1" : "?dl=1");
 }
 
-// View in Dropbox: dl=0 opens web viewer
 function viewUrl(doc: Doc) {
   return doc.dropbox_url.includes("dl=")
     ? doc.dropbox_url.replace(/dl=\d/, "dl=0")
     : doc.dropbox_url + (doc.dropbox_url.includes("?") ? "&dl=0" : "?dl=0");
 }
+
+// ── Fullscreen PDF Viewer ──────────────────────────────────────────────────────
+
+function PdfFullscreenViewer({ doc, onClose }: { doc: Doc; onClose: () => void }) {
+  const [iframeError, setIframeError] = useState(false);
+  const previewSrc = `/api/red-films/documents/${doc.id}/preview`;
+
+  // Lock body scroll while open; restore on close
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // ESC to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const typeColor = TYPE_COLORS[doc.file_type] ?? "#6B7280";
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed", inset: 0,
+        zIndex: 99999,
+        background: "#0D0D0D",
+        display: "flex", flexDirection: "column",
+        // Sit above bottom nav, mini player, FAB
+      }}
+    >
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "12px 16px",
+        paddingTop: "max(12px, env(safe-area-inset-top))",
+        background: "#141414",
+        borderBottom: "1px solid #2A2A2A",
+        flexShrink: 0,
+      }}>
+        {/* Close */}
+        <button
+          onClick={onClose}
+          style={{
+            background: "#1A1A1A", border: "1px solid #2A2A2A",
+            borderRadius: 10, padding: "8px 14px",
+            color: "#888", fontSize: 13, cursor: "pointer",
+            fontFamily: "inherit", flexShrink: 0, lineHeight: 1,
+          }}
+        >
+          ✕
+        </button>
+
+        {/* Title */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: typeColor,
+              background: `${typeColor}18`, border: `1px solid ${typeColor}33`,
+              borderRadius: 5, padding: "2px 7px", flexShrink: 0,
+            }}>
+              {doc.file_type}
+            </span>
+            <span style={{
+              fontSize: 13, color: "#CCC", fontWeight: 600,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {doc.file_name}
+            </span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <a
+            href={viewUrl(doc)}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 11, color: "#60A5FA", textDecoration: "none",
+              padding: "6px 10px", border: "1px solid rgba(59,130,246,0.3)",
+              borderRadius: 7, fontFamily: "inherit", whiteSpace: "nowrap",
+            }}
+          >
+            📁 Dropbox
+          </a>
+          <a
+            href={previewSrc}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 11, color: "#888", textDecoration: "none",
+              padding: "6px 10px", border: "1px solid #2A2A2A",
+              borderRadius: 7, fontFamily: "inherit", whiteSpace: "nowrap",
+            }}
+          >
+            ⤢ טאב
+          </a>
+        </div>
+      </div>
+
+      {/* PDF area */}
+      {iframeError ? (
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          gap: 16, padding: 24, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 14, color: "#666" }}>
+            לא ניתן להציג תצוגה מקדימה במכשיר הזה
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+            <a
+              href={viewUrl(doc)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "10px 20px", borderRadius: 10, background: "rgba(59,130,246,0.12)",
+                border: "1px solid rgba(59,130,246,0.35)", color: "#60A5FA",
+                fontSize: 14, fontWeight: 600, textDecoration: "none",
+              }}
+            >
+              פתח ב-Dropbox
+            </a>
+            <a
+              href={downloadUrl(doc)}
+              style={{
+                padding: "10px 20px", borderRadius: 10, background: "#1A1A1A",
+                border: "1px solid #2A2A2A", color: "#888",
+                fontSize: 14, fontWeight: 600, textDecoration: "none",
+              }}
+            >
+              ⬇ הורד
+            </a>
+          </div>
+        </div>
+      ) : (
+        <iframe
+          src={previewSrc}
+          style={{
+            flex: 1,
+            width: "100%",
+            border: "none",
+            display: "block",
+            background: "#111",
+            // Account for safe-area-inset-bottom so content isn't under home bar
+            paddingBottom: "env(safe-area-inset-bottom)",
+          }}
+          title={doc.file_name}
+          onError={() => setIframeError(true)}
+        />
+      )}
+    </div>,
+    document.body
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export default function RedFilmsDocuments({ productionId }: { productionId: string }) {
   const [docs, setDocs]             = useState<Doc[]>([]);
@@ -62,9 +221,19 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
   const [uploadErr, setUploadErr]   = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState("אחר");
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  // Preview is NOT auto-loaded — user must click
+  // Inline preview (desktop)
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
+  // Fullscreen viewer
+  const [fullscreenDoc, setFullscreenDoc] = useState<Doc | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,6 +280,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
   async function remove(docId: string) {
     setDeletingId(docId);
     if (previewDocId === docId) setPreviewDocId(null);
+    if (fullscreenDoc?.id === docId) setFullscreenDoc(null);
     try {
       const res = await fetch(`/api/red-films/documents/${docId}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -125,7 +295,15 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-      {/* ── PDF Preview card (load-on-demand only) ────────────────────────────── */}
+      {/* ── Fullscreen viewer (portal) ──────────────────────────────────────────── */}
+      {fullscreenDoc && (
+        <PdfFullscreenViewer
+          doc={fullscreenDoc}
+          onClose={() => setFullscreenDoc(null)}
+        />
+      )}
+
+      {/* ── PDF Preview card ────────────────────────────────────────────────────── */}
       {!loading && candidate && (
         <div style={{
           background: "#1A1A1A", border: "1px solid #252525",
@@ -135,39 +313,57 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "12px 16px",
-            borderBottom: previewDoc ? "1px solid #222" : "none",
+            borderBottom: (!isMobile && previewDoc) ? "1px solid #222" : "none",
+            gap: 8,
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
               <span style={{
                 fontSize: 10, fontWeight: 700,
                 color: TYPE_COLORS[candidate.file_type] ?? "#6B7280",
                 background: `${TYPE_COLORS[candidate.file_type] ?? "#6B7280"}18`,
                 border: `1px solid ${TYPE_COLORS[candidate.file_type] ?? "#6B7280"}33`,
-                borderRadius: 5, padding: "2px 7px",
+                borderRadius: 5, padding: "2px 7px", flexShrink: 0,
               }}>
                 {candidate.file_type}
               </span>
-              <span style={{ fontSize: 12, color: "#AAA", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 12, color: "#AAA", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {candidate.file_name}
               </span>
             </div>
 
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-              {/* Toggle preview */}
-              {previewDocId === candidate.id ? (
+              {/* Mobile: fullscreen button */}
+              {isMobile ? (
                 <button
-                  onClick={() => setPreviewDocId(null)}
-                  style={{ fontSize: 11, color: "#888", background: "none", border: "1px solid #333", borderRadius: 5, padding: "3px 8px", cursor: "pointer", fontFamily: "inherit" }}
+                  onClick={() => setFullscreenDoc(candidate)}
+                  style={{
+                    fontSize: 12, color: "#A78BFA", fontWeight: 700,
+                    background: "rgba(167,139,250,0.1)",
+                    border: "1px solid rgba(167,139,250,0.3)",
+                    borderRadius: 8, padding: "6px 12px",
+                    cursor: "pointer", fontFamily: "inherit",
+                    minHeight: 36,
+                  }}
                 >
-                  ▲ סגור תצוגה
+                  📄 פתח לקריאה
                 </button>
               ) : (
-                <button
-                  onClick={() => setPreviewDocId(candidate.id)}
-                  style={{ fontSize: 11, color: "#A78BFA", fontWeight: 700, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 5, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  ▼ הצג תסריט
-                </button>
+                /* Desktop: toggle inline preview */
+                previewDocId === candidate.id ? (
+                  <button
+                    onClick={() => setPreviewDocId(null)}
+                    style={{ fontSize: 11, color: "#888", background: "none", border: "1px solid #333", borderRadius: 5, padding: "3px 8px", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    ▲ סגור תצוגה
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setPreviewDocId(candidate.id)}
+                    style={{ fontSize: 11, color: "#A78BFA", fontWeight: 700, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 5, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    ▼ הצג תסריט
+                  </button>
+                )
               )}
               <a
                 href={viewUrl(candidate)}
@@ -175,19 +371,19 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                 rel="noopener noreferrer"
                 style={{ fontSize: 11, color: "#60A5FA", textDecoration: "none", padding: "3px 8px", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 5 }}
               >
-                📁 Dropbox
+                📁
               </a>
               <a
                 href={downloadUrl(candidate)}
                 style={{ fontSize: 11, color: "#555", textDecoration: "none", padding: "3px 8px", border: "1px solid #2A2A2A", borderRadius: 5 }}
               >
-                ⬇ הורד
+                ⬇
               </a>
             </div>
           </div>
 
-          {/* iframe — only rendered after user clicks "הצג תסריט" */}
-          {previewDoc && (
+          {/* Desktop inline iframe — not shown on mobile */}
+          {!isMobile && previewDoc && (
             <iframe
               src={`/api/red-films/documents/${previewDoc.id}/preview`}
               style={{ width: "100%", height: 580, border: "none", display: "block", background: "#111" }}
@@ -267,7 +463,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {docs.map(doc => (
               <div key={doc.id} style={{
-                display: "flex", alignItems: "center", gap: 10,
+                display: "flex", alignItems: "center", gap: 8,
                 background: "#141414", border: "1px solid #222",
                 borderRadius: 8, padding: "8px 12px",
               }}>
@@ -279,7 +475,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                 }}>
                   {doc.file_type}
                 </span>
-                <span style={{ flex: 1, fontSize: 12, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ flex: 1, fontSize: 12, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                   {doc.file_name}
                 </span>
                 <span style={{ fontSize: 11, color: "#444", flexShrink: 0 }}>
@@ -287,10 +483,15 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                 </span>
                 {isPdf(doc) && (
                   <button
-                    onClick={() => setPreviewDocId(id => id === doc.id ? null : doc.id)}
-                    style={{ fontSize: 10, color: "#A78BFA", background: "none", border: "1px solid rgba(167,139,250,0.25)", borderRadius: 5, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
+                    onClick={() => isMobile ? setFullscreenDoc(doc) : setPreviewDocId(id => id === doc.id ? null : doc.id)}
+                    style={{
+                      fontSize: 10, color: "#A78BFA", background: "none",
+                      border: "1px solid rgba(167,139,250,0.25)",
+                      borderRadius: 5, padding: "2px 6px",
+                      cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+                    }}
                   >
-                    {previewDocId === doc.id ? "סגור" : "preview"}
+                    {isMobile ? "קריאה" : (previewDocId === doc.id ? "סגור" : "preview")}
                   </button>
                 )}
                 <a
