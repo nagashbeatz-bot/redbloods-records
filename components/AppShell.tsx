@@ -157,8 +157,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 flex: 1,
                 overflowY: "auto",
                 overflowX: "hidden",
-                // iOS Safari: scroll inside fixed container needs this to
-                // keep touch coordinates aligned after scrolling
+                /*
+                  iOS Safari touch-coordinate fix:
+                  When a non-body div with overflow:auto is inside position:fixed,
+                  iOS fires touch events at (screenY + scrollOffset) instead of
+                  screenY — hitting elements below the visual target.
+
+                  transform:translateZ(0) forces a GPU compositing layer.
+                  iOS then computes touch coords relative to the composited
+                  visual position, which correctly accounts for scroll offset.
+
+                  WebkitOverflowScrolling:touch enables momentum scrolling
+                  (deprecated but still effective on older iOS).
+                */
+                transform: "translateZ(0)",
                 WebkitOverflowScrolling: "touch" as never,
                 paddingBottom: playerVisible
                   ? isMobile ? MOBILE_PLAYER_H + 16 : PLAYER_H + 8

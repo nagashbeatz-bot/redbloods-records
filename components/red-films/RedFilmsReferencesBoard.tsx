@@ -458,9 +458,9 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
         onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f, uploadTag); }}
       />
 
-      {/* Filter bar */}
+      {/* Filter bar — explicit position+z-index so image grid never overlaps */}
       {refs.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ position: "relative", zIndex: 5, display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
           {["הכל", ...LOCATION_TAGS].map(tag => {
             const count = counts[tag] ?? 0;
             const isActive = activeFilter === tag;

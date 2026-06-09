@@ -54,6 +54,7 @@ function fmtNum(n: number) {
 function SCard({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
     <div style={{
+      position: "relative", // explicit stacking context — prevents z-index bleed on iOS
       background: "#1A1A1A", border: "1px solid #252525",
       borderRadius: 14, padding: "18px 20px", ...style,
     }}>
