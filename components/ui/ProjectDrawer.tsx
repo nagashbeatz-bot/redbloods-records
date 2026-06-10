@@ -16,6 +16,7 @@ import UploadButton from "@/components/ui/UploadButton";
 import CopyLinkButton from "@/components/ui/CopyLinkButton";
 import ActionMenu from "@/components/project/ActionMenu";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+import AlbumCenterModal from "@/components/album/AlbumCenterModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SessionStatus  = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
@@ -359,6 +360,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // ── Mobile detection ───────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(false);
+  const [albumCenterOpen, setAlbumCenterOpen] = useState(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -2032,6 +2034,48 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             )}
           </CollapsibleCard>
 
+          {/* ── מרכז אלבום ──────────────────────────────────────────────── */}
+          {(project.projectType === "EP" || project.projectType === "אלבום") && (
+            <div style={{
+              margin: "0 0 4px",
+              padding: "14px 16px",
+              borderRadius: 12,
+              background: project.projectType === "EP" ? "rgba(168,85,247,0.06)" : "rgba(236,72,153,0.06)",
+              border: `1px solid ${project.projectType === "EP" ? "rgba(168,85,247,0.25)" : "rgba(236,72,153,0.25)"}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#E0E0E0", marginBottom: 3 }}>
+                  🎵 מרכז אלבום
+                </div>
+                <div style={{ fontSize: 11, color: "#666" }}>
+                  נהל שירים, רפרנסים, קבצים וסיכומי שיחה
+                </div>
+              </div>
+              <button
+                onClick={() => setAlbumCenterOpen(true)}
+                style={{
+                  padding: "7px 13px",
+                  borderRadius: 9,
+                  border: `1px solid ${project.projectType === "EP" ? "rgba(168,85,247,0.4)" : "rgba(236,72,153,0.4)"}`,
+                  background: project.projectType === "EP" ? "rgba(168,85,247,0.12)" : "rgba(236,72,153,0.12)",
+                  color: project.projectType === "EP" ? "#C084FC" : "#F472B6",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: "inherit",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                פתח מרכז אלבום
+              </button>
+            </div>
+          )}
+
           {/* ── פעולות ───────────────────────────────────────────────────── */}
           <CollapsibleCard label="פעולות" open={openSections.has("actions")} onToggle={() => toggleSection("actions")}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2467,6 +2511,11 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           </div>
         );
       })()}
+
+      {/* ── Album Center Modal ──────────────────────────────────────────────── */}
+      {albumCenterOpen && project && (
+        <AlbumCenterModal project={project} onClose={() => setAlbumCenterOpen(false)} />
+      )}
 
       </div>
     </div>,
