@@ -69,8 +69,8 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
       {/* Workspace box — near-fullscreen, no hard px cap */}
       <div style={{
         position: "relative",
-        width: "calc(100vw - 24px)",
-        height: "calc(100vh - 24px)",
+        width: "calc(100vw - 40px)",
+        height: "calc(100vh - 40px)",
         background: "#0E0E0E",
         borderRadius: 18,
         display: "flex",
@@ -131,21 +131,22 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "7px 13px",
-                  borderRadius: 9,
+                  gap: 7,
+                  padding: "9px 16px",
+                  borderRadius: 10,
                   border: `1px solid ${isArtistMode ? "#22c55e" : "#2A2A2A"}`,
-                  background: isArtistMode ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.03)",
-                  color: isArtistMode ? "#22c55e" : "#666",
+                  background: isArtistMode ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.04)",
+                  color: isArtistMode ? "#22c55e" : "#777",
                   cursor: "pointer",
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 600,
                   fontFamily: "inherit",
                   transition: "all 0.15s",
                   whiteSpace: "nowrap",
+                  height: 38,
                 }}
               >
-                <span>{isArtistMode ? "👁" : "👤"}</span>
+                <span style={{ fontSize: 15 }}>{isArtistMode ? "👁" : "👤"}</span>
                 <span>{isArtistMode ? "מצב אמן פעיל" : "מצב תצוגה לאמן"}</span>
               </button>
 
@@ -154,19 +155,20 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                 onClick={onClose}
                 title="סגור (ESC)"
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 9,
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
                   border: "1px solid #2A2A2A",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "#666",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#777",
                   cursor: "pointer",
-                  fontSize: 15,
+                  fontSize: 17,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   fontFamily: "inherit",
                   transition: "all 0.15s",
+                  flexShrink: 0,
                 }}
               >
                 ✕
@@ -232,13 +234,13 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 style={{
-                  padding: "8px 16px",
-                  borderRadius: "9px 9px 0 0",
+                  padding: "10px 20px",
+                  borderRadius: "10px 10px 0 0",
                   border: "none",
-                  background: activeTab === tab.id ? "#0E0E0E" : "transparent",
+                  background: activeTab === tab.id ? "#141414" : "transparent",
                   color: activeTab === tab.id ? accentColor : "#4A4A4A",
                   cursor: "pointer",
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: activeTab === tab.id ? 700 : 400,
                   fontFamily: "inherit",
                   borderBottom: activeTab === tab.id
