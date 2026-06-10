@@ -7,6 +7,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import { PROJECT_TYPES } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
+import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
@@ -262,6 +263,93 @@ interface Props {
   projectId: string;
   artists: string[];
   onClose: () => void;
+}
+
+// ── ProjectNextActionBlock ────────────────────────────────────────────────────
+// Mai Operational Layer — read-only, pure, no mutations, no fetch.
+// Uses checkHealth + checkFinanceHealth from lib/health.ts.
+
+interface TxLike { type: string; payment_status: string; amount: number; date: string | null; }
+
+function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }: {
+  project: { id: string; name: string; artist: string; status: string; deadline: string | null; isOverdue: boolean; parentProject: string; projectType?: string };
+  transactions: TxLike[];
+  agreedPrice: number;
+  currency: string;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+
+  const PAID_S    = new Set(["שולם", "התקבל"]);
+  const EXPECT_S  = new Set(["צפוי", "חלקי"]);
+
+  const totalPaid     = transactions.filter((t) => t.type === "income" && PAID_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExpected = transactions.filter((t) => t.type === "income" && EXPECT_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const overduePayment = transactions.some((t) => t.type === "income" && EXPECT_S.has(t.payment_status) && t.date && t.date < today);
+
+  const summary: FinanceSummary = {
+    projectId:    project.id,
+    agreedPrice,
+    currency,
+    totalPaid,
+    totalExpected,
+    totalExpenses,
+    overduePayment,
+  };
+
+  // Cast project to compatible shape (checkHealth uses subset of Project fields)
+  const projectForCheck = {
+    id:            project.id,
+    name:          project.name,
+    artist:        project.artist,
+    status:        project.status,
+    deadline:      project.deadline,
+    isOverdue:     project.isOverdue,
+    parentProject: project.parentProject,
+    projectType:   project.projectType ?? "",
+    // unused fields — health checks only read the above
+    files: [] as string[],
+    notes: "",
+    updatedAt: "",
+    startDate:  null,
+    endDate:    null,
+    isDueSoon:  false,
+    isHidden:   false,
+  } as unknown as Parameters<typeof checkHealth>[0][0];
+
+  const healthIssues  = checkHealth([projectForCheck]);
+  const financeIssues = checkFinanceHealth([projectForCheck], [summary]);
+  const allIssues     = [...healthIssues, ...financeIssues].slice(0, 2); // top 2
+
+  if (allIssues.length === 0) return null;
+
+  const SEV_COLOR: Record<string, string> = { high: "#EF4444", medium: "#F59E0B" };
+  const SEV_BG: Record<string, string>    = { high: "rgba(239,68,68,0.06)", medium: "rgba(245,158,11,0.06)" };
+  const SEV_BORDER: Record<string, string> = { high: "rgba(239,68,68,0.2)", medium: "rgba(245,158,11,0.18)" };
+
+  return (
+    <div style={{
+      background: SEV_BG[allIssues[0].priority],
+      border: `1px solid ${SEV_BORDER[allIssues[0].priority]}`,
+      borderRadius: 10, padding: "10px 12px", marginBottom: 10,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+        הפעולה הבאה
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {allIssues.map((issue) => (
+          <div key={issue.type} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <span style={{ fontSize: 11, color: SEV_COLOR[issue.priority], flexShrink: 0, marginTop: 1 }}>
+              {issue.priority === "high" ? "●" : "◦"}
+            </span>
+            <span style={{ fontSize: 12, color: "#CCC", lineHeight: 1.5 }}>
+              {issue.label.replace(`"${project.name}" — `, "")}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1302,6 +1390,14 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
             </div>
           </div>
+
+          {/* ── Mai: הפעולה הבאה (pure, no fetch) ──────────────────────── */}
+          <ProjectNextActionBlock
+            project={project}
+            transactions={transactions}
+            agreedPrice={agreedPrice}
+            currency={finCurrency}
+          />
 
           {/* ── פרטים ועריכה ──────────────────────────────────────────────── */}
           <CollapsibleCard label="פרטים ועריכה" open={openSections.has("summary")} onToggle={() => toggleSection("summary")}>

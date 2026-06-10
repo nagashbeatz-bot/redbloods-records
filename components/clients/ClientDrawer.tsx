@@ -6,6 +6,7 @@ import type { Client, ClientType, ClientStatus } from "@/lib/clients-store";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
 import { useProjects } from "@/components/ProjectsProvider";
+import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -452,6 +453,9 @@ function ModalContent({
                 !formMode && <div style={{ fontSize: 12, color: "#444", padding: "8px 0" }}>אין פרויקטים מקושרים</div>
               )}
             </SectionCard>
+
+            {/* Mai: follow-up reminders — pure, no fetch */}
+            <ProposalFollowUpBlock proposals={proposals} />
 
             {/* Proposals */}
             <ProposalsSection
@@ -1227,6 +1231,94 @@ function NewProjectForm({ client, onClose, onCreated }: {
         </button>
       </div>
     </form>
+  );
+}
+
+// ─── ProposalFollowUpBlock ────────────────────────────────────────────────────
+// Mai Operational Layer — read-only, pure, no mutations.
+
+function ProposalFollowUpBlock({ proposals }: { proposals: Proposal[] }) {
+  const findings = checkProposalFollowUps(proposals);
+  if (findings.length === 0) return null;
+
+  function fmtDate(d: string) {
+    const [y, m, day] = d.split("-");
+    return `${parseInt(day, 10)}.${parseInt(m, 10)}.${y}`;
+  }
+
+  function overdueLabel(days: number): string {
+    if (days === 0) return "היום";
+    if (days === 1) return "לפני יום";
+    if (days <= 6) return `לפני ${days} ימים`;
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? "לפני שבוע" : `לפני ${weeks} שבועות`;
+  }
+
+  return (
+    <div style={{
+      background: "rgba(245,158,11,0.06)",
+      border: "1px solid rgba(245,158,11,0.2)",
+      borderRadius: 14, padding: "14px 16px",
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: "#F59E0B",
+        textTransform: "uppercase", letterSpacing: "0.07em",
+        marginBottom: 10, display: "flex", alignItems: "center", gap: 6,
+      }}>
+        <span>⏳</span>
+        מעקב הצעות מחיר ({findings.length})
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {findings.map((f: ProposalFinding) => (
+          <div key={f.proposalId} style={{
+            background: "#1A1A1A", border: "1px solid #252525",
+            borderRadius: 10, padding: "9px 12px",
+            display: "flex", alignItems: "center", gap: 8,
+          }}>
+            {/* Status badge */}
+            <span style={{
+              fontSize: 10, fontWeight: 700,
+              color: "#F59E0B",
+              background: "rgba(245,158,11,0.1)",
+              border: "1px solid rgba(245,158,11,0.25)",
+              borderRadius: 5, padding: "2px 7px",
+              flexShrink: 0, whiteSpace: "nowrap",
+            }}>
+              {f.status}
+            </span>
+
+            {/* Title */}
+            <span style={{
+              flex: 1, fontSize: 12, color: "#CCC",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              minWidth: 0,
+            }}>
+              {f.title}
+            </span>
+
+            {/* Amount */}
+            {f.amount > 0 && (
+              <span style={{ fontSize: 11, color: "#555", flexShrink: 0 }}>
+                {f.amount.toLocaleString("he-IL")}{f.currency}
+              </span>
+            )}
+
+            {/* Overdue label */}
+            <span style={{
+              fontSize: 10, color: f.overdueDays === 0 ? "#F59E0B" : "#888",
+              flexShrink: 0, whiteSpace: "nowrap",
+            }}>
+              {overdueLabel(f.overdueDays)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 10, color: "#555", marginTop: 8 }}>
+        לעדכון הצעה — פתח את סקשן ״הצעות מחיר״ למטה
+      </div>
+    </div>
   );
 }
 
