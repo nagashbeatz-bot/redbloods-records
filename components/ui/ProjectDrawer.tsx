@@ -1181,7 +1181,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return createPortal(
-    <div dir="rtl" style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
+    <div dir="rtl" style={{ position: "fixed", inset: 0, zIndex: 99999, visibility: albumCenterOpen ? "hidden" : "visible" }}>
       {/* Backdrop — hidden on mobile (full screen has no backdrop) */}
       {!isMobile && (
         <div
