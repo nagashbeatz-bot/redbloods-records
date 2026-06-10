@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import BudgetItemDetailModal, { type BudgetPayment } from "./BudgetItemDetailModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -51,12 +52,13 @@ function fmtMoney(n: number) {
 // ── Budget Gauge ──────────────────────────────────────────────────────────────
 
 function BudgetGauge({
-  generalBudget, plannedTotal, actualTotal,
+  generalBudget, plannedTotal, actualTotal, paidTotal,
   onEditBudget, onRaiseBudget,
 }: {
   generalBudget: number;
   plannedTotal: number;
   actualTotal: number;
+  paidTotal: number;        // sum of actual payments from red_films_budget_payments
   onEditBudget: () => void;
   onRaiseBudget: () => void;
 }) {
@@ -129,17 +131,18 @@ function BudgetGauge({
       </div>
 
       {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 8 }}>
         {[
-          ["תקציב כללי", fmtMoney(generalBudget), "#888"],
-          ["מתוכנן",     fmtMoney(plannedTotal),  isOverrun ? "#EF4444" : "#E8E8E8"],
-          ["בפועל",      fmtMoney(actualTotal),   "#A78BFA"],
-          ["נשאר",       remaining >= 0 ? fmtMoney(remaining) : `−${fmtMoney(Math.abs(remaining))}`,
-                         remaining >= 0 ? "#22C55E" : "#EF4444"],
+          ["תקציב",    fmtMoney(generalBudget),  "#888"],
+          ["מתוכנן",   fmtMoney(plannedTotal),   isOverrun ? "#EF4444" : "#E8E8E8"],
+          ["שולם",     fmtMoney(paidTotal),       "#22C55E"],
+          ["בפועל",    fmtMoney(actualTotal),     "#A78BFA"],
+          ["נשאר",     remaining >= 0 ? fmtMoney(remaining) : `−${fmtMoney(Math.abs(remaining))}`,
+                       remaining >= 0 ? "#22C55E" : "#EF4444"],
         ].map(([lbl, val, col]) => (
           <div key={lbl} style={{ textAlign: "center" }}>
             <div style={{ fontSize: 10, color: "#555", marginBottom: 3 }}>{lbl}</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: col as string }}>{val}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: col as string }}>{val}</div>
           </div>
         ))}
       </div>
@@ -181,11 +184,13 @@ function BudgetGauge({
 // ── Item row ──────────────────────────────────────────────────────────────────
 
 function ItemRow({
-  item, onSave, onDelete,
+  item, itemPaid, onSave, onDelete, onOpenDetail,
 }: {
   item: BudgetItem;
+  itemPaid: number;
   onSave: (id: string, fields: Partial<BudgetItem>) => Promise<void>;
   onDelete: (id: string) => void;
+  onOpenDetail: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(item);
@@ -226,6 +231,10 @@ function ItemRow({
           <input type="number" style={{ ...INPUT_S, width: "100%" }}
             value={draft.planned_amount}
             onChange={e => setDraft(d => ({ ...d, planned_amount: +e.target.value }))} />
+        </td>
+        {/* שולם — read-only in edit mode (comes from payments) */}
+        <td style={{ padding: "8px 10px", fontSize: 12, color: "#555", fontStyle: "italic" }}>
+          {fmtMoney(itemPaid)}
         </td>
         <td style={{ padding: "8px 10px" }}>
           <input type="number" style={{ ...INPUT_S, width: "100%" }}
@@ -269,6 +278,10 @@ function ItemRow({
       <td style={{ padding: "9px 10px", fontSize: 13, color: "#E8E8E8", fontWeight: 700, textAlign: "left" }}>
         {item.planned_amount ? fmtMoney(item.planned_amount) : "—"}
       </td>
+      {/* שולם — from payments */}
+      <td style={{ padding: "9px 10px", fontSize: 13, color: "#22C55E", fontWeight: 700, textAlign: "left" }}>
+        {itemPaid > 0 ? fmtMoney(itemPaid) : "—"}
+      </td>
       <td style={{ padding: "9px 10px", fontSize: 13, color: "#A78BFA", fontWeight: 700, textAlign: "left" }}>
         {item.actual_amount ? fmtMoney(item.actual_amount) : "—"}
       </td>
@@ -282,7 +295,11 @@ function ItemRow({
         </span>
       </td>
       <td style={{ padding: "9px 10px" }}>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 5 }}>
+          <button onClick={onOpenDetail}
+            style={{ fontSize: 10, color: "#60A5FA", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 8px", fontWeight: 600 }}>
+            💳
+          </button>
           <button onClick={() => setEditing(true)}
             style={{ fontSize: 11, color: "#555", background: "none", border: "1px solid #2A2A2A", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 8px" }}>
             ✏
@@ -424,17 +441,32 @@ function RaiseBudgetModal({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function RedFilmsBudgetItems({ productionId, generalBudget, onBudgetUpdate }: Props) {
-  const [items, setItems]       = useState<BudgetItem[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [raiseModal, setRaiseModal] = useState(false);
+  const [items, setItems]             = useState<BudgetItem[]>([]);
+  const [payments, setPayments]       = useState<BudgetPayment[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [raiseModal, setRaiseModal]   = useState(false);
   const [raiseSaving, setRaiseSaving] = useState(false);
+  const [openItemId, setOpenItemId]   = useState<string | null>(null);
+  const [isMobile, setIsMobile]       = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`/api/red-films/productions/${productionId}/budget-items`);
-      const data = await res.json();
-      setItems(data.items ?? []);
+      const [itemsRes, paymentsRes] = await Promise.all([
+        fetch(`/api/red-films/productions/${productionId}/budget-items`),
+        fetch(`/api/red-films/productions/${productionId}/budget-payments`),
+      ]);
+      const itemsData    = await itemsRes.json();
+      const paymentsData = await paymentsRes.json();
+      setItems(itemsData.items ?? []);
+      setPayments(paymentsData.payments ?? []);
     } catch { /* silent */ }
     finally { setLoading(false); }
   }, [productionId]);
@@ -445,6 +477,18 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   const active        = items.filter(i => i.status !== "בוטל");
   const plannedTotal  = active.reduce((s, i) => s + (i.planned_amount || 0), 0);
   const actualTotal   = active.reduce((s, i) => s + (i.actual_amount  || 0), 0);
+
+  // Payments — map itemId → sum of payment amounts
+  const paidByItem = payments.reduce((map, p) => {
+    map.set(p.budget_item_id, (map.get(p.budget_item_id) ?? 0) + p.amount);
+    return map;
+  }, new Map<string, number>());
+  const paidTotal = active.reduce((s, i) => s + (paidByItem.get(i.id) ?? 0), 0);
+
+  // Payments for the currently-open detail modal
+  const openItemPayments = openItemId
+    ? payments.filter(p => p.budget_item_id === openItemId)
+    : [];
 
   async function handleAdd(fields: Partial<BudgetItem>) {
     const res  = await fetch(`/api/red-films/productions/${productionId}/budget-items`, {
@@ -472,6 +516,16 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
     setItems(prev => prev.filter(i => i.id !== id));
   }
 
+  function handlePaymentAdded(p: BudgetPayment) {
+    setPayments(prev => [...prev, p]);
+  }
+  function handlePaymentDeleted(id: string) {
+    setPayments(prev => prev.filter(p => p.id !== id));
+  }
+  function handlePaymentUpdated(p: BudgetPayment) {
+    setPayments(prev => prev.map(x => x.id === p.id ? p : x));
+  }
+
   async function handleRaiseBudget() {
     setRaiseSaving(true);
     try {
@@ -494,23 +548,87 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
         generalBudget={generalBudget}
         plannedTotal={plannedTotal}
         actualTotal={actualTotal}
+        paidTotal={paidTotal}
         onEditBudget={() => {/* parent section handles this */}}
         onRaiseBudget={() => setRaiseModal(true)}
       />
 
-      {/* Items table */}
+      {/* Items */}
       {loading ? (
         <div style={{ fontSize: 12, color: "#444", padding: "12px 0" }}>טוען פריטים...</div>
       ) : items.length === 0 ? (
         <div style={{ fontSize: 13, color: "#3A3A3A", fontStyle: "italic", padding: "8px 0" }}>
           אין פריטי תקציב עדיין
         </div>
+      ) : isMobile ? (
+        /* ── Mobile: cards ─────────────────────────────────────── */
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {items.map(item => {
+            const itemPaid = paidByItem.get(item.id) ?? 0;
+            const isCancelled = item.status === "בוטל";
+            return (
+              <div key={item.id} style={{
+                background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12,
+                padding: "12px 14px", opacity: isCancelled ? 0.5 : 1,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#CCC",
+                    textDecoration: isCancelled ? "line-through" : "none" }}>
+                    {item.title || "—"}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#555" }}>{item.category}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>מתוכנן</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#E8E8E8" }}>{item.planned_amount ? fmtMoney(item.planned_amount) : "—"}</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>שולם</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#22C55E" }}>{itemPaid > 0 ? fmtMoney(itemPaid) : "—"}</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>בפועל</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#A78BFA" }}>{item.actual_amount ? fmtMoney(item.actual_amount) : "—"}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => setOpenItemId(item.id)}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 8, minHeight: 36,
+                      background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)",
+                      color: "#60A5FA", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    {itemPaid > 0 ? `💳 פירוט (${payments.filter(p => p.budget_item_id === item.id).length})` : "+ תשלום"}
+                  </button>
+                  <button onClick={() => handleDelete(item.id)}
+                    style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid #2A2A2A",
+                      background: "none", color: "#555", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>
+                    🗑
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {/* Mobile totals */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 0 4px" }}>
+            <div style={{ textAlign: "center", background: "#141414", borderRadius: 8, padding: "8px 10px" }}>
+              <div style={{ fontSize: 10, color: "#555" }}>סה״כ מתוכנן</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#E8E8E8" }}>{fmtMoney(plannedTotal)}</div>
+            </div>
+            <div style={{ textAlign: "center", background: "#141414", borderRadius: 8, padding: "8px 10px" }}>
+              <div style={{ fontSize: 10, color: "#555" }}>סה״כ שולם</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#22C55E" }}>{fmtMoney(paidTotal)}</div>
+            </div>
+          </div>
+        </div>
       ) : (
+        /* ── Desktop: table ────────────────────────────────────── */
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #252525" }}>
-                {["שם", "קטגוריה", "מתוכנן", "בפועל", "סטטוס", ""].map(h => (
+                {["שם", "קטגוריה", "מתוכנן", "שולם", "בפועל", "סטטוס", ""].map(h => (
                   <th key={h} style={{ padding: "6px 10px", fontSize: 10, color: "#555", fontWeight: 700, textAlign: "right" }}>
                     {h}
                   </th>
@@ -519,7 +637,14 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
             </thead>
             <tbody>
               {items.map(item => (
-                <ItemRow key={item.id} item={item} onSave={handleSave} onDelete={handleDelete} />
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  itemPaid={paidByItem.get(item.id) ?? 0}
+                  onSave={handleSave}
+                  onDelete={handleDelete}
+                  onOpenDetail={() => setOpenItemId(item.id)}
+                />
               ))}
             </tbody>
             {items.length > 0 && (
@@ -530,6 +655,9 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   </td>
                   <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#E8E8E8", textAlign: "left" }}>
                     {fmtMoney(plannedTotal)}
+                  </td>
+                  <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#22C55E", textAlign: "left" }}>
+                    {fmtMoney(paidTotal)}
                   </td>
                   <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#A78BFA", textAlign: "left" }}>
                     {fmtMoney(actualTotal)}
@@ -554,6 +682,22 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
           saving={raiseSaving}
         />
       )}
+
+      {/* Budget item detail modal */}
+      {openItemId && (() => {
+        const item = items.find(i => i.id === openItemId);
+        if (!item) return null;
+        return (
+          <BudgetItemDetailModal
+            item={item}
+            initialPayments={openItemPayments}
+            onClose={() => setOpenItemId(null)}
+            onPaymentAdded={handlePaymentAdded}
+            onPaymentDeleted={handlePaymentDeleted}
+            onPaymentUpdated={handlePaymentUpdated}
+          />
+        );
+      })()}
     </div>
   );
 }
