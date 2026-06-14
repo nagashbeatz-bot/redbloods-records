@@ -10,9 +10,11 @@ type Ctx = { params: Promise<{ id: string }> };
  * Creates a real project from a proposal and marks it as "נסגר".
  * Also saves the agreed price to the finance settings if amount > 0.
  */
-export async function POST(_req: NextRequest, ctx: Ctx) {
+export async function POST(req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
+    const body = await req.json().catch(() => ({})) as { projectName?: string };
+    const overrideName: string | undefined = body.projectName?.trim() || undefined;
 
     // Fetch proposal + client name
     const { data: proposal, error: fetchErr } = await supabase
@@ -36,9 +38,9 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     const clientName = (proposal.clients as { name: string } | null)?.name ?? "";
     const today = new Date().toISOString().split("T")[0];
 
-    // Create the project
+    // Create the project — use explicit projectName if provided, else fall back to proposal title
     const project = await createProject({
-      name:           proposal.title,
+      name:           overrideName ?? proposal.title,
       artist:         clientName,
       status:         "לא התחיל",
       start_date:     today,
