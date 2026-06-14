@@ -170,9 +170,12 @@ export default function ShowsPage() {
 
   useEffect(() => {
     fetch("/api/shows")
-      .then(r => r.json())
-      .then(d => setShows(d.shows ?? []))
-      .catch(() => setError("שגיאה בטעינת הופעות"))
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "שגיאה");
+        setShows(d.shows ?? []);
+      })
+      .catch(e => setError(e instanceof Error ? e.message : "שגיאה בטעינת הופעות"))
       .finally(() => setLoading(false));
   }, []);
 
