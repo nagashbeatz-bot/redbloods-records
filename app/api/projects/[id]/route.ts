@@ -1,7 +1,90 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, updateProject, deleteProject } from "@/lib/projects-store";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
+import { supabase } from "@/lib/supabase";
 import type { UpdatableField } from "@/lib/types";
+
+/**
+ * Cleans up all dependent data before hard-deleting a project.
+ *
+ * Hard-deleted (owned by project):
+ *   sessions (+ Google Calendar events), project_actions, clip_items,
+ *   vendor_project_work, settings keys finance_{id} and delivery_{id}
+ *
+ * Unlinked (not deleted — data remains but no longer tied to project):
+ *   transactions.project_id  → NULL
+ *   proposals.linked_project_id → NULL + status reverted to "לא נסגר"
+ *
+ * Soft-closed (alert stays in history but marked handled):
+ *   agent_alerts with entity_key matching this project's patterns
+ */
+async function cleanupBeforeDelete(projectId: string): Promise<void> {
+  // ── 1. Sessions + Google Calendar events ──────────────────────────────────
+  const { data: sessionsToDelete } = await supabase
+    .from("sessions")
+    .select("id, calendar_event_id")
+    .eq("project_id", projectId);
+
+  if (sessionsToDelete?.length) {
+    // Cancel Google Calendar events best-effort (parallel, non-fatal)
+    const calEventIds = sessionsToDelete
+      .map((s) => s.calendar_event_id as string | null)
+      .filter(Boolean) as string[];
+
+    if (calEventIds.length > 0) {
+      try {
+        const { deleteCalendarEvent, isConnected } = await import("@/lib/google-calendar");
+        if (await isConnected()) {
+          await Promise.allSettled(calEventIds.map((id) => deleteCalendarEvent(id)));
+        }
+      } catch { /* calendar cleanup is non-fatal */ }
+    }
+
+    await supabase.from("sessions").delete().eq("project_id", projectId);
+  }
+
+  // ── 2. project_actions ────────────────────────────────────────────────────
+  await supabase.from("project_actions").delete().eq("project_id", projectId);
+
+  // ── 3. clip_items ─────────────────────────────────────────────────────────
+  await supabase.from("clip_items").delete().eq("project_id", projectId);
+
+  // ── 4. vendor_project_work (Victor + future vendors) ─────────────────────
+  await supabase.from("vendor_project_work").delete().eq("project_id", projectId);
+
+  // ── 5. settings: finance_{id} and delivery_{id} ───────────────────────────
+  await supabase.from("settings").delete().in("key", [
+    `finance_${projectId}`,
+    `delivery_${projectId}`,
+  ]);
+
+  // ── 6. transactions — unlink only, never delete ───────────────────────────
+  await supabase
+    .from("transactions")
+    .update({ project_id: null, updated_at: new Date().toISOString() })
+    .eq("project_id", projectId);
+
+  // ── 7. proposals — unlink and revert status if it was "נסגר" via this project
+  await supabase
+    .from("proposals")
+    .update({ linked_project_id: null, status: "לא נסגר", updated_at: new Date().toISOString() })
+    .eq("linked_project_id", projectId);
+
+  // ── 8. agent_alerts — soft-close project-keyed alerts ────────────────────
+  // entity_key patterns that embed project id: "type:{projectId}"
+  const projectAlertPrefixes = [
+    `overdue_deadline:${projectId}`,
+    `deadline_approaching:${projectId}`,
+    `project_no_pricing:${projectId}`,
+    `completed_no_delivery:${projectId}`,
+    `stale_session:${projectId}`,
+  ];
+  await supabase
+    .from("agent_alerts")
+    .update({ status: "handled", updated_at: new Date().toISOString() })
+    .in("entity_key", projectAlertPrefixes)
+    .eq("status", "new");
+}
 
 function parseNames(raw: string): string[] {
   return (raw || "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
@@ -113,6 +196,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
 
+    await cleanupBeforeDelete(id);
     await deleteProject(id);
 
     // NOTE: We intentionally do NOT auto-delete clients when a project is removed.
