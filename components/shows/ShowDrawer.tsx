@@ -240,6 +240,23 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
     } finally { setAddingCal(false); }
   }
 
+  async function handleRemoveFromCalendar() {
+    setAddingCal(true); setError(null); setCalWarn(null);
+    try {
+      const res = await fetch(`/api/shows/${show.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ removeFromCalendar: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      onUpdated(data.show);
+      setDraft(data.show);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "שגיאה");
+    } finally { setAddingCal(false); }
+  }
+
   async function handleDelete() {
     setDeleting(true); setError(null);
     try {
@@ -394,22 +411,36 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
                       }
                     </div>
                   </div>
-                  {!draft.calendar_event_id && (
-                    <button
-                      onClick={handleAddToCalendar}
-                      disabled={addingCal || !draft.date}
-                      title={!draft.date ? "צריך תאריך להוספה ליומן" : "הוסף ליומן Google"}
-                      style={{
-                        padding: "6px 12px", borderRadius: 8,
-                        border: "1px solid #2A2A2A", background: "none",
-                        color: draft.date ? "#6366F1" : "#333",
-                        cursor: draft.date ? "pointer" : "not-allowed",
-                        fontSize: 12, fontWeight: 600,
-                      }}
-                    >
-                      {addingCal ? "מוסיף..." : "+ הוסף ליומן"}
-                    </button>
-                  )}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {draft.calendar_event_id ? (
+                      <button
+                        onClick={handleRemoveFromCalendar}
+                        disabled={addingCal}
+                        style={{
+                          padding: "6px 10px", borderRadius: 8,
+                          border: "1px solid #2A2A2A", background: "none",
+                          color: "#EF4444", cursor: "pointer", fontSize: 11, fontWeight: 600,
+                        }}
+                      >
+                        {addingCal ? "..." : "הסר"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleAddToCalendar}
+                        disabled={addingCal || !draft.date}
+                        title={!draft.date ? "צריך תאריך להוספה ליומן" : "הוסף ליומן Google"}
+                        style={{
+                          padding: "6px 12px", borderRadius: 8,
+                          border: "1px solid #2A2A2A", background: "none",
+                          color: draft.date ? "#6366F1" : "#333",
+                          cursor: draft.date ? "pointer" : "not-allowed",
+                          fontSize: 12, fontWeight: 600,
+                        }}
+                      >
+                        {addingCal ? "מוסיף..." : "+ הוסף ליומן"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

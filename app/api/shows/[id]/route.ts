@@ -62,13 +62,35 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     // ── Google Calendar ─────────────────────────────────────────────────────
     let calendarWarning: string | undefined;
 
-    // Case A: user explicitly requests "add to calendar" (no event yet)
-    if (body.addToCalendar === true && !show.calendar_event_id && show.date) {
+    // Case R: user requests removal from calendar
+    if (body.removeFromCalendar === true && existing.calendar_event_id) {
+      try {
+        const { isConnected, deleteCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
+        if (await isConnected()) {
+          const stillExists = await calendarEventExists(existing.calendar_event_id);
+          if (stillExists) await deleteCalendarEvent(existing.calendar_event_id);
+        }
+      } catch (calErr) {
+        console.error("[shows PATCH] calendar delete error:", calErr);
+      }
+      const updated = await patchShow(id, { calendar_event_id: null });
+      return NextResponse.json({ show: updated });
+    }
+
+    // Case A: user explicitly requests "add to calendar"
+    if (body.addToCalendar === true && show.date) {
       try {
         const times = showCalendarTimes(show);
         if (times) {
-          const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
+          const { isConnected, createCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
           if (await isConnected()) {
+            // Check if existing event was deleted from Google
+            const existingId = show.calendar_event_id;
+            if (existingId && await calendarEventExists(existingId)) {
+              // Event still alive — nothing to do
+              return NextResponse.json({ show });
+            }
+            // Create fresh event (either first time or after manual deletion)
             const showForCal = await resolveArtistName(show);
             const event = await createCalendarEvent(
               showCalendarSummary(showForCal),
@@ -94,8 +116,15 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       if (calendarFieldChanged) {
         try {
           const times = showCalendarTimes(show);
-          const { isConnected, updateCalendarEvent } = await import("@/lib/google-calendar");
+          const { isConnected, updateCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
           if (await isConnected()) {
+            // If event was manually deleted, clear the stale ID and skip update
+            const stillExists = await calendarEventExists(show.calendar_event_id);
+            if (!stillExists) {
+              const updated = await patchShow(id, { calendar_event_id: null });
+              calendarWarning = "האירוע ביומן Google נמחק ידנית — ניתן להוסיף מחדש";
+              return NextResponse.json({ show: updated, calendarWarning });
+            }
             const showForCal = await resolveArtistName(show);
             await updateCalendarEvent(show.calendar_event_id, {
               summary:     showCalendarSummary(showForCal),
