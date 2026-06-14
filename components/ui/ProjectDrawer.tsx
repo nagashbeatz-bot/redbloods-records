@@ -769,7 +769,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [actionClientsLoaded, setActionClientsLoaded] = useState(false);
   const [expandedActions,  setExpandedActions]  = useState<Set<string>>(new Set());
   const [closingActionId,  setClosingActionId]  = useState<string | null>(null);
-  const [cancelConfirm,    setCancelConfirm]    = useState<{ id: string; summary: string } | null>(null);
+  const [cancelConfirm,    setCancelConfirm]    = useState<{ id: string; summary: string; type: "action" | "session" | "clip" } | null>(null);
   const [recipientPicker,  setRecipientPicker]  = useState<{
     preset: Partial<ActionDraft>;
     title: string;
@@ -1129,6 +1129,26 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     setCancelConfirm(null);
   };
 
+  const cancelSession = async (id: string) => {
+    await fetch(`/api/sessions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "בוטל" }),
+    });
+    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, status: "בוטל" } : s));
+    setCancelConfirm(null);
+  };
+
+  const cancelClipItem = async (id: string) => {
+    await fetch(`/api/clip-items/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "בוטל" }),
+    });
+    setClipItems((prev) => prev.filter((i) => i.id !== id));
+    setCancelConfirm(null);
+  };
+
   const postponeFollowup = async (id: string, currentDate: string) => {
     const d = new Date(currentDate);
     d.setDate(d.getDate() + 7);
@@ -1147,8 +1167,12 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       .then((r) => r.json())
       .then((d) => {
         if (d.delivery) setDelivery(d.delivery as DeliveryState);
+        else if (d.error) setDeliveryError(d.error as string);
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        setDeliveryError(err instanceof Error ? err.message : "שגיאת Dropbox — נסה שוב");
+        setTimeout(() => setDeliveryError(null), 8000);
+      })
       .finally(() => setDeliveryLoading(false));
   };
 
@@ -2026,7 +2050,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                       דחה ✗
                                     </button>
                                   )}
-                                  <button onClick={() => setCancelConfirm({ id: a.id, summary: followupTitle(a) })}
+                                  <button onClick={() => setCancelConfirm({ id: a.id, summary: followupTitle(a), type: "action" })}
                                     style={{ padding: "4px 7px", borderRadius: 6, border: "1px solid #2A2A2A", background: "transparent", color: "#444", cursor: "pointer", fontSize: 11, fontFamily: "inherit", lineHeight: 1 }}
                                     title="העבר לסל"
                                     onMouseEnter={(e) => { e.currentTarget.style.color = "#EF4444"; e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
@@ -2144,7 +2168,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                             </div>
                           )}
                           {a.status !== "cancelled" && (
-                            <button onClick={(e) => { e.stopPropagation(); setCancelConfirm({ id: a.id, summary: actionSummary(a) }); }}
+                            <button onClick={(e) => { e.stopPropagation(); setCancelConfirm({ id: a.id, summary: actionSummary(a), type: "action" }); }}
                               style={{ padding: "3px 5px", borderRadius: 5, border: "1px solid #2A2A2A", background: "transparent", color: "#444", cursor: "pointer", fontSize: 11, lineHeight: 1 }}
                               title="העבר לסל"
                               onMouseEnter={(ev) => { ev.currentTarget.style.color = "#EF4444"; ev.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
@@ -2766,19 +2790,30 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                         </div>
                         {/* Actions */}
                         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                          <button
-                            onClick={() => startEdit(s)}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "2px 4px" }}
-                            onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
-                            onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
-                            title="ערוך"
-                          >✏</button>
+                          {s.status !== "בוטל" && (
+                            <button
+                              onClick={() => startEdit(s)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 12, padding: "2px 4px" }}
+                              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
+                              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
+                              title="ערוך"
+                            >✏</button>
+                          )}
+                          {s.status !== "בוטל" && (
+                            <button
+                              onClick={() => setCancelConfirm({ id: s.id, summary: `סשן ${s.date ? fmtDate(s.date) : ""} ${s.status}`, type: "session" })}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 13, padding: "2px 4px" }}
+                              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
+                              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
+                              title="העבר לסל"
+                            >🗑️</button>
+                          )}
                           <button
                             onClick={() => handleDeleteSession(s.id)}
                             style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 14, padding: "2px 4px" }}
                             onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
                             onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
-                            title="מחק"
+                            title="מחק לצמיתות"
                           >×</button>
                         </div>
                       </div>
@@ -2995,6 +3030,12 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               {filesAndLinks.length > 0 && <span style={{ fontSize: 11, background: "#252525", color: "#888", borderRadius: 10, padding: "1px 7px" }}>{filesAndLinks.length}</span>}
             </div>
 
+            {deliveryError && (
+              <div style={{ padding: "7px 10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#EF4444", fontSize: 11, marginBottom: 8 }}>
+                ⚠ {deliveryError}
+              </div>
+            )}
+
             {(!delivery || delivery.deliveryStatus === "not_created") && !deliveryLoading && (
               <button onClick={handleCreateDelivery} disabled={deliveryCreating}
                 style={{ width: "100%", padding: "9px 0", borderRadius: 9, border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.07)", color: "#C084FC", cursor: deliveryCreating ? "wait" : "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", opacity: deliveryCreating ? 0.6 : 1, marginBottom: filesAndLinks.length > 0 ? 10 : 0 }}>
@@ -3093,7 +3134,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                       {/* right — trash + date + chevron */}
                       <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
                         {a.status !== "cancelled" && (
-                          <button onClick={(e) => { e.stopPropagation(); setCancelConfirm({ id: a.id, summary: actionSummary(a) }); }}
+                          <button onClick={(e) => { e.stopPropagation(); setCancelConfirm({ id: a.id, summary: actionSummary(a), type: "action" }); }}
                             style={{ padding: "2px 5px", borderRadius: 5, border: "1px solid #2A2A2A", background: "transparent", color: "#3A3A3A", cursor: "pointer", fontSize: 11, lineHeight: 1 }}
                             title="העבר לסל"
                             onMouseEnter={(ev) => { ev.currentTarget.style.color = "#EF4444"; ev.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
@@ -3174,6 +3215,21 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
               <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
             </div>
+
+            {/* Delivery folder error */}
+            {deliveryError && (
+              <div style={{ padding: "7px 10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#EF4444", fontSize: 11, marginBottom: 10 }}>
+                ⚠ {deliveryError}
+              </div>
+            )}
+
+            {/* Delivery folder — create if not exists */}
+            {(!delivery || delivery.deliveryStatus === "not_created") && !deliveryLoading && (
+              <button onClick={handleCreateDelivery} disabled={deliveryCreating}
+                style={{ width: "100%", padding: "8px 0", borderRadius: 9, border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.07)", color: "#C084FC", cursor: deliveryCreating ? "wait" : "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", opacity: deliveryCreating ? 0.6 : 1, marginBottom: 12 }}>
+                {deliveryCreating ? "יוצר תיקיית מסירה..." : "📁 צור תיקיית מסירה בדרופבוקס"}
+              </button>
+            )}
 
             {/* Delivery folder — prominent if exists */}
             {delivery && delivery.deliveryStatus !== "not_created" && (
@@ -3469,6 +3525,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             onSaveClipItem={handleAddClipItem}
             onCancelClipItem={() => { setAddingClipItem(false); setClipItemDraft(emptyClipItemDraft()); }}
             onDeleteClipItem={handleDeleteClipItem}
+            onSoftCancelClipItem={(id, description) => setCancelConfirm({ id, summary: description, type: "clip" })}
             onPromoteClipItem={handlePromoteClipItem}
             onAddFilmingDay={() => { setFilmingDraft(emptyFilmingDraft()); setAddingFilmingDay(true); }}
             onDeleteFilmingDay={(id) => {
@@ -3835,7 +3892,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             <div style={{ fontSize: 22, textAlign: "center", marginBottom: 10 }}>🗑️</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0", textAlign: "center", marginBottom: 6 }}>העבר לסל?</div>
             <div style={{ fontSize: 11, color: "#666", textAlign: "center", marginBottom: 4, lineHeight: 1.5 }}>
-              הפעולה תסומן כ&quot;בוטלה&quot; ותיעלם ממעקבים פתוחים.
+              {cancelConfirm.type === "session" ? "הסשן יסומן כ״בוטל״ ולא יימחק." : cancelConfirm.type === "clip" ? "הפריט יועבר לסל ולא יימחק." : "הפעולה תסומן כ״בוטלה״ ותיעלם ממעקבים פתוחים."}
             </div>
             <div style={{ fontSize: 11, color: "#888", textAlign: "center", marginBottom: 20, padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, fontStyle: "italic" }}>
               {cancelConfirm.summary}
@@ -3848,7 +3905,11 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid #303030", background: "transparent", color: "#888", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>
                 ביטול
               </button>
-              <button onClick={() => void cancelAction(cancelConfirm.id)}
+              <button onClick={() => {
+                  if (cancelConfirm.type === "session") void cancelSession(cancelConfirm.id);
+                  else if (cancelConfirm.type === "clip") void cancelClipItem(cancelConfirm.id);
+                  else void cancelAction(cancelConfirm.id);
+                }}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.1)", color: "#EF4444", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
                 העבר לסל 🗑️
               </button>
@@ -3988,7 +4049,7 @@ function ClipSection({
   open, onToggle, onAddClipExpense,
   addingClipItem, clipItemDraft, setClipItemDraft, clipItemSaving,
   promotingId, promotingDate, setPromotingDate, onCancelPromote, onStartPromote,
-  onAddClipItem, onSaveClipItem, onCancelClipItem, onDeleteClipItem, onPromoteClipItem,
+  onAddClipItem, onSaveClipItem, onCancelClipItem, onDeleteClipItem, onSoftCancelClipItem, onPromoteClipItem,
   onAddFilmingDay, onDeleteFilmingDay, addingFilmingDay, filmingDraft, setFilmingDraft,
   filmingSaving, onSaveFilmingDay, onCancelFilmingDay,
   onEditTx, onDeleteTx,
@@ -4013,6 +4074,7 @@ function ClipSection({
   onSaveClipItem: () => void;
   onCancelClipItem: () => void;
   onDeleteClipItem: (id: string) => void;
+  onSoftCancelClipItem: (id: string, description: string) => void;
   onPromoteClipItem: (id: string, date: string) => void;
   onAddFilmingDay: () => void;
   onDeleteFilmingDay: (id: string) => void;
@@ -4126,11 +4188,12 @@ function ClipSection({
                       )
                     )}
                     <button
-                      onClick={() => onDeleteClipItem(item.id)}
-                      style={{ background: "none", border: "none", color: "#555", fontSize: 14, cursor: "pointer", padding: "0 2px" }}
+                      onClick={() => onSoftCancelClipItem(item.id, item.description ?? item.category ?? "פריט")}
+                      style={{ background: "none", border: "none", color: "#555", fontSize: 13, cursor: "pointer", padding: "0 2px" }}
                       onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#EF4444")}
                       onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#555")}
-                    >✕</button>
+                      title="העבר לסל"
+                    >🗑️</button>
                   </div>
                 </div>
               );
