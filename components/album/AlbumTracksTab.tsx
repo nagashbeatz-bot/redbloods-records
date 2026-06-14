@@ -9,6 +9,8 @@ import UploadButton from "@/components/ui/UploadButton";
 interface Props {
   project: Project;
   accentColor: string;
+  initialSelectedTrackId?: string | null;
+  onTrackSelected?: () => void;
 }
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
@@ -51,7 +53,7 @@ function MiniDot({ status }: { status: MixMasterStatus }) {
   );
 }
 
-export default function AlbumTracksTab({ project, accentColor }: Props) {
+export default function AlbumTracksTab({ project, accentColor, initialSelectedTrackId, onTrackSelected }: Props) {
   const player = usePlayerSafe();
   const [tracks,    setTracks]    = useState<AlbumTrack[]>([]);
   const [loading,   setLoading]   = useState(true);
@@ -70,6 +72,15 @@ export default function AlbumTracksTab({ project, accentColor }: Props) {
   }, [project.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-expand a track when navigated from Overview
+  useEffect(() => {
+    if (initialSelectedTrackId) {
+      setExpanded(initialSelectedTrackId);
+      onTrackSelected?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSelectedTrackId]);
 
   const startEdit = (track: AlbumTrack) => {
     setEditing(track.id);
