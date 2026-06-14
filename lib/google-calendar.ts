@@ -795,6 +795,23 @@ export async function createGoogleTask(
   return { id: res.data.id! };
 }
 
+/**
+ * Updates a Google Task's completion status.
+ * completed=true  → status:"completed" (marks done in Google Tasks)
+ * completed=false → status:"needsAction" (reopens the task)
+ */
+export async function updateGoogleTaskStatus(taskId: string, completed: boolean): Promise<void> {
+  const auth  = await getAuthenticatedClient();
+  const tasks = google.tasks({ version: "v1", auth });
+  await tasks.tasks.patch({
+    tasklist: "@default",
+    task:     taskId,
+    requestBody: completed
+      ? { status: "completed", completed: new Date().toISOString() }
+      : { status: "needsAction", completed: undefined },
+  });
+}
+
 /** Deletes a task from the user's default Google Tasks list by task id. */
 export async function deleteGoogleTask(taskId: string): Promise<void> {
   const auth  = await getAuthenticatedClient();

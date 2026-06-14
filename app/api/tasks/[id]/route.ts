@@ -83,7 +83,27 @@ export async function PATCH(
       return NextResponse.json({ error: "אין שדות לעדכון" }, { status: 400 });
     }
 
+    // Fetch calendar_event_id before patching so we know whether to sync
+    const existingTask = patch.status !== undefined ? await getTask(id) : null;
+
     const task = await patchTask(id, patch);
+
+    // Sync completion status to Google Tasks (best-effort, non-fatal)
+    if (patch.status !== undefined && existingTask?.calendar_event_id) {
+      const googleTaskId = existingTask.calendar_event_id;
+      try {
+        const { isConnected, updateGoogleTaskStatus } = await import("@/lib/google-calendar");
+        if (await isConnected()) {
+          const completed = patch.status === "בוצע" || patch.status === "בוטל";
+          await updateGoogleTaskStatus(googleTaskId, completed);
+        }
+      } catch (gErr) {
+        // Not Found or auth error — log a warning but don't fail the local update
+        console.warn(`[PATCH /api/tasks/${id}] Google Tasks sync failed (ignored):`, gErr);
+        return NextResponse.json({ task, syncWarning: "Google Tasks לא עודכן" });
+      }
+    }
+
     return NextResponse.json({ task });
   } catch (e) {
     console.error(`[PATCH /api/tasks/${id}]`, e);
