@@ -72,6 +72,14 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
     setAlbumProject(null);
   }, []);
 
+  // Keep albumProject in sync after file uploads (UploadButton calls refresh() → projects updates)
+  useEffect(() => {
+    if (!albumProject) return;
+    const updated = projects.find((p) => p.id === albumProject.id);
+    if (updated) setAlbumProject(updated);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
+
   // Broadcast selected project to AppShell so ChatPanel can receive it
   useEffect(() => {
     const id = drawerProjectId ?? albumProject?.id ?? null;

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { Project } from "@/lib/types";
+import { usePlayerSafe } from "@/components/PlayerProvider";
+import UploadButton from "@/components/ui/UploadButton";
 
 interface Transaction {
   id: string;
@@ -36,6 +38,11 @@ interface Props {
   accentColor: string;
 }
 
+const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
+function isAudio(name: string): boolean {
+  return AUDIO_EXTS.some((ext) => name.toLowerCase().endsWith(ext));
+}
+
 function formatDDMM(dateStr: string): string {
   if (!dateStr) return "";
   const parts = dateStr.split("-");
@@ -55,15 +62,12 @@ function statusToPercent(status: string): number {
   return map[status] ?? 10;
 }
 
-function getFileStatus(name: string): {
-  label: string;
-  color: string;
-} {
+function getFileLabel(name: string): { label: string; color: string } {
   const n = name.toLowerCase();
   if (n.includes("master") || name.includes("מאסטר"))
-    return { label: "הושלם", color: "#22c55e" };
+    return { label: "מאסטר", color: "#22c55e" };
   if (n.includes("mix") || name.includes("מיקס"))
-    return { label: "במיקס", color: "#3B82F6" };
+    return { label: "מיקס", color: "#3B82F6" };
   if (n.includes("stem") || n.includes("stems"))
     return { label: "סטמס", color: "#6B7280" };
   return { label: "קובץ", color: "#6B7280" };
@@ -136,6 +140,7 @@ const cardTitle: React.CSSProperties = {
 };
 
 export default function AlbumOverviewTab({ project, accentColor }: Props) {
+  const player = usePlayerSafe();
   const [txData, setTxData] = useState<TxData | null>(null);
   const [actions, setActions] = useState<ProjectAction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,9 +149,7 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
     setLoading(true);
     Promise.all([
       fetch(`/api/transactions?projectId=${project.id}`).then((r) => r.json()),
-      fetch(`/api/project-actions?projectId=${project.id}`).then((r) =>
-        r.json()
-      ),
+      fetch(`/api/project-actions?projectId=${project.id}`).then((r) => r.json()),
     ])
       .then(([tx, acts]: [TxData, { actions: ProjectAction[] }]) => {
         setTxData(tx);
@@ -162,8 +165,7 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
   const received = transactions
     .filter(
       (t) =>
-        t.type === "income" &&
-        ["שולם", "התקבל"].includes(t.payment_status)
+        t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)
     )
     .reduce((s, t) => s + t.amount, 0);
   const expenses = transactions
@@ -180,9 +182,7 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
     return n.includes("master") || f.name.includes("מאסטר");
   }).length;
 
-  const missingFiles = Math.max(0, 3 - project.files.length);
-
-  const pendingIncome = transactions.filter(
+  const pendingCount = transactions.filter(
     (t) => t.type === "income" && t.payment_status === "צפוי"
   ).length;
 
@@ -200,67 +200,24 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
     name: string;
     status: "הועלה" | "חסר" | "ממתין";
   }> = [
-    {
-      icon: "🎨",
-      name: "עטיפה",
-      status: hasAsset(["cover", "עטיפה"]) ? "הועלה" : "חסר",
-    },
-    {
-      icon: "🔊",
-      name: "מאסטרים",
-      status: hasAsset(["master", "מאסטר"]) ? "הועלה" : "חסר",
-    },
-    {
-      icon: "🥁",
-      name: "סטמס",
-      status: hasAsset(["stem"]) ? "הועלה" : "חסר",
-    },
-    {
-      icon: "📝",
-      name: "ליריקס",
-      status: hasAsset(["lyric", "ליריקס"]) ? "הועלה" : "חסר",
-    },
-    {
-      icon: "📤",
-      name: "חומר הפצה",
-      status: hasAsset(["distrib", "הפצה"]) ? "הועלה" : "ממתין",
-    },
+    { icon: "🎨", name: "עטיפה",       status: hasAsset(["cover", "עטיפה"])         ? "הועלה" : "חסר" },
+    { icon: "🔊", name: "מאסטרים",     status: hasAsset(["master", "מאסטר"])        ? "הועלה" : "חסר" },
+    { icon: "🥁", name: "סטמס",        status: hasAsset(["stem"])                   ? "הועלה" : "חסר" },
+    { icon: "📝", name: "ליריקס",      status: hasAsset(["lyric", "ליריקס"])        ? "הועלה" : "חסר" },
+    { icon: "📤", name: "חומר הפצה",   status: hasAsset(["distrib", "הפצה"])        ? "הועלה" : "ממתין" },
   ];
 
-  function assetBadgeStyle(
-    status: "הועלה" | "חסר" | "ממתין"
-  ): React.CSSProperties {
+  function assetBadgeStyle(status: "הועלה" | "חסר" | "ממתין"): React.CSSProperties {
     if (status === "הועלה")
-      return {
-        background: "rgba(34,197,94,0.10)",
-        color: "#22c55e",
-        border: "1px solid rgba(34,197,94,0.25)",
-      };
+      return { background: "rgba(34,197,94,0.10)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)" };
     if (status === "חסר")
-      return {
-        background: "rgba(239,68,68,0.10)",
-        color: "#EF4444",
-        border: "1px solid rgba(239,68,68,0.25)",
-      };
-    return {
-      background: "rgba(245,158,11,0.10)",
-      color: "#F59E0B",
-      border: "1px solid rgba(245,158,11,0.25)",
-    };
+      return { background: "rgba(239,68,68,0.10)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.25)" };
+    return { background: "rgba(245,158,11,0.10)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.25)" };
   }
 
   if (loading) {
     return (
-      <div
-        style={{
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#444",
-          fontSize: 13,
-        }}
-      >
+      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#444", fontSize: 13 }}>
         טוען...
       </div>
     );
@@ -289,48 +246,30 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
           {/* 1. Song list */}
           <div style={card}>
             <div style={cardHeader}>
-              <div style={cardTitle}>
-                🎵 רשימת שירים
-              </div>
-              <button
-                disabled
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  fontFamily: "inherit",
-                  background: "#141414",
-                  border: "1px solid #2A2A2A",
-                  color: "#555",
-                  borderRadius: 8,
-                  padding: "4px 10px",
-                  cursor: "not-allowed",
-                  opacity: 0.5,
-                }}
-              >
-                + הוסף שיר
-              </button>
+              <div style={cardTitle}>🎵 קבצים באלבום</div>
+              <UploadButton
+                projectId={project.id}
+                projectName={project.name}
+                artist={project.artist}
+                existingFiles={project.files}
+                size="sm"
+              />
             </div>
             {project.files.length === 0 ? (
-              <div
-                style={{
-                  padding: 40,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
+              <div style={{ padding: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 30, opacity: 0.2 }}>🎵</div>
-                <div style={{ color: "#444", fontSize: 13 }}>
-                  לא הוגדרו שירים לאלבום זה עדיין
-                </div>
-                <div style={{ color: "#333", fontSize: 11 }}>
-                  קבצים שיועלו לפרויקט יופיעו כאן
-                </div>
+                <div style={{ color: "#444", fontSize: 13 }}>לא הועלו קבצים לאלבום זה עדיין</div>
+                <div style={{ color: "#333", fontSize: 11 }}>השתמש בכפתור ← להעלאה</div>
               </div>
             ) : (
               project.files.map((f, i) => {
-                const st = getFileStatus(f.name);
+                const st = getFileLabel(f.name);
+                const canPlay = isAudio(f.name) && !!f.url;
+                const isPlaying =
+                  player?.playing &&
+                  player.track?.projectId === project.id &&
+                  player.track?.fileName === f.name;
+
                 return (
                   <div
                     key={i}
@@ -342,9 +281,7 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                       borderBottom: "1px solid #1A1A1A",
                     }}
                   >
-                    <span style={{ fontSize: 11, color: "#3A3A3A", minWidth: 20 }}>
-                      {i + 1}
-                    </span>
+                    <span style={{ fontSize: 11, color: "#3A3A3A", minWidth: 20 }}>{i + 1}</span>
                     <span
                       style={{
                         fontSize: 13,
@@ -358,16 +295,33 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                     >
                       {f.name}
                     </span>
+
+                    {/* Play button */}
                     <button
-                      disabled
+                      onClick={() => {
+                        if (!player || !canPlay) return;
+                        if (isPlaying) {
+                          player.pause();
+                        } else {
+                          player.play({
+                            projectId: project.id,
+                            projectName: project.name,
+                            artist: project.artist,
+                            fileName: f.name,
+                            url: f.url,
+                          });
+                        }
+                      }}
+                      disabled={!canPlay}
+                      title={canPlay ? (isPlaying ? "השהה" : "נגן") : "אין קובץ אודיו"}
                       style={{
                         width: 28,
                         height: 28,
                         borderRadius: 7,
-                        border: "1px solid #2A2A2A",
-                        background: "transparent",
-                        color: "#444",
-                        cursor: "not-allowed",
+                        border: canPlay ? "1px solid #3B82F633" : "1px solid #2A2A2A",
+                        background: isPlaying ? "#3B82F622" : "transparent",
+                        color: canPlay ? (isPlaying ? "#3B82F6" : "#666") : "#3A3A3A",
+                        cursor: canPlay ? "pointer" : "not-allowed",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -376,8 +330,9 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                         flexShrink: 0,
                       }}
                     >
-                      ▶
+                      {isPlaying ? "⏸" : "▶"}
                     </button>
+
                     <span
                       style={{
                         fontSize: 10,
@@ -392,51 +347,43 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                     >
                       {st.label}
                     </span>
-                    <a
-                      href={f.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        fontSize: 10,
-                        color: "#3B82F6",
-                        padding: "2px 8px",
-                        borderRadius: 5,
-                        border: "1px solid #3B82F622",
-                        background: "transparent",
-                        textDecoration: "none",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      פתח ↗
-                    </a>
+
+                    {(f.dropboxShareUrl || f.url) && (
+                      <a
+                        href={f.dropboxShareUrl || f.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontSize: 10,
+                          color: "#3B82F6",
+                          padding: "2px 8px",
+                          borderRadius: 5,
+                          border: "1px solid #3B82F622",
+                          background: "transparent",
+                          textDecoration: "none",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        פתח ↗
+                      </a>
+                    )}
                   </div>
                 );
               })
             )}
           </div>
 
-          {/* 2. Finance */}
+          {/* 2. Finance summary */}
           <div style={card}>
             <div style={cardHeader}>
               <div style={cardTitle}>💰 כספים</div>
             </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4,1fr)",
-                gap: 10,
-                padding: "14px 18px",
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, padding: "14px 18px" }}>
               {[
-                { label: "סוכם", value: fmt(agreedPrice), color: "#E0E0E0" },
-                { label: "התקבל", value: fmt(received), color: "#22c55e" },
-                { label: "הוצאות", value: fmt(expenses), color: "#EF4444" },
-                {
-                  label: "יתרה",
-                  value: fmt(balance),
-                  color: balance >= 0 ? "#22c55e" : "#EF4444",
-                },
+                { label: "סוכם",   value: fmt(agreedPrice), color: "#E0E0E0" },
+                { label: "התקבל",  value: fmt(received),    color: "#22c55e" },
+                { label: "הוצאות", value: fmt(expenses),    color: "#EF4444" },
+                { label: "יתרה",   value: fmt(balance),     color: balance >= 0 ? "#22c55e" : "#EF4444" },
               ].map((s) => (
                 <div
                   key={s.label}
@@ -448,34 +395,16 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                     textAlign: "center",
                   }}
                 >
-                  <div
-                    style={{ fontSize: 18, fontWeight: 700, color: s.color }}
-                  >
-                    {s.value}
-                  </div>
-                  <div style={{ fontSize: 10, color: "#555", marginTop: 3 }}>
-                    {s.label}
-                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 10, color: "#555", marginTop: 3 }}>{s.label}</div>
                 </div>
               ))}
             </div>
 
-            {/* Recent transactions */}
             <div style={{ padding: "0 18px 14px" }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "#444",
-                  marginBottom: 8,
-                }}
-              >
-                תשלומים אחרונים
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#444", marginBottom: 8 }}>תשלומים אחרונים</div>
               {recentTx.length === 0 ? (
-                <div style={{ color: "#333", fontSize: 12, padding: 12 }}>
-                  אין תשלומים עדיין
-                </div>
+                <div style={{ color: "#333", fontSize: 12, padding: 12 }}>אין תשלומים עדיין</div>
               ) : (
                 recentTx.map((t) => (
                   <div
@@ -488,19 +417,8 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                       borderBottom: "1px solid #1A1A1A",
                     }}
                   >
-                    <span style={{ fontSize: 11, color: "#555", flexShrink: 0 }}>
-                      {formatDDMM(t.date)}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: "#888",
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <span style={{ fontSize: 11, color: "#555", flexShrink: 0 }}>{formatDDMM(t.date)}</span>
+                    <span style={{ fontSize: 12, color: "#888", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {t.description}
                     </span>
                     <span
@@ -523,9 +441,7 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                         flexShrink: 0,
                       }}
                     >
-                      {t.type === "income" ? "+" : "-"}
-                      {currency}
-                      {t.amount.toLocaleString("he-IL")}
+                      {t.type === "income" ? "+" : "-"}{currency}{t.amount.toLocaleString("he-IL")}
                     </span>
                   </div>
                 ))
@@ -539,13 +455,7 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
               <div style={cardTitle}>⚡ פעולות אחרונות</div>
             </div>
             {actions.length === 0 ? (
-              <div
-                style={{
-                  color: "#333",
-                  fontSize: 12,
-                  padding: "16px 18px",
-                }}
-              >
+              <div style={{ color: "#333", fontSize: 12, padding: "16px 18px" }}>
                 אין פעולות מתועדות עדיין
               </div>
             ) : (
@@ -560,30 +470,11 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                     alignItems: "center",
                   }}
                 >
-                  <div
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: actionDotColor(a),
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "#888",
-                      flex: 1,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: actionDotColor(a), flexShrink: 0 }} />
+                  <div style={{ fontSize: 12, color: "#888", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {actionSummary(a)}
                   </div>
-                  <div style={{ fontSize: 10, color: "#444", flexShrink: 0 }}>
-                    {formatDDMM(a.action_date)}
-                  </div>
+                  <div style={{ fontSize: 10, color: "#444", flexShrink: 0 }}>{formatDDMM(a.action_date)}</div>
                 </div>
               ))
             )}
@@ -603,34 +494,13 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
               padding: "20px 16px 16px",
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#888",
-                marginBottom: 16,
-                textAlign: "center",
-              }}
-            >
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#888", marginBottom: 16, textAlign: "center" }}>
               התקדמות האלבום
             </div>
 
-            {/* Donut SVG */}
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-              <svg
-                width="120"
-                height="120"
-                viewBox="0 0 120 120"
-                style={{ overflow: "visible" }}
-              >
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="48"
-                  fill="none"
-                  stroke="#1E1E1E"
-                  strokeWidth="8"
-                />
+              <svg width="120" height="120" viewBox="0 0 120 120" style={{ overflow: "visible" }}>
+                <circle cx="60" cy="60" r="48" fill="none" stroke="#1E1E1E" strokeWidth="8" />
                 <circle
                   cx="60"
                   cy="60"
@@ -647,65 +517,19 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                     transition: "stroke-dasharray 0.6s ease",
                   }}
                 />
-                <text
-                  x="60"
-                  y="56"
-                  fill="#F2F2F2"
-                  fontSize="20"
-                  fontWeight="700"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                >
+                <text x="60" y="56" fill="#F2F2F2" fontSize="20" fontWeight="700" textAnchor="middle" dominantBaseline="middle">
                   {pct}%
                 </text>
-                <text
-                  x="60"
-                  y="72"
-                  fill="#555"
-                  fontSize="10"
-                  textAnchor="middle"
-                >
-                  הושלם
-                </text>
+                <text x="60" y="72" fill="#555" fontSize="10" textAnchor="middle">הושלם</text>
               </svg>
             </div>
 
-            {/* Mini stat cards 2x2 */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {[
-                {
-                  label: "שירים מוכנים",
-                  value: `${project.files.length} / ${Math.max(
-                    project.files.length,
-                    10
-                  )}`,
-                  color: "#22c55e",
-                  icon: "🎵",
-                },
-                {
-                  label: "מיקסים פתוחים",
-                  value: String(pendingIncome),
-                  color: "#3B82F6",
-                  icon: "🎚️",
-                },
-                {
-                  label: "מאסטרים הושלמו",
-                  value: String(masterCount),
-                  color: "#A855F7",
-                  icon: "🔊",
-                },
-                {
-                  label: "קבצים חסרים",
-                  value: String(missingFiles),
-                  color: "#EF4444",
-                  icon: "📁",
-                },
+                { label: "קבצים הועלו",   value: String(project.files.length), color: "#22c55e", icon: "🎵" },
+                { label: "תשלומים צפויים", value: String(pendingCount),        color: "#F59E0B", icon: "💰" },
+                { label: "מאסטרים",        value: String(masterCount),         color: "#A855F7", icon: "🔊" },
+                { label: "סטטוס",          value: project.status,              color: "#6B7280", icon: "📋" },
               ].map((s) => (
                 <div
                   key={s.label}
@@ -720,19 +544,10 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                   }}
                 >
                   <div>
-                    <div
-                      style={{
-                        fontSize: 20,
-                        fontWeight: 700,
-                        color: s.color,
-                        lineHeight: 1,
-                      }}
-                    >
+                    <div style={{ fontSize: s.label === "סטטוס" ? 12 : 20, fontWeight: 700, color: s.color, lineHeight: 1 }}>
                       {s.value}
                     </div>
-                    <div style={{ fontSize: 9, color: "#555", marginTop: 3 }}>
-                      {s.label}
-                    </div>
+                    <div style={{ fontSize: 9, color: "#555", marginTop: 3 }}>{s.label}</div>
                   </div>
                   <div style={{ fontSize: 18, opacity: 0.3 }}>{s.icon}</div>
                 </div>
@@ -740,7 +555,7 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
             </div>
           </div>
 
-          {/* 5. Files & assets */}
+          {/* 5. Asset checklist */}
           <div
             style={{
               background: "#1A1A1A",
@@ -750,53 +565,10 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
             }}
           >
             <div style={cardHeader}>
-              <div style={cardTitle}>📁 קבצים ונכסים</div>
-              {project.files.length > 0 ? (
-                <a
-                  href={project.files[0].url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "#3B82F6",
-                    textDecoration: "none",
-                    background: "#141414",
-                    border: "1px solid #3B82F622",
-                    borderRadius: 8,
-                    padding: "4px 10px",
-                  }}
-                >
-                  פתח תיקייה ↗
-                </a>
-              ) : (
-                <button
-                  disabled
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    fontFamily: "inherit",
-                    color: "#555",
-                    background: "#141414",
-                    border: "1px solid #2A2A2A",
-                    borderRadius: 8,
-                    padding: "4px 10px",
-                    cursor: "not-allowed",
-                    opacity: 0.5,
-                  }}
-                >
-                  פתח תיקייה
-                </button>
-              )}
+              <div style={cardTitle}>📁 נכסים</div>
+              <span style={{ fontSize: 10, color: "#444" }}>לפי שם קובץ</span>
             </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                padding: "12px 14px",
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "12px 14px" }}>
               {assets.map((a) => (
                 <div
                   key={a.name}
@@ -810,23 +582,9 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
                     gap: 4,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 16 }}>{a.icon}</span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#888",
-                      }}
-                    >
-                      {a.name}
-                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#888" }}>{a.name}</span>
                   </div>
                   <span
                     style={{

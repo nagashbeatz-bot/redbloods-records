@@ -5,6 +5,10 @@ import { createPortal } from "react-dom";
 import type { Project } from "@/lib/types";
 import AlbumOverviewTab from "./AlbumOverviewTab";
 import AlbumTracksTab from "./AlbumTracksTab";
+import AlbumFinanceTab from "./AlbumFinanceTab";
+import AlbumTasksTab from "./AlbumTasksTab";
+import UploadButton from "@/components/ui/UploadButton";
+import QuickTxModal from "@/components/finance/QuickTxModal";
 
 interface Props {
   project: Project;
@@ -26,43 +30,17 @@ function formatDate(dateStr: string | null): string {
   return `${d}.${m}.${y}`;
 }
 
-interface ComingSoonTabProps {
-  icon: string;
-  title: string;
-  desc: string;
-}
-function ComingSoonTab({ icon, title, desc }: ComingSoonTabProps) {
-  return (
-    <div
-      style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 16,
-        padding: 40,
-      }}
-    >
-      <div style={{ fontSize: 40 }}>{icon}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: "#444" }}>{title}</div>
-      <div
-        style={{
-          fontSize: 14,
-          color: "#333",
-          textAlign: "center",
-          maxWidth: 480,
-          lineHeight: 1.7,
-        }}
-      >
-        {desc}
-      </div>
-    </div>
-  );
+function getOpenUrl(files: Project["files"]): string | null {
+  const withShare = files.find((f) => f.dropboxShareUrl);
+  if (withShare) return withShare.dropboxShareUrl!;
+  const withUrl = files.find((f) => f.url);
+  if (withUrl) return withUrl.url;
+  return null;
 }
 
 export default function AlbumCenterModal({ project, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("סקירה");
+  const [showAddTx, setShowAddTx] = useState(false);
   const accentColor = getAccentColor(project.projectType);
 
   const completedFiles = project.files.length;
@@ -72,11 +50,11 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !showAddTx) onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, showAddTx]);
 
   const btnBase: React.CSSProperties = {
     height: 36,
@@ -100,6 +78,8 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
     cursor: "not-allowed",
     opacity: 0.5,
   };
+
+  const openUrl = getOpenUrl(project.files);
 
   const modal = (
     <div
@@ -187,9 +167,11 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                   marginBottom: 10,
                 }}
               >
-                <span style={{ color: "#888", fontSize: 13 }}>
-                  {project.artist} ✓
-                </span>
+                {project.artist && (
+                  <span style={{ color: "#888", fontSize: 13 }}>
+                    {project.artist}
+                  </span>
+                )}
                 <span
                   style={{
                     background: `${accentColor}18`,
@@ -225,7 +207,7 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
               <div style={{ color: "#666", fontSize: 12, marginBottom: 8 }}>
                 {project.files.length === 0
                   ? "אין קבצים עדיין"
-                  : `${completedFiles} מתוך ${totalFiles} קבצים הושלמו`}
+                  : `${completedFiles} מתוך ${totalFiles} קבצים הועלו`}
               </div>
 
               {/* Progress bar */}
@@ -259,19 +241,35 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                 alignItems: "flex-start",
                 flexWrap: "wrap",
                 justifyContent: "flex-end",
-                maxWidth: 320,
+                maxWidth: 340,
               }}
             >
-              <button style={disabledBtn} disabled>
-                🎵 הוסף שיר
-              </button>
+              {/* הוסף שיר — UploadButton */}
+              <div style={{ height: 36, display: "flex", alignItems: "center" }}>
+                <UploadButton
+                  projectId={project.id}
+                  projectName={project.name}
+                  artist={project.artist}
+                  existingFiles={project.files}
+                  size="md"
+                />
+              </div>
+
+              {/* הוסף תשלום */}
               <button
-                style={{ ...disabledBtn, border: "1px solid #F59E0B22" }}
-                disabled
+                style={{
+                  ...btnBase,
+                  background: "#1A1A1A",
+                  border: "1px solid #F59E0B44",
+                  color: "#F59E0B",
+                }}
+                onClick={() => setShowAddTx(true)}
               >
                 💰 הוסף תשלום
               </button>
-              {project.files.length > 0 ? (
+
+              {/* פתח קבצים */}
+              {openUrl ? (
                 <button
                   style={{
                     ...btnBase,
@@ -279,18 +277,30 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                     border: "1px solid #3B82F644",
                     color: "#3B82F6",
                   }}
-                  onClick={() => window.open(project.files[0].url, "_blank")}
+                  onClick={() => window.open(openUrl, "_blank")}
                 >
                   📁 פתח קבצים
                 </button>
               ) : (
-                <button style={disabledBtn} disabled>
+                <button
+                  style={disabledBtn}
+                  title="לא קיימת תיקיית קבצים לפרויקט הזה"
+                  disabled
+                >
                   📁 פתח קבצים
                 </button>
               )}
-              <button style={disabledBtn} disabled>
+
+              {/* הפצה — לא מחובר */}
+              <button
+                style={disabledBtn}
+                title="מודול ההפצה עדיין לא מחובר"
+                disabled
+              >
                 📤 הפצה
               </button>
+
+              {/* סגור */}
               <button
                 style={{
                   width: 38,
@@ -364,11 +374,7 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
             <AlbumTracksTab project={project} accentColor={accentColor} />
           )}
           {activeTab === "כספים" && (
-            <ComingSoonTab
-              icon="💰"
-              title="כספים"
-              desc="פאנל כספים מורחב — פתח טאב כספים לפירוט מלא"
-            />
+            <AlbumFinanceTab project={project} accentColor={accentColor} />
           )}
           {activeTab === "קבצים" && (
             <div
@@ -388,7 +394,7 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                     marginTop: 60,
                   }}
                 >
-                  אין קבצים
+                  אין קבצים — השתמש בכפתור "הוסף שיר" להעלאה
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -408,21 +414,41 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                       <span style={{ fontSize: 12, color: "#888", flex: 1 }}>
                         {f.name}
                       </span>
-                      <a
-                        href={f.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          fontSize: 11,
-                          color: "#3B82F6",
-                          textDecoration: "none",
-                          padding: "3px 10px",
-                          border: "1px solid #3B82F622",
-                          borderRadius: 6,
-                        }}
-                      >
-                        פתח ↗
-                      </a>
+                      {f.dropboxShareUrl ? (
+                        <a
+                          href={f.dropboxShareUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            fontSize: 11,
+                            color: "#3B82F6",
+                            textDecoration: "none",
+                            padding: "3px 10px",
+                            border: "1px solid #3B82F622",
+                            borderRadius: 6,
+                          }}
+                        >
+                          פתח ↗
+                        </a>
+                      ) : f.url ? (
+                        <a
+                          href={f.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            fontSize: 11,
+                            color: "#3B82F6",
+                            textDecoration: "none",
+                            padding: "3px 10px",
+                            border: "1px solid #3B82F622",
+                            borderRadius: 6,
+                          }}
+                        >
+                          פתח ↗
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#444" }}>אין קישור</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -430,21 +456,50 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
             </div>
           )}
           {activeTab === "משימות" && (
-            <ComingSoonTab
-              icon="✅"
-              title="משימות"
-              desc="ניהול משימות לפרויקט — יתווסף בהמשך"
-            />
+            <AlbumTasksTab project={project} accentColor={accentColor} />
           )}
           {activeTab === "הפצה" && (
-            <ComingSoonTab
-              icon="📤"
-              title="הפצה"
-              desc="ניהול הפצה לפלטפורמות — יתווסף בהמשך"
-            />
+            <div
+              style={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 16,
+                padding: 40,
+              }}
+            >
+              <div style={{ fontSize: 40 }}>📤</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#444" }}>
+                מודול ההפצה עדיין לא מחובר
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#333",
+                  textAlign: "center",
+                  maxWidth: 480,
+                  lineHeight: 1.7,
+                }}
+              >
+                כדי להפעיל את טאב ההפצה נדרש: חיבור לפלטפורמת הפצה (DistroKid, TuneCore וכד׳), טבלת הפצות ב-DB, ו-API route ייעודי.
+              </div>
+            </div>
           )}
         </div>
       </div>
+
+      {/* QuickTxModal — הוסף תשלום */}
+      {showAddTx && (
+        <QuickTxModal
+          projectId={project.id}
+          projectName={project.name}
+          artist={project.artist}
+          initialType="income"
+          onClose={() => setShowAddTx(false)}
+        />
+      )}
     </div>
   );
 

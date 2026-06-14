@@ -1,10 +1,16 @@
 "use client";
 
 import type { Project } from "@/lib/types";
+import { usePlayerSafe } from "@/components/PlayerProvider";
 
 interface Props {
   project: Project;
   accentColor: string;
+}
+
+const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
+function isAudio(name: string): boolean {
+  return AUDIO_EXTS.some((ext) => name.toLowerCase().endsWith(ext));
 }
 
 interface TrackStatus {
@@ -17,46 +23,22 @@ interface TrackStatus {
 function getTrackStatus(name: string): TrackStatus {
   const n = name.toLowerCase();
   if (n.includes("master") || name.includes("מאסטר"))
-    return {
-      label: "הושלם",
-      color: "#22c55e",
-      bg: "rgba(34,197,94,0.12)",
-      border: "rgba(34,197,94,0.3)",
-    };
+    return { label: "מאסטר",  color: "#22c55e", bg: "rgba(34,197,94,0.12)",  border: "rgba(34,197,94,0.3)" };
   if (n.includes("mix") || name.includes("מיקס"))
-    return {
-      label: "במיקס",
-      color: "#3B82F6",
-      bg: "rgba(59,130,246,0.12)",
-      border: "rgba(59,130,246,0.3)",
-    };
+    return { label: "מיקס",   color: "#3B82F6", bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.3)" };
   if (n.includes("stem") || n.includes("stems"))
-    return {
-      label: "סטמס",
-      color: "#6B7280",
-      bg: "rgba(107,114,128,0.12)",
-      border: "rgba(107,114,128,0.3)",
-    };
-  return {
-    label: "קובץ",
-    color: "#6B7280",
-    bg: "rgba(107,114,128,0.12)",
-    border: "rgba(107,114,128,0.3)",
-  };
+    return { label: "סטמס",   color: "#6B7280", bg: "rgba(107,114,128,0.12)", border: "rgba(107,114,128,0.3)" };
+  return     { label: "קובץ",  color: "#6B7280", bg: "rgba(107,114,128,0.12)", border: "rgba(107,114,128,0.3)" };
 }
 
-interface MixMaster {
-  done: boolean;
-}
-
-function getMix(name: string): MixMaster {
+function getMix(name: string): boolean {
   const n = name.toLowerCase();
-  return { done: n.includes("mix") || name.includes("מיקס") };
+  return n.includes("mix") || name.includes("מיקס");
 }
 
-function getMaster(name: string): MixMaster {
+function getMaster(name: string): boolean {
   const n = name.toLowerCase();
-  return { done: n.includes("master") || name.includes("מאסטר") };
+  return n.includes("master") || name.includes("מאסטר");
 }
 
 function getCompletion(name: string): { pct: string; color: string; bg: string } {
@@ -64,15 +46,17 @@ function getCompletion(name: string): { pct: string; color: string; bg: string }
   if (n.includes("master") || name.includes("מאסטר"))
     return { pct: "100%", color: "#22c55e", bg: "rgba(34,197,94,0.12)" };
   if (n.includes("mix") || name.includes("מיקס"))
-    return { pct: "70%", color: "#3B82F6", bg: "rgba(59,130,246,0.12)" };
+    return { pct: "70%",  color: "#3B82F6", bg: "rgba(59,130,246,0.12)" };
   if (n.includes("stem") || n.includes("stems"))
-    return { pct: "30%", color: "#6B7280", bg: "rgba(107,114,128,0.12)" };
-  return { pct: "0%", color: "#444", bg: "rgba(68,68,68,0.12)" };
+    return { pct: "30%",  color: "#6B7280", bg: "rgba(107,114,128,0.12)" };
+  return                   { pct: "10%",  color: "#444",   bg: "rgba(68,68,68,0.12)" };
 }
 
 const GRID = "32px 1fr 36px 56px 100px 80px 80px 64px 36px";
 
 export default function AlbumTracksTab({ project }: Props) {
+  const player = usePlayerSafe();
+
   return (
     <div
       style={{
@@ -95,9 +79,7 @@ export default function AlbumTracksTab({ project }: Props) {
           }}
         >
           <div style={{ fontSize: 36, opacity: 0.15 }}>🎵</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#444" }}>
-            לא הוגדרו שירים
-          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#444" }}>לא הועלו קבצים</div>
           <div style={{ fontSize: 12, color: "#333" }}>
             קבצים שיועלו לפרויקט יופיעו כאן
           </div>
@@ -116,31 +98,25 @@ export default function AlbumTracksTab({ project }: Props) {
               borderBottom: "1px solid #252525",
             }}
           >
-            {["#", "שם השיר", "▶", "משך", "סטטוס", "מיקס", "מאסטר", "השלמה", ""].map(
-              (h, i) => (
-                <div
-                  key={i}
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: "#444",
-                    textAlign: "right",
-                    overflow: "hidden",
-                  }}
-                >
-                  {h}
-                </div>
-              )
-            )}
+            {["#", "שם הקובץ", "▶", "משך", "סטטוס", "מיקס", "מאסטר", "השלמה", ""].map((h, i) => (
+              <div key={i} style={{ fontSize: 10, fontWeight: 700, color: "#444", textAlign: "right", overflow: "hidden" }}>
+                {h}
+              </div>
+            ))}
           </div>
 
           {/* Rows */}
           {project.files.map((f, i) => {
-            const status = getTrackStatus(f.name);
-            const mix = getMix(f.name);
-            const master = getMaster(f.name);
+            const status     = getTrackStatus(f.name);
+            const hasMix     = getMix(f.name);
+            const hasMaster  = getMaster(f.name);
             const completion = getCompletion(f.name);
-            const rowBg = i % 2 === 0 ? "#1A1A1A" : "#171717";
+            const canPlay    = isAudio(f.name) && !!f.url;
+            const rowBg      = i % 2 === 0 ? "#1A1A1A" : "#171717";
+            const isPlaying  =
+              player?.playing &&
+              player.track?.projectId === project.id &&
+              player.track?.fileName === f.name;
 
             return (
               <div
@@ -155,18 +131,13 @@ export default function AlbumTracksTab({ project }: Props) {
                   alignItems: "center",
                   transition: "background 0.12s",
                 }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.background =
-                    "#1E1E1E";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.background = rowBg;
-                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#1E1E1E"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = rowBg; }}
               >
                 {/* # */}
                 <div style={{ fontSize: 11, color: "#444" }}>{i + 1}</div>
 
-                {/* שם השיר */}
+                {/* שם */}
                 <div
                   style={{
                     fontSize: 13,
@@ -180,17 +151,32 @@ export default function AlbumTracksTab({ project }: Props) {
                   {f.name}
                 </div>
 
-                {/* ▶ */}
+                {/* Play */}
                 <button
-                  disabled
+                  onClick={() => {
+                    if (!player || !canPlay) return;
+                    if (isPlaying) {
+                      player.pause();
+                    } else {
+                      player.play({
+                        projectId: project.id,
+                        projectName: project.name,
+                        artist: project.artist,
+                        fileName: f.name,
+                        url: f.url,
+                      });
+                    }
+                  }}
+                  disabled={!canPlay}
+                  title={canPlay ? (isPlaying ? "השהה" : "נגן") : "אין קובץ אודיו"}
                   style={{
                     width: 28,
                     height: 28,
                     borderRadius: "50%",
-                    border: "1px solid #252525",
-                    background: "transparent",
-                    color: "#444",
-                    cursor: "not-allowed",
+                    border: canPlay ? "1px solid #3B82F633" : "1px solid #252525",
+                    background: isPlaying ? "#3B82F622" : "transparent",
+                    color: canPlay ? (isPlaying ? "#3B82F6" : "#666") : "#3A3A3A",
+                    cursor: canPlay ? "pointer" : "not-allowed",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -199,7 +185,7 @@ export default function AlbumTracksTab({ project }: Props) {
                     flexShrink: 0,
                   }}
                 >
-                  ▶
+                  {isPlaying ? "⏸" : "▶"}
                 </button>
 
                 {/* משך */}
@@ -225,45 +211,23 @@ export default function AlbumTracksTab({ project }: Props) {
 
                 {/* מיקס */}
                 <div>
-                  {mix.done ? (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: 5,
-                        background: "rgba(34,197,94,0.12)",
-                        color: "#22c55e",
-                        border: "1px solid rgba(34,197,94,0.3)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      הושלם
+                  {hasMix ? (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", whiteSpace: "nowrap" }}>
+                      ✓
                     </span>
                   ) : (
-                    <span style={{ fontSize: 11, color: "#444" }}>—</span>
+                    <span style={{ fontSize: 11, color: "#333" }}>—</span>
                   )}
                 </div>
 
                 {/* מאסטר */}
                 <div>
-                  {master.done ? (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: 5,
-                        background: "rgba(34,197,94,0.12)",
-                        color: "#22c55e",
-                        border: "1px solid rgba(34,197,94,0.3)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      הושלם
+                  {hasMaster ? (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", whiteSpace: "nowrap" }}>
+                      ✓
                     </span>
                   ) : (
-                    <span style={{ fontSize: 11, color: "#444" }}>—</span>
+                    <span style={{ fontSize: 11, color: "#333" }}>—</span>
                   )}
                 </div>
 
@@ -286,28 +250,32 @@ export default function AlbumTracksTab({ project }: Props) {
 
                 {/* link */}
                 <div>
-                  <a
-                    href={f.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 28,
-                      height: 28,
-                      borderRadius: 7,
-                      border: "1px solid #252525",
-                      background: "transparent",
-                      color: "#555",
-                      textDecoration: "none",
-                      fontSize: 13,
-                      fontWeight: 700,
-                    }}
-                    title="פתח קובץ"
-                  >
-                    ···
-                  </a>
+                  {(f.dropboxShareUrl || f.url) ? (
+                    <a
+                      href={f.dropboxShareUrl || f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 28,
+                        height: 28,
+                        borderRadius: 7,
+                        border: "1px solid #252525",
+                        background: "transparent",
+                        color: "#3B82F6",
+                        textDecoration: "none",
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                      title="פתח קובץ"
+                    >
+                      ↗
+                    </a>
+                  ) : (
+                    <div style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#333" }}>—</div>
+                  )}
                 </div>
               </div>
             );
