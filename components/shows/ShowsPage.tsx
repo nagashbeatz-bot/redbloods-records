@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-store";
-import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-store";
+import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
+import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-types";
 import ShowDrawer from "./ShowDrawer";
 
 // ─── colors ──────────────────────────────────────────────────────────────────

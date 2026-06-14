@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-store";
-import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-store";
+import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
+import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-types";
 
 // ─── colors ──────────────────────────────────────────────────────────────────
 
