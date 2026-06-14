@@ -49,7 +49,8 @@ export async function POST() {
 
     return NextResponse.json({ synced: toUpdate.length });
   } catch (err) {
-    console.error("[POST /api/calendar/tasks/sync]", err);
-    return NextResponse.json({ synced: 0, error: "sync_failed" });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[POST /api/calendar/tasks/sync]", msg);
+    return NextResponse.json({ synced: 0, error: msg });
   }
 }
