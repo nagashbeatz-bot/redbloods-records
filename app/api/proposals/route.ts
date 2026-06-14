@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { createTask } from "@/lib/tasks-store";
+import { createTask, patchTask } from "@/lib/tasks-store";
 
 // GET /api/proposals?clientId=xxx
 export async function GET(req: NextRequest) {
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     if (error) throw new Error(error.message);
 
-    // Create follow-up task if followup_date is set
+    // Create follow-up task + Google Task if followup_date is set
     if (data.followup_date) {
       try {
         const { data: clientData } = await supabase
@@ -57,12 +57,38 @@ export async function POST(req: NextRequest) {
           .eq("id", clientId)
           .single();
         const clientName = clientData?.name ?? "";
-        await createTask({
+        const amountStr = amount ? ` · ${currency || "₪"}${Number(amount).toLocaleString()}` : "";
+
+        // Embed proposal_id in notes for reliable lookup on future PATCHes
+        const taskNotes = `[proposal_id:${data.id}]\nהצעה: ${title.trim()}${amountStr}`;
+
+        const task = await createTask({
           title:        `מעקב הצעת מחיר - ${clientName}`,
           related_type: "client",
           related_id:   clientId,
           due_date:     data.followup_date,
+          notes:        taskNotes,
         });
+
+        // Sync to Google Tasks — non-critical, proposal save never fails because of this
+        try {
+          const { isConnected, createGoogleTask } = await import("@/lib/google-calendar");
+          if (await isConnected()) {
+            const googleNotes = [
+              "משימת מעקב להצעת מחיר מתוך Redbloods OS",
+              `לקוח: ${clientName}`,
+              `הצעה: ${title.trim()}`,
+              amount ? `סכום: ${currency || "₪"}${Number(amount).toLocaleString()}` : "",
+            ].filter(Boolean).join("\n");
+
+            const gt = await createGoogleTask(
+              `מעקב הצעת מחיר - ${clientName}`,
+              data.followup_date,
+              googleNotes,
+            );
+            await patchTask(task.id, { calendar_event_id: gt.id });
+          }
+        } catch { /* Google not connected or failed — non-critical */ }
       } catch { /* task creation is non-critical */ }
     }
 
