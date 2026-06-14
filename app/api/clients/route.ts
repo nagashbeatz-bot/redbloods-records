@@ -1,10 +1,31 @@
-import { NextResponse } from "next/server";
-import { listClients } from "@/lib/clients-store";
+import { NextRequest, NextResponse } from "next/server";
+import { listClients, createClient } from "@/lib/clients-store";
 
 export async function GET() {
   try {
     const clients = await listClients();
     return NextResponse.json({ clients });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    if (!body.name?.trim()) {
+      return NextResponse.json({ error: "שם חובה" }, { status: 400 });
+    }
+    const client = await createClient({
+      name:   body.name.trim(),
+      phone:  body.phone?.trim()  ?? "",
+      email:  body.email?.trim()  ?? "",
+      type:   body.type           ?? "לקוח",
+      status: body.status         ?? "חדש",
+      notes:  body.notes          ?? "",
+    });
+    return NextResponse.json({ client }, { status: 201 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: 500 });
