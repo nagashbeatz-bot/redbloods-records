@@ -90,15 +90,22 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
               // Event still alive — nothing to do
               return NextResponse.json({ show });
             }
-            // Create fresh event (either first time or after manual deletion)
+            // Resolve artist name (may fetch from clients if show.artist is empty)
             const showForCal = await resolveArtistName(show);
+            // If artist was resolved and differs from what's in DB — persist it
+            const dbPatch: PatchShowInput = { calendar_event_id: undefined };
+            if (showForCal.artist && !show.artist) {
+              dbPatch.artist = showForCal.artist;
+            }
+            // Create fresh event
             const event = await createCalendarEvent(
               showCalendarSummary(showForCal),
               times.startIso,
               times.endIso,
               { description: showCalendarDescription(showForCal) }
             );
-            const updated = await patchShow(id, { calendar_event_id: event.id });
+            dbPatch.calendar_event_id = event.id;
+            const updated = await patchShow(id, dbPatch);
             return NextResponse.json({ show: updated });
           } else {
             calendarWarning = "ההופעה עודכנה, אבל Google Calendar לא מחובר";
