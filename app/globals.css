@@ -264,6 +264,30 @@ select:focus {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
+/* ── Skin: Premium (mock-up style) ─────────────────────────────────────── */
+/* Apply data-skin="premium" to <html> to activate */
+[data-skin="premium"] {
+  --skin-bg:      #090909;
+  --skin-surface: #101010;
+  --skin-card:    #141414;
+  --skin-border:  #1C1C1C;
+  --skin-accent:  #6366F1;
+  --skin-glow:    0 0 0 1px rgba(99,102,241,0.12), 0 2px 12px rgba(0,0,0,0.5);
+}
+[data-skin="premium"] body,
+[data-skin="premium"] html { background-color: var(--skin-bg) !important; }
+
+/* card glow in premium mode */
+[data-skin="premium"] .skin-card {
+  background: var(--skin-card) !important;
+  border-color: var(--skin-border) !important;
+  box-shadow: var(--skin-glow);
+}
+[data-skin="premium"] aside {
+  background: var(--skin-surface) !important;
+  border-color: var(--skin-border) !important;
+}
+
 /* ── Shared table header style ───────────────────────────────────────────── */
 .tbl-header {
   font-size: 10px;
