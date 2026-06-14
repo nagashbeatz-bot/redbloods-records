@@ -150,6 +150,8 @@ const TIME_SLOTS: string[] = Array.from({ length: 48 }, (_, i) => {
 });
 const EXPENSE_CATS      = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "אחר"];
 const EXPENSE_SCOPES    = ["כללי", "קליפ", "מיקס / מאסטר", "שיווק", "סשן", "נסיעות", "ציוד", "אחר"];
+const PROJECT_TABS = ["סקירה", "כספים", "סשנים", "קליפ", "קבצים", "פעולות"];
+
 const CLIP_EXPENSE_CATS = [
   "צילום קליפ", "עריכת קליפ", "ציוד צילום", "תאורה", "לוקיישן",
   "דוגמניות / משתתפים", "איפור / סטיילינג", "הסעות", "אוכל / הפקה", "אביזרים", "אחר",
@@ -361,6 +363,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   // ── Mobile detection ───────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(false);
   const [albumCenterOpen, setAlbumCenterOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("סקירה");
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -406,7 +409,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // ── Collapsible sections ──────────────────────────────────────────────────
   const [openSections, setOpenSections] = useState<Set<string>>(
-    new Set(["summary"])
+    new Set(["summary", "finance", "sessions", "clip", "files", "actions"])
   );
   function toggleSection(id: string) {
     setOpenSections((prev) => {
@@ -710,6 +713,298 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [deliveryDragOver, setDeliveryDragOver] = useState(false);
   const [deliveryCopied,   setDeliveryCopied]   = useState(false);
 
+  // ── Project Actions state ──────────────────────────────────────────────────
+  interface ProjectAction {
+    id: string;
+    project_id: string;
+    action_type: string;
+    content_type: string | null;
+    version_label: string | null;
+    recipient_role: string | null;
+    recipient_name: string | null;
+    recipient_phone: string | null;
+    dropbox_url: string | null;
+    status: string;
+    action_date: string;
+    followup_date: string | null;
+    linked_task_id: string | null;
+    notes: string | null;
+    created_at: string;
+  }
+  interface ActionDraft {
+    actionType: string;
+    contentType: string;
+    versionLabel: string;
+    recipientRole: string;
+    recipientName: string;
+    recipientClientId: string;
+    recipientPhone: string;
+    dropboxUrl: string;
+    status: string;
+    actionDate: string;
+    followupDate: string;
+    notes: string;
+    createFollowupTask: boolean;
+  }
+  interface ActionClient { id: string; name: string; phone: string; }
+  function emptyActionDraft(): ActionDraft {
+    return {
+      actionType: "sent", contentType: "", versionLabel: "",
+      recipientRole: "client", recipientName: "", recipientClientId: "", recipientPhone: "",
+      dropboxUrl: "", status: "pending_feedback",
+      actionDate: new Date().toISOString().slice(0, 10),
+      followupDate: "", notes: "",
+      createFollowupTask: false,
+    };
+  }
+
+  const [projectActions,   setProjectActions]   = useState<ProjectAction[]>([]);
+  const [actionsLoading,   setActionsLoading]   = useState(false);
+  const [showActionForm,   setShowActionForm]    = useState(false);
+  const [actionDraft,      setActionDraft]       = useState<ActionDraft>(emptyActionDraft());
+  const [actionSaving,     setActionSaving]      = useState(false);
+  const [actionError,      setActionError]       = useState<string | null>(null);
+  const [actionTaskWarn,   setActionTaskWarn]    = useState<string | null>(null);
+  const [actionClients,    setActionClients]     = useState<ActionClient[]>([]);
+  const [actionClientsLoaded, setActionClientsLoaded] = useState(false);
+  const [expandedActions,  setExpandedActions]  = useState<Set<string>>(new Set());
+  const [closingActionId,  setClosingActionId]  = useState<string | null>(null);
+
+  // Load clients once when the modal first opens
+  useEffect(() => {
+    if (!showActionForm || actionClientsLoaded) return;
+    fetch("/api/clients")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.clients) setActionClients(d.clients as ActionClient[]);
+        setActionClientsLoaded(true);
+      })
+      .catch(() => { setActionClientsLoaded(true); });
+  }, [showActionForm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  // Open the modal with optional preset overrides
+  const openActionModal = (preset: Partial<ActionDraft> = {}) => {
+    const base = emptyActionDraft();
+    // Pre-fill Dropbox URL from delivery folder if available
+    if (delivery?.deliveryLink) base.dropboxUrl = delivery.deliveryLink;
+    // Pre-fill artist as default recipient
+    if (project) {
+      base.recipientName      = project.artist;
+      base.recipientClientId  = artistClient?.id  ?? "";
+      base.recipientPhone     = artistClient?.phone ?? "";
+    }
+    setActionDraft({ ...base, ...preset });
+    setActionError(null);
+    setShowActionForm(true);
+  };
+
+  const ACTION_TYPE_LABELS: Record<string, string> = {
+    sent:     "📤 שלחתי",
+    received: "📥 קיבלתי",
+    notes:    "📝 הערות",
+    approved: "✅ אושר",
+    followup: "📞 מעקב",
+    other:    "⚙️ אחר",
+  };
+  const CONTENT_TYPE_LABELS: Record<string, string> = {
+    mix: "מיקס", master: "מאסטר", production: "הפקה", stems: "סטמס",
+    clip: "קליפ", files: "קבצים", references: "רפרנסים", other: "אחר",
+  };
+  const RECIPIENT_ROLE_LABELS: Record<string, string> = {
+    artist: "אמן", client: "לקוח", sound_engineer: "איש סאונד",
+    external_producer: "מפיק חיצוני", video_editor: "עורך וידאו",
+    photographer: "צלם", other: "אחר",
+  };
+  const ACTION_STATUS_LABELS: Record<string, string> = {
+    sent:             "📤 נשלח",
+    pending_feedback: "💬 ממתין לפידבק",
+    got_notes:        "📝 התקבלו הערות",
+    pending_version:  "⏳ ממתין לגרסה",
+    approved:         "✅ אושר",
+    closed:           "🔒 סגור",
+    cancelled:        "✕ בוטל",
+  };
+  const ACTION_STATUS_COLOR: Record<string, string> = {
+    sent:             "#3B82F6",
+    pending_feedback: "#F59E0B",
+    got_notes:        "#8B5CF6",
+    pending_version:  "#F59E0B",
+    approved:         "#10B981",
+    closed:           "#6B7280",
+    cancelled:        "#EF4444",
+  };
+  const NEXT_ACTION_LABEL: Record<string, string> = {
+    sent:             "לעקוב אחר קבלה",
+    pending_feedback: "לחכות לפידבק",
+    got_notes:        "להכין גרסה חדשה",
+    pending_version:  "לחכות לגרסה",
+    approved:         "הפרויקט אושר ✓",
+    closed:           "—",
+    cancelled:        "—",
+  };
+  function actionSummary(a: ProjectAction): string {
+    const ct   = a.content_type  ? (CONTENT_TYPE_LABELS[a.content_type]    ?? a.content_type)   : "";
+    const vl   = a.version_label ? ` ${a.version_label}` : "";
+    const name = a.recipient_name ?? (a.recipient_role ? (RECIPIENT_ROLE_LABELS[a.recipient_role] ?? a.recipient_role) : "");
+    switch (a.action_type) {
+      case "sent":     return `נשלח${ct ? ` ${ct}${vl}` : ""}${name ? ` ל${name}` : ""}`;
+      case "received": return `התקבל${ct ? ` ${ct}${vl}` : ""}${name ? ` מ${name}` : ""}`;
+      case "notes":    return `התקבלו הערות${name ? ` מ${name}` : ""}`;
+      case "approved": return "אושר הפרויקט";
+      case "followup": return `מעקב${name ? ` עם ${name}` : ""}`;
+      default:         return ACTION_TYPE_LABELS[a.action_type] ?? a.action_type;
+    }
+  }
+  function followupTitle(a: ProjectAction): string {
+    const name = a.recipient_name ?? (a.recipient_role ? (RECIPIENT_ROLE_LABELS[a.recipient_role] ?? a.recipient_role) : "") ?? "";
+    const ct = a.content_type ? (CONTENT_TYPE_LABELS[a.content_type] ?? "") : "";
+    const vl = a.version_label ? ` ${a.version_label}` : "";
+    switch (a.status) {
+      case "pending_feedback": return `ממתין לפידבק${name ? ` מ${name}` : ""}${ct ? ` על ${ct}${vl}` : ""}`;
+      case "got_notes":        return `התקבלו הערות${name ? ` מ${name}` : ""}${ct ? ` על ${ct}${vl}` : ""}`;
+      case "pending_version":  return `ממתין לגרסה מתוקנת${name ? ` מ${name}` : ""}`;
+      default:                 return `נשלח${name ? ` ל${name}` : ""} - ממתין לעדכון`;
+    }
+  }
+  function priorityChip(status: string): { label: string; color: string } {
+    if (["pending_feedback", "got_notes"].includes(status)) return { label: "חשוב",   color: "#EF4444" };
+    if (status === "pending_version")                        return { label: "בביצוע", color: "#3B82F6" };
+    return { label: "מידע", color: "#6B7280" };
+  }
+
+  const fetchProjectActions = () => {
+    setActionsLoading(true);
+    fetch(`/api/project-actions?projectId=${projectId}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.actions) setProjectActions(d.actions as ProjectAction[]); })
+      .catch(() => {})
+      .finally(() => setActionsLoading(false));
+  };
+
+  const handleSaveAction = async () => {
+    if (!actionDraft.actionType || !project) return;
+    setActionSaving(true);
+    setActionError(null);
+    try {
+      // 1. Create the project_action record
+      const res = await fetch("/api/project-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, ...actionDraft }),
+      });
+      const d = await res.json();
+      if (d.error) { setActionError(d.error); return; }
+      const savedAction = d.action as ProjectAction;
+
+      // 2. Optionally create follow-up task
+      let taskFailed = false;
+      if (actionDraft.createFollowupTask && actionDraft.followupDate) {
+        try {
+          const contentLabel = actionDraft.contentType ? CONTENT_TYPE_LABELS[actionDraft.contentType] ?? actionDraft.contentType : "";
+          const versionPart  = actionDraft.versionLabel ? ` ${actionDraft.versionLabel}` : "";
+          const taskTitle    = `מעקב: ${project.name}${contentLabel ? ` · ${contentLabel}${versionPart}` : ""}`;
+          const taskNoteLines = [
+            `פרויקט: ${project.name}`,
+            actionDraft.recipientName ? `נמען: ${actionDraft.recipientName}` : "",
+            contentLabel ? `תוכן: ${contentLabel}${versionPart}` : "",
+            actionDraft.dropboxUrl ? `לינק: ${actionDraft.dropboxUrl}` : "",
+            actionDraft.notes ? `הערות: ${actionDraft.notes}` : "",
+          ].filter(Boolean).join("\n");
+
+          const taskRes = await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title:        taskTitle,
+              notes:        taskNoteLines,
+              related_type: "project",
+              related_id:   project.id,
+              due_date:     actionDraft.followupDate,
+            }),
+          });
+          const taskData = await taskRes.json();
+          if (taskData.task?.id) {
+            // 3. Link task back to the action
+            await fetch(`/api/project-actions/${savedAction.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ linkedTaskId: taskData.task.id }),
+            });
+            savedAction.linked_task_id = taskData.task.id;
+          }
+        } catch {
+          taskFailed = true;
+        }
+      }
+
+      setProjectActions((prev) => [savedAction, ...prev]);
+      setShowActionForm(false);
+      setActionDraft(emptyActionDraft());
+      if (taskFailed) {
+        setActionTaskWarn("הפעולה נשמרה, אבל יצירת המשימה נכשלה");
+        setTimeout(() => setActionTaskWarn(null), 6000);
+      }
+    } catch { setActionError("שגיאת רשת"); }
+    finally { setActionSaving(false); }
+  };
+
+  // Build WhatsApp URL from draft fields + project name
+  const buildWhatsAppUrl = (phone: string): string => {
+    const cleaned = phone.replace(/\D/g, "");
+    const intl    = cleaned.startsWith("0") ? "972" + cleaned.slice(1) : cleaned;
+    const contentLabel = actionDraft.contentType ? CONTENT_TYPE_LABELS[actionDraft.contentType] ?? actionDraft.contentType : "";
+    const versionPart  = actionDraft.versionLabel ? ` ${actionDraft.versionLabel}` : "";
+    const lines = [
+      `היי${actionDraft.recipientName ? ` ${actionDraft.recipientName}` : ""},`,
+      `שלחתי לך${contentLabel ? ` ${contentLabel}${versionPart}` : ""} לפרויקט "${project?.name ?? ""}".`,
+      actionDraft.dropboxUrl ? `לינק: ${actionDraft.dropboxUrl}` : "",
+    ].filter(Boolean).join("\n");
+    return `https://wa.me/${intl}?text=${encodeURIComponent(lines)}`;
+  };
+
+  const buildWhatsAppForAction = (a: ProjectAction): string => {
+    const phone   = a.recipient_phone ?? "";
+    const cleaned = phone.replace(/\D/g, "");
+    const intl    = cleaned.startsWith("0") ? "972" + cleaned.slice(1) : cleaned;
+    const ct      = a.content_type  ? (CONTENT_TYPE_LABELS[a.content_type]  ?? a.content_type)  : "";
+    const vl      = a.version_label ? ` ${a.version_label}` : "";
+    const msg     = [`היי${a.recipient_name ? ` ${a.recipient_name}` : ""},`, `מעקב לגבי${ct ? ` ${ct}${vl}` : ""} בפרויקט "${project?.name ?? ""}".`].join("\n");
+    return `https://wa.me/${intl}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const whatsAppLinkHref = (phone: string, label: string, url: string): string => {
+    const cleaned = phone.replace(/\D/g, "");
+    const intl    = cleaned.startsWith("0") ? "972" + cleaned.slice(1) : cleaned;
+    const msg     = `היי,\nהנה ה-${label} לפרויקט "${project?.name ?? ""}":\n${url}`;
+    return `https://wa.me/${intl}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const closePendingAction = async (id: string) => {
+    setClosingActionId(id);
+    try {
+      await fetch(`/api/project-actions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "closed" }),
+      });
+      setProjectActions((prev) => prev.map((a) => (a.id === id ? { ...a, status: "closed" } : a)));
+    } finally {
+      setClosingActionId(null);
+    }
+  };
+  const postponeFollowup = async (id: string, currentDate: string) => {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() + 7);
+    const newDate = d.toISOString().slice(0, 10);
+    await fetch(`/api/project-actions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ followupDate: newDate }),
+    });
+    setProjectActions((prev) => prev.map((a) => (a.id === id ? { ...a, followup_date: newDate } : a)));
+  };
+
   const fetchDelivery = () => {
     setDeliveryLoading(true);
     fetch(`/api/delivery?projectId=${projectId}`)
@@ -724,6 +1019,8 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   useEffect(() => {
     setDelivery(null);
     fetchDelivery();
+    setProjectActions([]);
+    fetchProjectActions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -735,6 +1032,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   }, [onClose]);
 
   const project = projects.find((p) => p.id === projectId);
+
+  // Find the client whose name matches project.artist
+  const artistClient = actionClients.find((c) => project && c.name === project.artist);
 
   // If project not in context yet (e.g. just created via proposal convert),
   // trigger a refresh and show a loading skeleton instead of crashing.
@@ -1179,6 +1479,66 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   if (sessionsLoaded && !nextSession && project.status !== "הושלם" && project.status !== "בהשהייה")
     missingItems.push("אין סשן עתידי");
 
+  // ── Accent color ──────────────────────────────────────────────────────────
+  const accentColor = project.projectType === "EP" ? "#A855F7"
+    : project.projectType === "אלבום" ? "#EC4899"
+    : project.projectType === "קליפ" ? "#8B5CF6"
+    : "#3B82F6";
+
+  // ── Actions tab computed values ────────────────────────────────────────────
+  const QUICK_ACTIONS: { label: string; icon: string; color: string; preset: Partial<ActionDraft> }[] = [
+    { label: "שלח לאמן",          icon: "🎤", color: accentColor,
+      preset: { actionType: "sent", recipientRole: "artist", recipientName: project.artist, recipientClientId: artistClient?.id ?? "", recipientPhone: artistClient?.phone ?? "", status: "pending_feedback" } },
+    { label: "שלח לאיש סאונד",   icon: "🎚️", color: "#3B82F6",
+      preset: { actionType: "sent", recipientRole: "sound_engineer", status: "pending_version" } },
+    { label: "שלח למפיק חיצוני", icon: "🎛️", color: "#6B7280",
+      preset: { actionType: "sent", recipientRole: "external_producer", status: "pending_version" } },
+    { label: "התקבלה גרסה",       icon: "📥", color: "#F59E0B",
+      preset: { actionType: "received", status: "pending_feedback" } },
+    { label: "התקבלו הערות",      icon: "💬", color: "#8B5CF6",
+      preset: { actionType: "notes", recipientRole: "artist", recipientName: project.artist, recipientClientId: artistClient?.id ?? "", recipientPhone: artistClient?.phone ?? "", status: "got_notes" } },
+    { label: "סמן אושר",          icon: "✅", color: "#10B981",
+      preset: { actionType: "approved", recipientRole: "artist", recipientName: project.artist, status: "approved", notes: `אושר על ידי ${project.artist}` } },
+  ];
+
+  const openFollowups = projectActions.filter(
+    (a) => a.followup_date && !["approved", "closed", "cancelled"].includes(a.status)
+  );
+  const latestAction = projectActions[0] ?? null;
+  const nearestFollowup = [...openFollowups]
+    .filter((a) => a.followup_date)
+    .sort((a, b) => (a.followup_date ?? "").localeCompare(b.followup_date ?? ""))[0] ?? null;
+
+  type FileLinkItem = { url: string; label: string; contentTypeKey: string | null; versionLabel: string | null; date: string; phone: string | null };
+  const filesAndLinks: FileLinkItem[] = (() => {
+    const items: FileLinkItem[] = [];
+    if (delivery?.deliveryLink) {
+      items.push({ url: delivery.deliveryLink, label: "תיקיית מסירה", contentTypeKey: null, versionLabel: null, date: "", phone: artistClient?.phone ?? null });
+    }
+    const seen = new Set<string>();
+    for (const a of projectActions) {
+      if (a.dropbox_url && !seen.has(a.dropbox_url)) {
+        seen.add(a.dropbox_url);
+        const ct  = a.content_type  ? (CONTENT_TYPE_LABELS[a.content_type]  ?? a.content_type)  : "";
+        const vl  = a.version_label ?? "";
+        const lbl = [ct, vl].filter(Boolean).join(" ") || a.dropbox_url.split("/").pop() || a.dropbox_url;
+        items.push({ url: a.dropbox_url, label: lbl, contentTypeKey: a.content_type, versionLabel: a.version_label, date: a.action_date, phone: a.recipient_phone });
+      }
+    }
+    return items;
+  })();
+
+  const projectProgress = (() => {
+    if (project.status === "הושלם") return 100;
+    let score = 0;
+    if (project.startDate) score += 15;
+    if (projectActions.length > 0) score += 20;
+    if (filesAndLinks.length > 0) score += 20;
+    if (projectActions.some((a) => a.status === "approved")) score += 25;
+    if (openFollowups.length === 0 && projectActions.length > 0) score += 20;
+    return Math.min(90, score);
+  })();
+
   // ── Render ────────────────────────────────────────────────────────────────
   return createPortal(
     <div dir="rtl" style={{ position: "fixed", inset: 0, zIndex: 99999, visibility: albumCenterOpen ? "hidden" : "visible" }}>
@@ -1197,15 +1557,17 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       {/* Panel — side drawer on desktop, full-screen slide-up on mobile */}
       <div style={isMobile ? {
         position: "absolute", inset: 0,
-        background: "#0D0D0D",
+        background: "#0E0E0E",
         display: "flex", flexDirection: "column", zIndex: 100000,
-        animation: "rb-drawer-up 300ms cubic-bezier(.32,.72,0,1) forwards",
-        paddingBottom: "env(safe-area-inset-bottom)",
+        overflow: "hidden",
       } : {
-        position: "absolute", top: 0, right: 0, bottom: 0, width: 460,
-        background: "#141414", borderLeft: "1px solid #252525",
+        position: "absolute", inset: "20px",
+        background: "#0E0E0E",
+        borderRadius: 18,
         display: "flex", flexDirection: "column", zIndex: 100000,
-        animation: "rb-drawer-in 240ms cubic-bezier(.22,.68,0,1.2) forwards",
+        overflow: "hidden",
+        border: `1px solid ${accentColor}22`,
+        boxShadow: `0 0 0 1px #1A1A1A, 0 32px 80px rgba(0,0,0,0.85)`,
       }}>
         <style>{`
           @keyframes rb-drawer-in {
@@ -1278,121 +1640,117 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           .rb-btn-secondary:hover { border-color: #3A3A3A; color: #AAA; }
         `}</style>
 
-        {/* ── Top bar (close + link) ─────────────────────────────────────── */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 14px",
-          paddingTop: isMobile ? "env(safe-area-inset-top)" : undefined,
-          height: isMobile ? 48 : 44,
-          borderBottom: "1px solid #1E1E1E", flexShrink: 0,
-          background: isMobile ? "#141414" : undefined,
-        }}>
-          {isMobile ? (
-            <>
-              <button
-                onClick={onClose}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#3B82F6", fontSize: 14, fontWeight: 600, padding: "8px 4px 8px 12px", fontFamily: "inherit", minWidth: 44, minHeight: 44, display: "flex", alignItems: "center" }}
-              >← חזור</button>
-              <div style={{ minWidth: 44 }} />
-            </>
-          ) : (
-            <>
-              <button
-                onClick={onClose}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#444", fontSize: 18, lineHeight: 1, padding: "2px 6px 2px 2px", display: "flex", alignItems: "center" }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#AAA")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#444")}
-              >×</button>
+        {/* ── Header ────────────────────────────────────────────────────────── */}
+        <div style={{ padding: "20px 28px 0", borderBottom: "1px solid #1E1E1E", flexShrink: 0, background: "#111" }}>
+
+          {/* Top row: project info + controls */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+
+            {/* Right: icon + name + badges */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+              <span style={{ fontSize: 22, flexShrink: 0 }}>
+                {project.projectType === "קליפ" ? "🎬" : (project.projectType === "EP" || project.projectType === "אלבום") ? "🎵" : "🎤"}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {project.name}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
+                  {project.projectType && (
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 6, background: `${accentColor}18`, color: accentColor, border: `1px solid ${accentColor}44` }}>
+                      {project.projectType}
+                    </span>
+                  )}
+                  {project.artist && <span style={{ fontSize: 12, color: "#555" }}>🎤 {project.artist}</span>}
+                  {(() => {
+                    const sc: Record<string, string> = { "בעבודה": "#3B82F6", "הושלם": "#10B981", "בהשהייה": "#6B7280", "ממתין": "#F59E0B", "בוטל": "#EF4444" };
+                    const c = sc[project.status] ?? "#555";
+                    return <span style={{ fontSize: 10, fontWeight: 700, color: c, background: `${c}18`, border: `1px solid ${c}30`, borderRadius: 5, padding: "2px 8px" }}>{project.status}</span>;
+                  })()}
+                  {project.deadline && (
+                    <span style={{ fontSize: 10, fontWeight: 600, color: deadlineColor, background: `${deadlineColor}12`, border: `1px solid ${deadlineColor}28`, borderRadius: 5, padding: "2px 8px" }}>
+                      {deadlineLabel(project.deadline)}
+                    </span>
+                  )}
+                  {finLoaded && balance > 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "#EF4444", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 5, padding: "2px 8px" }}>
+                      יתרה: {balance.toLocaleString()}{finCurrency}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Left: full-page link + close */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               <Link
                 href={`/projects/${project.id}`}
-                style={{ fontSize: 11, color: "#444", textDecoration: "none" }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#888")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#444")}
+                style={{ fontSize: 11, color: "#555", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid #2A2A2A", background: "rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#AAA")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#555")}
               >פתח עמוד מלא ↗</Link>
-            </>
-          )}
-        </div>
-
-        {/* ── Project identity ─────────────────────────────────────────────── */}
-        <div style={{
-          padding: "14px 16px 12px",
-          borderBottom: "1px solid #1E1E1E",
-          flexShrink: 0,
-        }}>
-          {/* Name */}
-          <div style={{ fontSize: 17, fontWeight: 800, color: "#F0F0F0", lineHeight: 1.25, marginBottom: project.artist ? 4 : 8 }}>
-            {project.name}
-          </div>
-          {/* Artist */}
-          {project.artist && (
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
-              {project.artist}
+              <button
+                onClick={onClose}
+                title="סגור (ESC)"
+                style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid #2A2A2A", background: "rgba(255,255,255,0.04)", color: "#777", cursor: "pointer", fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#CCC")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#777")}
+              >✕</button>
             </div>
-          )}
-          {/* Tags row */}
-          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-            {/* Status */}
-            {(() => {
-              const statusColors: Record<string, string> = {
-                "בעבודה": "#3B82F6", "הושלם": "#10B981", "בהשהייה": "#6B7280",
-                "ממתין": "#F59E0B", "בוטל": "#EF4444",
-              };
-              const c = statusColors[project.status] ?? "#555";
-              return (
-                <span style={{ fontSize: 10, fontWeight: 700, color: c, background: `${c}18`, border: `1px solid ${c}30`, borderRadius: 5, padding: "2px 8px" }}>
-                  {project.status}
-                </span>
-              );
-            })()}
-            {/* Type */}
-            {project.projectType && (
-              <span style={{ fontSize: 10, color: "#555", background: "#181818", border: "1px solid #252525", borderRadius: 5, padding: "2px 8px" }}>
-                {project.projectType}
-              </span>
-            )}
-            {/* Deadline */}
-            {project.deadline && (
-              <span style={{ fontSize: 10, fontWeight: 600, color: deadlineColor, background: `${deadlineColor}12`, border: `1px solid ${deadlineColor}28`, borderRadius: 5, padding: "2px 8px" }}>
-                {deadlineLabel(project.deadline)}
-              </span>
-            )}
-            {/* Balance alert */}
-            {finLoaded && balance > 0 && (
-              <span style={{ fontSize: 10, fontWeight: 600, color: "#EF4444", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 5, padding: "2px 8px" }}>
-                יתרה: {balance.toLocaleString()}{finCurrency}
-              </span>
-            )}
           </div>
-        </div>
 
-        {/* ── Scrollable body ──────────────────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? 16 : 14, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
-
-          {/* ── Quick actions ──────────────────────────────────────────────── */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {/* Quick actions strip */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
             <button
-              onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("sessions"); return n; }); setAddingSession(true); setAddDraft(emptyDraft()); }}
-              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(59,130,246,0.25)", background: "rgba(59,130,246,0.06)", color: "#60A5FA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => { setActiveTab("סשנים"); setAddingSession(true); setAddDraft(emptyDraft()); }}
+              style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid rgba(59,130,246,0.25)", background: "rgba(59,130,246,0.06)", color: "#60A5FA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.13)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.06)")}
             >+ סשן</button>
             <button
-              onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("finance"); return n; }); setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
-              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.06)", color: "#34D399", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => { setActiveTab("כספים"); setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
+              style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.06)", color: "#34D399", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.13)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.06)")}
             >+ תשלום</button>
             <button
-              onClick={() => { setOpenSections((s) => { const n = new Set(s); n.add("finance"); return n; }); setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
-              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", background: "rgba(245,158,11,0.06)", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => { setActiveTab("כספים"); setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
+              style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", background: "rgba(245,158,11,0.06)", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.13)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.06)")}
             >+ הוצאה</button>
-            <div style={{ display: "flex" }}>
-              <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
-            </div>
+            <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
           </div>
 
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: 2, overflowX: "auto", scrollbarWidth: "none" } as React.CSSProperties}>
+            {PROJECT_TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px 10px 0 0",
+                  border: "none",
+                  background: activeTab === tab ? "#141414" : "transparent",
+                  color: activeTab === tab ? accentColor : "#4A4A4A",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: activeTab === tab ? 700 : 400,
+                  fontFamily: "inherit",
+                  borderBottom: activeTab === tab ? `2px solid ${accentColor}` : "2px solid transparent",
+                  transition: "all 0.15s",
+                  whiteSpace: "nowrap",
+                }}
+              >{tab}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Tab content ──────────────────────────────────────────────────── */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "#141414" } as React.CSSProperties}>
+
+          <div style={{ display: activeTab === "סקירה" ? "block" : "none" }}>
           {/* ── Mai: הפעולה הבאה (pure, no fetch) ──────────────────────── */}
           <ProjectNextActionBlock
             project={project}
@@ -1400,6 +1758,252 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             agreedPrice={agreedPrice}
             currency={finCurrency}
           />
+
+          {/* ── מרכז תפעולי — גריד 3 שורות ─────────────────────────────── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 4 }}>
+
+            {/* שורה 1 — 3 עמודות: מצב הפרויקט | מעקב עבודה | פעולות מהירות */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, alignItems: "start" }}>
+
+              {/* מצב הפרויקט */}
+              <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "16px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  מצב הפרויקט <span style={{ fontSize: 14 }}>🎚️</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {([
+                    { label: "מעקבים פתוחים", value: String(openFollowups.length), icon: "💬", color: openFollowups.length > 0 ? "#F59E0B" : "#555" },
+                    { label: "קבצים משותפים",  value: String(filesAndLinks.length),  icon: "📁", color: filesAndLinks.length > 0 ? "#3B82F6" : "#555" },
+                    { label: "פעילות אחרונה",  value: latestAction ? fmtDate(latestAction.action_date) : "—", icon: "🕐", color: "#888" },
+                  ] as { label: string; value: string; icon: string; color: string }[]).map(({ label, value, icon, color }) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "#0D0D0D", borderRadius: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, opacity: 0.6 }}>{icon}</span>
+                        <span style={{ fontSize: 10, color: "#555" }}>{label}</span>
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color }}>{value}</span>
+                    </div>
+                  ))}
+                  {/* Progress bar */}
+                  <div style={{ padding: "8px 10px", background: "#0D0D0D", borderRadius: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 10, color: "#555" }}>התקדמות פרויקט</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>{projectProgress}%</span>
+                    </div>
+                    <div style={{ height: 4, background: "#252525", borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${projectProgress}%`, background: accentColor, borderRadius: 2 }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* מעקב עבודה */}
+              <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "16px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  מעקב עבודה <span style={{ fontSize: 14 }}>📊</span>
+                </div>
+                {latestAction ? (
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    {([
+                      { label: "סטטוס נוכחי",  value: ACTION_STATUS_LABELS[latestAction.status] ?? latestAction.status, color: ACTION_STATUS_COLOR[latestAction.status] ?? "#D0D0D0", bold: true },
+                      { label: "גרסה אחרונה",  value: [latestAction.content_type ? (CONTENT_TYPE_LABELS[latestAction.content_type] ?? latestAction.content_type) : "", latestAction.version_label ?? ""].filter(Boolean).join(" ") || "—", color: "#D0D0D0", bold: false },
+                      { label: "נשלח אל",       value: latestAction.recipient_name || (latestAction.recipient_role ? (RECIPIENT_ROLE_LABELS[latestAction.recipient_role] ?? latestAction.recipient_role) : "") || "—", color: accentColor, bold: false },
+                      { label: "נשלח בתאריך",  value: fmtDate(latestAction.action_date), color: "#D0D0D0", bold: false },
+                      { label: "פולואפ הבא",   value: nearestFollowup ? fmtDate(nearestFollowup.followup_date!) : "—", color: nearestFollowup ? "#F59E0B" : "#555", bold: false },
+                      { label: "הפעולה הבאה",  value: NEXT_ACTION_LABEL[latestAction.status] ?? "—", color: "#C0C0C0", bold: false },
+                    ] as { label: string; value: string; color: string; bold: boolean }[]).map(({ label, value, color, bold }, i) => (
+                      <div key={label} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 5 ? "1px solid #1A1A1A" : "none" }}>
+                        <span style={{ fontSize: 10, color: "#555", flexShrink: 0 }}>{label}</span>
+                        <span style={{ fontSize: 12, fontWeight: bold ? 700 : 600, color, maxWidth: "58%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "24px 0" }}>
+                    <div style={{ fontSize: 11, color: "#444", marginBottom: 12 }}>אין עדיין פעולות רשומות</div>
+                    <button onClick={() => openActionModal({ actionType: "sent", status: "pending_feedback" })}
+                      style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${accentColor}44`, background: `${accentColor}0D`, color: accentColor, cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit" }}>
+                      + תעד שליחה ראשונה
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* פעולות מהירות */}
+              <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "16px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                  פעולות מהירות <span style={{ fontSize: 14 }}>⚡</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {QUICK_ACTIONS.map((qa) => (
+                    <button key={qa.label} onClick={() => openActionModal(qa.preset)}
+                      style={{ padding: "14px 8px", borderRadius: 10, border: `1px solid ${qa.color}33`, background: `${qa.color}0F`, color: qa.color, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7 }}>
+                      <span style={{ fontSize: 22 }}>{qa.icon}</span>
+                      <span style={{ textAlign: "center", lineHeight: 1.3 }}>{qa.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* שורה 2 — 2 עמודות: מעקבים פתוחים | קישורים וקבצים */}
+            {(openFollowups.length > 0 || filesAndLinks.length > 0) && (
+              <div style={{ display: "grid", gridTemplateColumns: openFollowups.length > 0 && filesAndLinks.length > 0 ? "1fr 1fr" : "1fr", gap: 12, alignItems: "start" }}>
+
+                {openFollowups.length > 0 && (
+                  <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "16px" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                      מעקבים פתוחים 💬
+                      <span style={{ fontSize: 11, background: "#252525", color: "#888", borderRadius: 10, padding: "1px 7px" }}>{openFollowups.length}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {openFollowups.map((a) => {
+                        const chip = priorityChip(a.status);
+                        const recipientDisplay = a.recipient_name || (a.recipient_role ? (RECIPIENT_ROLE_LABELS[a.recipient_role] ?? a.recipient_role) : "");
+                        return (
+                          <div key={a.id} style={{ background: "#0D0D0D", borderRadius: 10, padding: "10px 12px", border: "1px solid #1E1E1E" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                                  <span style={{ fontSize: 10, color: chip.color, background: `${chip.color}22`, borderRadius: 4, padding: "2px 6px", fontWeight: 700, flexShrink: 0 }}>{chip.label}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: "#D0D0D0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{followupTitle(a)}</span>
+                                </div>
+                                <div style={{ fontSize: 10, color: "#555" }}>
+                                  נשלח: {fmtDate(a.action_date)}{recipientDisplay ? ` • אל: ${recipientDisplay}` : ""}{a.followup_date ? ` • פולואפ: ${fmtDate(a.followup_date)}` : ""}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
+                                {a.recipient_phone && (
+                                  <a href={buildWhatsAppForAction(a)} target="_blank" rel="noopener noreferrer"
+                                    style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(37,211,102,0.3)", background: "rgba(37,211,102,0.08)", color: "#25D366", fontSize: 10, fontWeight: 600, textDecoration: "none", textAlign: "center" }}>
+                                    💬 WhatsApp
+                                  </a>
+                                )}
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button onClick={() => closePendingAction(a.id)} disabled={closingActionId === a.id}
+                                    style={{ flex: 1, padding: "4px 7px", borderRadius: 6, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: "#10B981", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", opacity: closingActionId === a.id ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                                    סגור ✓
+                                  </button>
+                                  {a.followup_date && (
+                                    <button onClick={() => postponeFollowup(a.id, a.followup_date!)}
+                                      style={{ flex: 1, padding: "4px 7px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#EF4444", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                                      דחה ✗
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {filesAndLinks.length > 0 && (
+                  <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "16px" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                      קישורים וקבצים 📁
+                      <span style={{ fontSize: 11, background: "#252525", color: "#888", borderRadius: 10, padding: "1px 7px" }}>{filesAndLinks.length}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {filesAndLinks.map((item, idx) => (
+                        <div key={idx} style={{ background: "#0D0D0D", borderRadius: 10, padding: "10px 12px", border: "1px solid #1E1E1E" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontSize: 20, flexShrink: 0, color: "#0061FF" }}>📁</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#C0C0C0", marginBottom: 2 }}>{item.label}</div>
+                              <div style={{ fontSize: 10, color: "#3B82F6", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.url}</div>
+                            </div>
+                            {item.date && <div style={{ fontSize: 9, color: "#555", flexShrink: 0 }}>{fmtDate(item.date)}</div>}
+                          </div>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            <a href={item.url} target="_blank" rel="noopener noreferrer"
+                              style={{ padding: "5px 9px", borderRadius: 6, border: "1px solid #2A2A2A", color: "#888", fontSize: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              ↗ פתח קישור
+                            </a>
+                            <button onClick={() => navigator.clipboard.writeText(item.url)}
+                              style={{ padding: "5px 9px", borderRadius: 6, border: "1px solid #2A2A2A", background: "transparent", color: "#888", cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>
+                              📋 העתק קישור
+                            </button>
+                            {artistClient?.phone && (
+                              <a href={whatsAppLinkHref(artistClient.phone, item.label, item.url)} target="_blank" rel="noopener noreferrer"
+                                style={{ padding: "5px 9px", borderRadius: 6, border: "1px solid rgba(37,211,102,0.3)", background: "rgba(37,211,102,0.08)", color: "#25D366", fontSize: 10, textDecoration: "none" }}>
+                                💬 שלח ב-WhatsApp
+                              </a>
+                            )}
+                            <button onClick={() => openActionModal({ actionType: "sent", dropboxUrl: item.url, contentType: item.contentTypeKey ?? "", versionLabel: item.versionLabel ?? "" })}
+                              style={{ padding: "5px 9px", borderRadius: 6, border: `1px solid ${accentColor}33`, background: `${accentColor}0A`, color: accentColor, cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>
+                              ✓ תעד שליחה
+                            </button>
+                            <button onClick={() => openActionModal({ actionType: "followup", dropboxUrl: item.url, status: "pending_feedback" })}
+                              style={{ padding: "5px 9px", borderRadius: 6, border: "1px solid #2A2A2A", background: "transparent", color: "#888", cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>
+                              📅 צור פולואפ
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* שורה 3 — היסטוריית פעילות, רוחב מלא */}
+            {projectActions.length > 0 && (
+              <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "16px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                  היסטוריית פעילות 🕐
+                  {projectActions.length > 4 && (
+                    <button onClick={() => setActiveTab("פעולות")}
+                      style={{ fontSize: 10, color: "#555", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+                      הכל ←
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {projectActions.slice(0, 4).map((a, idx) => {
+                    const actionIcon: Record<string, string> = { sent: "✈️", received: "🎧", notes: "💬", approved: "✓", followup: "📅", other: "⚙️" };
+                    const typeLabel: Record<string, string> = { sent: "שליחה", received: "קבלה", notes: "הערות", approved: "אישור", followup: "מעקב", other: "אחר" };
+                    const actionColor = ACTION_STATUS_COLOR[a.status] ?? "#555";
+                    const icon = actionIcon[a.action_type] ?? "•";
+                    const type = typeLabel[a.action_type] ?? "";
+                    const subText = [
+                      a.recipient_name ? `נשלח אל: ${a.recipient_name}` : (a.recipient_role ? RECIPIENT_ROLE_LABELS[a.recipient_role] ?? "" : ""),
+                      a.content_type ? (CONTENT_TYPE_LABELS[a.content_type] ?? "") : "",
+                      a.version_label ?? "",
+                    ].filter(Boolean).join(" · ");
+                    return (
+                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 0", borderBottom: idx < Math.min(projectActions.length, 4) - 1 ? "1px solid #1A1A1A" : "none" }}>
+                        {/* תאריך + שעה */}
+                        <div style={{ flexShrink: 0, textAlign: "left", minWidth: 72 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: "#888" }}>{fmtDate(a.action_date)}</div>
+                          {a.created_at && <div style={{ fontSize: 10, color: "#555" }}>{new Date(a.created_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}</div>}
+                        </div>
+                        {/* עיגול אייקון */}
+                        <div style={{ flexShrink: 0, width: 36, height: 36, borderRadius: "50%", background: `${actionColor}1A`, border: `1.5px solid ${actionColor}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>
+                          {icon}
+                        </div>
+                        {/* כותרת + תת-כותרת */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#D0D0D0", marginBottom: 2 }}>{actionSummary(a)}</div>
+                          {subText && <div style={{ fontSize: 10, color: "#555" }}>{subText}</div>}
+                        </div>
+                        {/* סוג פעולה */}
+                        {type && (
+                          <div style={{ flexShrink: 0, textAlign: "center" }}>
+                            <div style={{ fontSize: 9, color: "#444", background: "#1A1A1A", borderRadius: 4, padding: "1px 6px", marginBottom: 2 }}>מערכת</div>
+                            <div style={{ fontSize: 9, color: "#555" }}>{type}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+          </div>
 
           {/* ── פרטים ועריכה ──────────────────────────────────────────────── */}
           <CollapsibleCard label="פרטים ועריכה" open={openSections.has("summary")} onToggle={() => toggleSection("summary")}>
@@ -1487,7 +2091,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               </div>
             </div>
           )}
+          </div>
 
+          <div style={{ display: activeTab === "כספים" ? "block" : "none" }}>
           {/* ── כספים ───────────────────────────────────────────────────── */}
           <CollapsibleCard
             label="כספים"
@@ -1821,6 +2427,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             )}
           </CollapsibleCard>
 
+          </div>
+
+          <div style={{ display: activeTab === "סשנים" ? "block" : "none" }}>
           {/* ── סשנים ────────────────────────────────────────────────────── */}
           <CollapsibleCard
             label="סשנים"
@@ -2034,6 +2643,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             )}
           </CollapsibleCard>
 
+          </div>
+
+          <div style={{ display: activeTab === "סקירה" ? "block" : "none" }}>
           {/* ── מרכז אלבום ──────────────────────────────────────────────── */}
           {(project.projectType === "EP" || project.projectType === "אלבום") && (
             <div style={{
@@ -2076,80 +2688,311 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             </div>
           )}
 
-          {/* ── פעולות ───────────────────────────────────────────────────── */}
-          <CollapsibleCard label="פעולות" open={openSections.has("actions")} onToggle={() => toggleSection("actions")}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          </div>
 
-              {/* Create delivery folder */}
-              {(!delivery || delivery.deliveryStatus === "not_created") && (
-                deliveryLoading ? (
-                  <div style={{ fontSize: 11, color: "#444" }}>טוען...</div>
-                ) : (
-                  <button onClick={handleCreateDelivery} disabled={deliveryCreating}
-                    style={{ width: "100%", padding: "9px 0", borderRadius: 10, border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.08)", color: "#C084FC", cursor: deliveryCreating ? "wait" : "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", opacity: deliveryCreating ? 0.6 : 1 }}>
-                    {deliveryCreating ? "יוצר תיקייה..." : "+ צור תיקיית מסירה ללקוח"}
-                  </button>
-                )
-              )}
+          <div style={{ display: activeTab === "פעולות" ? "flex" : "none", flexDirection: "column", gap: 14, paddingBottom: 16 }}>
 
-              {/* Delivery created — upload + mark delivered */}
-              {delivery && delivery.deliveryStatus !== "not_created" && !deliveryConfirmDelete && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setDeliveryDragOver(true); }}
-                    onDragLeave={() => setDeliveryDragOver(false)}
-                    onDrop={handleDeliveryDrop}
-                    onClick={() => { const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.onchange = () => { if (inp.files) handleDeliveryUploadFiles(inp.files); }; inp.click(); }}
-                    style={{ border: `1.5px dashed ${deliveryDragOver ? "#A855F7" : "#2A2A2A"}`, borderRadius: 10, padding: "12px 10px", textAlign: "center", background: deliveryDragOver ? "rgba(168,85,247,0.06)" : "transparent", transition: "all 0.15s", cursor: "pointer" }}
-                  >
-                    {deliveryUploading ? <span style={{ fontSize: 12, color: "#A855F7" }}>מעלה...</span> : <span style={{ fontSize: 11, color: "#555" }}>☁ העלה קבצי מסירה</span>}
-                  </div>
-                  {delivery.files.length > 0 && delivery.files.map((f) => (
-                    <div key={f.path} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: "1px solid #1E1E1E" }}>
-                      <span style={{ fontSize: 10, color: "#555" }}>♪</span>
-                      <span style={{ flex: 1, fontSize: 11, color: "#C0C0C0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+          {/* ── 1. פעולות מהירות ──────────────────────────────────────────── */}
+          <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+              פעולות מהירות <span style={{ fontSize: 13 }}>⚡</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 7 }}>
+              {QUICK_ACTIONS.map((qa) => (
+                <button key={qa.label} onClick={() => openActionModal(qa.preset)}
+                  style={{ padding: "12px 8px", borderRadius: 9, border: `1px solid ${qa.color}33`, background: `${qa.color}0F`, color: qa.color, cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 13 }}>{qa.icon}</span>
+                  <span>{qa.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── 2. מעקב עבודה ─────────────────────────────────────────────── */}
+          <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 10 }}>מעקב עבודה 📊</div>
+          {!latestAction ? (
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <div style={{ fontSize: 12, color: "#444", marginBottom: 10 }}>עדיין לא נרשמה שליחה בפרויקט הזה</div>
+              <button onClick={() => openActionModal({ actionType: "sent", status: "pending_feedback" })}
+                style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${accentColor}44`, background: `${accentColor}0D`, color: accentColor, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
+                + תעד שליחה ראשונה
+              </button>
+            </div>
+          ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
+                <div style={{ background: "#0D0D0D", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>סטטוס נוכחי</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: ACTION_STATUS_COLOR[latestAction.status] ?? "#D0D0D0" }}>
+                      {ACTION_STATUS_LABELS[latestAction.status] ?? latestAction.status}
                     </div>
-                  ))}
-                  {delivery.deliveryStatus === "ready" && (
-                    <button onClick={handleDeliveryMarkDelivered}
-                      style={{ width: "100%", padding: "8px 0", borderRadius: 9, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.07)", color: "#10B981", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit" }}>
-                      ✓ סמן כנמסר ללקוח
-                    </button>
-                  )}
-                  <button onClick={() => setDeliveryConfirmDelete(true)}
-                    style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#555", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
-                    🗑 מחק תיקיית מסירה
-                  </button>
-                </div>
-              )}
-
-              {/* Delete confirm */}
-              {deliveryConfirmDelete && (
-                <div>
-                  <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 8, lineHeight: 1.6 }}>
-                    למחוק תיקיית מסירה מדרופבוקס?<br /><span style={{ color: "#666", fontSize: 11 }}>כל הקבצים ב-05_Delivery יימחקו לצמיתות.</span>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={handleDeliveryDeleteFolder} disabled={deliveryDeleting}
-                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.1)", color: "#EF4444", cursor: deliveryDeleting ? "wait" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", opacity: deliveryDeleting ? 0.6 : 1 }}>
-                      {deliveryDeleting ? "מוחק..." : "מחק"}
-                    </button>
-                    <button onClick={() => setDeliveryConfirmDelete(false)}
-                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid #2A2A2A", background: "transparent", color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>ביטול</button>
-                  </div>
+                  <span style={{ fontSize: 16, opacity: 0.25 }}>🕐</span>
                 </div>
-              )}
+                <div style={{ background: "#0D0D0D", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>גרסה אחרונה</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#D0D0D0" }}>
+                      {[latestAction.content_type ? (CONTENT_TYPE_LABELS[latestAction.content_type] ?? latestAction.content_type) : "", latestAction.version_label ?? ""].filter(Boolean).join(" ") || "—"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 16, opacity: 0.25 }}>🎚️</span>
+                </div>
+                <div style={{ background: "#0D0D0D", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>נשלח אל</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#D0D0D0" }}>
+                      {latestAction.recipient_name || (latestAction.recipient_role ? (RECIPIENT_ROLE_LABELS[latestAction.recipient_role] ?? latestAction.recipient_role) : "") || "—"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 16, opacity: 0.25 }}>👤</span>
+                </div>
+                <div style={{ background: "#0D0D0D", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>נשלח בתאריך</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#D0D0D0" }}>{fmtDate(latestAction.action_date)}</div>
+                  </div>
+                  <span style={{ fontSize: 16, opacity: 0.25 }}>📅</span>
+                </div>
+                <div style={{ background: "#0D0D0D", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>פולואפ הבא</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: nearestFollowup ? "#F59E0B" : "#555" }}>
+                      {nearestFollowup ? fmtDate(nearestFollowup.followup_date!) : "—"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 16, opacity: 0.25 }}>↩</span>
+                </div>
+                <div style={{ background: "#0D0D0D", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>הפעולה הבאה</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#C0C0C0" }}>
+                      {NEXT_ACTION_LABEL[latestAction.status] ?? "—"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 16, opacity: 0.25 }}>⏱</span>
+                </div>
+              </div>
+          )}
+          </div>
 
-              {deliveryError && <div style={{ fontSize: 11, color: "#EF4444", background: "#2A1010", border: "1px solid #5A1A1A", borderRadius: 6, padding: "4px 10px" }}>{deliveryError}</div>}
-
-              <div style={{ height: 1, background: "#252525" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
-                <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
+          {/* ── 3. מעקבים פתוחים ──────────────────────────────────────────── */}
+          {openFollowups.length > 0 && (
+            <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                מעקבים פתוחים
+                <span style={{ fontSize: 11, background: "#252525", color: "#888", borderRadius: 10, padding: "1px 7px" }}>{openFollowups.length}</span>
+                <span style={{ fontSize: 11, background: "#252525", color: "#555", borderRadius: 10, padding: "1px 7px" }}>{projectActions.length}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {openFollowups.map((a) => {
+                  const chip = priorityChip(a.status);
+                  const recipientDisplay = a.recipient_name || (a.recipient_role ? (RECIPIENT_ROLE_LABELS[a.recipient_role] ?? a.recipient_role) : "");
+                  return (
+                    <div key={a.id} style={{ background: "#0D0D0D", borderRadius: 9, padding: "10px 12px", border: "1px solid #1E1E1E" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        {/* RIGHT: chip + title (RTL — appears on right side) */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                            <span style={{ fontSize: 10, color: chip.color, background: `${chip.color}22`, borderRadius: 4, padding: "2px 7px", fontWeight: 700, flexShrink: 0 }}>
+                              {chip.label}
+                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#D0D0D0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{followupTitle(a)}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: "#555" }}>
+                            נשלח בתאריך: {fmtDate(a.action_date)}{recipientDisplay ? ` • נשלח אל: ${recipientDisplay}` : ""}{a.followup_date ? ` • פולואפ: ${fmtDate(a.followup_date)}` : ""}
+                          </div>
+                        </div>
+                        {/* LEFT: action buttons */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                          {a.recipient_phone && (
+                            <a href={buildWhatsAppForAction(a)} target="_blank" rel="noopener noreferrer"
+                              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(37,211,102,0.3)", background: "rgba(37,211,102,0.08)", color: "#25D366", fontSize: 10, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
+                              💬
+                            </a>
+                          )}
+                          <button onClick={() => closePendingAction(a.id)} disabled={closingActionId === a.id}
+                            style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.08)", color: "#10B981", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap", opacity: closingActionId === a.id ? 0.6 : 1 }}>
+                            סגור ✓
+                          </button>
+                          {a.followup_date && (
+                            <button onClick={() => postponeFollowup(a.id, a.followup_date!)}
+                              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#EF4444", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                              דחה ✗
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </CollapsibleCard>
+          )}
 
+          {/* ── 4. קישורים וקבצים ─────────────────────────────────────────── */}
+          <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+              קישורים וקבצים
+              {filesAndLinks.length > 0 && <span style={{ fontSize: 11, background: "#252525", color: "#888", borderRadius: 10, padding: "1px 7px" }}>{filesAndLinks.length}</span>}
+            </div>
+
+            {(!delivery || delivery.deliveryStatus === "not_created") && !deliveryLoading && (
+              <button onClick={handleCreateDelivery} disabled={deliveryCreating}
+                style={{ width: "100%", padding: "9px 0", borderRadius: 9, border: "1px solid rgba(168,85,247,0.3)", background: "rgba(168,85,247,0.07)", color: "#C084FC", cursor: deliveryCreating ? "wait" : "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", opacity: deliveryCreating ? 0.6 : 1, marginBottom: filesAndLinks.length > 0 ? 10 : 0 }}>
+                {deliveryCreating ? "יוצר..." : "+ צור תיקיית מסירה"}
+              </button>
+            )}
+
+            {filesAndLinks.length === 0 && (delivery && delivery.deliveryStatus !== "not_created") && (
+              <div style={{ fontSize: 11, color: "#444", textAlign: "center", padding: "8px 0" }}>אין קישורים עדיין</div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filesAndLinks.map((item, idx) => (
+                <div key={idx} style={{ background: "#0D0D0D", borderRadius: 9, padding: "10px 12px", border: "1px solid #1E1E1E" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 7 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0, lineHeight: 1.2, color: "#0061FF" }}>📁</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#C0C0C0", marginBottom: 2 }}>{item.label}</div>
+                      <div style={{ fontSize: 10, color: "#3B82F6", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.url}</div>
+                    </div>
+                    {item.date && <div style={{ fontSize: 9, color: "#555", flexShrink: 0, paddingTop: 2 }}>{fmtDate(item.date)}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    <a href={item.url} target="_blank" rel="noopener noreferrer"
+                      style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid #2A2A2A", background: "transparent", color: "#888", fontSize: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                      ↗ פתח קישור
+                    </a>
+                    <button onClick={() => navigator.clipboard.writeText(item.url)}
+                      style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid #2A2A2A", background: "transparent", color: "#888", cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>
+                      📋 העתק קישור
+                    </button>
+                    {artistClient?.phone && (
+                      <a href={whatsAppLinkHref(artistClient.phone, item.label, item.url)} target="_blank" rel="noopener noreferrer"
+                        style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid rgba(37,211,102,0.3)", background: "rgba(37,211,102,0.08)", color: "#25D366", fontSize: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                        💬 WhatsApp
+                      </a>
+                    )}
+                    <button onClick={() => openActionModal({ actionType: "sent", dropboxUrl: item.url, contentType: item.contentTypeKey ?? "", versionLabel: item.versionLabel ?? "" })}
+                      style={{ padding: "4px 9px", borderRadius: 6, border: `1px solid ${accentColor}33`, background: `${accentColor}0A`, color: accentColor, cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>
+                      ✓ תעד שליחה
+                    </button>
+                    <button onClick={() => openActionModal({ actionType: "followup", dropboxUrl: item.url, status: "pending_feedback" })}
+                      style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid #2A2A2A", background: "transparent", color: "#888", cursor: "pointer", fontSize: 10, fontFamily: "inherit" }}>
+                      📅 צור פולואפ
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── 5. היסטוריית פעולות ───────────────────────────────────────── */}
+          <div style={{ background: "#141414", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+              היסטוריית פעולות 🕐
+              {projectActions.length > 0 && <span style={{ fontSize: 11, background: "#252525", color: "#888", borderRadius: 10, padding: "1px 7px" }}>{projectActions.length}</span>}
+            </div>
+
+            <button onClick={() => openActionModal()}
+              style={{ width: "100%", padding: "8px 0", borderRadius: 9, border: `1px solid ${accentColor}44`, background: `${accentColor}0D`, color: accentColor, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", marginBottom: 10 }}>
+              + תעד פעולה
+            </button>
+
+            {actionTaskWarn && (
+              <div style={{ fontSize: 11, color: "#F59E0B", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 7, padding: "6px 10px", marginBottom: 8 }}>
+                ⚠ {actionTaskWarn}
+              </div>
+            )}
+
+            {actionsLoading && <div style={{ fontSize: 11, color: "#444", textAlign: "center", padding: "10px 0" }}>טוען...</div>}
+            {!actionsLoading && projectActions.length === 0 && (
+              <div style={{ fontSize: 11, color: "#444", textAlign: "center", padding: "10px 0" }}>אין פעולות עדיין</div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {projectActions.map((a) => {
+                const expanded = expandedActions.has(a.id);
+                const toggleExpand = () => setExpandedActions((prev) => { const s = new Set(prev); s.has(a.id) ? s.delete(a.id) : s.add(a.id); return s; });
+                return (
+                  <div key={a.id}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 0", cursor: "pointer" }} onClick={toggleExpand}>
+                      {/* dot — colored status indicator */}
+                      <div style={{ flexShrink: 0, width: 9, height: 9, borderRadius: "50%", background: ACTION_STATUS_COLOR[a.status] ?? "#333", marginTop: 3, border: "2px solid #141414" }} />
+                      {/* center — title + sub */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "#C0C0C0", lineHeight: 1.4 }}>{actionSummary(a)}</div>
+                        {!expanded && (a.recipient_name || a.recipient_role) && (
+                          <div style={{ fontSize: 10, color: "#555" }}>
+                            {a.recipient_name || (a.recipient_role ? RECIPIENT_ROLE_LABELS[a.recipient_role] ?? a.recipient_role : "")}
+                          </div>
+                        )}
+                      </div>
+                      {/* right — date + time */}
+                      <div style={{ flexShrink: 0, textAlign: "left", minWidth: 60 }}>
+                        <div style={{ fontSize: 9, color: "#666" }}>{fmtDate(a.action_date)}</div>
+                        {a.created_at && (
+                          <div style={{ fontSize: 9, color: "#444" }}>
+                            {new Date(a.created_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        )}
+                      </div>
+                      {/* toggle chevron */}
+                      <span style={{ fontSize: 10, color: "#444", flexShrink: 0, paddingTop: 1 }}>{expanded ? "∧" : "∨"}</span>
+                    </div>
+
+                    {expanded && (
+                      <div style={{ marginBottom: 6, marginRight: 17, padding: "8px 10px", background: "#0D0D0D", borderRadius: 7, border: "1px solid #1E1E1E", display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontSize: 10, color: ACTION_STATUS_COLOR[a.status] ?? "#888", background: `${ACTION_STATUS_COLOR[a.status] ?? "#888"}18`, borderRadius: 4, padding: "1px 6px" }}>
+                            {ACTION_STATUS_LABELS[a.status] ?? a.status}
+                          </span>
+                          {a.content_type && (
+                            <span style={{ fontSize: 10, color: "#888", background: "#252525", borderRadius: 4, padding: "1px 6px" }}>
+                              {CONTENT_TYPE_LABELS[a.content_type] ?? a.content_type}{a.version_label ? ` · ${a.version_label}` : ""}
+                            </span>
+                          )}
+                          {a.linked_task_id && (
+                            <span style={{ fontSize: 10, color: "#A855F7", background: "rgba(168,85,247,0.08)", borderRadius: 4, padding: "1px 6px" }}>✓ משימה</span>
+                          )}
+                        </div>
+                        {a.recipient_name && (
+                          <div style={{ fontSize: 10, color: "#666" }}>
+                            → {a.recipient_name}
+                            {a.recipient_role ? ` (${RECIPIENT_ROLE_LABELS[a.recipient_role] ?? a.recipient_role})` : ""}
+                            {a.recipient_phone && <span style={{ color: "#444", marginRight: 6 }}> · {a.recipient_phone}</span>}
+                          </div>
+                        )}
+                        {a.followup_date && <div style={{ fontSize: 10, color: "#F59E0B" }}>מעקב: {fmtDate(a.followup_date)}</div>}
+                        {a.notes && <div style={{ fontSize: 10, color: "#888", whiteSpace: "pre-wrap" }}>{a.notes}</div>}
+                        {a.dropbox_url && (
+                          <a href={a.dropbox_url} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: 10, color: "#3B82F6" }}>↗ {a.dropbox_url}</a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── ActionMenu + HideButton ────────────────────────────────────── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingTop: 2 }}>
+            <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
+            <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
+          </div>
+
+          {/* ─────── BOTTOM OF TAB — replaces old CollapsibleCards ─────────
+              The old "פעולות" CollapsibleCard (delivery folder + ActionMenu)
+              was here. Delivery creation moved to "קישורים וקבצים" above.
+              ActionMenu/HideButton moved to bottom strip above.             */}
+
+          </div>
+
+          <div style={{ display: activeTab === "קבצים" ? "block" : "none" }}>
           {/* ── קבצים ────────────────────────────────────────────────────── */}
           <CollapsibleCard
             label="קבצים"
@@ -2427,6 +3270,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             {project.files.length === 0 && <div style={{ fontSize: 11, color: "#444" }}>אין קבצים</div>}
           </CollapsibleCard>
 
+          </div>
+
+          <div style={{ display: activeTab === "קליפ" ? "block" : "none" }}>
           {/* ── קליפ / צילום ────────────────────────────────────────────── */}
           <ClipSection
             transactions={transactions}
@@ -2469,11 +3315,15 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             onDeleteTx={handleDeleteTx}
           />
 
+          </div>
+
+          <div style={{ display: activeTab === "סקירה" ? "block" : "none" }}>
           {/* ── Sound Engineer section ───────────────────────────────────── */}
           <SoundEngineerSection project={project} />
 
           {/* ── Victor section ──────────────────────────────────────────── */}
           <VictorSection project={project} />
+          </div>
 
         </div>
 
@@ -2515,6 +3365,202 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       {/* ── Album Center Modal ──────────────────────────────────────────────── */}
       {albumCenterOpen && project && (
         <AlbumCenterModal project={project} onClose={() => setAlbumCenterOpen(false)} />
+      )}
+
+      {/* ── תעד פעולה — Modal ────────────────────────────────────────────── */}
+      {showActionForm && (
+        <div dir="rtl"
+          style={{ position: "fixed", inset: 0, zIndex: 999990, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowActionForm(false); setActionError(null); } }}>
+          <div style={{ background: "#141414", border: "1px solid #2A2A2A", borderRadius: 16, padding: "20px 22px", width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 24px 80px rgba(0,0,0,0.8)" }}>
+
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#D0D0D0" }}>תעד פעולה</span>
+              <button onClick={() => { setShowActionForm(false); setActionError(null); }}
+                style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0 }}>✕</button>
+            </div>
+
+            {/* ── Preset quick-action chips ─────────────────────────────── */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {([
+                { label: "📤 שלח לאמן",       preset: { actionType: "sent",     recipientRole: "artist",        recipientName: project?.artist ?? "", recipientClientId: artistClient?.id ?? "", recipientPhone: artistClient?.phone ?? "", status: "pending_feedback" } },
+                { label: "📤 שלח ללקוח",     preset: { actionType: "sent",     recipientRole: "client",        recipientName: project?.artist ?? "", recipientClientId: artistClient?.id ?? "", recipientPhone: artistClient?.phone ?? "", status: "pending_feedback" } },
+                { label: "📤 שלח לאיש סאונד", preset: { actionType: "sent",    recipientRole: "sound_engineer", recipientName: "", recipientPhone: "", status: "pending_version" } },
+                { label: "📝 קיבלתי הערות",  preset: { actionType: "notes",    recipientRole: "client",        recipientName: project?.artist ?? "", recipientClientId: artistClient?.id ?? "", recipientPhone: artistClient?.phone ?? "", status: "got_notes" } },
+                { label: "✅ אושר",           preset: { actionType: "approved", recipientRole: "client",        recipientName: project?.artist ?? "", status: "approved",           notes: `אושר על ידי ${project?.artist ?? ""}` } },
+                { label: "📞 מעקב",          preset: { actionType: "followup", recipientRole: "client",        recipientName: project?.artist ?? "", recipientClientId: artistClient?.id ?? "", recipientPhone: artistClient?.phone ?? "", status: "pending_feedback" } },
+              ] as { label: string; preset: Partial<ActionDraft> }[]).map(({ label, preset }) => (
+                <button key={label} onClick={() => {
+                  const base = emptyActionDraft();
+                  if (delivery?.deliveryLink) base.dropboxUrl = delivery.deliveryLink;
+                  setActionDraft({ ...base, ...preset });
+                }}
+                  style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${accentColor}33`, background: `${accentColor}0A`, color: "#C0C0C0", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ height: 1, background: "#252525" }} />
+
+            {/* action_type */}
+            <div>
+              <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סוג פעולה</div>
+              <select value={actionDraft.actionType} onChange={(e) => setActionDraft((d) => ({ ...d, actionType: e.target.value }))}
+                style={{ ...INPUT_S, width: "100%" }}>
+                {Object.entries(ACTION_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+
+            {/* client picker */}
+            <div>
+              <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>איש קשר מהמערכת</div>
+              <select
+                value={actionDraft.recipientClientId}
+                onChange={(e) => {
+                  const c = actionClients.find((cl) => cl.id === e.target.value);
+                  if (c) setActionDraft((d) => ({ ...d, recipientClientId: c.id, recipientName: c.name, recipientPhone: c.phone || d.recipientPhone }));
+                  else   setActionDraft((d) => ({ ...d, recipientClientId: "" }));
+                }}
+                style={{ ...INPUT_S, width: "100%" }}>
+                <option value="">— בחר מהמערכת (אופציונלי) —</option>
+                {actionClients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* recipient name + role */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תפקיד נמען</div>
+                <select value={actionDraft.recipientRole} onChange={(e) => setActionDraft((d) => ({ ...d, recipientRole: e.target.value }))}
+                  style={{ ...INPUT_S, width: "100%" }}>
+                  {Object.entries(RECIPIENT_ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>שם נמען</div>
+                <input value={actionDraft.recipientName} onChange={(e) => setActionDraft((d) => ({ ...d, recipientName: e.target.value }))}
+                  placeholder="שם..." style={{ ...INPUT_S, width: "100%" }} />
+              </div>
+            </div>
+
+            {/* phone + WhatsApp */}
+            <div>
+              <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>טלפון נמען</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input value={actionDraft.recipientPhone} onChange={(e) => setActionDraft((d) => ({ ...d, recipientPhone: e.target.value }))}
+                  placeholder="05X-XXXXXXX" style={{ ...INPUT_S, flex: 1 }} />
+                {actionDraft.recipientPhone.trim() && (
+                  <a href={buildWhatsAppUrl(actionDraft.recipientPhone)} target="_blank" rel="noopener noreferrer"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "0 12px", height: 28, borderRadius: 6, fontSize: 11, fontWeight: 600, textDecoration: "none", border: "1px solid rgba(37,211,102,0.35)", background: "rgba(37,211,102,0.08)", color: "#25D366", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    💬 WhatsApp
+                  </a>
+                )}
+              </div>
+              {!actionDraft.recipientPhone.trim() && actionDraft.recipientName && (
+                <div style={{ fontSize: 10, color: "#555", marginTop: 4 }}>אין טלפון במערכת — ניתן להזין ידנית</div>
+              )}
+              {actionDraft.recipientPhone.trim() && (
+                <div style={{ fontSize: 10, color: "#444", marginTop: 4 }}>פתיחת WhatsApp לא שומרת את הפעולה — לחץ "תעד" בנפרד</div>
+              )}
+            </div>
+
+            {/* content + version */}
+            {(actionDraft.actionType === "sent" || actionDraft.actionType === "received") && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סוג תוכן</div>
+                  <select value={actionDraft.contentType} onChange={(e) => setActionDraft((d) => ({ ...d, contentType: e.target.value }))}
+                    style={{ ...INPUT_S, width: "100%" }}>
+                    <option value="">—</option>
+                    {Object.entries(CONTENT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>גרסה</div>
+                  <input value={actionDraft.versionLabel} onChange={(e) => setActionDraft((d) => ({ ...d, versionLabel: e.target.value }))}
+                    placeholder="v1, final..." style={{ ...INPUT_S, width: "100%" }} />
+                </div>
+              </div>
+            )}
+
+            {/* dropbox url */}
+            {actionDraft.actionType === "sent" && (
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>
+                  לינק דרופבוקס
+                  {delivery?.deliveryLink && actionDraft.dropboxUrl === delivery.deliveryLink && (
+                    <span style={{ color: "#10B981", marginRight: 6 }}>· מולא מתיקיית מסירה</span>
+                  )}
+                </div>
+                <input value={actionDraft.dropboxUrl} onChange={(e) => setActionDraft((d) => ({ ...d, dropboxUrl: e.target.value }))}
+                  placeholder={delivery?.deliveryLink ? "נמצא לינק מסירה (ניתן לשנות)" : "https://..."}
+                  style={{ ...INPUT_S, width: "100%" }} />
+                {delivery?.deliveryLink && !actionDraft.dropboxUrl && (
+                  <button onClick={() => setActionDraft((d) => ({ ...d, dropboxUrl: delivery.deliveryLink! }))}
+                    style={{ marginTop: 4, fontSize: 10, color: "#10B981", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                    ← השתמש בלינק המסירה הקיים
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* dates + status */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תאריך פעולה</div>
+                <input type="date" value={actionDraft.actionDate} onChange={(e) => setActionDraft((d) => ({ ...d, actionDate: e.target.value }))}
+                  style={{ ...INPUT_S, width: "100%" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תאריך מעקב</div>
+                <input type="date" value={actionDraft.followupDate} onChange={(e) => setActionDraft((d) => ({ ...d, followupDate: e.target.value }))}
+                  style={{ ...INPUT_S, width: "100%" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>סטטוס</div>
+                <select value={actionDraft.status} onChange={(e) => setActionDraft((d) => ({ ...d, status: e.target.value }))}
+                  style={{ ...INPUT_S, width: "100%" }}>
+                  {Object.entries(ACTION_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* follow-up task checkbox — only shown when followup date is set */}
+            {actionDraft.followupDate && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
+                <input type="checkbox" checked={actionDraft.createFollowupTask}
+                  onChange={(e) => setActionDraft((d) => ({ ...d, createFollowupTask: e.target.checked }))}
+                  style={{ width: 14, height: 14, accentColor: accentColor }} />
+                <span style={{ fontSize: 12, color: "#A0A0A0" }}>צור משימת פולואפ בתאריך המעקב</span>
+              </label>
+            )}
+
+            {/* notes */}
+            <div>
+              <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות</div>
+              <textarea value={actionDraft.notes} onChange={(e) => setActionDraft((d) => ({ ...d, notes: e.target.value }))}
+                rows={2} placeholder="הערות..."
+                style={{ ...INPUT_S, width: "100%", height: "auto", resize: "none", padding: "6px 8px", boxSizing: "border-box" }} />
+            </div>
+
+            {actionError && <div style={{ fontSize: 11, color: "#EF4444" }}>{actionError}</div>}
+
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+              <button onClick={handleSaveAction} disabled={actionSaving}
+                style={{ flex: 1, padding: "9px 0", borderRadius: 9, border: `1px solid ${accentColor}55`, background: `${accentColor}18`, color: accentColor, cursor: actionSaving ? "wait" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", opacity: actionSaving ? 0.6 : 1 }}>
+                {actionSaving ? "שומר..." : "תעד פעולה"}
+              </button>
+              <button onClick={() => { setShowActionForm(false); setActionError(null); }}
+                style={{ flex: 1, padding: "9px 0", borderRadius: 9, border: "1px solid #2A2A2A", background: "transparent", color: "#666", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       </div>
