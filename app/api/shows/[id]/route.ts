@@ -90,12 +90,23 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
               // Event still alive — nothing to do
               return NextResponse.json({ show });
             }
-            // Resolve artist name (may fetch from clients if show.artist is empty)
-            const showForCal = await resolveArtistName(show);
-            // If artist was resolved and differs from what's in DB — persist it
+            // Prefer artist info sent from the UI draft (may be newer than DB)
+            let showForCal = { ...show };
+            if (!showForCal.artist && body.artist?.trim()) {
+              showForCal.artist = body.artist.trim();
+            }
+            if (!showForCal.artist_client_id && body.artist_client_id) {
+              showForCal.artist_client_id = body.artist_client_id;
+            }
+            // If still empty, try to resolve from clients table
+            showForCal = await resolveArtistName(showForCal);
+            // Persist any resolved artist back to DB
             const dbPatch: PatchShowInput = { calendar_event_id: undefined };
             if (showForCal.artist && !show.artist) {
               dbPatch.artist = showForCal.artist;
+            }
+            if (showForCal.artist_client_id && !show.artist_client_id) {
+              dbPatch.artist_client_id = showForCal.artist_client_id;
             }
             // Create fresh event
             const event = await createCalendarEvent(

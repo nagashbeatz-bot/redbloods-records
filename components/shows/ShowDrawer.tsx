@@ -228,7 +228,12 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
       const res = await fetch(`/api/shows/${show.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ addToCalendar: true }),
+        // Send current draft artist so server can use it even if DB is stale
+        body: JSON.stringify({
+          addToCalendar:    true,
+          artist:           draft.artist,
+          artist_client_id: draft.artist_client_id ?? null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה");
