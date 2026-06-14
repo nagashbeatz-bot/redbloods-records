@@ -406,17 +406,19 @@ export async function findFreeSlots(
   requiresBuffer: boolean,
   daysAhead  = 14,
   maxPerDay  = 50,  // effectively unlimited per day
-  maxDays    = 14
+  maxDays    = 14,
+  offsetDays = 0    // skip this many days from now before starting
 ): Promise<Array<{ start: string; end: string; label: string; dateStr: string }>> {
   const auth     = await getAuthenticatedClient();
   const calendar = google.calendar({ version: "v3", auth });
 
-  const now     = new Date();
-  const timeMax = new Date(now.getTime() + daysAhead * 86_400_000);
+  const now      = new Date();
+  const startAt  = offsetDays > 0 ? new Date(now.getTime() + offsetDays * 86_400_000) : now;
+  const timeMax  = new Date(startAt.getTime() + daysAhead * 86_400_000);
 
   const res = await calendar.freebusy.query({
     requestBody: {
-      timeMin: now.toISOString(),
+      timeMin: startAt.toISOString(),
       timeMax: timeMax.toISOString(),
       items: [{ id: CALENDAR_ID }],
     },
@@ -433,8 +435,8 @@ export async function findFreeSlots(
   let   daysUsed = 0;
 
   for (let d = 0; d < daysAhead && daysUsed < maxDays; d++) {
-    // Derive the Israel calendar date for offset d (adding ms handles DST safely)
-    const dayUTC   = new Date(now.getTime() + d * 86_400_000);
+    // Derive the Israel calendar date for offset d (startAt already includes offsetDays)
+    const dayUTC   = new Date(startAt.getTime() + d * 86_400_000);
     const dateStr  = ilDateStr(dayUTC); // "2026-05-18"
     const dow      = ilDayOfWeek(dateStr);
 
@@ -798,4 +800,35 @@ export async function deleteGoogleTask(taskId: string): Promise<void> {
   const auth  = await getAuthenticatedClient();
   const tasks = google.tasks({ version: "v1", auth });
   await tasks.tasks.delete({ tasklist: "@default", task: taskId });
+}
+
+/**
+ * Returns the set of Google Task IDs that have been marked "completed"
+ * in the user's default task list.
+ * Uses showCompleted + showHidden to include hidden completed tasks.
+ */
+export async function listCompletedGoogleTaskIds(): Promise<Set<string>> {
+  const auth  = await getAuthenticatedClient();
+  const tasks = google.tasks({ version: "v1", auth });
+
+  const ids = new Set<string>();
+  let pageToken: string | undefined;
+
+  do {
+    const res = await tasks.tasks.list({
+      tasklist:      "@default",
+      showCompleted: true,
+      showHidden:    true,
+      maxResults:    100,
+      pageToken,
+    });
+    for (const task of res.data.items ?? []) {
+      if (task.status === "completed" && task.id) {
+        ids.add(task.id);
+      }
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  return ids;
 }
