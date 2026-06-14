@@ -17,6 +17,10 @@ interface Props {
   existingFiles: { name: string }[];
   /** "sm" = 26px circle (table / player)  |  "md" = pill with label (detail page) */
   size?: "sm" | "md";
+  /** If set, links uploaded file to this album_tracks.id */
+  trackId?: string;
+  /** Version label stored alongside the file, e.g. "V1", "מיקס 1" */
+  versionLabel?: string;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -42,6 +46,8 @@ export default function UploadButton({
   artist,
   existingFiles,
   size = "sm",
+  trackId,
+  versionLabel,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -78,6 +84,8 @@ export default function UploadButton({
     body.append("file", file, newName);
     body.append("projectId", projectId);
     body.append("newName", newName);
+    if (trackId)      body.append("trackId",      trackId);
+    if (versionLabel) body.append("versionLabel", versionLabel);
 
     // Warn for very large files (>150MB) — may take a minute
     if (file.size > 150 * 1024 * 1024) {

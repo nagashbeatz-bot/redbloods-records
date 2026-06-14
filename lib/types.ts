@@ -51,6 +51,31 @@ export interface FileLink {
   assetId?: number;          // legacy field (unused)
   dropboxPath?: string;      // Dropbox path — required for Dropbox file deletion
   dropboxShareUrl?: string;  // permanent Dropbox public share link
+  trackId?: string;          // UUID of album_tracks.id — links file to a track
+  versionLabel?: string;     // e.g. "V1", "מיקס 1", "מאסטר"
+}
+
+export type AlbumTrackStatus = "טרום הקלטה" | "בהקלטה" | "במיקס" | "מוכן למאסטר" | "הושלם";
+export type MixMasterStatus  = "לא התחיל" | "בתהליך" | "הושלם";
+
+export const VERSION_LABELS = ["סקיצה", "V1", "V2", "מיקס 1", "מיקס 2", "מאסטר", "אחר"] as const;
+export type VersionLabel = typeof VERSION_LABELS[number];
+
+export const ALBUM_TRACK_STATUSES: AlbumTrackStatus[] = [
+  "טרום הקלטה", "בהקלטה", "במיקס", "מוכן למאסטר", "הושלם",
+];
+
+export interface AlbumTrack {
+  id:            string;
+  project_id:    string;
+  track_number:  number;
+  title:         string;
+  status:        AlbumTrackStatus;
+  mix_status:    MixMasterStatus;
+  master_status: MixMasterStatus;
+  notes:         string | null;
+  created_at:    string;
+  updated_at:    string;
 }
 
 export interface Project {

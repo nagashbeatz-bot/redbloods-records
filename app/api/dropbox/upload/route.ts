@@ -44,10 +44,12 @@ export async function POST(req: NextRequest) {
     const { getDropboxToken } = await import("@/lib/dropbox-token");
     const token = await getDropboxToken();
 
-    const formData  = await req.formData();
-    const file      = formData.get("file")      as File   | null;
-    const projectId = formData.get("projectId") as string | null;
-    const newName   = formData.get("newName")   as string | null;
+    const formData     = await req.formData();
+    const file         = formData.get("file")         as File   | null;
+    const projectId    = formData.get("projectId")    as string | null;
+    const newName      = formData.get("newName")      as string | null;
+    const trackId      = formData.get("trackId")      as string | null;
+    const versionLabel = formData.get("versionLabel") as string | null;
 
     if (!file || !projectId || !newName) {
       return NextResponse.json({ error: "חסרים פרמטרים" }, { status: 400 });
@@ -120,6 +122,8 @@ export async function POST(req: NextRequest) {
       url:             fileUrl,
       dropboxPath:     finalPath,
       dropboxShareUrl: shareUrl,
+      ...(trackId      ? { trackId }      : {}),
+      ...(versionLabel ? { versionLabel } : {}),
     });
 
     return NextResponse.json({ ok: true, shareUrl, shareLinkError, file: { name: newName, url: fileUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl } });

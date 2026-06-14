@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Project } from "@/lib/types";
+import type { Project, AlbumTrack } from "@/lib/types";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 
@@ -141,8 +141,9 @@ const cardTitle: React.CSSProperties = {
 
 export default function AlbumOverviewTab({ project, accentColor }: Props) {
   const player = usePlayerSafe();
-  const [txData, setTxData] = useState<TxData | null>(null);
+  const [txData,  setTxData]  = useState<TxData | null>(null);
   const [actions, setActions] = useState<ProjectAction[]>([]);
+  const [tracks,  setTracks]  = useState<AlbumTrack[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -150,10 +151,12 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
     Promise.all([
       fetch(`/api/transactions?projectId=${project.id}`).then((r) => r.json()),
       fetch(`/api/project-actions?projectId=${project.id}`).then((r) => r.json()),
+      fetch(`/api/album-tracks?projectId=${project.id}`).then((r) => r.json()),
     ])
-      .then(([tx, acts]: [TxData, { actions: ProjectAction[] }]) => {
+      .then(([tx, acts, trks]: [TxData, { actions: ProjectAction[] }, AlbumTrack[]]) => {
         setTxData(tx);
         setActions(acts.actions ?? []);
+        setTracks(Array.isArray(trks) ? trks : []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -174,7 +177,10 @@ export default function AlbumOverviewTab({ project, accentColor }: Props) {
   const balance = received - expenses;
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
-  const pct = statusToPercent(project.status);
+  // Progress from album_tracks: completed tracks / total tracks (0 if no tracks)
+  const pct = tracks.length === 0
+    ? 0
+    : Math.round((tracks.filter((t) => t.status === "הושלם").length / tracks.length) * 100);
   const circumference = 2 * Math.PI * 48;
 
   const masterCount = project.files.filter((f) => {

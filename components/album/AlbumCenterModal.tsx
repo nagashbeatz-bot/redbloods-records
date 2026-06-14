@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Project } from "@/lib/types";
+import type { Project, AlbumTrackStatus } from "@/lib/types";
+import { ALBUM_TRACK_STATUSES } from "@/lib/types";
 import AlbumOverviewTab from "./AlbumOverviewTab";
 import AlbumTracksTab from "./AlbumTracksTab";
 import AlbumFinanceTab from "./AlbumFinanceTab";
 import AlbumTasksTab from "./AlbumTasksTab";
-import UploadButton from "@/components/ui/UploadButton";
 import QuickTxModal from "@/components/finance/QuickTxModal";
 
 interface Props {
@@ -39,8 +39,10 @@ function getOpenUrl(files: Project["files"]): string | null {
 }
 
 export default function AlbumCenterModal({ project, onClose }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>("סקירה");
-  const [showAddTx, setShowAddTx] = useState(false);
+  const [activeTab,    setActiveTab]    = useState<Tab>("סקירה");
+  const [showAddTx,    setShowAddTx]    = useState(false);
+  const [showAddTrack, setShowAddTrack] = useState(false);
+  const [trackRefresh, setTrackRefresh] = useState(0);
   const accentColor = getAccentColor(project.projectType);
 
   const completedFiles = project.files.length;
@@ -50,11 +52,11 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !showAddTx) onClose();
+      if (e.key === "Escape" && !showAddTx && !showAddTrack) onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose, showAddTx]);
+  }, [onClose, showAddTx, showAddTrack]);
 
   const btnBase: React.CSSProperties = {
     height: 36,
@@ -244,16 +246,18 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
                 maxWidth: 340,
               }}
             >
-              {/* הוסף שיר — UploadButton */}
-              <div style={{ height: 36, display: "flex", alignItems: "center" }}>
-                <UploadButton
-                  projectId={project.id}
-                  projectName={project.name}
-                  artist={project.artist}
-                  existingFiles={project.files}
-                  size="md"
-                />
-              </div>
+              {/* הוסף שיר — פותח טופס */}
+              <button
+                style={{
+                  ...btnBase,
+                  background: "#1A1A1A",
+                  border: `1px solid ${accentColor}44`,
+                  color: accentColor,
+                }}
+                onClick={() => setShowAddTrack(true)}
+              >
+                🎵 הוסף שיר
+              </button>
 
               {/* הוסף תשלום */}
               <button
@@ -371,7 +375,7 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
             <AlbumOverviewTab project={project} accentColor={accentColor} />
           )}
           {activeTab === "שירים" && (
-            <AlbumTracksTab project={project} accentColor={accentColor} />
+            <AlbumTracksTab key={trackRefresh} project={project} accentColor={accentColor} />
           )}
           {activeTab === "כספים" && (
             <AlbumFinanceTab project={project} accentColor={accentColor} />
@@ -500,8 +504,142 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
           onClose={() => setShowAddTx(false)}
         />
       )}
+
+      {/* AddTrackModal — הוסף שיר */}
+      {showAddTrack && (
+        <AddTrackModal
+          projectId={project.id}
+          accentColor={accentColor}
+          onClose={() => setShowAddTrack(false)}
+          onCreated={() => {
+            setShowAddTrack(false);
+            setTrackRefresh((n) => n + 1);
+            setActiveTab("שירים");
+          }}
+        />
+      )}
     </div>
   );
 
   return createPortal(modal, document.body);
+}
+
+// ── AddTrackModal ──────────────────────────────────────────────────────────────
+
+interface AddTrackProps {
+  projectId:   string;
+  accentColor: string;
+  onClose:     () => void;
+  onCreated:   () => void;
+}
+
+function AddTrackModal({ projectId, accentColor, onClose, onCreated }: AddTrackProps) {
+  const [title,  setTitle]  = useState("");
+  const [status, setStatus] = useState<AlbumTrackStatus>("טרום הקלטה");
+  const [notes,  setNotes]  = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!title.trim()) { setError("נדרש שם שיר"); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      // Determine next track_number from server (will count existing tracks)
+      const listRes = await fetch(`/api/album-tracks?projectId=${projectId}`);
+      const existing = listRes.ok ? await listRes.json() : [];
+      const nextNum  = (Array.isArray(existing) ? existing.length : 0) + 1;
+
+      const res = await fetch("/api/album-tracks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, track_number: nextNum, title: title.trim(), status, notes: notes.trim() || null }),
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error ?? "שגיאה"); return; }
+      onCreated();
+    } catch { setError("שגיאת רשת"); }
+    finally { setSaving(false); }
+  };
+
+  const overlay: React.CSSProperties = {
+    position: "fixed", inset: 0, zIndex: 300000,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+  };
+
+  const card: React.CSSProperties = {
+    background: "#111", border: `1px solid ${accentColor}33`,
+    borderRadius: 16, padding: "24px 28px", width: 360,
+    direction: "rtl", display: "flex", flexDirection: "column", gap: 14,
+  };
+
+  const inp: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box",
+    background: "#0E0E0E", border: "1px solid #2A2A2A", borderRadius: 8,
+    color: "#E0E0E0", fontSize: 13, padding: "9px 12px", fontFamily: "inherit",
+  };
+
+  return createPortal(
+    <div style={overlay} onClick={onClose}>
+      <div style={card} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#E0E0E0" }}>הוסף שיר לאלבום</div>
+
+        <div>
+          <label style={{ fontSize: 11, color: "#555", display: "block", marginBottom: 4 }}>שם השיר *</label>
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") onClose(); }}
+            placeholder="שם השיר"
+            style={inp}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, color: "#555", display: "block", marginBottom: 4 }}>סטטוס</label>
+          <select value={status} onChange={(e) => setStatus(e.target.value as AlbumTrackStatus)} style={inp}>
+            {ALBUM_TRACK_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, color: "#555", display: "block", marginBottom: 4 }}>הערות</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            placeholder="הערות אופציונליות..."
+            style={{ ...inp, resize: "vertical" }}
+          />
+        </div>
+
+        {error && <div style={{ fontSize: 12, color: "#EF4444" }}>{error}</div>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 16px", borderRadius: 8, border: "1px solid #2A2A2A",
+              background: "transparent", color: "#666", fontSize: 13, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            ביטול
+          </button>
+          <button
+            onClick={submit}
+            disabled={saving}
+            style={{
+              padding: "8px 20px", borderRadius: 8, border: "none",
+              background: accentColor, color: "#fff",
+              fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            {saving ? "שומר..." : "הוסף שיר"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 }
