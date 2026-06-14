@@ -166,15 +166,17 @@ function NewShowModal({ clients, onCreated, onClose, onClientAdded }: {
     artist_client_id: "", artist: "",
     booker_client_id: "", booker_name: "",
   });
-  const [saving,      setSaving]      = useState(false);
-  const [error,       setError]       = useState<string | null>(null);
-  const [newClientFor,setNewClientFor]= useState<"booker" | null>(null);
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState<string | null>(null);
+  const [calWarn,       setCalWarn]       = useState<string | null>(null);
+  const [addToCalendar, setAddToCalendar] = useState(false);
+  const [newClientFor,  setNewClientFor]  = useState<"booker" | null>(null);
 
   function set(k: string, v: string) { setForm(prev => ({ ...prev, [k]: v })); }
 
   async function handleCreate() {
     if (!form.name.trim()) { setError("שם ההופעה חובה"); return; }
-    setSaving(true); setError(null);
+    setSaving(true); setError(null); setCalWarn(null);
     try {
       const res = await fetch("/api/shows", {
         method: "POST",
@@ -194,10 +196,14 @@ function NewShowModal({ clients, onCreated, onClose, onClientAdded }: {
           payment_status:   form.payment_status,
           show_price:       Number(form.show_price) || 0,
           dj_fee:           Number(form.dj_fee) || 500,
+          addToCalendar:    addToCalendar && !!form.date,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      if (data.calendarWarning) {
+        setCalWarn(data.calendarWarning);
+      }
       onCreated(data.show);
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
@@ -218,7 +224,8 @@ function NewShowModal({ clients, onCreated, onClose, onClientAdded }: {
           <button onClick={onClose} style={{ color: "#444", fontSize: 20, background: "none", border: "none", cursor: "pointer" }}>×</button>
         </div>
 
-        {error && <div style={{ color: "#EF4444", fontSize: 12, marginBottom: 14, background: "rgba(239,68,68,0.1)", padding: "8px 12px", borderRadius: 8 }}>{error}</div>}
+        {error   && <div style={{ color: "#EF4444", fontSize: 12, marginBottom: 14, background: "rgba(239,68,68,0.1)", padding: "8px 12px", borderRadius: 8 }}>{error}</div>}
+        {calWarn && <div style={{ color: "#F59E0B", fontSize: 12, marginBottom: 14, background: "rgba(245,158,11,0.1)", padding: "8px 12px", borderRadius: 8 }}>{calWarn}</div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div style={{ gridColumn: "1/-1" }}>
@@ -293,8 +300,30 @@ function NewShowModal({ clients, onCreated, onClose, onClientAdded }: {
           </div>
         </div>
 
+        {/* Google Calendar checkbox */}
+        <label style={{
+          display: "flex", alignItems: "center", gap: 10, marginTop: 18,
+          cursor: "pointer", padding: "10px 14px", borderRadius: 10,
+          border: `1px solid ${addToCalendar ? "rgba(99,102,241,0.4)" : "#1A1A1A"}`,
+          background: addToCalendar ? "rgba(99,102,241,0.08)" : "#0D0D0D",
+          transition: "all 0.15s",
+        }}>
+          <input
+            type="checkbox"
+            checked={addToCalendar}
+            onChange={e => setAddToCalendar(e.target.checked)}
+            style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#6366F1" }}
+          />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#C0C0C0" }}>📅 הוסף ליומן Google</div>
+            {!form.date && addToCalendar && (
+              <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 2 }}>יש להגדיר תאריך להוספה ליומן</div>
+            )}
+          </div>
+        </label>
+
         <button onClick={handleCreate} disabled={saving} style={{
-          width: "100%", marginTop: 22, padding: "11px", borderRadius: 10,
+          width: "100%", marginTop: 14, padding: "11px", borderRadius: 10,
           border: "none", background: "#6366F1", color: "#fff",
           fontWeight: 700, fontSize: 14, cursor: saving ? "wait" : "pointer",
         }}>

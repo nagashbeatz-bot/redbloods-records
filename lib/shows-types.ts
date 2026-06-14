@@ -25,6 +25,7 @@ export interface Show {
   dj_fee: number;
   advance_payment: number;
   notes: string;
+  calendar_event_id: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listShows, createShow } from "@/lib/shows-store";
+import { listShows, createShow, showCalendarSummary, showCalendarTimes, showCalendarDescription } from "@/lib/shows-store";
 
 export async function GET() {
   try {
@@ -17,6 +17,8 @@ export async function POST(req: NextRequest) {
     if (!body.name?.trim()) {
       return NextResponse.json({ error: "שם ההופעה חובה" }, { status: 400 });
     }
+
+    // Create show without calendar_event_id first
     const show = await createShow({
       name:             body.name.trim(),
       artist:           body.artist?.trim()            ?? "",
@@ -35,7 +37,39 @@ export async function POST(req: NextRequest) {
       advance_payment:  Number(body.advance_payment)   || 0,
       notes:            body.notes?.trim()             ?? "",
     });
-    return NextResponse.json({ show }, { status: 201 });
+
+    // Google Calendar — only if explicitly requested and date exists
+    let calendarWarning: string | undefined;
+    if (body.addToCalendar === true && show.date) {
+      try {
+        const times = showCalendarTimes(show);
+        if (times) {
+          const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
+          if (await isConnected()) {
+            const { patchShow } = await import("@/lib/shows-store");
+            const event = await createCalendarEvent(
+              showCalendarSummary(show),
+              times.startIso,
+              times.endIso,
+              { description: showCalendarDescription(show) }
+            );
+            // Save event ID back to show
+            const updated = await patchShow(show.id, { calendar_event_id: event.id });
+            return NextResponse.json({ show: updated }, { status: 201 });
+          } else {
+            calendarWarning = "ההופעה נשמרה, אבל Google Calendar לא מחובר";
+          }
+        }
+      } catch (calErr) {
+        calendarWarning = "ההופעה נשמרה, אבל לא נוצר אירוע ביומן Google";
+        console.error("[shows POST] calendar error:", calErr);
+      }
+    }
+
+    return NextResponse.json(
+      calendarWarning ? { show, calendarWarning } : { show },
+      { status: 201 }
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -718,10 +718,11 @@ export async function deleteCalendarEvent(
 // ─── Event update ─────────────────────────────────────────────────────────────
 
 export interface EventUpdatePayload {
-  summary?:   string;
-  startIso?:  string;
-  endIso?:    string;
-  location?:  string;
+  summary?:     string;
+  startIso?:    string;
+  endIso?:      string;
+  location?:    string;
+  description?: string;
 }
 
 export async function updateCalendarEvent(
@@ -736,8 +737,9 @@ export async function updateCalendarEvent(
   const current = await calendar.events.get({ calendarId, eventId });
 
   const requestBody: Record<string, unknown> = { ...current.data };
-  if (updates.summary  !== undefined) requestBody.summary  = updates.summary;
-  if (updates.location !== undefined) requestBody.location = updates.location;
+  if (updates.summary     !== undefined) requestBody.summary     = updates.summary;
+  if (updates.location    !== undefined) requestBody.location    = updates.location;
+  if (updates.description !== undefined) requestBody.description = updates.description;
   if (updates.startIso !== undefined) {
     requestBody.start = { dateTime: updates.startIso, timeZone: "Asia/Jerusalem" };
   }
