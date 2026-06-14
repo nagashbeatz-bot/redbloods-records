@@ -24,7 +24,7 @@ interface Props {
 const AUTO_CHECK_STATUSES = ["פתוח", "בוטל"];
 
 function isMixTask(title: string, projectName: string): boolean {
-  return title.startsWith(`מעקב מיקס ראשון — ${projectName}`);
+  return title.startsWith(`מעקב מיקס — ${projectName}`);
 }
 
 export default function MixRevertModal({

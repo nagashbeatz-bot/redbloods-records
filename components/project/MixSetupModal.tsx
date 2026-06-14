@@ -75,7 +75,7 @@ export default function MixSetupModal({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: `מעקב מיקס ראשון — ${projectName}`,
+            title: `מעקב מיקס — ${projectName}`,
             related_type: "project",
             related_id: projectId,
             due_date: mixDeadline,
@@ -95,7 +95,7 @@ export default function MixSetupModal({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: `מעקב מיקס ראשון — ${projectName}`,
+            title: `מעקב מיקס — ${projectName}`,
             due: mixDeadline,
             notes: `פרויקט: ${projectName}${notes.trim() ? `\n${notes.trim()}` : ""}`,
           }),
@@ -332,7 +332,7 @@ export default function MixSetupModal({
               }}
             />
             <span style={{ fontSize: 13, color: "#C0C0C0" }}>
-              צור משימת מעקב מיקס ראשון
+              צור משימת מעקב מיקס
             </span>
           </label>
           {createFollowUp && !mixDeadline && (
