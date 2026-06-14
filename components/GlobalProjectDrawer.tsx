@@ -3,6 +3,8 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import ProjectDrawer from "@/components/ui/ProjectDrawer";
+import AlbumCenterModal from "@/components/album/AlbumCenterModal";
+import type { Project } from "@/lib/types";
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -24,10 +26,13 @@ export function useGlobalProjectDrawer(): GlobalDrawerCtx {
   return useContext(Ctx) ?? NOOP;
 }
 
+const ALBUM_TYPES = new Set(["אלבום", "EP"]);
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export default function GlobalProjectDrawerProvider({ children }: { children: React.ReactNode }) {
   const [drawerProjectId, setDrawerProjectId] = useState<string | null>(null);
+  const [albumProject,    setAlbumProject]    = useState<Project | null>(null);
   const { projects } = useProjects();
 
   // Derive artists list for ArtistCellEdit autocomplete
@@ -37,15 +42,43 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
     )
   )).sort((a, b) => a.localeCompare(b, "he"));
 
-  const openProject = useCallback((id: string) => setDrawerProjectId(id), []);
-  const closeProject = useCallback(() => setDrawerProjectId(null), []);
+  const openProject = useCallback((id: string) => {
+    // Look up the project — may not be in context yet if just created
+    const found = projects.find((p) => p.id === id);
+    if (found && ALBUM_TYPES.has(found.projectType)) {
+      setAlbumProject(found);
+      setDrawerProjectId(null);
+    } else if (!found) {
+      // Project not in context yet (e.g. just created, hidden) — fetch then decide
+      fetch(`/api/projects/${id}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data: Project | null) => {
+          if (!data) return;
+          if (ALBUM_TYPES.has(data.projectType)) {
+            setAlbumProject(data);
+            setDrawerProjectId(null);
+          } else {
+            setDrawerProjectId(id);
+          }
+        })
+        .catch(() => setDrawerProjectId(id));
+    } else {
+      setDrawerProjectId(id);
+    }
+  }, [projects]);
+
+  const closeProject = useCallback(() => {
+    setDrawerProjectId(null);
+    setAlbumProject(null);
+  }, []);
 
   // Broadcast selected project to AppShell so ChatPanel can receive it
   useEffect(() => {
+    const id = drawerProjectId ?? albumProject?.id ?? null;
     window.dispatchEvent(
-      new CustomEvent("rb:project-selected", { detail: drawerProjectId })
+      new CustomEvent("rb:project-selected", { detail: id })
     );
-  }, [drawerProjectId]);
+  }, [drawerProjectId, albumProject]);
 
   return (
     <Ctx.Provider value={{ openProject, closeProject, drawerProjectId }}>
@@ -56,6 +89,9 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
           artists={artists}
           onClose={closeProject}
         />
+      )}
+      {albumProject && (
+        <AlbumCenterModal project={albumProject} onClose={closeProject} />
       )}
     </Ctx.Provider>
   );

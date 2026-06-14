@@ -1669,7 +1669,7 @@ export default function ProjectsTable() {
           onClose={() => setShowNewProject(false)}
           onCreate={async (fields) => {
             // 1. Create the project
-            await createProject({
+            const newId = await createProject({
               name: fields.name,
               artist: fields.artist,
               status: fields.status,
@@ -1693,11 +1693,22 @@ export default function ProjectsTable() {
                 if (d.clients) {
                   setClientNames((d.clients as { name: string }[]).map((c) => c.name));
                 }
+                // Open album center directly for album/EP projects
+                if (newId && (fields.projectType === "אלבום" || fields.projectType === "EP")) {
+                  setShowNewProject(false);
+                  openProject(newId);
+                  return { newClientAdded: trimmed };
+                }
                 return { newClientAdded: trimmed };
               } catch {
-                // If client creation fails, still return success for project
                 return { newClientAdded: trimmed };
               }
+            }
+
+            // Open album center directly for album/EP projects
+            if (newId && (fields.projectType === "אלבום" || fields.projectType === "EP")) {
+              setShowNewProject(false);
+              openProject(newId);
             }
             return {};
           }}
