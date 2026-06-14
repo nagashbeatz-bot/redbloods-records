@@ -472,39 +472,37 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             {/* ── Recommended tab ─────────────────────────────────── */}
             {tab === "recommended" && (
               <>
-                {/* Quick-range buttons — visible in idle and no_slots */}
-                {(phase === "idle" || phase === "no_slots") && (
-                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                    {(["today", "tomorrow", "week"] as QuickRange[]).map((r) => {
-                      const isActive = quickRange === r;
-                      return (
-                        <button
-                          key={r}
-                          onClick={() => {
-                            setQuickRange(r);
-                            findSlots(QUICK_RANGE_PARAMS[r]);
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: "8px 0",
-                            borderRadius: 9,
-                            border: `1px solid ${isActive ? "#A855F7" : "rgba(168,85,247,0.25)"}`,
-                            background: isActive ? "rgba(168,85,247,0.18)" : "rgba(168,85,247,0.05)",
-                            color: isActive ? "#C084FC" : "#9966CC",
-                            cursor: "pointer",
-                            fontSize: 12,
-                            fontWeight: isActive ? 700 : 500,
-                            fontFamily: "inherit",
-                            transition: "all 0.13s",
-                            boxShadow: isActive ? "0 0 0 1px rgba(168,85,247,0.3)" : "none",
-                          }}
-                        >
-                          {QUICK_RANGE_LABELS[r]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Quick-range buttons — always visible in recommended tab */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                  {(["today", "tomorrow", "week"] as QuickRange[]).map((r) => {
+                    const isActive = quickRange === r;
+                    return (
+                      <button
+                        key={r}
+                        onClick={() => {
+                          setQuickRange(r);
+                          findSlots(QUICK_RANGE_PARAMS[r]);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "8px 0",
+                          borderRadius: 9,
+                          border: `1px solid ${isActive ? "#A855F7" : "rgba(168,85,247,0.25)"}`,
+                          background: isActive ? "rgba(168,85,247,0.18)" : "rgba(168,85,247,0.05)",
+                          color: isActive ? "#C084FC" : "#9966CC",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: isActive ? 700 : 500,
+                          fontFamily: "inherit",
+                          transition: "all 0.13s",
+                          boxShadow: isActive ? "0 0 0 1px rgba(168,85,247,0.3)" : "none",
+                        }}
+                      >
+                        {QUICK_RANGE_LABELS[r]}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 {phase === "idle" && (
                   <Btn primary onClick={() => { setQuickRange(null); findSlots(); }}>
