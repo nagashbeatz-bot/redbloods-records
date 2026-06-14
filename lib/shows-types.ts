@@ -10,7 +10,10 @@ export type PaymentStatus = typeof PAYMENT_STATUSES[number];
 export interface Show {
   id: string;
   name: string;
-  artist: string;
+  artist: string;             // display name (denormalized from artist_client)
+  artist_client_id: string | null;
+  booker_client_id: string | null;
+  booker_name: string;        // display name (denormalized from booker_client)
   date: string | null;
   start_time: string | null;
   location: string;

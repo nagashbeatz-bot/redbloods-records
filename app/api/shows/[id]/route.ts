@@ -10,19 +10,22 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const body = await req.json();
     const patch: PatchShowInput = {};
 
-    if (body.name           !== undefined) patch.name           = body.name?.trim()           ?? "";
-    if (body.artist         !== undefined) patch.artist         = body.artist?.trim()         ?? "";
-    if (body.date           !== undefined) patch.date           = body.date                   || null;
-    if (body.start_time     !== undefined) patch.start_time     = body.start_time             || null;
-    if (body.location       !== undefined) patch.location       = body.location?.trim()       ?? "";
-    if (body.contact_person !== undefined) patch.contact_person = body.contact_person?.trim() ?? "";
-    if (body.phone          !== undefined) patch.phone          = body.phone?.trim()          ?? "";
-    if (body.status         !== undefined) patch.status         = body.status     as ShowStatus;
-    if (body.payment_status !== undefined) patch.payment_status = body.payment_status as PaymentStatus;
-    if (body.show_price     !== undefined) patch.show_price     = Number(body.show_price)     || 0;
-    if (body.dj_fee         !== undefined) patch.dj_fee         = Number(body.dj_fee);
-    if (body.advance_payment!== undefined) patch.advance_payment= Number(body.advance_payment)|| 0;
-    if (body.notes          !== undefined) patch.notes          = body.notes                  ?? "";
+    if (body.name             !== undefined) patch.name             = body.name?.trim()            ?? "";
+    if (body.artist           !== undefined) patch.artist           = body.artist?.trim()          ?? "";
+    if (body.artist_client_id !== undefined) patch.artist_client_id = body.artist_client_id        ?? null;
+    if (body.booker_client_id !== undefined) patch.booker_client_id = body.booker_client_id        ?? null;
+    if (body.booker_name      !== undefined) patch.booker_name      = body.booker_name?.trim()     ?? "";
+    if (body.date             !== undefined) patch.date             = body.date                    || null;
+    if (body.start_time       !== undefined) patch.start_time       = body.start_time              || null;
+    if (body.location         !== undefined) patch.location         = body.location?.trim()        ?? "";
+    if (body.contact_person   !== undefined) patch.contact_person   = body.contact_person?.trim()  ?? "";
+    if (body.phone            !== undefined) patch.phone            = body.phone?.trim()           ?? "";
+    if (body.status           !== undefined) patch.status           = body.status      as ShowStatus;
+    if (body.payment_status   !== undefined) patch.payment_status   = body.payment_status as PaymentStatus;
+    if (body.show_price       !== undefined) patch.show_price       = Number(body.show_price)      || 0;
+    if (body.dj_fee           !== undefined) patch.dj_fee           = Number(body.dj_fee);
+    if (body.advance_payment  !== undefined) patch.advance_payment  = Number(body.advance_payment) || 0;
+    if (body.notes            !== undefined) patch.notes            = body.notes                   ?? "";
 
     const show = await patchShow(id, patch);
     return NextResponse.json({ show });

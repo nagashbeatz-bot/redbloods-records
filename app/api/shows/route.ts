@@ -18,19 +18,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "שם ההופעה חובה" }, { status: 400 });
     }
     const show = await createShow({
-      name:           body.name.trim(),
-      artist:         body.artist?.trim()         ?? "",
-      date:           body.date                   ?? null,
-      start_time:     body.start_time             ?? null,
-      location:       body.location?.trim()       ?? "",
-      contact_person: body.contact_person?.trim() ?? "",
-      phone:          body.phone?.trim()          ?? "",
-      status:         body.status                 ?? "ליד חדש",
-      payment_status: body.payment_status         ?? "לא שולם",
-      show_price:     Number(body.show_price)     || 0,
-      dj_fee:         body.dj_fee !== undefined ? Number(body.dj_fee) : 500,
-      advance_payment:Number(body.advance_payment)|| 0,
-      notes:          body.notes?.trim()          ?? "",
+      name:             body.name.trim(),
+      artist:           body.artist?.trim()            ?? "",
+      artist_client_id: body.artist_client_id          ?? null,
+      booker_client_id: body.booker_client_id          ?? null,
+      booker_name:      body.booker_name?.trim()       ?? "",
+      date:             body.date                      ?? null,
+      start_time:       body.start_time                ?? null,
+      location:         body.location?.trim()          ?? "",
+      contact_person:   body.contact_person?.trim()    ?? "",
+      phone:            body.phone?.trim()             ?? "",
+      status:           body.status                    ?? "ליד חדש",
+      payment_status:   body.payment_status            ?? "לא שולם",
+      show_price:       Number(body.show_price)        || 0,
+      dj_fee:           body.dj_fee !== undefined ? Number(body.dj_fee) : 500,
+      advance_payment:  Number(body.advance_payment)   || 0,
+      notes:            body.notes?.trim()             ?? "",
     });
     return NextResponse.json({ show }, { status: 201 });
   } catch (err) {

@@ -25,19 +25,22 @@ export async function createShow(input: Partial<CreateShowInput> & { name: strin
   const { data, error } = await supabase
     .from("shows")
     .insert({
-      name:           input.name.trim(),
-      artist:         input.artist         ?? "",
-      date:           input.date           ?? null,
-      start_time:     input.start_time     ?? null,
-      location:       input.location       ?? "",
-      contact_person: input.contact_person ?? "",
-      phone:          input.phone          ?? "",
-      status:         input.status         ?? "ליד חדש",
-      payment_status: input.payment_status ?? "לא שולם",
-      show_price:     input.show_price     ?? 0,
-      dj_fee:         input.dj_fee         ?? 500,
-      advance_payment:input.advance_payment?? 0,
-      notes:          input.notes          ?? "",
+      name:             input.name.trim(),
+      artist:           input.artist            ?? "",
+      artist_client_id: input.artist_client_id  ?? null,
+      booker_client_id: input.booker_client_id  ?? null,
+      booker_name:      input.booker_name       ?? "",
+      date:             input.date              ?? null,
+      start_time:       input.start_time        ?? null,
+      location:         input.location          ?? "",
+      contact_person:   input.contact_person    ?? "",
+      phone:            input.phone             ?? "",
+      status:           input.status            ?? "ליד חדש",
+      payment_status:   input.payment_status    ?? "לא שולם",
+      show_price:       input.show_price        ?? 0,
+      dj_fee:           input.dj_fee            ?? 500,
+      advance_payment:  input.advance_payment   ?? 0,
+      notes:            input.notes             ?? "",
     })
     .select()
     .single();
