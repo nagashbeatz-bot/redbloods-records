@@ -360,6 +360,9 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const { projects, updateProjectField, refresh } = useProjects();
   const player = usePlayerSafe();
 
+  // Fallback for hidden projects not present in the visible-projects context
+  const [fetchedProject, setFetchedProject] = useState<import("@/lib/types").Project | null>(null);
+
   // ── Mobile detection ───────────────────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(false);
   const [albumCenterOpen, setAlbumCenterOpen] = useState(false);
@@ -1191,23 +1194,28 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
 
-  const project = projects.find((p) => p.id === projectId);
+  const projectFromCtx = projects.find((p) => p.id === projectId);
+  const project = projectFromCtx ?? fetchedProject ?? null;
 
   // Find the client whose name matches project.artist
   const artistClient = actionClients.find((c) => project && c.name === project.artist);
 
-  // If project not in context yet (e.g. just created via proposal convert),
-  // trigger a refresh and show a loading skeleton instead of crashing.
+  // When the project isn't in the visible context (e.g. hidden project or just created),
+  // fetch it directly from the API instead of refresh()-looping visible projects.
   useEffect(() => {
-    if (!project && projectId) {
-      refresh();
+    if (!projectFromCtx && projectId) {
+      setFetchedProject(null);
+      fetch(`/api/projects/${projectId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data && data.id) setFetchedProject(data); })
+        .catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, projectFromCtx]);
 
   if (typeof document === "undefined") return null;
   if (!project) {
-    // Show a slim loading overlay while the context refreshes
+    // Show a slim loading overlay while fetching
     return createPortal(
       <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}
         onClick={onClose}>

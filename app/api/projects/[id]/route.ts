@@ -118,6 +118,19 @@ function parseNames(raw: string): string[] {
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// GET /api/projects/[id] — fetch single project (including hidden)
+export async function GET(_req: NextRequest, ctx: Ctx) {
+  try {
+    const { id } = await ctx.params;
+    const project = await getProject(id);
+    if (!project) return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
+    return NextResponse.json(project);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 // PATCH /api/projects/[id]
 // Body: { field: UpdatableField, value: string }  — single-field update (from table inline edit)
 // Body: { name, artist, status, deadline, notes, projectType, parentProject } — full update
