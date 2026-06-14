@@ -769,6 +769,23 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const [actionClientsLoaded, setActionClientsLoaded] = useState(false);
   const [expandedActions,  setExpandedActions]  = useState<Set<string>>(new Set());
   const [closingActionId,  setClosingActionId]  = useState<string | null>(null);
+  const [cancelConfirm,    setCancelConfirm]    = useState<{ id: string; summary: string } | null>(null);
+  const [recipientPicker,  setRecipientPicker]  = useState<{
+    preset: Partial<ActionDraft>;
+    title: string;
+    options: { label: string; icon: string; name: string; phone: string }[];
+    mode: "picking" | "custom";
+    customName: string;
+    customPhone: string;
+  } | null>(null);
+  const [victorFlow, setVictorFlow] = useState<{
+    step: "content" | "details" | "saving" | "done";
+    contentType: string;
+    dropboxUrl: string;
+    followupDate: string;
+    existingWorkId: string | null;
+    saveError: string | null;
+  } | null>(null);
 
   // Load clients once when the modal first opens
   useEffect(() => {
@@ -797,6 +814,115 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
     setActionDraft({ ...base, ...preset });
     setActionError(null);
     setShowActionForm(true);
+  };
+
+  const handleQuickAction = (label: string, preset: Partial<ActionDraft>) => {
+    if (label === "שלח לאיש סאונד") {
+      setRecipientPicker({
+        preset,
+        title: "בחר איש סאונד",
+        options: [
+          { label: "Bill",   icon: "🎧", name: "Bill",   phone: "" },
+          { label: "Steven", icon: "🎛️", name: "Steven", phone: "" },
+        ],
+        mode: "picking", customName: "", customPhone: "",
+      });
+    } else if (label === "שלח למפיק חיצוני") {
+      setRecipientPicker({
+        preset,
+        title: "בחר מפיק חיצוני",
+        options: [
+          { label: "Victor", icon: "🎵", name: "Victor", phone: "" },
+        ],
+        mode: "picking", customName: "", customPhone: "",
+      });
+    } else {
+      openActionModal(preset);
+    }
+  };
+
+  const handleVictorSelect = async () => {
+    if (!project) return;
+    setRecipientPicker(null);
+    const res = await fetch(`/api/vendor/victor/work?projectId=${project.id}`);
+    const data = await res.json() as { ok: boolean; work: { id: string } | null };
+    setVictorFlow({
+      step: "content",
+      contentType: "",
+      dropboxUrl: "",
+      followupDate: "",
+      existingWorkId: data.ok && data.work ? data.work.id : null,
+      saveError: null,
+    });
+  };
+
+  const handleVictorSave = async () => {
+    if (!victorFlow || !project) return;
+    setVictorFlow((prev) => prev ? { ...prev, step: "saving", saveError: null } : null);
+
+    try {
+      // 1. Create or update vendor_project_work
+      const existingId = victorFlow.existingWorkId;
+      if (existingId) {
+        const patchRes = await fetch(`/api/vendor/victor/work/${existingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workState: "נשלח לויקטור",
+            status: "פעיל",
+            sentDate: new Date().toISOString().split("T")[0],
+            dropboxShareLink: victorFlow.dropboxUrl || null,
+            internalDeadline: victorFlow.followupDate || null,
+          }),
+        });
+        if (!patchRes.ok) throw new Error("שגיאה בעדכון עבודת Victor");
+      } else {
+        const postRes = await fetch("/api/vendor/victor/work", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            status: "פעיל",
+            workState: "נשלח לויקטור",
+            sentDate: new Date().toISOString().split("T")[0],
+            dropboxShareLink: victorFlow.dropboxUrl || null,
+          }),
+        });
+        const postData = await postRes.json() as { ok: boolean; work?: { id: string } };
+        if (!postData.ok) throw new Error("שגיאה ביצירת עבודת Victor");
+      }
+
+      // 2. Record in project_actions
+      const actionRes = await fetch("/api/project-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          actionType: "sent",
+          contentType: victorFlow.contentType || "other",
+          recipientRole: "external_producer",
+          recipientName: "Victor",
+          dropboxUrl: victorFlow.dropboxUrl || null,
+          followupDate: victorFlow.followupDate || null,
+          status: "pending_version",
+          notes: `נשלח לויקטור${victorFlow.contentType ? ` — ${victorFlow.contentType}` : ""}`,
+        }),
+      });
+      const actionData = await actionRes.json() as { ok: boolean; action?: ProjectAction };
+
+      if (actionData.ok && actionData.action) {
+        setProjectActions((prev) => [actionData.action!, ...prev]);
+      }
+
+      setVictorFlow((prev) => prev ? {
+        ...prev,
+        step: "done",
+        saveError: actionData.ok ? null : "עבודת Victor עודכנה, אבל יומן הפעולות לא נשמר",
+      } : null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "שגיאה לא צפויה";
+      setVictorFlow((prev) => prev ? { ...prev, step: "details", saveError: msg } : null);
+    }
   };
 
   const ACTION_TYPE_LABELS: Record<string, string> = {
@@ -993,6 +1119,16 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       setClosingActionId(null);
     }
   };
+  const cancelAction = async (id: string) => {
+    await fetch(`/api/project-actions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+    setProjectActions((prev) => prev.map((a) => (a.id === id ? { ...a, status: "cancelled" } : a)));
+    setCancelConfirm(null);
+  };
+
   const postponeFollowup = async (id: string, currentDate: string) => {
     const d = new Date(currentDate);
     d.setDate(d.getDate() + 7);
@@ -1836,7 +1972,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   {QUICK_ACTIONS.map((qa) => (
-                    <button key={qa.label} onClick={() => openActionModal(qa.preset)}
+                    <button key={qa.label} onClick={() => handleQuickAction(qa.label, qa.preset)}
                       style={{ padding: "14px 8px", borderRadius: 10, border: `1px solid ${qa.color}33`, background: `${qa.color}0F`, color: qa.color, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7 }}>
                       <span style={{ fontSize: 22 }}>{qa.icon}</span>
                       <span style={{ textAlign: "center", lineHeight: 1.3 }}>{qa.label}</span>
@@ -1890,6 +2026,13 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                                       דחה ✗
                                     </button>
                                   )}
+                                  <button onClick={() => setCancelConfirm({ id: a.id, summary: followupTitle(a) })}
+                                    style={{ padding: "4px 7px", borderRadius: 6, border: "1px solid #2A2A2A", background: "transparent", color: "#444", cursor: "pointer", fontSize: 11, fontFamily: "inherit", lineHeight: 1 }}
+                                    title="העבר לסל"
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = "#EF4444"; e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.color = "#444"; e.currentTarget.style.borderColor = "#2A2A2A"; }}>
+                                    🗑️
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -1986,16 +2129,30 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                         </div>
                         {/* כותרת + תת-כותרת */}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "#D0D0D0", marginBottom: 2 }}>{actionSummary(a)}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: a.status === "cancelled" ? "#555" : "#D0D0D0", textDecoration: a.status === "cancelled" ? "line-through" : "none" }}>{actionSummary(a)}</span>
+                            {a.status === "cancelled" && <span style={{ fontSize: 9, color: "#EF4444", background: "rgba(239,68,68,0.1)", borderRadius: 3, padding: "1px 5px", fontWeight: 700, flexShrink: 0 }}>בוטל</span>}
+                          </div>
                           {subText && <div style={{ fontSize: 10, color: "#555" }}>{subText}</div>}
                         </div>
-                        {/* סוג פעולה */}
-                        {type && (
-                          <div style={{ flexShrink: 0, textAlign: "center" }}>
-                            <div style={{ fontSize: 9, color: "#444", background: "#1A1A1A", borderRadius: 4, padding: "1px 6px", marginBottom: 2 }}>מערכת</div>
-                            <div style={{ fontSize: 9, color: "#555" }}>{type}</div>
-                          </div>
-                        )}
+                        {/* סוג פעולה + סל */}
+                        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+                          {type && (
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 9, color: "#444", background: "#1A1A1A", borderRadius: 4, padding: "1px 6px", marginBottom: 2 }}>מערכת</div>
+                              <div style={{ fontSize: 9, color: "#555" }}>{type}</div>
+                            </div>
+                          )}
+                          {a.status !== "cancelled" && (
+                            <button onClick={(e) => { e.stopPropagation(); setCancelConfirm({ id: a.id, summary: actionSummary(a) }); }}
+                              style={{ padding: "3px 5px", borderRadius: 5, border: "1px solid #2A2A2A", background: "transparent", color: "#444", cursor: "pointer", fontSize: 11, lineHeight: 1 }}
+                              title="העבר לסל"
+                              onMouseEnter={(ev) => { ev.currentTarget.style.color = "#EF4444"; ev.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
+                              onMouseLeave={(ev) => { ev.currentTarget.style.color = "#444"; ev.currentTarget.style.borderColor = "#2A2A2A"; }}>
+                              🗑️
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -2699,7 +2856,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 7 }}>
               {QUICK_ACTIONS.map((qa) => (
-                <button key={qa.label} onClick={() => openActionModal(qa.preset)}
+                <button key={qa.label} onClick={() => handleQuickAction(qa.label, qa.preset)}
                   style={{ padding: "12px 8px", borderRadius: 9, border: `1px solid ${qa.color}33`, background: `${qa.color}0F`, color: qa.color, cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap" }}>
                   <span style={{ fontSize: 13 }}>{qa.icon}</span>
                   <span>{qa.label}</span>
@@ -2923,24 +3080,37 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
                       <div style={{ flexShrink: 0, width: 9, height: 9, borderRadius: "50%", background: ACTION_STATUS_COLOR[a.status] ?? "#333", marginTop: 3, border: "2px solid #141414" }} />
                       {/* center — title + sub */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "#C0C0C0", lineHeight: 1.4 }}>{actionSummary(a)}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: a.status === "cancelled" ? "#555" : "#C0C0C0", lineHeight: 1.4, textDecoration: a.status === "cancelled" ? "line-through" : "none" }}>{actionSummary(a)}</span>
+                          {a.status === "cancelled" && <span style={{ fontSize: 9, color: "#EF4444", background: "rgba(239,68,68,0.1)", borderRadius: 3, padding: "1px 5px", fontWeight: 700, flexShrink: 0 }}>בוטל</span>}
+                        </div>
                         {!expanded && (a.recipient_name || a.recipient_role) && (
                           <div style={{ fontSize: 10, color: "#555" }}>
                             {a.recipient_name || (a.recipient_role ? RECIPIENT_ROLE_LABELS[a.recipient_role] ?? a.recipient_role : "")}
                           </div>
                         )}
                       </div>
-                      {/* right — date + time */}
-                      <div style={{ flexShrink: 0, textAlign: "left", minWidth: 60 }}>
-                        <div style={{ fontSize: 9, color: "#666" }}>{fmtDate(a.action_date)}</div>
-                        {a.created_at && (
-                          <div style={{ fontSize: 9, color: "#444" }}>
-                            {new Date(a.created_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}
-                          </div>
+                      {/* right — trash + date + chevron */}
+                      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+                        {a.status !== "cancelled" && (
+                          <button onClick={(e) => { e.stopPropagation(); setCancelConfirm({ id: a.id, summary: actionSummary(a) }); }}
+                            style={{ padding: "2px 5px", borderRadius: 5, border: "1px solid #2A2A2A", background: "transparent", color: "#3A3A3A", cursor: "pointer", fontSize: 11, lineHeight: 1 }}
+                            title="העבר לסל"
+                            onMouseEnter={(ev) => { ev.currentTarget.style.color = "#EF4444"; ev.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; }}
+                            onMouseLeave={(ev) => { ev.currentTarget.style.color = "#3A3A3A"; ev.currentTarget.style.borderColor = "#2A2A2A"; }}>
+                            🗑️
+                          </button>
                         )}
+                        <div style={{ textAlign: "left", minWidth: 60 }}>
+                          <div style={{ fontSize: 9, color: "#666" }}>{fmtDate(a.action_date)}</div>
+                          {a.created_at && (
+                            <div style={{ fontSize: 9, color: "#444" }}>
+                              {new Date(a.created_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 10, color: "#444", paddingTop: 1 }}>{expanded ? "∧" : "∨"}</span>
                       </div>
-                      {/* toggle chevron */}
-                      <span style={{ fontSize: 10, color: "#444", flexShrink: 0, paddingTop: 1 }}>{expanded ? "∧" : "∨"}</span>
                     </div>
 
                     {expanded && (
@@ -3564,6 +3734,248 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
       )}
 
       </div>
+
+      {/* ── Recipient Picker Overlay ─────────────────────────────────────────── */}
+      {recipientPicker && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setRecipientPicker(null)}>
+          <div style={{ background: "#141414", border: "1px solid #2A2A2A", borderRadius: 20, padding: "28px 24px", width: 380, maxWidth: "90vw" }}
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* כותרת */}
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#E0E0E0", textAlign: "center", marginBottom: 6 }}>{recipientPicker.title}</div>
+            <div style={{ fontSize: 11, color: "#555", textAlign: "center", marginBottom: 20 }}>בחר נמען להמשיך</div>
+
+            {recipientPicker.mode === "picking" && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  {recipientPicker.options.map((opt) => (
+                    <button key={opt.label}
+                      onClick={() => {
+                        if (opt.name === "Victor") {
+                          void handleVictorSelect();
+                        } else {
+                          openActionModal({ ...recipientPicker.preset, recipientName: opt.name, recipientPhone: opt.phone });
+                          setRecipientPicker(null);
+                        }
+                      }}
+                      style={{ padding: "18px 10px", borderRadius: 14, border: "1px solid #303030", background: "#1A1A1A", color: "#D0D0D0", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, transition: "border-color 0.15s" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#505050")}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#303030")}>
+                      <span style={{ fontSize: 28 }}>{opt.icon}</span>
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                  {/* שם ידני */}
+                  <button
+                    onClick={() => setRecipientPicker((p) => p ? { ...p, mode: "custom" } : null)}
+                    style={{ padding: "18px 10px", borderRadius: 14, border: "1px dashed #303030", background: "transparent", color: "#666", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 28 }}>✏️</span>
+                    <span>שם ידני</span>
+                  </button>
+                </div>
+                <button onClick={() => setRecipientPicker(null)}
+                  style={{ width: "100%", padding: "9px 0", borderRadius: 9, border: "1px solid #252525", background: "transparent", color: "#555", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+                  ביטול
+                </button>
+              </>
+            )}
+
+            {recipientPicker.mode === "custom" && (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>שם</div>
+                    <input
+                      autoFocus
+                      value={recipientPicker.customName}
+                      onChange={(e) => setRecipientPicker((p) => p ? { ...p, customName: e.target.value } : null)}
+                      placeholder="שם מלא..."
+                      style={{ width: "100%", padding: "9px 12px", background: "#0D0D0D", border: "1px solid #303030", borderRadius: 9, color: "#D0D0D0", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>טלפון (אופציונלי)</div>
+                    <input
+                      value={recipientPicker.customPhone}
+                      onChange={(e) => setRecipientPicker((p) => p ? { ...p, customPhone: e.target.value } : null)}
+                      placeholder="05X-XXXXXXX"
+                      style={{ width: "100%", padding: "9px 12px", background: "#0D0D0D", border: "1px solid #303030", borderRadius: 9, color: "#D0D0D0", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      if (!recipientPicker.customName.trim()) return;
+                      openActionModal({ ...recipientPicker.preset, recipientName: recipientPicker.customName.trim(), recipientPhone: recipientPicker.customPhone.trim() });
+                      setRecipientPicker(null);
+                    }}
+                    disabled={!recipientPicker.customName.trim()}
+                    style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid #3B82F644", background: "#3B82F618", color: "#3B82F6", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", opacity: recipientPicker.customName.trim() ? 1 : 0.4 }}>
+                    המשך →
+                  </button>
+                  <button onClick={() => setRecipientPicker((p) => p ? { ...p, mode: "picking" } : null)}
+                    style={{ padding: "10px 14px", borderRadius: 9, border: "1px solid #252525", background: "transparent", color: "#555", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+                    ← חזור
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Cancel Confirm Modal ─────────────────────────────────────────────── */}
+      {cancelConfirm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100004, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setCancelConfirm(null)}>
+          <div style={{ background: "#141414", border: "1px solid #2A2A2A", borderRadius: 16, padding: "24px 22px", width: 340, maxWidth: "90vw" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 22, textAlign: "center", marginBottom: 10 }}>🗑️</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0", textAlign: "center", marginBottom: 6 }}>העבר לסל?</div>
+            <div style={{ fontSize: 11, color: "#666", textAlign: "center", marginBottom: 4, lineHeight: 1.5 }}>
+              הפעולה תסומן כ&quot;בוטלה&quot; ותיעלם ממעקבים פתוחים.
+            </div>
+            <div style={{ fontSize: 11, color: "#888", textAlign: "center", marginBottom: 20, padding: "6px 10px", background: "#1A1A1A", borderRadius: 7, fontStyle: "italic" }}>
+              {cancelConfirm.summary}
+            </div>
+            <div style={{ fontSize: 10, color: "#444", textAlign: "center", marginBottom: 18 }}>
+              לא נמחקת מהמסד — ניתן לשחזר בעתיד
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setCancelConfirm(null)}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid #303030", background: "transparent", color: "#888", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>
+                ביטול
+              </button>
+              <button onClick={() => void cancelAction(cancelConfirm.id)}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.1)", color: "#EF4444", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+                העבר לסל 🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Victor Flow Overlay ──────────────────────────────────────────────── */}
+      {victorFlow && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100003, background: "rgba(0,0,0,0.82)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => victorFlow.step !== "saving" && setVictorFlow(null)}>
+          <div style={{ background: "#141414", border: "1px solid #2A2A2A", borderRadius: 20, padding: "28px 24px", width: 400, maxWidth: "90vw" }}
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* כותרת */}
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#E0E0E0", textAlign: "center", marginBottom: 4 }}>🎵 שליחה ל-Victor</div>
+            <div style={{ fontSize: 11, color: "#555", textAlign: "center", marginBottom: 24 }}>{project.name} · {project.artist}</div>
+
+            {/* שלב 1: בחירת תוכן */}
+            {victorFlow.step === "content" && (
+              <>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 10 }}>מה שולחים?</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 20 }}>
+                  {([
+                    { label: "Stems",   ct: "stems" },
+                    { label: "הפקה",   ct: "production" },
+                    { label: "מיקס",   ct: "mix" },
+                    { label: "מאסטר",  ct: "master" },
+                    { label: "קבצים",  ct: "files" },
+                    { label: "אחר",    ct: "other" },
+                  ] as { label: string; ct: string }[]).map(({ label, ct }) => (
+                    <button key={ct}
+                      onClick={() => setVictorFlow((prev) => prev ? { ...prev, contentType: ct } : null)}
+                      style={{ padding: "12px 8px", borderRadius: 10, border: `1px solid ${victorFlow.contentType === ct ? "#A855F7" : "#2A2A2A"}`, background: victorFlow.contentType === ct ? "#A855F718" : "#1A1A1A", color: victorFlow.contentType === ct ? "#A855F7" : "#888", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", textAlign: "center" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => victorFlow.contentType && setVictorFlow((prev) => prev ? { ...prev, step: "details" } : null)}
+                  disabled={!victorFlow.contentType}
+                  style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "1px solid #A855F744", background: "#A855F718", color: "#A855F7", cursor: victorFlow.contentType ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, fontFamily: "inherit", opacity: victorFlow.contentType ? 1 : 0.4 }}>
+                  המשך →
+                </button>
+              </>
+            )}
+
+            {/* שלב 2: פרטים */}
+            {victorFlow.step === "details" && (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>קישור Dropbox (אופציונלי)</div>
+                    <input
+                      autoFocus
+                      value={victorFlow.dropboxUrl}
+                      onChange={(e) => setVictorFlow((prev) => prev ? { ...prev, dropboxUrl: e.target.value } : null)}
+                      placeholder="https://dropbox.com/..."
+                      style={{ width: "100%", padding: "9px 12px", background: "#0D0D0D", border: "1px solid #303030", borderRadius: 9, color: "#D0D0D0", fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box", direction: "ltr" }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>תאריך פולואפ (אופציונלי)</div>
+                    <input
+                      type="date"
+                      value={victorFlow.followupDate}
+                      onChange={(e) => setVictorFlow((prev) => prev ? { ...prev, followupDate: e.target.value } : null)}
+                      style={{ width: "100%", padding: "9px 12px", background: "#0D0D0D", border: "1px solid #303030", borderRadius: 9, color: "#D0D0D0", fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+                {victorFlow.saveError && (
+                  <div style={{ padding: "8px 12px", background: "#EF444418", border: "1px solid #EF444444", borderRadius: 8, color: "#EF4444", fontSize: 11, marginBottom: 12 }}>
+                    {victorFlow.saveError}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setVictorFlow((prev) => prev ? { ...prev, step: "content" } : null)}
+                    style={{ flexShrink: 0, padding: "10px 16px", borderRadius: 9, border: "1px solid #303030", background: "transparent", color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+                    ← חזור
+                  </button>
+                  <button
+                    onClick={() => void handleVictorSave()}
+                    style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid #A855F744", background: "#A855F718", color: "#A855F7", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+                    שמור ושלח ל-Victor ✓
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* שלב 3: שמירה */}
+            {victorFlow.step === "saving" && (
+              <div style={{ textAlign: "center", padding: "20px 0", color: "#666" }}>
+                <div style={{ fontSize: 22, marginBottom: 8 }}>⏳</div>
+                <div style={{ fontSize: 13 }}>שומר...</div>
+              </div>
+            )}
+
+            {/* שלב 4: הצלחה */}
+            {victorFlow.step === "done" && (
+              <>
+                <div style={{ textAlign: "center", padding: "16px 0 20px" }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0", marginBottom: 4 }}>נשלח ל-Victor</div>
+                  {victorFlow.saveError && (
+                    <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 8 }}>{victorFlow.saveError}</div>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setVictorFlow(null)}
+                    style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid #303030", background: "transparent", color: "#666", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+                    סגור
+                  </button>
+                  <a href="/team" target="_blank" rel="noreferrer"
+                    style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid #A855F744", background: "#A855F718", color: "#A855F7", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    פתח עמוד Victor ←
+                  </a>
+                </div>
+              </>
+            )}
+
+          </div>
+        </div>
+      )}
+
     </div>,
     document.body
   );
