@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProject, updateProject, deleteProject } from "@/lib/projects-store";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
 import { supabase } from "@/lib/supabase";
+import { listTasks, deleteTask } from "@/lib/tasks-store";
 import type { UpdatableField } from "@/lib/types";
 
 /**
@@ -64,7 +65,32 @@ async function cleanupBeforeDelete(projectId: string): Promise<void> {
     .update({ project_id: null, updated_at: new Date().toISOString() })
     .eq("project_id", projectId);
 
-  // ── 7. proposals — unlink and revert status if it was "נסגר" via this project
+  // ── 7. proposals — close their followup tasks, then unlink ───────────────────
+  const { data: linkedProposals } = await supabase
+    .from("proposals")
+    .select("id, client_id")
+    .eq("linked_project_id", projectId);
+
+  if (linkedProposals?.length) {
+    for (const proposal of linkedProposals) {
+      if (!proposal.client_id) continue;
+      try {
+        const proposalMarker = `[proposal_id:${proposal.id}]`;
+        const clientTasks = await listTasks({ related_type: "client", related_id: proposal.client_id });
+        const followupTask = clientTasks.find(t => t.notes?.includes(proposalMarker));
+        if (followupTask) {
+          if (followupTask.calendar_event_id) {
+            try {
+              const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
+              if (await isConnected()) await deleteGoogleTask(followupTask.calendar_event_id);
+            } catch { /* non-critical */ }
+          }
+          await deleteTask(followupTask.id);
+        }
+      } catch { /* non-critical */ }
+    }
+  }
+
   await supabase
     .from("proposals")
     .update({ linked_project_id: null, status: "לא נסגר", updated_at: new Date().toISOString() })

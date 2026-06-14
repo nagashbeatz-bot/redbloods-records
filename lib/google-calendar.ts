@@ -812,6 +812,17 @@ export async function updateGoogleTaskStatus(taskId: string, completed: boolean)
   });
 }
 
+/** Updates a Google Task's due date. due must be YYYY-MM-DD. */
+export async function updateGoogleTaskDue(taskId: string, due: string): Promise<void> {
+  const auth  = await getAuthenticatedClient();
+  const tasks = google.tasks({ version: "v1", auth });
+  await tasks.tasks.patch({
+    tasklist: "@default",
+    task:     taskId,
+    requestBody: { due: `${due}T00:00:00.000Z` },
+  });
+}
+
 /** Deletes a task from the user's default Google Tasks list by task id. */
 export async function deleteGoogleTask(taskId: string): Promise<void> {
   const auth  = await getAuthenticatedClient();

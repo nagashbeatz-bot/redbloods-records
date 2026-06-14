@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { createProject } from "@/lib/projects-store";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
+import { listTasks, patchTask } from "@/lib/tasks-store";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -78,6 +79,25 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         updated_at:         new Date().toISOString(),
       })
       .eq("id", id);
+
+    // Close followup task for this proposal (best-effort, non-fatal)
+    try {
+      const proposalMarker = `[proposal_id:${id}]`;
+      const clientId = proposal.client_id as string | null;
+      if (clientId) {
+        const clientTasks = await listTasks({ related_type: "client", related_id: clientId });
+        const followupTask = clientTasks.find(t => t.notes?.includes(proposalMarker));
+        if (followupTask && followupTask.status !== "בוצע") {
+          await patchTask(followupTask.id, { status: "בוצע" });
+          if (followupTask.calendar_event_id) {
+            try {
+              const { isConnected, updateGoogleTaskStatus } = await import("@/lib/google-calendar");
+              if (await isConnected()) await updateGoogleTaskStatus(followupTask.calendar_event_id, true);
+            } catch { /* non-critical */ }
+          }
+        }
+      }
+    } catch { /* non-critical */ }
 
     return NextResponse.json({
       ok: true,

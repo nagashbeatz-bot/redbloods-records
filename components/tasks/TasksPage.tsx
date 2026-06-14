@@ -98,7 +98,8 @@ function buildCalendarDescription(notes: string | null, relType: TaskRelatedType
   if (relType === "client" && relatedName)  lines.push(`קשור ל: לקוח - ${relatedName}`);
   else if (relType === "project" && relatedName) lines.push(`קשור ל: פרויקט - ${relatedName}`);
   else lines.push("קשור ל: כללי");
-  if (notes?.trim()) lines.push("", "הערות:", notes.trim());
+  const visibleNotes = stripTechLines(notes);
+  if (visibleNotes) lines.push("", "הערות:", visibleNotes);
   return lines.join("\n");
 }
 
@@ -129,6 +130,16 @@ function roundToNext15(): string {
   const mins = now.getHours() * 60 + now.getMinutes();
   const r    = Math.ceil(mins / 15) * 15;
   return `${String(Math.floor(r / 60) % 24).padStart(2, "0")}:${String(r % 60).padStart(2, "0")}`;
+}
+
+// Tech lines (e.g. [proposal_id:xxx]) are internal metadata — never shown to the user
+function stripTechLines(notes: string | null | undefined): string {
+  if (!notes) return "";
+  return notes.split("\n").filter(l => !l.startsWith("[")).join("\n").trim();
+}
+function extractTechLines(notes: string | null | undefined): string {
+  if (!notes) return "";
+  return notes.split("\n").filter(l => l.startsWith("[")).join("\n");
 }
 
 function renderNotes(text: string): React.ReactNode[] {
@@ -321,7 +332,7 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDelete
     task.end_time && inferDuration(task.start_time ? fmtTime(task.start_time) : null, task.end_time ? fmtTime(task.end_time) : null) === "custom"
       ? fmtTime(task.end_time) : ""
   );
-  const [notes,       setNotes]       = useState(task.notes ?? "");
+  const [notes,       setNotes]       = useState(() => stripTechLines(task.notes));
   const [timeErr,     setTimeErr]     = useState<string | null>(null);
   const [endErr,      setEndErr]      = useState<string | null>(null);
   const [saving,      setSaving]      = useState(false);
@@ -342,8 +353,9 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDelete
     setDeleting(true); setError(null);
     try {
       if (delCalendar && task.calendar_event_id) {
-        const calRes = await fetch(`/api/calendar/events/${task.calendar_event_id}`, { method: "DELETE" });
-        if (!calRes.ok) { const d = await calRes.json(); throw new Error(`שגיאה במחיקה מגוגל: ${d.error ?? "שגיאה"}`); }
+        // Best-effort: calendar_event_id may be a Google Task ID (not a Calendar event ID).
+        // The tasks DELETE API handles Google Task deletion separately.
+        await fetch(`/api/calendar/events/${task.calendar_event_id}`, { method: "DELETE" });
       }
       const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "שגיאה"); }
@@ -366,7 +378,10 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDelete
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim(), notes: notes.trim() || null, status,
+          title: title.trim(),
+          // Re-attach hidden tech lines (e.g. [proposal_id:...]) the user never saw
+          notes: [extractTechLines(task.notes), notes.trim()].filter(Boolean).join("\n") || null,
+          status,
           related_type: relType, related_id: relType !== "general" ? (relId || null) : null,
           due_date: dueDate || null, start_time: startTime || null, end_time: calEnd || null,
         }),
@@ -856,9 +871,9 @@ function TaskRow({ task, relatedName, today, onOpenDetail }: {
         }}>
           {task.title}
         </div>
-        {task.notes && (
+        {stripTechLines(task.notes) && (
           <div style={{ fontSize: 11, color: "#444", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {task.notes}
+            {stripTechLines(task.notes)}
           </div>
         )}
       </div>

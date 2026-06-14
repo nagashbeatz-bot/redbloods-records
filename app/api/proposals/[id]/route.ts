@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { listTasks, createTask, patchTask } from "@/lib/tasks-store";
+import { listTasks, createTask, patchTask, deleteTask } from "@/lib/tasks-store";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -30,61 +30,68 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     if (error) throw new Error(error.message);
 
-    // Manage follow-up task when followupDate is set
-    if (body.followupDate && data.client_id) {
+    // Manage follow-up task when followupDate changes
+    if (body.followupDate !== undefined && data.client_id) {
+      const proposalMarker = `[proposal_id:${id}]`;
       try {
-        const followupDate: string = body.followupDate;
-
-        const { data: clientData } = await supabase
-          .from("clients")
-          .select("name")
-          .eq("id", data.client_id)
-          .single();
-        const clientName = clientData?.name ?? "";
-        const taskTitle = `מעקב הצעת מחיר - ${clientName}`;
-        const proposalMarker = `[proposal_id:${id}]`;
-
-        // Find task by proposal_id embedded in notes — exact match, not just client+prefix
-        const clientTasks = await listTasks({
-          related_type: "client",
-          related_id:   data.client_id,
-        });
+        const clientTasks = await listTasks({ related_type: "client", related_id: data.client_id });
         const existingTask = clientTasks.find(t => t.notes?.includes(proposalMarker));
 
-        if (existingTask) {
-          // Update due_date if changed
-          if (existingTask.due_date !== followupDate) {
-            await patchTask(existingTask.id, { due_date: followupDate });
+        if (!body.followupDate) {
+          // followupDate was removed — delete followup task + Google Task
+          if (existingTask) {
+            if (existingTask.calendar_event_id) {
+              try {
+                const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
+                if (await isConnected()) await deleteGoogleTask(existingTask.calendar_event_id);
+              } catch { /* non-critical */ }
+            }
+            await deleteTask(existingTask.id);
           }
+        } else {
+          const followupDate: string = body.followupDate;
+          const { data: clientData } = await supabase
+            .from("clients").select("name").eq("id", data.client_id).single();
+          const clientName = clientData?.name ?? "";
+          const taskTitle = `מעקב הצעת מחיר - ${clientName}`;
 
-          // Add Google Task only if not already linked — prevents duplicate
-          if (!existingTask.calendar_event_id) {
+          if (existingTask) {
+            // Update due_date if changed
+            if (existingTask.due_date !== followupDate) {
+              await patchTask(existingTask.id, { due_date: followupDate });
+              // Sync due date to Google Tasks
+              if (existingTask.calendar_event_id) {
+                try {
+                  const { isConnected, updateGoogleTaskDue } = await import("@/lib/google-calendar");
+                  if (await isConnected()) await updateGoogleTaskDue(existingTask.calendar_event_id, followupDate);
+                } catch { /* non-critical */ }
+              }
+            }
+            // Add Google Task if not yet linked
+            if (!existingTask.calendar_event_id) {
+              try {
+                const { isConnected, createGoogleTask } = await import("@/lib/google-calendar");
+                if (await isConnected()) {
+                  const gt = await createGoogleTask(taskTitle, followupDate);
+                  await patchTask(existingTask.id, { calendar_event_id: gt.id });
+                }
+              } catch { /* non-critical */ }
+            }
+          } else {
+            // No task for this proposal yet — create one
+            const taskNotes = `${proposalMarker}\nהצעה: ${data.title ?? ""}`;
+            const task = await createTask({
+              title: taskTitle, related_type: "client",
+              related_id: data.client_id, due_date: followupDate, notes: taskNotes,
+            });
             try {
               const { isConnected, createGoogleTask } = await import("@/lib/google-calendar");
               if (await isConnected()) {
                 const gt = await createGoogleTask(taskTitle, followupDate);
-                await patchTask(existingTask.id, { calendar_event_id: gt.id });
+                await patchTask(task.id, { calendar_event_id: gt.id });
               }
-            } catch { /* Google not connected or failed — non-critical */ }
+            } catch { /* non-critical */ }
           }
-        } else {
-          // No task for this specific proposal — create one
-          const taskNotes = `${proposalMarker}\nהצעה: ${data.title ?? ""}`;
-          const task = await createTask({
-            title:        taskTitle,
-            related_type: "client",
-            related_id:   data.client_id,
-            due_date:     followupDate,
-            notes:        taskNotes,
-          });
-
-          try {
-            const { isConnected, createGoogleTask } = await import("@/lib/google-calendar");
-            if (await isConnected()) {
-              const gt = await createGoogleTask(taskTitle, followupDate);
-              await patchTask(task.id, { calendar_event_id: gt.id });
-            }
-          } catch { /* Google not connected or failed — non-critical */ }
         }
       } catch { /* task management is non-critical — proposal save never fails */ }
     }
@@ -100,6 +107,27 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
+
+    // Clean up followup task before deleting proposal
+    const proposalMarker = `[proposal_id:${id}]`;
+    try {
+      const { data: proposal } = await supabase
+        .from("proposals").select("client_id").eq("id", id).single();
+      if (proposal?.client_id) {
+        const clientTasks = await listTasks({ related_type: "client", related_id: proposal.client_id });
+        const followupTask = clientTasks.find(t => t.notes?.includes(proposalMarker));
+        if (followupTask) {
+          if (followupTask.calendar_event_id) {
+            try {
+              const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
+              if (await isConnected()) await deleteGoogleTask(followupTask.calendar_event_id);
+            } catch { /* non-critical */ }
+          }
+          await deleteTask(followupTask.id);
+        }
+      }
+    } catch { /* cleanup is non-critical — proceed with deletion */ }
+
     const { error } = await supabase.from("proposals").delete().eq("id", id);
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
