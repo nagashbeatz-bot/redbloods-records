@@ -138,10 +138,49 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   const lastSearchParamsRef = useRef<{ offset: number; days: number; maxDays: number }>({
     offset: 0, days: 14, maxDays: 3,
   });
+  // ISO start of the slot the user has selected — when set, duration change recalculates end instead of re-searching
+  const [selectedStart, setSelectedStart] = useState<string | null>(null);
+  // Minutes at the time of slot selection — used to revert if user cancels overtime confirm
+  const prevMinutesRef = useRef<number>(action.defaultMinutes);
+  // Overtime warning: shown when duration change pushes end past WORK_END_H while a slot is selected
+  const [overtimeConfirm, setOvertimeConfirm] = useState<{
+    newMinutes: number; prevMinutes: number; newEnd: string; label: string;
+  } | null>(null);
 
-  // Auto-reload slots when duration changes (if recommended tab already searched)
+  // When duration changes:
+  // - If user already selected a slot → recalculate end only (no re-search)
+  // - Otherwise → re-search as before
   useEffect(() => {
     setManualHM(null);
+
+    if (selectedStart !== null) {
+      const newEndDate = new Date(new Date(selectedStart).getTime() + minutes * 60_000);
+      const newEndIso  = newEndDate.toISOString();
+      const { time: endTime } = isoToIsrael(newEndIso);
+      const [endH, endM] = endTime.split(":").map(Number);
+      const exceedsWork  = endH * 60 + endM > WORK_END_H * 60;
+      const newLabel     = confirmLabel(new Date(selectedStart), newEndDate);
+
+      if (exceedsWork) {
+        setOvertimeConfirm({
+          newMinutes: minutes,
+          prevMinutes: prevMinutesRef.current,
+          newEnd: newEndIso,
+          label: newLabel,
+        });
+        // Don't update phase yet — wait for user to confirm/cancel
+      } else {
+        prevMinutesRef.current = minutes;
+        setPhase((prev) => {
+          if (typeof prev === "object" && "confirm" in prev)
+            return { confirm: { ...prev.confirm, end: newEndIso, label: newLabel } };
+          return prev;
+        });
+      }
+      return;
+    }
+
+    prevMinutesRef.current = minutes;
     if (tab === "recommended" && hasSearched) {
       findSlots(lastSearchParamsRef.current);
     } else if (typeof phase === "object" && "slots" in phase) {
@@ -190,6 +229,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       maxDays: opts?.maxDays ?? 3,
     };
     lastSearchParamsRef.current = p;
+    setSelectedStart(null);
     setHasSearched(true);
     setPhase("searching");
     try {
@@ -207,6 +247,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
   // ── Check a slot (recommended or manual) and show confirm ────────────────
   async function checkAndConfirm(startIso: string, endIso: string, label: string) {
+    setSelectedStart(startIso);
+    prevMinutesRef.current = minutes;
     setPhase("checking");
     try {
       const r = await fetch("/api/calendar/check-slot", {
@@ -609,7 +651,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             setArtistEmail={(v) => { setArtistEmail(v); setEmailFromClients(false); }}
             emailFromClients={emailFromClients}
             publicTitle={publicTitle}
-            onBack={() => setPhase("idle")}
+            onBack={() => { setSelectedStart(null); setPhase("idle"); }}
             onCreate={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
             onForce={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
           />
@@ -645,6 +687,41 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               <Btn onClick={() => setPhase("idle")}>חזור</Btn>
             </div>
           </>
+        )}
+
+        {/* ── Overtime warning ────────────────────────────────────── */}
+        {overtimeConfirm && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 200001, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={() => { setMinutes(overtimeConfirm.prevMinutes); setOvertimeConfirm(null); }}>
+            <div style={{ background: "#141414", border: "1px solid #333", borderRadius: 14, padding: "22px 20px", width: 320, maxWidth: "90vw" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#E0E0E0", marginBottom: 8 }}>⚠️ חריגה משעות הפעילות</div>
+              <div style={{ fontSize: 12, color: "#999", lineHeight: 1.6, marginBottom: 14 }}>
+                הסשן יסתיים לאחר שעות הפעילות הרגילות.<br />
+                <span style={{ color: "#C084FC" }}>{overtimeConfirm.label}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => { setMinutes(overtimeConfirm.prevMinutes); setOvertimeConfirm(null); }}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "1px solid #303030", background: "transparent", color: "#888", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>
+                  ביטול
+                </button>
+                <button
+                  onClick={() => {
+                    prevMinutesRef.current = overtimeConfirm.newMinutes;
+                    setPhase((prev) => {
+                      if (typeof prev === "object" && "confirm" in prev)
+                        return { confirm: { ...prev.confirm, end: overtimeConfirm.newEnd, label: overtimeConfirm.label } };
+                      return prev;
+                    });
+                    setOvertimeConfirm(null);
+                  }}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.08)", color: "#F59E0B", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+                  אשר חריגה
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ── Bottom cancel (idle states) ──────────────────────────── */}
