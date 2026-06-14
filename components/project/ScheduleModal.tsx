@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { ActionDef, FreeSlot } from "@/lib/action-types";
@@ -13,6 +13,16 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = "recommended" | "manual";
+type QuickRange = "today" | "tomorrow" | "week";
+
+const QUICK_RANGE_PARAMS: Record<QuickRange, { offset: number; days: number; maxDays: number }> = {
+  today:    { offset: 0, days: 1, maxDays: 1 },
+  tomorrow: { offset: 1, days: 1, maxDays: 1 },
+  week:     { offset: 0, days: 7, maxDays: 5 },
+};
+const QUICK_RANGE_LABELS: Record<QuickRange, string> = {
+  today: "היום", tomorrow: "מחר", week: "השבוע",
+};
 
 type Phase =
   | "idle"
@@ -122,13 +132,18 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   // Track whether the user has already triggered a slot search at least once
   const [hasSearched, setHasSearched] = useState(false);
   // Cache last successful slots so we can show them (dimmed) while refetching
-  const [cachedSlots, setCachedSlots] = useState<FreeSlot[]>([]);
+  const [cachedSlots,  setCachedSlots]  = useState<FreeSlot[]>([]);
+  const [quickRange,   setQuickRange]   = useState<QuickRange | null>(null);
+  // Stores the last search params so "נסה שוב" and duration-change retries keep same range
+  const lastSearchParamsRef = useRef<{ offset: number; days: number; maxDays: number }>({
+    offset: 0, days: 14, maxDays: 3,
+  });
 
   // Auto-reload slots when duration changes (if recommended tab already searched)
   useEffect(() => {
     setManualHM(null);
     if (tab === "recommended" && hasSearched) {
-      findSlots();
+      findSlots(lastSearchParamsRef.current);
     } else if (typeof phase === "object" && "slots" in phase) {
       setPhase("idle");
     }
@@ -168,12 +183,18 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   const manualReady = manualDayOk && manualHoursOk && !!manualStart;
 
   // ── Recommended: find slots ───────────────────────────────────────────────
-  async function findSlots() {
+  async function findSlots(opts?: { offset?: number; days?: number; maxDays?: number }) {
+    const p = {
+      offset:  opts?.offset  ?? 0,
+      days:    opts?.days    ?? 14,
+      maxDays: opts?.maxDays ?? 3,
+    };
+    lastSearchParamsRef.current = p;
     setHasSearched(true);
     setPhase("searching");
     try {
       const r = await fetch(
-        `/api/calendar/free-slots?duration=${minutes}&requiresBuffer=${action.requiresBuffer}&days=14`
+        `/api/calendar/free-slots?duration=${minutes}&requiresBuffer=${action.requiresBuffer}&days=${p.days}&maxDays=${p.maxDays}&offset=${p.offset}`
       );
       const d = await r.json();
       if (d.needsReauth) { setPhase({ error: "יש לחבר מחדש את Google Calendar עם הרשאות כתיבה.", needsReauth: true }); return; }
@@ -451,8 +472,48 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             {/* ── Recommended tab ─────────────────────────────────── */}
             {tab === "recommended" && (
               <>
+                {/* Quick-range buttons — visible in idle and no_slots */}
+                {(phase === "idle" || phase === "no_slots") && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                    {(["today", "tomorrow", "week"] as QuickRange[]).map((r) => {
+                      const isActive = quickRange === r;
+                      return (
+                        <button
+                          key={r}
+                          onClick={() => {
+                            setQuickRange(r);
+                            findSlots(QUICK_RANGE_PARAMS[r]);
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: "8px 0",
+                            borderRadius: 9,
+                            border: `1px solid ${isActive ? "#A855F7" : "rgba(168,85,247,0.25)"}`,
+                            background: isActive ? "rgba(168,85,247,0.18)" : "rgba(168,85,247,0.05)",
+                            color: isActive ? "#C084FC" : "#9966CC",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            fontWeight: isActive ? 700 : 500,
+                            fontFamily: "inherit",
+                            transition: "all 0.13s",
+                            boxShadow: isActive ? "0 0 0 1px rgba(168,85,247,0.3)" : "none",
+                          }}
+                        >
+                          {QUICK_RANGE_LABELS[r]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {phase === "idle" && (
-                  <Btn primary onClick={findSlots}>🗓 מצא זמן פנוי ביומן</Btn>
+                  <Btn primary onClick={() => { setQuickRange(null); findSlots(); }}>
+                    🗓{" "}
+                    {quickRange === "today"    ? "מצא זמן פנוי היום"   :
+                     quickRange === "tomorrow" ? "מצא זמן פנוי מחר"   :
+                     quickRange === "week"     ? "מצא זמן פנוי השבוע" :
+                                                "מצא זמן פנוי ביומן"}
+                  </Btn>
                 )}
 
                 {/* Searching: show cached slots dimmed + spinner overlay, or bare spinner */}
@@ -495,10 +556,12 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                 {phase === "no_slots" && (
                   <>
                     <div style={{ color: "#888", fontSize: 13, marginBottom: 14 }}>
-                      אין חלון פנוי מתאים ב-14 הימים הקרובים.
+                      {quickRange
+                        ? `לא נמצא זמן פנוי בטווח שבחרת (${QUICK_RANGE_LABELS[quickRange]})`
+                        : "אין חלון פנוי מתאים ב-14 הימים הקרובים."}
                     </div>
                     <div style={{ display: "flex", gap: 10 }}>
-                      <Btn onClick={findSlots}>נסה שוב</Btn>
+                      <Btn onClick={() => findSlots(lastSearchParamsRef.current)}>נסה שוב</Btn>
                       <Btn onClick={onClose}>סגור</Btn>
                     </div>
                   </>

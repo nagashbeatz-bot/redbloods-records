@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
   const days           = Math.min(parseInt(req.nextUrl.searchParams.get("days") ?? "14", 10), 14);
   // maxDays: how many distinct working days to return slots for (default: 3)
   const maxDays        = Math.min(parseInt(req.nextUrl.searchParams.get("maxDays") ?? "3", 10), 14);
+  // offset: skip this many days from today before starting the search
+  const offset         = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("offset") ?? "0", 10), 0), 30);
 
   if (!duration || duration < 5) {
     return NextResponse.json({ error: "duration לא תקין" }, { status: 400 });
@@ -18,7 +20,7 @@ export async function GET(req: NextRequest) {
     const { isConnected, findFreeSlots } = await import("@/lib/google-calendar");
     if (!await isConnected()) return NextResponse.json({ error: "not_connected", slots: [] });
 
-    const slots = await findFreeSlots(duration, requiresBuffer, days, 50, maxDays);
+    const slots = await findFreeSlots(duration, requiresBuffer, days, 50, maxDays, offset);
     return NextResponse.json({ slots });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
