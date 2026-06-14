@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-types";
 
@@ -165,6 +165,14 @@ export default function ShowDrawer({ show, clients, onClose, onUpdated, onDelete
   const [newClientModal, setNewClientModal] = useState(false);
 
   const [draft, setDraft] = useState<Show>({ ...show });
+
+  // If artist_client_id is set but artist text is empty, sync name from clients list
+  useEffect(() => {
+    if (!draft.artist && draft.artist_client_id) {
+      const c = clients.find(x => x.id === draft.artist_client_id);
+      if (c?.name) setDraft(p => ({ ...p, artist: c.name }));
+    }
+  }, [clients]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set<K extends keyof Show>(k: K, v: Show[K]) {
     setDraft(prev => ({ ...prev, [k]: v }));

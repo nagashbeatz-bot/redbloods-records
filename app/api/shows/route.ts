@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listShows, createShow, showCalendarSummary, showCalendarTimes, showCalendarDescription } from "@/lib/shows-store";
+import type { Show } from "@/lib/shows-store";
+import { supabase } from "@/lib/supabase";
+
+async function resolveArtistName(show: Show): Promise<Show> {
+  if (show.artist || !show.artist_client_id) return show;
+  const { data } = await supabase.from("clients").select("name").eq("id", show.artist_client_id).single();
+  if (data?.name) return { ...show, artist: data.name };
+  return show;
+}
 
 export async function GET() {
   try {
@@ -47,11 +56,12 @@ export async function POST(req: NextRequest) {
           const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
           if (await isConnected()) {
             const { patchShow } = await import("@/lib/shows-store");
+            const showForCal = await resolveArtistName(show);
             const event = await createCalendarEvent(
-              showCalendarSummary(show),
+              showCalendarSummary(showForCal),
               times.startIso,
               times.endIso,
-              { description: showCalendarDescription(show) }
+              { description: showCalendarDescription(showForCal) }
             );
             // Save event ID back to show
             const updated = await patchShow(show.id, { calendar_event_id: event.id });

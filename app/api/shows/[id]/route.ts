@@ -3,7 +3,20 @@ import {
   getShow, patchShow, deleteShow,
   showCalendarSummary, showCalendarTimes, showCalendarDescription,
 } from "@/lib/shows-store";
-import type { PatchShowInput, ShowStatus, PaymentStatus } from "@/lib/shows-store";
+import type { PatchShowInput, ShowStatus, PaymentStatus, Show } from "@/lib/shows-store";
+import { supabase } from "@/lib/supabase";
+
+/** If show.artist is empty but artist_client_id exists, resolve name from DB. */
+async function resolveArtistName(show: Show): Promise<Show> {
+  if (show.artist || !show.artist_client_id) return show;
+  const { data } = await supabase
+    .from("clients")
+    .select("name")
+    .eq("id", show.artist_client_id)
+    .single();
+  if (data?.name) return { ...show, artist: data.name };
+  return show;
+}
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -56,11 +69,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         if (times) {
           const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
           if (await isConnected()) {
+            const showForCal = await resolveArtistName(show);
             const event = await createCalendarEvent(
-              showCalendarSummary(show),
+              showCalendarSummary(showForCal),
               times.startIso,
               times.endIso,
-              { description: showCalendarDescription(show) }
+              { description: showCalendarDescription(showForCal) }
             );
             const updated = await patchShow(id, { calendar_event_id: event.id });
             return NextResponse.json({ show: updated });
@@ -82,10 +96,11 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           const times = showCalendarTimes(show);
           const { isConnected, updateCalendarEvent } = await import("@/lib/google-calendar");
           if (await isConnected()) {
+            const showForCal = await resolveArtistName(show);
             await updateCalendarEvent(show.calendar_event_id, {
-              summary:     showCalendarSummary(show),
+              summary:     showCalendarSummary(showForCal),
               location:    show.location || undefined,
-              description: showCalendarDescription(show),
+              description: showCalendarDescription(showForCal),
               ...(times ? { startIso: times.startIso, endIso: times.endIso } : {}),
             });
           } else {
