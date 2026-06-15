@@ -98,7 +98,7 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
   const modal = (
     <div
       style={{
-        position: "fixed", inset: 0, zIndex: 200000,
+        position: "fixed", inset: 0, zIndex: 9000,
         display: "flex", alignItems: "center", justifyContent: "center",
         backdropFilter: "blur(12px)", background: "rgba(0,0,0,0.92)",
       }}
