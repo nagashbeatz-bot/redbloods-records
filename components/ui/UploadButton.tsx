@@ -26,6 +26,8 @@ interface Props {
   trackName?: string;
   /** Called after a successful upload with the resulting FileLink (including trackId/versionLabel) */
   onSuccess?: (file: FileLink) => void;
+  /** Called before the file picker opens; return false to abort. Use to stop the player first. */
+  confirmBeforeUpload?: () => Promise<boolean> | boolean;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -57,6 +59,7 @@ export default function UploadButton({
   versionLabel,
   trackName,
   onSuccess,
+  confirmBeforeUpload,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -249,7 +252,15 @@ export default function UploadButton({
 
         <button
           ref={buttonRef}
-          onClick={(e) => { e.stopPropagation(); if (state === "idle") inputRef.current?.click(); }}
+          onClick={async (e) => {
+            e.stopPropagation();
+            if (state !== "idle") return;
+            if (confirmBeforeUpload) {
+              const ok = await confirmBeforeUpload();
+              if (!ok) return;
+            }
+            inputRef.current?.click();
+          }}
           disabled={state === "uploading"}
           title={tooltip}
           onDragOver={onDragOver}

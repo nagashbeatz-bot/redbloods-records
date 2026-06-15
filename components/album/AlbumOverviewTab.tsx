@@ -98,11 +98,30 @@ function CtrlBtn({ onClick, title, children }: { onClick?: () => void; title?: s
 
 export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onGoToTrack, onAddPayment }: Props) {
   const player = usePlayerSafe();
-  const [txData,     setTxData]     = useState<TxData | null>(null);
-  const [actions,    setActions]    = useState<ProjectAction[]>([]);
-  const [tracks,     setTracks]     = useState<AlbumTrack[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [localFiles, setLocalFiles] = useState<FileLink[]>(project.files ?? []);
+  const [txData,         setTxData]         = useState<TxData | null>(null);
+  const [actions,        setActions]        = useState<ProjectAction[]>([]);
+  const [tracks,         setTracks]         = useState<AlbumTrack[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [localFiles,     setLocalFiles]     = useState<FileLink[]>(project.files ?? []);
+  const [confirmResolve, setConfirmResolve] = useState<((v: boolean) => void) | null>(null);
+
+  const makeConfirm = (): (() => Promise<boolean>) => () => {
+    if (!player?.playing) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      setConfirmResolve(() => resolve);
+    });
+  };
+
+  const handleConfirmStop = () => {
+    player?.pause();
+    confirmResolve?.(true);
+    setConfirmResolve(null);
+  };
+
+  const handleConfirmCancel = () => {
+    confirmResolve?.(false);
+    setConfirmResolve(null);
+  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -175,6 +194,56 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
 
   return (
     <div style={{ height: "100%", display: "flex", overflow: "hidden", direction: "rtl" }}>
+
+      {/* ── Confirm overlay (pause-before-upload) ────────────────────────────── */}
+      {confirmResolve && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+          onClick={handleConfirmCancel}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#1C1C1C", border: "1px solid #303030", borderRadius: 14,
+              padding: "22px 24px", width: 300, direction: "rtl",
+              boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0", marginBottom: 8 }}>
+              🎵 שיר מתנגן כרגע
+            </div>
+            <div style={{ fontSize: 12, color: "#888", marginBottom: 18, lineHeight: 1.6 }}>
+              לעצור את הנגן ולהעלות גרסה חדשה?
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleConfirmStop}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8, border: "none",
+                  background: "#EC4899", color: "#fff",
+                  fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                עצור והעלה
+              </button>
+              <button
+                onClick={handleConfirmCancel}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8,
+                  border: "1px solid #303030", background: "transparent",
+                  color: "#888", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ RIGHT SIDEBAR (260px) ══════════════════════════════════════════════ */}
       <div style={{
@@ -367,6 +436,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                         existingFiles={filesForTrack(track.id)}
                         trackId={track.id}
                         trackName={track.title}
+                        confirmBeforeUpload={makeConfirm()}
                         onSuccess={(file) => setLocalFiles((prev) => [...prev, file])}
                       />
                     </div>
