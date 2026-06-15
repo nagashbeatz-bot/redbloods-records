@@ -52,13 +52,12 @@ function fmtMoney(n: number) {
 // ── Budget Gauge ──────────────────────────────────────────────────────────────
 
 function BudgetGauge({
-  generalBudget, plannedTotal, actualTotal, paidTotal,
+  generalBudget, plannedTotal, paidTotal,
   onEditBudget, onRaiseBudget,
 }: {
   generalBudget: number;
   plannedTotal: number;
-  actualTotal: number;
-  paidTotal: number;        // sum of actual payments from red_films_budget_payments
+  paidTotal: number;
   onEditBudget: () => void;
   onRaiseBudget: () => void;
 }) {
@@ -131,12 +130,11 @@ function BudgetGauge({
       </div>
 
       {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
         {[
           ["תקציב",    fmtMoney(generalBudget),  "#888"],
           ["מתוכנן",   fmtMoney(plannedTotal),   isOverrun ? "#EF4444" : "#E8E8E8"],
           ["שולם",     fmtMoney(paidTotal),       "#22C55E"],
-          ["בפועל",    fmtMoney(actualTotal),     "#A78BFA"],
           ["נשאר",     remaining >= 0 ? fmtMoney(remaining) : `−${fmtMoney(Math.abs(remaining))}`,
                        remaining >= 0 ? "#22C55E" : "#EF4444"],
         ].map(([lbl, val, col]) => (
@@ -207,7 +205,6 @@ function ItemRow({
     await onSave(item.id, {
       title: draft.title, category: draft.category,
       planned_amount: Number(draft.planned_amount) || 0,
-      actual_amount: Number(draft.actual_amount) || 0,
       vendor_name: draft.vendor_name,
       status: draft.status, notes: draft.notes,
     });
@@ -239,11 +236,6 @@ function ItemRow({
         {/* שולם — read-only in edit mode (comes from payments) */}
         <td style={{ padding: "8px 10px", fontSize: 12, color: "#555", fontStyle: "italic" }}>
           {fmtMoney(itemPaid)}
-        </td>
-        <td style={{ padding: "8px 10px" }}>
-          <input type="number" style={{ ...INPUT_S, width: "100%" }}
-            value={draft.actual_amount}
-            onChange={e => setDraft(d => ({ ...d, actual_amount: +e.target.value }))} />
         </td>
         <td style={{ padding: "8px 10px" }}>
           <select style={{ ...SELECT_S, width: "100%" }} value={draft.status}
@@ -285,9 +277,6 @@ function ItemRow({
       {/* שולם — from payments */}
       <td style={{ padding: "9px 10px", fontSize: 13, color: "#22C55E", fontWeight: 700, textAlign: "left" }}>
         {itemPaid > 0 ? fmtMoney(itemPaid) : "—"}
-      </td>
-      <td style={{ padding: "9px 10px", fontSize: 13, color: "#A78BFA", fontWeight: 700, textAlign: "left" }}>
-        {item.actual_amount ? fmtMoney(item.actual_amount) : "—"}
       </td>
       <td style={{ padding: "9px 10px" }}>
         <span style={{
@@ -405,12 +394,6 @@ function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promis
             placeholder="0"
             onChange={e => setDraft(d => ({ ...d, planned_amount: +e.target.value }))} />
         </div>
-        <div>
-          <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>בפועל ₪</div>
-          <input type="number" style={INPUT_S} value={draft.actual_amount || ""}
-            placeholder="0"
-            onChange={e => setDraft(d => ({ ...d, actual_amount: +e.target.value }))} />
-        </div>
       </div>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button onClick={() => setOpen(false)}
@@ -516,7 +499,6 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   // Totals — exclude cancelled items
   const active        = items.filter(i => i.status !== "בוטל");
   const plannedTotal  = active.reduce((s, i) => s + (i.planned_amount || 0), 0);
-  const actualTotal   = active.reduce((s, i) => s + (i.actual_amount  || 0), 0);
 
   // Payments — map itemId → sum of payment amounts
   const paidByItem = payments.reduce((map, p) => {
@@ -601,7 +583,6 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
       <BudgetGauge
         generalBudget={generalBudget}
         plannedTotal={plannedTotal}
-        actualTotal={actualTotal}
         paidTotal={paidTotal}
         onEditBudget={() => {/* parent section handles this */}}
         onRaiseBudget={() => setRaiseModal(true)}
@@ -632,7 +613,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   </span>
                   <span style={{ fontSize: 11, color: "#555" }}>{item.category}</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>מתוכנן</div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#E8E8E8" }}>{item.planned_amount ? fmtMoney(item.planned_amount) : "—"}</div>
@@ -640,10 +621,6 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>שולם</div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#22C55E" }}>{itemPaid > 0 ? fmtMoney(itemPaid) : "—"}</div>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>בפועל</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#A78BFA" }}>{item.actual_amount ? fmtMoney(item.actual_amount) : "—"}</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -682,7 +659,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #252525" }}>
-                {["שם", "קטגוריה", "מתוכנן", "שולם", "בפועל", "סטטוס", ""].map(h => (
+                {["שם", "קטגוריה", "מתוכנן", "שולם", "סטטוס", ""].map(h => (
                   <th key={h} style={{ padding: "6px 10px", fontSize: 10, color: "#555", fontWeight: 700, textAlign: "right" }}>
                     {h}
                   </th>
@@ -716,9 +693,6 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   </td>
                   <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#22C55E", textAlign: "left" }}>
                     {fmtMoney(paidTotal)}
-                  </td>
-                  <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#A78BFA", textAlign: "left" }}>
-                    {fmtMoney(actualTotal)}
                   </td>
                   <td colSpan={2} />
                 </tr>
