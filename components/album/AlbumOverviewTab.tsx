@@ -1,19 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import type { Project, AlbumTrack, AlbumTrackStatus, FileLink, ProjectStatus } from "@/lib/types";
+import type { Project, AlbumTrack, AlbumTrackStatus, FileLink, ProjectStatus, AlbumFinanceData, AlbumPayment, AlbumExpense } from "@/lib/types";
 import { ALL_STATUSES } from "@/lib/types";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
-
-interface Transaction {
-  id: string;
-  type: "income" | "expense";
-  amount: number;
-  description: string;
-  date: string;
-  payment_status: string;
-}
 
 interface ProjectAction {
   id: string;
@@ -24,11 +15,6 @@ interface ProjectAction {
   action_date: string;
   status: string;
   notes: string | null;
-}
-
-interface TxData {
-  transactions: Transaction[];
-  settings: { agreedPrice: number; currency: string; financialNotes: string };
 }
 
 interface Props {
@@ -98,9 +84,17 @@ function CtrlBtn({ onClick, title, children }: { onClick?: () => void; title?: s
   );
 }
 
+const PAYMENT_METHODS = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
+const EXPENSE_CATS    = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "פרסום", "אחר"];
+const PAYMENT_STATUSES: AlbumPayment["status"][] = ["התקבל", "שולם", "צפוי", "חלקי", "בוטל"];
+
+function today(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
 export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onGoToTrack, onAddPayment }: Props) {
   const player = usePlayerSafe();
-  const [txData,         setTxData]         = useState<TxData | null>(null);
+  const [albumFinance,   setAlbumFinance]   = useState<AlbumFinanceData>({ agreed: 0, currency: "₪", notes: "", payments: [], expenses: [] });
   const [actions,        setActions]        = useState<ProjectAction[]>([]);
   const [tracks,         setTracks]         = useState<AlbumTrack[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -123,6 +117,58 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const handleConfirmCancel = () => {
     confirmResolve?.(false);
     setConfirmResolve(null);
+  };
+
+  // ── Album Finance UI state ───────────────────────────────────────────────────
+  const [finForm,        setFinForm]        = useState<"none" | "payment" | "expense" | "agreed">("none");
+  const [finSaving,      setFinSaving]      = useState(false);
+  const [newPayment,     setNewPayment]     = useState<Omit<AlbumPayment, "id">>({ amount: 0, date: today(), status: "התקבל", method: "ביט", ref: "", notes: "" });
+  const [newExpense,     setNewExpense]     = useState<Omit<AlbumExpense, "id">>({ amount: 0, date: today(), category: "מיקס / מאסטר", paid: false, ref: "", notes: "" });
+  const [editAgreed,     setEditAgreed]     = useState("");
+
+  const patchFinance = async (update: Partial<AlbumFinanceData>) => {
+    const merged = { ...albumFinance, ...update };
+    setAlbumFinance(merged);
+    await fetch(`/api/album-finance?projectId=${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    });
+  };
+
+  const handleSavePayment = async () => {
+    if (!newPayment.amount) return;
+    setFinSaving(true);
+    const entry: AlbumPayment = { ...newPayment, id: crypto.randomUUID() };
+    await patchFinance({ payments: [...albumFinance.payments, entry] });
+    setNewPayment({ amount: 0, date: today(), status: "התקבל", method: "ביט", ref: "", notes: "" });
+    setFinForm("none");
+    setFinSaving(false);
+  };
+
+  const handleSaveExpense = async () => {
+    if (!newExpense.amount) return;
+    setFinSaving(true);
+    const entry: AlbumExpense = { ...newExpense, id: crypto.randomUUID() };
+    await patchFinance({ expenses: [...albumFinance.expenses, entry] });
+    setNewExpense({ amount: 0, date: today(), category: "מיקס / מאסטר", paid: false, ref: "", notes: "" });
+    setFinForm("none");
+    setFinSaving(false);
+  };
+
+  const handleDeletePayment = async (id: string) => {
+    await patchFinance({ payments: albumFinance.payments.filter((p) => p.id !== id) });
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    await patchFinance({ expenses: albumFinance.expenses.filter((e) => e.id !== id) });
+  };
+
+  const handleSaveAgreed = async () => {
+    const v = parseFloat(editAgreed);
+    if (isNaN(v)) return;
+    await patchFinance({ agreed: v });
+    setFinForm("none");
   };
 
   // ── Drag & Drop ─────────────────────────────────────────────────────────────
@@ -199,12 +245,12 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
-      fetch(`/api/transactions?projectId=${project.id}`).then((r) => r.json()),
+      fetch(`/api/album-finance?projectId=${project.id}`).then((r) => r.json()),
       fetch(`/api/project-actions?projectId=${project.id}`).then((r) => r.json()),
       fetch(`/api/album-tracks?projectId=${project.id}`).then((r) => r.json()),
     ])
-      .then(([tx, acts, trks]) => {
-        setTxData(tx as TxData);
+      .then(([fin, acts, trks]) => {
+        setAlbumFinance(fin as AlbumFinanceData);
         setActions(((acts as { actions?: ProjectAction[] }).actions) ?? []);
         setTracks(Array.isArray(trks) ? (trks as AlbumTrack[]) : []);
       })
@@ -220,14 +266,13 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
     : Math.round(tracks.reduce((s, t) => s + (TRACK_PCT[t.status] ?? 0), 0) / tracks.length);
   const CIRC = 2 * Math.PI * 48;
 
-  // ── Finance ─────────────────────────────────────────────────────────────────
-  const transactions = txData?.transactions ?? [];
-  const agreedPrice  = txData?.settings?.agreedPrice ?? 0;
-  const currency     = txData?.settings?.currency ?? "₪";
-  const received = transactions.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const expenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-  const balance  = received - expenses;
-  const pendingCount = transactions.filter((t) => t.type === "income" && t.payment_status === "צפוי").length;
+  // ── Album Finance computed ───────────────────────────────────────────────────
+  const currency    = albumFinance.currency ?? "₪";
+  const afReceived  = albumFinance.payments.filter((p) => ["התקבל", "שולם"].includes(p.status)).reduce((s, p) => s + p.amount, 0);
+  const afExpenses  = albumFinance.expenses.reduce((s, e) => s + e.amount, 0);
+  const afNet       = afReceived - afExpenses;
+  const afPending   = albumFinance.payments.filter((p) => p.status === "צפוי").reduce((s, p) => s + p.amount, 0);
+  const afBalance   = albumFinance.agreed - afReceived;
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
   // ── Files per track ─────────────────────────────────────────────────────────
@@ -706,24 +751,33 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
           )}
         </div>
 
-        {/* C. Finance summary ──────────────────────────────────────────────── */}
+        {/* C. Album Finance (isolated) ─────────────────────────────────────── */}
         <div style={card}>
+          {/* Header */}
           <div style={cardHead()}>
             <span>💰 כספים</span>
-            <button onClick={onAddPayment} style={{
-              fontSize: 11, fontWeight: 600, padding: "3px 12px", borderRadius: 6,
-              border: "1px solid #F59E0B44", background: "rgba(245,158,11,0.08)",
-              color: "#F59E0B", cursor: "pointer", fontFamily: "inherit",
-            }}>
-              + הוסף תשלום
-            </button>
+            <div style={{ display: "flex", gap: 5 }}>
+              {(["agreed", "payment", "expense"] as const).map((f) => (
+                <button key={f} onClick={() => { setFinForm(finForm === f ? "none" : f); if (f === "agreed") setEditAgreed(String(albumFinance.agreed)); }}
+                  style={{
+                    fontSize: 10, fontWeight: 600, padding: "2px 9px", borderRadius: 5,
+                    border: `1px solid ${finForm === f ? accentColor + "66" : "#333"}`,
+                    background: finForm === f ? accentColor + "18" : "transparent",
+                    color: finForm === f ? accentColor : "#666", cursor: "pointer", fontFamily: "inherit",
+                  }}>
+                  {f === "agreed" ? "ערוך סוכם" : f === "payment" ? "+ תשלום" : "+ הוצאה"}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Stats row */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)" }}>
             {[
-              { label: "סוכם",   value: fmt(agreedPrice), color: "#D0D0D0" },
-              { label: "התקבל",  value: fmt(received),    color: "#22c55e" },
-              { label: "הוצאות", value: fmt(expenses),    color: "#EF4444" },
-              { label: "יתרה",   value: fmt(balance),     color: balance >= 0 ? "#22c55e" : "#EF4444" },
+              { label: "סוכם",      value: fmt(albumFinance.agreed), color: "#D0D0D0" },
+              { label: "התקבל",     value: fmt(afReceived),          color: "#22c55e" },
+              { label: "הוצאות",    value: fmt(afExpenses),          color: "#EF4444" },
+              { label: "רווח נקי",  value: fmt(afNet),               color: afNet >= 0 ? "#22c55e" : "#EF4444" },
             ].map((s, i) => (
               <div key={s.label} style={{ padding: "12px 10px", borderLeft: i > 0 ? "1px solid #1E1E1E" : "none", textAlign: "center" }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: s.color }}>{s.value}</div>
@@ -731,9 +785,173 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
               </div>
             ))}
           </div>
-          {pendingCount > 0 && (
-            <div style={{ padding: "7px 14px", borderTop: "1px solid #1E1E1E", fontSize: 11, color: "#F59E0B" }}>
-              {pendingCount} תשלום{pendingCount > 1 ? "ים" : ""} פתוח{pendingCount > 1 ? "ים" : ""}
+
+          {/* Sub-info row */}
+          {(afPending > 0 || afBalance > 0) && (
+            <div style={{ display: "flex", gap: 14, padding: "6px 14px", borderTop: "1px solid #1A1A1A", fontSize: 10 }}>
+              {afPending > 0 && <span style={{ color: "#F59E0B" }}>⏳ צפוי: {fmt(afPending)}</span>}
+              {afBalance > 0 && <span style={{ color: "#6B7280" }}>יתרה לקבל: {fmt(afBalance)}</span>}
+            </div>
+          )}
+
+          {/* ── Agreed edit form ── */}
+          {finForm === "agreed" && (
+            <div style={{ padding: "12px 14px", borderTop: "1px solid #1E1E1E", display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "#666" }}>סכום סוכם:</span>
+              <input type="number" value={editAgreed} onChange={(e) => setEditAgreed(e.target.value)}
+                style={{ flex: 1, background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 13, padding: "4px 8px", fontFamily: "inherit" }} />
+              <button onClick={handleSaveAgreed}
+                style={{ padding: "4px 14px", borderRadius: 6, border: "none", background: accentColor, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                שמור
+              </button>
+              <button onClick={() => setFinForm("none")}
+                style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #333", background: "transparent", color: "#666", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                ביטול
+              </button>
+            </div>
+          )}
+
+          {/* ── Payment mini-form ── */}
+          {finForm === "payment" && (
+            <div style={{ padding: "12px 14px", borderTop: "1px solid #1E1E1E", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>סכום</div>
+                  <input type="number" value={newPayment.amount || ""} onChange={(e) => setNewPayment((p) => ({ ...p, amount: Number(e.target.value) }))}
+                    placeholder="0" style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>תאריך</div>
+                  <input type="text" value={newPayment.date} onChange={(e) => setNewPayment((p) => ({ ...p, date: e.target.value }))}
+                    placeholder="YYYY-MM-DD" style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>סטטוס</div>
+                  <select value={newPayment.status} onChange={(e) => setNewPayment((p) => ({ ...p, status: e.target.value as AlbumPayment["status"] }))}
+                    style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 6px", fontFamily: "inherit" }}>
+                    {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>אמצעי תשלום</div>
+                  <select value={newPayment.method} onChange={(e) => setNewPayment((p) => ({ ...p, method: e.target.value }))}
+                    style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 6px", fontFamily: "inherit" }}>
+                    {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>אסמכתא / קישור</div>
+                  <input type="text" value={newPayment.ref} onChange={(e) => setNewPayment((p) => ({ ...p, ref: e.target.value }))}
+                    placeholder="מס׳ / לינק" style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>הערה</div>
+                  <input type="text" value={newPayment.notes} onChange={(e) => setNewPayment((p) => ({ ...p, notes: e.target.value }))}
+                    style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-start" }}>
+                <button onClick={handleSavePayment} disabled={finSaving || !newPayment.amount}
+                  style={{ padding: "5px 16px", borderRadius: 6, border: "none", background: "#22c55e", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: finSaving ? 0.6 : 1 }}>
+                  {finSaving ? "שומר..." : "שמור תשלום"}
+                </button>
+                <button onClick={() => setFinForm("none")}
+                  style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #333", background: "transparent", color: "#666", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                  ביטול
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Expense mini-form ── */}
+          {finForm === "expense" && (
+            <div style={{ padding: "12px 14px", borderTop: "1px solid #1E1E1E", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>סכום</div>
+                  <input type="number" value={newExpense.amount || ""} onChange={(e) => setNewExpense((p) => ({ ...p, amount: Number(e.target.value) }))}
+                    placeholder="0" style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>תאריך</div>
+                  <input type="text" value={newExpense.date} onChange={(e) => setNewExpense((p) => ({ ...p, date: e.target.value }))}
+                    placeholder="YYYY-MM-DD" style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>קטגוריה</div>
+                  <select value={newExpense.category} onChange={(e) => setNewExpense((p) => ({ ...p, category: e.target.value }))}
+                    style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 6px", fontFamily: "inherit" }}>
+                    {EXPENSE_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>אסמכתא / קישור</div>
+                  <input type="text" value={newExpense.ref} onChange={(e) => setNewExpense((p) => ({ ...p, ref: e.target.value }))}
+                    placeholder="מס׳ / לינק" style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>הערה</div>
+                  <input type="text" value={newExpense.notes} onChange={(e) => setNewExpense((p) => ({ ...p, notes: e.target.value }))}
+                    style={{ width: "100%", boxSizing: "border-box", background: "#111", border: "1px solid #333", borderRadius: 6, color: "#D0D0D0", fontSize: 12, padding: "4px 8px", fontFamily: "inherit" }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: "#888" }}>
+                    <input type="checkbox" checked={newExpense.paid} onChange={(e) => setNewExpense((p) => ({ ...p, paid: e.target.checked }))} />
+                    שולם
+                  </label>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={handleSaveExpense} disabled={finSaving || !newExpense.amount}
+                  style={{ padding: "5px 16px", borderRadius: 6, border: "none", background: "#EF4444", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: finSaving ? 0.6 : 1 }}>
+                  {finSaving ? "שומר..." : "שמור הוצאה"}
+                </button>
+                <button onClick={() => setFinForm("none")}
+                  style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #333", background: "transparent", color: "#666", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                  ביטול
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Payments list ── */}
+          {albumFinance.payments.length > 0 && (
+            <div style={{ borderTop: "1px solid #1E1E1E" }}>
+              <div style={{ padding: "6px 14px", fontSize: 9, fontWeight: 700, color: "#444", background: "#141414" }}>תשלומים שהתקבלו</div>
+              {albumFinance.payments.map((p) => {
+                const sc = p.status === "התקבל" || p.status === "שולם" ? "#22c55e" : p.status === "צפוי" ? "#F59E0B" : "#6B7280";
+                return (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", borderBottom: "1px solid #141414", fontSize: 11 }}>
+                    <span style={{ color: "#555", flexShrink: 0, minWidth: 70 }}>{p.date}</span>
+                    <span style={{ fontWeight: 700, color: "#D0D0D0", flexShrink: 0 }}>{fmt(p.amount)}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: sc + "22", color: sc, border: `1px solid ${sc}44`, flexShrink: 0 }}>{p.status}</span>
+                    <span style={{ color: "#555", flexShrink: 0 }}>{p.method}</span>
+                    {p.ref && <a href={p.ref.startsWith("http") ? p.ref : undefined} target="_blank" rel="noreferrer" style={{ color: accentColor, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.ref}</a>}
+                    {p.notes && <span style={{ color: "#444", fontSize: 10, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.notes}</span>}
+                    <button onClick={() => handleDeletePayment(p.id)} style={{ marginRight: "auto", background: "transparent", border: "none", color: "#333", fontSize: 11, cursor: "pointer", flexShrink: 0, padding: "2px 4px" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = "#EF4444"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#333"; }}>🗑</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Expenses list ── */}
+          {albumFinance.expenses.length > 0 && (
+            <div style={{ borderTop: "1px solid #1E1E1E" }}>
+              <div style={{ padding: "6px 14px", fontSize: 9, fontWeight: 700, color: "#444", background: "#141414" }}>הוצאות</div>
+              {albumFinance.expenses.map((e) => (
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", borderBottom: "1px solid #141414", fontSize: 11 }}>
+                  <span style={{ color: "#555", flexShrink: 0, minWidth: 70 }}>{e.date}</span>
+                  <span style={{ fontWeight: 700, color: "#EF4444", flexShrink: 0 }}>{fmt(e.amount)}</span>
+                  <span style={{ color: "#666", fontSize: 10, flexShrink: 0 }}>{e.category}</span>
+                  <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 4, background: e.paid ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.12)", color: e.paid ? "#22c55e" : "#6B7280", border: `1px solid ${e.paid ? "#22c55e44" : "#6B728044"}`, flexShrink: 0 }}>{e.paid ? "שולם" : "לא שולם"}</span>
+                  {e.ref && <a href={e.ref.startsWith("http") ? e.ref : undefined} target="_blank" rel="noreferrer" style={{ color: accentColor, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.ref}</a>}
+                  {e.notes && <span style={{ color: "#444", fontSize: 10, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.notes}</span>}
+                  <button onClick={() => handleDeleteExpense(e.id)} style={{ marginRight: "auto", background: "transparent", border: "none", color: "#333", fontSize: 11, cursor: "pointer", flexShrink: 0, padding: "2px 4px" }}
+                    onMouseEnter={(ev) => { ev.currentTarget.style.color = "#EF4444"; }} onMouseLeave={(ev) => { ev.currentTarget.style.color = "#333"; }}>🗑</button>
+                </div>
+              ))}
             </div>
           )}
         </div>

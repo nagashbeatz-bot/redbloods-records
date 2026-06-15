@@ -64,6 +64,36 @@ export type VersionLabel = typeof VERSION_LABELS[number];
 
 export const ALBUM_TRACK_STATUSES: AlbumTrackStatus[] = [...ALL_STATUSES];
 
+// ── Album Finance (isolated from main transactions) ───────────────────────────
+
+export interface AlbumPayment {
+  id: string;
+  amount: number;
+  date: string;         // YYYY-MM-DD or free text
+  status: "התקבל" | "שולם" | "צפוי" | "חלקי" | "בוטל";
+  method: string;       // ביט / העברה בנקאית / מזומן / PayPal / אחר
+  ref: string;          // אסמכתא / קישור
+  notes: string;
+}
+
+export interface AlbumExpense {
+  id: string;
+  amount: number;
+  date: string;
+  category: string;     // מיקס / מאסטר / חדר חזרות / צילום / נסיעות / אחר
+  paid: boolean;
+  ref: string;
+  notes: string;
+}
+
+export interface AlbumFinanceData {
+  agreed: number;
+  currency: string;
+  notes: string;
+  payments: AlbumPayment[];
+  expenses: AlbumExpense[];
+}
+
 export interface AlbumTrack {
   id:            string;
   project_id:    string;
