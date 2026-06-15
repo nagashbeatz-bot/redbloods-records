@@ -51,9 +51,16 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
   const [showAddTx,       setShowAddTx]       = useState<"income" | "expense" | null>(null);
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
   const [savingStatus,    setSavingStatus]    = useState(false);
+  const [deletingId,      setDeletingId]      = useState<string | null>(null);
 
   const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
   const EXPENSE_STATUSES = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
+
+  const handleDeleteTx = async (txId: string) => {
+    await fetch(`/api/transactions/${txId}`, { method: "DELETE" });
+    setDeletingId(null);
+    load();
+  };
 
   const handleStatusChange = async (txId: string, newStatus: string) => {
     setSavingStatus(true);
@@ -141,7 +148,28 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
 
   const TxRow = ({ t }: { t: Transaction }) => {
     const isEditingThis = editingStatusId === t.id;
+    const isConfirmingDelete = deletingId === t.id;
     const statuses = t.type === "income" ? INCOME_STATUSES : EXPENSE_STATUSES;
+
+    if (isConfirmingDelete) {
+      return (
+        <div style={{ padding: "10px 18px", borderBottom: "1px solid #141414", background: "rgba(239,68,68,0.06)", direction: "rtl" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#E0E0E0", marginBottom: 3 }}>למחוק את התשלום הזה?</div>
+          <div style={{ fontSize: 10, color: "#666", marginBottom: 10 }}>הפעולה תסיר את התשלום מהפרויקט ולא ניתן יהיה לשחזרו.</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => handleDeleteTx(t.id)}
+              style={{ fontSize: 11, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", borderRadius: 7, padding: "4px 14px", border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.12)", color: "#EF4444" }}
+            >מחק תשלום</button>
+            <button
+              onClick={() => setDeletingId(null)}
+              style={{ fontSize: 11, fontFamily: "inherit", cursor: "pointer", borderRadius: 7, padding: "4px 14px", border: "1px solid #333", background: "none", color: "#666" }}
+            >ביטול</button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         style={{
@@ -167,17 +195,7 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
               defaultValue={t.payment_status}
               onChange={(e) => handleStatusChange(t.id, e.target.value)}
               onBlur={() => setEditingStatusId(null)}
-              style={{
-                fontSize: 10,
-                fontFamily: "inherit",
-                background: "#1E1E1E",
-                color: "#ccc",
-                border: "1px solid #444",
-                borderRadius: 5,
-                padding: "2px 4px",
-                cursor: "pointer",
-                direction: "rtl",
-              }}
+              style={{ fontSize: 10, fontFamily: "inherit", background: "#1E1E1E", color: "#ccc", border: "1px solid #444", borderRadius: 5, padding: "2px 4px", cursor: "pointer", direction: "rtl" }}
             >
               {statuses.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -185,46 +203,25 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
             </select>
           ) : (
             <>
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 700,
-                  padding: "2px 7px",
-                  borderRadius: 5,
-                  ...statusBadge(t.payment_status, t.type),
-                }}
-              >
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 5, ...statusBadge(t.payment_status, t.type) }}>
                 {t.payment_status}
               </span>
               <button
                 onClick={() => setEditingStatusId(t.id)}
-                style={{
-                  fontSize: 9,
-                  background: "none",
-                  border: "none",
-                  color: "#444",
-                  cursor: "pointer",
-                  padding: "1px 3px",
-                  fontFamily: "inherit",
-                  lineHeight: 1,
-                }}
+                style={{ fontSize: 9, background: "none", border: "none", color: "#444", cursor: "pointer", padding: "1px 3px", fontFamily: "inherit", lineHeight: 1 }}
                 title="שנה סטטוס"
-              >
-                ✎
-              </button>
+              >✎</button>
+              <button
+                onClick={() => setDeletingId(t.id)}
+                style={{ fontSize: 11, background: "none", border: "none", color: "#3A3A3A", cursor: "pointer", padding: "1px 3px", fontFamily: "inherit", lineHeight: 1 }}
+                title="מחק תשלום"
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#EF4444")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#3A3A3A")}
+              >🗑</button>
             </>
           )}
         </div>
-        <span
-          style={{
-            fontSize: 13,
-            color: t.type === "income" ? "#22c55e" : "#EF4444",
-            fontWeight: 700,
-            flexShrink: 0,
-            minWidth: 70,
-            textAlign: "left",
-          }}
-        >
+        <span style={{ fontSize: 13, color: t.type === "income" ? "#22c55e" : "#EF4444", fontWeight: 700, flexShrink: 0, minWidth: 70, textAlign: "left" }}>
           {t.type === "income" ? "+" : "-"}{currency}{t.amount.toLocaleString("he-IL")}
         </span>
       </div>

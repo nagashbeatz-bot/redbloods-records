@@ -149,9 +149,10 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const [showAddTx,      setShowAddTx]      = useState<"income" | "expense" | null>(null);
   const [editingAgreed,  setEditingAgreed]  = useState(false);
   const [agreedDraft,    setAgreedDraft]    = useState("");
-  const [filterModal,    setFilterModal]    = useState<FilterKey | null>(null);
-  const [modalEditingId, setModalEditingId] = useState<string | null>(null);
-  const [modalSaving,    setModalSaving]    = useState(false);
+  const [filterModal,     setFilterModal]     = useState<FilterKey | null>(null);
+  const [modalEditingId,  setModalEditingId]  = useState<string | null>(null);
+  const [modalSaving,     setModalSaving]     = useState(false);
+  const [modalDeletingId, setModalDeletingId] = useState<string | null>(null);
   const [actions,        setActions]        = useState<ProjectAction[]>([]);
   const [tracks,         setTracks]         = useState<AlbumTrack[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -186,6 +187,12 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agreedPrice: n, currency }),
     });
+  };
+
+  const handleModalDeleteTx = async (txId: string) => {
+    await fetch(`/api/transactions/${txId}`, { method: "DELETE" });
+    setModalDeletingId(null);
+    load();
   };
 
   const handleTxStatusChange = async (txId: string, newStatus: string) => {
@@ -923,7 +930,28 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
             ) : (
               MODAL_ROWS[filterModal].map((t) => {
                 const isEditing = modalEditingId === t.id;
+                const isConfirming = modalDeletingId === t.id;
                 const statuses = t.type === "income" ? INCOME_STATUSES : EXPENSE_STATUSES;
+
+                if (isConfirming) {
+                  return (
+                    <div key={t.id} style={{ padding: "10px 20px", borderBottom: "1px solid #1A1A1A", background: "rgba(239,68,68,0.06)", direction: "rtl" }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#E0E0E0", marginBottom: 3 }}>למחוק את התשלום הזה?</div>
+                      <div style={{ fontSize: 10, color: "#666", marginBottom: 10 }}>הפעולה תסיר את התשלום מהפרויקט ולא ניתן יהיה לשחזרו.</div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => handleModalDeleteTx(t.id)}
+                          style={{ fontSize: 11, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", borderRadius: 7, padding: "4px 14px", border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.12)", color: "#EF4444" }}
+                        >מחק תשלום</button>
+                        <button
+                          onClick={() => setModalDeletingId(null)}
+                          style={{ fontSize: 11, fontFamily: "inherit", cursor: "pointer", borderRadius: 7, padding: "4px 14px", border: "1px solid #333", background: "none", color: "#666" }}
+                        >ביטול</button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 20px", borderBottom: "1px solid #1A1A1A" }}>
                     <span style={{ fontSize: 11, color: "#555", flexShrink: 0, minWidth: 52 }}>{formatTxDate(t.date)}</span>
@@ -953,6 +981,13 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                             style={{ fontSize: 9, background: "none", border: "none", color: "#444", cursor: "pointer", padding: "1px 3px", fontFamily: "inherit", lineHeight: 1 }}
                             title="שנה סטטוס"
                           >✎</button>
+                          <button
+                            onClick={() => setModalDeletingId(t.id)}
+                            style={{ fontSize: 11, background: "none", border: "none", color: "#3A3A3A", cursor: "pointer", padding: "1px 3px", fontFamily: "inherit", lineHeight: 1 }}
+                            title="מחק תשלום"
+                            onMouseEnter={(e) => (e.currentTarget.style.color = "#EF4444")}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = "#3A3A3A")}
+                          >🗑</button>
                         </>
                       )}
                     </div>
