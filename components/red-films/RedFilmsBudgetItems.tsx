@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import BudgetItemDetailModal, { type BudgetPayment } from "./BudgetItemDetailModal";
 
@@ -465,10 +465,11 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   const [loading, setLoading]         = useState(true);
   const [raiseModal, setRaiseModal]   = useState(false);
   const [raiseSaving, setRaiseSaving] = useState(false);
-  const [openItemId, setOpenItemId]   = useState<string | null>(null);
+  const [openItemId, setOpenItemId]     = useState<string | null>(null);
   const [openWithForm, setOpenWithForm] = useState(false);
-  const [menuOpenId, setMenuOpenId]   = useState<string | null>(null);
-  const [isMobile, setIsMobile]       = useState(false);
+  const [menuOpenId, setMenuOpenId]     = useState<string | null>(null);
+  const [isCompact, setIsCompact]       = useState(false);
+  const containerRef                    = useRef<HTMLDivElement>(null);
 
   // Close three-dots menu on outside click
   useEffect(() => {
@@ -479,10 +480,14 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   }, [menuOpenId]);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 1100);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width ?? el.offsetWidth;
+      setIsCompact(w < 560);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   const load = useCallback(async () => {
@@ -584,7 +589,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   }
 
   return (
-    <div>
+    <div ref={containerRef}>
       {/* Budget gauge */}
       <BudgetGauge
         generalBudget={generalBudget}
@@ -601,7 +606,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
         <div style={{ fontSize: 13, color: "#3A3A3A", fontStyle: "italic", padding: "8px 0" }}>
           אין פריטי תקציב עדיין
         </div>
-      ) : isMobile ? (
+      ) : isCompact ? (
         /* ── Mobile: cards ─────────────────────────────────────── */
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {items.map(item => {
