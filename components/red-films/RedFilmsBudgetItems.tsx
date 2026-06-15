@@ -188,7 +188,7 @@ function ItemRow({
   itemPaid: number;
   onSave: (id: string, fields: Partial<BudgetItem>) => Promise<void>;
   onDelete: (id: string) => void;
-  onOpenDetail: () => void;
+  onOpenDetail: (withForm?: boolean) => void;
   onDuplicate: () => void;
   menuOpen: boolean;
   onMenuToggle: () => void;
@@ -294,7 +294,7 @@ function ItemRow({
           {/* Quick "שולם" button or paid badge */}
           {!isCancelled && !isFullyPaid && (
             <button
-              onClick={() => onSave(item.id, { status: "שולם" })}
+              onClick={() => onOpenDetail(true)}
               style={{ fontSize: 11, fontWeight: 700, color: "#22C55E", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 10px", whiteSpace: "nowrap" }}>
               שולם
             </button>
@@ -312,7 +312,6 @@ function ItemRow({
                   { label: "✏ ערוך",       action: () => { setEditing(true); onMenuClose(); } },
                   { label: "📋 שכפל",       action: () => { onDuplicate(); onMenuClose(); } },
                   { label: "💳 תשלומים",    action: () => { onOpenDetail(); onMenuClose(); } },
-                  ...(isFullyPaid ? [{ label: "↩ בטל תשלום", action: () => { onSave(item.id, { status: "מתוכנן" }); onMenuClose(); }, red: false }] : []),
                   { label: "🗑 מחק",        action: () => { onDelete(item.id); onMenuClose(); }, red: true },
                 ].map((opt) => (
                   <button key={opt.label} onClick={opt.action}
@@ -458,6 +457,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   const [raiseModal, setRaiseModal]   = useState(false);
   const [raiseSaving, setRaiseSaving] = useState(false);
   const [openItemId, setOpenItemId]   = useState<string | null>(null);
+  const [openWithForm, setOpenWithForm] = useState(false);
   const [menuOpenId, setMenuOpenId]   = useState<string | null>(null);
   const [isMobile, setIsMobile]       = useState(false);
 
@@ -671,7 +671,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   itemPaid={paidByItem.get(item.id) ?? 0}
                   onSave={handleSave}
                   onDelete={handleDelete}
-                  onOpenDetail={() => setOpenItemId(item.id)}
+                  onOpenDetail={(withForm) => { setOpenItemId(item.id); setOpenWithForm(withForm ?? false); }}
                   onDuplicate={() => handleDuplicate(item)}
                   menuOpen={menuOpenId === item.id}
                   onMenuToggle={() => setMenuOpenId(prev => prev === item.id ? null : item.id)}
@@ -720,7 +720,9 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
           <BudgetItemDetailModal
             item={item}
             initialPayments={openItemPayments}
-            onClose={() => setOpenItemId(null)}
+            initialShowForm={openWithForm}
+            defaultAmount={Math.max(0, item.planned_amount - (paidByItem.get(item.id) ?? 0))}
+            onClose={() => { setOpenItemId(null); setOpenWithForm(false); }}
             onPaymentAdded={handlePaymentAdded}
             onPaymentDeleted={handlePaymentDeleted}
             onPaymentUpdated={handlePaymentUpdated}

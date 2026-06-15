@@ -72,16 +72,18 @@ const INP: React.CSSProperties = {
 
 function AddPaymentForm({
   itemId,
+  defaultAmount,
   onSaved,
   onCancel,
 }: {
   itemId: string;
+  defaultAmount?: number;
   onSaved: (p: BudgetPayment) => void;
   onCancel: () => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
 
-  const [amount,        setAmount]        = useState("");
+  const [amount,        setAmount]        = useState(defaultAmount && defaultAmount > 0 ? String(defaultAmount) : "");
   const [paymentDate,   setPaymentDate]   = useState(today);
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0]);
   const [notes,         setNotes]         = useState("");
@@ -357,6 +359,8 @@ function PaymentRow({
 interface Props {
   item: BudgetItem;
   initialPayments?: BudgetPayment[];
+  initialShowForm?: boolean;
+  defaultAmount?: number;
   onClose: () => void;
   onPaymentAdded: (p: BudgetPayment) => void;
   onPaymentDeleted: (paymentId: string) => void;
@@ -366,6 +370,8 @@ interface Props {
 export default function BudgetItemDetailModal({
   item,
   initialPayments = [],
+  initialShowForm,
+  defaultAmount,
   onClose,
   onPaymentAdded,
   onPaymentDeleted,
@@ -373,7 +379,7 @@ export default function BudgetItemDetailModal({
 }: Props) {
   const [payments, setPayments] = useState<BudgetPayment[]>(initialPayments);
   const [loading,  setLoading]  = useState(initialPayments.length === 0);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(initialShowForm ?? false);
 
   // ESC to close
   useEffect(() => {
@@ -430,20 +436,20 @@ export default function BudgetItemDetailModal({
       style={{
         position: "fixed", inset: 0, zIndex: 9800,
         background: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "flex-end",
+        display: "flex", alignItems: "center", justifyContent: "center",
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         style={{
           background: "#141414", border: "1px solid #262626",
-          borderRadius: "22px 22px 0 0",
+          borderRadius: 18,
           width: "100%", maxWidth: 640,
-          margin: "0 auto",
-          maxHeight: "92dvh",
+          margin: 16,
+          maxHeight: "90dvh",
           display: "flex", flexDirection: "column",
           direction: "rtl",
-          boxShadow: "0 -16px 60px rgba(0,0,0,0.8)",
+          boxShadow: "0 8px 60px rgba(0,0,0,0.8)",
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -532,6 +538,7 @@ export default function BudgetItemDetailModal({
           {showForm ? (
             <AddPaymentForm
               itemId={item.id}
+              defaultAmount={defaultAmount}
               onSaved={handleAdded}
               onCancel={() => setShowForm(false)}
             />
