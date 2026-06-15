@@ -18,7 +18,7 @@ interface DbProject {
   project_type:   string;
   parent_project: string;
   is_hidden:      boolean;
-  files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string }[];
+  files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string }[];
   created_at:     string;
   updated_at:     string;
 }
@@ -30,6 +30,8 @@ function dbToProject(db: DbProject): Project {
     assetId:          f.assetId,
     dropboxPath:      f.dropboxPath,
     dropboxShareUrl:  f.dropboxShareUrl,
+    trackId:          f.trackId,
+    versionLabel:     f.versionLabel,
   }));
 
   return {
