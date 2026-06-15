@@ -212,8 +212,9 @@ function ItemRow({
     setEditing(false);
   }
 
-  const isCancelled = item.status === "בוטל";
-  const isPaid = item.status === "שולם";
+  const isCancelled  = item.status === "בוטל";
+  const isFullyPaid  = item.status === "שולם" || (item.planned_amount > 0 && itemPaid >= item.planned_amount * 0.99);
+  const isPartial    = !isFullyPaid && itemPaid > 0;
 
   if (editing) {
     return (
@@ -259,9 +260,10 @@ function ItemRow({
     );
   }
 
-  const statusColor = isCancelled ? "#555" : isPaid ? "#22C55E" : "#60A5FA";
-  const statusBg    = isCancelled ? "#1A1A1A" : isPaid ? "rgba(34,197,94,0.1)" : "rgba(96,165,250,0.1)";
-  const statusBorder= isCancelled ? "#2A2A2A" : isPaid ? "rgba(34,197,94,0.3)" : "rgba(96,165,250,0.3)";
+  const statusLabel  = isCancelled ? "בוטל" : isFullyPaid ? "שולם ✓" : isPartial ? "חלקי" : "ממתין";
+  const statusColor  = isCancelled ? "#555" : isFullyPaid ? "#22C55E" : isPartial ? "#F59E0B" : "#60A5FA";
+  const statusBg     = isCancelled ? "#1A1A1A" : isFullyPaid ? "rgba(34,197,94,0.1)" : isPartial ? "rgba(245,158,11,0.1)" : "rgba(96,165,250,0.1)";
+  const statusBorder = isCancelled ? "#2A2A2A" : isFullyPaid ? "rgba(34,197,94,0.3)" : isPartial ? "rgba(245,158,11,0.3)" : "rgba(96,165,250,0.3)";
 
   return (
     <tr style={{ opacity: isCancelled ? 0.45 : 1, borderBottom: "1px solid #1E1E1E" }}>
@@ -284,23 +286,18 @@ function ItemRow({
           color: statusColor, background: statusBg, border: `1px solid ${statusBorder}`,
           borderRadius: 6, padding: "2px 8px",
         }}>
-          {item.status}
+          {statusLabel}
         </span>
       </td>
       <td style={{ padding: "9px 10px" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {/* Quick "שולם" button or paid badge */}
-          {!isCancelled && !isPaid && (
+          {!isCancelled && !isFullyPaid && (
             <button
               onClick={() => onSave(item.id, { status: "שולם" })}
               style={{ fontSize: 11, fontWeight: 700, color: "#22C55E", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 10px", whiteSpace: "nowrap" }}>
               שולם
             </button>
-          )}
-          {isPaid && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#22C55E", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, padding: "3px 8px", whiteSpace: "nowrap" }}>
-              שולם ✓
-            </span>
           )}
           {/* Three-dots menu */}
           <div style={{ position: "relative" }}>
@@ -315,7 +312,7 @@ function ItemRow({
                   { label: "✏ ערוך",       action: () => { setEditing(true); onMenuClose(); } },
                   { label: "📋 שכפל",       action: () => { onDuplicate(); onMenuClose(); } },
                   { label: "💳 תשלומים",    action: () => { onOpenDetail(); onMenuClose(); } },
-                  ...(isPaid ? [{ label: "↩ בטל תשלום", action: () => { onSave(item.id, { status: "מתוכנן" }); onMenuClose(); }, red: false }] : []),
+                  ...(isFullyPaid ? [{ label: "↩ בטל תשלום", action: () => { onSave(item.id, { status: "מתוכנן" }); onMenuClose(); }, red: false }] : []),
                   { label: "🗑 מחק",        action: () => { onDelete(item.id); onMenuClose(); }, red: true },
                 ].map((opt) => (
                   <button key={opt.label} onClick={opt.action}
