@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import type { Project, AlbumTrack, AlbumTrackStatus, FileLink } from "@/lib/types";
+import type { Project, AlbumTrack, AlbumTrackStatus, FileLink, ProjectStatus } from "@/lib/types";
+import { ALL_STATUSES } from "@/lib/types";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 
@@ -44,15 +45,16 @@ function isAudio(name: string): boolean {
 }
 
 const TRACK_PCT: Record<AlbumTrackStatus, number> = {
-  "הושלם": 100, "מוכן למאסטר": 80, "במיקס": 60, "בהקלטה": 35, "טרום הקלטה": 0,
+  "הושלם": 100, "מחכה למיקס": 80, "במיקס": 60, "בעבודה": 35, "בהשהייה": 10, "לא התחיל": 0,
 };
 
 const STATUS_COLOR: Record<AlbumTrackStatus, { color: string; bg: string; border: string }> = {
-  "טרום הקלטה":  { color: "#6B7280", bg: "rgba(107,114,128,0.12)", border: "rgba(107,114,128,0.3)" },
-  "בהקלטה":      { color: "#F59E0B", bg: "rgba(245,158,11,0.12)",  border: "rgba(245,158,11,0.3)"  },
-  "במיקס":       { color: "#3B82F6", bg: "rgba(59,130,246,0.12)",  border: "rgba(59,130,246,0.3)"  },
-  "מוכן למאסטר": { color: "#A855F7", bg: "rgba(168,85,247,0.12)",  border: "rgba(168,85,247,0.3)"  },
-  "הושלם":       { color: "#22c55e", bg: "rgba(34,197,94,0.12)",   border: "rgba(34,197,94,0.3)"   },
+  "בעבודה":     { color: "#60A5FA", bg: "rgba(59,130,246,0.15)",  border: "rgba(59,130,246,0.3)"  },
+  "מחכה למיקס": { color: "#FBBF24", bg: "rgba(245,158,11,0.15)",  border: "rgba(245,158,11,0.3)"  },
+  "במיקס":      { color: "#C084FC", bg: "rgba(168,85,247,0.15)",  border: "rgba(168,85,247,0.3)"  },
+  "הושלם":      { color: "#34D399", bg: "rgba(16,185,129,0.15)",  border: "rgba(16,185,129,0.3)"  },
+  "בהשהייה":    { color: "#9CA3AF", bg: "rgba(107,114,128,0.15)", border: "rgba(107,114,128,0.3)" },
+  "לא התחיל":   { color: "#6B7280", bg: "rgba(75,85,99,0.15)",    border: "rgba(75,85,99,0.3)"    },
 };
 
 function formatDDMM(dateStr: string): string {
@@ -121,6 +123,77 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const handleConfirmCancel = () => {
     confirmResolve?.(false);
     setConfirmResolve(null);
+  };
+
+  // ── Drag & Drop ─────────────────────────────────────────────────────────────
+  const [dragIdx,         setDragIdx]         = useState<number | null>(null);
+  const [dragOver,        setDragOver]        = useState<number | null>(null);
+
+  const handleReorder = async (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const reordered = [...tracks];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    const withNumbers = reordered.map((t, i) => ({ ...t, track_number: i + 1 }));
+    setTracks(withNumbers);
+    try {
+      await fetch("/api/album-tracks/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tracks: withNumbers.map((t) => ({ id: t.id, track_number: t.track_number })) }),
+      });
+    } catch {
+      setTracks(tracks); // revert on error
+    }
+  };
+
+  // ── Delete track ─────────────────────────────────────────────────────────────
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting,        setDeleting]        = useState(false);
+
+  const handleDeleteTrack = async () => {
+    if (!deleteConfirmId) return;
+    setDeleting(true);
+    try {
+      // 1. Delete each Dropbox file linked to this track
+      const trackFiles = localFiles.filter((f) => f.trackId === deleteConfirmId);
+      for (const f of trackFiles) {
+        if (f.dropboxPath) {
+          await fetch("/api/dropbox/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dropboxPath: f.dropboxPath, projectId: project.id }),
+          });
+        }
+      }
+      // 2. Delete the track row
+      await fetch(`/api/album-tracks/${deleteConfirmId}`, { method: "DELETE" });
+      // 3. Update local state
+      setTracks((prev) => prev.filter((t) => t.id !== deleteConfirmId).map((t, i) => ({ ...t, track_number: i + 1 })));
+      setLocalFiles((prev) => prev.filter((f) => f.trackId !== deleteConfirmId));
+    } finally {
+      setDeleting(false);
+      setDeleteConfirmId(null);
+    }
+  };
+
+  // ── Status inline edit ────────────────────────────────────────────────────────
+  const [statusOpenId,    setStatusOpenId]    = useState<string | null>(null);
+  const [updatingStatus,  setUpdatingStatus]  = useState<string | null>(null);
+
+  const handleStatusChange = async (trackId: string, newStatus: ProjectStatus) => {
+    setStatusOpenId(null);
+    setUpdatingStatus(trackId);
+    try {
+      await fetch(`/api/album-tracks/${trackId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setTracks((prev) => prev.map((t) => t.id === trackId ? { ...t, status: newStatus } : t));
+    } finally {
+      setUpdatingStatus(null);
+    }
   };
 
   const load = useCallback(() => {
@@ -245,6 +318,58 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
         </div>
       )}
 
+      {/* ── Delete confirm overlay ───────────────────────────────────────────── */}
+      {deleteConfirmId && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+          onClick={() => !deleting && setDeleteConfirmId(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#1C1C1C", border: "1px solid #303030", borderRadius: 14,
+              padding: "22px 24px", width: 320, direction: "rtl",
+              boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0", marginBottom: 8 }}>
+              🗑 מחיקת שיר
+            </div>
+            <div style={{ fontSize: 12, color: "#888", marginBottom: 18, lineHeight: 1.6 }}>
+              למחוק את השיר וכל הקבצים שלו? הפעולה תמחק גם את הגרסאות בדרופבוקס ולא ניתן לשחזר.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleDeleteTrack}
+                disabled={deleting}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8, border: "none",
+                  background: deleting ? "#555" : "#EF4444", color: "#fff",
+                  fontSize: 12, fontWeight: 700, cursor: deleting ? "not-allowed" : "pointer", fontFamily: "inherit",
+                }}
+              >
+                {deleting ? "מוחק..." : "מחק שיר וקבצים"}
+              </button>
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={deleting}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8,
+                  border: "1px solid #303030", background: "transparent",
+                  color: "#888", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ RIGHT SIDEBAR (260px) ══════════════════════════════════════════════ */}
       <div style={{
         width: 260, flexShrink: 0, overflowY: "auto",
@@ -275,9 +400,9 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
           {/* Stat rows */}
           {[
             { icon: "🎵", label: "סה״כ שירים",   value: tracks.length,                                          color: "#D0D0D0" },
-            { icon: "✅", label: "הושלמו",        value: tracks.filter((t) => t.status === "הושלם").length,    color: "#22c55e" },
-            { icon: "🎚", label: "במיקס",         value: tracks.filter((t) => t.status === "במיקס").length,    color: "#3B82F6" },
-            { icon: "🎤", label: "בהקלטה",        value: tracks.filter((t) => t.status === "בהקלטה").length,   color: "#F59E0B" },
+            { icon: "✅", label: "הושלמו",        value: tracks.filter((t) => t.status === "הושלם").length,       color: "#34D399" },
+            { icon: "🎚", label: "במיקס",         value: tracks.filter((t) => t.status === "במיקס").length,       color: "#C084FC" },
+            { icon: "🎤", label: "בעבודה",        value: tracks.filter((t) => t.status === "בעבודה").length,      color: "#60A5FA" },
             { icon: "📁", label: "קבצים כלליים",  value: localFiles.filter((f) => !f.trackId).length,          color: "#6B7280" },
           ].map((s) => (
             <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 2px", borderBottom: "1px solid #141414" }}>
@@ -351,59 +476,66 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
             </div>
           ) : (
             <>
-              {/* Table header */}
+              {/* Table header: drag | # | ▶ | ↑ | שם | סטטוס | 🗑 */}
               <div style={{
-                display: "grid", gridTemplateColumns: "26px 1fr 92px 54px 76px 26px 26px",
+                display: "grid", gridTemplateColumns: "20px 26px 26px 26px 1fr 105px 26px",
                 gap: 6, padding: "6px 14px",
                 background: "#141414", borderBottom: "1px solid #1E1E1E",
               }}>
-                {["#", "שם השיר", "סטטוס", "גרסאות", "גרסה אחרונה", "▶", "↑"].map((h, i) => (
+                {["", "#", "▶", "↑", "שם השיר", "סטטוס", ""].map((h, i) => (
                   <div key={i} style={{ fontSize: 9, fontWeight: 700, color: "#444" }}>{h}</div>
                 ))}
               </div>
 
               {tracks.map((track, idx) => {
                 const lastFile  = lastFileForTrack(track.id);
-                const fileCount = filesForTrack(track.id).length;
                 const canPlay   = !!lastFile && isAudio(lastFile.name);
-                const sc        = STATUS_COLOR[track.status] ?? STATUS_COLOR["טרום הקלטה"];
+                const sc        = STATUS_COLOR[track.status] ?? STATUS_COLOR["לא התחיל"];
                 const isPlaying = player?.playing &&
                   player.track?.projectId === project.id &&
                   player.track?.fileName === lastFile?.name;
                 const rowBg = idx % 2 === 0 ? "#1A1A1A" : "#171717";
+                const isDragTarget = dragOver === idx && dragIdx !== null && dragIdx !== idx;
 
                 return (
                   <div
                     key={track.id}
                     onClick={() => onGoToTrack(track.id)}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(idx); }}
+                    onDragLeave={() => setDragOver(null)}
+                    onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) { handleReorder(dragIdx, idx); } setDragIdx(null); setDragOver(null); }}
                     style={{
-                      display: "grid", gridTemplateColumns: "26px 1fr 92px 54px 76px 26px 26px",
+                      display: "grid", gridTemplateColumns: "20px 26px 26px 26px 1fr 105px 26px",
                       gap: 6, padding: "10px 14px",
-                      background: rowBg, borderBottom: "1px solid #141414",
-                      cursor: "pointer", alignItems: "center", transition: "background 0.1s",
+                      background: rowBg,
+                      borderTop: isDragTarget ? `2px solid ${accentColor}` : "2px solid transparent",
+                      borderBottom: "1px solid #141414",
+                      cursor: "pointer", alignItems: "center", transition: "background 0.1s, border-top 0.1s",
                     }}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#1E1E1E"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = rowBg; }}
                   >
-                    <div style={{ fontSize: 11, color: "#444", fontWeight: 700 }}>{track.track_number}</div>
-
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#D0D0D0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {track.title}
+                    {/* Drag handle */}
+                    <div
+                      draggable
+                      onDragStart={(e) => { e.stopPropagation(); setDragIdx(idx); }}
+                      onDragEnd={() => { setDragIdx(null); setDragOver(null); }}
+                      onClick={(e) => e.stopPropagation()}
+                      title="גרור לסידור מחדש"
+                      style={{
+                        fontSize: 12, color: "#333", cursor: "grab", userSelect: "none",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      ⠿
                     </div>
 
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, whiteSpace: "nowrap", justifySelf: "start" }}>
-                      {track.status}
-                    </span>
-
-                    <div style={{ fontSize: 11, color: "#555", textAlign: "center" }}>
-                      {fileCount > 0 ? fileCount : "—"}
+                    <div style={{ fontSize: 11, color: "#444", fontWeight: 700, textAlign: "center" }}>
+                      {track.track_number}
                     </div>
 
-                    <div style={{ fontSize: 10, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {lastFile ? (lastFile.versionLabel ?? "ללא תווית") : "—"}
-                    </div>
-
-                    {/* Play — stop propagation */}
+                    {/* Play */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -420,14 +552,14 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                         color: canPlay ? (isPlaying ? accentColor : "#666") : "#2A2A2A",
                         cursor: canPlay ? "pointer" : "not-allowed",
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 8, fontFamily: "inherit",
+                        fontSize: 8, fontFamily: "inherit", flexShrink: 0,
                       }}
                     >
                       {isPlaying ? "⏸" : "▶"}
                     </button>
 
-                    {/* Upload — stop propagation handled inside UploadButton */}
-                    <div onClick={(e) => e.stopPropagation()}>
+                    {/* Upload */}
+                    <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
                       <UploadButton
                         size="sm"
                         projectId={project.id}
@@ -440,6 +572,60 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                         onSuccess={(file) => setLocalFiles((prev) => [...prev, file])}
                       />
                     </div>
+
+                    {/* Title */}
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#D0D0D0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {track.title}
+                    </div>
+
+                    {/* Status — clickable badge → inline select */}
+                    <div onClick={(e) => e.stopPropagation()} style={{ position: "relative" }}>
+                      {statusOpenId === track.id ? (
+                        <select
+                          autoFocus
+                          value={track.status}
+                          onChange={(e) => handleStatusChange(track.id, e.target.value as ProjectStatus)}
+                          onBlur={() => setStatusOpenId(null)}
+                          style={{
+                            background: "#111", border: `1px solid ${accentColor}44`, borderRadius: 6,
+                            color: "#D0D0D0", fontSize: 10, padding: "2px 4px", fontFamily: "inherit",
+                            width: "100%", cursor: "pointer",
+                          }}
+                        >
+                          {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      ) : (
+                        <span
+                          onClick={() => setStatusOpenId(track.id)}
+                          title="לחץ לשינוי סטטוס"
+                          style={{
+                            fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                            background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`,
+                            whiteSpace: "nowrap", cursor: "pointer",
+                            opacity: updatingStatus === track.id ? 0.5 : 1,
+                            display: "inline-block",
+                          }}
+                        >
+                          {track.status}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Delete */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(track.id); }}
+                      title="מחק שיר"
+                      style={{
+                        width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                        border: "1px solid #2A2A2A", background: "transparent",
+                        color: "#3A3A3A", fontSize: 11, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; e.currentTarget.style.color = "#EF4444"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#2A2A2A"; e.currentTarget.style.color = "#3A3A3A"; }}
+                    >
+                      🗑
+                    </button>
                   </div>
                 );
               })}

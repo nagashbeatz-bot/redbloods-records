@@ -19,7 +19,7 @@ const TABS = ["סקירה", "שירים", "כספים", "קבצים", "משימ�
 type Tab = (typeof TABS)[number];
 
 const TRACK_PCT: Record<string, number> = {
-  "הושלם": 100, "מוכן למאסטר": 80, "במיקס": 60, "בהקלטה": 35, "טרום הקלטה": 0,
+  "הושלם": 100, "מחכה למיקס": 80, "במיקס": 60, "בעבודה": 35, "בהשהייה": 10, "לא התחיל": 0,
 };
 
 function getAccentColor(projectType: string): string {
@@ -312,7 +312,7 @@ interface AddTrackProps {
 
 function AddTrackModal({ projectId, accentColor, onClose, onCreated }: AddTrackProps) {
   const [title,  setTitle]  = useState("");
-  const [status, setStatus] = useState<AlbumTrackStatus>("טרום הקלטה");
+  const [status, setStatus] = useState<AlbumTrackStatus>("לא התחיל");
   const [notes,  setNotes]  = useState("");
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);

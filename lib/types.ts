@@ -55,15 +55,14 @@ export interface FileLink {
   versionLabel?: string;     // e.g. "V1", "מיקס 1", "מאסטר"
 }
 
-export type AlbumTrackStatus = "טרום הקלטה" | "בהקלטה" | "במיקס" | "מוכן למאסטר" | "הושלם";
+/** Album track status now uses the same values as ProjectStatus */
+export type AlbumTrackStatus = ProjectStatus;
 export type MixMasterStatus  = "לא התחיל" | "בתהליך" | "הושלם";
 
 export const VERSION_LABELS = ["סקיצה", "V1", "V2", "מיקס 1", "מיקס 2", "מאסטר", "אחר"] as const;
 export type VersionLabel = typeof VERSION_LABELS[number];
 
-export const ALBUM_TRACK_STATUSES: AlbumTrackStatus[] = [
-  "טרום הקלטה", "בהקלטה", "במיקס", "מוכן למאסטר", "הושלם",
-];
+export const ALBUM_TRACK_STATUSES: AlbumTrackStatus[] = [...ALL_STATUSES];
 
 export interface AlbumTrack {
   id:            string;

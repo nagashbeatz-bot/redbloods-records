@@ -19,11 +19,12 @@ function isAudio(name: string): boolean {
 }
 
 const STATUS_COLOR: Record<AlbumTrackStatus, { color: string; bg: string; border: string }> = {
-  "טרום הקלטה": { color: "#6B7280", bg: "rgba(107,114,128,0.12)", border: "rgba(107,114,128,0.3)" },
-  "בהקלטה":     { color: "#F59E0B", bg: "rgba(245,158,11,0.12)",  border: "rgba(245,158,11,0.3)"  },
-  "במיקס":      { color: "#3B82F6", bg: "rgba(59,130,246,0.12)",  border: "rgba(59,130,246,0.3)"  },
-  "מוכן למאסטר":{ color: "#A855F7", bg: "rgba(168,85,247,0.12)", border: "rgba(168,85,247,0.3)"  },
-  "הושלם":      { color: "#22c55e", bg: "rgba(34,197,94,0.12)",   border: "rgba(34,197,94,0.3)"   },
+  "בעבודה":     { color: "#60A5FA", bg: "rgba(59,130,246,0.15)",  border: "rgba(59,130,246,0.3)"  },
+  "מחכה למיקס": { color: "#FBBF24", bg: "rgba(245,158,11,0.15)",  border: "rgba(245,158,11,0.3)"  },
+  "במיקס":      { color: "#C084FC", bg: "rgba(168,85,247,0.15)",  border: "rgba(168,85,247,0.3)"  },
+  "הושלם":      { color: "#34D399", bg: "rgba(16,185,129,0.15)",  border: "rgba(16,185,129,0.3)"  },
+  "בהשהייה":    { color: "#9CA3AF", bg: "rgba(107,114,128,0.15)", border: "rgba(107,114,128,0.3)" },
+  "לא התחיל":   { color: "#6B7280", bg: "rgba(75,85,99,0.15)",    border: "rgba(75,85,99,0.3)"    },
 };
 
 const MIX_MASTER_COLOR: Record<MixMasterStatus, string> = {
@@ -33,7 +34,7 @@ const MIX_MASTER_COLOR: Record<MixMasterStatus, string> = {
 };
 
 function StatusBadge({ status }: { status: AlbumTrackStatus }) {
-  const s = STATUS_COLOR[status] ?? STATUS_COLOR["טרום הקלטה"];
+  const s = STATUS_COLOR[status] ?? STATUS_COLOR["לא התחיל"];
   return (
     <span style={{
       fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5, whiteSpace: "nowrap",
@@ -136,7 +137,7 @@ export default function AlbumTracksTab({ project, accentColor, initialSelectedTr
         const isExpanded = expanded === track.id;
         const isEditing  = editing  === track.id;
         const trackFiles = filesForTrack(track.id);
-        const sc = STATUS_COLOR[track.status] ?? STATUS_COLOR["טרום הקלטה"];
+        const sc = STATUS_COLOR[track.status] ?? STATUS_COLOR["לא התחיל"];
 
         return (
           <div
