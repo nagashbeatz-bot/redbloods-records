@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
+import type { FileLink } from "@/lib/types";
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
 
@@ -21,6 +22,10 @@ interface Props {
   trackId?: string;
   /** Version label stored alongside the file, e.g. "V1", "מיקס 1" */
   versionLabel?: string;
+  /** Track title — included in the auto-generated filename when uploading from a track row */
+  trackName?: string;
+  /** Called after a successful upload with the resulting FileLink (including trackId/versionLabel) */
+  onSuccess?: (file: FileLink) => void;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -29,7 +34,8 @@ function buildVersionName(
   artist: string,
   projectName: string,
   existingFiles: { name: string }[],
-  ext: string
+  ext: string,
+  trackName?: string
 ): string {
   const audioCount = existingFiles.filter((f) =>
     AUDIO_EXTS.some((x) => f.name.toLowerCase().endsWith(x))
@@ -37,7 +43,8 @@ function buildVersionName(
   const version = audioCount + 1;
   const date = new Date().toISOString().split("T")[0];
   const sanitize = (s: string) => s.replace(/[/\\:*?"<>|]/g, "").trim();
-  return `${sanitize(artist)} - ${sanitize(projectName)} - ${date} - V${version}.${ext}`;
+  const trackPart = trackName ? ` - ${sanitize(trackName)}` : "";
+  return `${sanitize(artist)} - ${sanitize(projectName)}${trackPart} - ${date} - V${version}.${ext}`;
 }
 
 export default function UploadButton({
@@ -48,6 +55,8 @@ export default function UploadButton({
   size = "sm",
   trackId,
   versionLabel,
+  trackName,
+  onSuccess,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -76,7 +85,7 @@ export default function UploadButton({
       return;
     }
 
-    const newName = buildVersionName(artist, projectName, existingFiles, ext);
+    const newName = buildVersionName(artist, projectName, existingFiles, ext, trackName);
     setState("uploading");
     setProgress(0);
 
@@ -116,11 +125,19 @@ export default function UploadButton({
         if (xhr.status >= 200 && xhr.status < 300) {
           let ok = false;
           let url = "";
+          let resultFile: FileLink | null = null;
           try {
             const json = JSON.parse(xhr.responseText);
             ok = !!json.ok;
             url = json.shareUrl ?? "";
             if (!ok) throw new Error(json.error || "שגיאה בהעלאה");
+            if (json.file) {
+              resultFile = {
+                ...json.file,
+                ...(trackId      ? { trackId }      : {}),
+                ...(versionLabel ? { versionLabel } : {}),
+              } as FileLink;
+            }
           } catch (err) {
             const msg = err instanceof Error ? err.message : "שגיאה בהעלאה";
             console.error("[UploadButton] server error:", msg);
@@ -132,6 +149,7 @@ export default function UploadButton({
           }
           setState("done");
           await refresh();
+          if (resultFile && onSuccess) onSuccess(resultFile);
           // Show share popup for 5 seconds (portal — escapes overflow:hidden)
           if (url) {
             if (buttonRef.current) {

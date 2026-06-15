@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Project, AlbumTrack, AlbumTrackStatus, FileLink } from "@/lib/types";
 import { usePlayerSafe } from "@/components/PlayerProvider";
+import UploadButton from "@/components/ui/UploadButton";
 
 interface Transaction {
   id: string;
@@ -97,10 +98,11 @@ function CtrlBtn({ onClick, title, children }: { onClick?: () => void; title?: s
 
 export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onGoToTrack, onAddPayment }: Props) {
   const player = usePlayerSafe();
-  const [txData,  setTxData]  = useState<TxData | null>(null);
-  const [actions, setActions] = useState<ProjectAction[]>([]);
-  const [tracks,  setTracks]  = useState<AlbumTrack[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [txData,     setTxData]     = useState<TxData | null>(null);
+  const [actions,    setActions]    = useState<ProjectAction[]>([]);
+  const [tracks,     setTracks]     = useState<AlbumTrack[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [localFiles, setLocalFiles] = useState<FileLink[]>(project.files ?? []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -137,7 +139,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
   // ── Files per track ─────────────────────────────────────────────────────────
-  const filesForTrack  = (id: string): FileLink[] => project.files.filter((f) => f.trackId === id);
+  const filesForTrack    = (id: string): FileLink[] => localFiles.filter((f) => f.trackId === id);
   const lastFileForTrack = (id: string): FileLink | null => {
     const fs = filesForTrack(id);
     return fs.length > 0 ? fs[fs.length - 1] : null;
@@ -145,7 +147,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
 
   // ── Player ──────────────────────────────────────────────────────────────────
   const nowPlaying = player?.track?.projectId === project.id ? player.track : null;
-  const nowFile    = nowPlaying ? project.files.find((f) => f.name === nowPlaying.fileName) ?? null : null;
+  const nowFile    = nowPlaying ? localFiles.find((f) => f.name === nowPlaying.fileName) ?? null : null;
 
   // ── Recent actions ──────────────────────────────────────────────────────────
   const recentActions = [...actions]
@@ -207,7 +209,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
             { icon: "✅", label: "הושלמו",        value: tracks.filter((t) => t.status === "הושלם").length,    color: "#22c55e" },
             { icon: "🎚", label: "במיקס",         value: tracks.filter((t) => t.status === "במיקס").length,    color: "#3B82F6" },
             { icon: "🎤", label: "בהקלטה",        value: tracks.filter((t) => t.status === "בהקלטה").length,   color: "#F59E0B" },
-            { icon: "📁", label: "קבצים כלליים",  value: project.files.filter((f) => !f.trackId).length,       color: "#6B7280" },
+            { icon: "📁", label: "קבצים כלליים",  value: localFiles.filter((f) => !f.trackId).length,          color: "#6B7280" },
           ].map((s) => (
             <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 2px", borderBottom: "1px solid #141414" }}>
               <span style={{ fontSize: 11, color: "#555" }}>{s.icon} {s.label}</span>
@@ -282,11 +284,11 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
             <>
               {/* Table header */}
               <div style={{
-                display: "grid", gridTemplateColumns: "26px 1fr 92px 54px 76px 26px 20px",
+                display: "grid", gridTemplateColumns: "26px 1fr 92px 54px 76px 26px 26px",
                 gap: 6, padding: "6px 14px",
                 background: "#141414", borderBottom: "1px solid #1E1E1E",
               }}>
-                {["#", "שם השיר", "סטטוס", "גרסאות", "גרסה אחרונה", "▶", ""].map((h, i) => (
+                {["#", "שם השיר", "סטטוס", "גרסאות", "גרסה אחרונה", "▶", "↑"].map((h, i) => (
                   <div key={i} style={{ fontSize: 9, fontWeight: 700, color: "#444" }}>{h}</div>
                 ))}
               </div>
@@ -306,7 +308,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                     key={track.id}
                     onClick={() => onGoToTrack(track.id)}
                     style={{
-                      display: "grid", gridTemplateColumns: "26px 1fr 92px 54px 76px 26px 20px",
+                      display: "grid", gridTemplateColumns: "26px 1fr 92px 54px 76px 26px 26px",
                       gap: 6, padding: "10px 14px",
                       background: rowBg, borderBottom: "1px solid #141414",
                       cursor: "pointer", alignItems: "center", transition: "background 0.1s",
@@ -355,7 +357,19 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                       {isPlaying ? "⏸" : "▶"}
                     </button>
 
-                    <div style={{ fontSize: 13, color: "#2A2A2A", textAlign: "center" }}>≡</div>
+                    {/* Upload — stop propagation handled inside UploadButton */}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <UploadButton
+                        size="sm"
+                        projectId={project.id}
+                        projectName={project.name}
+                        artist={project.artist}
+                        existingFiles={filesForTrack(track.id)}
+                        trackId={track.id}
+                        trackName={track.title}
+                        onSuccess={(file) => setLocalFiles((prev) => [...prev, file])}
+                      />
+                    </div>
                   </div>
                 );
               })}
