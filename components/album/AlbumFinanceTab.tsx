@@ -46,9 +46,29 @@ function statusBadge(status: string, type: "income" | "expense"): React.CSSPrope
 }
 
 export default function AlbumFinanceTab({ project, accentColor }: Props) {
-  const [txData,      setTxData]      = useState<TxData | null>(null);
-  const [loading,     setLoading]     = useState(true);
-  const [showAddTx,   setShowAddTx]   = useState<"income" | "expense" | null>(null);
+  const [txData,          setTxData]          = useState<TxData | null>(null);
+  const [loading,         setLoading]         = useState(true);
+  const [showAddTx,       setShowAddTx]       = useState<"income" | "expense" | null>(null);
+  const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
+  const [savingStatus,    setSavingStatus]    = useState(false);
+
+  const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
+  const EXPENSE_STATUSES = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
+
+  const handleStatusChange = async (txId: string, newStatus: string) => {
+    setSavingStatus(true);
+    try {
+      await fetch(`/api/transactions/${txId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentStatus: newStatus }),
+      });
+      setEditingStatusId(null);
+      load();
+    } finally {
+      setSavingStatus(false);
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -78,7 +98,7 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
     .filter((t) => t.type === "expense")
     .reduce((s, t) => s + t.amount, 0);
 
-  const balance = received - expenses;
+  const balance = agreedPrice - received;
 
   const incomes  = transactions.filter((t) => t.type === "income");
   const expenseList = transactions.filter((t) => t.type === "expense");
@@ -119,49 +139,97 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
     color: type === "income" ? "#22c55e" : "#EF4444",
   });
 
-  const TxRow = ({ t }: { t: Transaction }) => (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "9px 18px",
-        borderBottom: "1px solid #141414",
-      }}
-    >
-      <span style={{ fontSize: 11, color: "#555", flexShrink: 0, minWidth: 50 }}>{formatDate(t.date)}</span>
-      <span style={{ fontSize: 12, color: "#888", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {t.description || "—"}
-      </span>
-      {t.category && (
-        <span style={{ fontSize: 10, color: "#555", flexShrink: 0 }}>{t.category}</span>
-      )}
-      <span
+  const TxRow = ({ t }: { t: Transaction }) => {
+    const isEditingThis = editingStatusId === t.id;
+    const statuses = t.type === "income" ? INCOME_STATUSES : EXPENSE_STATUSES;
+    return (
+      <div
         style={{
-          fontSize: 9,
-          fontWeight: 700,
-          padding: "2px 7px",
-          borderRadius: 5,
-          flexShrink: 0,
-          ...statusBadge(t.payment_status, t.type),
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "9px 18px",
+          borderBottom: "1px solid #141414",
         }}
       >
-        {t.payment_status}
-      </span>
-      <span
-        style={{
-          fontSize: 13,
-          color: t.type === "income" ? "#22c55e" : "#EF4444",
-          fontWeight: 700,
-          flexShrink: 0,
-          minWidth: 70,
-          textAlign: "left",
-        }}
-      >
-        {t.type === "income" ? "+" : "-"}{currency}{t.amount.toLocaleString("he-IL")}
-      </span>
-    </div>
-  );
+        <span style={{ fontSize: 11, color: "#555", flexShrink: 0, minWidth: 50 }}>{formatDate(t.date)}</span>
+        <span style={{ fontSize: 12, color: "#888", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {t.description || "—"}
+        </span>
+        {t.category && (
+          <span style={{ fontSize: 10, color: "#555", flexShrink: 0 }}>{t.category}</span>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          {isEditingThis ? (
+            <select
+              autoFocus
+              disabled={savingStatus}
+              defaultValue={t.payment_status}
+              onChange={(e) => handleStatusChange(t.id, e.target.value)}
+              onBlur={() => setEditingStatusId(null)}
+              style={{
+                fontSize: 10,
+                fontFamily: "inherit",
+                background: "#1E1E1E",
+                color: "#ccc",
+                border: "1px solid #444",
+                borderRadius: 5,
+                padding: "2px 4px",
+                cursor: "pointer",
+                direction: "rtl",
+              }}
+            >
+              {statuses.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  padding: "2px 7px",
+                  borderRadius: 5,
+                  ...statusBadge(t.payment_status, t.type),
+                }}
+              >
+                {t.payment_status}
+              </span>
+              <button
+                onClick={() => setEditingStatusId(t.id)}
+                style={{
+                  fontSize: 9,
+                  background: "none",
+                  border: "none",
+                  color: "#444",
+                  cursor: "pointer",
+                  padding: "1px 3px",
+                  fontFamily: "inherit",
+                  lineHeight: 1,
+                }}
+                title="שנה סטטוס"
+              >
+                ✎
+              </button>
+            </>
+          )}
+        </div>
+        <span
+          style={{
+            fontSize: 13,
+            color: t.type === "income" ? "#22c55e" : "#EF4444",
+            fontWeight: 700,
+            flexShrink: 0,
+            minWidth: 70,
+            textAlign: "left",
+          }}
+        >
+          {t.type === "income" ? "+" : "-"}{currency}{t.amount.toLocaleString("he-IL")}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div

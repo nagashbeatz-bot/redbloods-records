@@ -253,7 +253,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const received     = transactions.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const expected     = transactions.filter((t) => t.type === "income" && t.payment_status === "צפוי").reduce((s, t) => s + t.amount, 0);
   const expenses     = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-  const balance      = received - expenses;
+  const balance      = agreedPrice - received;
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
   // ── Files per track ─────────────────────────────────────────────────────────
