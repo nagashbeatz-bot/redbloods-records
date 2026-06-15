@@ -184,13 +184,17 @@ function BudgetGauge({
 // ── Item row ──────────────────────────────────────────────────────────────────
 
 function ItemRow({
-  item, itemPaid, onSave, onDelete, onOpenDetail,
+  item, itemPaid, onSave, onDelete, onOpenDetail, onDuplicate, menuOpen, onMenuToggle, onMenuClose,
 }: {
   item: BudgetItem;
   itemPaid: number;
   onSave: (id: string, fields: Partial<BudgetItem>) => Promise<void>;
   onDelete: (id: string) => void;
   onOpenDetail: () => void;
+  onDuplicate: () => void;
+  menuOpen: boolean;
+  onMenuToggle: () => void;
+  onMenuClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(item);
@@ -295,19 +299,46 @@ function ItemRow({
         </span>
       </td>
       <td style={{ padding: "9px 10px" }}>
-        <div style={{ display: "flex", gap: 5 }}>
-          <button onClick={onOpenDetail}
-            style={{ fontSize: 10, color: "#60A5FA", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 8px", fontWeight: 600 }}>
-            💳
-          </button>
-          <button onClick={() => setEditing(true)}
-            style={{ fontSize: 11, color: "#555", background: "none", border: "1px solid #2A2A2A", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 8px" }}>
-            ✏
-          </button>
-          <button onClick={() => onDelete(item.id)}
-            style={{ fontSize: 11, color: "#555", background: "none", border: "1px solid #2A2A2A", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 8px" }}>
-            🗑
-          </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {/* Quick "שולם" button or paid badge */}
+          {!isCancelled && !isPaid && (
+            <button
+              onClick={() => onSave(item.id, { status: "שולם" })}
+              style={{ fontSize: 11, fontWeight: 700, color: "#22C55E", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "3px 10px", whiteSpace: "nowrap" }}>
+              שולם
+            </button>
+          )}
+          {isPaid && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#22C55E", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 6, padding: "3px 8px", whiteSpace: "nowrap" }}>
+              שולם ✓
+            </span>
+          )}
+          {/* Three-dots menu */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onMenuToggle(); }}
+              style={{ fontSize: 15, color: "#555", background: "none", border: "1px solid #2A2A2A", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "1px 8px", lineHeight: 1.2 }}>
+              ⋯
+            </button>
+            {menuOpen && (
+              <div style={{ position: "absolute", left: 0, top: "calc(100% + 4px)", zIndex: 200, background: "#1C1C1C", border: "1px solid #2E2E2E", borderRadius: 10, minWidth: 140, boxShadow: "0 4px 20px rgba(0,0,0,0.6)", overflow: "hidden" }}>
+                {[
+                  { label: "✏ ערוך",       action: () => { setEditing(true); onMenuClose(); } },
+                  { label: "📋 שכפל",       action: () => { onDuplicate(); onMenuClose(); } },
+                  { label: "💳 תשלומים",    action: () => { onOpenDetail(); onMenuClose(); } },
+                  ...(isPaid ? [{ label: "↩ בטל תשלום", action: () => { onSave(item.id, { status: "מתוכנן" }); onMenuClose(); }, red: false }] : []),
+                  { label: "🗑 מחק",        action: () => { onDelete(item.id); onMenuClose(); }, red: true },
+                ].map((opt) => (
+                  <button key={opt.label} onClick={opt.action}
+                    style={{ display: "block", width: "100%", padding: "9px 14px", textAlign: "right", background: "transparent", border: "none", borderBottom: "1px solid #252525", color: opt.red ? "#EF4444" : "#CCC", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#252525"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </td>
     </tr>
@@ -447,7 +478,16 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   const [raiseModal, setRaiseModal]   = useState(false);
   const [raiseSaving, setRaiseSaving] = useState(false);
   const [openItemId, setOpenItemId]   = useState<string | null>(null);
+  const [menuOpenId, setMenuOpenId]   = useState<string | null>(null);
   const [isMobile, setIsMobile]       = useState(false);
+
+  // Close three-dots menu on outside click
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const close = () => setMenuOpenId(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [menuOpenId]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -514,6 +554,20 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
     if (!confirm("למחוק את הפריט?")) return;
     await fetch(`/api/red-films/budget-items/${id}`, { method: "DELETE" });
     setItems(prev => prev.filter(i => i.id !== id));
+  }
+
+  async function handleDuplicate(item: BudgetItem) {
+    const res = await fetch(`/api/red-films/productions/${productionId}/budget-items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: item.title, category: item.category,
+        planned_amount: item.planned_amount, actual_amount: 0,
+        vendor_name: item.vendor_name, status: "מתוכנן", notes: item.notes,
+      }),
+    });
+    const data = await res.json();
+    if (data.item) setItems(prev => [...prev, data.item]);
   }
 
   function handlePaymentAdded(p: BudgetPayment) {
@@ -644,6 +698,10 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   onSave={handleSave}
                   onDelete={handleDelete}
                   onOpenDetail={() => setOpenItemId(item.id)}
+                  onDuplicate={() => handleDuplicate(item)}
+                  menuOpen={menuOpenId === item.id}
+                  onMenuToggle={() => setMenuOpenId(prev => prev === item.id ? null : item.id)}
+                  onMenuClose={() => setMenuOpenId(null)}
                 />
               ))}
             </tbody>
