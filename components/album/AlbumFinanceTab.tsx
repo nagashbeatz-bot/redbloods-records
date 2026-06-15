@@ -16,7 +16,9 @@ interface Transaction {
 
 interface TxData {
   transactions: Transaction[];
-  settings: { agreedPrice: number; currency: string; financialNotes: string };
+  agreedPrice: number;
+  currency: string;
+  financialNotes: string;
 }
 
 interface Props {
@@ -59,8 +61,8 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
 
   useEffect(() => { load(); }, [project.id]);
 
-  const agreedPrice  = txData?.settings?.agreedPrice ?? 0;
-  const currency     = txData?.settings?.currency ?? "₪";
+  const agreedPrice  = txData?.agreedPrice ?? 0;
+  const currency     = txData?.currency ?? "₪";
   const transactions = txData?.transactions ?? [];
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
 
