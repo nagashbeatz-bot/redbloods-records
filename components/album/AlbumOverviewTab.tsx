@@ -617,12 +617,12 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                       title="מחק שיר"
                       style={{
                         width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                        border: "1px solid #333", background: "transparent",
-                        color: "#555", fontSize: 11, cursor: "pointer",
+                        border: "1px solid #444", background: "transparent",
+                        color: "#888", fontSize: 12, cursor: "pointer",
                         display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit",
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)"; e.currentTarget.style.color = "#EF4444"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#2A2A2A"; e.currentTarget.style.color = "#3A3A3A"; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(239,68,68,0.5)"; e.currentTarget.style.color = "#EF4444"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#444"; e.currentTarget.style.color = "#888"; e.currentTarget.style.background = "transparent"; }}
                     >
                       🗑
                     </button>
