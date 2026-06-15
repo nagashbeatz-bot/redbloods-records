@@ -101,6 +101,9 @@ function BudgetGauge({
 
   const statusColor = isOverrun ? "#EF4444" : isWarning ? "#F59E0B" : "#22C55E";
 
+  const remainingToPay = plannedTotal - paidTotal;
+  const paidColor = paidTotal === 0 ? "#555" : paidTotal < plannedTotal ? "#F59E0B" : "#22C55E";
+
   return (
     <div style={{
       background: "#141414", border: `1px solid ${isOverrun ? "rgba(239,68,68,0.3)" : "#252525"}`,
@@ -130,20 +133,26 @@ function BudgetGauge({
       </div>
 
       {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
-        {[
-          ["תקציב",    fmtMoney(generalBudget),  "#888"],
-          ["מתוכנן",   fmtMoney(plannedTotal),   isOverrun ? "#EF4444" : "#E8E8E8"],
-          ["שולם",     fmtMoney(paidTotal),       "#22C55E"],
-          ["נשאר",     remaining >= 0 ? fmtMoney(remaining) : `−${fmtMoney(Math.abs(remaining))}`,
-                       remaining >= 0 ? "#22C55E" : "#EF4444"],
-        ].map(([lbl, val, col]) => (
-          <div key={lbl} style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 10, color: "#555", marginBottom: 3 }}>{lbl}</div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: col as string }}>{val}</div>
+      {(() => {
+        const stats: [string, string, string][] = [
+          ["תקציב",   fmtMoney(generalBudget),  "#888"],
+          ["מתוכנן",  fmtMoney(plannedTotal),   isOverrun ? "#EF4444" : "#E8E8E8"],
+          ["שולם",    fmtMoney(paidTotal),       paidColor],
+          ["נשאר",    remaining >= 0 ? fmtMoney(remaining) : `−${fmtMoney(Math.abs(remaining))}`,
+                      remaining >= 0 ? "#22C55E" : "#EF4444"],
+          ...(remainingToPay > 0 ? [["לתשלום", fmtMoney(remainingToPay), "#F59E0B"] as [string, string, string]] : []),
+        ];
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 8 }}>
+            {stats.map(([lbl, val, col]) => (
+              <div key={lbl} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 3 }}>{lbl}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: col }}>{val}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Overrun alert */}
       {isOverrun && (
@@ -277,7 +286,7 @@ function ItemRow({
         {item.planned_amount ? fmtMoney(item.planned_amount) : "—"}
       </td>
       {/* שולם — from payments */}
-      <td style={{ padding: "9px 10px", fontSize: 13, color: "#22C55E", fontWeight: 700, textAlign: "left" }}>
+      <td style={{ padding: "9px 10px", fontSize: 13, color: isCancelled ? "#555" : isFullyPaid ? "#22C55E" : isPartial ? "#F59E0B" : "#555", fontWeight: 700, textAlign: "left" }}>
         {itemPaid > 0 ? fmtMoney(itemPaid) : "—"}
       </td>
       <td style={{ padding: "9px 10px" }}>
@@ -470,7 +479,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   }, [menuOpenId]);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => setIsMobile(window.innerWidth < 1100);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -596,8 +605,11 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
         /* ── Mobile: cards ─────────────────────────────────────── */
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {items.map(item => {
-            const itemPaid = paidByItem.get(item.id) ?? 0;
-            const isCancelled = item.status === "בוטל";
+            const itemPaid      = paidByItem.get(item.id) ?? 0;
+            const isCancelled   = item.status === "בוטל";
+            const isItemFullyPaid = item.status === "שולם" || (item.planned_amount > 0 && itemPaid >= item.planned_amount * 0.99);
+            const isItemPartial   = !isItemFullyPaid && itemPaid > 0;
+            const itemPaidColor   = isCancelled ? "#555" : isItemFullyPaid ? "#22C55E" : isItemPartial ? "#F59E0B" : "#555";
             return (
               <div key={item.id} style={{
                 background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12,
@@ -617,7 +629,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   </div>
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 9, color: "#444", marginBottom: 2 }}>שולם</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#22C55E" }}>{itemPaid > 0 ? fmtMoney(itemPaid) : "—"}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: itemPaidColor }}>{itemPaid > 0 ? fmtMoney(itemPaid) : "—"}</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -646,7 +658,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
             </div>
             <div style={{ textAlign: "center", background: "#141414", borderRadius: 8, padding: "8px 10px" }}>
               <div style={{ fontSize: 10, color: "#555" }}>סה״כ שולם</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#22C55E" }}>{fmtMoney(paidTotal)}</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: paidTotal === 0 ? "#555" : paidTotal < plannedTotal ? "#F59E0B" : "#22C55E" }}>{fmtMoney(paidTotal)}</div>
             </div>
           </div>
         </div>
@@ -688,7 +700,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
                   <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#E8E8E8", textAlign: "left" }}>
                     {fmtMoney(plannedTotal)}
                   </td>
-                  <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: "#22C55E", textAlign: "left" }}>
+                  <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 800, color: paidTotal === 0 ? "#555" : paidTotal < plannedTotal ? "#F59E0B" : "#22C55E", textAlign: "left" }}>
                     {fmtMoney(paidTotal)}
                   </td>
                   <td colSpan={2} />
