@@ -96,7 +96,9 @@ interface Transaction {
 
 interface TxData {
   transactions: Transaction[];
-  settings: { agreedPrice: number; currency: string; financialNotes: string };
+  agreedPrice: number;
+  currency: string;
+  financialNotes: string;
 }
 
 const addBtn = (type: "income" | "expense"): React.CSSProperties => ({
@@ -111,6 +113,8 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const player = usePlayerSafe();
   const [txData,         setTxData]         = useState<TxData | null>(null);
   const [showAddTx,      setShowAddTx]      = useState<"income" | "expense" | null>(null);
+  const [editingAgreed,  setEditingAgreed]  = useState(false);
+  const [agreedDraft,    setAgreedDraft]    = useState("");
   const [actions,        setActions]        = useState<ProjectAction[]>([]);
   const [tracks,         setTracks]         = useState<AlbumTrack[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -133,6 +137,18 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const handleConfirmCancel = () => {
     confirmResolve?.(false);
     setConfirmResolve(null);
+  };
+
+  const handleSaveAgreed = async (val: string) => {
+    const n = parseFloat(val);
+    if (isNaN(n) || n < 0) { setEditingAgreed(false); return; }
+    setTxData((prev) => prev ? { ...prev, agreedPrice: n } : prev);
+    setEditingAgreed(false);
+    await fetch(`/api/transactions?projectId=${project.id}&type=settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agreedPrice: n, currency }),
+    });
   };
 
   // ── Drag & Drop ─────────────────────────────────────────────────────────────
@@ -232,8 +248,8 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
 
   // ── Finance computed (from real transactions) ─────────────────────────────────
   const transactions = txData?.transactions ?? [];
-  const agreedPrice  = txData?.settings?.agreedPrice ?? 0;
-  const currency     = txData?.settings?.currency ?? "₪";
+  const agreedPrice  = txData?.agreedPrice ?? 0;
+  const currency     = txData?.currency ?? "₪";
   const received     = transactions.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const expected     = transactions.filter((t) => t.type === "income" && t.payment_status === "צפוי").reduce((s, t) => s + t.amount, 0);
   const expenses     = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
@@ -727,8 +743,27 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, padding: "12px 14px" }}>
+            {/* סוכם — clickable to edit */}
+            <div
+              onClick={() => { if (!editingAgreed) { setAgreedDraft(String(agreedPrice)); setEditingAgreed(true); } }}
+              title="לחץ לעריכה"
+              style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}
+            >
+              <div style={{ fontSize: 9, color: "#555", marginBottom: 6 }}>סוכם</div>
+              {editingAgreed ? (
+                <input
+                  autoFocus type="number" min={0} value={agreedDraft}
+                  onChange={(e) => setAgreedDraft(e.target.value)}
+                  onBlur={() => handleSaveAgreed(agreedDraft)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSaveAgreed(agreedDraft); if (e.key === "Escape") setEditingAgreed(false); }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ width: "100%", boxSizing: "border-box", background: "transparent", border: "none", borderBottom: "1px solid #555", outline: "none", fontSize: 15, fontWeight: 700, color: "#E0E0E0", fontFamily: "inherit", padding: 0 }}
+                />
+              ) : (
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#E0E0E0" }}>{fmt(agreedPrice)}</div>
+              )}
+            </div>
             {[
-              { label: "סוכם",   value: fmt(agreedPrice), color: "#E0E0E0" },
               { label: "התקבל",  value: fmt(received),    color: "#22c55e" },
               { label: "צפוי",   value: fmt(expected),    color: "#F59E0B" },
               { label: "הוצאות", value: fmt(expenses),    color: "#EF4444" },
