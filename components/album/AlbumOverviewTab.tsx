@@ -92,6 +92,40 @@ interface Transaction {
   description: string;
   date: string;
   payment_status: string;
+  category?: string;
+  payment_method?: string;
+  artist?: string;
+}
+
+type FilterKey = "received" | "expected" | "expenses" | "balance";
+
+const MODAL_TITLES: Record<FilterKey, string> = {
+  received: "פירוט — התקבל בפועל",
+  expected: "פירוט — צפוי",
+  expenses: "פירוט — הוצאות",
+  balance:  "פירוט — יתרה לגבייה",
+};
+
+const INCOME_STATUSES = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
+const EXPENSE_STATUSES = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
+
+function txStatusBadgeStyle(status: string): React.CSSProperties {
+  if (status === "שולם" || status === "התקבל")
+    return { background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" };
+  if (status === "צפוי")
+    return { background: "rgba(245,158,11,0.12)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.3)" };
+  if (status === "בוטל")
+    return { background: "rgba(239,68,68,0.10)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" };
+  if (status === "חלקי")
+    return { background: "rgba(99,102,241,0.12)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" };
+  return { background: "rgba(100,100,100,0.12)", color: "#666", border: "1px solid #333" };
+}
+
+function formatTxDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length < 3) return dateStr;
+  return `${parts[2]}.${parts[1]}.${parts[0].slice(2)}`;
 }
 
 interface TxData {
@@ -115,6 +149,9 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const [showAddTx,      setShowAddTx]      = useState<"income" | "expense" | null>(null);
   const [editingAgreed,  setEditingAgreed]  = useState(false);
   const [agreedDraft,    setAgreedDraft]    = useState("");
+  const [filterModal,    setFilterModal]    = useState<FilterKey | null>(null);
+  const [modalEditingId, setModalEditingId] = useState<string | null>(null);
+  const [modalSaving,    setModalSaving]    = useState(false);
   const [actions,        setActions]        = useState<ProjectAction[]>([]);
   const [tracks,         setTracks]         = useState<AlbumTrack[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -149,6 +186,21 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agreedPrice: n, currency }),
     });
+  };
+
+  const handleTxStatusChange = async (txId: string, newStatus: string) => {
+    setModalSaving(true);
+    try {
+      await fetch(`/api/transactions/${txId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentStatus: newStatus }),
+      });
+      setModalEditingId(null);
+      load();
+    } finally {
+      setModalSaving(false);
+    }
   };
 
   // ── Drag & Drop ─────────────────────────────────────────────────────────────
@@ -240,6 +292,13 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!filterModal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setFilterModal(null); setModalEditingId(null); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filterModal]);
+
   // ── Progress ────────────────────────────────────────────────────────────────
   const pct = tracks.length === 0
     ? 0
@@ -255,6 +314,13 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   const expenses     = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
   const balance      = agreedPrice - received;
   const fmt = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
+
+  const MODAL_ROWS: Record<FilterKey, Transaction[]> = {
+    received: transactions.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)),
+    expected: transactions.filter((t) => t.type === "income" && t.payment_status === "צפוי"),
+    expenses: transactions.filter((t) => t.type === "expense"),
+    balance:  transactions.filter((t) => t.type === "income" && !["שולם", "התקבל", "בוטל"].includes(t.payment_status)),
+  };
 
   // ── Files per track ─────────────────────────────────────────────────────────
   const filesForTrack    = (id: string): FileLink[] => localFiles.filter((f) => f.trackId === id);
@@ -292,6 +358,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
   }
 
   return (
+    <>
     <div style={{ height: "100%", display: "flex", overflow: "hidden", direction: "rtl" }}>
 
       {/* ── Confirm overlay (pause-before-upload) ────────────────────────────── */}
@@ -763,13 +830,20 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#E0E0E0" }}>{fmt(agreedPrice)}</div>
               )}
             </div>
-            {[
-              { label: "התקבל",  value: fmt(received),    color: "#22c55e" },
-              { label: "צפוי",   value: fmt(expected),    color: "#F59E0B" },
-              { label: "הוצאות", value: fmt(expenses),    color: "#EF4444" },
-              { label: "יתרה",   value: fmt(balance),     color: balance >= 0 ? "#22c55e" : "#EF4444" },
-            ].map((s) => (
-              <div key={s.label} style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px" }}>
+            {([
+              { label: "התקבל",  value: fmt(received),    color: "#22c55e",                             key: "received"  },
+              { label: "צפוי",   value: fmt(expected),    color: "#F59E0B",                             key: "expected"  },
+              { label: "הוצאות", value: fmt(expenses),    color: "#EF4444",                             key: "expenses"  },
+              { label: "יתרה",   value: fmt(balance),     color: balance >= 0 ? "#22c55e" : "#EF4444",  key: "balance"   },
+            ] as { label: string; value: string; color: string; key: FilterKey }[]).map((s) => (
+              <div
+                key={s.label}
+                onClick={() => setFilterModal(s.key)}
+                title="לחץ לפירוט"
+                style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12, padding: "14px 16px", cursor: "pointer", transition: "border-color 0.15s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3A3A3A")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#252525")}
+              >
                 <div style={{ fontSize: 9, color: "#555", marginBottom: 6 }}>{s.label}</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: s.color }}>{s.value}</div>
               </div>
@@ -806,5 +880,93 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
         </div>
       </div>
     </div>
+
+    {/* ── Finance breakdown modal ────────────────────────────────────────── */}
+    {filterModal && (
+      <div
+        onClick={() => { setFilterModal(null); setModalEditingId(null); }}
+        style={{ position: "fixed", inset: 0, zIndex: 50000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ background: "#141414", border: "1px solid #252525", borderRadius: 18, width: "100%", maxWidth: 580, maxHeight: "80vh", display: "flex", flexDirection: "column", direction: "rtl", boxShadow: "0 8px 60px rgba(0,0,0,0.8)" }}
+        >
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #1E1E1E", flexShrink: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0" }}>{MODAL_TITLES[filterModal]}</span>
+            <button
+              onClick={() => { setFilterModal(null); setModalEditingId(null); }}
+              style={{ background: "none", border: "none", color: "#555", fontSize: 18, cursor: "pointer", fontFamily: "inherit", lineHeight: 1, padding: "2px 6px" }}
+            >✕</button>
+          </div>
+
+          {/* Balance summary row */}
+          {filterModal === "balance" && (
+            <div style={{ display: "flex", gap: 10, padding: "12px 20px", borderBottom: "1px solid #1A1A1A", flexShrink: 0 }}>
+              {[
+                { label: "סוכם",    value: fmt(agreedPrice), color: "#E0E0E0" },
+                { label: "התקבל",   value: fmt(received),    color: "#22c55e" },
+                { label: "יתרה",    value: fmt(balance),     color: balance >= 0 ? "#22c55e" : "#EF4444" },
+              ].map((s) => (
+                <div key={s.label} style={{ flex: 1, background: "#1A1A1A", border: "1px solid #252525", borderRadius: 10, padding: "10px 12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 9, color: "#555", marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: s.color }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Transaction list */}
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {MODAL_ROWS[filterModal].length === 0 ? (
+              <div style={{ padding: "32px 20px", textAlign: "center", color: "#444", fontSize: 13 }}>אין עסקאות בסטטוס זה</div>
+            ) : (
+              MODAL_ROWS[filterModal].map((t) => {
+                const isEditing = modalEditingId === t.id;
+                const statuses = t.type === "income" ? INCOME_STATUSES : EXPENSE_STATUSES;
+                return (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 20px", borderBottom: "1px solid #1A1A1A" }}>
+                    <span style={{ fontSize: 11, color: "#555", flexShrink: 0, minWidth: 52 }}>{formatTxDate(t.date)}</span>
+                    <span style={{ fontSize: 12, color: "#999", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.description || "—"}
+                    </span>
+                    {t.category && <span style={{ fontSize: 10, color: "#555", flexShrink: 0 }}>{t.category}</span>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                      {isEditing ? (
+                        <select
+                          autoFocus
+                          disabled={modalSaving}
+                          defaultValue={t.payment_status}
+                          onChange={(e) => handleTxStatusChange(t.id, e.target.value)}
+                          onBlur={() => setModalEditingId(null)}
+                          style={{ fontSize: 10, fontFamily: "inherit", background: "#1E1E1E", color: "#ccc", border: "1px solid #444", borderRadius: 5, padding: "2px 4px", cursor: "pointer", direction: "rtl" }}
+                        >
+                          {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 5, ...txStatusBadgeStyle(t.payment_status) }}>
+                            {t.payment_status}
+                          </span>
+                          <button
+                            onClick={() => setModalEditingId(t.id)}
+                            style={{ fontSize: 9, background: "none", border: "none", color: "#444", cursor: "pointer", padding: "1px 3px", fontFamily: "inherit", lineHeight: 1 }}
+                            title="שנה סטטוס"
+                          >✎</button>
+                        </>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, flexShrink: 0, minWidth: 70, textAlign: "left", color: t.type === "income" ? "#22c55e" : "#EF4444" }}>
+                      {t.type === "income" ? "+" : "-"}{currency}{t.amount.toLocaleString("he-IL")}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
