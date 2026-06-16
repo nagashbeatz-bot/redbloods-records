@@ -32,7 +32,7 @@ function isAudio(name: string): boolean {
 }
 
 const TRACK_PCT: Record<AlbumTrackStatus, number> = {
-  "הושלם": 100, "מחכה למיקס": 80, "במיקס": 60, "בעבודה": 35, "בהשהייה": 10, "לא התחיל": 0,
+  "הושלם": 100, "במיקס": 75, "מחכה למיקס": 55, "בעבודה": 35, "בהשהייה": 10, "לא התחיל": 0,
 };
 
 const STATUS_COLOR: Record<AlbumTrackStatus, { color: string; bg: string; border: string }> = {
