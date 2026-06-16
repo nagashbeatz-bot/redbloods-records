@@ -75,15 +75,16 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
 
   const router = useRouter();
 
-  // Persist open album in URL so Refresh reopens it
+  // Persist open project/album in URL so Refresh reopens it
   useEffect(() => {
-    if (albumProject) {
-      router.replace(`/projects?open=${albumProject.id}`);
+    const id = albumProject?.id ?? drawerProjectId ?? null;
+    if (id) {
+      router.replace(`/projects?open=${id}`);
     } else {
       router.replace("/projects");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [albumProject]);
+  }, [albumProject, drawerProjectId]);
 
   // Keep albumProject in sync after file uploads (UploadButton calls refresh() → projects updates)
   useEffect(() => {
