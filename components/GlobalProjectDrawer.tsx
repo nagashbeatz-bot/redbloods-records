@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import ProjectDrawer from "@/components/ui/ProjectDrawer";
 import AlbumCenterModal from "@/components/album/AlbumCenterModal";
@@ -74,9 +74,12 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   }, []);
 
   const router = useRouter();
+  const pathname = usePathname();
 
-  // Persist open project/album in URL so Refresh reopens it
+  // Persist open project/album in URL so Refresh reopens it.
+  // Guard: only touch the URL when already on /projects — never redirect from other pages.
   useEffect(() => {
+    if (!pathname.startsWith("/projects")) return;
     const id = albumProject?.id ?? drawerProjectId ?? null;
     if (id) {
       router.replace(`/projects?open=${id}`);
@@ -84,7 +87,7 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
       router.replace("/projects");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [albumProject, drawerProjectId]);
+  }, [albumProject, drawerProjectId, pathname]);
 
   // Keep albumProject in sync after file uploads (UploadButton calls refresh() → projects updates)
   useEffect(() => {
