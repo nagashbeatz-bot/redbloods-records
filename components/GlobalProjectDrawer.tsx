@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import ProjectDrawer from "@/components/ui/ProjectDrawer";
 import AlbumCenterModal from "@/components/album/AlbumCenterModal";
@@ -71,6 +72,18 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
     setDrawerProjectId(null);
     setAlbumProject(null);
   }, []);
+
+  const router = useRouter();
+
+  // Persist open album in URL so Refresh reopens it
+  useEffect(() => {
+    if (albumProject) {
+      router.replace(`/projects?open=${albumProject.id}`);
+    } else {
+      router.replace("/projects");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [albumProject]);
 
   // Keep albumProject in sync after file uploads (UploadButton calls refresh() → projects updates)
   useEffect(() => {

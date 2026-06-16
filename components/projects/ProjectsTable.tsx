@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
@@ -21,14 +21,12 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 // ── Open project from URL param (?open=<id>) ──────────────────────────────────
 function OpenProjectFromURL() {
   const searchParams = useSearchParams();
-  const router       = useRouter();
   const { openProject } = useGlobalProjectDrawer();
 
   useEffect(() => {
     const id = searchParams.get("open");
     if (id) {
       openProject(id);
-      router.replace("/projects");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
