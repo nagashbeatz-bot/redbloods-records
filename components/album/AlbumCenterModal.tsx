@@ -22,6 +22,14 @@ const TRACK_PCT: Record<string, number> = {
   "הושלם": 100, "במיקס": 75, "מחכה למיקס": 55, "בעבודה": 35, "בהשהייה": 10, "לא התחיל": 0,
 };
 
+function getProgressColor(pct: number): string {
+  if (pct <= 20) return "#6B7280";
+  if (pct <= 40) return "#F97316";
+  if (pct <= 60) return "#EAB308";
+  if (pct <= 85) return "#818CF8";
+  return "#22C55E";
+}
+
 function getAccentColor(projectType: string): string {
   if (projectType === "EP") return "#A855F7";
   if (projectType === "אלבום") return "#EC4899";
@@ -148,7 +156,7 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
               <div style={{ color: "#555", fontSize: 11, marginBottom: 6 }}>{headerText}</div>
               <div style={{ background: "#1E1E1E", borderRadius: 3, height: 4, width: "100%", maxWidth: 280 }}>
                 <div style={{
-                  background: accentColor, borderRadius: 3, height: "100%",
+                  background: getProgressColor(headerPct), borderRadius: 3, height: "100%",
                   width: `${Math.min(100, Math.max(0, headerPct))}%`,
                   transition: "width 0.4s ease",
                 }} />

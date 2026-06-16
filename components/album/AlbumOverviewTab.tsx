@@ -35,6 +35,14 @@ const TRACK_PCT: Record<AlbumTrackStatus, number> = {
   "הושלם": 100, "במיקס": 75, "מחכה למיקס": 55, "בעבודה": 35, "בהשהייה": 10, "לא התחיל": 0,
 };
 
+function getProgressColor(pct: number): string {
+  if (pct <= 20) return "#6B7280";
+  if (pct <= 40) return "#F97316";
+  if (pct <= 60) return "#EAB308";
+  if (pct <= 85) return "#818CF8";
+  return "#22C55E";
+}
+
 const STATUS_COLOR: Record<AlbumTrackStatus, { color: string; bg: string; border: string }> = {
   "בעבודה":     { color: "#60A5FA", bg: "rgba(59,130,246,0.15)",  border: "rgba(59,130,246,0.3)"  },
   "מחכה למיקס": { color: "#FBBF24", bg: "rgba(245,158,11,0.15)",  border: "rgba(245,158,11,0.3)"  },
@@ -485,7 +493,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
               <circle cx="55" cy="55" r="44" fill="none" stroke="#1E1E1E" strokeWidth="7" />
               <circle
                 cx="55" cy="55" r="44" fill="none"
-                stroke={accentColor} strokeWidth="7"
+                stroke={getProgressColor(pct)} strokeWidth="7"
                 strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - pct / 100)}
                 strokeLinecap="round"
                 style={{ transition: "stroke-dashoffset 0.5s ease" }}
