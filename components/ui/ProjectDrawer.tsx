@@ -1809,7 +1809,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         `}</style>
 
         {/* ── Header ────────────────────────────────────────────────────────── */}
-        <div style={{ padding: "20px 28px 0", borderBottom: "1px solid #1E1E1E", flexShrink: 0, background: "#111" }}>
+        <div style={{ padding: isMobile ? "max(20px, env(safe-area-inset-top)) 20px 0" : "20px 28px 0", borderBottom: "1px solid #1E1E1E", flexShrink: 0, background: "#111" }}>
 
           {/* Top row: project info + controls */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1851,12 +1851,14 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
             {/* Left: full-page link + close */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              {!isMobile && (
               <Link
                 href={`/projects/${project.id}`}
                 style={{ fontSize: 11, color: "#555", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid #2A2A2A", background: "rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#AAA")}
                 onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#555")}
               >פתח עמוד מלא ↗</Link>
+              )}
               <button
                 onClick={onClose}
                 title="סגור (ESC)"
@@ -1871,19 +1873,19 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
             <button
               onClick={() => { setActiveTab("סשנים"); setAddingSession(true); setAddDraft(emptyDraft()); }}
-              style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid rgba(59,130,246,0.25)", background: "rgba(59,130,246,0.06)", color: "#60A5FA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              style={{ padding: isMobile ? "8px 12px" : "5px 12px", borderRadius: 8, border: "1px solid rgba(59,130,246,0.25)", background: "rgba(59,130,246,0.06)", color: "#60A5FA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.13)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.06)")}
             >+ סשן</button>
             <button
               onClick={() => { setActiveTab("כספים"); setAddingTx("income"); setTxDraft({ ...emptyTxDraft(), type: "income" }); }}
-              style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.06)", color: "#34D399", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              style={{ padding: isMobile ? "8px 12px" : "5px 12px", borderRadius: 8, border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.06)", color: "#34D399", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.13)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.06)")}
             >+ תשלום</button>
             <button
               onClick={() => { setActiveTab("כספים"); setAddingTx("expense"); setTxDraft({ ...emptyTxDraft(), type: "expense" }); }}
-              style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", background: "rgba(245,158,11,0.06)", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              style={{ padding: isMobile ? "8px 12px" : "5px 12px", borderRadius: 8, border: "1px solid rgba(245,158,11,0.25)", background: "rgba(245,158,11,0.06)", color: "#F59E0B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.13)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.06)")}
             >+ הוצאה</button>
@@ -1916,7 +1918,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
         </div>
 
         {/* ── Tab content ──────────────────────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "#141414" } as React.CSSProperties}>
+        <div style={{ flex: 1, overflowY: "auto", background: "#141414", padding: isMobile ? "20px 16px calc(20px + env(safe-area-inset-bottom)) 16px" : 20 } as React.CSSProperties}>
 
           <div style={{ display: activeTab === "סקירה" ? "block" : "none" }}>
           {/* ── Mai: הפעולה הבאה (pure, no fetch) ──────────────────────── */}

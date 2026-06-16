@@ -162,7 +162,7 @@ export default function MobileNav({
                 display: "flex", flexDirection: "column", alignItems: "center",
                 gap: 3, padding: "10px 0", minHeight: 56,
                 color: active ? "#3B82F6" : "#666",
-                fontSize: 10, fontWeight: 600, textDecoration: "none",
+                fontSize: 11, fontWeight: 600, textDecoration: "none",
               }}
             >
               <span style={{ fontSize: 22, lineHeight: 1, ...(iconColor ? { color: active ? iconColor : "#555" } : {}) }}>
@@ -179,7 +179,7 @@ export default function MobileNav({
             display: "flex", flexDirection: "column", alignItems: "center",
             gap: 3, padding: "10px 0", minHeight: 56,
             color: moreActive || moreOpen ? "#3B82F6" : "#666",
-            fontSize: 10, fontWeight: 600,
+            fontSize: 11, fontWeight: 600,
             background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
           }}
         >
