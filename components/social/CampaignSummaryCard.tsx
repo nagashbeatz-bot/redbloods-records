@@ -11,15 +11,17 @@ import {
 interface Props {
   campaign: SocialCampaign;
   onUpdate: (patch: Partial<SocialCampaign>) => Promise<unknown>;
+  onDelete?: () => Promise<void>;
 }
 
-export default function CampaignSummaryCard({ campaign, onUpdate }: Props) {
+export default function CampaignSummaryCard({ campaign, onUpdate, onDelete }: Props) {
   const [editing, setEditing] = useState(false);
   const [angle, setAngle] = useState(campaign.marketing_angle);
   const [audience, setAudience] = useState(campaign.target_audience);
   const [message, setMessage] = useState(campaign.main_message);
   const [platforms, setPlatforms] = useState<SocialPlatform[]>(campaign.platforms);
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   async function handleSave() {
     setSaving(true);
@@ -89,6 +91,52 @@ export default function CampaignSummaryCard({ campaign, onUpdate }: Props) {
           </div>
         )}
       </div>
+
+      {onDelete && (
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #222" }}>
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              style={{
+                width: "100%", padding: "8px", borderRadius: 8,
+                border: "1px solid #333", background: "transparent",
+                color: "#555", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              🗑 מחק קמפיין
+            </button>
+          ) : (
+            <div style={{ background: "#EF444411", border: "1px solid #EF444433", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 10, lineHeight: 1.5 }}>
+                המחיקה תמחק את הקמפיין ואת כל התכנים שלו.<br />
+                הפרויקט המקושר לא יימחק.
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  style={{
+                    flex: 1, padding: "7px", borderRadius: 8,
+                    border: "1px solid #333", background: "transparent",
+                    color: "#888", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  ביטול
+                </button>
+                <button
+                  onClick={onDelete}
+                  style={{
+                    flex: 1, padding: "7px", borderRadius: 8,
+                    border: "none", background: "#EF4444",
+                    color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  מחק קמפיין
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

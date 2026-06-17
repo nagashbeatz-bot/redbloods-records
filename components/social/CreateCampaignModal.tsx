@@ -17,6 +17,7 @@ export default function CreateCampaignModal({ onCreate, onClose }: Props) {
   const [releaseDate, setReleaseDate] = useState("");
   const [platforms, setPlatforms] = useState<SocialPlatform[]>(["instagram", "tiktok"]);
   const [saving, setSaving] = useState(false);
+  const [dupError, setDupError] = useState(false);
 
   useEffect(() => {
     fetch("/api/projects")
@@ -48,6 +49,7 @@ export default function CreateCampaignModal({ onCreate, onClose }: Props) {
     e.preventDefault();
     if (!title.trim()) return;
     setSaving(true);
+    setDupError(false);
     try {
       await onCreate({
         project_id: projectId || null,
@@ -58,6 +60,11 @@ export default function CreateCampaignModal({ onCreate, onClose }: Props) {
         status: "active",
       });
       onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("duplicate_project") || msg.includes("409")) {
+        setDupError(true);
+      }
     } finally {
       setSaving(false);
     }
@@ -134,6 +141,16 @@ export default function CreateCampaignModal({ onCreate, onClose }: Props) {
               })}
             </div>
           </div>
+
+          {dupError && (
+            <div style={{
+              padding: "10px 14px", borderRadius: 8,
+              background: "#EF444422", border: "1px solid #EF444444",
+              fontSize: 13, color: "#EF4444",
+            }}>
+              ⚠ כבר קיים קמפיין לפרויקט הזה. בחר פרויקט אחר או צור קמפיין ללא קישור.
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
             <button type="button" onClick={onClose} style={cancelBtnStyle}>ביטול</button>
