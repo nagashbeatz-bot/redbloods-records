@@ -115,31 +115,25 @@ function Dot({ color }: { color: string }) {
 }
 
 // ── RR Logo SVG (inline, preview only) ────────────────────────────────────
-// Approximates the Redbloods Records RR monogram mark
 
-function RRMark({ size = 44 }: { size?: number }) {
+function RRMark({ size = 60 }: { size?: number }) {
   return (
     <svg
-      width={size} height={size} viewBox="0 0 44 44"
+      width={size} height={size} viewBox="0 0 60 60"
       fill="none" xmlns="http://www.w3.org/2000/svg"
       style={{
         flexShrink: 0,
-        filter: "drop-shadow(0 0 8px rgba(220,38,38,0.6)) drop-shadow(0 2px 12px rgba(220,38,38,0.3))",
+        filter: "drop-shadow(0 0 10px rgba(220,38,38,0.7)) drop-shadow(0 0 24px rgba(220,38,38,0.35))",
       }}
     >
-      <rect width="44" height="44" rx="11" fill="#0D0D0D" />
-      {/* Left R */}
-      <path
-        d="M7 10 L7 34 M7 10 L16 10 Q21 10 21 16 Q21 22 16 22 L7 22 M14 22 L21 34"
-        stroke={BRAND} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"
-      />
-      {/* Right R */}
-      <path
-        d="M24 10 L24 34 M24 10 L33 10 Q38 10 38 16 Q38 22 33 22 L24 22 M31 22 L38 34"
-        stroke={BRAND} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"
-      />
-      {/* Divider */}
-      <line x1="22" y1="12" x2="22" y2="32" stroke={BRAND2} strokeWidth="0.8" strokeOpacity="0.5" />
+      {/* Left R — stem + bowl + leg */}
+      <line x1="8"  y1="12" x2="8"  y2="48" stroke={BRAND} strokeWidth="3.5" strokeLinecap="round"/>
+      <path d="M8 12 Q8 12 18 12 Q26 12 26 20 Q26 28 18 28 L8 28" stroke={BRAND} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <line x1="17" y1="28" x2="27" y2="48" stroke={BRAND} strokeWidth="3" strokeLinecap="round"/>
+      {/* Right R — stem + bowl + leg */}
+      <line x1="33" y1="12" x2="33" y2="48" stroke={BRAND} strokeWidth="3.5" strokeLinecap="round"/>
+      <path d="M33 12 Q33 12 43 12 Q51 12 51 20 Q51 28 43 28 L33 28" stroke={BRAND} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <line x1="42" y1="28" x2="52" y2="48" stroke={BRAND} strokeWidth="3" strokeLinecap="round"/>
     </svg>
   );
 }
@@ -149,19 +143,20 @@ function RRMark({ size = 44 }: { size?: number }) {
 function KpiCard({ label, count, sub, color, icon, iconBg }: typeof KPI[0]) {
   return (
     <div style={{
-      background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
+      background: "#1C1C1C", border: `1px solid rgba(255,255,255,0.09)`, borderRadius: 16,
       padding: "18px 15px 14px", minHeight: 140,
       display: "flex", flexDirection: "column", justifyContent: "space-between",
-      boxShadow: "0 2px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03)",
+      boxShadow: `0 2px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px ${color}11`,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{
-          width: 34, height: 34, borderRadius: 10, background: iconBg,
+          width: 36, height: 36, borderRadius: 10, background: iconBg,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 16, border: `1px solid ${color}22`,
+          fontSize: 17, border: `1px solid ${color}30`,
+          boxShadow: `0 0 8px ${color}22`,
         }}>{icon}</div>
         <span style={{
-          fontSize: 10, fontWeight: 700, color: MUTED,
+          fontSize: 10, fontWeight: 700, color: "#888",
           textTransform: "uppercase", letterSpacing: "0.07em",
           lineHeight: 1.4, textAlign: "right", maxWidth: "52%",
         }}>{label}</span>
@@ -169,7 +164,7 @@ function KpiCard({ label, count, sub, color, icon, iconBg }: typeof KPI[0]) {
       <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color }}>{count}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
         {sub && <Dot color={color} />}
-        <span style={{ fontSize: 10, color: sub ? MUTED : "transparent" }}>{sub || "—"}</span>
+        <span style={{ fontSize: 10, color: sub ? "#707070" : "transparent" }}>{sub || "—"}</span>
       </div>
     </div>
   );
@@ -205,22 +200,24 @@ function Sidebar() {
 
       {/* Logo area */}
       <div style={{
-        padding: "22px 20px 20px", borderBottom: `1px solid ${BORDER2}`,
-        background: "linear-gradient(180deg, rgba(220,38,38,0.04) 0%, transparent 100%)",
+        padding: "24px 20px 22px", borderBottom: `1px solid rgba(255,255,255,0.08)`,
+        background: "linear-gradient(180deg, rgba(220,38,38,0.07) 0%, rgba(220,38,38,0.01) 100%)",
       }}>
         {/* RR monogram */}
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-          <RRMark size={52} />
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <RRMark size={64} />
         </div>
         {/* Wordmark */}
         <div style={{ textAlign: "center" }}>
           <div style={{
-            fontSize: 17, fontWeight: 900, color: TEXT,
+            fontSize: 19, fontWeight: 900, color: "#FFFFFF",
             letterSpacing: "-0.01em", lineHeight: 1.15,
+            textShadow: "0 1px 8px rgba(0,0,0,0.5)",
           }}>Redbloods</div>
           <div style={{
             fontSize: 12, fontWeight: 800, color: BRAND,
-            letterSpacing: "0.22em", textTransform: "uppercase", marginTop: 1,
+            letterSpacing: "0.26em", textTransform: "uppercase", marginTop: 3,
+            textShadow: `0 0 12px rgba(220,38,38,0.5)`,
           }}>Records</div>
         </div>
       </div>
@@ -379,12 +376,7 @@ export default function DashboardDesignPreview() {
                 }}><Dot color="#3B82F6" /> 19 פרויקטים בעבודה פעילה</span>
               </div>
             </div>
-            {/* Logo/branding on the right of header — mirroring the reference */}
-            <div style={{ textAlign: "center", opacity: 0.18, pointerEvents: "none" }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em" }}>Redbloods</div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: BRAND, letterSpacing: "0.18em", textTransform: "uppercase" }}>Records</div>
-              <RRMark size={48} />
-            </div>
+            {/* intentionally empty — watermark removed */}
           </div>
 
           {/* ── KPI grid ── */}
@@ -405,11 +397,11 @@ export default function DashboardDesignPreview() {
               <div style={{ height: 3, background: `linear-gradient(90deg, ${BRAND}, #F97316)` }} />
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "16px 20px 12px", borderBottom: `1px solid ${BORDER2}`,
+                padding: "16px 20px 12px", borderBottom: `1px solid rgba(255,255,255,0.07)`,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>🔔</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>התראות סוכן</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>התראות סוכן</span>
                 </div>
                 <span style={{
                   fontSize: 10, fontWeight: 900, background: BRAND, color: "#fff",
@@ -451,12 +443,12 @@ export default function DashboardDesignPreview() {
             }}>
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "18px 22px 14px", borderBottom: `1px solid ${BORDER2}`,
-                background: "rgba(255,255,255,0.01)",
+                padding: "18px 22px 14px", borderBottom: `1px solid rgba(255,255,255,0.07)`,
+                background: "rgba(255,255,255,0.015)",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>⚙</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>מוקד יומי</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>מוקד יומי</span>
                 </div>
                 <span style={{
                   fontSize: 10, padding: "3px 10px", borderRadius: 99,
@@ -502,12 +494,12 @@ export default function DashboardDesignPreview() {
             }}>
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "18px 22px 14px", borderBottom: `1px solid ${BORDER2}`,
-                background: "rgba(255,255,255,0.01)",
+                padding: "18px 22px 14px", borderBottom: `1px solid rgba(255,255,255,0.07)`,
+                background: "rgba(255,255,255,0.015)",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>📅</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>אירועים קרובים</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>אירועים קרובים</span>
                 </div>
                 <span style={{ fontSize: 11, color: MUTED, cursor: "pointer" }}>הצג יומן ←</span>
               </div>
@@ -613,7 +605,7 @@ export default function DashboardDesignPreview() {
               >
                 {/* ⋯ more */}
                 <div style={{ display: "flex", justifyContent: "center" }}>
-                  <span style={{ fontSize: 14, color: DIM, cursor: "pointer", padding: "2px 4px", letterSpacing: "0.05em" }}>⋯</span>
+                  <span style={{ fontSize: 16, color: "#505050", cursor: "pointer", padding: "2px 4px", letterSpacing: "0.05em" }}>⋯</span>
                 </div>
 
                 {/* Play button */}
@@ -623,8 +615,8 @@ export default function DashboardDesignPreview() {
 
                 {/* Name */}
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#E0E0E0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: MUTED }}>{p.artist}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#EFEFEF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: "#707070" }}>{p.artist}</div>
                 </div>
 
                 {/* Status badge */}
