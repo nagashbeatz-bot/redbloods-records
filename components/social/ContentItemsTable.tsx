@@ -20,6 +20,7 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
   fileCounts?: Record<string, number>;
   filesByItem?: Record<string, SocialContentFile[]>;
+  campaignProjectId?: string | null;
 }
 
 function formatDate(d: string | null) {
@@ -113,7 +114,7 @@ function MediaThumb({ files, onPreview }: { files: SocialContentFile[]; onPrevie
   );
 }
 
-export default function ContentItemsTable({ items, onUpdate, onDelete, fileCounts = {}, filesByItem = {} }: Props) {
+export default function ContentItemsTable({ items, onUpdate, onDelete, fileCounts = {}, filesByItem = {}, campaignProjectId }: Props) {
   const [selectedItem, setSelectedItem] = useState<SocialContentItem | null>(null);
   const [previewFile, setPreviewFile] = useState<SocialContentFile | null>(null);
 
@@ -264,6 +265,7 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
       {selectedItem && (
         <ContentItemDetail
           item={selectedItem}
+          campaignProjectId={campaignProjectId}
           onUpdate={async (id, patch) => {
             await onUpdate(id, patch);
             setSelectedItem(null);

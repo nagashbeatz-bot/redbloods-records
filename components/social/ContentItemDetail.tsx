@@ -17,9 +17,11 @@ interface Props {
   onUpdate: (id: string, patch: Partial<SocialContentItem>) => Promise<unknown>;
   onDelete: (id: string) => Promise<void>;
   onClose: () => void;
+  campaignProjectId?: string | null;
 }
 
-export default function ContentItemDetail({ item, onUpdate, onDelete, onClose }: Props) {
+export default function ContentItemDetail({ item, onUpdate, onDelete, onClose, campaignProjectId }: Props) {
+  const effectiveProjectId = item.project_id ?? campaignProjectId ?? null;
   const [title, setTitle] = useState(item.title);
   const [contentType, setContentType] = useState(item.content_type);
   const [platform, setPlatform] = useState(item.platform ?? "");
@@ -173,7 +175,7 @@ export default function ContentItemDetail({ item, onUpdate, onDelete, onClose }:
             <SocialFileUpload
               contentItemId={item.id}
               campaignId={item.campaign_id}
-              projectId={item.project_id}
+              projectId={effectiveProjectId}
               files={uploadedFiles}
               onFilesChange={setUploadedFiles}
             />

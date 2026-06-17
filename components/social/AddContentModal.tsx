@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { SocialContentItem, SocialContentType, SocialPlatform } from "@/lib/types";
-import { SOCIAL_CONTENT_TYPES, SOCIAL_PLATFORMS, SOCIAL_PLATFORM_LABELS } from "@/lib/types";
+import type { SocialContentItem, SocialContentType, SocialContentStatus, SocialPlatform } from "@/lib/types";
+import { SOCIAL_CONTENT_TYPES, SOCIAL_PLATFORMS, SOCIAL_PLATFORM_LABELS, SOCIAL_CONTENT_STATUSES, SOCIAL_CONTENT_STATUS_LABELS } from "@/lib/types";
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
@@ -20,6 +20,7 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
   const [platform, setPlatform] = useState<SocialPlatform>("instagram");
   const [dueDate, setDueDate] = useState("");
   const [ownerName, setOwnerName] = useState("");
+  const [status, setStatus] = useState<SocialContentStatus>("idea");
   const [hook, setHook] = useState("");
   const [caption, setCaption] = useState("");
   const [notes, setNotes] = useState("");
@@ -98,12 +99,13 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
         title: title.trim(),
         content_type: contentType,
         platform,
+        status,
         due_date: dueDate || null,
         owner_name: ownerName.trim(),
         hook: hook.trim(),
         caption: caption.trim(),
         notes: notes.trim(),
-        status: "idea",
+        project_id: projectId ?? undefined,
       });
       if (pendingFile && projectId) {
         setSaving(false);
@@ -182,6 +184,15 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
               <label style={labelStyle}>אחראי</label>
               <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="שם" style={inputStyle} />
             </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>סטטוס</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value as SocialContentStatus)} style={inputStyle}>
+              {SOCIAL_CONTENT_STATUSES.map((s) => (
+                <option key={s} value={s}>{SOCIAL_CONTENT_STATUS_LABELS[s]}</option>
+              ))}
+            </select>
           </div>
 
           <div>

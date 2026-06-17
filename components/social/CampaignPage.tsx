@@ -246,7 +246,7 @@ export default function CampaignPage({ campaignId }: Props) {
               {itemsLoading ? (
                 <div style={{ color: "#555", fontSize: 13, textAlign: "center", padding: "20px 0" }}>טוען תכנים...</div>
               ) : (
-                <ContentItemsTable items={items} onUpdate={updateItem} onDelete={deleteItem} fileCounts={fileCounts} filesByItem={filesByItem} />
+                <ContentItemsTable items={items} onUpdate={updateItem} onDelete={deleteItem} fileCounts={fileCounts} filesByItem={filesByItem} campaignProjectId={campaign.project_id ?? null} />
               )}
               {!itemsLoading && items.length === 0 && missing.length > 0 && (
                 <div style={{ marginTop: 16 }}>
