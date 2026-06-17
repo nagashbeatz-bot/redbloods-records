@@ -59,7 +59,7 @@ export default function DailyHeader() {
       <div className="flex items-start justify-between gap-3">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <h1 className="text-xl md:text-2xl font-bold" style={{ color: "#F0F0F0" }}>
+            <h1 className="text-2xl md:text-4xl font-black" style={{ color: "#F0F0F0", letterSpacing: "-0.01em" }}>
               {greeting} ✦
             </h1>
             {/* LISTEN button — mobile only, next to greeting */}
@@ -79,7 +79,7 @@ export default function DailyHeader() {
               {isRadioPlaying ? "◼ LIVE" : "▶ LISTEN"}
             </button>
           </div>
-          <p className="text-xs md:text-sm" style={{ color: "#555" }}>
+          <p className="text-sm md:text-base" style={{ color: "#707070" }}>
             {dateLabel}
             {dateLabel && " · "}
             <span style={{ fontVariantNumeric: "tabular-nums" }}>{time}</span>
@@ -89,17 +89,20 @@ export default function DailyHeader() {
         {/* "Order day" — desktop only */}
         <button
           onClick={handleOrderDay}
-          className="hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all mt-1"
+          className="hidden md:flex flex-shrink-0 items-center gap-2 rounded-[10px] text-sm font-bold transition-all mt-1"
           style={{
-            background: "rgba(220,38,38,0.08)",
-            borderColor: "rgba(220,38,38,0.25)",
-            color: "#DC2626", cursor: "pointer", whiteSpace: "nowrap",
+            background: "#DC2626",
+            color: "#fff",
+            border: "none",
+            padding: "8px 20px",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            boxShadow: "0 2px 14px rgba(220,38,38,0.4)",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.15)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.08)"; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#B91C1C"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#DC2626"; }}
         >
-          <span>✦</span>
-          סדר לי את היום
+          ⚡ פעולות מהירות ▾
         </button>
       </div>
 
@@ -127,15 +130,17 @@ export default function DailyHeader() {
       {/* ── Mobile "order day" button — full width ── */}
       <button
         onClick={handleOrderDay}
-        className="md:hidden w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-semibold"
+        className="md:hidden w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold"
         style={{
-          background: "rgba(220,38,38,0.08)",
-          borderColor: "rgba(220,38,38,0.25)",
-          color: "#DC2626", cursor: "pointer", fontFamily: "inherit",
+          background: "#DC2626",
+          color: "#fff",
+          border: "none",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          boxShadow: "0 2px 12px rgba(220,38,38,0.35)",
         }}
       >
-        <span>✦</span>
-        סדר לי את היום
+        ⚡ פעולות מהירות ▾
       </button>
     </div>
   );
