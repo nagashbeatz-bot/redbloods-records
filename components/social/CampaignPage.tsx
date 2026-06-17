@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { SocialCampaign, SocialContentItem } from "@/lib/types";
+import type { SocialCampaign, SocialContentItem, SocialContentFile } from "@/lib/types";
 import { SOCIAL_CAMPAIGN_STATUS_LABELS } from "@/lib/types";
 import { useSocialContent } from "./useSocialCampaign";
 import KPICards from "./KPICards";
@@ -39,6 +39,7 @@ export default function CampaignPage({ campaignId }: Props) {
   const [showAddContent, setShowAddContent] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("content");
   const [fileCounts, setFileCounts] = useState<Record<string, number>>({});
+  const [filesByItem, setFilesByItem] = useState<Record<string, SocialContentFile[]>>({});
 
   // ניתוח — תיאור ידני
   const [selectedItemId, setSelectedItemId] = useState("");
@@ -55,12 +56,24 @@ export default function CampaignPage({ campaignId }: Props) {
       .finally(() => setLoading(false));
   }, [campaignId]);
 
-  useEffect(() => {
-    fetch(`/api/social/files?campaignId=${campaignId}&counts=1`)
+  function loadFiles() {
+    fetch(`/api/social/files?campaignId=${campaignId}`)
       .then((r) => r.json())
-      .then((d) => setFileCounts(d.counts ?? {}))
+      .then((d) => {
+        const map: Record<string, SocialContentFile[]> = {};
+        const counts: Record<string, number> = {};
+        for (const f of (d.files ?? []) as SocialContentFile[]) {
+          if (!map[f.content_item_id]) map[f.content_item_id] = [];
+          map[f.content_item_id].push(f);
+          counts[f.content_item_id] = (counts[f.content_item_id] ?? 0) + 1;
+        }
+        setFilesByItem(map);
+        setFileCounts(counts);
+      })
       .catch(() => {});
-  }, [campaignId]);
+  }
+
+  useEffect(() => { loadFiles(); }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // sync manualDescription when selectedItemId changes
   useEffect(() => {
@@ -233,7 +246,7 @@ export default function CampaignPage({ campaignId }: Props) {
               {itemsLoading ? (
                 <div style={{ color: "#555", fontSize: 13, textAlign: "center", padding: "20px 0" }}>טוען תכנים...</div>
               ) : (
-                <ContentItemsTable items={items} onUpdate={updateItem} onDelete={deleteItem} fileCounts={fileCounts} />
+                <ContentItemsTable items={items} onUpdate={updateItem} onDelete={deleteItem} fileCounts={fileCounts} filesByItem={filesByItem} />
               )}
               {!itemsLoading && items.length === 0 && missing.length > 0 && (
                 <div style={{ marginTop: 16 }}>
@@ -337,12 +350,7 @@ export default function CampaignPage({ campaignId }: Props) {
           projectId={campaign.project_id ?? null}
           onAdd={addItem}
           onClose={() => setShowAddContent(false)}
-          onFileUploaded={() => {
-            fetch(`/api/social/files?campaignId=${campaignId}&counts=1`)
-              .then((r) => r.json())
-              .then((d) => setFileCounts(d.counts ?? {}))
-              .catch(() => {});
-          }}
+          onFileUploaded={loadFiles}
         />
       )}
     </div>

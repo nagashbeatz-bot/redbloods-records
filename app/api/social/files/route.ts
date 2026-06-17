@@ -20,6 +20,11 @@ export async function GET(req: NextRequest) {
       }
       return NextResponse.json({ counts: result });
     }
+    if (campaignId) {
+      // Return all files for a campaign (for thumbnail display)
+      const allFiles = await listFilesByCampaign(campaignId);
+      return NextResponse.json({ files: allFiles });
+    }
     return NextResponse.json({ error: "חסר contentItemId או campaignId" }, { status: 400 });
   } catch (e) {
     console.error("[social/files] GET error:", e);

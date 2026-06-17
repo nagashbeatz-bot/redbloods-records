@@ -1,21 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import type { SocialContentItem, SocialContentStatus, SocialPlatform } from "@/lib/types";
+import type { SocialContentItem, SocialContentStatus, SocialPlatform, SocialContentFile } from "@/lib/types";
 import {
   SOCIAL_CONTENT_STATUS_LABELS,
   SOCIAL_CONTENT_STATUS_COLORS,
   SOCIAL_CONTENT_STATUSES,
   SOCIAL_PLATFORM_LABELS,
   SOCIAL_PLATFORM_ICONS,
+  fileTypeIcon,
+  dropboxRawUrl,
 } from "@/lib/types";
 import ContentItemDetail from "./ContentItemDetail";
+import MediaPreviewModal from "./MediaPreviewModal";
 
 interface Props {
   items: SocialContentItem[];
   onUpdate: (id: string, patch: Partial<SocialContentItem>) => Promise<unknown>;
   onDelete: (id: string) => Promise<void>;
   fileCounts?: Record<string, number>;
+  filesByItem?: Record<string, SocialContentFile[]>;
 }
 
 function formatDate(d: string | null) {
@@ -61,8 +65,55 @@ function FileLinks({ item }: { item: SocialContentItem }) {
   );
 }
 
-export default function ContentItemsTable({ items, onUpdate, onDelete, fileCounts = {} }: Props) {
+function MediaThumb({ files, onPreview }: { files: SocialContentFile[]; onPreview: (f: SocialContentFile) => void }) {
+  const first = files[0];
+  const count = files.length;
+  const isImage = first.file_type.startsWith("image/");
+
+  return (
+    <div
+      onClick={(e) => { e.stopPropagation(); onPreview(first); }}
+      title={`${first.file_name} — לחץ לתצוגה מקדימה`}
+      style={{ position: "relative", display: "inline-flex", cursor: "pointer" }}
+    >
+      {isImage && first.dropbox_share_link ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={dropboxRawUrl(first.dropbox_share_link)}
+          alt={first.file_name}
+          style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", border: "1px solid #333" }}
+          onError={(e) => {
+            // fallback to icon if image fails to load
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+      ) : (
+        <div style={{
+          width: 40, height: 40, borderRadius: 6, border: "1px solid #333",
+          background: "#252525", display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 20,
+        }}>
+          {fileTypeIcon(first.file_type)}
+        </div>
+      )}
+      {count > 1 && (
+        <span style={{
+          position: "absolute", top: -4, right: -6,
+          fontSize: 9, fontWeight: 800, lineHeight: 1,
+          background: "#EC4899", color: "#fff",
+          borderRadius: 8, padding: "2px 4px",
+          border: "1px solid #1A1A1A",
+        }}>
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export default function ContentItemsTable({ items, onUpdate, onDelete, fileCounts = {}, filesByItem = {} }: Props) {
   const [selectedItem, setSelectedItem] = useState<SocialContentItem | null>(null);
+  const [previewFile, setPreviewFile] = useState<SocialContentFile | null>(null);
 
   async function handleStatusChange(id: string, status: SocialContentStatus, e: React.ChangeEvent<HTMLSelectElement>) {
     e.stopPropagation();
@@ -92,6 +143,7 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
           <tbody>
             {items.map((item) => {
               const overdue = isOverdue(item);
+              const itemFiles = filesByItem[item.id] ?? [];
               return (
                 <tr
                   key={item.id}
@@ -135,9 +187,13 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
                   </td>
                   <td style={{ padding: "10px 10px", color: "#888", whiteSpace: "nowrap" }}>{item.owner_name || "—"}</td>
                   <td style={{ padding: "10px 10px" }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <FileLinks item={item} />
-                      {(fileCounts[item.id] ?? 0) > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {itemFiles.length > 0 ? (
+                        <MediaThumb files={itemFiles} onPreview={setPreviewFile} />
+                      ) : (
+                        <FileLinks item={item} />
+                      )}
+                      {(fileCounts[item.id] ?? 0) > 1 && itemFiles.length === 0 && (
                         <span style={{
                           fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 8,
                           background: "#EC489922", border: "1px solid #EC489944", color: "#EC4899",
@@ -154,11 +210,12 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
         </table>
       </div>
 
-      {/* Mobile cards */}
-      <div className="md:hidden" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Mobile cards — note: no inline display so md:hidden can take effect */}
+      <div className="md:hidden" style={{ flexDirection: "column", gap: 10 }}>
         {items.map((item) => {
           const overdue = isOverdue(item);
           const statusColor = SOCIAL_CONTENT_STATUS_COLORS[item.status];
+          const itemFiles = filesByItem[item.id] ?? [];
           return (
             <div
               key={item.id}
@@ -191,7 +248,18 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
                   </span>
                 )}
                 {item.owner_name && <span>{item.owner_name}</span>}
-                <FileLinks item={item} />
+                {itemFiles.length > 0 ? (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setPreviewFile(itemFiles[0]); }}
+                    style={{ cursor: "pointer", fontSize: 18 }}
+                    title="תצוגה מקדימה"
+                  >
+                    {fileTypeIcon(itemFiles[0].file_type)}
+                    {itemFiles.length > 1 && <span style={{ fontSize: 10, marginRight: 2, color: "#EC4899" }}>{itemFiles.length}</span>}
+                  </span>
+                ) : (
+                  <FileLinks item={item} />
+                )}
               </div>
             </div>
           );
@@ -211,6 +279,10 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
           }}
           onClose={() => setSelectedItem(null)}
         />
+      )}
+
+      {previewFile && (
+        <MediaPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
       )}
     </>
   );

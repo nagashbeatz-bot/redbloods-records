@@ -527,3 +527,7 @@ export function fileTypeIcon(mimeType: string): string {
   if (mimeType === "application/pdf") return "📄";
   return "📎";
 }
+
+export function dropboxRawUrl(url: string): string {
+  return url.replace(/\?dl=0/, "?raw=1").replace(/&dl=0/, "&raw=1");
+}
