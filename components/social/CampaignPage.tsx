@@ -162,16 +162,6 @@ export default function CampaignPage({ campaignId }: Props) {
           {/* Quick actions */}
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <button
-              onClick={() => setShowAddContent(true)}
-              style={{
-                padding: "8px 14px", borderRadius: 10,
-                background: "#EC4899", border: "none",
-                color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              + תוכן חדש
-            </button>
-            <button
               title="צור תוכנית — Phase 2"
               disabled
               style={{
@@ -344,8 +334,15 @@ export default function CampaignPage({ campaignId }: Props) {
       {showAddContent && (
         <AddContentModal
           campaignId={campaignId}
+          projectId={campaign.project_id ?? null}
           onAdd={addItem}
           onClose={() => setShowAddContent(false)}
+          onFileUploaded={() => {
+            fetch(`/api/social/files?campaignId=${campaignId}&counts=1`)
+              .then((r) => r.json())
+              .then((d) => setFileCounts(d.counts ?? {}))
+              .catch(() => {});
+          }}
         />
       )}
     </div>
