@@ -242,13 +242,13 @@ export default function ContentItemDetail({ item, onUpdate, onDelete, onClose, c
             onClick={handleDelete}
             style={{
               padding: "8px 14px", borderRadius: 8,
-              border: `1px solid ${confirmDelete ? "#EF4444" : "#333"}`,
-              background: confirmDelete ? "#EF444422" : "transparent",
-              color: confirmDelete ? "#EF4444" : "#666",
-              fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+              border: `1px solid ${confirmDelete ? "#EF4444" : "#EC489966"}`,
+              background: confirmDelete ? "#EF444422" : "#EC489911",
+              color: confirmDelete ? "#EF4444" : "#EC4899",
+              fontSize: 13, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
             }}
           >
-            {confirmDelete ? "מחק סופית?" : "🗑 מחק"}
+            {confirmDelete ? "⚠ מחק סופית?" : "🗑 מחק תוכן"}
           </button>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={cancelBtnStyle}>ביטול</button>

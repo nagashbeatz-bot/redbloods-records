@@ -63,6 +63,16 @@ export async function createSocialFile(
   return normalize(data as Record<string, unknown>);
 }
 
+export async function getFile(id: string): Promise<SocialContentFile | null> {
+  const { data } = await supabase
+    .from("social_content_files")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  return normalize(data as Record<string, unknown>);
+}
+
 export async function deleteSocialFile(id: string): Promise<void> {
   const { error } = await supabase
     .from("social_content_files")

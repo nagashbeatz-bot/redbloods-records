@@ -117,10 +117,21 @@ function MediaThumb({ files, onPreview }: { files: SocialContentFile[]; onPrevie
 export default function ContentItemsTable({ items, onUpdate, onDelete, fileCounts = {}, filesByItem = {}, campaignProjectId }: Props) {
   const [selectedItem, setSelectedItem] = useState<SocialContentItem | null>(null);
   const [previewFile, setPreviewFile] = useState<SocialContentFile | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function handleStatusChange(id: string, status: SocialContentStatus, e: React.ChangeEvent<HTMLSelectElement>) {
     e.stopPropagation();
     await onUpdate(id, { status });
+  }
+
+  async function handleRowDelete(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    if (confirmDeleteId === id) {
+      setConfirmDeleteId(null);
+      await onDelete(id);
+    } else {
+      setConfirmDeleteId(id);
+    }
   }
 
   if (items.length === 0) {
@@ -138,7 +149,7 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #2A2A2A" }}>
-              {["תוכן", "סוג", "פלטפורמה", "סטטוס", "תאריך יעד", "אחראי", "קבצים"].map((h) => (
+              {["תוכן", "סוג", "פלטפורמה", "סטטוס", "תאריך יעד", "אחראי", "קבצים", ""].map((h) => (
                 <th key={h} style={{ padding: "8px 10px", color: "#555", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>{h}</th>
               ))}
             </tr>
@@ -206,6 +217,28 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
                       )}
                     </div>
                   </td>
+                  <td style={{ padding: "10px 6px", width: 40 }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => handleRowDelete(e, item.id)}
+                      title={confirmDeleteId === item.id ? "לחץ שוב לאישור מחיקה" : "מחק תוכן"}
+                      style={{
+                        background: confirmDeleteId === item.id ? "#EF444422" : "transparent",
+                        border: `1px solid ${confirmDeleteId === item.id ? "#EF444466" : "transparent"}`,
+                        borderRadius: 8,
+                        color: confirmDeleteId === item.id ? "#EF4444" : "#EC4899",
+                        cursor: "pointer",
+                        fontSize: confirmDeleteId === item.id ? 11 : 15,
+                        padding: "4px 7px",
+                        lineHeight: 1,
+                        fontFamily: "inherit",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {confirmDeleteId === item.id ? "⚠ בטוח?" : "🗑"}
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -234,12 +267,32 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
                   <div style={{ fontSize: 14, fontWeight: 700, color: "#E0E0E0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
                   {item.content_type && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{item.content_type}</div>}
                 </div>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
-                  background: statusColor + "22", color: statusColor, whiteSpace: "nowrap", marginRight: 8,
-                }}>
-                  {SOCIAL_CONTENT_STATUS_LABELS[item.status]}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 8 }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
+                    background: statusColor + "22", color: statusColor, whiteSpace: "nowrap",
+                  }}>
+                    {SOCIAL_CONTENT_STATUS_LABELS[item.status]}
+                  </span>
+                  <button
+                    onClick={(e) => handleRowDelete(e, item.id)}
+                    title={confirmDeleteId === item.id ? "לחץ שוב לאישור" : "מחק תוכן"}
+                    style={{
+                      background: confirmDeleteId === item.id ? "#EF444422" : "transparent",
+                      border: `1px solid ${confirmDeleteId === item.id ? "#EF444466" : "transparent"}`,
+                      borderRadius: 8,
+                      color: confirmDeleteId === item.id ? "#EF4444" : "#EC4899",
+                      cursor: "pointer",
+                      fontSize: confirmDeleteId === item.id ? 10 : 14,
+                      padding: "3px 6px",
+                      lineHeight: 1,
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {confirmDeleteId === item.id ? "⚠ בטוח?" : "🗑"}
+                  </button>
+                </div>
               </div>
               <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#666", flexWrap: "wrap", alignItems: "center" }}>
                 {item.platform && (
