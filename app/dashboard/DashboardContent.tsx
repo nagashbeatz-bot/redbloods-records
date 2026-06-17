@@ -60,7 +60,7 @@ export default function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="px-3 py-3 md:px-6 md:py-8 space-y-3 md:space-y-8">
+      <div className="px-3 py-3 md:px-6 md:py-8 max-w-[1500px] mx-auto space-y-3 md:space-y-8">
         <div style={{ height: 52 }} />
         <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -134,7 +134,7 @@ export default function DashboardContent() {
   const hasRemainingRow = secNotStarted || secDone;
 
   return (
-    <div className="px-3 py-3 md:px-6 md:py-8">
+    <div className="px-3 py-3 md:px-6 md:py-8 max-w-[1500px] mx-auto">
 
       {/* Daily header — full width */}
       <div className="mb-3 md:mb-8">
@@ -150,7 +150,7 @@ export default function DashboardContent() {
       </div>
 
       {/* 2-column layout: main + right sidebar (desktop only) */}
-      <div className="mt-3 md:mt-8 md:grid md:gap-6" style={{ gridTemplateColumns: "1fr 320px" }}>
+      <div className="mt-3 md:mt-8 md:grid md:gap-6" style={{ gridTemplateColumns: "1fr 360px" }}>
 
         {/* Main column */}
         <div className="space-y-3 md:space-y-6 min-w-0">
