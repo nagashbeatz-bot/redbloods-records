@@ -158,11 +158,19 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
             <div>
               <label style={labelStyle}>סוג תוכן</label>
               <select value={contentType} onChange={(e) => setContentType(e.target.value as SocialContentType)} style={inputStyle}>
                 {SOCIAL_CONTENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>סטטוס</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value as SocialContentStatus)} style={inputStyle}>
+                {SOCIAL_CONTENT_STATUSES.map((s) => (
+                  <option key={s} value={s}>{SOCIAL_CONTENT_STATUS_LABELS[s]}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -184,15 +192,6 @@ export default function AddContentModal({ campaignId, projectId, onAdd, onClose,
               <label style={labelStyle}>אחראי</label>
               <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="שם" style={inputStyle} />
             </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>סטטוס</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value as SocialContentStatus)} style={inputStyle}>
-              {SOCIAL_CONTENT_STATUSES.map((s) => (
-                <option key={s} value={s}>{SOCIAL_CONTENT_STATUS_LABELS[s]}</option>
-              ))}
-            </select>
           </div>
 
           <div>
