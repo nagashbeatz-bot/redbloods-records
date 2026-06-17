@@ -386,3 +386,114 @@ export interface AlertInput {
   entityKey?: string | null;
 }
 
+// ── Social / Marketing Center ──────────────────────────────────────────────────
+
+export type SocialCampaignStatus = "draft" | "active" | "completed" | "paused";
+export const SOCIAL_CAMPAIGN_STATUSES: SocialCampaignStatus[] = ["draft", "active", "completed", "paused"];
+export const SOCIAL_CAMPAIGN_STATUS_LABELS: Record<SocialCampaignStatus, string> = {
+  draft: "טיוטה",
+  active: "פעיל",
+  completed: "הסתיים",
+  paused: "מושהה",
+};
+
+export type SocialContentStatus =
+  | "idea"
+  | "needs_shoot"
+  | "shot"
+  | "in_edit"
+  | "needs_review"
+  | "ready"
+  | "scheduled"
+  | "posted"
+  | "cancelled";
+
+export const SOCIAL_CONTENT_STATUSES: SocialContentStatus[] = [
+  "idea", "needs_shoot", "shot", "in_edit", "needs_review", "ready", "scheduled", "posted", "cancelled",
+];
+
+export const SOCIAL_CONTENT_STATUS_LABELS: Record<SocialContentStatus, string> = {
+  idea: "רעיון",
+  needs_shoot: "צריך צילום",
+  shot: "צולם",
+  in_edit: "בעריכה",
+  needs_review: "ממתין לעריכה",
+  ready: "מוכן להעלאה",
+  scheduled: "תוזמן",
+  posted: "פורסם",
+  cancelled: "בוטל",
+};
+
+export const SOCIAL_CONTENT_STATUS_COLORS: Record<SocialContentStatus, string> = {
+  idea: "#6B7280",
+  needs_shoot: "#F59E0B",
+  shot: "#3B82F6",
+  in_edit: "#8B5CF6",
+  needs_review: "#EC4899",
+  ready: "#10B981",
+  scheduled: "#06B6D4",
+  posted: "#22C55E",
+  cancelled: "#EF4444",
+};
+
+export type SocialPlatform = "tiktok" | "instagram" | "youtube" | "spotify" | "other";
+export const SOCIAL_PLATFORMS: SocialPlatform[] = ["tiktok", "instagram", "youtube", "spotify", "other"];
+export const SOCIAL_PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  tiktok: "TikTok",
+  instagram: "Instagram",
+  youtube: "YouTube",
+  spotify: "Spotify",
+  other: "אחר",
+};
+export const SOCIAL_PLATFORM_ICONS: Record<SocialPlatform, string> = {
+  tiktok: "🎵",
+  instagram: "📸",
+  youtube: "▶️",
+  spotify: "🎧",
+  other: "🌐",
+};
+
+export const SOCIAL_CONTENT_TYPES = [
+  "טיזר", "BTS", "ליפסינק", "סטורי", "קליפ קצר", "פוסט", "ריל", "הכרזה", "תוכן אישי", "אחר",
+] as const;
+export type SocialContentType = typeof SOCIAL_CONTENT_TYPES[number];
+
+export interface SocialCampaign {
+  id: string;
+  project_id: string | null;
+  title: string;
+  artist_name: string;
+  release_date: string | null;  // YYYY-MM-DD
+  status: SocialCampaignStatus;
+  marketing_angle: string;
+  target_audience: string;
+  main_message: string;
+  platforms: SocialPlatform[];
+  owner_id: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialContentItem {
+  id: string;
+  campaign_id: string;
+  project_id: string | null;
+  title: string;
+  content_type: string;
+  status: SocialContentStatus;
+  platform: SocialPlatform | null;
+  due_date: string | null;       // YYYY-MM-DD
+  publish_date: string | null;
+  owner_name: string;
+  asset_link: string;
+  dropbox_link: string;
+  calendar_event_id: string | null;
+  task_id: string | null;
+  caption: string;
+  hook: string;
+  notes: string;
+  posted_url: string;
+  created_at: string;
+  updated_at: string;
+}

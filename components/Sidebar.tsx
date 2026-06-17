@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 const NAV_MAIN = [
   { href: "/dashboard", label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
   { href: "/projects",  label: "פרויקטים", icon: "♫", iconColor: "#60A5FA" },
+  { href: "/social",    label: "סושיאל",   icon: "📱", iconColor: "#EC4899" },
   { href: "/clients",   label: "לקוחות",   icon: "☆", iconColor: "#C084FC" },
   { href: "/tasks",     label: "משימות",   icon: "✓", iconColor: "#F59E0B" },
   { href: "/team",      label: "צוות",     icon: "👥", iconColor: "#A855F7" },
