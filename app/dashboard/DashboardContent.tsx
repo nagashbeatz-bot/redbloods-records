@@ -60,7 +60,7 @@ export default function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="px-3 py-3 md:px-6 md:py-8 max-w-5xl mx-auto space-y-3 md:space-y-8">
+      <div className="px-3 py-3 md:px-6 md:py-8 space-y-3 md:space-y-8">
         <div style={{ height: 52 }} />
         <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -134,47 +134,65 @@ export default function DashboardContent() {
   const hasRemainingRow = secNotStarted || secDone;
 
   return (
-    <div className="px-3 py-3 md:px-6 md:py-8 max-w-5xl mx-auto space-y-3 md:space-y-8">
+    <div className="px-3 py-3 md:px-6 md:py-8">
 
-      {/* Daily header */}
-      <DailyHeader />
+      {/* Daily header — full width */}
+      <div className="mb-3 md:mb-8">
+        <DailyHeader />
+      </div>
 
-      {/* Health alert */}
+      {/* Health alert — full width */}
       <HealthAlert />
 
-      {/* Stats */}
-      <StatsGrid projects={projects} />
+      {/* Stats — full width */}
+      <div className="mt-3 md:mt-8">
+        <StatsGrid projects={projects} />
+      </div>
 
-      {/* Calendar */}
-      <CalendarWidget />
+      {/* 2-column layout: main + right sidebar (desktop only) */}
+      <div className="mt-3 md:mt-8 md:grid md:gap-6" style={{ gridTemplateColumns: "1fr 320px" }}>
 
-      {/* Agent summary */}
-      <AgentSummaryCard />
+        {/* Main column */}
+        <div className="space-y-3 md:space-y-6 min-w-0">
+          {/* Urgent — stacked */}
+          {hasUrgent && (
+            <div className="space-y-4">
+              {secOverdue}
+              {secDueSoon}
+            </div>
+          )}
 
-      {/* Urgent — stacked (not grid), show only non-empty */}
-      {hasUrgent && (
-        <div className="space-y-4">
-          {secOverdue}
-          {secDueSoon}
+          {/* Active work row */}
+          {hasActiveRow && (
+            <div id="section-all-active">
+              <SectionPair left={secActive} right={secWaitMix} />
+            </div>
+          )}
+
+          {/* Mix row */}
+          {hasMixRow && (
+            <SectionPair left={secInMix} right={secOnHold} />
+          )}
+
+          {/* Remaining row */}
+          {hasRemainingRow && (
+            <SectionPair left={secNotStarted} right={secDone} />
+          )}
         </div>
-      )}
 
-      {/* Active work row — id covers all active statuses for StatsGrid scroll */}
-      {hasActiveRow && (
-        <div id="section-all-active">
-          <SectionPair left={secActive} right={secWaitMix} />
+        {/* Right column — desktop only */}
+        <div className="hidden md:flex flex-col gap-6 min-w-0">
+          <CalendarWidget />
+          <AgentSummaryCard />
         </div>
-      )}
 
-      {/* Mix row */}
-      {hasMixRow && (
-        <SectionPair left={secInMix} right={secOnHold} />
-      )}
+      </div>
 
-      {/* Remaining row */}
-      {hasRemainingRow && (
-        <SectionPair left={secNotStarted} right={secDone} />
-      )}
+      {/* Mobile: CalendarWidget + AgentSummaryCard below projects */}
+      <div className="md:hidden mt-4 space-y-4">
+        <CalendarWidget />
+        <AgentSummaryCard />
+      </div>
 
     </div>
   );
