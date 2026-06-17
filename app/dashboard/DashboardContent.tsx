@@ -149,49 +149,38 @@ export default function DashboardContent() {
         <StatsGrid projects={projects} />
       </div>
 
-      {/* 2-column layout: main + right sidebar (desktop only) */}
-      <div className="mt-3 md:mt-8 md:grid md:gap-6" style={{ gridTemplateColumns: "1fr 360px" }}>
-
-        {/* Main column */}
-        <div className="space-y-3 md:space-y-6 min-w-0">
-          {/* Urgent — stacked */}
-          {hasUrgent && (
-            <div className="space-y-4">
-              {secOverdue}
-              {secDueSoon}
-            </div>
-          )}
-
-          {/* Active work row */}
-          {hasActiveRow && (
-            <div id="section-all-active">
-              <SectionPair left={secActive} right={secWaitMix} />
-            </div>
-          )}
-
-          {/* Mix row */}
-          {hasMixRow && (
-            <SectionPair left={secInMix} right={secOnHold} />
-          )}
-
-          {/* Remaining row */}
-          {hasRemainingRow && (
-            <SectionPair left={secNotStarted} right={secDone} />
-          )}
-        </div>
-
-        {/* Right column — desktop only */}
-        <div className="hidden md:flex flex-col gap-6 min-w-0">
-          <CalendarWidget />
-          <AgentSummaryCard />
-        </div>
-
-      </div>
-
-      {/* Mobile: CalendarWidget + AgentSummaryCard below projects */}
-      <div className="md:hidden mt-4 space-y-4">
+      {/* Middle cards: Calendar (2fr) + AgentSummaryCard (1fr) — desktop side by side */}
+      <div className="mt-3 md:mt-6 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 md:gap-6">
         <CalendarWidget />
         <AgentSummaryCard />
+      </div>
+
+      {/* Project sections — full width, stacked */}
+      <div className="mt-4 md:mt-8 space-y-4 md:space-y-6">
+        {/* Urgent — stacked */}
+        {hasUrgent && (
+          <div className="space-y-4">
+            {secOverdue}
+            {secDueSoon}
+          </div>
+        )}
+
+        {/* Active work row */}
+        {hasActiveRow && (
+          <div id="section-all-active">
+            <SectionPair left={secActive} right={secWaitMix} />
+          </div>
+        )}
+
+        {/* Mix row */}
+        {hasMixRow && (
+          <SectionPair left={secInMix} right={secOnHold} />
+        )}
+
+        {/* Remaining row */}
+        {hasRemainingRow && (
+          <SectionPair left={secNotStarted} right={secDone} />
+        )}
       </div>
 
     </div>

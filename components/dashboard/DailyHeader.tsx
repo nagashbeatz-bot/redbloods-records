@@ -91,12 +91,12 @@ export default function DailyHeader() {
           onClick={handleOrderDay}
           className="hidden md:flex flex-shrink-0 items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all mt-1"
           style={{
-            background: "rgba(59,130,246,0.08)",
-            borderColor: "rgba(59,130,246,0.25)",
-            color: "#3B82F6", cursor: "pointer", whiteSpace: "nowrap",
+            background: "rgba(220,38,38,0.08)",
+            borderColor: "rgba(220,38,38,0.25)",
+            color: "#DC2626", cursor: "pointer", whiteSpace: "nowrap",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.15)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.08)"; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.15)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.08)"; }}
         >
           <span>✦</span>
           סדר לי את היום
@@ -129,9 +129,9 @@ export default function DailyHeader() {
         onClick={handleOrderDay}
         className="md:hidden w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-semibold"
         style={{
-          background: "rgba(59,130,246,0.08)",
-          borderColor: "rgba(59,130,246,0.25)",
-          color: "#3B82F6", cursor: "pointer", fontFamily: "inherit",
+          background: "rgba(220,38,38,0.08)",
+          borderColor: "rgba(220,38,38,0.25)",
+          color: "#DC2626", cursor: "pointer", fontFamily: "inherit",
         }}
       >
         <span>✦</span>

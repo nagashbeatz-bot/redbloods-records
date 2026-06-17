@@ -83,7 +83,7 @@ function StatCard({ label, count, color, icon, dim, sectionId }: StatCardProps) 
         opacity: dim && count === 0 ? 0.45 : 1,
         cursor: clickable ? "pointer" : "default",
         transition: "border-color 150ms, background 150ms",
-        outline: "none", minHeight: 108, padding: "16px 18px 14px",
+        outline: "none", minHeight: 124, padding: "18px 18px 14px",
       }}
       onMouseEnter={(e) => { if (!clickable) return; const el = e.currentTarget as HTMLDivElement; el.style.borderColor = "#3A3A3A"; el.style.background = "#1E1E1E"; }}
       onMouseLeave={(e) => { if (!clickable) return; const el = e.currentTarget as HTMLDivElement; el.style.borderColor = "#252525"; el.style.background = "#1A1A1A"; }}
@@ -92,7 +92,7 @@ function StatCard({ label, count, color, icon, dim, sectionId }: StatCardProps) 
         <span style={{ fontSize: 12, fontWeight: 500, color: "#777", lineHeight: 1.3 }}>{label}</span>
         <span style={{ fontSize: 15, opacity: 0.6, flexShrink: 0, lineHeight: 1 }}>{icon}</span>
       </div>
-      <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color }}>
+      <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color }}>
         {count}
       </div>
       <div style={{ fontSize: 11, color: clickable ? "#555" : "transparent", userSelect: "none", lineHeight: 1 }}>
@@ -438,7 +438,7 @@ function ProposalsCard({ stats, proposals, today, onActionDone }: {
         style={{
           background: "#1A1A1A", borderColor: "#252525",
           cursor: "pointer", transition: "border-color 150ms, background 150ms",
-          outline: "none", minHeight: 108, padding: "16px 18px 14px",
+          outline: "none", minHeight: 124, padding: "18px 18px 14px",
         }}
         onMouseEnter={(e) => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = "#3A3A3A"; el.style.background = "#1E1E1E"; }}
         onMouseLeave={(e) => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = "#252525"; el.style.background = "#1A1A1A"; }}
@@ -447,7 +447,7 @@ function ProposalsCard({ stats, proposals, today, onActionDone }: {
           <span style={{ fontSize: 11, fontWeight: 500, color: "#666", lineHeight: 1.3 }}>הצעות מחיר</span>
           <span style={{ fontSize: 15, opacity: 0.6, flexShrink: 0, lineHeight: 1 }}>📋</span>
         </div>
-        <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color: mainColor }}>
+        <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1, color: mainColor }}>
           {mainCount}
         </div>
         <div style={{ fontSize: 11, color: "#4A4A4A", lineHeight: 1, userSelect: "none" }}>
