@@ -15,6 +15,7 @@
   --color-red: #EF4444;
   --color-orange: #F97316;
   --color-gray: #6B7280;
+  --color-brand: #DC2626;
 }
 
 * {
@@ -271,7 +272,7 @@ select:focus {
   --skin-surface: #101010;
   --skin-card:    #141414;
   --skin-border:  #1C1C1C;
-  --skin-accent:  #6366F1;
+  --skin-accent:  #DC2626;
   --skin-glow:    0 0 0 1px rgba(99,102,241,0.12), 0 2px 12px rgba(0,0,0,0.5);
 }
 [data-skin="premium"] body,

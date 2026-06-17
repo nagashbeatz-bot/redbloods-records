@@ -66,9 +66,9 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "14px 16px", borderRadius: 14,
-                  background: active ? "rgba(59,130,246,0.12)" : "#1A1A1A",
-                  border: `1px solid ${active ? "rgba(59,130,246,0.3)" : "#252525"}`,
-                  color: active ? "#3B82F6" : "#AAA",
+                  background: active ? "rgba(220,38,38,0.12)" : "#1A1A1A",
+                  border: `1px solid ${active ? "rgba(220,38,38,0.3)" : "#252525"}`,
+                  color: active ? "#DC2626" : "#AAA",
                   fontSize: 15, fontWeight: 600,
                   textDecoration: "none", position: "relative",
                 }}
@@ -162,7 +162,7 @@ export default function MobileNav({
               style={{
                 display: "flex", flexDirection: "column", alignItems: "center",
                 gap: 3, padding: "10px 0", minHeight: 56,
-                color: active ? "#3B82F6" : "#666",
+                color: active ? "#DC2626" : "#666",
                 fontSize: 11, fontWeight: 600, textDecoration: "none",
               }}
             >
@@ -179,7 +179,7 @@ export default function MobileNav({
           style={{
             display: "flex", flexDirection: "column", alignItems: "center",
             gap: 3, padding: "10px 0", minHeight: 56,
-            color: moreActive || moreOpen ? "#3B82F6" : "#666",
+            color: moreActive || moreOpen ? "#DC2626" : "#666",
             fontSize: 11, fontWeight: 600,
             background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
           }}

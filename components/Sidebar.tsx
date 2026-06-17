@@ -28,15 +28,15 @@ function NavLink({ href, label, icon, iconColor, pathname, badge, premium }: {
   pathname: string; badge?: number; premium?: boolean;
 }) {
   const active = pathname === href || pathname.startsWith(href + "/");
-  const accentColor = premium ? "#6366F1" : "#3B82F6";
+  const accentColor = "#DC2626";
   return (
     <Link
       href={href}
       className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
       style={{
-        background: active ? `rgba(${premium ? "99,102,241" : "59,130,246"},0.15)` : "transparent",
+        background: active ? "rgba(220,38,38,0.15)" : "transparent",
         color: active ? accentColor : "#888",
-        borderColor: active ? `rgba(${premium ? "99,102,241" : "59,130,246"},0.3)` : "transparent",
+        borderColor: active ? "rgba(220,38,38,0.3)" : "transparent",
         border: "1px solid",
       }}
     >
@@ -95,7 +95,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
           <div>
             <div style={{
               fontSize: 11, fontWeight: 800, letterSpacing: "0.15em",
-              color: "#6366F1", textTransform: "uppercase",
+              color: "#DC2626", textTransform: "uppercase",
             }}>REDBLOODS OS</div>
             <div style={{ fontSize: 10, color: "#444", marginTop: 1 }}>ניהול הפקות</div>
           </div>
@@ -103,7 +103,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
           <div className="flex items-center gap-2">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
-              style={{ background: "linear-gradient(135deg, #EC4899, #3B82F6)" }}
+              style={{ background: "linear-gradient(135deg, #DC2626, #991B1B)" }}
             >
               RB
             </div>
@@ -151,9 +151,9 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
             title={premium ? "עבור לסקין ברירת מחדל" : "עבור לסקין Premium"}
             style={{
               fontSize: 12, padding: "3px 8px", borderRadius: 8, cursor: "pointer",
-              border: `1px solid ${premium ? "#6366F1" : "#333"}`,
-              background: premium ? "rgba(99,102,241,0.15)" : "transparent",
-              color: premium ? "#6366F1" : "#555",
+              border: `1px solid ${premium ? "#DC2626" : "#333"}`,
+              background: premium ? "rgba(220,38,38,0.15)" : "transparent",
+              color: premium ? "#DC2626" : "#555",
               fontWeight: 600,
             }}
           >
