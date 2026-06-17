@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { SocialContentItem, SocialContentStatus, SocialContentType, SocialPlatform } from "@/lib/types";
+import { useState, useEffect } from "react";
+import type { SocialContentItem, SocialContentStatus, SocialContentType, SocialPlatform, SocialContentFile } from "@/lib/types";
 import {
   SOCIAL_CONTENT_STATUSES,
   SOCIAL_CONTENT_STATUS_LABELS,
@@ -10,6 +10,7 @@ import {
   SOCIAL_PLATFORMS,
   SOCIAL_PLATFORM_LABELS,
 } from "@/lib/types";
+import SocialFileUpload from "./SocialFileUpload";
 
 interface Props {
   item: SocialContentItem;
@@ -34,6 +35,14 @@ export default function ContentItemDetail({ item, onUpdate, onDelete, onClose }:
   const [notes, setNotes] = useState(item.notes);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<SocialContentFile[]>([]);
+
+  useEffect(() => {
+    fetch(`/api/social/files?contentItemId=${item.id}`)
+      .then((r) => r.json())
+      .then((d) => setUploadedFiles(d.files ?? []))
+      .catch(() => {});
+  }, [item.id]);
 
   async function handleSave() {
     setSaving(true);
@@ -159,10 +168,23 @@ export default function ContentItemDetail({ item, onUpdate, onDelete, onClose }:
               placeholder="הכיתוב המלא לפוסט" style={{ ...inputStyle, resize: "vertical" }} />
           </div>
 
-          {/* קישורי קבצים */}
+          {/* קבצים — Dropbox upload */}
           <div style={{ borderTop: "1px solid #222", paddingTop: 12 }}>
-            <div style={{ fontSize: 11, color: "#666", marginBottom: 10, fontWeight: 600 }}>קישורי קבצים</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <SocialFileUpload
+              contentItemId={item.id}
+              campaignId={item.campaign_id}
+              projectId={item.project_id}
+              files={uploadedFiles}
+              onFilesChange={setUploadedFiles}
+            />
+          </div>
+
+          {/* לינקים ידניים — fallback */}
+          <details style={{ marginTop: 4 }}>
+            <summary style={{ fontSize: 11, color: "#444", cursor: "pointer", userSelect: "none" }}>
+              קישורים ידניים (אם הקובץ לא ב-Dropbox)
+            </summary>
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
               <div>
                 <label style={labelStyle}>קישור לקובץ (Drive / URL)</label>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -176,7 +198,7 @@ export default function ContentItemDetail({ item, onUpdate, onDelete, onClose }:
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>קישור Dropbox</label>
+                <label style={labelStyle}>קישור Dropbox ידני</label>
                 <div style={{ display: "flex", gap: 6 }}>
                   <input value={dropboxLink} onChange={(e) => setDropboxLink(e.target.value)} placeholder="https://www.dropbox.com/..." style={{ ...inputStyle, flex: 1 }} />
                   {dropboxLink && (
@@ -202,7 +224,7 @@ export default function ContentItemDetail({ item, onUpdate, onDelete, onClose }:
                 </div>
               )}
             </div>
-          </div>
+          </details>
 
           {/* הערות */}
           <div>

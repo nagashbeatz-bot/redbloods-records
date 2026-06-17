@@ -497,3 +497,33 @@ export interface SocialContentItem {
   created_at: string;
   updated_at: string;
 }
+
+export interface SocialContentFile {
+  id: string;
+  content_item_id: string;
+  campaign_id: string;
+  project_id: string | null;
+  file_name: string;
+  file_type: string;          // MIME type, e.g. "video/mp4"
+  file_size: number;          // bytes
+  dropbox_path: string;
+  dropbox_file_id: string;
+  dropbox_share_link: string;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function fileTypeIcon(mimeType: string): string {
+  if (mimeType.startsWith("video/")) return "🎬";
+  if (mimeType.startsWith("image/")) return "🖼";
+  if (mimeType.startsWith("audio/")) return "🎵";
+  if (mimeType === "application/pdf") return "📄";
+  return "📎";
+}

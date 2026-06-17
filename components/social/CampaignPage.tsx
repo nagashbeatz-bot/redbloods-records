@@ -38,6 +38,7 @@ export default function CampaignPage({ campaignId }: Props) {
   const [loading, setLoading] = useState(true);
   const [showAddContent, setShowAddContent] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("content");
+  const [fileCounts, setFileCounts] = useState<Record<string, number>>({});
 
   // ניתוח — תיאור ידני
   const [selectedItemId, setSelectedItemId] = useState("");
@@ -52,6 +53,13 @@ export default function CampaignPage({ campaignId }: Props) {
       .then((d) => setCampaign(d.campaign ?? null))
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, [campaignId]);
+
+  useEffect(() => {
+    fetch(`/api/social/files?campaignId=${campaignId}&counts=1`)
+      .then((r) => r.json())
+      .then((d) => setFileCounts(d.counts ?? {}))
+      .catch(() => {});
   }, [campaignId]);
 
   // sync manualDescription when selectedItemId changes
@@ -235,7 +243,7 @@ export default function CampaignPage({ campaignId }: Props) {
               {itemsLoading ? (
                 <div style={{ color: "#555", fontSize: 13, textAlign: "center", padding: "20px 0" }}>טוען תכנים...</div>
               ) : (
-                <ContentItemsTable items={items} onUpdate={updateItem} onDelete={deleteItem} />
+                <ContentItemsTable items={items} onUpdate={updateItem} onDelete={deleteItem} fileCounts={fileCounts} />
               )}
               {!itemsLoading && items.length === 0 && missing.length > 0 && (
                 <div style={{ marginTop: 16 }}>

@@ -15,6 +15,7 @@ interface Props {
   items: SocialContentItem[];
   onUpdate: (id: string, patch: Partial<SocialContentItem>) => Promise<unknown>;
   onDelete: (id: string) => Promise<void>;
+  fileCounts?: Record<string, number>;
 }
 
 function formatDate(d: string | null) {
@@ -60,7 +61,7 @@ function FileLinks({ item }: { item: SocialContentItem }) {
   );
 }
 
-export default function ContentItemsTable({ items, onUpdate, onDelete }: Props) {
+export default function ContentItemsTable({ items, onUpdate, onDelete, fileCounts = {} }: Props) {
   const [selectedItem, setSelectedItem] = useState<SocialContentItem | null>(null);
 
   async function handleStatusChange(id: string, status: SocialContentStatus, e: React.ChangeEvent<HTMLSelectElement>) {
@@ -134,7 +135,17 @@ export default function ContentItemsTable({ items, onUpdate, onDelete }: Props) 
                   </td>
                   <td style={{ padding: "10px 10px", color: "#888", whiteSpace: "nowrap" }}>{item.owner_name || "—"}</td>
                   <td style={{ padding: "10px 10px" }} onClick={(e) => e.stopPropagation()}>
-                    <FileLinks item={item} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <FileLinks item={item} />
+                      {(fileCounts[item.id] ?? 0) > 0 && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 8,
+                          background: "#EC489922", border: "1px solid #EC489944", color: "#EC4899",
+                        }}>
+                          {fileCounts[item.id]} 📎
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
