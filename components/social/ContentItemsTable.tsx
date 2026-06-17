@@ -69,42 +69,44 @@ function MediaThumb({ files, onPreview }: { files: SocialContentFile[]; onPrevie
   const first = files[0];
   const count = files.length;
   const isImage = first.file_type.startsWith("image/");
+  const isVideo = first.file_type.startsWith("video/");
+  const rawUrl = first.dropbox_share_link ? dropboxRawUrl(first.dropbox_share_link) : null;
+  const [imgFailed, setImgFailed] = useState(false);
+
+  const W = 56, H = 42;
+  const containerStyle: React.CSSProperties = { width: W, height: H, borderRadius: 6, border: "1px solid #333", overflow: "hidden", flexShrink: 0 };
+
+  let media: React.ReactNode;
+  if (isImage && rawUrl && !imgFailed) {
+    // eslint-disable-next-line @next/next/no-img-element
+    media = <img src={rawUrl} alt={first.file_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={() => setImgFailed(true)} />;
+  } else if (isVideo && rawUrl) {
+    media = (
+      <div style={{ position: "relative", width: "100%", height: "100%" }}>
+        <video
+          src={rawUrl} preload="metadata" muted playsInline
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          onLoadedMetadata={(e) => { e.currentTarget.currentTime = 1; }}
+        />
+        <div style={{ position: "absolute", bottom: 3, left: 3, background: "rgba(0,0,0,0.6)", borderRadius: 4, fontSize: 8, color: "#fff", padding: "1px 4px", lineHeight: 1.4 }}>▶</div>
+      </div>
+    );
+  } else {
+    const shortName = first.file_name.length > 12 ? first.file_name.slice(0, 11) + "…" : first.file_name;
+    media = (
+      <div style={{ width: "100%", height: "100%", background: "#252525", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+        <span style={{ fontSize: 16 }}>{fileTypeIcon(first.file_type)}</span>
+        <span style={{ fontSize: 8, color: "#666", textAlign: "center", lineHeight: 1.2 }}>{shortName}</span>
+      </div>
+    );
+  }
 
   return (
-    <div
-      onClick={(e) => { e.stopPropagation(); onPreview(first); }}
-      title={`${first.file_name} — לחץ לתצוגה מקדימה`}
-      style={{ position: "relative", display: "inline-flex", cursor: "pointer" }}
-    >
-      {isImage && first.dropbox_share_link ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={dropboxRawUrl(first.dropbox_share_link)}
-          alt={first.file_name}
-          style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", border: "1px solid #333" }}
-          onError={(e) => {
-            // fallback to icon if image fails to load
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
-      ) : (
-        <div style={{
-          width: 40, height: 40, borderRadius: 6, border: "1px solid #333",
-          background: "#252525", display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 20,
-        }}>
-          {fileTypeIcon(first.file_type)}
-        </div>
-      )}
+    <div onClick={(e) => { e.stopPropagation(); onPreview(first); }} title={first.file_name} style={{ position: "relative", display: "inline-flex", cursor: "pointer" }}>
+      <div style={containerStyle}>{media}</div>
       {count > 1 && (
-        <span style={{
-          position: "absolute", top: -4, right: -6,
-          fontSize: 9, fontWeight: 800, lineHeight: 1,
-          background: "#EC4899", color: "#fff",
-          borderRadius: 8, padding: "2px 4px",
-          border: "1px solid #1A1A1A",
-        }}>
-          {count}
+        <span style={{ position: "absolute", top: -4, right: -6, fontSize: 9, fontWeight: 800, lineHeight: 1, background: "#EC4899", color: "#fff", borderRadius: 8, padding: "2px 4px", border: "1px solid #1A1A1A" }}>
+          +{count - 1}
         </span>
       )}
     </div>
@@ -249,14 +251,7 @@ export default function ContentItemsTable({ items, onUpdate, onDelete, fileCount
                 )}
                 {item.owner_name && <span>{item.owner_name}</span>}
                 {itemFiles.length > 0 ? (
-                  <span
-                    onClick={(e) => { e.stopPropagation(); setPreviewFile(itemFiles[0]); }}
-                    style={{ cursor: "pointer", fontSize: 18 }}
-                    title="תצוגה מקדימה"
-                  >
-                    {fileTypeIcon(itemFiles[0].file_type)}
-                    {itemFiles.length > 1 && <span style={{ fontSize: 10, marginRight: 2, color: "#EC4899" }}>{itemFiles.length}</span>}
-                  </span>
+                  <MediaThumb files={itemFiles} onPreview={setPreviewFile} />
                 ) : (
                   <FileLinks item={item} />
                 )}
