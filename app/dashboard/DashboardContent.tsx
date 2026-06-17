@@ -60,7 +60,7 @@ export default function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="px-3 py-3 md:px-6 md:py-8 max-w-[1500px] mx-auto space-y-3 md:space-y-8">
+      <div className="px-3 py-3 md:px-8 md:py-8 max-w-[1500px] mx-auto space-y-3 md:space-y-8">
         <div style={{ height: 52 }} />
         <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -134,7 +134,7 @@ export default function DashboardContent() {
   const hasRemainingRow = secNotStarted || secDone;
 
   return (
-    <div className="px-3 py-3 md:px-6 md:py-8 max-w-[1500px] mx-auto">
+    <div className="px-3 py-3 md:px-8 md:py-8 max-w-[1500px] mx-auto">
 
       {/* Daily header — full width */}
       <div className="mb-3 md:mb-8">
@@ -150,7 +150,7 @@ export default function DashboardContent() {
       </div>
 
       {/* Middle cards: Calendar (2fr) + AgentSummaryCard (1fr) — desktop side by side */}
-      <div className="mt-3 md:mt-6 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 md:gap-6">
+      <div className="mt-3 md:mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
         <CalendarWidget />
         <AgentSummaryCard />
       </div>
