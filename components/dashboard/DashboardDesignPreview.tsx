@@ -10,6 +10,7 @@ import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 import MobileNav from "@/components/MobileNav";
+import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -375,6 +376,8 @@ export default function DashboardDesignPreview() {
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "לילה טוב" : hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
 
+  const { openProject } = useGlobalProjectDrawer();
+
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -733,11 +736,15 @@ export default function DashboardDesignPreview() {
                 const days = daysUntilDeadline(p.deadline);
                 const sc = statusColor(p.status);
                 return (
-                  <div key={p.id} style={{
-                    background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
-                    padding: "14px 16px",
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
-                  }}>
+                  <div key={p.id}
+                    style={{
+                      background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
+                      padding: "14px 16px",
+                      boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => openProject(p.id)}
+                  >
                     {/* Row 1: name + status */}
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
@@ -782,8 +789,8 @@ export default function DashboardDesignPreview() {
                     </div>
                     {/* Row 3: play + dots */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER2}` }}>
-                      <PlayBtn color={sc} />
-                      <span style={{ fontSize: 16, color: "#505050" }}>⋯</span>
+                      <div onClick={e => e.stopPropagation()}><PlayBtn color={sc} /></div>
+                      <span onClick={e => e.stopPropagation()} style={{ fontSize: 16, color: "#505050" }}>⋯</span>
                     </div>
                   </div>
                 );
@@ -842,15 +849,16 @@ export default function DashboardDesignPreview() {
                     gridTemplateColumns: "36px 36px 2fr 1fr 1fr 1.2fr 100px 36px",
                     padding: "14px 20px", alignItems: "center", gap: 8,
                     borderBottom: i < visibleProjects.length - 1 ? `1px solid ${BORDER2}` : "none",
-                    cursor: "default",
+                    cursor: "pointer",
                   }}
+                  onClick={() => openProject(p.id)}
                   onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.025)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
                 >
-                  <div style={{ display: "flex", justifyContent: "center" }}>
+                  <div style={{ display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
                     <span style={{ fontSize: 16, color: "#505050", letterSpacing: "0.05em" }}>⋯</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "center" }}>
+                  <div style={{ display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
                     <PlayBtn color={sc} />
                   </div>
                   <div style={{ minWidth: 0 }}>
