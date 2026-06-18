@@ -616,7 +616,11 @@ export default function DashboardDesignPreview() {
                   {/* Name + artist */}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#EFEFEF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: "#707070", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.artist}</div>
+                    {p.artist ? (
+                      <div style={{ fontSize: 11, color: "#707070", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.artist}</div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: DIM, fontStyle: "italic" }}>ללא אמן</div>
+                    )}
                   </div>
 
                   {/* Status badge */}
@@ -632,19 +636,22 @@ export default function DashboardDesignPreview() {
                   </div>
 
                   {/* Type */}
-                  <span style={{ fontSize: 12, color: SUB }}>{p.projectType || "—"}</span>
+                  <span style={{ fontSize: 12, color: p.projectType ? SUB : DIM, fontStyle: p.projectType ? "normal" : "italic" }}>
+                    {p.projectType || "לא הוגדר"}
+                  </span>
 
                   {/* Last update */}
-                  <span style={{ fontSize: 11, color: MUTED }}>
-                    {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString("he-IL", { day: "numeric", month: "short" }) : "—"}
+                  <span style={{ fontSize: 11, color: p.updatedAt ? MUTED : DIM, fontStyle: p.updatedAt ? "normal" : "italic" }}>
+                    {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString("he-IL", { day: "numeric", month: "short" }) : "לא עודכן"}
                   </span>
 
                   {/* Deadline */}
                   <span style={{
                     fontSize: 12,
-                    color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : MUTED,
+                    color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? MUTED : DIM,
                     fontWeight: p.isOverdue || (days !== null && days <= 7) ? 700 : 400,
-                  }}>{formatDl(p.deadline)}</span>
+                    fontStyle: p.deadline ? "normal" : "italic",
+                  }}>{p.deadline ? formatDl(p.deadline) : "אין דדליין"}</span>
 
                   {/* Days chip */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
