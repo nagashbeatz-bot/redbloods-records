@@ -405,35 +405,44 @@ export default function DashboardDesignPreview() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button style={{
               display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 20px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+              padding: isMobile ? "7px 14px" : "8px 20px",
+              borderRadius: 10, fontSize: isMobile ? 12 : 13, fontWeight: 700,
               background: BRAND, border: "none", color: "#fff", cursor: "default",
               boxShadow: "0 2px 14px rgba(220,38,38,0.45)", letterSpacing: "0.01em",
+              whiteSpace: "nowrap",
             }}>
-              <span style={{ fontSize: 14 }}>⚡</span> פעולות מהירות
+              <span style={{ fontSize: 13 }}>⚡</span>
+              {isMobile ? "פעולות" : "פעולות מהירות"}
               <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
             </button>
-            <button style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-              background: "transparent", border: `1px solid ${BORDER}`, color: SUB, cursor: "default",
-            }}>⊟ סינון תצוגה</button>
+            {!isMobile && (
+              <button style={{
+                display: "flex", alignItems: "center", gap: 7,
+                padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                background: "transparent", border: `1px solid ${BORDER}`, color: SUB, cursor: "default",
+              }}>⊟ סינון תצוגה</button>
+            )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
             <JahknoRadioPlayer playerOffset={0} sidebarWidth={224} />
-            <span style={{
-              fontSize: 10, padding: "3px 10px", borderRadius: 6,
-              background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)",
-              color: BRAND, fontWeight: 700,
-            }}>👁 תצוגה מקדימה — LIVE</span>
-            <div style={{ position: "relative", cursor: "default" }}>
-              <span style={{ fontSize: 20 }}>🔔</span>
+            {!isMobile && (
               <span style={{
-                position: "absolute", top: -5, right: -7,
-                background: BRAND, color: "#fff", borderRadius: 99,
-                fontSize: 9, fontWeight: 900, padding: "1px 5px",
-                boxShadow: "0 0 6px rgba(220,38,38,0.6)",
-              }}>3</span>
-            </div>
+                fontSize: 10, padding: "3px 10px", borderRadius: 6,
+                background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)",
+                color: BRAND, fontWeight: 700,
+              }}>👁 תצוגה מקדימה — LIVE</span>
+            )}
+            {!isMobile && (
+              <div style={{ position: "relative", cursor: "default" }}>
+                <span style={{ fontSize: 20 }}>🔔</span>
+                <span style={{
+                  position: "absolute", top: -5, right: -7,
+                  background: BRAND, color: "#fff", borderRadius: 99,
+                  fontSize: 9, fontWeight: 900, padding: "1px 5px",
+                  boxShadow: "0 0 6px rgba(220,38,38,0.6)",
+                }}>3</span>
+              </div>
+            )}
           </div>
         </header>
 
