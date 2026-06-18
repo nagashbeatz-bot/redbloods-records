@@ -9,6 +9,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
+import MobileNav from "@/components/MobileNav";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -196,7 +197,6 @@ function Sidebar() {
     <aside style={{
       width: SIDEBAR_W, flexShrink: 0,
       background: SURFACE, borderLeft: `1px solid ${BORDER}`,
-      height: "100vh", position: "sticky", top: 0,
       display: "flex", flexDirection: "column", overflowY: "auto",
     }}>
       <div style={{
@@ -377,10 +377,12 @@ export default function DashboardDesignPreview() {
 
   return (
     <div style={{
-      background: BG, minHeight: "100vh", color: TEXT,
+      position: "fixed", inset: 0, background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
-      display: "flex",
+      display: "flex", flexDirection: "column",
     }}>
+      {/* ── Inner row: sidebar + main ── */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
       <Sidebar />
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
@@ -428,7 +430,7 @@ export default function DashboardDesignPreview() {
         </header>
 
         {/* ── Page content ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px 72px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px", paddingBottom: "calc(72px + env(safe-area-inset-bottom))" }}>
 
           {/* ── Hero header ── */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
@@ -844,6 +846,8 @@ export default function DashboardDesignPreview() {
 
         </div>
       </div>
+      </div>{/* ── end inner row ── */}
+      <MobileNav />
     </div>
   );
 }
