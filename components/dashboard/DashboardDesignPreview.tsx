@@ -283,6 +283,11 @@ export default function DashboardDesignPreview() {
   const [calConnected, setCalConnected] = useState<boolean | null>(null);
   const [openProposals, setOpenProposals] = useState<number | null>(null);
 
+  // ── Live-3: payments, sessions, tasks (read-only counts) ──────────────
+  const [pendingPayments, setPendingPayments] = useState<number | null>(null);
+  const [upcomingSessions, setUpcomingSessions] = useState<number | null>(null);
+  const [openTasks, setOpenTasks] = useState<number | null>(null);
+
   useEffect(() => {
     fetch("/api/agent/alerts?status=new&limit=50")
       .then(r => r.json())
@@ -311,6 +316,38 @@ export default function DashboardDesignPreview() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch("/api/transactions?all=1")
+      .then(r => r.json())
+      .then(d => {
+        const txs = Array.isArray(d.transactions) ? d.transactions : [];
+        setPendingPayments(txs.filter((t: { payment_status?: string; type?: string }) =>
+          t.type === "income" && t.payment_status !== "שולם"
+        ).length);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/sessions?all=1")
+      .then(r => r.json())
+      .then(d => {
+        const sessions = Array.isArray(d.sessions) ? d.sessions : [];
+        setUpcomingSessions(sessions.filter((s: { status?: string }) => s.status === "מתוכנן").length);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/tasks?status=פתוח")
+      .then(r => r.json())
+      .then(d => {
+        const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+        setOpenTasks(tasks.length);
+      })
+      .catch(() => {});
+  }, []);
+
   // ── Real KPI filters ──────────────────────────────────────────────────
   const overdueProjects = projects.filter(p => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה");
   const activeProjects  = projects.filter(p => ["בעבודה", "מחכה למיקס", "במיקס"].includes(p.status));
@@ -323,12 +360,12 @@ export default function DashboardDesignPreview() {
     { label: "פרויקטים",    count: loading ? 0 : projects.length,          sub: `${activeProjects.length} פעילים`,         color: "#3B82F6", iconBg: "rgba(59,130,246,0.15)",  icon: "▶"  },
     { label: "הושלמו",      count: loading ? 0 : doneProjects.length,       sub: "הושלמו",                                   color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "✓"  },
     { label: "בהשהייה",     count: loading ? 0 : onHoldProjects.length,     sub: "צריך מעקב",                               color: "#6B7280", iconBg: "rgba(107,114,128,0.15)", icon: "⏸" },
-    { label: "משימות",      count: 24,                                       sub: "7 באיחור",                                color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "☑"  },
-    { label: "תשלומים",     count: 9,                                        sub: "ממתינים",                                 color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
+    { label: "משימות",      count: openTasks ?? 0,                           sub: openTasks !== null ? "פתוחות" : "...",     color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "☑"  },
+    { label: "תשלומים",     count: pendingPayments ?? 0,                     sub: pendingPayments !== null ? "ממתינים" : "...", color: "#10B981", iconBg: "rgba(16,185,129,0.15)", icon: "$"  },
     { label: "הצעות",       count: openProposals ?? 0,                       sub: openProposals !== null ? "פתוחות" : "...", color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "📋" },
     { label: "עברו דדליין", count: loading ? 0 : overdueProjects.length,    sub: "דורש טיפול",                             color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "⚠"  },
     { label: "פעילים",      count: loading ? 0 : activeProjects.length,     sub: projects.length > 0 ? `${Math.round(activeProjects.length / projects.length * 100)}% מהפרויקטים` : "", color: "#3B82F6", iconBg: "rgba(59,130,246,0.15)", icon: "⚡" },
-    { label: "סשנים",       count: 12,                                       sub: "3 היום",                                  color: "#EC4899", iconBg: "rgba(236,72,153,0.15)",  icon: "🎙" },
+    { label: "סשנים",       count: upcomingSessions ?? 0,                   sub: upcomingSessions !== null ? "מתוכננים" : "...", color: "#EC4899", iconBg: "rgba(236,72,153,0.15)", icon: "🎙" },
   ];
 
   // Show up to 10 real projects; fall back to an empty list while loading
