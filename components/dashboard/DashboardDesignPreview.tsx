@@ -303,123 +303,136 @@ function DashboardPlayerBar({
     );
   }
 
-  // ── Desktop full bar ────────────────────────────────────────────────────
+  // ── Desktop — floating centered card ───────────────────────────────────
   return (
-    <div dir="ltr" style={{
-      position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 150, height: 76,
-      background: "linear-gradient(180deg,#121212 0%,#0D0D0D 100%)",
-      borderTop: `1px solid rgba(220,38,38,0.35)`,
-      boxShadow: "0 -6px 40px rgba(220,38,38,0.1), 0 -1px 0 rgba(255,255,255,0.04)",
-      display: "flex", alignItems: "center",
-      padding: "0 28px", gap: 20,
+    /* Outer centering shell */
+    <div style={{
+      position: "fixed", bottom: 18, left: 0, right: 0, zIndex: 150,
+      display: "flex", justifyContent: "center",
+      padding: "0 20px",
+      pointerEvents: "none",
     }}>
-      {/* LEFT: volume + download + close */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-        <button
-          onClick={() => setVolume(volume === 0 ? 80 : 0)}
-          style={{ background: "none", border: "none", cursor: "pointer", color: "#666", fontSize: 15, padding: 0 }}
-          title={volume === 0 ? "בטל השתקה" : "השתק"}
-        >
-          {volume === 0 ? "🔇" : volume < 50 ? "🔉" : "🔊"}
-        </button>
-        <input
-          type="range" min={0} max={100} value={volume}
-          onChange={e => setVolume(Number(e.target.value))}
-          style={{ width: 72, accentColor: BRAND, cursor: "pointer", opacity: 0.8 }}
-        />
-        {canPlay && (
-          <a
-            href={track.url} download
-            title="הורד קובץ"
-            style={{
-              width: 28, height: 28, borderRadius: "50%",
-              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#666", textDecoration: "none", flexShrink: 0,
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = "#AAA"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.09)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = "#666"; (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.04)"; }}
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6.5 1v7M3.5 5.5l3 3 3-3" /><path d="M1.5 10.5h10" />
-            </svg>
-          </a>
-        )}
-        <button
-          onClick={stop}
-          title="סגור נגן"
-          style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 20, padding: "2px 6px" }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "#999"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "#555"; }}
-        >×</button>
-      </div>
+      {/* Player card */}
+      <div dir="ltr" style={{
+        width: "62%", maxWidth: 920, minWidth: 700,
+        height: 92, borderRadius: 22,
+        background: "linear-gradient(145deg, #1E1E1E 0%, #161616 100%)",
+        border: "1px solid rgba(220,38,38,0.45)",
+        boxShadow: "0 8px 48px rgba(0,0,0,0.75), 0 0 40px rgba(220,38,38,0.14), inset 0 1px 0 rgba(255,255,255,0.06)",
+        display: "flex", alignItems: "center",
+        padding: "0 22px", gap: 18,
+        pointerEvents: "auto",
+      }}>
 
-      {/* CENTER: controls + progress */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={() => skip(-10)} title="אחורה 10 שניות" style={{
-            background: "none", border: "none", cursor: "pointer", color: "#666",
-            display: "flex", alignItems: "center", gap: 1, fontSize: 11,
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "#AAA"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "#666"; }}>
-            <span style={{ fontSize: 14 }}>⟪</span><span>10</span>
-          </button>
-          <button
-            onClick={canPlay ? (playing ? pause : resume) : undefined}
-            title={canPlay ? (playing ? "השהה" : "נגן") : "לא ניתן לנגן"}
-            style={{
-              width: 46, height: 46, borderRadius: "50%",
-              background: canPlay ? BRAND : "#333",
-              border: "none", cursor: canPlay ? "pointer" : "not-allowed",
-              color: "#fff", fontSize: 18, flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: canPlay ? "0 0 22px rgba(220,38,38,0.55), 0 0 6px rgba(220,38,38,0.9)" : "none",
-            }}
-          >{playing ? "⏸" : "▶"}</button>
-          <button onClick={() => skip(10)} title="קדימה 10 שניות" style={{
-            background: "none", border: "none", cursor: "pointer", color: "#666",
-            display: "flex", alignItems: "center", gap: 1, fontSize: 11,
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "#AAA"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "#666"; }}>
-            <span>10</span><span style={{ fontSize: 14 }}>⟫</span>
-          </button>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", maxWidth: 520 }}>
-          <span style={{ fontSize: 11, color: "#555", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{fmt(currentTime)}</span>
-          <div
-            style={{ flex: 1, height: 4, background: "#2A2A2A", borderRadius: 2, cursor: "pointer", position: "relative" }}
-            onClick={e => {
-              if (!duration) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              seek(((e.clientX - rect.left) / rect.width) * duration);
-            }}
-          >
-            <div style={{
-              position: "absolute", left: 0, top: 0, bottom: 0,
-              width: `${progress}%`,
-              background: `linear-gradient(90deg, ${BRAND}, #F97316)`,
-              borderRadius: 2, transition: "width 0.1s linear",
-            }} />
-            <div style={{
-              position: "absolute", top: "50%", transform: "translateY(-50%)",
-              left: `${progress}%`, marginLeft: -5,
-              width: 10, height: 10, borderRadius: "50%",
-              background: BRAND, boxShadow: `0 0 6px ${BRAND}`,
-            }} />
+        {/* RIGHT section: waveform + track info (rightmost in LTR = rendered last; swap to first for RTL feel) */}
+        <div dir="rtl" style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0, minWidth: 0, maxWidth: 220 }}>
+          <WaveformBars playing={playing} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#F0F0F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>
+              {track.projectName}
+            </div>
+            <div style={{ fontSize: 11, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+              {track.artist}
+            </div>
           </div>
-          <span style={{ fontSize: 11, color: "#555", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{fmt(duration)}</span>
         </div>
-      </div>
 
-      {/* RIGHT: track name + artist + waveform */}
-      <div dir="rtl" style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-        <div style={{ minWidth: 0, maxWidth: 200, textAlign: "right" }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.projectName}</div>
-          <div style={{ fontSize: 11, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{track.artist}</div>
+        {/* CENTER: controls row + progress row */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 7, minWidth: 0 }}>
+          {/* Controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <button onClick={() => skip(-10)} title="אחורה 10 שניות" style={{
+              background: "none", border: "none", cursor: "pointer", color: "#666",
+              display: "flex", alignItems: "center", gap: 2, fontSize: 11, padding: "4px 6px",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "#CCC"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "#666"; }}>
+              <span style={{ fontSize: 15 }}>⟪</span><span>10</span>
+            </button>
+            <button
+              onClick={canPlay ? (playing ? pause : resume) : undefined}
+              title={canPlay ? (playing ? "השהה" : "נגן") : "לא ניתן לנגן"}
+              style={{
+                width: 52, height: 52, borderRadius: "50%",
+                background: canPlay ? BRAND : "#333",
+                border: "none", cursor: canPlay ? "pointer" : "not-allowed",
+                color: "#fff", fontSize: 20, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: canPlay ? "0 0 28px rgba(220,38,38,0.65), 0 0 8px rgba(220,38,38,1)" : "none",
+                transition: "box-shadow 0.2s",
+              }}
+            >{playing ? "⏸" : "▶"}</button>
+            <button onClick={() => skip(10)} title="קדימה 10 שניות" style={{
+              background: "none", border: "none", cursor: "pointer", color: "#666",
+              display: "flex", alignItems: "center", gap: 2, fontSize: 11, padding: "4px 6px",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "#CCC"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "#666"; }}>
+              <span>10</span><span style={{ fontSize: 15 }}>⟫</span>
+            </button>
+          </div>
+          {/* Progress */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+            <span style={{ fontSize: 10, color: "#555", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{fmt(currentTime)}</span>
+            <div
+              style={{ flex: 1, height: 4, background: "#2C2C2C", borderRadius: 2, cursor: "pointer", position: "relative" }}
+              onClick={e => {
+                if (!duration) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                seek(((e.clientX - rect.left) / rect.width) * duration);
+              }}
+            >
+              <div style={{
+                position: "absolute", left: 0, top: 0, bottom: 0,
+                width: `${progress}%`,
+                background: `linear-gradient(90deg, ${BRAND}, #F97316)`,
+                borderRadius: 2, transition: "width 0.1s linear",
+              }} />
+              <div style={{
+                position: "absolute", top: "50%", transform: "translateY(-50%)",
+                left: `${progress}%`, marginLeft: -5,
+                width: 10, height: 10, borderRadius: "50%",
+                background: "#fff", boxShadow: `0 0 6px ${BRAND}`,
+              }} />
+            </div>
+            <span style={{ fontSize: 10, color: "#555", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{fmt(duration)}</span>
+          </div>
         </div>
-        <WaveformBars playing={playing} />
+
+        {/* LEFT section: volume + download + close */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <button onClick={() => setVolume(volume === 0 ? 80 : 0)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#666", fontSize: 15, padding: 0 }}
+            title={volume === 0 ? "בטל השתקה" : "השתק"}
+          >
+            {volume === 0 ? "🔇" : volume < 50 ? "🔉" : "🔊"}
+          </button>
+          <input type="range" min={0} max={100} value={volume}
+            onChange={e => setVolume(Number(e.target.value))}
+            style={{ width: 64, accentColor: BRAND, cursor: "pointer", opacity: 0.75 }}
+          />
+          {canPlay && (
+            <a href={track.url} download title="הורד קובץ"
+              style={{
+                width: 30, height: 30, borderRadius: 9,
+                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#777", textDecoration: "none", flexShrink: 0,
+              }}
+              onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "#CCC"; el.style.background = "rgba(255,255,255,0.1)"; }}
+              onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "#777"; el.style.background = "rgba(255,255,255,0.04)"; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6.5 1v7M3.5 5.5l3 3 3-3" /><path d="M1.5 10.5h10" />
+              </svg>
+            </a>
+          )}
+          <button onClick={stop} title="סגור נגן"
+            style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer", color: "#666", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}
+            onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.color = "#EEE"; el.style.background = "rgba(255,255,255,0.1)"; }}
+            onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.color = "#666"; el.style.background = "rgba(255,255,255,0.04)"; }}
+          >×</button>
+        </div>
       </div>
     </div>
   );
