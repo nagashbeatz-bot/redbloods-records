@@ -4,9 +4,22 @@
 // Real data: projects (KPI + rows). Calendar / Alerts / Focus = dummy.
 // No writes, no drawer, no dispatch.
 
+import { useState, useEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
-import type { Project } from "@/lib/types";
+import type { Project, AgentAlert } from "@/lib/types";
+
+// Minimal calendar event shape (only what preview needs)
+interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
+
+const ALERT_CATEGORIES = [
+  { key: "deadline", label: "דדליינים",    icon: "📅", types: ["overdue_deadline", "deadline_approaching"], color: "#EF4444", bg: "rgba(239,68,68,0.07)"  },
+  { key: "finance",  label: "כספים",       icon: "₪",  types: ["payment_overdue", "project_no_pricing"],   color: "#F59E0B", bg: "rgba(245,158,11,0.07)" },
+  { key: "sessions", label: "סשנים",       icon: "🎵", types: ["session_needs_update", "stale_session"],   color: "#3B82F6", bg: "rgba(59,130,246,0.07)"  },
+  { key: "victor",   label: "ויקטור",      icon: "👤", types: ["victor_stuck", "victor_below_pace"],       color: "#A855F7", bg: "rgba(168,85,247,0.07)"  },
+] as const;
+
+const CLOSED_PROPOSAL = new Set(["נסגר", "לא נסגר"]);
 
 const BRAND   = "#DC2626";
 const BG      = "#0D0D0D";
@@ -262,6 +275,41 @@ function Sidebar() {
 export default function DashboardDesignPreview() {
   const { projects, loading } = useProjects();
 
+  // ── Live-2: real alerts, calendar, proposals ──────────────────────────
+  const [alerts, setAlerts]             = useState<AgentAlert[]>([]);
+  const [calToday, setCalToday]         = useState<CalEvent[]>([]);
+  const [calTomorrow, setCalTomorrow]   = useState<CalEvent[]>([]);
+  const [calConnected, setCalConnected] = useState<boolean | null>(null);
+  const [openProposals, setOpenProposals] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/agent/alerts?status=new&limit=50")
+      .then(r => r.json())
+      .then(d => setAlerts(Array.isArray(d.alerts) ? d.alerts : []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/calendar/events")
+      .then(r => r.json())
+      .then(d => {
+        setCalConnected(d.error !== "not_connected");
+        setCalToday(Array.isArray(d.today) ? d.today : []);
+        setCalTomorrow(Array.isArray(d.week) ? d.week : []);
+      })
+      .catch(() => setCalConnected(false));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/proposals/all")
+      .then(r => r.json())
+      .then(d => {
+        const all = Array.isArray(d.proposals) ? d.proposals : [];
+        setOpenProposals(all.filter((p: { status: string }) => !CLOSED_PROPOSAL.has(p.status)).length);
+      })
+      .catch(() => {});
+  }, []);
+
   // ── Real KPI filters ──────────────────────────────────────────────────
   const overdueProjects = projects.filter(p => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה");
   const activeProjects  = projects.filter(p => ["בעבודה", "מחכה למיקס", "במיקס"].includes(p.status));
@@ -276,7 +324,7 @@ export default function DashboardDesignPreview() {
     { label: "בהשהייה",     count: loading ? 0 : onHoldProjects.length,     sub: "צריך מעקב",                               color: "#6B7280", iconBg: "rgba(107,114,128,0.15)", icon: "⏸" },
     { label: "משימות",      count: 24,                                       sub: "7 באיחור",                                color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "☑"  },
     { label: "תשלומים",     count: 9,                                        sub: "ממתינים",                                 color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
-    { label: "הצעות",       count: 5,                                        sub: "3 בהכנה",                                 color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "📋" },
+    { label: "הצעות",       count: openProposals ?? 0,                       sub: openProposals !== null ? "פתוחות" : "...", color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "📋" },
     { label: "עברו דדליין", count: loading ? 0 : overdueProjects.length,    sub: "דורש טיפול",                             color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "⚠"  },
     { label: "פעילים",      count: loading ? 0 : activeProjects.length,     sub: projects.length > 0 ? `${Math.round(activeProjects.length / projects.length * 100)}% מהפרויקטים` : "", color: "#3B82F6", iconBg: "rgba(59,130,246,0.15)", icon: "⚡" },
     { label: "סשנים",       count: 12,                                       sub: "3 היום",                                  color: "#EC4899", iconBg: "rgba(236,72,153,0.15)",  icon: "🎙" },
@@ -392,41 +440,56 @@ export default function DashboardDesignPreview() {
               display: "flex", flexDirection: "column",
             }}>
               <div style={{ height: 3, background: `linear-gradient(90deg, ${BRAND}, #F97316)` }} />
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "16px 20px 12px", borderBottom: `1px solid rgba(255,255,255,0.07)`,
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>🔔</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>התראות סוכן</span>
-                </div>
-                <span style={{
-                  fontSize: 10, fontWeight: 900, background: BRAND, color: "#fff",
-                  borderRadius: 99, padding: "2px 8px", boxShadow: "0 0 8px rgba(220,38,38,0.4)",
-                }}>3</span>
-              </div>
-              <div style={{ padding: "12px 16px", flex: 1 }}>
-                {ALERTS.map((a, i) => (
-                  <div key={i} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "10px 12px", borderRadius: 11, marginBottom: 7,
-                    background: a.bg, border: `1px solid ${a.color}20`,
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                      <span style={{ fontSize: 17 }}>{a.icon}</span>
-                      <span style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600 }}>{a.label}</span>
+              {(() => {
+                const cats = ALERT_CATEGORIES.map(c => ({
+                  ...c,
+                  count: alerts.filter(a => (c.types as readonly string[]).includes(a.type)).length,
+                })).filter(c => c.count > 0);
+                const urgentCount = alerts.filter(a => a.severity === "urgent" || a.severity === "important").length;
+                return (
+                  <>
+                    <div style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "16px 20px 12px", borderBottom: `1px solid rgba(255,255,255,0.07)`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 16 }}>🔔</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>התראות סוכן</span>
+                      </div>
+                      {alerts.length > 0 ? (
+                        <span style={{ fontSize: 10, fontWeight: 900, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 8px", boxShadow: "0 0 8px rgba(220,38,38,0.4)" }}>
+                          {alerts.length}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 10, color: DIM }}>אין</span>
+                      )}
                     </div>
-                    <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: a.color, lineHeight: 1 }}>{a.count}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{
-                padding: "10px 20px 14px", borderTop: `1px solid ${BORDER2}`,
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-              }}>
-                <span style={{ fontSize: 11, color: "#3B82F6" }}>הצג את כל ההתראות ←</span>
-                <span style={{ fontSize: 10, color: DIM }}>dummy — Phase Live-2</span>
-              </div>
+                    <div style={{ padding: "12px 16px", flex: 1 }}>
+                      {cats.length > 0 ? cats.map((a, i) => (
+                        <div key={i} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "10px 12px", borderRadius: 11, marginBottom: 7,
+                          background: a.bg, border: `1px solid ${a.color}20`,
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                            <span style={{ fontSize: 17 }}>{a.icon}</span>
+                            <span style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600 }}>{a.label}</span>
+                          </div>
+                          <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: a.color, lineHeight: 1 }}>{a.count}</span>
+                        </div>
+                      )) : (
+                        <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 16 }}>
+                          {alerts.length === 0 ? "✅ אין התראות פתוחות" : "טוען..."}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ padding: "10px 20px 14px", borderTop: `1px solid ${BORDER2}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 11, color: "#3B82F6" }}>הצג את כל ההתראות ←</span>
+                      {urgentCount > 0 && <span style={{ fontSize: 10, color: "#EF4444", fontWeight: 700 }}>{urgentCount} דחופות</span>}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Daily focus (dummy) */}
@@ -451,31 +514,58 @@ export default function DashboardDesignPreview() {
                   color: "#EF4444", fontWeight: 800,
                 }}>3 דחופים</span>
               </div>
-              <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
-                {FOCUS.map((f, i) => (
-                  <div key={i} style={{
-                    background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 13,
-                    padding: "13px 14px", boxShadow: "0 1px 6px rgba(0,0,0,0.3)",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                      <div style={{
-                        width: 32, height: 32, borderRadius: 9, background: f.iconBg,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 15, color: f.iconColor, flexShrink: 0,
-                      }}>{f.icon}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 3 }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#DEDEDE" }}>{f.title}</span>
-                          <span style={{ fontSize: 10, color: DIM, whiteSpace: "nowrap", paddingRight: 8 }}>{f.ago}</span>
+              {(() => {
+                // Build focus items from real data — read-only, no AI
+                type FocusItem = { icon: string; iconBg: string; iconColor: string; title: string; sub: string; };
+                const focusItems: FocusItem[] = [];
+                // 1. Most overdue project
+                const mostOverdue = overdueProjects.sort((a, b) => {
+                  const da = daysUntilDeadline(a.deadline) ?? 0;
+                  const db = daysUntilDeadline(b.deadline) ?? 0;
+                  return da - db;
+                })[0];
+                if (mostOverdue) focusItems.push({
+                  icon: "📅", iconBg: "rgba(239,68,68,0.15)", iconColor: "#EF4444",
+                  title: `דדליין עבר — ${mostOverdue.name}`,
+                  sub: mostOverdue.artist || "ללא אמן",
+                });
+                // 2. Next calendar event today
+                const nextEvent = calToday[0];
+                if (nextEvent) focusItems.push({
+                  icon: "🎙", iconBg: "rgba(168,85,247,0.15)", iconColor: "#A855F7",
+                  title: nextEvent.title,
+                  sub: nextEvent.isAllDay ? "כל היום" : (nextEvent.startTime ? new Date(nextEvent.startTime).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }) : ""),
+                });
+                // 3. Top urgent alert
+                const topAlert = [...alerts].sort((a, b) => {
+                  const w: Record<string, number> = { urgent: 4, important: 3, warning: 2, info: 1 };
+                  return (w[b.severity] ?? 0) - (w[a.severity] ?? 0);
+                })[0];
+                if (topAlert) focusItems.push({
+                  icon: "🔔", iconBg: "rgba(59,130,246,0.15)", iconColor: "#3B82F6",
+                  title: topAlert.title,
+                  sub: topAlert.message?.slice(0, 60) || "",
+                });
+                return (
+                  <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+                    {focusItems.length > 0 ? focusItems.map((f, i) => (
+                      <div key={i} style={{ background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 13, padding: "13px 14px", boxShadow: "0 1px 6px rgba(0,0,0,0.3)" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 9, background: f.iconBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: f.iconColor, flexShrink: 0 }}>{f.icon}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#DEDEDE", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.title}</div>
+                            <div style={{ fontSize: 11, color: MUTED }}>{f.sub}</div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: 11, color: MUTED }}>{f.sub}</div>
                       </div>
-                    </div>
+                    )) : (
+                      <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 20 }}>✅ אין פריטים דחופים</div>
+                    )}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
               <div style={{ padding: "10px 22px 14px", borderTop: `1px solid ${BORDER2}` }}>
-                <span style={{ fontSize: 10, color: DIM }}>dummy — Phase Live-2</span>
+                <span style={{ fontSize: 10, color: DIM }}>מוקד יומי — נתונים אמיתיים</span>
               </div>
             </div>
 
@@ -497,40 +587,59 @@ export default function DashboardDesignPreview() {
                 </div>
                 <span style={{ fontSize: 11, color: MUTED }}>הצג יומן ←</span>
               </div>
-              <div style={{ padding: "0 20px 0", flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0 8px" }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 99, background: BRAND, color: "#fff" }}>היום</span>
-                </div>
-                {CAL.filter(e => e.today).map((ev, i, arr) => (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 0",
-                    borderBottom: i < arr.length - 1 ? `1px solid ${BORDER2}` : "none",
-                  }}>
-                    <Dot color={ev.dot} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 2 }}>{ev.time}</div>
-                      <div style={{ fontSize: 12.5, color: "#E0E0E0", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
-                      {ev.sub && <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{ev.sub}</div>}
-                    </div>
-                    <Av t={ev.av} size={26} />
+              {(() => {
+                const TYPE_COLORS: Record<string, string> = {
+                  "סשן": "#A855F7", "הקלטות": "#A855F7", "חזרה": "#3B82F6",
+                  "הופעה": "#EC4899", "סאונדצ'ק": "#F97316", "פגישה": "#10B981", "אחר": "#6B7280",
+                };
+                const evColor = (type: string) => TYPE_COLORS[type] ?? "#6B7280";
+                const fmtTime = (ev: CalEvent) => {
+                  if (ev.isAllDay) return "כל היום";
+                  const t = (iso: string) => iso ? new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }) : "";
+                  return `${t(ev.startTime)}${ev.endTime ? "–" + t(ev.endTime) : ""}`;
+                };
+                return (
+                  <div style={{ padding: "0 20px 0", flex: 1 }}>
+                    {calConnected === false ? (
+                      <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 24 }}>יומן לא מחובר</div>
+                    ) : (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0 8px" }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 99, background: BRAND, color: "#fff" }}>היום</span>
+                        </div>
+                        {calToday.length === 0 ? (
+                          <div style={{ fontSize: 11, color: MUTED, paddingBottom: 8 }}>אין אירועים היום</div>
+                        ) : calToday.slice(0, 3).map((ev, i, arr) => (
+                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 0", borderBottom: i < arr.length - 1 ? `1px solid ${BORDER2}` : "none" }}>
+                            <Dot color={evColor(ev.type)} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 2 }}>{fmtTime(ev)}</div>
+                              <div style={{ fontSize: 12.5, color: "#E0E0E0", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
+                              {ev.artist && <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{ev.artist}</div>}
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0 8px" }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "rgba(255,255,255,0.06)", color: SUB }}>מחר</span>
+                        </div>
+                        {calTomorrow.length === 0 ? (
+                          <div style={{ fontSize: 11, color: MUTED }}>אין אירועים מחר</div>
+                        ) : calTomorrow.slice(0, 2).map((ev, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 0" }}>
+                            <Dot color={evColor(ev.type)} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 2 }}>{fmtTime(ev)}</div>
+                              <div style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
-                ))}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 0 8px" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "rgba(255,255,255,0.06)", color: SUB }}>מחר</span>
-                </div>
-                {CAL.filter(e => !e.today).map((ev, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 0" }}>
-                    <Dot color={ev.dot} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 10, color: MUTED, fontWeight: 600, marginBottom: 2 }}>{ev.time}</div>
-                      <div style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>
-                    </div>
-                    <Av t={ev.av} size={26} />
-                  </div>
-                ))}
-              </div>
+                );
+              })()}
               <div style={{ padding: "10px 22px 14px", borderTop: `1px solid ${BORDER2}` }}>
-                <span style={{ fontSize: 10, color: DIM }}>dummy — Phase Live-2</span>
+                <span style={{ fontSize: 10, color: DIM }}>יומן — נתונים אמיתיים</span>
               </div>
             </div>
 
