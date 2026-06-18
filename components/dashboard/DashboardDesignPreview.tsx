@@ -11,6 +11,7 @@ import type { Project, AgentAlert } from "@/lib/types";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 import MobileNav from "@/components/MobileNav";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
+import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -187,6 +188,47 @@ function PlayBtn({ color = BRAND }: { color?: string }) {
       cursor: "default",
     }}>
       <span style={{ fontSize: 9, color: MUTED, paddingRight: 1 }}>▶</span>
+    </div>
+  );
+}
+
+// ── Project Play Button (live) ────────────────────────────────────────────
+
+function ProjectPlayBtn({ p, player, color = BRAND }: {
+  p: Project;
+  player: ReturnType<typeof usePlayerSafe>;
+  color?: string;
+}) {
+  const latestAudio = getLatestAudioFile(p.files ?? []);
+  if (!latestAudio || !player) {
+    return <div style={{ width: 28, height: 28, flexShrink: 0 }} />;
+  }
+  const isLoaded  = player.track?.projectId === p.id;
+  const isPlaying = isLoaded && player.playing;
+  return (
+    <div
+      style={{
+        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+        background: isLoaded ? `${color}22` : "rgba(255,255,255,0.04)",
+        border: `1px solid ${isLoaded ? `${color}55` : "rgba(255,255,255,0.08)"}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer",
+        boxShadow: isLoaded ? `0 0 8px ${color}44` : "none",
+      }}
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (isLoaded) {
+          isPlaying ? player.pause() : player.resume();
+        } else {
+          const url = await getFreshPlayUrl(latestAudio);
+          player.play({ projectId: p.id, projectName: p.name, artist: p.artist ?? "", fileName: latestAudio.name, url });
+        }
+      }}
+      title={isPlaying ? "השהה" : latestAudio.name}
+    >
+      <span style={{ fontSize: 9, color: isLoaded ? color : "#888", paddingRight: isPlaying ? 0 : 1 }}>
+        {isPlaying ? "⏸" : "▶"}
+      </span>
     </div>
   );
 }
@@ -377,6 +419,7 @@ export default function DashboardDesignPreview() {
   const greeting = hour < 5 ? "לילה טוב" : hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
 
   const { openProject } = useGlobalProjectDrawer();
+  const player = usePlayerSafe();
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -789,7 +832,7 @@ export default function DashboardDesignPreview() {
                     </div>
                     {/* Row 3: play + dots */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER2}` }}>
-                      <div onClick={e => e.stopPropagation()}><PlayBtn color={sc} /></div>
+                      <div onClick={e => e.stopPropagation()}><ProjectPlayBtn p={p} player={player} color={sc} /></div>
                       <span onClick={e => e.stopPropagation()} style={{ fontSize: 16, color: "#505050" }}>⋯</span>
                     </div>
                   </div>
@@ -859,7 +902,7 @@ export default function DashboardDesignPreview() {
                     <span style={{ fontSize: 16, color: "#505050", letterSpacing: "0.05em" }}>⋯</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
-                    <PlayBtn color={sc} />
+                    <ProjectPlayBtn p={p} player={player} color={sc} />
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: "#F5F5F5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>{p.name}</div>
