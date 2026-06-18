@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
+import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -370,6 +371,7 @@ export default function DashboardDesignPreview() {
             }}>⊟ סינון תצוגה</button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <JahknoRadioPlayer playerOffset={0} sidebarWidth={224} />
             <span style={{
               fontSize: 10, padding: "3px 10px", borderRadius: 6,
               background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)",
