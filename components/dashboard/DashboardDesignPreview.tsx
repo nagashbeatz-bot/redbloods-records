@@ -375,6 +375,14 @@ export default function DashboardDesignPreview() {
   const hour = new Date().getHours();
   const greeting = hour < 5 ? "לילה טוב" : hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
 
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: BG, color: TEXT,
@@ -383,7 +391,7 @@ export default function DashboardDesignPreview() {
     }}>
       {/* ── Inner row: sidebar + main ── */}
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-      <Sidebar />
+      {!isMobile && <Sidebar />}
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
 
@@ -392,7 +400,7 @@ export default function DashboardDesignPreview() {
           height: 60, flexShrink: 0,
           background: SURFACE, borderBottom: `1px solid ${BORDER}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 28px", position: "sticky", top: 0, zIndex: 40,
+          padding: isMobile ? "0 14px" : "0 28px", position: "sticky", top: 0, zIndex: 40,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button style={{
@@ -430,13 +438,13 @@ export default function DashboardDesignPreview() {
         </header>
 
         {/* ── Page content ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px", paddingBottom: "calc(72px + env(safe-area-inset-bottom))" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px" : "28px 32px", paddingBottom: "calc(72px + env(safe-area-inset-bottom))" }}>
 
           {/* ── Hero header ── */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <h1 style={{ fontSize: 42, fontWeight: 900, color: TEXT, margin: 0, lineHeight: 1, letterSpacing: "-0.03em" }}>{greeting}</h1>
+                <h1 style={{ fontSize: isMobile ? 30 : 42, fontWeight: 900, color: TEXT, margin: 0, lineHeight: 1, letterSpacing: "-0.03em" }}>{greeting}</h1>
                 <span style={{ fontSize: 26, lineHeight: 1 }}>✦</span>
               </div>
               <p style={{ fontSize: 14, color: MUTED, margin: "0 0 14px", fontWeight: 500 }}>
@@ -467,12 +475,12 @@ export default function DashboardDesignPreview() {
           </div>
 
           {/* ── KPI grid ── */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 11, marginBottom: 26 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(9, 1fr)", gap: isMobile ? 8 : 11, marginBottom: 26 }}>
             {KPI.map((k) => <KpiCard key={k.label} {...k} />)}
           </div>
 
           {/* ── Middle 3 cards ── */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 18, marginBottom: 26 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 12 : 18, marginBottom: 26 }}>
 
             {/* Agent alerts (dummy) */}
             <div style={{
@@ -688,10 +696,12 @@ export default function DashboardDesignPreview() {
           </div>
 
           {/* ── Projects table ── */}
+          <div style={{ overflowX: isMobile ? "auto" : "visible", borderRadius: 18 }}>
           <div style={{
             background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
             overflow: "hidden",
             boxShadow: "0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
+            minWidth: isMobile ? 560 : undefined,
           }}>
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -834,6 +844,7 @@ export default function DashboardDesignPreview() {
               <span style={{ fontSize: 11, color: DIM }}>read-only · live data</span>
             </div>
           </div>
+          </div>{/* ── end scroll wrapper ── */}
 
           {/* Live badge */}
           <div style={{
