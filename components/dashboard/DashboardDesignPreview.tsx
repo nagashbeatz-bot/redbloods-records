@@ -55,24 +55,24 @@ function formatDl(iso: string | null): string {
 // ── Nav ───────────────────────────────────────────────────────────────────
 
 const NAV = [
-  { label: "דשבורד",    icon: "⊞",  color: "#38BDF8", active: true  },
-  { label: "פרויקטים",  icon: "♫",  color: "#60A5FA", active: false },
-  { label: "סושיאל",    icon: "📱", color: "#EC4899", active: false },
-  { label: "לקוחות",    icon: "☆",  color: "#C084FC", active: false },
-  { label: "משימות",    icon: "✓",  color: "#F59E0B", active: false },
-  { label: "צוות",      icon: "👥", color: "#A855F7", active: false },
-  { label: "הופעות",    icon: "🎤", color: "#F472B6", active: false },
-  { label: "Red Films", icon: "🎬", color: "#EF4444", active: false },
-  { label: "כספים",     icon: "₪",  color: "#34D399", active: false },
-  { label: "תובנות",    icon: "◎",  color: "#2DD4BF", active: false },
+  { label: "דשבורד",    icon: "⊞",  color: "#38BDF8", active: true,  href: "/dashboard"  },
+  { label: "פרויקטים",  icon: "♫",  color: "#60A5FA", active: false, href: "/projects"   },
+  { label: "סושיאל",    icon: "📱", color: "#EC4899", active: false, href: "/social"     },
+  { label: "לקוחות",    icon: "☆",  color: "#C084FC", active: false, href: "/clients"    },
+  { label: "משימות",    icon: "✓",  color: "#F59E0B", active: false, href: "/tasks"      },
+  { label: "צוות",      icon: "👥", color: "#A855F7", active: false, href: "/team"       },
+  { label: "הופעות",    icon: "🎤", color: "#F472B6", active: false, href: "/shows"      },
+  { label: "Red Films", icon: "🎬", color: "#EF4444", active: false, href: "/red-films"  },
+  { label: "כספים",     icon: "₪",  color: "#34D399", active: false, href: "/finance"    },
+  { label: "תובנות",    icon: "◎",  color: "#2DD4BF", active: false, href: "/insights"   },
 ];
 
 const NAV2 = [
-  { label: "יומן",    icon: "📅", badge: undefined as number | undefined },
-  { label: "Dropbox", icon: "📦", badge: undefined as number | undefined },
-  { label: "דוחות",   icon: "📊", badge: undefined as number | undefined },
-  { label: "התראות",  icon: "🔔", badge: 3 as number | undefined         },
-  { label: "ספקים",   icon: "🤝", badge: undefined as number | undefined },
+  { label: "יומן",    icon: "📅", badge: undefined as number | undefined, href: "/setup/calendar" },
+  { label: "Dropbox", icon: "📦", badge: undefined as number | undefined, href: "/setup/dropbox"  },
+  { label: "דוחות",   icon: "📊", badge: undefined as number | undefined, href: "/setup/reports"  },
+  { label: "התראות",  icon: "🔔", badge: 3 as number | undefined,         href: "/insights"       },
+  { label: "ספקים",   icon: "🤝", badge: undefined as number | undefined, href: "/clients"        },
 ];
 
 // ── Dummy Calendar / Focus / Alerts (Phase Live-2 will connect these) ─────
@@ -215,7 +215,7 @@ function Sidebar() {
         <div style={{ fontSize: 9, fontWeight: 800, color: DIM, letterSpacing: "0.1em", textTransform: "uppercase", padding: "0 8px 10px" }}>ראשי</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV.map((n) => (
-            <div key={n.label} style={{ position: "relative", borderRadius: 10, overflow: "hidden" }}>
+            <a key={n.label} href={n.href} style={{ position: "relative", borderRadius: 10, overflow: "hidden", display: "block", textDecoration: "none" }}>
               {n.active && (
                 <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 3, background: BRAND, borderRadius: "0 2px 2px 0" }} />
               )}
@@ -236,7 +236,7 @@ function Sidebar() {
                 }}>{n.icon}</span>
                 <span style={{ flex: 1 }}>{n.label}</span>
               </div>
-            </div>
+            </a>
           ))}
         </div>
         <div style={{ marginTop: 12 }}>
@@ -244,17 +244,18 @@ function Sidebar() {
           <div style={{ fontSize: 9, fontWeight: 800, color: DIM, letterSpacing: "0.1em", textTransform: "uppercase", padding: "0 8px 10px" }}>כלים</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {NAV2.map((n) => (
-              <div key={n.label} style={{
+              <a key={n.label} href={n.href} style={{
                 display: "flex", alignItems: "center", gap: 11,
                 padding: "9px 12px 9px 14px", borderRadius: 10,
                 color: MUTED, fontSize: 13.5, fontWeight: 500, cursor: "pointer",
+                textDecoration: "none",
               }}>
                 <span style={{ fontSize: 14, width: 27, textAlign: "center" }}>{n.icon}</span>
                 <span style={{ flex: 1 }}>{n.label}</span>
                 {n.badge && (
                   <span style={{ fontSize: 9, fontWeight: 800, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 7px", boxShadow: "0 0 6px rgba(220,38,38,0.5)" }}>{n.badge}</span>
                 )}
-              </div>
+              </a>
             ))}
           </div>
         </div>
