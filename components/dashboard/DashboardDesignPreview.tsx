@@ -194,26 +194,29 @@ function PlayBtn({ color = BRAND }: { color?: string }) {
 
 // ── Project Play Button (live) ────────────────────────────────────────────
 
-function ProjectPlayBtn({ p, player, color = BRAND }: {
+function ProjectPlayBtn({ p, player, color = BRAND, size = 28 }: {
   p: Project;
   player: ReturnType<typeof usePlayerSafe>;
   color?: string;
+  size?: number;
 }) {
   const latestAudio = getLatestAudioFile(p.files ?? []);
   if (!latestAudio || !player) {
-    return <div style={{ width: 28, height: 28, flexShrink: 0 }} />;
+    return <div style={{ width: size, height: size, flexShrink: 0 }} />;
   }
   const isLoaded  = player.track?.projectId === p.id;
   const isPlaying = isLoaded && player.playing;
+  const iconSize  = size <= 28 ? 9 : 13;
   return (
     <div
       style={{
-        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-        background: isLoaded ? `${color}22` : "rgba(255,255,255,0.04)",
-        border: `1px solid ${isLoaded ? `${color}55` : "rgba(255,255,255,0.08)"}`,
+        width: size, height: size, borderRadius: "50%", flexShrink: 0,
+        background: isLoaded ? `${color}22` : "rgba(255,255,255,0.07)",
+        border: `1px solid ${isLoaded ? `${color}66` : "rgba(255,255,255,0.14)"}`,
         display: "flex", alignItems: "center", justifyContent: "center",
         cursor: "pointer",
-        boxShadow: isLoaded ? `0 0 8px ${color}44` : "none",
+        boxShadow: isLoaded ? `0 0 ${size < 36 ? 8 : 14}px ${color}55` : "none",
+        transition: "all 0.15s",
       }}
       onClick={async (e) => {
         e.stopPropagation();
@@ -226,7 +229,7 @@ function ProjectPlayBtn({ p, player, color = BRAND }: {
       }}
       title={isPlaying ? "השהה" : latestAudio.name}
     >
-      <span style={{ fontSize: 9, color: isLoaded ? color : "#888", paddingRight: isPlaying ? 0 : 1 }}>
+      <span style={{ fontSize: iconSize, color: isLoaded ? color : "#999", paddingRight: isPlaying ? 0 : 1 }}>
         {isPlaying ? "⏸" : "▶"}
       </span>
     </div>
@@ -273,32 +276,54 @@ function DashboardPlayerBar({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const canPlay  = track.url !== "#" && track.url !== "";
 
-  // ── Mobile compact ──────────────────────────────────────────────────────
+  // ── Mobile compact — fixed above MobileNav ──────────────────────────────
   if (isMobile) {
     return (
       <div style={{
-        background: "#111", borderTop: `1px solid rgba(220,38,38,0.35)`,
-        boxShadow: "0 -4px 20px rgba(220,38,38,0.08)",
-        padding: "10px 16px",
-        display: "flex", alignItems: "center", gap: 12, flexShrink: 0,
+        position: "fixed",
+        bottom: "calc(72px + env(safe-area-inset-bottom))",
+        left: 0, right: 0, zIndex: 145,
+        background: "#141414",
+        borderTop: `1px solid rgba(220,38,38,0.4)`,
+        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        boxShadow: "0 -6px 24px rgba(0,0,0,0.6), 0 -2px 12px rgba(220,38,38,0.12)",
+        padding: "8px 16px 10px",
         direction: "rtl",
       }}>
-        <WaveformBars playing={playing} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F0F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.projectName}</div>
-          <div style={{ fontSize: 11, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.artist}</div>
+        {/* Top row: waveform + name/artist + play + close */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <WaveformBars playing={playing} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F0F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.projectName}</div>
+            <div style={{ fontSize: 11, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{track.artist}</div>
+          </div>
+          <button
+            onClick={canPlay ? (playing ? pause : resume) : undefined}
+            style={{
+              width: 40, height: 40, borderRadius: "50%", border: "none", flexShrink: 0,
+              background: canPlay ? BRAND : "#333", color: "#fff", fontSize: 17,
+              cursor: canPlay ? "pointer" : "default",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: canPlay ? "0 0 18px rgba(220,38,38,0.6)" : "none",
+            }}
+          >{playing ? "⏸" : "▶"}</button>
+          <button onClick={stop} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 22, flexShrink: 0, padding: "0 2px" }}>×</button>
         </div>
-        <button
-          onClick={canPlay ? (playing ? pause : resume) : undefined}
-          style={{
-            width: 38, height: 38, borderRadius: "50%", border: "none", flexShrink: 0,
-            background: canPlay ? BRAND : "#333", color: "#fff", fontSize: 16,
-            cursor: canPlay ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: canPlay ? "0 0 14px rgba(220,38,38,0.5)" : "none",
+        {/* Progress bar */}
+        <div
+          style={{ marginTop: 8, height: 3, background: "#2A2A2A", borderRadius: 2, cursor: "pointer", position: "relative" }}
+          onClick={e => {
+            if (!duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            seek(((e.clientX - rect.left) / rect.width) * duration);
           }}
-        >{playing ? "⏸" : "▶"}</button>
-        <button onClick={stop} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 22, flexShrink: 0 }}>×</button>
+        >
+          <div style={{
+            position: "absolute", left: 0, top: 0, bottom: 0,
+            width: `${progress}%`, background: BRAND, borderRadius: 2,
+            transition: "width 0.1s linear",
+          }} />
+        </div>
       </div>
     );
   }
@@ -702,7 +727,7 @@ export default function DashboardDesignPreview() {
           flex: 1, overflowY: "auto",
           padding: isMobile ? "16px 14px" : "28px 32px",
           paddingBottom: isMobile
-            ? "calc(72px + env(safe-area-inset-bottom))"
+            ? (player?.track ? "calc(72px + env(safe-area-inset-bottom) + 68px)" : "calc(72px + env(safe-area-inset-bottom))")
             : (player?.track ? 112 : 32),
         }}>
 
@@ -1043,7 +1068,7 @@ export default function DashboardDesignPreview() {
                     </div>
                     {/* Row 3: play + dots */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER2}` }}>
-                      <div onClick={e => e.stopPropagation()}><ProjectPlayBtn p={p} player={player} color={sc} /></div>
+                      <div onClick={e => e.stopPropagation()}><ProjectPlayBtn p={p} player={player} color={sc} size={40} /></div>
                       <span onClick={e => e.stopPropagation()} style={{ fontSize: 16, color: "#505050" }}>⋯</span>
                     </div>
                   </div>
@@ -1188,12 +1213,9 @@ export default function DashboardDesignPreview() {
         </div>
       </div>
       </div>{/* ── end inner row ── */}
-      {isMobile && player?.track && (
-        <DashboardPlayerBar player={player} isMobile={true} />
-      )}
       <MobileNav />
-      {!isMobile && player?.track && (
-        <DashboardPlayerBar player={player} isMobile={false} />
+      {player?.track && (
+        <DashboardPlayerBar player={player} isMobile={isMobile} />
       )}
     </div>
   );
