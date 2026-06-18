@@ -704,31 +704,105 @@ export default function DashboardDesignPreview() {
 
           </div>
 
-          {/* ── Projects table ── */}
-          <div style={{ overflowX: isMobile ? "auto" : "visible", borderRadius: 18 }}>
+          {/* ── Projects section ── */}
+          {/* Section header */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
+            padding: isMobile ? "0 2px" : "0",
+          }}>
+            <span style={{ fontSize: 18 }}>🎵</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>פרויקטים פעילים</span>
+            {!loading && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 12px", borderRadius: 99,
+                background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)", color: "#3B82F6",
+              }}>{projects.length} פרויקטים</span>
+            )}
+          </div>
+
+          {/* ── Mobile: vertical cards ── */}
+          {isMobile && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {loading && (
+                <div style={{ padding: "32px", textAlign: "center", color: MUTED, fontSize: 13 }}>טוען פרויקטים...</div>
+              )}
+              {!loading && visibleProjects.length === 0 && (
+                <div style={{ padding: "32px", textAlign: "center", color: MUTED, fontSize: 13 }}>אין פרויקטים פעילים</div>
+              )}
+              {visibleProjects.map((p) => {
+                const days = daysUntilDeadline(p.deadline);
+                const sc = statusColor(p.status);
+                return (
+                  <div key={p.id} style={{
+                    background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
+                    padding: "14px 16px",
+                    boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
+                  }}>
+                    {/* Row 1: name + status */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#F5F5F5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: p.artist ? "#606060" : "#404040", fontStyle: p.artist ? "normal" : "italic" }}>
+                          {p.artist || "ללא אמן"}
+                        </div>
+                      </div>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0,
+                        fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 99,
+                        background: `${sc}18`, color: sc, border: `1px solid ${sc}35`,
+                      }}>
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: sc, display: "inline-block" }} />
+                        {p.status}
+                      </span>
+                    </div>
+                    {/* Row 2: type + deadline */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ fontSize: 11, color: p.projectType ? "#888" : "#404040", fontStyle: p.projectType ? "normal" : "italic" }}>
+                        {p.projectType || "לא הוגדר"}
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <span style={{
+                          fontSize: 11.5,
+                          color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? "#707070" : "#404040",
+                          fontWeight: p.isOverdue || (days !== null && days <= 7) ? 700 : 400,
+                          fontStyle: p.deadline ? "normal" : "italic",
+                        }}>{p.deadline ? formatDl(p.deadline) : "אין דדליין"}</span>
+                        {days !== null && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 99,
+                            background: p.isOverdue ? "rgba(239,68,68,0.12)" : days <= 7 ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.04)",
+                            color: p.isOverdue ? "#EF4444" : days <= 7 ? "#F97316" : SUB,
+                            border: `1px solid ${p.isOverdue ? "rgba(239,68,68,0.25)" : days <= 7 ? "rgba(249,115,22,0.2)" : BORDER2}`,
+                            whiteSpace: "nowrap",
+                          }}>
+                            {p.isOverdue ? `+${Math.abs(days)}` : days}d
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Row 3: play + dots */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER2}` }}>
+                      <PlayBtn color={sc} />
+                      <span style={{ fontSize: 16, color: "#505050" }}>⋯</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {!loading && visibleProjects.length > 0 && (
+                <div style={{ textAlign: "center", paddingTop: 4 }}>
+                  <span style={{ fontSize: 11, color: DIM }}>מציג {visibleProjects.length} מתוך {projects.length} · read-only</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Desktop: table ── */}
+          {!isMobile && (
           <div style={{
             background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
             overflow: "hidden",
             boxShadow: "0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
-            minWidth: isMobile ? 560 : undefined,
           }}>
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "18px 24px 14px", borderBottom: `1px solid ${BORDER}`,
-              background: "rgba(255,255,255,0.01)",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 18 }}>🎵</span>
-                <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>פרויקטים פעילים</span>
-                {!loading && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, padding: "3px 12px", borderRadius: 99,
-                    background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)", color: "#3B82F6",
-                  }}>{projects.length} פרויקטים</span>
-                )}
-              </div>
-            </div>
-
             {/* Column headers */}
             <div style={{
               display: "grid",
@@ -773,17 +847,12 @@ export default function DashboardDesignPreview() {
                   onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.025)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
                 >
-                  {/* ⋯ */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <span style={{ fontSize: 16, color: "#505050", letterSpacing: "0.05em" }}>⋯</span>
                   </div>
-
-                  {/* Play (visual-only) */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <PlayBtn color={sc} />
                   </div>
-
-                  {/* Name + artist */}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: "#F5F5F5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>{p.name}</div>
                     {p.artist ? (
@@ -792,8 +861,6 @@ export default function DashboardDesignPreview() {
                       <div style={{ fontSize: 10.5, color: "#404040", fontStyle: "italic" }}>ללא אמן</div>
                     )}
                   </div>
-
-                  {/* Status badge */}
                   <div>
                     <span style={{
                       display: "inline-flex", alignItems: "center", gap: 5,
@@ -804,26 +871,18 @@ export default function DashboardDesignPreview() {
                       {p.status}
                     </span>
                   </div>
-
-                  {/* Type */}
                   <span style={{ fontSize: 11.5, color: p.projectType ? "#888" : "#404040", fontStyle: p.projectType ? "normal" : "italic" }}>
                     {p.projectType || "לא הוגדר"}
                   </span>
-
-                  {/* Last update */}
                   <span style={{ fontSize: 11, color: p.updatedAt ? "#585858" : "#404040", fontStyle: p.updatedAt ? "normal" : "italic" }}>
                     {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString("he-IL", { day: "numeric", month: "short" }) : "לא עודכן"}
                   </span>
-
-                  {/* Deadline */}
                   <span style={{
                     fontSize: 11.5,
                     color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? "#707070" : "#404040",
                     fontWeight: p.isOverdue || (days !== null && days <= 7) ? 700 : 400,
                     fontStyle: p.deadline ? "normal" : "italic",
                   }}>{p.deadline ? formatDl(p.deadline) : "אין דדליין"}</span>
-
-                  {/* Days chip */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     {days !== null ? (
                       <span style={{
@@ -853,7 +912,7 @@ export default function DashboardDesignPreview() {
               <span style={{ fontSize: 11, color: DIM }}>read-only · live data</span>
             </div>
           </div>
-          </div>{/* ── end scroll wrapper ── */}
+          )}{/* ── end desktop table ── */}
 
           {/* Live badge */}
           <div style={{
