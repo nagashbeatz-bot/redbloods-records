@@ -565,7 +565,7 @@ export default function DashboardDesignPreview() {
               gridTemplateColumns: "36px 36px 2fr 1fr 1fr 1.2fr 100px 36px",
               padding: "9px 20px", borderBottom: `1px solid ${BORDER2}`,
               background: "rgba(255,255,255,0.015)",
-              fontSize: 10, fontWeight: 800, color: DIM,
+              fontSize: 10, fontWeight: 800, color: "#505050",
               letterSpacing: "0.08em", textTransform: "uppercase",
               alignItems: "center", gap: 8,
             }}>
@@ -615,11 +615,11 @@ export default function DashboardDesignPreview() {
 
                   {/* Name + artist */}
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#EFEFEF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>{p.name}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "#F5F5F5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>{p.name}</div>
                     {p.artist ? (
-                      <div style={{ fontSize: 11, color: "#707070", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.artist}</div>
+                      <div style={{ fontSize: 11, color: "#606060", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.artist}</div>
                     ) : (
-                      <div style={{ fontSize: 11, color: DIM, fontStyle: "italic" }}>ללא אמן</div>
+                      <div style={{ fontSize: 10.5, color: "#404040", fontStyle: "italic" }}>ללא אמן</div>
                     )}
                   </div>
 
@@ -636,19 +636,19 @@ export default function DashboardDesignPreview() {
                   </div>
 
                   {/* Type */}
-                  <span style={{ fontSize: 12, color: p.projectType ? SUB : DIM, fontStyle: p.projectType ? "normal" : "italic" }}>
+                  <span style={{ fontSize: 11.5, color: p.projectType ? "#888" : "#404040", fontStyle: p.projectType ? "normal" : "italic" }}>
                     {p.projectType || "לא הוגדר"}
                   </span>
 
                   {/* Last update */}
-                  <span style={{ fontSize: 11, color: p.updatedAt ? MUTED : DIM, fontStyle: p.updatedAt ? "normal" : "italic" }}>
+                  <span style={{ fontSize: 11, color: p.updatedAt ? "#585858" : "#404040", fontStyle: p.updatedAt ? "normal" : "italic" }}>
                     {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString("he-IL", { day: "numeric", month: "short" }) : "לא עודכן"}
                   </span>
 
                   {/* Deadline */}
                   <span style={{
-                    fontSize: 12,
-                    color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? MUTED : DIM,
+                    fontSize: 11.5,
+                    color: p.isOverdue ? "#EF4444" : days !== null && days <= 7 ? "#F97316" : p.deadline ? "#707070" : "#404040",
                     fontWeight: p.isOverdue || (days !== null && days <= 7) ? 700 : 400,
                     fontStyle: p.deadline ? "normal" : "italic",
                   }}>{p.deadline ? formatDl(p.deadline) : "אין דדליין"}</span>
