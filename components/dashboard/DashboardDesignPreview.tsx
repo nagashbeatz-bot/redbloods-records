@@ -176,6 +176,25 @@ function KpiCard({ label, count, sub, color, icon, iconBg }: {
   );
 }
 
+// ── SVG Icons ────────────────────────────────────────────────────────────
+
+function PlayIcon({ size = 10, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 10 12" fill={color} style={{ display: "block" }}>
+      <path d="M1 1L9 6L1 11V1Z" />
+    </svg>
+  );
+}
+
+function PauseIcon({ size = 10, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 10 12" fill={color} style={{ display: "block" }}>
+      <rect x="1" y="0" width="3.2" height="12" rx="1" />
+      <rect x="5.8" y="0" width="3.2" height="12" rx="1" />
+    </svg>
+  );
+}
+
 // ── Play Button (visual-only, disabled) ───────────────────────────────────
 
 function PlayBtn({ color = BRAND }: { color?: string }) {
@@ -187,7 +206,7 @@ function PlayBtn({ color = BRAND }: { color?: string }) {
       display: "flex", alignItems: "center", justifyContent: "center",
       cursor: "default",
     }}>
-      <span style={{ fontSize: 9, color: MUTED, paddingRight: 1 }}>▶</span>
+      <PlayIcon size={8} color={MUTED} />
     </div>
   );
 }
@@ -229,9 +248,10 @@ function ProjectPlayBtn({ p, player, color = BRAND, size = 28 }: {
       }}
       title={isPlaying ? "השהה" : latestAudio.name}
     >
-      <span style={{ fontSize: iconSize, color: isLoaded ? color : "#999", paddingRight: isPlaying ? 0 : 1 }}>
-        {isPlaying ? "⏸" : "▶"}
-      </span>
+      {isPlaying
+        ? <PauseIcon size={iconSize} color={isLoaded ? color : "#999"} />
+        : <PlayIcon  size={iconSize} color={isLoaded ? color : "#999"} />
+      }
     </div>
   );
 }
@@ -306,7 +326,7 @@ function DashboardPlayerBar({
               display: "flex", alignItems: "center", justifyContent: "center",
               boxShadow: canPlay ? "0 0 18px rgba(220,38,38,0.6)" : "none",
             }}
-          >{playing ? "⏸" : "▶"}</button>
+          >{playing ? <PauseIcon size={16} color="#fff" /> : <PlayIcon size={16} color="#fff" />}</button>
           <button onClick={stop} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 22, flexShrink: 0, padding: "0 2px" }}>×</button>
         </div>
         {/* Progress bar */}
@@ -386,7 +406,7 @@ function DashboardPlayerBar({
                 boxShadow: canPlay ? "0 0 28px rgba(220,38,38,0.65), 0 0 8px rgba(220,38,38,1)" : "none",
                 transition: "box-shadow 0.2s",
               }}
-            >{playing ? "⏸" : "▶"}</button>
+            >{playing ? <PauseIcon size={16} color="#fff" /> : <PlayIcon size={16} color="#fff" />}</button>
             <button onClick={() => skip(10)} title="קדימה 10 שניות" style={{
               background: "none", border: "none", cursor: "pointer", color: "#666",
               display: "flex", alignItems: "center", gap: 2, fontSize: 11, padding: "4px 6px",
