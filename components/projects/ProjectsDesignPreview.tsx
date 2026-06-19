@@ -5,7 +5,6 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
-import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 
 // ── Design tokens — identical to DashboardDesignPreview ──────────────────────
 const BRAND   = "#DC2626";
@@ -246,39 +245,6 @@ export default function ProjectsDesignPreview() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ background: BG, minHeight: "100vh", color: TEXT, fontFamily: "inherit", direction: "rtl" }}>
-
-      {/* ── Top bar — identical structure to DashboardDesignPreview ─────── */}
-      <header style={{
-        height: 60, flexShrink: 0,
-        background: SURFACE, borderBottom: `1px solid ${BORDER}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: isMobile ? "0 14px" : "0 28px",
-        position: "sticky", top: 0, zIndex: 40,
-      }}>
-        {/* Right: quick actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            onClick={() => console.log("quick actions — not wired")}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: isMobile ? "7px 14px" : "8px 20px",
-              borderRadius: 10, fontSize: isMobile ? 12 : 13, fontWeight: 700,
-              background: BRAND, border: "none", color: "#fff", cursor: "pointer",
-              boxShadow: "0 2px 14px rgba(220,38,38,0.45)", letterSpacing: "0.01em",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span style={{ fontSize: 13 }}>⚡</span>
-            פעולות מהירות
-            <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
-          </button>
-        </div>
-
-        {/* Left: LISTEN / Radio */}
-        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
-          <JahknoRadioPlayer playerOffset={0} sidebarWidth={248} />
-        </div>
-      </header>
 
       {/* ── Page content ─────────────────────────────────────────────────── */}
       <div style={{ padding: isMobile ? "16px 14px" : "24px 28px", maxWidth: 1400, margin: "0 auto" }}>
