@@ -12,6 +12,7 @@ import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 import MobileNav from "@/components/MobileNav";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
+import { useRadioSafe } from "@/components/radio/RadioProvider";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -670,6 +671,7 @@ export default function DashboardDesignPreview() {
 
   const { openProject } = useGlobalProjectDrawer();
   const player = usePlayerSafe();
+  const radio  = useRadioSafe();
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -747,7 +749,7 @@ export default function DashboardDesignPreview() {
           flex: 1, overflowY: "auto",
           padding: isMobile ? "16px 14px" : "28px 32px",
           paddingBottom: isMobile
-            ? (player?.track ? "calc(72px + env(safe-area-inset-bottom) + 68px)" : "calc(72px + env(safe-area-inset-bottom))")
+            ? ((player?.track || radio?.playing || radio?.loading) ? "calc(72px + env(safe-area-inset-bottom) + 68px)" : "calc(72px + env(safe-area-inset-bottom))")
             : (player?.track ? 112 : 32),
         }}>
 

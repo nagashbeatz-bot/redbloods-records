@@ -254,6 +254,14 @@ function ChannelCard({
   );
 }
 
+// ── Mobile SVG icons ─────────────────────────────────────────────────────────
+function RPlayIcon({ size = 10, color = "#fff" }: { size?: number; color?: string }) {
+  return <svg width={size} height={size} viewBox="0 0 10 12" fill={color} style={{ display: "block" }}><path d="M1 1L9 6L1 11V1Z"/></svg>;
+}
+function RPauseIcon({ size = 10, color = "#fff" }: { size?: number; color?: string }) {
+  return <svg width={size} height={size} viewBox="0 0 10 12" fill={color} style={{ display: "block" }}><rect x="1" y="0" width="3.2" height="12" rx="1"/><rect x="5.8" y="0" width="3.2" height="12" rx="1"/></svg>;
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   playerOffset: number;
@@ -268,7 +276,14 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
   } = useRadio();
 
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    const update = () => setIsMobile(window.innerWidth < 768);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   const handlePlayPause = () => (playing ? pause() : play());
 
@@ -433,6 +448,60 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
     </div>
   );
 
+  // ── Mobile mini-player ────────────────────────────────────────────────────
+  const mobileMiniPlayer = (
+    <div style={{
+      position: "fixed",
+      bottom: "calc(72px + env(safe-area-inset-bottom))",
+      left: 0, right: 0, zIndex: 145,
+      background: "#141414",
+      borderTop: "1px solid rgba(16,185,129,0.35)",
+      boxShadow: "0 -6px 24px rgba(0,0,0,0.6), 0 -2px 10px rgba(16,185,129,0.08)",
+      padding: "10px 16px 12px",
+      direction: "rtl",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+          background: "#10B981",
+          boxShadow: "0 0 8px #10B981",
+          display: "inline-block",
+        }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F0F0",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {playing ? "Red Vibe" : "מתחבר..."} · LIVE
+          </div>
+          <div style={{ fontSize: 11, color: "#666",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {currentChannel.label}
+          </div>
+        </div>
+        <button
+          onClick={handlePlayPause}
+          style={{
+            width: 40, height: 40, borderRadius: "50%", border: "none", flexShrink: 0,
+            background: "#10B981",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+            boxShadow: "0 0 16px rgba(16,185,129,0.5)",
+          }}
+        >
+          {loading
+            ? <span style={{ fontSize: 13, color: "#fff" }}>⋯</span>
+            : playing
+              ? <RPauseIcon size={14} color="#fff" />
+              : <RPlayIcon size={14} color="#fff" />}
+        </button>
+        <button
+          onClick={pause}
+          style={{ background: "none", border: "none", cursor: "pointer",
+            color: "#555", fontSize: 22, flexShrink: 0, padding: "0 2px" }}
+        >×</button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       {/* Header trigger — body = open panel, icon = play/pause */}
@@ -523,6 +592,7 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
       </div>
 
       {mounted && panelOpen && createPortal(panel, document.body)}
+      {mounted && isMobile && (playing || loading) && createPortal(mobileMiniPlayer, document.body)}
     </>
   );
 }
