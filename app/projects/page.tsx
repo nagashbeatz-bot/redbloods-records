@@ -9,6 +9,8 @@ const QuickActionsBtn = (
       fontSize: 11, fontWeight: 700,
       background: "#DC2626", border: "1px solid rgba(220,38,38,0.5)", color: "#fff",
       cursor: "pointer",
+      outline: "none",
+      WebkitTapHighlightColor: "transparent",
       letterSpacing: "0.06em", whiteSpace: "nowrap",
     }}
   >
