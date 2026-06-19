@@ -302,7 +302,7 @@ function DashboardPlayerBar({
     return (
       <div style={{
         position: "fixed",
-        bottom: "calc(72px + env(safe-area-inset-bottom))",
+        bottom: "calc(56px + env(safe-area-inset-bottom))",
         left: 0, right: 0, zIndex: 145,
         background: "#141414",
         borderTop: `1px solid rgba(220,38,38,0.4)`,
@@ -724,7 +724,7 @@ export default function DashboardDesignPreview() {
           flex: 1, overflowY: "auto",
           padding: isMobile ? "16px 14px" : "28px 32px",
           paddingBottom: isMobile
-            ? ((player?.track || radio?.playing || radio?.loading) ? "calc(72px + env(safe-area-inset-bottom) + 68px)" : "calc(72px + env(safe-area-inset-bottom))")
+            ? ((player?.track || radio?.playing || radio?.loading) ? "calc(56px + env(safe-area-inset-bottom) + 74px)" : "calc(56px + env(safe-area-inset-bottom))")
             : (player?.track ? 112 : 32),
         }}>
 
