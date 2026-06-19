@@ -702,6 +702,7 @@ function NewProjectModal({
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState("");
   const [newClientWarning, setNewClientWarning] = useState("");
+  const [artistOpen, setArtistOpen] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { nameRef.current?.focus(); }, []);
@@ -745,6 +746,9 @@ function NewProjectModal({
   const isNewArtist = trimmedArtist.length > 0 && !clientNames.some(
     c => c.toLowerCase() === trimmedArtist.toLowerCase()
   );
+  const filteredArtists = trimmedArtist.length === 0
+    ? []
+    : artists.filter(a => a.toLowerCase().includes(trimmedArtist.toLowerCase())).slice(0, 8);
 
   return createPortal(
     <div
@@ -815,16 +819,38 @@ function NewProjectModal({
                   )}
                   <span>אמן</span>
                 </label>
-                <input
-                  value={artist}
-                  onChange={e => setArtist(e.target.value)}
-                  list="new-project-artists-preview"
-                  style={{ ...inputStyle, borderColor: isNewArtist ? "rgba(245,158,11,0.4)" : "#2A2A2A" }}
-                  placeholder="שם האמן..."
-                />
-                <datalist id="new-project-artists-preview">
-                  {artists.map(a => <option key={a} value={a} />)}
-                </datalist>
+                <div style={{ position: "relative" }}>
+                  <input
+                    value={artist}
+                    onChange={e => { setArtist(e.target.value); setArtistOpen(true); }}
+                    onFocus={() => { if (artist.trim()) setArtistOpen(true); }}
+                    onBlur={() => setTimeout(() => setArtistOpen(false), 150)}
+                    style={{ ...inputStyle, borderColor: isNewArtist ? "rgba(245,158,11,0.4)" : "#2A2A2A" }}
+                    placeholder="שם האמן..."
+                  />
+                  {artistOpen && filteredArtists.length > 0 && (
+                    <ul style={{
+                      position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10,
+                      background: "#1A1A1A", border: "1px solid #2A2A2A",
+                      borderRadius: 10, marginTop: 4,
+                      maxHeight: 200, overflowY: "auto",
+                      listStyle: "none", padding: "4px 0", margin: 0,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+                    }}>
+                      {filteredArtists.map(a => (
+                        <li
+                          key={a}
+                          onMouseDown={() => { setArtist(a); setArtistOpen(false); }}
+                          style={{ padding: "8px 14px", fontSize: 13, color: "#D0D0D0", cursor: "pointer", direction: "rtl" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                        >
+                          {a}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
