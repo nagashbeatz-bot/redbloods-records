@@ -21,7 +21,7 @@ const SIDEBAR_WIDTH = 248; // px — desktop sidebar
 const PLAYER_H      = 60;  // px — desktop mini player
 const MOBILE_PLAYER_H = 50; // px — mobile mini player
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, topRight }: { children: React.ReactNode; topRight?: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const { projects } = useProjects();
   const player = usePlayerSafe();
@@ -139,18 +139,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               />
             </div>
             <div className="md:hidden" />
-            <button
-              onClick={() => setChatOpen(!chatOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
-              style={{
-                background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
-                borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
-                color: chatOpen ? "#3B82F6" : "#888",
-              }}
-            >
-              <span>✦</span>
-              {chatOpen ? "סגור סוכן" : "סוכן AI"}
-            </button>
+            {topRight ?? (
+              <button
+                onClick={() => setChatOpen(!chatOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
+                style={{
+                  background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
+                  borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
+                  color: chatOpen ? "#3B82F6" : "#888",
+                }}
+              >
+                <span>✦</span>
+                {chatOpen ? "סגור סוכן" : "סוכן AI"}
+              </button>
+            )}
           </header>
 
           {/* Content row: page + desktop chat sidebar */}
