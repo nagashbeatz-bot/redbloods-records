@@ -53,16 +53,16 @@ function NavLink({ href, label, icon, iconColor, pathname, badge }: {
     <Link
       href={href}
       style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "6px 10px 6px 12px",
-        borderRadius: 10,
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "10px 10px 10px 12px",
+        borderRadius: 12,
         background: active
           ? "linear-gradient(90deg, rgba(220,38,38,0.13) 0%, rgba(220,38,38,0.03) 100%)"
           : "transparent",
         border: active ? `1px solid rgba(220,38,38,0.18)` : "1px solid transparent",
         borderRight: active ? `3px solid ${BRAND}` : "3px solid transparent",
         color: active ? "#F0F0F0" : "#707070",
-        fontSize: 13, fontWeight: active ? 600 : 400,
+        fontSize: 14, fontWeight: active ? 600 : 400,
         textDecoration: "none",
         transition: "all 0.13s",
         direction: "rtl",
@@ -125,14 +125,14 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
     >
       {/* Logo */}
       <div style={{
-        padding: "20px 16px 16px",
+        padding: "24px 20px 20px",
         borderBottom: "1px solid #222",
         display: "flex", alignItems: "center", gap: 10,
         direction: "rtl",
       }}>
-        <RRMark size={36} />
+        <RRMark size={40} />
         <div style={{ lineHeight: 1.2 }}>
-          <div style={{ fontSize: 15, fontWeight: 900, color: "#F0F0F0", letterSpacing: "-0.01em" }}>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#F0F0F0", letterSpacing: "-0.01em" }}>
             Redbloods
           </div>
           <div style={{
@@ -146,8 +146,8 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: "12px 8px", overflowY: "auto", direction: "rtl" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <nav style={{ flex: 1, padding: "16px 12px", overflowY: "auto", direction: "rtl" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {NAV_MAIN.map(({ href, label, icon, iconColor }) => (
             <NavLink
               key={href}
@@ -162,7 +162,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
         </div>
 
         {/* Section divider */}
-        <div style={{ margin: "14px 4px 6px", direction: "rtl" }}>
+        <div style={{ margin: "18px 4px 8px", direction: "rtl" }}>
           <div style={{
             fontSize: 9, fontWeight: 700, color: "#3A3A3A",
             letterSpacing: "0.12em", textTransform: "uppercase",
@@ -173,7 +173,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
           <div style={{ height: 1, background: "#242424" }} />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
           {NAV_SETTINGS.map(({ href, label, icon, iconColor }) => (
             <NavLink key={href} href={href} label={label} icon={icon} iconColor={iconColor} pathname={pathname} />
           ))}
@@ -182,7 +182,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
 
       {/* Footer */}
       <div style={{
-        padding: "12px 12px 14px",
+        padding: "14px 16px 16px",
         borderTop: "1px solid #222",
         direction: "rtl",
       }}>
