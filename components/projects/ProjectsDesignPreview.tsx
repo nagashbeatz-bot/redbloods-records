@@ -661,7 +661,9 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
             </div>
           </div>
         </div>
-        <StatusBadge status={p.status} />
+        <div onClick={e => e.stopPropagation()}>
+          <StatusDropdown projectId={p.id} status={p.status} small />
+        </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
         <TypeBadge type={p.projectType} />
@@ -673,10 +675,18 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
         )}
       </div>
       {p.notes && (
-        <div style={{ fontSize: 11, color: MUTED, marginTop: 10, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 8, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
           {p.notes}
         </div>
       )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
+        <div onClick={e => e.stopPropagation()}>
+          <UploadButton projectId={p.id} projectName={p.name} artist={p.artist ?? ""} existingFiles={p.files} size="sm" />
+        </div>
+        <div onClick={e => e.stopPropagation()}>
+          <ActionMenu projectId={p.id} projectName={p.name} artist={p.artist ?? ""} />
+        </div>
+      </div>
     </div>
   );
 }
