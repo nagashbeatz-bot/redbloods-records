@@ -713,34 +713,9 @@ export default function DashboardDesignPreview() {
               {isMobile ? "מהירות" : "פעולות מהירות"}
               <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
             </button>
-            {!isMobile && (
-              <button style={{
-                display: "flex", alignItems: "center", gap: 7,
-                padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-                background: "transparent", border: `1px solid ${BORDER}`, color: SUB, cursor: "default",
-              }}>⊟ סינון תצוגה</button>
-            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
             <JahknoRadioPlayer playerOffset={0} sidebarWidth={224} />
-            {!isMobile && (
-              <span style={{
-                fontSize: 10, padding: "3px 10px", borderRadius: 6,
-                background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)",
-                color: BRAND, fontWeight: 700,
-              }}>👁 תצוגה מקדימה — LIVE</span>
-            )}
-            {!isMobile && (
-              <div style={{ position: "relative", cursor: "default" }}>
-                <span style={{ fontSize: 20 }}>🔔</span>
-                <span style={{
-                  position: "absolute", top: -5, right: -7,
-                  background: BRAND, color: "#fff", borderRadius: 99,
-                  fontSize: 9, fontWeight: 900, padding: "1px 5px",
-                  boxShadow: "0 0 6px rgba(220,38,38,0.6)",
-                }}>3</span>
-              </div>
-            )}
           </div>
         </header>
 
