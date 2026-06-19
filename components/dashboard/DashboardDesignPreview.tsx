@@ -802,12 +802,12 @@ export default function DashboardDesignPreview() {
           </div>
 
           {/* ── KPI grid ── */}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(9, 1fr)", gap: isMobile ? 8 : 11, marginBottom: 26 }}>
+          <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
             {KPI.map((k) => <KpiCard key={k.label} {...k} />)}
           </div>
 
           {/* ── Middle 3 cards ── */}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 12 : 18, marginBottom: 26 }}>
+          <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: isMobile ? 12 : 18, marginBottom: 26 }}>
 
             {/* Agent alerts (dummy) */}
             <div style={{
@@ -1039,8 +1039,7 @@ export default function DashboardDesignPreview() {
           </div>
 
           {/* ── Mobile: vertical cards ── */}
-          {isMobile && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="flex md:hidden" style={{ flexDirection: "column", gap: 10 }}>
               {loading && (
                 <div style={{ padding: "32px", textAlign: "center", color: MUTED, fontSize: 13 }}>טוען פרויקטים...</div>
               )}
@@ -1115,12 +1114,10 @@ export default function DashboardDesignPreview() {
                   <span style={{ fontSize: 11, color: DIM }}>מציג {visibleProjects.length} מתוך {projects.length} · read-only</span>
                 </div>
               )}
-            </div>
-          )}
+          </div>
 
           {/* ── Desktop: table ── */}
-          {!isMobile && (
-          <div style={{
+          <div className="hidden md:block" style={{
             background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
             overflow: "hidden",
             boxShadow: "0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
@@ -1234,8 +1231,7 @@ export default function DashboardDesignPreview() {
               <span style={{ fontSize: 12, color: MUTED }}>מציג {visibleProjects.length} מתוך {projects.length}</span>
               <span style={{ fontSize: 11, color: DIM }}>read-only · live data</span>
             </div>
-          </div>
-          )}{/* ── end desktop table ── */}
+          </div>{/* ── end desktop table ── */}
 
           {/* Live badge */}
           <div style={{
