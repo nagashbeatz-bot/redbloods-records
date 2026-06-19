@@ -19,7 +19,7 @@ import PushManager from "@/components/PushManager";
 const CHAT_WIDTH    = 320; // px — agent chat panel
 const SIDEBAR_WIDTH = 248; // px — desktop sidebar
 const PLAYER_H      = 110; // px — desktop mini player (92px card + 18px bottom margin)
-const MOBILE_PLAYER_H = 50; // px — mobile mini player
+const MOBILE_PLAYER_H = 74; // px — mobile mini player (2-row card)
 
 export default function AppShell({ children, topRight }: { children: React.ReactNode; topRight?: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
@@ -301,7 +301,7 @@ function MobileFAB({ playerVisible }: { playerVisible: boolean }) {
   const pathname = usePathname();
 
   const fabBottom = playerVisible
-    ? `calc(56px + 50px + 12px + env(safe-area-inset-bottom))`
+    ? `calc(56px + ${MOBILE_PLAYER_H}px + 12px + env(safe-area-inset-bottom))`
     : `calc(56px + 12px + env(safe-area-inset-bottom))`;
 
   function sendQuickPrompt(text: string) {

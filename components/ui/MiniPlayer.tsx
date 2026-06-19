@@ -61,54 +61,55 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const canPlay = track.url !== "#" && track.url !== "";
 
-  // ── Mobile compact layout ──────────────────────────────────────────────────
+  // ── Mobile 2-row card layout ───────────────────────────────────────────────
   if (mobile) {
     return (
       <div style={{
         background: "#141414",
         borderTop: `1px solid rgba(220,38,38,0.4)`,
-        boxShadow: "0 -4px 20px rgba(0,0,0,0.5), 0 -1px 8px rgba(220,38,38,0.1)",
-        padding: "8px 16px", display: "flex", alignItems: "center", gap: 12,
+        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        boxShadow: "0 -6px 24px rgba(0,0,0,0.6), 0 -2px 12px rgba(220,38,38,0.12)",
+        padding: "8px 16px 10px",
+        direction: "rtl",
       }}>
-        <button
-          onClick={canPlay ? (playing ? pause : resume) : undefined}
-          style={{
-            width: 34, height: 34, borderRadius: "50%", border: "none", flexShrink: 0,
-            background: canPlay ? BRAND : "#333", color: "#fff", fontSize: 14,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: canPlay ? "pointer" : "default",
-            boxShadow: canPlay ? "0 0 14px rgba(220,38,38,0.55)" : "none",
-          }}
-        >{playing ? <PauseIcon size={13} /> : <PlayIcon size={13} />}</button>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="truncate" style={{ fontSize: 12, fontWeight: 600, color: "#E8E8E8" }}>
-            {track.projectName}
+        {/* Row 1: waveform + name/artist + play + close */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <WaveformBars playing={playing} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F0F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {track.projectName}
+            </div>
+            <div style={{ fontSize: 11, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {track.artist}
+            </div>
           </div>
-          <div
-            style={{ height: 3, background: "#2A2A2A", borderRadius: 2, marginTop: 5, cursor: "pointer" }}
-            onClick={(e) => {
-              if (!duration) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              const ratio = (e.clientX - rect.left) / rect.width;
-              seek(ratio * duration);
+          <button
+            onClick={canPlay ? (playing ? pause : resume) : undefined}
+            style={{
+              width: 40, height: 40, borderRadius: "50%", border: "none", flexShrink: 0,
+              background: canPlay ? BRAND : "#333", color: "#fff",
+              cursor: canPlay ? "pointer" : "default",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: canPlay ? "0 0 18px rgba(220,38,38,0.6)" : "none",
             }}
-          >
-            <div style={{
-              width: `${progress}%`, height: "100%",
-              background: BRAND, borderRadius: 2, transition: "width 0.1s linear",
-            }} />
-          </div>
+          >{playing ? <PauseIcon size={16} /> : <PlayIcon size={16} />}</button>
+          <button onClick={stop} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 22, flexShrink: 0, padding: "0 2px" }}>×</button>
         </div>
-
-        <span style={{ fontSize: 11, color: "#666", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
-          {fmt(currentTime)}
-        </span>
-
-        <button onClick={stop} style={{
-          background: "none", border: "none", cursor: "pointer",
-          color: "#555", fontSize: 20, padding: "0 4px", flexShrink: 0,
-        }}>×</button>
+        {/* Row 2: progress bar */}
+        <div
+          style={{ marginTop: 8, height: 3, background: "#2A2A2A", borderRadius: 2, cursor: "pointer", position: "relative" }}
+          onClick={e => {
+            if (!duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            seek(((e.clientX - rect.left) / rect.width) * duration);
+          }}
+        >
+          <div style={{
+            position: "absolute", left: 0, top: 0, bottom: 0,
+            width: `${progress}%`, background: BRAND, borderRadius: 2,
+            transition: "width 0.1s linear",
+          }} />
+        </div>
       </div>
     );
   }
