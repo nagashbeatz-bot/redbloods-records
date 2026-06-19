@@ -710,7 +710,7 @@ export default function DashboardDesignPreview() {
               whiteSpace: "nowrap",
             }}>
               <span style={{ fontSize: 13 }}>⚡</span>
-              {isMobile ? "פעולות" : "פעולות מהירות"}
+              {isMobile ? "מהירות" : "פעולות מהירות"}
               <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
             </button>
             {!isMobile && (
