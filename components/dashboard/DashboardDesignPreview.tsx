@@ -702,20 +702,38 @@ export default function DashboardDesignPreview() {
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: isMobile ? "7px 14px" : "8px 20px",
-              borderRadius: 10, fontSize: isMobile ? 12 : 13, fontWeight: 700,
-              background: BRAND, border: "none", color: "#fff", cursor: "default",
-              boxShadow: "0 2px 14px rgba(220,38,38,0.45)", letterSpacing: "0.01em",
+              display: "flex", alignItems: "center", gap: isMobile ? 5 : 8,
+              padding: isMobile ? "5px 10px 5px 12px" : "8px 20px",
+              borderRadius: isMobile ? 100 : 10,
+              fontSize: isMobile ? 11 : 13, fontWeight: 700,
+              background: BRAND,
+              border: isMobile ? "1px solid rgba(220,38,38,0.5)" : "none",
+              color: "#fff", cursor: "default",
+              boxShadow: isMobile ? "none" : "0 2px 14px rgba(220,38,38,0.45)",
+              letterSpacing: isMobile ? "0.06em" : "0.01em",
               whiteSpace: "nowrap",
             }}>
-              <span style={{ fontSize: 13 }}>⚡</span>
-              {"פעולות מהירות"}
-              <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
+              <span style={{ fontSize: isMobile ? 11 : 13 }}>⚡</span>
+              {isMobile ? "פעולות" : "פעולות מהירות"}
+              <span style={{ fontSize: isMobile ? 9 : 10, opacity: 0.7 }}>▾</span>
             </button>
           </div>
+          {/* Mobile: absolute-centered logo */}
+          {isMobile && (
+            <div style={{
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              textAlign: "center",
+              lineHeight: 1.15,
+              pointerEvents: "none",
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
+              <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
-            <JahknoRadioPlayer playerOffset={0} sidebarWidth={224} />
+            <JahknoRadioPlayer playerOffset={0} sidebarWidth={isMobile ? 0 : 224} />
           </div>
         </header>
 
