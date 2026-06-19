@@ -39,6 +39,15 @@ function formatDeadline(iso: string | null): string {
   return new Date(iso).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" });
 }
 
+function formatTimeRemaining(iso: string | null, status: ProjectStatus): string {
+  if (!iso || status === "הושלם") return "";
+  const days = daysUntilDeadline(iso);
+  if (days === null || days < 0) return "";
+  if (days === 0) return " - היום";
+  if (days < 7) return ` - עוד ${days} ימים`;
+  return ` - עוד ${Math.round(days / 7)} שבועות`;
+}
+
 function deadlineBadgeColor(p: Project): string {
   if (p.isOverdue && p.status !== "הושלם") return "#EF4444";
   const d = daysUntilDeadline(p.deadline);
@@ -336,27 +345,25 @@ export default function ProjectsDesignPreview() {
 
         {/* Page header */}
         {isMobile ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ textAlign: "center", marginBottom: 20 }}>
+            <h1 style={{ fontSize: 28, fontWeight: 900, color: TEXT, margin: "0 0 4px", letterSpacing: "-0.02em" }}>פרויקטים</h1>
+            <p style={{ fontSize: 12, color: MUTED, margin: "0 0 16px" }}>
+              ניהול והפקה של {projects.filter(p => !p.isHidden).length} פרויקטים בלייב
+            </p>
             <button
               onClick={() => setShowNewProject(true)}
               style={{
-                display: "inline-flex", alignItems: "center", gap: 7,
-                padding: "10px 18px", borderRadius: 12,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                width: "100%", padding: "12px 0", borderRadius: 12,
                 background: BRAND, border: "none",
-                color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
-                boxShadow: "0 2px 16px rgba(220,38,38,0.45)",
+                color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer",
                 fontFamily: "inherit",
+                boxShadow: "0 3px 16px rgba(220,38,38,0.45)",
               }}
             >
-              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
               פרויקט חדש
             </button>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 24, fontWeight: 900, color: TEXT, letterSpacing: "-0.02em" }}>פרויקטים</div>
-              <div style={{ fontSize: 12, color: MUTED }}>
-                {projects.filter(p => !p.isHidden).length} פרויקטים בלייב
-              </div>
-            </div>
           </div>
         ) : (
           <div style={{ marginBottom: 20 }}>
@@ -443,15 +450,20 @@ export default function ProjectsDesignPreview() {
             ))}
           </div>
 
-          {/* Type filter — desktop only */}
-          {!isMobile && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              <FilterChip label="כל הסוגים" active={typeFilter === ""} onClick={() => setTypeFilter("")} />
-              {PROJECT_TYPES.map(t => (
-                <FilterChip key={t} label={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} />
-              ))}
-            </div>
-          )}
+          {/* Type filter */}
+          <div style={{
+            display: "flex",
+            flexWrap: isMobile ? "nowrap" : "wrap",
+            overflowX: isMobile ? "auto" : "visible",
+            gap: 6,
+            paddingBottom: isMobile ? 2 : 0,
+            scrollbarWidth: "none",
+          }}>
+            <FilterChip label="כל הסוגים" active={typeFilter === ""} onClick={() => setTypeFilter("")} />
+            {PROJECT_TYPES.map(t => (
+              <FilterChip key={t} label={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} />
+            ))}
+          </div>
         </div>
 
         {/* Results count */}
@@ -758,11 +770,10 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
             {primaryArtist || "—"}
           </div>
           {p.deadline && (
-            <div style={{ fontSize: 11, color: dlColor, marginTop: 5, display: "flex", alignItems: "center", gap: 4 }}>
-              <span>📅</span>
-              <span>תאריך יעד: {formatDeadline(p.deadline)}</span>
+            <div style={{ fontSize: 11, color: dlColor, marginTop: 5 }}>
+              <span>📅 תאריך יעד: {formatDeadline(p.deadline)}{formatTimeRemaining(p.deadline, p.status)}</span>
               {p.isOverdue && p.status !== "הושלם" && (
-                <span style={{ color: "#EF4444", fontWeight: 700 }}>· באיחור</span>
+                <span style={{ color: "#EF4444", fontWeight: 700 }}> · באיחור</span>
               )}
             </div>
           )}

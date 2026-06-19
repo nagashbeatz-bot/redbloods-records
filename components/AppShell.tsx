@@ -127,31 +127,43 @@ export default function AppShell({ children, topRight }: { children: React.React
               background: "#141414",
               borderBottom: "1px solid rgba(255,255,255,0.07)",
               display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "0 28px",
+              padding: isMobile ? "0 14px" : "0 28px",
               position: "sticky", top: 0, zIndex: 40,
             }}
           >
-            {topRight ?? (
-              <button
-                onClick={() => setChatOpen(!chatOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
-                style={{
-                  background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
-                  borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
-                  color: chatOpen ? "#3B82F6" : "#888",
-                }}
-              >
-                <span>✦</span>
-                {chatOpen ? "סגור סוכן" : "סוכן AI"}
-              </button>
+            {isMobile ? (
+              <>
+                {/* Mobile: radio | Redbloods logo | topRight */}
+                <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
+                <div style={{ textAlign: "center", lineHeight: 1.15 }}>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
+                  <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
+                </div>
+                {topRight ?? <div style={{ width: 40 }} />}
+              </>
+            ) : (
+              <>
+                {/* Desktop: topRight | JahknoRadio */}
+                {topRight ?? (
+                  <button
+                    onClick={() => setChatOpen(!chatOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
+                    style={{
+                      background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
+                      borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
+                      color: chatOpen ? "#3B82F6" : "#888",
+                    }}
+                  >
+                    <span>✦</span>
+                    {chatOpen ? "סגור סוכן" : "סוכן AI"}
+                  </button>
+                )}
+                <JahknoRadioPlayer
+                  playerOffset={playerVisible ? PLAYER_H : 0}
+                  sidebarWidth={SIDEBAR_WIDTH}
+                />
+              </>
             )}
-            <div className="hidden md:block">
-              <JahknoRadioPlayer
-                playerOffset={playerVisible ? PLAYER_H : 0}
-                sidebarWidth={SIDEBAR_WIDTH}
-              />
-            </div>
-            <div className="md:hidden" />
           </header>
 
           {/* Content row: page + desktop chat sidebar */}
