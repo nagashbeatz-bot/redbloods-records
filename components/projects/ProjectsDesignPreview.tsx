@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
+import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
@@ -160,6 +161,7 @@ function ActionBtn({ title, label, onClick }: { title: string; label: string; on
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ProjectsDesignPreview() {
   const { projects, loading } = useProjects();
+  const { openProject } = useGlobalProjectDrawer();
 
   const [search,       setSearch]       = useState("");
   const [statusFilter, setStatusFilter] = useState<"כל הסטטוסים" | ProjectStatus>("כל הסטטוסים");
@@ -360,6 +362,7 @@ export default function ProjectsDesignPreview() {
                 project={p}
                 finance={financeSummary[p.id]}
                 isLast={i === pageRows.length - 1}
+                onOpen={openProject}
               />
             ))}
           </div>
@@ -370,7 +373,7 @@ export default function ProjectsDesignPreview() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {pageRows.length === 0
               ? <div style={{ padding: 32, textAlign: "center", color: MUTED }}>לא נמצאו פרויקטים</div>
-              : pageRows.map(p => <MobileCard key={p.id} project={p} finance={financeSummary[p.id]} />)
+              : pageRows.map(p => <MobileCard key={p.id} project={p} finance={financeSummary[p.id]} onOpen={openProject} />)
             }
           </div>
         )}
@@ -414,9 +417,9 @@ function pagerBtn(disabled: boolean): React.CSSProperties {
 
 // ── Desktop row ───────────────────────────────────────────────────────────────
 function ProjectRow({
-  project: p, finance, isLast,
+  project: p, finance, isLast, onOpen,
 }: {
-  project: Project; finance?: { paid: number; agreed: number }; isLast: boolean;
+  project: Project; finance?: { paid: number; agreed: number }; isLast: boolean; onOpen: (id: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const dlColor   = deadlineBadgeColor(p);
@@ -446,10 +449,14 @@ function ProjectRow({
 
       {/* Project name */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-        <span style={{
-          fontSize: 13, fontWeight: 600, color: TEXT,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
+        <span
+          onClick={() => onOpen(p.id)}
+          style={{
+            fontSize: 13, fontWeight: 600, color: TEXT,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            cursor: "pointer",
+          }}
+        >
           {p.name}
         </span>
       </div>
@@ -514,7 +521,7 @@ function ProjectRow({
 }
 
 // ── Mobile card ───────────────────────────────────────────────────────────────
-function MobileCard({ project: p, finance }: { project: Project; finance?: { paid: number; agreed: number } }) {
+function MobileCard({ project: p, finance, onOpen }: { project: Project; finance?: { paid: number; agreed: number }; onOpen: (id: string) => void }) {
   const remaining = finance ? Math.max(0, finance.agreed - finance.paid) : 0;
   const artistNames = p.artist ? p.artist.split(/[,،;]/).map(a => a.trim()).filter(Boolean) : [];
   return (
@@ -526,7 +533,7 @@ function MobileCard({ project: p, finance }: { project: Project; finance?: { pai
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <PlayBtn />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{p.name}</div>
+            <div onClick={() => onOpen(p.id)} style={{ fontSize: 14, fontWeight: 700, color: TEXT, cursor: "pointer" }}>{p.name}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
               {artistNames.map(n => <ArtistChip key={n} name={n} />)}
             </div>
