@@ -448,29 +448,33 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
     </div>
   );
 
-  // ── Mobile mini-player ────────────────────────────────────────────────────
+  // ── Mobile mini-player — same red style as DashboardPlayerBar ───────────
   const mobileMiniPlayer = (
     <div style={{
       position: "fixed",
-      bottom: "calc(72px + env(safe-area-inset-bottom))",
+      bottom: "calc(56px + env(safe-area-inset-bottom))",
       left: 0, right: 0, zIndex: 145,
       background: "#141414",
-      borderTop: "1px solid rgba(16,185,129,0.35)",
-      boxShadow: "0 -6px 24px rgba(0,0,0,0.6), 0 -2px 10px rgba(16,185,129,0.08)",
-      padding: "10px 16px 12px",
+      borderTop: "1px solid rgba(220,38,38,0.4)",
+      borderBottom: "1px solid rgba(255,255,255,0.04)",
+      boxShadow: "0 -6px 24px rgba(0,0,0,0.6), 0 -2px 12px rgba(220,38,38,0.12)",
+      padding: "8px 16px 10px",
       direction: "rtl",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{
-          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-          background: "#10B981",
-          boxShadow: "0 0 8px #10B981",
-          display: "inline-block",
-        }} />
+        {/* LIVE indicator */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: "50%",
+            background: "#10B981", boxShadow: "0 0 6px #10B981",
+            display: "inline-block",
+          }} />
+          <span style={{ fontSize: 10, fontWeight: 800, color: "#10B981", letterSpacing: "0.05em" }}>LIVE</span>
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F0F0",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {playing ? "Red Vibe" : "מתחבר..."} · LIVE
+            {playing ? "Red Vibe" : "מתחבר..."}
           </div>
           <div style={{ fontSize: 11, color: "#666",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -481,10 +485,10 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
           onClick={handlePlayPause}
           style={{
             width: 40, height: 40, borderRadius: "50%", border: "none", flexShrink: 0,
-            background: "#10B981",
+            background: "#DC2626",
             display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer",
-            boxShadow: "0 0 16px rgba(16,185,129,0.5)",
+            boxShadow: "0 0 18px rgba(220,38,38,0.6)",
           }}
         >
           {loading
