@@ -79,7 +79,7 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   // Persist open project/album in URL so Refresh reopens it.
   // Guard: only touch the URL when already on /projects — never redirect from other pages.
   useEffect(() => {
-    if (!pathname.startsWith("/projects")) return;
+    if (pathname !== "/projects" && !pathname.startsWith("/projects/")) return;
     const id = albumProject?.id ?? drawerProjectId ?? null;
     if (id) {
       router.replace(`/projects?open=${id}`);
