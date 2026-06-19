@@ -132,13 +132,6 @@ export default function AppShell({ children, topRight }: { children: React.React
               flexShrink: 0,
             }}
           >
-            <div className="hidden md:block">
-              <JahknoRadioPlayer
-                playerOffset={playerVisible ? PLAYER_H : 0}
-                sidebarWidth={SIDEBAR_WIDTH}
-              />
-            </div>
-            <div className="md:hidden" />
             {topRight ?? (
               <button
                 onClick={() => setChatOpen(!chatOpen)}
@@ -153,6 +146,13 @@ export default function AppShell({ children, topRight }: { children: React.React
                 {chatOpen ? "סגור סוכן" : "סוכן AI"}
               </button>
             )}
+            <div className="hidden md:block">
+              <JahknoRadioPlayer
+                playerOffset={playerVisible ? PLAYER_H : 0}
+                sidebarWidth={SIDEBAR_WIDTH}
+              />
+            </div>
+            <div className="md:hidden" />
           </header>
 
           {/* Content row: page + desktop chat sidebar */}
