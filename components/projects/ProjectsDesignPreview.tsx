@@ -77,7 +77,8 @@ function ProjectPlayBtn({ p, player, size = 28 }: {
   }
   const isLoaded  = player.track?.projectId === p.id;
   const isPlaying = isLoaded && player.playing;
-  const iconSize  = size <= 28 ? 9 : 13;
+  const large = size >= 36;
+  const iconSize  = large ? 14 : 9;
   return (
     <div
       onClick={async (e) => {
@@ -92,17 +93,23 @@ function ProjectPlayBtn({ p, player, size = 28 }: {
       title={isPlaying ? "השהה" : latestAudio.name}
       style={{
         width: size, height: size, borderRadius: "50%", flexShrink: 0,
-        background: isLoaded ? `${BRAND}22` : "rgba(255,255,255,0.07)",
-        border: `1px solid ${isLoaded ? `${BRAND}66` : "rgba(255,255,255,0.14)"}`,
+        background: large
+          ? (isPlaying ? BRAND : `${BRAND}CC`)
+          : (isLoaded ? `${BRAND}22` : "rgba(255,255,255,0.07)"),
+        border: large
+          ? "none"
+          : `1px solid ${isLoaded ? `${BRAND}66` : "rgba(255,255,255,0.14)"}`,
         display: "flex", alignItems: "center", justifyContent: "center",
         cursor: "pointer",
-        boxShadow: isLoaded ? `0 0 8px ${BRAND}55` : "none",
+        boxShadow: large
+          ? (isPlaying ? `0 0 20px ${BRAND}88` : `0 0 10px ${BRAND}44`)
+          : (isLoaded ? `0 0 8px ${BRAND}55` : "none"),
         transition: "all 0.15s",
       }}
     >
       {isPlaying
-        ? <PauseIcon size={iconSize} color={isLoaded ? BRAND : "#999"} />
-        : <PlayIcon  size={iconSize} color={isLoaded ? BRAND : "#999"} />
+        ? <PauseIcon size={iconSize} color={large ? "#fff" : (isLoaded ? BRAND : "#999")} />
+        : <PlayIcon  size={iconSize} color={large ? "#fff" : (isLoaded ? BRAND : "#999")} />
       }
     </div>
   );
@@ -328,12 +335,37 @@ export default function ProjectsDesignPreview() {
       <div style={{ padding: isMobile ? "16px 14px" : "24px 28px", maxWidth: 1400, margin: "0 auto" }}>
 
         {/* Page header */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.02em" }}>פרויקטים</h1>
-          <p style={{ fontSize: 12, color: MUTED, margin: "4px 0 0" }}>
-            ניהול והפקה של {projects.filter(p => !p.isHidden).length} פרויקטים בלייבל
-          </p>
-        </div>
+        {isMobile ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <button
+              onClick={() => setShowNewProject(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                padding: "10px 18px", borderRadius: 12,
+                background: BRAND, border: "none",
+                color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                boxShadow: "0 2px 16px rgba(220,38,38,0.45)",
+                fontFamily: "inherit",
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+              פרויקט חדש
+            </button>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 24, fontWeight: 900, color: TEXT, letterSpacing: "-0.02em" }}>פרויקטים</div>
+              <div style={{ fontSize: 12, color: MUTED }}>
+                {projects.filter(p => !p.isHidden).length} פרויקטים בלייב
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 20 }}>
+            <h1 style={{ fontSize: 28, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.02em" }}>פרויקטים</h1>
+            <p style={{ fontSize: 12, color: MUTED, margin: "4px 0 0" }}>
+              ניהול והפקה של {projects.filter(p => !p.isHidden).length} פרויקטים בלייבל
+            </p>
+          </div>
+        )}
 
         {/* KPI cards */}
         {!isMobile && (
@@ -346,32 +378,37 @@ export default function ProjectsDesignPreview() {
           </div>
         )}
 
-        {/* New project button */}
-        <div style={{ marginBottom: 16 }}>
-          <button
-            onClick={() => setShowNewProject(true)}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "8px 18px", borderRadius: 9,
-              background: BRAND,
-              border: "1px solid rgba(220,38,38,0.5)",
-              color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
-              boxShadow: "0 2px 14px rgba(220,38,38,0.35)",
-              letterSpacing: "0.01em",
-            }}
-          >
-            <span style={{ fontSize: 15, lineHeight: 1 }}>+</span>
-            פרויקט חדש
-          </button>
-        </div>
+        {/* New project button — desktop only (mobile has it in header) */}
+        {!isMobile && (
+          <div style={{ marginBottom: 16 }}>
+            <button
+              onClick={() => setShowNewProject(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "8px 18px", borderRadius: 9,
+                background: BRAND,
+                border: "1px solid rgba(220,38,38,0.5)",
+                color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                boxShadow: "0 2px 14px rgba(220,38,38,0.35)",
+                letterSpacing: "0.01em",
+              }}
+            >
+              <span style={{ fontSize: 15, lineHeight: 1 }}>+</span>
+              פרויקט חדש
+            </button>
+          </div>
+        )}
 
         {/* Search + filters */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          {/* Search bar — full width on mobile */}
+          <div style={{ marginBottom: 8 }}>
             <div style={{
               display: "flex", alignItems: "center", gap: 6,
               background: SURFACE, border: `1px solid ${BORDER}`,
-              borderRadius: 9, padding: "6px 12px",
+              borderRadius: 10, padding: "8px 14px",
+              width: isMobile ? "100%" : "auto",
+              boxSizing: "border-box",
             }}>
               <span style={{ color: MUTED, fontSize: 13 }}>🔍</span>
               <input
@@ -380,8 +417,9 @@ export default function ProjectsDesignPreview() {
                 placeholder="חיפוש פרויקטים או אמן..."
                 style={{
                   background: "transparent", border: "none", outline: "none",
-                  color: TEXT, fontSize: 12, fontFamily: "inherit",
-                  width: 180, direction: "rtl",
+                  color: TEXT, fontSize: 13, fontFamily: "inherit",
+                  flex: 1, direction: "rtl",
+                  width: isMobile ? "100%" : 180,
                 }}
               />
               {search && (
@@ -390,19 +428,30 @@ export default function ProjectsDesignPreview() {
             </div>
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+          {/* Status filter chips — horizontal scroll on mobile */}
+          <div style={{
+            display: "flex",
+            flexWrap: isMobile ? "nowrap" : "wrap",
+            overflowX: isMobile ? "auto" : "visible",
+            gap: 6, marginBottom: isMobile ? 4 : 6,
+            paddingBottom: isMobile ? 4 : 0,
+            scrollbarWidth: "none",
+          }}>
             <FilterChip label="הכל" active={statusFilter === "כל הסטטוסים"} onClick={() => setStatusFilter("כל הסטטוסים")} />
             {ALL_STATUSES.map(s => (
               <FilterChip key={s} label={s} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
             ))}
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <FilterChip label="כל הסוגים" active={typeFilter === ""} onClick={() => setTypeFilter("")} />
-            {PROJECT_TYPES.map(t => (
-              <FilterChip key={t} label={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} />
-            ))}
-          </div>
+          {/* Type filter — desktop only */}
+          {!isMobile && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <FilterChip label="כל הסוגים" active={typeFilter === ""} onClick={() => setTypeFilter("")} />
+              {PROJECT_TYPES.map(t => (
+                <FilterChip key={t} label={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Results count */}
@@ -657,49 +706,91 @@ function ProjectRow({
   );
 }
 
+// ── Cover art placeholder (used by MobileCard) ───────────────────────────────
+function CoverArt({ project: p, size }: { project: Project; size: number }) {
+  const coverUrl = (p as unknown as Record<string, unknown>).cover_url as string | undefined;
+  if (coverUrl) {
+    return (
+      <img
+        src={coverUrl}
+        alt={p.name}
+        style={{ width: size, height: size, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
+      />
+    );
+  }
+  const typeColor = TYPE_COLORS[p.projectType] ?? "#6B7280";
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 10, flexShrink: 0,
+      background: `linear-gradient(145deg, ${typeColor}33, ${typeColor}11)`,
+      border: `1px solid ${typeColor}30`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: size * 0.4, fontWeight: 900, color: typeColor,
+      letterSpacing: "-0.02em",
+    }}>
+      {p.name.charAt(0)}
+    </div>
+  );
+}
+
 // ── Mobile card ───────────────────────────────────────────────────────────────
 function MobileCard({ project: p, finance, onOpen, player }: { project: Project; finance?: { paid: number; agreed: number }; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe> }) {
   const remaining = finance ? Math.max(0, finance.agreed - finance.paid) : 0;
-  const artistNames = p.artist ? p.artist.split(/[,،;]/).map(a => a.trim()).filter(Boolean) : [];
+  const primaryArtist = p.artist ? p.artist.split(/[,،;]/)[0].trim() : "";
+  const dlColor = deadlineBadgeColor(p);
+
   return (
     <div style={{
-      background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14,
-      padding: "14px 16px", boxShadow: CARD_SHADOW,
+      background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
+      padding: "14px 14px 10px", boxShadow: CARD_SHADOW,
     }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <ProjectPlayBtn p={p} player={player} />
-          <div>
-            <div onClick={() => onOpen(p.id)} style={{ fontSize: 14, fontWeight: 700, color: TEXT, cursor: "pointer" }}>{p.name}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
-              {artistNames.map(n => <ArtistChip key={n} name={n} />)}
-            </div>
+      {/* Status badge row */}
+      <div style={{ marginBottom: 10 }}>
+        <StatusBadge status={p.status} />
+      </div>
+
+      {/* Main content row: cover + info + play */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <CoverArt project={p} size={68} />
+        <div
+          onClick={() => onOpen(p.id)}
+          style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {p.name}
           </div>
+          <div style={{ fontSize: 13, color: SUB, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {primaryArtist || "—"}
+          </div>
+          {p.deadline && (
+            <div style={{ fontSize: 11, color: dlColor, marginTop: 5, display: "flex", alignItems: "center", gap: 4 }}>
+              <span>📅</span>
+              <span>תאריך יעד: {formatDeadline(p.deadline)}</span>
+              {p.isOverdue && p.status !== "הושלם" && (
+                <span style={{ color: "#EF4444", fontWeight: 700 }}>· באיחור</span>
+              )}
+            </div>
+          )}
         </div>
+        <ProjectPlayBtn p={p} player={player} size={42} />
+      </div>
+
+      {/* Actions row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
         <div onClick={e => e.stopPropagation()}>
-          <StatusDropdown projectId={p.id} status={p.status} small />
+          <ActionMenu projectId={p.id} projectName={p.name} artist={p.artist ?? ""} />
         </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-        <TypeBadge type={p.projectType} />
-        {p.deadline && (
-          <span style={{ fontSize: 11, color: deadlineBadgeColor(p) }}>📅 {formatDeadline(p.deadline)}</span>
-        )}
-        {remaining > 0 && (
-          <span style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700 }}>₪{remaining.toLocaleString()}</span>
-        )}
-      </div>
-      {p.notes && (
-        <div style={{ fontSize: 11, color: MUTED, marginTop: 8, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
-          {p.notes}
-        </div>
-      )}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
         <div onClick={e => e.stopPropagation()}>
           <UploadButton projectId={p.id} projectName={p.name} artist={p.artist ?? ""} existingFiles={p.files} size="sm" />
         </div>
+        {remaining > 0 && (
+          <span style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginRight: 4 }}>
+            ₪{remaining.toLocaleString()}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
         <div onClick={e => e.stopPropagation()}>
-          <ActionMenu projectId={p.id} projectName={p.name} artist={p.artist ?? ""} />
+          <StatusDropdown projectId={p.id} status={p.status} small />
         </div>
       </div>
     </div>
