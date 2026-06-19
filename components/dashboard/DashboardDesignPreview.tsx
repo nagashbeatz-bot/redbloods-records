@@ -4,7 +4,7 @@
 // Real data: projects (KPI + rows). Calendar / Alerts / Focus = dummy.
 // No writes, no drawer, no dispatch.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
@@ -674,7 +674,7 @@ export default function DashboardDesignPreview() {
   const radio  = useRadioSafe();
 
   const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);

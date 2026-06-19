@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -264,7 +264,7 @@ export default function ProjectsDesignPreview() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);

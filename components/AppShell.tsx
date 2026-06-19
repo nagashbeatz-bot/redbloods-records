@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { Suspense } from "react";
@@ -34,7 +34,7 @@ export default function AppShell({ children, topRight }: { children: React.React
   const mobileNavRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);
