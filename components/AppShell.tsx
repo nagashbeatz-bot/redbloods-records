@@ -17,7 +17,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import PushManager from "@/components/PushManager";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel
-const SIDEBAR_WIDTH = 224; // px — desktop sidebar (w-56)
+const SIDEBAR_WIDTH = 248; // px — desktop sidebar
 const PLAYER_H      = 60;  // px — desktop mini player
 const MOBILE_PLAYER_H = 50; // px — mobile mini player
 
