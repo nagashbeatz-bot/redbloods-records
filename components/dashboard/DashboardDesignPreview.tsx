@@ -627,6 +627,7 @@ export default function DashboardDesignPreview() {
   const [pendingPayments, setPendingPayments] = useState<number | null>(_statCache.pendingPayments);
   const [upcomingSessions, setUpcomingSessions] = useState<number | null>(_statCache.upcomingSessions);
   const [openTasks, setOpenTasks] = useState<number | null>(_statCache.openTasks);
+  const [hasMounted, setHasMounted] = useState(false);
 
   // ── Load localStorage cache before first paint (cold start) ──────────
   useLayoutEffect(() => {
@@ -635,6 +636,7 @@ export default function DashboardDesignPreview() {
     if (_statCache.pendingPayments  != null) setPendingPayments(_statCache.pendingPayments);
     if (_statCache.openProposals    != null) setOpenProposals(_statCache.openProposals);
     if (_statCache.upcomingSessions != null) setUpcomingSessions(_statCache.upcomingSessions);
+    setHasMounted(true);
   }, []);
 
   useEffect(() => {
@@ -725,7 +727,6 @@ export default function DashboardDesignPreview() {
   ];
 
   const allStatsReady =
-    !loading &&
     openTasks !== null &&
     pendingPayments !== null &&
     openProposals !== null &&
@@ -870,7 +871,11 @@ export default function DashboardDesignPreview() {
           </div>
 
           {/* ── KPI grid ── */}
-          {!allStatsReady ? (
+          {!hasMounted ? (
+            // SSR / pre-hydration: placeholder כהה עדין, לא skeleton גדול
+            <div style={{ marginBottom: 26, minHeight: 140 }} />
+          ) : !allStatsReady ? (
+            // mounted + אין cache: skeleton כרגיל
             <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
               {Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} style={{
@@ -880,6 +885,7 @@ export default function DashboardDesignPreview() {
               ))}
             </div>
           ) : (
+            // mounted + cache / נתונים: KPI אמיתי
             <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
               {KPI.map((k) => <KpiCard key={k.label} {...k} />)}
             </div>
