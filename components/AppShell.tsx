@@ -18,7 +18,7 @@ import PushManager from "@/components/PushManager";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel
 const SIDEBAR_WIDTH = 248; // px — desktop sidebar
-const PLAYER_H      = 60;  // px — desktop mini player
+const PLAYER_H      = 110; // px — desktop mini player (92px card + 18px bottom margin)
 const MOBILE_PLAYER_H = 50; // px — mobile mini player
 
 export default function AppShell({ children, topRight }: { children: React.ReactNode; topRight?: React.ReactNode }) {
