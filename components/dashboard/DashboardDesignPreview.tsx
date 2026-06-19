@@ -698,14 +698,11 @@ export default function DashboardDesignPreview() {
           height: 60, flexShrink: 0,
           background: SURFACE, borderBottom: `1px solid ${BORDER}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: isMobile ? "0 14px" : "0 28px", position: "sticky", top: 0, zIndex: 40,
+          padding: "0 14px", position: "sticky", top: 0, zIndex: 40,
         }}>
-          {/* FIRST in DOM → RIGHT in RTL: LISTEN */}
-          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
-            <JahknoRadioPlayer playerOffset={0} sidebarWidth={isMobile ? 0 : 224} />
-          </div>
-          {/* Mobile: absolute-centered logo */}
-          {isMobile && (
+          {/* Mobile — CSS hidden on desktop (no JS flash) */}
+          <div className="flex md:hidden" style={{ width: "100%", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
+            <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
             <div style={{
               position: "absolute",
               left: "50%",
@@ -715,29 +712,48 @@ export default function DashboardDesignPreview() {
               pointerEvents: "none",
             }}>
               <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
-              <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
+              <div style={{ fontSize: 8, fontWeight: 800, color: BRAND, letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
             </div>
-          )}
-          {/* LAST in DOM → LEFT in RTL: פעולות */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button style={{
-              display: "flex", alignItems: "center", gap: isMobile ? 5 : 8,
-              padding: isMobile ? "5px 10px 5px 12px" : "8px 20px",
-              borderRadius: isMobile ? 100 : 10,
-              fontSize: isMobile ? 11 : 13, fontWeight: 700,
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "5px 10px 5px 12px", borderRadius: 100,
+              fontSize: 11, fontWeight: 700,
               background: BRAND,
-              border: isMobile ? "1px solid rgba(220,38,38,0.5)" : "none",
+              border: "1px solid rgba(220,38,38,0.5)",
               color: "#fff", cursor: "pointer",
               outline: "none",
               WebkitTapHighlightColor: "transparent",
               transition: "none",
-              boxShadow: isMobile ? "none" : "0 2px 14px rgba(220,38,38,0.45)",
-              letterSpacing: isMobile ? "0.06em" : "0.01em",
+              boxShadow: "none",
+              letterSpacing: "0.06em",
               whiteSpace: "nowrap",
             }}>
-              <span style={{ fontSize: isMobile ? 11 : 13 }}>⚡</span>
-              {isMobile ? "פעולות" : "פעולות מהירות"}
-              <span style={{ fontSize: isMobile ? 9 : 10, opacity: 0.7 }}>▾</span>
+              <span style={{ fontSize: 11 }}>⚡</span>
+              פעולות
+              <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
+            </button>
+          </div>
+
+          {/* Desktop — CSS hidden on mobile (no JS flash) */}
+          <div className="hidden md:flex" style={{ width: "100%", alignItems: "center", justifyContent: "space-between" }}>
+            <JahknoRadioPlayer playerOffset={0} sidebarWidth={224} />
+            <button style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "8px 20px", borderRadius: 10,
+              fontSize: 13, fontWeight: 700,
+              background: BRAND,
+              border: "none",
+              color: "#fff", cursor: "pointer",
+              outline: "none",
+              WebkitTapHighlightColor: "transparent",
+              transition: "none",
+              boxShadow: "0 2px 14px rgba(220,38,38,0.45)",
+              letterSpacing: "0.01em",
+              whiteSpace: "nowrap",
+            }}>
+              <span style={{ fontSize: 13 }}>⚡</span>
+              פעולות מהירות
+              <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
             </button>
           </div>
         </header>
