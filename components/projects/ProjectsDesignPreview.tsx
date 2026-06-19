@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
@@ -202,6 +203,17 @@ function ActionBtn({ title, label, onClick }: { title: string; label: string; on
   );
 }
 
+// ── Deep link handler — must be in own component for useSearchParams + Suspense
+function OpenProjectFromURL({ openProject }: { openProject: (id: string) => void }) {
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const id = searchParams.get("open");
+    if (id) openProject(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ProjectsDesignPreview() {
   const { projects, loading, createProject } = useProjects();
@@ -308,6 +320,9 @@ export default function ProjectsDesignPreview() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ background: BG, minHeight: "100vh", color: TEXT, fontFamily: "inherit", direction: "rtl" }}>
+      <Suspense fallback={null}>
+        <OpenProjectFromURL openProject={openProject} />
+      </Suspense>
 
       {/* ── Page content ─────────────────────────────────────────────────── */}
       <div style={{ padding: isMobile ? "16px 14px" : "24px 28px", maxWidth: 1400, margin: "0 auto" }}>
