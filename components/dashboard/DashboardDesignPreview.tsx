@@ -488,10 +488,10 @@ function DashboardPlayerBar({
 
 function Sidebar() {
   return (
-    <aside style={{
+    <aside className="hidden md:flex" style={{
       width: SIDEBAR_W, flexShrink: 0,
       background: SURFACE, borderLeft: `1px solid ${BORDER}`,
-      display: "flex", flexDirection: "column", overflowY: "auto",
+      flexDirection: "column", overflowY: "auto",
     }}>
       <div style={{
         padding: "24px 20px 22px", borderBottom: `1px solid rgba(255,255,255,0.08)`,
