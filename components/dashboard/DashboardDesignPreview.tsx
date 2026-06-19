@@ -730,6 +730,7 @@ export default function DashboardDesignPreview() {
               color: "#fff", cursor: "pointer",
               outline: "none",
               WebkitTapHighlightColor: "transparent",
+              transition: "none",
               boxShadow: isMobile ? "none" : "0 2px 14px rgba(220,38,38,0.45)",
               letterSpacing: isMobile ? "0.06em" : "0.01em",
               whiteSpace: "nowrap",

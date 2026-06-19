@@ -11,6 +11,7 @@ const QuickActionsBtn = (
       cursor: "pointer",
       outline: "none",
       WebkitTapHighlightColor: "transparent",
+      transition: "none",
       letterSpacing: "0.06em", whiteSpace: "nowrap",
     }}
   >
