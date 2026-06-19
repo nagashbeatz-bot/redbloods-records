@@ -700,6 +700,25 @@ export default function DashboardDesignPreview() {
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: isMobile ? "0 14px" : "0 28px", position: "sticky", top: 0, zIndex: 40,
         }}>
+          {/* FIRST in DOM → RIGHT in RTL: LISTEN */}
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
+            <JahknoRadioPlayer playerOffset={0} sidebarWidth={isMobile ? 0 : 224} />
+          </div>
+          {/* Mobile: absolute-centered logo */}
+          {isMobile && (
+            <div style={{
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              textAlign: "center",
+              lineHeight: 1.15,
+              pointerEvents: "none",
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
+              <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
+            </div>
+          )}
+          {/* LAST in DOM → LEFT in RTL: פעולות */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button style={{
               display: "flex", alignItems: "center", gap: isMobile ? 5 : 8,
@@ -717,23 +736,6 @@ export default function DashboardDesignPreview() {
               {isMobile ? "פעולות" : "פעולות מהירות"}
               <span style={{ fontSize: isMobile ? 9 : 10, opacity: 0.7 }}>▾</span>
             </button>
-          </div>
-          {/* Mobile: absolute-centered logo */}
-          {isMobile && (
-            <div style={{
-              position: "absolute",
-              left: "50%",
-              transform: "translateX(-50%)",
-              textAlign: "center",
-              lineHeight: 1.15,
-              pointerEvents: "none",
-            }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
-              <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
-            </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
-            <JahknoRadioPlayer playerOffset={0} sidebarWidth={isMobile ? 0 : 224} />
           </div>
         </header>
 
