@@ -802,9 +802,20 @@ export default function DashboardDesignPreview() {
           </div>
 
           {/* ── KPI grid ── */}
-          <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
-            {KPI.map((k) => <KpiCard key={k.label} {...k} />)}
-          </div>
+          {loading ? (
+            <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} style={{
+                  background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.05)",
+                  borderRadius: 16, minHeight: 140, opacity: 0.4,
+                }} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
+              {KPI.map((k) => <KpiCard key={k.label} {...k} />)}
+            </div>
+          )}
 
           {/* ── Middle 3 cards ── */}
           <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: isMobile ? 12 : 18, marginBottom: 26 }}>
