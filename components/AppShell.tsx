@@ -131,48 +131,44 @@ export default function AppShell({ children, topRight }: { children: React.React
               position: "sticky", top: 0, zIndex: 40,
             }}
           >
-            {isMobile ? (
-              <>
-                {/* Left: LISTEN */}
-                <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
-                {/* Center: logo — absolute so it's immune to button widths */}
-                <div style={{
-                  position: "absolute",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  textAlign: "center",
-                  lineHeight: 1.15,
-                  pointerEvents: "none",
-                }}>
-                  <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
-                  <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
-                </div>
-                {/* Right: topRight */}
-                {topRight ?? <div style={{ width: 40 }} />}
-              </>
-            ) : (
-              <>
-                {/* Desktop: topRight | JahknoRadio */}
-                {topRight ?? (
-                  <button
-                    onClick={() => setChatOpen(!chatOpen)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
-                    style={{
-                      background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
-                      borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
-                      color: chatOpen ? "#3B82F6" : "#888",
-                    }}
-                  >
-                    <span>✦</span>
-                    {chatOpen ? "סגור סוכן" : "סוכן AI"}
-                  </button>
-                )}
-                <JahknoRadioPlayer
-                  playerOffset={playerVisible ? PLAYER_H : 0}
-                  sidebarWidth={SIDEBAR_WIDTH}
-                />
-              </>
-            )}
+            {/* Mobile header — CSS hidden on desktop (no JS flash) */}
+            <div className="flex md:hidden" style={{ width: "100%", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
+              <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
+              <div style={{
+                position: "absolute",
+                left: "50%",
+                transform: "translateX(-50%)",
+                textAlign: "center",
+                lineHeight: 1.15,
+                pointerEvents: "none",
+              }}>
+                <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
+                <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
+              </div>
+              {topRight ?? <div style={{ width: 40 }} />}
+            </div>
+
+            {/* Desktop header — CSS hidden on mobile (no JS flash) */}
+            <div className="hidden md:flex" style={{ width: "100%", alignItems: "center", justifyContent: "space-between" }}>
+              {topRight ?? (
+                <button
+                  onClick={() => setChatOpen(!chatOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
+                  style={{
+                    background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
+                    borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
+                    color: chatOpen ? "#3B82F6" : "#888",
+                  }}
+                >
+                  <span>✦</span>
+                  {chatOpen ? "סגור סוכן" : "סוכן AI"}
+                </button>
+              )}
+              <JahknoRadioPlayer
+                playerOffset={playerVisible ? PLAYER_H : 0}
+                sidebarWidth={SIDEBAR_WIDTH}
+              />
+            </div>
           </header>
 
           {/* Content row: page + desktop chat sidebar */}
