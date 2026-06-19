@@ -566,6 +566,14 @@ function Sidebar() {
   );
 }
 
+// ── Module-level stat cache — survives unmount/remount (client-side nav) ──
+let _statCache = {
+  openTasks:        null as number | null,
+  pendingPayments:  null as number | null,
+  openProposals:    null as number | null,
+  upcomingSessions: null as number | null,
+};
+
 // ── Main export ───────────────────────────────────────────────────────────
 
 export default function DashboardDesignPreview() {
@@ -576,12 +584,12 @@ export default function DashboardDesignPreview() {
   const [calToday, setCalToday]         = useState<CalEvent[]>([]);
   const [calTomorrow, setCalTomorrow]   = useState<CalEvent[]>([]);
   const [calConnected, setCalConnected] = useState<boolean | null>(null);
-  const [openProposals, setOpenProposals] = useState<number | null>(null);
+  const [openProposals, setOpenProposals] = useState<number | null>(_statCache.openProposals);
 
   // ── Live-3: payments, sessions, tasks (read-only counts) ──────────────
-  const [pendingPayments, setPendingPayments] = useState<number | null>(null);
-  const [upcomingSessions, setUpcomingSessions] = useState<number | null>(null);
-  const [openTasks, setOpenTasks] = useState<number | null>(null);
+  const [pendingPayments, setPendingPayments] = useState<number | null>(_statCache.pendingPayments);
+  const [upcomingSessions, setUpcomingSessions] = useState<number | null>(_statCache.upcomingSessions);
+  const [openTasks, setOpenTasks] = useState<number | null>(_statCache.openTasks);
 
   useEffect(() => {
     fetch("/api/agent/alerts?status=new&limit=50")
@@ -606,7 +614,9 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const all = Array.isArray(d.proposals) ? d.proposals : [];
-        setOpenProposals(all.filter((p: { status: string }) => !CLOSED_PROPOSAL.has(p.status)).length);
+        const n = all.filter((p: { status: string }) => !CLOSED_PROPOSAL.has(p.status)).length;
+        _statCache.openProposals = n;
+        setOpenProposals(n);
       })
       .catch(() => {});
   }, []);
@@ -616,9 +626,11 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const txs = Array.isArray(d.transactions) ? d.transactions : [];
-        setPendingPayments(txs.filter((t: { payment_status?: string; type?: string }) =>
+        const n = txs.filter((t: { payment_status?: string; type?: string }) =>
           t.type === "income" && t.payment_status !== "שולם"
-        ).length);
+        ).length;
+        _statCache.pendingPayments = n;
+        setPendingPayments(n);
       })
       .catch(() => {});
   }, []);
@@ -628,7 +640,9 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const sessions = Array.isArray(d.sessions) ? d.sessions : [];
-        setUpcomingSessions(sessions.filter((s: { status?: string }) => s.status === "מתוכנן").length);
+        const n = sessions.filter((s: { status?: string }) => s.status === "מתוכנן").length;
+        _statCache.upcomingSessions = n;
+        setUpcomingSessions(n);
       })
       .catch(() => {});
   }, []);
@@ -638,6 +652,7 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+        _statCache.openTasks = tasks.length;
         setOpenTasks(tasks.length);
       })
       .catch(() => {});
