@@ -132,15 +132,21 @@ export default function AppShell({ children, topRight }: { children: React.React
             }}
           >
             {isMobile ? (
-              <>
-                {/* Mobile: radio | Redbloods logo | topRight */}
-                <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", width: "100%" }}>
+                {/* Left slot */}
+                <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                  <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
+                </div>
+                {/* Center: logo */}
                 <div style={{ textAlign: "center", lineHeight: 1.15 }}>
                   <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
                   <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
                 </div>
-                {topRight ?? <div style={{ width: 40 }} />}
-              </>
+                {/* Right slot */}
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  {topRight ?? <div style={{ width: 40 }} />}
+                </div>
+              </div>
             ) : (
               <>
                 {/* Desktop: topRight | JahknoRadio */}
