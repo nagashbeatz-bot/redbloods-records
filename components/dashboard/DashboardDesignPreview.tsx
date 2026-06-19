@@ -663,6 +663,13 @@ export default function DashboardDesignPreview() {
     { label: "סשנים",       count: upcomingSessions ?? 0,                   sub: upcomingSessions !== null ? "מתוכננים" : "...", color: "#EC4899", iconBg: "rgba(236,72,153,0.15)", icon: "🎙" },
   ];
 
+  const allStatsReady =
+    !loading &&
+    openTasks !== null &&
+    pendingPayments !== null &&
+    openProposals !== null &&
+    upcomingSessions !== null;
+
   // Show up to 10 real projects; fall back to an empty list while loading
   const visibleProjects: Project[] = loading ? [] : projects.filter(p => p.status !== "הושלם").slice(0, 10);
 
@@ -802,7 +809,7 @@ export default function DashboardDesignPreview() {
           </div>
 
           {/* ── KPI grid ── */}
-          {loading ? (
+          {!allStatsReady ? (
             <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
               {Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} style={{
