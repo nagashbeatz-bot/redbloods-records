@@ -587,7 +587,7 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
             transition: "color 0.2s",
           }}
         >
-          {loading ? "⋯" : playing ? "⏸" : "▶"}
+          {loading ? "⋯" : playing ? <RPauseIcon size={9} color="currentColor" /> : <RPlayIcon size={9} color="currentColor" />}
         </button>
       </div>
 
