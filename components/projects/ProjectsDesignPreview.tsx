@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
+import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
@@ -48,17 +49,55 @@ function PlayIcon({ size = 9, color = "#888" }: { size?: number; color?: string 
   );
 }
 
-// ── Play button — same style as dashboard PlayBtn ────────────────────────────
-function PlayBtn() {
+// ── Pause icon ───────────────────────────────────────────────────────────────
+function PauseIcon({ size = 10, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <div style={{
-      width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-      background: "rgba(255,255,255,0.05)",
-      border: "1px solid rgba(255,255,255,0.10)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      cursor: "default",
-    }}>
-      <PlayIcon size={9} color="#888" />
+    <svg width={size} height={size} viewBox="0 0 10 12" fill={color} style={{ display: "block" }}>
+      <rect x="1" y="0" width="3.2" height="12" rx="1" />
+      <rect x="5.8" y="0" width="3.2" height="12" rx="1" />
+    </svg>
+  );
+}
+
+// ── Project Play Button (live) — copied from DashboardDesignPreview ───────────
+function ProjectPlayBtn({ p, player, size = 28 }: {
+  p: Project;
+  player: ReturnType<typeof usePlayerSafe>;
+  size?: number;
+}) {
+  const latestAudio = getLatestAudioFile(p.files ?? []);
+  if (!latestAudio || !player) {
+    return <div style={{ width: size, height: size, flexShrink: 0 }} />;
+  }
+  const isLoaded  = player.track?.projectId === p.id;
+  const isPlaying = isLoaded && player.playing;
+  const iconSize  = size <= 28 ? 9 : 13;
+  return (
+    <div
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (isLoaded) {
+          isPlaying ? player.pause() : player.resume();
+        } else {
+          const url = await getFreshPlayUrl(latestAudio);
+          player.play({ projectId: p.id, projectName: p.name, artist: p.artist ?? "", fileName: latestAudio.name, url });
+        }
+      }}
+      title={isPlaying ? "השהה" : latestAudio.name}
+      style={{
+        width: size, height: size, borderRadius: "50%", flexShrink: 0,
+        background: isLoaded ? `${BRAND}22` : "rgba(255,255,255,0.07)",
+        border: `1px solid ${isLoaded ? `${BRAND}66` : "rgba(255,255,255,0.14)"}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer",
+        boxShadow: isLoaded ? `0 0 8px ${BRAND}55` : "none",
+        transition: "all 0.15s",
+      }}
+    >
+      {isPlaying
+        ? <PauseIcon size={iconSize} color={isLoaded ? BRAND : "#999"} />
+        : <PlayIcon  size={iconSize} color={isLoaded ? BRAND : "#999"} />
+      }
     </div>
   );
 }
@@ -162,6 +201,7 @@ function ActionBtn({ title, label, onClick }: { title: string; label: string; on
 export default function ProjectsDesignPreview() {
   const { projects, loading } = useProjects();
   const { openProject } = useGlobalProjectDrawer();
+  const player = usePlayerSafe();
 
   const [search,       setSearch]       = useState("");
   const [statusFilter, setStatusFilter] = useState<"כל הסטטוסים" | ProjectStatus>("כל הסטטוסים");
@@ -363,6 +403,7 @@ export default function ProjectsDesignPreview() {
                 finance={financeSummary[p.id]}
                 isLast={i === pageRows.length - 1}
                 onOpen={openProject}
+                player={player}
               />
             ))}
           </div>
@@ -373,7 +414,7 @@ export default function ProjectsDesignPreview() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {pageRows.length === 0
               ? <div style={{ padding: 32, textAlign: "center", color: MUTED }}>לא נמצאו פרויקטים</div>
-              : pageRows.map(p => <MobileCard key={p.id} project={p} finance={financeSummary[p.id]} onOpen={openProject} />)
+              : pageRows.map(p => <MobileCard key={p.id} project={p} finance={financeSummary[p.id]} onOpen={openProject} player={player} />)
             }
           </div>
         )}
@@ -417,9 +458,9 @@ function pagerBtn(disabled: boolean): React.CSSProperties {
 
 // ── Desktop row ───────────────────────────────────────────────────────────────
 function ProjectRow({
-  project: p, finance, isLast, onOpen,
+  project: p, finance, isLast, onOpen, player,
 }: {
-  project: Project; finance?: { paid: number; agreed: number }; isLast: boolean; onOpen: (id: string) => void;
+  project: Project; finance?: { paid: number; agreed: number }; isLast: boolean; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe>;
 }) {
   const [hovered, setHovered] = useState(false);
   const dlColor   = deadlineBadgeColor(p);
@@ -445,7 +486,7 @@ function ProjectRow({
       }}
     >
       {/* Play */}
-      <div><PlayBtn /></div>
+      <div><ProjectPlayBtn p={p} player={player} /></div>
 
       {/* Project name */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
@@ -521,7 +562,7 @@ function ProjectRow({
 }
 
 // ── Mobile card ───────────────────────────────────────────────────────────────
-function MobileCard({ project: p, finance, onOpen }: { project: Project; finance?: { paid: number; agreed: number }; onOpen: (id: string) => void }) {
+function MobileCard({ project: p, finance, onOpen, player }: { project: Project; finance?: { paid: number; agreed: number }; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe> }) {
   const remaining = finance ? Math.max(0, finance.agreed - finance.paid) : 0;
   const artistNames = p.artist ? p.artist.split(/[,،;]/).map(a => a.trim()).filter(Boolean) : [];
   return (
@@ -531,7 +572,7 @@ function MobileCard({ project: p, finance, onOpen }: { project: Project; finance
     }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <PlayBtn />
+          <ProjectPlayBtn p={p} player={player} />
           <div>
             <div onClick={() => onOpen(p.id)} style={{ fontSize: 14, fontWeight: 700, color: TEXT, cursor: "pointer" }}>{p.name}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
