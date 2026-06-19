@@ -566,13 +566,50 @@ function Sidebar() {
   );
 }
 
-// ── Module-level stat cache — survives unmount/remount (client-side nav) ──
+// ── Stat cache — module-level (survives nav) + localStorage (survives cold start) ──
+const STAT_CACHE_KEY = "rb_stat_cache";
+const STAT_CACHE_TTL = 10 * 60 * 1000; // 10 min
+
+type StatCacheData = {
+  openTasks: number;
+  pendingPayments: number;
+  openProposals: number;
+  upcomingSessions: number;
+  ts: number;
+};
+
 let _statCache = {
   openTasks:        null as number | null,
   pendingPayments:  null as number | null,
   openProposals:    null as number | null,
   upcomingSessions: null as number | null,
 };
+
+function loadStatCacheFromStorage(): void {
+  try {
+    const raw = localStorage.getItem(STAT_CACHE_KEY);
+    if (!raw) return;
+    const parsed: StatCacheData = JSON.parse(raw);
+    if (Date.now() - parsed.ts > STAT_CACHE_TTL) return;
+    if (parsed.openTasks        != null) _statCache.openTasks        = parsed.openTasks;
+    if (parsed.pendingPayments  != null) _statCache.pendingPayments  = parsed.pendingPayments;
+    if (parsed.openProposals    != null) _statCache.openProposals    = parsed.openProposals;
+    if (parsed.upcomingSessions != null) _statCache.upcomingSessions = parsed.upcomingSessions;
+  } catch {}
+}
+
+function updateStatCache(partial: Partial<Omit<StatCacheData, "ts">>): void {
+  Object.assign(_statCache, partial);
+  try {
+    localStorage.setItem(STAT_CACHE_KEY, JSON.stringify({
+      openTasks:        _statCache.openTasks        ?? 0,
+      pendingPayments:  _statCache.pendingPayments  ?? 0,
+      openProposals:    _statCache.openProposals    ?? 0,
+      upcomingSessions: _statCache.upcomingSessions ?? 0,
+      ts: Date.now(),
+    }));
+  } catch {}
+}
 
 // ── Main export ───────────────────────────────────────────────────────────
 
@@ -590,6 +627,15 @@ export default function DashboardDesignPreview() {
   const [pendingPayments, setPendingPayments] = useState<number | null>(_statCache.pendingPayments);
   const [upcomingSessions, setUpcomingSessions] = useState<number | null>(_statCache.upcomingSessions);
   const [openTasks, setOpenTasks] = useState<number | null>(_statCache.openTasks);
+
+  // ── Load localStorage cache before first paint (cold start) ──────────
+  useLayoutEffect(() => {
+    loadStatCacheFromStorage();
+    if (_statCache.openTasks        != null) setOpenTasks(_statCache.openTasks);
+    if (_statCache.pendingPayments  != null) setPendingPayments(_statCache.pendingPayments);
+    if (_statCache.openProposals    != null) setOpenProposals(_statCache.openProposals);
+    if (_statCache.upcomingSessions != null) setUpcomingSessions(_statCache.upcomingSessions);
+  }, []);
 
   useEffect(() => {
     fetch("/api/agent/alerts?status=new&limit=50")
@@ -615,7 +661,7 @@ export default function DashboardDesignPreview() {
       .then(d => {
         const all = Array.isArray(d.proposals) ? d.proposals : [];
         const n = all.filter((p: { status: string }) => !CLOSED_PROPOSAL.has(p.status)).length;
-        _statCache.openProposals = n;
+        updateStatCache({ openProposals: n });
         setOpenProposals(n);
       })
       .catch(() => {});
@@ -629,7 +675,7 @@ export default function DashboardDesignPreview() {
         const n = txs.filter((t: { payment_status?: string; type?: string }) =>
           t.type === "income" && t.payment_status !== "שולם"
         ).length;
-        _statCache.pendingPayments = n;
+        updateStatCache({ pendingPayments: n });
         setPendingPayments(n);
       })
       .catch(() => {});
@@ -641,7 +687,7 @@ export default function DashboardDesignPreview() {
       .then(d => {
         const sessions = Array.isArray(d.sessions) ? d.sessions : [];
         const n = sessions.filter((s: { status?: string }) => s.status === "מתוכנן").length;
-        _statCache.upcomingSessions = n;
+        updateStatCache({ upcomingSessions: n });
         setUpcomingSessions(n);
       })
       .catch(() => {});
@@ -652,7 +698,7 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const tasks = Array.isArray(d.tasks) ? d.tasks : [];
-        _statCache.openTasks = tasks.length;
+        updateStatCache({ openTasks: tasks.length });
         setOpenTasks(tasks.length);
       })
       .catch(() => {});
