@@ -6,6 +6,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 import ActionMenu from "@/components/project/ActionMenu";
+import StatusDropdown from "@/components/ui/StatusDropdown";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
@@ -529,7 +530,7 @@ function ProjectRow({
       </div>
 
       {/* Status */}
-      <div><StatusBadge status={p.status} /></div>
+      <div><StatusDropdown projectId={p.id} status={p.status} small /></div>
 
       {/* Type */}
       <div><TypeBadge type={p.projectType} /></div>
