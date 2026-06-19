@@ -5,6 +5,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
+import ActionMenu from "@/components/project/ActionMenu";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
@@ -564,7 +565,13 @@ function ProjectRow({
             size="sm"
           />
         </div>
-        <ActionBtn title="פעולות מהירות"  label="⚡"  onClick={() => console.log("actions:", p.name)} />
+        <div onClick={e => e.stopPropagation()}>
+          <ActionMenu
+            projectId={p.id}
+            projectName={p.name}
+            artist={p.artist ?? ""}
+          />
+        </div>
       </div>
     </div>
   );
