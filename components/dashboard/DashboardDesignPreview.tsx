@@ -611,6 +611,27 @@ function updateStatCache(partial: Partial<Omit<StatCacheData, "ts">>): void {
   } catch {}
 }
 
+// ── Dashboard snapshot — full KPI array + pills for cold-start display ──
+const SNAP_KEY = "rb_dash_snap";
+
+type KpiItem = { label: string; count: number; sub: string; color: string; iconBg: string; icon: string };
+type DashSnap = { kpi: KpiItem[]; pills: { active: number; overdue: number }; ts: number };
+
+function loadSnap(): DashSnap | null {
+  try {
+    const raw = localStorage.getItem(SNAP_KEY);
+    if (!raw) return null;
+    const s: DashSnap = JSON.parse(raw);
+    if (Date.now() - s.ts > STAT_CACHE_TTL) return null;
+    return s;
+  } catch { return null; }
+}
+
+function saveSnap(kpi: KpiItem[], pills: { active: number; overdue: number }): void {
+  try { localStorage.setItem(SNAP_KEY, JSON.stringify({ kpi, pills, ts: Date.now() })); }
+  catch {}
+}
+
 // ── Main export ───────────────────────────────────────────────────────────
 
 export default function DashboardDesignPreview() {
@@ -628,6 +649,8 @@ export default function DashboardDesignPreview() {
   const [upcomingSessions, setUpcomingSessions] = useState<number | null>(_statCache.upcomingSessions);
   const [openTasks, setOpenTasks] = useState<number | null>(_statCache.openTasks);
   const [hasMounted, setHasMounted] = useState(false);
+  const [cachedKpi,   setCachedKpi]   = useState<KpiItem[] | null>(null);
+  const [cachedPills, setCachedPills] = useState<{ active: number; overdue: number } | null>(null);
 
   // ── Load localStorage cache before first paint (cold start) ──────────
   useLayoutEffect(() => {
@@ -636,6 +659,8 @@ export default function DashboardDesignPreview() {
     if (_statCache.pendingPayments  != null) setPendingPayments(_statCache.pendingPayments);
     if (_statCache.openProposals    != null) setOpenProposals(_statCache.openProposals);
     if (_statCache.upcomingSessions != null) setUpcomingSessions(_statCache.upcomingSessions);
+    const snap = loadSnap();
+    if (snap) { setCachedKpi(snap.kpi); setCachedPills(snap.pills); }
     setHasMounted(true);
   }, []);
 
@@ -731,6 +756,21 @@ export default function DashboardDesignPreview() {
     pendingPayments !== null &&
     openProposals !== null &&
     upcomingSessions !== null;
+
+  const liveReady = !loading && allStatsReady;
+
+  // Save full snapshot when all data is available
+  useEffect(() => {
+    if (!liveReady) return;
+    saveSnap(KPI, { active: activeProjects.length, overdue: overdueProjects.length });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveReady]);
+
+  // What to display: live data when ready, else cached snapshot
+  const displayKpi   = liveReady ? KPI   : cachedKpi;
+  const displayPills = liveReady
+    ? { active: activeProjects.length, overdue: overdueProjects.length }
+    : cachedPills;
 
   // Show up to 10 real projects; fall back to an empty list while loading
   const visibleProjects: Project[] = loading ? [] : projects.filter(p => p.status !== "הושלם").slice(0, 10);
@@ -846,23 +886,23 @@ export default function DashboardDesignPreview() {
               <p style={{ fontSize: 14, color: MUTED, margin: "0 0 14px", fontWeight: 500 }}>
                 {new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}
               </p>
-              {!loading && (
+              {displayPills && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {overdueProjects.length > 0 && (
+                  {displayPills.overdue > 0 && (
                     <span style={{
                       display: "inline-flex", alignItems: "center", gap: 6,
                       fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 99,
                       background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444",
-                    }}><Dot color="#EF4444" /> {overdueProjects.length} פרויקטים עברו דדליין</span>
+                    }}><Dot color="#EF4444" /> {displayPills.overdue} פרויקטים עברו דדליין</span>
                   )}
-                  {activeProjects.length > 0 && (
+                  {displayPills.active > 0 && (
                     <span style={{
                       display: "inline-flex", alignItems: "center", gap: 6,
                       fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 99,
                       background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", color: "#3B82F6",
-                    }}><Dot color="#3B82F6" /> {activeProjects.length} פרויקטים בעבודה פעילה</span>
+                    }}><Dot color="#3B82F6" /> {displayPills.active} פרויקטים בעבודה פעילה</span>
                   )}
-                  {overdueProjects.length === 0 && activeProjects.length === 0 && (
+                  {displayPills.overdue === 0 && displayPills.active === 0 && liveReady && (
                     <span style={{ fontSize: 13, color: MUTED }}>הכל תחת שליטה 🎵</span>
                   )}
                 </div>
@@ -872,10 +912,10 @@ export default function DashboardDesignPreview() {
 
           {/* ── KPI grid ── */}
           {!hasMounted ? (
-            // SSR / pre-hydration: placeholder כהה עדין, לא skeleton גדול
+            // SSR / pre-hydration: placeholder שקוף, לא skeleton גדול
             <div style={{ marginBottom: 26, minHeight: 140 }} />
-          ) : !allStatsReady ? (
-            // mounted + אין cache: skeleton כרגיל
+          ) : displayKpi == null ? (
+            // mounted + אין snapshot בכלל: skeleton כרגיל
             <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
               {Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} style={{
@@ -885,9 +925,9 @@ export default function DashboardDesignPreview() {
               ))}
             </div>
           ) : (
-            // mounted + cache / נתונים: KPI אמיתי
+            // mounted + snapshot (cache או live): KPI מלא
             <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
-              {KPI.map((k) => <KpiCard key={k.label} {...k} />)}
+              {displayKpi.map((k) => <KpiCard key={k.label} {...k} />)}
             </div>
           )}
 
