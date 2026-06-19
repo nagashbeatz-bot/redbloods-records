@@ -1046,12 +1046,12 @@ export default function ProjectsTable() {
       {!isMobile && (
         <>
           {/* Page header row */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
             <div>
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: "#F5F5F5", margin: 0, letterSpacing: "-0.02em" }}>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#F0F0F0", margin: 0 }}>
                 {showHidden ? "פרויקטים מוסתרים" : "פרויקטים"}
               </h1>
-              <p style={{ fontSize: 12, color: "#3D3D3D", margin: "4px 0 0" }}>
+              <p style={{ fontSize: 12, color: "#555", margin: "3px 0 0" }}>
                 {showHidden
                   ? (hiddenLoading ? "טוען..." : `${hiddenProjects.length} פרויקטים`)
                   : `${filtered.length} מוצגים`}
@@ -1081,21 +1081,21 @@ export default function ProjectsTable() {
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "7px 16px", borderRadius: 9,
-                  border: "1px solid rgba(220,38,38,0.35)",
-                  background: "rgba(220,38,38,0.10)",
-                  color: "#DC2626", fontSize: 13, fontWeight: 600,
+                  border: "1px solid rgba(59,130,246,0.35)",
+                  background: "rgba(59,130,246,0.08)",
+                  color: "#3B82F6", fontSize: 13, fontWeight: 600,
                   cursor: "pointer", transition: "all 0.15s",
                 }}
                 onMouseEnter={(e) => {
                   Object.assign((e.currentTarget as HTMLElement).style, {
-                    background: "rgba(220,38,38,0.18)",
-                    borderColor: "rgba(220,38,38,0.55)",
+                    background: "rgba(59,130,246,0.15)",
+                    borderColor: "rgba(59,130,246,0.55)",
                   });
                 }}
                 onMouseLeave={(e) => {
                   Object.assign((e.currentTarget as HTMLElement).style, {
-                    background: "rgba(220,38,38,0.10)",
-                    borderColor: "rgba(220,38,38,0.35)",
+                    background: "rgba(59,130,246,0.08)",
+                    borderColor: "rgba(59,130,246,0.35)",
                   });
                 }}
               >
@@ -1143,22 +1143,21 @@ export default function ProjectsTable() {
                     key={label}
                     onClick={isClickable ? () => setShowCollectionDetail(true) : undefined}
                     style={{
-                      background: "#181818",
-                      border: `1px solid ${isClickable ? "rgba(245,158,11,0.25)" : "rgba(255,255,255,0.06)"}`,
-                      borderRadius: 14,
-                      padding: "16px 20px",
+                      background: "#141414",
+                      border: `1px solid ${isClickable ? "rgba(245,158,11,0.25)" : "#252525"}`,
+                      borderRadius: 12,
+                      padding: "12px 16px",
                       cursor: isClickable ? "pointer" : "default",
                       transition: "border-color 0.15s",
-                      boxShadow: "0 2px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
                     }}
                     onMouseEnter={isClickable ? (e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(245,158,11,0.5)"; } : undefined}
                     onMouseLeave={isClickable ? (e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(245,158,11,0.25)"; } : undefined}
                   >
-                    <div style={{ fontSize: 10, color: "#484848", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontSize: 10, color: "#444", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
                       {label}
                       {isClickable && <span style={{ fontSize: 9, color: "#666" }}>↗</span>}
                     </div>
-                    <div style={{ fontSize: 32, fontWeight: 900, color, letterSpacing: "-0.02em" }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color }}>
                       {value}
                     </div>
                   </div>
