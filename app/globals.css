@@ -78,6 +78,12 @@ input, textarea, select, button {
   transition-property: background-color, border-color, color, opacity, box-shadow, transform;
 }
 
+/* Prevent background-color transition on root — avoids white flash on load */
+html,
+body {
+  transition: none;
+}
+
 @keyframes skeleton-sweep {
   0%   { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
