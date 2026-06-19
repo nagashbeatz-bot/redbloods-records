@@ -744,14 +744,9 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
       background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
       padding: "14px 14px 10px", boxShadow: CARD_SHADOW,
     }}>
-      {/* Status badge row */}
-      <div style={{ marginBottom: 10 }}>
-        <StatusBadge status={p.status} />
-      </div>
-
-      {/* Main content row: cover + info + play */}
+      {/* Main content row: info (right) + play (left) — RTL */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <CoverArt project={p} size={68} />
+        <ProjectPlayBtn p={p} player={player} size={42} />
         <div
           onClick={() => onOpen(p.id)}
           style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
@@ -772,7 +767,6 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
             </div>
           )}
         </div>
-        <ProjectPlayBtn p={p} player={player} size={42} />
       </div>
 
       {/* Actions row */}
