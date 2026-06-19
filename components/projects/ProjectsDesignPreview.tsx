@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 import ActionMenu from "@/components/project/ActionMenu";
 import StatusDropdown from "@/components/ui/StatusDropdown";
+import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
@@ -202,14 +204,16 @@ function ActionBtn({ title, label, onClick }: { title: string; label: string; on
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ProjectsDesignPreview() {
-  const { projects, loading } = useProjects();
+  const { projects, loading, createProject } = useProjects();
   const { openProject } = useGlobalProjectDrawer();
   const player = usePlayerSafe();
 
-  const [search,       setSearch]       = useState("");
-  const [statusFilter, setStatusFilter] = useState<"כל הסטטוסים" | ProjectStatus>("כל הסטטוסים");
-  const [typeFilter,   setTypeFilter]   = useState<ProjectType | "">("");
-  const [isMobile,     setIsMobile]     = useState(false);
+  const [search,          setSearch]          = useState("");
+  const [statusFilter,    setStatusFilter]    = useState<"כל הסטטוסים" | ProjectStatus>("כל הסטטוסים");
+  const [typeFilter,      setTypeFilter]      = useState<ProjectType | "">("");
+  const [isMobile,        setIsMobile]        = useState(false);
+  const [showNewProject,  setShowNewProject]  = useState(false);
+  const [clientNames,     setClientNames]     = useState<string[]>([]);
 
   const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number }>>({});
 
@@ -237,6 +241,15 @@ export default function ProjectsDesignPreview() {
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/clients")
+      .then(r => r.json())
+      .then(d => {
+        if (d.clients) setClientNames((d.clients as { name: string }[]).map(c => c.name));
+      })
+      .catch(() => {});
   }, []);
 
   const filtered = useMemo(() => {
@@ -285,6 +298,11 @@ export default function ProjectsDesignPreview() {
   const pageRows   = sorted.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   useEffect(() => setPage(1), [search, statusFilter, typeFilter]);
 
+  const artists = Array.from(new Set([
+    ...projects.flatMap(p => p.artist.split(/[,،;]/).map(a => a.trim()).filter(Boolean)),
+    ...clientNames,
+  ]));
+
   if (loading) return <div style={{ padding: 32, color: SUB }}>טוען פרויקטים...</div>;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -313,20 +331,22 @@ export default function ProjectsDesignPreview() {
           </div>
         )}
 
-        {/* Upload button */}
+        {/* New project button */}
         <div style={{ marginBottom: 16 }}>
           <button
-            onClick={() => console.log("upload — not wired")}
+            onClick={() => setShowNewProject(true)}
             style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "8px 16px", borderRadius: 9,
-              background: "rgba(255,255,255,0.06)",
-              border: `1px solid ${BORDER}`,
-              color: SUB, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "8px 18px", borderRadius: 9,
+              background: BRAND,
+              border: "1px solid rgba(220,38,38,0.5)",
+              color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              boxShadow: "0 2px 14px rgba(220,38,38,0.35)",
+              letterSpacing: "0.01em",
             }}
           >
-            <span style={{ fontSize: 14 }}>↑</span>
-            העלאת פרויקט / קובץ
+            <span style={{ fontSize: 15, lineHeight: 1 }}>+</span>
+            פרויקט חדש
           </button>
         </div>
 
@@ -445,6 +465,50 @@ export default function ProjectsDesignPreview() {
           {PER_PAGE} פרויקטים לעמוד
         </div>
       </div>
+
+      {showNewProject && typeof document !== "undefined" && (
+        <NewProjectModal
+          artists={artists}
+          clientNames={clientNames}
+          onClose={() => setShowNewProject(false)}
+          onCreate={async (fields) => {
+            const newId = await createProject({
+              name: fields.name,
+              artist: fields.artist,
+              status: fields.status,
+              projectType: fields.projectType,
+              deadline: fields.deadline,
+              notes: fields.notes,
+            });
+            const trimmed = fields.artist.trim();
+            if (trimmed && !clientNames.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+              try {
+                await fetch("/api/clients", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: trimmed, type: "אמן", status: "חדש" }),
+                });
+                const res = await fetch("/api/clients");
+                const d = await res.json();
+                if (d.clients) setClientNames((d.clients as { name: string }[]).map(c => c.name));
+                if (newId && (fields.projectType === "אלבום" || fields.projectType === "EP")) {
+                  setShowNewProject(false);
+                  openProject(newId);
+                  return { newClientAdded: trimmed };
+                }
+                return { newClientAdded: trimmed };
+              } catch {
+                return { newClientAdded: trimmed };
+              }
+            }
+            if (newId && (fields.projectType === "אלבום" || fields.projectType === "EP")) {
+              setShowNewProject(false);
+              openProject(newId);
+            }
+            return {};
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -614,6 +678,201 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
         </div>
       )}
     </div>
+  );
+}
+
+// ── NewProjectModal — local copy (ProjectsTable.tsx is not exported) ─────────
+function NewProjectModal({
+  artists,
+  clientNames,
+  onClose,
+  onCreate,
+}: {
+  artists: string[];
+  clientNames: string[];
+  onClose: () => void;
+  onCreate: (fields: { name: string; artist: string; status: ProjectStatus; projectType: ProjectType; deadline: string; notes: string }) => Promise<{ newClientAdded?: string }>;
+}) {
+  const [name,        setName]        = useState("");
+  const [artist,      setArtist]      = useState("");
+  const [status,      setStatus]      = useState<ProjectStatus>("לא התחיל");
+  const [projectType, setProjectType] = useState<ProjectType>("שיר");
+  const [deadline,    setDeadline]    = useState("");
+  const [notes,       setNotes]       = useState("");
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState("");
+  const [newClientWarning, setNewClientWarning] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { nameRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !newClientWarning) onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose, newClientWarning]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) { setError("שם הפרויקט חובה"); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const result = await onCreate({ name: name.trim(), artist: artist.trim(), status, projectType, deadline, notes });
+      if (result?.newClientAdded) {
+        setNewClientWarning(result.newClientAdded);
+      } else {
+        onClose();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 10, color: "#555", fontWeight: 700, letterSpacing: "0.06em",
+    textTransform: "uppercase", marginBottom: 6, display: "block", textAlign: "right",
+  };
+  const inputStyle: React.CSSProperties = {
+    width: "100%", background: "#111", border: "1px solid #2A2A2A",
+    borderRadius: 10, color: "#E8E8E8", fontSize: 13, padding: "9px 12px",
+    outline: "none", direction: "rtl", fontFamily: "inherit", boxSizing: "border-box" as const,
+  };
+
+  const trimmedArtist = artist.trim();
+  const isNewArtist = trimmedArtist.length > 0 && !clientNames.some(
+    c => c.toLowerCase() === trimmedArtist.toLowerCase()
+  );
+
+  return createPortal(
+    <div
+      onClick={() => { if (!newClientWarning) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 99998,
+        background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#141414", border: "1px solid #2A2A2A",
+          borderRadius: 18, padding: "28px 28px 22px",
+          width: 420, maxWidth: "90vw", direction: "rtl",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
+        }}
+      >
+        {newClientWarning ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8", margin: "0 0 10px" }}>
+              הפרויקט נוצר בהצלחה!
+            </h2>
+            <div style={{
+              background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
+              borderRadius: 12, padding: "14px 16px", marginBottom: 20, textAlign: "right",
+            }}>
+              <p style={{ color: "#F59E0B", fontSize: 13, fontWeight: 600, margin: "0 0 6px" }}>
+                🆕 אמן חדש נוסף ללקוחות
+              </p>
+              <p style={{ color: "#D4A855", fontSize: 12, margin: "0 0 4px" }}>
+                <strong>{newClientWarning}</strong> נוסף אוטומטית לרשימת הלקוחות
+              </p>
+              <p style={{ color: "#888", fontSize: 12, margin: 0 }}>
+                ⚡ נדרש טיפול: חסר כתובת מייל לאמן זה — כנסו ללקוחות והשלימו את הפרטים
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                width: "100%", padding: "10px 0", borderRadius: 10, border: "none",
+                background: "#1E40AF", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600,
+              }}
+            >
+              הבנתי, סגור
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+              <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>פרויקט חדש</h2>
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={labelStyle}>שם הפרויקט *</label>
+                <input ref={nameRef} value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="שם הפרויקט..." />
+              </div>
+              <div>
+                <label style={{ ...labelStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  {isNewArtist && (
+                    <span style={{ color: "#F59E0B", fontSize: 10, fontWeight: 600 }}>
+                      🆕 אמן חדש — יתווסף ללקוחות
+                    </span>
+                  )}
+                  <span>אמן</span>
+                </label>
+                <input
+                  value={artist}
+                  onChange={e => setArtist(e.target.value)}
+                  list="new-project-artists-preview"
+                  style={{ ...inputStyle, borderColor: isNewArtist ? "rgba(245,158,11,0.4)" : "#2A2A2A" }}
+                  placeholder="שם האמן..."
+                />
+                <datalist id="new-project-artists-preview">
+                  {artists.map(a => <option key={a} value={a} />)}
+                </datalist>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={labelStyle}>סטטוס</label>
+                  <select value={status} onChange={e => setStatus(e.target.value as ProjectStatus)} style={inputStyle}>
+                    {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>סוג</label>
+                  <select value={projectType} onChange={e => setProjectType(e.target.value as ProjectType)} style={inputStyle}>
+                    {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>דדליין</label>
+                <DatePickerInput value={deadline} onChange={setDeadline} style={{ ...inputStyle }} />
+              </div>
+              <div>
+                <label style={labelStyle}>הערות</label>
+                <input value={notes} onChange={e => setNotes(e.target.value)} style={inputStyle} placeholder="הערות אופציונליות..." />
+              </div>
+              {error && <p style={{ color: "#EF4444", fontSize: 12, margin: 0, textAlign: "center" }}>{error}</p>}
+              <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                <button
+                  type="button" onClick={onClose}
+                  style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "1px solid #2A2A2A", background: "transparent", color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}
+                >
+                  ביטול
+                </button>
+                <button
+                  type="submit" disabled={saving}
+                  style={{
+                    flex: 1, padding: "10px 0", borderRadius: 12, border: "none",
+                    background: saving ? "#1D3A5F" : "#1E40AF", color: "#fff",
+                    cursor: saving ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                  }}
+                >
+                  {saving ? "שומר..." : "צור פרויקט"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 }
 
