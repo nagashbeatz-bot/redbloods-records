@@ -132,21 +132,24 @@ export default function AppShell({ children, topRight }: { children: React.React
             }}
           >
             {isMobile ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", width: "100%" }}>
-                {/* Left slot */}
-                <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                  <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
-                </div>
-                {/* Center: logo */}
-                <div style={{ textAlign: "center", lineHeight: 1.15 }}>
+              <>
+                {/* Left: LISTEN */}
+                <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
+                {/* Center: logo — absolute so it's immune to button widths */}
+                <div style={{
+                  position: "absolute",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  textAlign: "center",
+                  lineHeight: 1.15,
+                  pointerEvents: "none",
+                }}>
                   <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
                   <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
                 </div>
-                {/* Right slot */}
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  {topRight ?? <div style={{ width: 40 }} />}
-                </div>
-              </div>
+                {/* Right: topRight */}
+                {topRight ?? <div style={{ width: 40 }} />}
+              </>
             ) : (
               <>
                 {/* Desktop: topRight | JahknoRadio */}
