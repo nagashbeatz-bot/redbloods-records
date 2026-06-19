@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
+import UploadButton from "@/components/ui/UploadButton";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
@@ -554,7 +555,15 @@ function ProjectRow({
 
       {/* Actions */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-        <ActionBtn title="העלאת קובץ"     label="↑"  onClick={() => console.log("upload:", p.name)} />
+        <div onClick={e => e.stopPropagation()}>
+          <UploadButton
+            projectId={p.id}
+            projectName={p.name}
+            artist={p.artist ?? ""}
+            existingFiles={p.files}
+            size="sm"
+          />
+        </div>
         <ActionBtn title="פעולות מהירות"  label="⚡"  onClick={() => console.log("actions:", p.name)} />
       </div>
     </div>
