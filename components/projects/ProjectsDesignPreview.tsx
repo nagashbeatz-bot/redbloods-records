@@ -488,12 +488,28 @@ function ProjectRow({
         </span>
       </div>
 
-      {/* Artist chips */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minWidth: 0 }}>
-        {artistNames.length > 0
-          ? artistNames.map(name => <ArtistChip key={name} name={name} />)
-          : <span style={{ color: MUTED, fontSize: 12 }}>—</span>
-        }
+      {/* Artist chips — max 2 visible + overflow badge */}
+      <div style={{ display: "flex", flexWrap: "nowrap", gap: 4, minWidth: 0, overflow: "hidden" }}>
+        {artistNames.length > 0 ? (
+          <>
+            {artistNames.slice(0, 2).map(name => <ArtistChip key={name} name={name} />)}
+            {artistNames.length > 2 && (
+              <span
+                title={artistNames.slice(2).join(", ")}
+                style={{
+                  display: "inline-block", fontSize: 10, fontWeight: 700,
+                  color: MUTED, background: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${BORDER}`, borderRadius: 6,
+                  padding: "2px 6px", whiteSpace: "nowrap", cursor: "default",
+                }}
+              >
+                +{artistNames.length - 2}
+              </span>
+            )}
+          </>
+        ) : (
+          <span style={{ color: MUTED, fontSize: 12 }}>—</span>
+        )}
       </div>
 
       {/* Status */}
