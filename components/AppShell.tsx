@@ -122,14 +122,13 @@ export default function AppShell({ children, topRight }: { children: React.React
         >
           {/* Top bar */}
           <header
-            className="flex items-center justify-between px-4 md:px-6 border-b"
             style={{
+              height: 60, flexShrink: 0,
               background: "#141414",
-              borderColor: "#2A2A2A",
-              paddingTop: "max(14px, env(safe-area-inset-top))",
-              paddingBottom: 14,
-              minHeight: 56,
-              flexShrink: 0,
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "0 28px",
+              position: "sticky", top: 0, zIndex: 40,
             }}
           >
             {topRight ?? (
