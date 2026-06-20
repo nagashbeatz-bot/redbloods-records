@@ -895,37 +895,44 @@ function OverviewContent({
         <CardTitle>סיכום כספי</CardTitle>
         {finLoaded ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+            {/* 2×2 grid */}
+            {(() => {
+              const netProfit = received - totalExp;
+              const npColor = netProfit >= 0 ? GREEN : RED_WARN;
+              const cells = [
+                { label: "מחיר מוסכם", val: agreedPrice, color: TEXT,    bg: CARD_BG2,          border: BORDER },
+                { label: "התקבל",       val: received,    color: GREEN,   bg: `${GREEN}0C`,      border: `${GREEN}2A` },
+                { label: "הוצאות",      val: totalExp,    color: AMBER,   bg: `${AMBER}0A`,      border: `${AMBER}28` },
+                { label: "רווח נקי",    val: netProfit,   color: npColor, bg: `${npColor}0B`,    border: `${npColor}28` },
+              ];
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+                  {cells.map(({ label, val, color, bg, border }) => (
+                    <div key={label} style={{
+                      padding: "12px 14px", borderRadius: 12,
+                      background: bg, border: `1px solid ${border}`,
+                      display: "flex", flexDirection: "column", gap: 6,
+                    }}>
+                      <div style={{ fontSize: 10, color: LABEL, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>{label}</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color }}>
+                        {val < 0 ? "-" : ""}{currency}{Math.abs(val).toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            {/* Divider */}
+            <div style={{ height: 1, background: BORDER, margin: "2px 0" }} />
+            {/* Highlight */}
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "12px 14px", borderRadius: 12, background: CARD_BG2, border: `1px solid ${BORDER}`,
-            }}>
-              <span style={{ fontSize: 13, color: LABEL }}>מחיר מוסכם</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>{currency}{agreedPrice.toLocaleString()}</span>
-            </div>
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "12px 14px", borderRadius: 12,
-              background: `${GREEN}0C`, border: `1px solid ${GREEN}2A`,
-            }}>
-              <span style={{ fontSize: 13, color: LABEL }}>ס״כ התקבל</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: GREEN }}>{currency}{received.toLocaleString()}</span>
-            </div>
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "12px 14px", borderRadius: 12,
-              background: `${AMBER}0A`, border: `1px solid ${AMBER}28`,
-            }}>
-              <span style={{ fontSize: 13, color: LABEL }}>ס״כ הוצאות</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: AMBER }}>{currency}{totalExp.toLocaleString()}</span>
-            </div>
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "16px 18px", borderRadius: 14, marginTop: "auto",
+              padding: "14px 16px", borderRadius: 14,
               background: balance > 0 ? "rgba(239,68,68,0.13)" : `${GREEN}13`,
               border: `1.5px solid ${balance > 0 ? "rgba(239,68,68,0.38)" : GREEN + "48"}`,
             }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: balance > 0 ? RED_WARN : GREEN }}>
-                {balance > 0 ? "יתרה לגביה" : "שולם במלואו"}
+              <span style={{ fontSize: 13, fontWeight: 700, color: balance > 0 ? RED_WARN : GREEN }}>
+                {balance > 0 ? "יתרה לקבלה" : balance < 0 ? "שולם ביתר" : "שולם במלואו ✓"}
               </span>
               <span style={{ fontSize: 22, fontWeight: 900, color: balance > 0 ? RED_WARN : GREEN }}>
                 {currency}{Math.abs(balance).toLocaleString()}
