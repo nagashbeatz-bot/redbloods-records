@@ -1134,7 +1134,7 @@ function FinanceContent({
             background: `${color}0D`, borderRadius: 16,
             border: `1px solid ${color}28`, padding: "18px 20px",
           }}>
-            <div style={{ fontSize: 10, color: LABEL, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.62)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 10 }}>
               {label}
             </div>
             <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1, marginBottom: 7 }}>
@@ -1238,16 +1238,18 @@ function FinanceContent({
             disabled={saving}
             style={{
               width: "100%", padding: "15px 0", borderRadius: 12,
-              background: !fAmount ? "rgba(255,255,255,0.06)" : accentForm,
-              border: !fAmount ? `1px solid ${BORDER2}` : "none",
-              color: !fAmount ? TEXT2 : "#000",
+              background: !fAmount
+                ? `${accentForm}18`
+                : saving ? `${accentForm}88` : accentForm,
+              border: !fAmount ? `1.5px dashed ${accentForm}44` : "none",
+              color: !fAmount ? accentForm : "#000",
               fontSize: 15, fontWeight: 900,
-              cursor: saving ? "default" : "pointer",
+              cursor: saving || !fAmount ? "default" : "pointer",
               fontFamily: "inherit", transition: "none",
-              opacity: saving ? 0.6 : 1,
+              opacity: saving ? 0.7 : 1,
             }}
           >
-            {saving ? "שומר…" : !fAmount ? "הזן סכום לשמירה" : formType === "income" ? "שמור תשלום ✓" : "שמור הוצאה ✓"}
+            {saving ? "שומר…" : !fAmount ? `הזן סכום לשמירה` : formType === "income" ? "שמור תשלום ✓" : "שמור הוצאה ✓"}
           </button>
         </div>
 
@@ -1257,10 +1259,10 @@ function FinanceContent({
           {incomes.length === 0 ? (
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 10, padding: "40px 20px",
+              gap: 8, padding: "22px 16px",
               background: CARD_BG2, borderRadius: 14, border: `1px solid ${BORDER}`,
             }}>
-              <span style={{ fontSize: 32, opacity: 0.25 }}>₪</span>
+              <span style={{ fontSize: 24, opacity: 0.22 }}>₪</span>
               <div style={{ fontSize: 13, color: MUTED }}>אין תשלומים עדיין</div>
             </div>
           ) : (
@@ -1309,10 +1311,10 @@ function FinanceContent({
           {expenses.length === 0 ? (
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: 10, padding: "40px 20px",
+              gap: 8, padding: "22px 16px",
               background: CARD_BG2, borderRadius: 14, border: `1px solid ${BORDER}`,
             }}>
-              <span style={{ fontSize: 32, opacity: 0.25 }}>⊖</span>
+              <span style={{ fontSize: 24, opacity: 0.22 }}>⊖</span>
               <div style={{ fontSize: 13, color: MUTED }}>אין הוצאות עדיין</div>
             </div>
           ) : (
