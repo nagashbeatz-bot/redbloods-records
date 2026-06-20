@@ -371,53 +371,64 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               {/* Stats — 2×2 grid */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 165px))", gap: 10 }}>
 
+                {/* ── סטטוס ── */}
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "11px 14px",
-                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  display: "flex", flexDirection: "column", gap: 8,
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>סטטוס</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.62)", textTransform: "uppercase", letterSpacing: "0.13em" }}>סטטוס</div>
                   <div onClick={e => e.stopPropagation()}>
                     <StatusDropdown projectId={project.id} status={project.status} small />
                   </div>
                 </div>
 
+                {/* ── תאריך יעד ── */}
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${dlColor !== TEXT2 ? dlColor + "45" : BORDER2}`,
                   padding: "11px 14px",
-                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  display: "flex", flexDirection: "column", gap: 8,
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>תאריך יעד</div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: dlColor, lineHeight: 1 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.62)", textTransform: "uppercase", letterSpacing: "0.13em" }}>תאריך יעד</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: dlColor, lineHeight: 1.3 }}>
                     {project.deadline ? dlLabel : "—"}
                   </div>
                 </div>
 
+                {/* ── יתרה ── */}
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "11px 14px",
-                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  display: "flex", flexDirection: "column", gap: 8,
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>יתרה</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.62)", textTransform: "uppercase", letterSpacing: "0.13em" }}>יתרה</div>
                   <div style={{
-                    fontSize: 20, fontWeight: 900, lineHeight: 1,
+                    fontSize: finLoaded && balance !== 0 ? 18 : 15,
+                    fontWeight: finLoaded && balance !== 0 ? 900 : 600,
+                    lineHeight: 1,
                     color: finLoaded ? (balance > 0 ? RED_WARN : GREEN) : MUTED,
                   }}>
                     {finLoaded ? `${currency}${balance.toLocaleString()}` : "…"}
                   </div>
                 </div>
 
+                {/* ── מחיר מוסכם ── */}
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "11px 14px",
-                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                  display: "flex", flexDirection: "column", gap: 8,
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>מחיר מוסכם</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.62)", textTransform: "uppercase", letterSpacing: "0.13em" }}>מחיר מוסכם</div>
+                  <div style={{
+                    fontSize: finLoaded && agreedPrice !== 0 ? 18 : 15,
+                    fontWeight: finLoaded && agreedPrice !== 0 ? 900 : 600,
+                    color: finLoaded && agreedPrice !== 0 ? TEXT : MUTED,
+                    lineHeight: 1,
+                  }}>
                     {finLoaded ? `${currency}${agreedPrice.toLocaleString()}` : "…"}
                   </div>
                 </div>
