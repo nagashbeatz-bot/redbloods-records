@@ -37,6 +37,36 @@ export function usePlayerSafe(): PlayerContextValue | null {
   return useContext(PlayerContext);
 }
 
+function makeRbArtwork(): string {
+  if (typeof document === "undefined") return "/apple-icon.png";
+  try {
+    const c = document.createElement("canvas");
+    c.width = 512; c.height = 512;
+    const ctx = c.getContext("2d");
+    if (!ctx) return "/apple-icon.png";
+    ctx.fillStyle = "#0D0D0D";
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.fillStyle = "#DC2626";
+    ctx.beginPath();
+    ctx.arc(256, 256, 154, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 108px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("RB", 256, 262);
+    return c.toDataURL("image/png");
+  } catch {
+    return "/apple-icon.png";
+  }
+}
+
+let _rbArtworkCache: string | null = null;
+function getRbArtwork(): string {
+  if (!_rbArtworkCache) _rbArtworkCache = makeRbArtwork();
+  return _rbArtworkCache;
+}
+
 export default function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -110,8 +140,7 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
         artist: newTrack.artist || "Redbloods Records",
         album:  "Redbloods Records",
         artwork: [
-          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: getRbArtwork(), sizes: "512x512", type: "image/png" },
         ],
       });
       navigator.mediaSession.setActionHandler("play",  () => audioRef.current?.play().catch(() => {}));

@@ -280,7 +280,7 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
         artwork: ch?.artwork
           ? [{ src: ch.artwork, sizes: "370x370",
                type: ch.artwork.endsWith(".jpg") ? "image/jpeg" : "image/webp" }]
-          : [{ src: "/icon-512.png", sizes: "512x512", type: "image/png" }],
+          : [{ src: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
       });
       navigator.mediaSession.setActionHandler("play",  () => audio.play().catch(() => {}));
       navigator.mediaSession.setActionHandler("pause", () => audio.pause());
