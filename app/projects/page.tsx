@@ -16,7 +16,8 @@ const QuickActionsBtn = (
     }}
   >
     <span style={{ fontSize: 11 }}>⚡</span>
-    פעולות
+    <span className="inline md:hidden">פעולות</span>
+    <span className="hidden md:inline">פעולות מהירות</span>
     <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
   </button>
 );

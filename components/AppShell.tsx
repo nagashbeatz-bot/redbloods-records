@@ -150,6 +150,10 @@ export default function AppShell({ children, topRight }: { children: React.React
 
             {/* Desktop header — CSS hidden on mobile (no JS flash) */}
             <div className="hidden md:flex" style={{ width: "100%", alignItems: "center", justifyContent: "space-between" }}>
+              <JahknoRadioPlayer
+                playerOffset={playerVisible ? PLAYER_H : 0}
+                sidebarWidth={SIDEBAR_WIDTH}
+              />
               {topRight ?? (
                 <button
                   onClick={() => setChatOpen(!chatOpen)}
@@ -164,10 +168,6 @@ export default function AppShell({ children, topRight }: { children: React.React
                   {chatOpen ? "סגור סוכן" : "סוכן AI"}
                 </button>
               )}
-              <JahknoRadioPlayer
-                playerOffset={playerVisible ? PLAYER_H : 0}
-                sidebarWidth={SIDEBAR_WIDTH}
-              />
             </div>
           </header>
 
