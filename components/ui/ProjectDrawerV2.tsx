@@ -167,7 +167,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const player = usePlayerSafe();
 
   const [isMobile,     setIsMobile]     = useState(false);
-  const [activeTab,    setActiveTab]    = useState<DrawerTab>("סקירה");
+  const [activeTab,       setActiveTab]       = useState<DrawerTab>("סקירה");
+  const [financeFormType, setFinanceFormType] = useState<"income" | "expense">("income");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [agreedPrice,  setAgreedPrice]  = useState(0);
   const [currency,     setCurrency]     = useState("₪");
@@ -552,13 +553,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           {/* ── Quick Actions ─────────────────────────────────────────────── */}
           <div dir="rtl" style={{ display: "flex", gap: 12, marginBottom: 14 }}>
             {([
-              { label: "סשן חדש", icon: "📅", color: BLUE,  tab: "סשנים" as DrawerTab },
-              { label: "תשלום",   icon: "₪",  color: GREEN, tab: "כספים" as DrawerTab },
-              { label: "הוצאה",   icon: "⊖",  color: AMBER, tab: "כספים" as DrawerTab },
-            ] as { label: string; icon: string; color: string; tab: DrawerTab }[]).map(({ label, icon, color, tab }) => (
+              { label: "סשן חדש", icon: "📅", color: BLUE,  tab: "סשנים" as DrawerTab, mode: null },
+              { label: "תשלום",   icon: "₪",  color: GREEN, tab: "כספים" as DrawerTab, mode: "income" as const },
+              { label: "הוצאה",   icon: "⊖",  color: AMBER, tab: "כספים" as DrawerTab, mode: "expense" as const },
+            ] as { label: string; icon: string; color: string; tab: DrawerTab; mode: "income" | "expense" | null }[]).map(({ label, icon, color, tab, mode }) => (
               <button
                 key={label}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => { setActiveTab(tab); if (mode) setFinanceFormType(mode); }}
                 style={{
                   flex: 1, height: 74, borderRadius: 16,
                   background: `linear-gradient(160deg, ${color}12 0%, ${color}08 100%)`,
@@ -685,6 +686,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               totalExp={totalExp}
               balance={balance}
               projectId={projectId}
+              initialFormType={financeFormType}
               onTxAdded={() => {
                 fetch(`/api/transactions?projectId=${projectId}`)
                   .then(r => r.json())
@@ -1044,19 +1046,22 @@ const inputStyle: React.CSSProperties = {
 
 function FinanceContent({
   transactions, agreedPrice, currency, finLoaded, received, totalExp, balance,
-  projectId, onTxAdded,
+  projectId, initialFormType, onTxAdded,
 }: {
-  transactions: Transaction[];
-  agreedPrice:  number;
-  currency:     string;
-  finLoaded:    boolean;
-  received:     number;
-  totalExp:     number;
-  balance:      number;
-  projectId:    string;
-  onTxAdded:    () => void;
+  transactions:    Transaction[];
+  agreedPrice:     number;
+  currency:        string;
+  finLoaded:       boolean;
+  received:        number;
+  totalExp:        number;
+  balance:         number;
+  projectId:       string;
+  initialFormType: "income" | "expense";
+  onTxAdded:       () => void;
 }) {
-  const [formType, setFormType] = useState<"income" | "expense">("income");
+  const [formType, setFormType] = useState<"income" | "expense">(initialFormType);
+
+  useEffect(() => { setFormType(initialFormType); }, [initialFormType]);
   const [fAmount,  setFAmount]  = useState("");
   const [fStatus,  setFStatus]  = useState<PaymentStatus>("צפוי");
   const [fDate,    setFDate]    = useState("");
