@@ -275,10 +275,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           {/* LTR row: Artwork | Info+Stats | Player */}
           <div dir="ltr" style={{
             display: "grid",
-            gridTemplateColumns: "200px minmax(0, 580px) 490px",
+            gridTemplateColumns: "200px 1fr 490px",
             columnGap: 24,
             marginBottom: 20,
             alignItems: "start",
+            maxWidth: 1300,
+            marginLeft: "auto",
+            marginRight: "auto",
           }}>
 
             {/* ── Artwork 192×192 ── */}
