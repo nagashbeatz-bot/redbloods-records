@@ -169,6 +169,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [isMobile,     setIsMobile]     = useState(false);
   const [activeTab,       setActiveTab]       = useState<DrawerTab>("סקירה");
   const [financeFormType, setFinanceFormType] = useState<"income" | "expense">("income");
+  const [financeFormSeq,  setFinanceFormSeq]  = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [agreedPrice,  setAgreedPrice]  = useState(0);
   const [currency,     setCurrency]     = useState("₪");
@@ -268,6 +269,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           .v2-upload-overlay { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
           .v2-upload-overlay > div { width: 100%; height: 100%; }
           .v2-upload-overlay button { width: 100% !important; height: 100% !important; border-radius: 0 !important; }
+          .v2-select option { background: #111116 !important; color: #F4F4F4 !important; }
+          .v2-select { color-scheme: dark; }
         `}</style>
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -559,7 +562,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             ] as { label: string; icon: string; color: string; tab: DrawerTab; mode: "income" | "expense" | null }[]).map(({ label, icon, color, tab, mode }) => (
               <button
                 key={label}
-                onClick={() => { setActiveTab(tab); if (mode) setFinanceFormType(mode); }}
+                onClick={() => { setActiveTab(tab); if (mode) { setFinanceFormType(mode); setFinanceFormSeq(s => s + 1); } }}
                 style={{
                   flex: 1, height: 74, borderRadius: 16,
                   background: `linear-gradient(160deg, ${color}12 0%, ${color}08 100%)`,
@@ -678,6 +681,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             />
           ) : activeTab === "כספים" ? (
             <FinanceContent
+              key={`fin-${financeFormSeq}`}
               transactions={transactions}
               agreedPrice={agreedPrice}
               currency={currency}
@@ -1199,7 +1203,7 @@ function FinanceContent({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <FieldWrap label="סטטוס">
-              <select value={fStatus} onChange={e => setFStatus(e.target.value as PaymentStatus)} style={inputStyle}>
+              <select className="v2-select" value={fStatus} onChange={e => setFStatus(e.target.value as PaymentStatus)} style={inputStyle}>
                 {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </FieldWrap>
@@ -1210,14 +1214,14 @@ function FinanceContent({
 
           {formType === "income" ? (
             <FieldWrap label="אמצעי תשלום">
-              <select value={fMethod} onChange={e => setFMethod(e.target.value)} style={inputStyle}>
+              <select className="v2-select" value={fMethod} onChange={e => setFMethod(e.target.value)} style={inputStyle}>
                 <option value="">בחר…</option>
                 {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </FieldWrap>
           ) : (
             <FieldWrap label="קטגוריה">
-              <select value={fCat} onChange={e => setFCat(e.target.value)} style={inputStyle}>
+              <select className="v2-select" value={fCat} onChange={e => setFCat(e.target.value)} style={inputStyle}>
                 <option value="">בחר…</option>
                 {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
