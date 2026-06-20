@@ -273,7 +273,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
         }}>
 
           {/* LTR row: Artwork | Info+Stats | Player */}
-          <div dir="ltr" style={{ display: "flex", gap: 26, marginBottom: 20, alignItems: "flex-start" }}>
+          <div dir="ltr" style={{
+            display: "grid",
+            gridTemplateColumns: "200px 1fr 490px",
+            columnGap: 24,
+            marginBottom: 20,
+            alignItems: "start",
+          }}>
 
             {/* ── Artwork 192×192 ── */}
             <div style={{
@@ -358,7 +364,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
 
                 <div style={{
-                  width: 160, flexShrink: 0,
+                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
@@ -371,7 +377,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 </div>
 
                 <div style={{
-                  width: 160, flexShrink: 0,
+                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${dlColor !== TEXT2 ? dlColor + "45" : BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
@@ -384,7 +390,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 </div>
 
                 <div style={{
-                  width: 160, flexShrink: 0,
+                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
@@ -400,7 +406,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 </div>
 
                 <div style={{
-                  width: 160, flexShrink: 0,
+                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
