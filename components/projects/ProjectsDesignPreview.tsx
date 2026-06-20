@@ -748,7 +748,9 @@ function CoverArt({ project: p, size }: { project: Project; size: number }) {
 // ── Mobile card ───────────────────────────────────────────────────────────────
 function MobileCard({ project: p, finance, onOpen, player }: { project: Project; finance?: { paid: number; agreed: number }; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe> }) {
   const remaining = finance ? Math.max(0, finance.agreed - finance.paid) : 0;
-  const primaryArtist = p.artist ? p.artist.split(/[,،;]/)[0].trim() : "";
+  const artistList = p.artist ? p.artist.split(/[,،;]/).map(a => a.trim()).filter(Boolean) : [];
+  const visibleArtists = artistList.slice(0, 3);
+  const extraArtists = artistList.length > 3 ? artistList.length - 3 : 0;
   const dlColor = deadlineBadgeColor(p);
 
   return (
@@ -767,7 +769,9 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
             {p.name}
           </div>
           <div style={{ fontSize: 13, color: SUB, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {primaryArtist || "—"}
+            {visibleArtists.length > 0
+              ? visibleArtists.join(", ") + (extraArtists > 0 ? ` +${extraArtists}` : "")
+              : "—"}
           </div>
           {p.deadline && (
             <div style={{ fontSize: 11, color: dlColor, marginTop: 5 }}>
