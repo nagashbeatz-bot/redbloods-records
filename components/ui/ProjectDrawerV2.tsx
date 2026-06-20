@@ -1052,6 +1052,15 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box" as const, height: 46,
 };
 
+function FieldWrap({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label style={{ fontSize: 11, color: TEXT2, fontWeight: 700, letterSpacing: "0.05em" }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
 function FinanceContent({
   transactions, agreedPrice, currency, finLoaded, received, totalExp, balance,
   projectId, initialFormType, onTxAdded,
@@ -1132,12 +1141,7 @@ function FinanceContent({
     </div>
   );
 
-  const FieldWrap = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <label style={{ fontSize: 11, color: TEXT2, fontWeight: 700, letterSpacing: "0.05em" }}>{label}</label>
-      {children}
-    </div>
-  );
+
 
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
