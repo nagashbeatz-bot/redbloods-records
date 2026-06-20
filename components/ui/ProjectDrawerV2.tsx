@@ -1036,10 +1036,10 @@ const EXPENSE_CATEGORIES = ["שירותים", "ציוד", "אולפן", "שיו�
 const ALL_STATUSES: PaymentStatus[] = ["צפוי", "התקבל", "שולם", "חלקי", "לא שולם", "לבדיקה", "בוטל"];
 
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "9px 12px", borderRadius: 10, fontSize: 13,
+  width: "100%", padding: "12px 14px", borderRadius: 11, fontSize: 14,
   background: CARD_BG2, border: `1px solid ${BORDER2}`,
   color: TEXT, outline: "none", fontFamily: "inherit",
-  boxSizing: "border-box" as const,
+  boxSizing: "border-box" as const, height: 46,
 };
 
 function FinanceContent({
@@ -1111,6 +1111,19 @@ function FinanceContent({
 
   const accentForm = formType === "income" ? GREEN : AMBER;
 
+  const CardHdr = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 14, letterSpacing: "0.02em" }}>
+      {children}
+    </div>
+  );
+
+  const FieldWrap = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label style={{ fontSize: 11, color: TEXT2, fontWeight: 700, letterSpacing: "0.05em" }}>{label}</label>
+      {children}
+    </div>
+  );
+
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
@@ -1119,187 +1132,219 @@ function FinanceContent({
         {kpis.map(({ label, value, color, sub }) => (
           <div key={label} style={{
             background: `${color}0D`, borderRadius: 16,
-            border: `1px solid ${color}28`, padding: "16px 18px",
+            border: `1px solid ${color}28`, padding: "18px 20px",
           }}>
-            <div style={{ fontSize: 10, color: LABEL, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: LABEL, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 10 }}>
               {label}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 900, color, lineHeight: 1, marginBottom: 6 }}>
+            <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1, marginBottom: 7 }}>
               {finLoaded ? `${currency}${value.toLocaleString()}` : "…"}
             </div>
-            <div style={{ fontSize: 11, color: TEXT2 }}>{sub}</div>
+            <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>{sub}</div>
           </div>
         ))}
       </div>
 
-      {/* ── 3-column body ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr minmax(0, 280px)", gap: 14, alignItems: "start" }}>
+      {/* ── body: form right | incomes | expenses ── */}
+      {/* RTL: first child = rightmost. Grid: 360px form | 1fr incomes | 1fr expenses */}
+      <div style={{ display: "grid", gridTemplateColumns: "360px 1fr 1fr", gap: 14, alignItems: "start" }}>
 
-        {/* ── תשלומים שהתקבלו ── */}
-        <div style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${BORDER}`, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.70)", textTransform: "uppercase", letterSpacing: "0.13em", marginBottom: 4 }}>
-            תשלומים שהתקבלו
-          </div>
-          {incomes.length === 0 ? (
-            <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "28px 0" }}>אין תשלומים עדיין</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              {incomes.map(tx => {
-                const col = STATUS_COLORS[tx.payment_status] ?? TEXT2;
-                return (
-                  <div key={tx.id} style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    padding: "10px 13px", background: CARD_BG2,
-                    borderRadius: 12, border: `1px solid ${BORDER}`,
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {tx.description || "הכנסה"}
-                      </div>
-                      <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
-                        {tx.date ? new Date(tx.date).toLocaleDateString("he-IL") : ""}
-                        {tx.payment_method ? ` · ${tx.payment_method}` : ""}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}30`, borderRadius: 7, padding: "3px 8px", whiteSpace: "nowrap", flexShrink: 0 }}>
-                      {tx.payment_status}
-                    </span>
-                    <span style={{ fontSize: 14, fontWeight: 900, color: GREEN, whiteSpace: "nowrap", flexShrink: 0 }}>
-                      {currency}{tx.amount.toLocaleString()}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <div style={{ marginTop: 4, fontSize: 12, color: MUTED, cursor: "default" }}>הצג את כל התשלומים ←</div>
-        </div>
-
-        {/* ── הוצאות ── */}
-        <div style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${BORDER}`, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.70)", textTransform: "uppercase", letterSpacing: "0.13em", marginBottom: 4 }}>
-            הוצאות
-          </div>
-          {expenses.length === 0 ? (
-            <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "28px 0" }}>אין הוצאות עדיין</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              {expenses.map(tx => (
-                <div key={tx.id} style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 13px", background: CARD_BG2,
-                  borderRadius: 12, border: `1px solid ${BORDER}`,
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {tx.description || "הוצאה"}
-                    </div>
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
-                      {tx.date ? new Date(tx.date).toLocaleDateString("he-IL") : ""}
-                      {tx.category ? ` · ${tx.category}` : ""}
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 14, fontWeight: 900, color: AMBER, whiteSpace: "nowrap", flexShrink: 0 }}>
-                    -{currency}{tx.amount.toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ marginTop: 4, fontSize: 12, color: MUTED, cursor: "default" }}>הצג את כל ההוצאות ←</div>
-        </div>
-
-        {/* ── הוספת תשלום ── */}
-        <div style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${BORDER}`, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.70)", textTransform: "uppercase", letterSpacing: "0.13em" }}>
-            הוספת תשלום
+        {/* ── הוספת תשלום (RIGHT in RTL) ── */}
+        <div style={{
+          background: CARD_BG, borderRadius: 18,
+          border: `1px solid ${accentForm}30`,
+          padding: "22px 24px",
+          display: "flex", flexDirection: "column", gap: 14,
+          boxShadow: `0 0 0 1px ${accentForm}10`,
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 2 }}>
+            {formType === "income" ? "➕ הוספת תשלום" : "➕ הוספת הוצאה"}
           </div>
 
           {/* Toggle */}
-          <div style={{ display: "flex", gap: 5, padding: 4, background: CARD_BG2, borderRadius: 12 }}>
-            {(["income", "expense"] as const).map(t => (
-              <button key={t} onClick={() => setFormType(t)} style={{
-                flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer",
-                background: formType === t ? (t === "income" ? `${GREEN}22` : `${AMBER}22`) : "transparent",
-                border: formType === t ? `1px solid ${t === "income" ? GREEN : AMBER}44` : "1px solid transparent",
-                color: formType === t ? (t === "income" ? GREEN : AMBER) : LABEL,
-                fontSize: 13, fontWeight: 700, fontFamily: "inherit", transition: "none",
-              }}>
-                {t === "income" ? "תשלום" : "הוצאה"}
-              </button>
-            ))}
+          <div style={{
+            display: "flex", gap: 6, padding: 5,
+            background: "rgba(0,0,0,0.30)", borderRadius: 14,
+            border: `1px solid ${BORDER}`,
+          }}>
+            {(["income", "expense"] as const).map(t => {
+              const active = formType === t;
+              const ac = t === "income" ? GREEN : AMBER;
+              return (
+                <button key={t} onClick={() => { setFormType(t); setFMethod(""); setFCat(""); }} style={{
+                  flex: 1, padding: "11px 0", borderRadius: 10, cursor: "pointer",
+                  background: active ? `${ac}22` : "transparent",
+                  border: active ? `1px solid ${ac}55` : "1px solid transparent",
+                  color: active ? ac : LABEL,
+                  fontSize: 14, fontWeight: 800, fontFamily: "inherit", transition: "none",
+                }}>
+                  {t === "income" ? "תשלום" : "הוצאה"}
+                </button>
+              );
+            })}
           </div>
 
-          {/* סכום */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={{ fontSize: 11, color: LABEL, fontWeight: 700 }}>סכום *</label>
+          <FieldWrap label="סכום *">
             <input
-              type="number" min="0" placeholder="0"
+              type="number" min="0" placeholder="₪ 0"
               value={fAmount} onChange={e => setFAmount(e.target.value)}
-              style={inputStyle}
+              style={{ ...inputStyle, fontSize: 18, fontWeight: 700, color: accentForm }}
             />
+          </FieldWrap>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <FieldWrap label="סטטוס">
+              <select value={fStatus} onChange={e => setFStatus(e.target.value as PaymentStatus)} style={inputStyle}>
+                {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </FieldWrap>
+            <FieldWrap label="תאריך">
+              <input type="date" value={fDate} onChange={e => setFDate(e.target.value)} style={inputStyle} />
+            </FieldWrap>
           </div>
 
-          {/* סטטוס */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={{ fontSize: 11, color: LABEL, fontWeight: 700 }}>סטטוס</label>
-            <select value={fStatus} onChange={e => setFStatus(e.target.value as PaymentStatus)} style={inputStyle}>
-              {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-
-          {/* תאריך */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={{ fontSize: 11, color: LABEL, fontWeight: 700 }}>תאריך</label>
-            <input type="date" value={fDate} onChange={e => setFDate(e.target.value)} style={inputStyle} />
-          </div>
-
-          {/* אמצעי תשלום / קטגוריה */}
           {formType === "income" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <label style={{ fontSize: 11, color: LABEL, fontWeight: 700 }}>אמצעי תשלום</label>
+            <FieldWrap label="אמצעי תשלום">
               <select value={fMethod} onChange={e => setFMethod(e.target.value)} style={inputStyle}>
                 <option value="">בחר…</option>
                 {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-            </div>
+            </FieldWrap>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <label style={{ fontSize: 11, color: LABEL, fontWeight: 700 }}>קטגוריה</label>
+            <FieldWrap label="קטגוריה">
               <select value={fCat} onChange={e => setFCat(e.target.value)} style={inputStyle}>
                 <option value="">בחר…</option>
                 {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
+            </FieldWrap>
           )}
 
-          {/* הערה */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <label style={{ fontSize: 11, color: LABEL, fontWeight: 700 }}>הערה / תיאור</label>
+          <FieldWrap label="הערה / תיאור">
             <input
               type="text" placeholder="תיאור קצר…"
               value={fNote} onChange={e => setFNote(e.target.value)}
               style={inputStyle}
             />
-          </div>
+          </FieldWrap>
 
-          {saveErr && <div style={{ fontSize: 12, color: RED_WARN }}>{saveErr}</div>}
+          {saveErr && (
+            <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, borderRadius: 8, padding: "8px 12px" }}>
+              {saveErr}
+            </div>
+          )}
 
-          {/* כפתור שמור */}
           <button
             onClick={handleSave}
-            disabled={!fAmount || saving}
+            disabled={saving}
             style={{
-              width: "100%", padding: "13px 0", borderRadius: 12,
-              background: !fAmount || saving ? MUTED : accentForm,
-              border: "none", color: !fAmount || saving ? TEXT2 : "#000",
-              fontSize: 14, fontWeight: 900,
-              cursor: !fAmount || saving ? "default" : "pointer",
+              width: "100%", padding: "15px 0", borderRadius: 12,
+              background: !fAmount ? "rgba(255,255,255,0.06)" : accentForm,
+              border: !fAmount ? `1px solid ${BORDER2}` : "none",
+              color: !fAmount ? TEXT2 : "#000",
+              fontSize: 15, fontWeight: 900,
+              cursor: saving ? "default" : "pointer",
               fontFamily: "inherit", transition: "none",
+              opacity: saving ? 0.6 : 1,
             }}
           >
-            {saving ? "שומר…" : formType === "income" ? "שמור תשלום" : "שמור הוצאה"}
+            {saving ? "שומר…" : !fAmount ? "הזן סכום לשמירה" : formType === "income" ? "שמור תשלום ✓" : "שמור הוצאה ✓"}
           </button>
+        </div>
+
+        {/* ── תשלומים שהתקבלו ── */}
+        <div style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${BORDER}`, padding: "22px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <CardHdr>תשלומים שהתקבלו</CardHdr>
+          {incomes.length === 0 ? (
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: 10, padding: "40px 20px",
+              background: CARD_BG2, borderRadius: 14, border: `1px solid ${BORDER}`,
+            }}>
+              <span style={{ fontSize: 32, opacity: 0.25 }}>₪</span>
+              <div style={{ fontSize: 13, color: MUTED }}>אין תשלומים עדיין</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {incomes.map(tx => {
+                const col = STATUS_COLORS[tx.payment_status] ?? TEXT2;
+                return (
+                  <div key={tx.id} style={{
+                    padding: "13px 15px", background: CARD_BG2,
+                    borderRadius: 13, border: `1px solid ${BORDER}`,
+                    display: "flex", flexDirection: "column", gap: 7,
+                  }}>
+                    {/* top row: description + amount */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                        {tx.description || "הכנסה"}
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: GREEN, whiteSpace: "nowrap", flexShrink: 0 }}>
+                        +{currency}{tx.amount.toLocaleString()}
+                      </div>
+                    </div>
+                    {/* bottom row: date + method + status badge */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {tx.date && (
+                        <span style={{ fontSize: 11, color: MUTED }}>
+                          {new Date(tx.date).toLocaleDateString("he-IL")}
+                        </span>
+                      )}
+                      {tx.payment_method && (
+                        <span style={{ fontSize: 11, color: MUTED }}>· {tx.payment_method}</span>
+                      )}
+                      <span style={{ marginRight: "auto", fontSize: 11, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}30`, borderRadius: 7, padding: "2px 8px" }}>
+                        {tx.payment_status}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── הוצאות ── */}
+        <div style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${BORDER}`, padding: "22px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <CardHdr>הוצאות</CardHdr>
+          {expenses.length === 0 ? (
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: 10, padding: "40px 20px",
+              background: CARD_BG2, borderRadius: 14, border: `1px solid ${BORDER}`,
+            }}>
+              <span style={{ fontSize: 32, opacity: 0.25 }}>⊖</span>
+              <div style={{ fontSize: 13, color: MUTED }}>אין הוצאות עדיין</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {expenses.map(tx => (
+                <div key={tx.id} style={{
+                  padding: "13px 15px", background: CARD_BG2,
+                  borderRadius: 13, border: `1px solid ${BORDER}`,
+                  display: "flex", flexDirection: "column", gap: 7,
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                      {tx.description || "הוצאה"}
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: AMBER, whiteSpace: "nowrap", flexShrink: 0 }}>
+                      -{currency}{tx.amount.toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {tx.date && (
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        {new Date(tx.date).toLocaleDateString("he-IL")}
+                      </span>
+                    )}
+                    {tx.category && (
+                      <span style={{ fontSize: 11, color: MUTED }}>· {tx.category}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
