@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect } from "rea
 import { useRouter, usePathname } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import ProjectDrawer from "@/components/ui/ProjectDrawer";
+import ProjectDrawerV2 from "@/components/ui/ProjectDrawerV2";
 import AlbumCenterModal from "@/components/album/AlbumCenterModal";
 import type { Project } from "@/lib/types";
 
@@ -34,6 +35,7 @@ const ALBUM_TYPES = new Set(["אלבום", "EP"]);
 export default function GlobalProjectDrawerProvider({ children }: { children: React.ReactNode }) {
   const [drawerProjectId, setDrawerProjectId] = useState<string | null>(null);
   const [albumProject,    setAlbumProject]    = useState<Project | null>(null);
+  const [useV2,           setUseV2]           = useState(false);
   const { projects } = useProjects();
 
   // Derive artists list for ArtistCellEdit autocomplete
@@ -44,6 +46,11 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   )).sort((a, b) => a.localeCompare(b, "he"));
 
   const openProject = useCallback((id: string) => {
+    // Check for preview mode param
+    setUseV2(
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("drawerPreview") === "1"
+    );
     // Look up the project — may not be in context yet if just created
     const found = projects.find((p) => p.id === id);
     if (found && ALBUM_TYPES.has(found.projectType)) {
@@ -108,8 +115,15 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   return (
     <Ctx.Provider value={{ openProject, closeProject, drawerProjectId }}>
       {children}
-      {drawerProjectId && (
+      {drawerProjectId && !useV2 && (
         <ProjectDrawer
+          projectId={drawerProjectId}
+          artists={artists}
+          onClose={closeProject}
+        />
+      )}
+      {drawerProjectId && useV2 && (
+        <ProjectDrawerV2
           projectId={drawerProjectId}
           artists={artists}
           onClose={closeProject}
