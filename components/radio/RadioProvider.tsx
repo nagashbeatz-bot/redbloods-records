@@ -271,12 +271,29 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
     audio.src    = getUrl(id);
     audio.volume = volumeRef.current / 100;
     audio.play().catch(() => { setLoading(false); setPlaying(false); playingRef.current = false; });
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      const ch = RADIO_CHANNELS.find(c => c.id === id);
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title:  ch?.label ?? "Jahkno Radio",
+        artist: "Redbloods Records",
+        album:  "Jahkno Radio",
+        artwork: ch?.artwork
+          ? [{ src: ch.artwork, sizes: "370x370",
+               type: ch.artwork.endsWith(".jpg") ? "image/jpeg" : "image/webp" }]
+          : [{ src: "/icon-512.png", sizes: "512x512", type: "image/png" }],
+      });
+      navigator.mediaSession.setActionHandler("play",  () => audio.play().catch(() => {}));
+      navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+      navigator.mediaSession.setActionHandler("stop",  () => audio.pause());
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pause = useCallback(() => {
     if (fadeTimerRef.current) { clearInterval(fadeTimerRef.current); fadeTimerRef.current = null; }
     audioRef.current?.pause();
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator)
+      navigator.mediaSession.playbackState = "paused";
   }, []);
 
   const stop = useCallback(() => {

@@ -104,10 +104,31 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     setTrack(newTrack);
     setCurrentTime(0);
     setDuration(0);
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title:  newTrack.projectName,
+        artist: newTrack.artist || "Redbloods Records",
+        album:  "Redbloods Records",
+        artwork: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+        ],
+      });
+      navigator.mediaSession.setActionHandler("play",  () => audioRef.current?.play().catch(() => {}));
+      navigator.mediaSession.setActionHandler("pause", () => audioRef.current?.pause());
+      navigator.mediaSession.setActionHandler("seekbackward", (d) => {
+        if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - (d.seekOffset ?? 10));
+      });
+      navigator.mediaSession.setActionHandler("seekforward", (d) => {
+        if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + (d.seekOffset ?? 10));
+      });
+    }
   }, []);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator)
+      navigator.mediaSession.playbackState = "paused";
     // Tell radio it can resume (if it was playing before this project track started)
     window.dispatchEvent(new Event("rb:project-ended"));
   }, []);
@@ -117,6 +138,8 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     // resumes a project track, not just the first time.
     window.dispatchEvent(new Event("rb:project-started"));
     audioRef.current?.play().catch(() => {});
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator)
+      navigator.mediaSession.playbackState = "playing";
   }, []);
 
   const stop = useCallback(() => {
@@ -126,6 +149,10 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     audio.currentTime = 0;
     setTrack(null);
     setPlaying(false);
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = "none";
+    }
     // Tell radio it can resume (if it was playing before)
     window.dispatchEvent(new Event("rb:project-ended"));
   }, []);
