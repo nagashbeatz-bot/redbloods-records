@@ -49,6 +49,7 @@ const RED_WARN  = "#EF4444";
 const TEXT      = "#F4F4F4";
 const TEXT2     = "#A8A8B8";
 const MUTED     = "#555568";
+const LABEL     = "rgba(255,255,255,0.50)";  // readable secondary label on dark bg
 
 const PROJECT_TABS = ["סקירה", "כספים", "סשנים", "קליפ", "קבצים", "פעולות"] as const;
 type DrawerTab = typeof PROJECT_TABS[number];
@@ -119,7 +120,7 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 function CardTitle({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: 11, fontWeight: 800, color: MUTED,
+      fontSize: 11, fontWeight: 800, color: LABEL,
       textTransform: "uppercase", letterSpacing: "0.13em", marginBottom: 16,
     }}>
       {children}
@@ -147,7 +148,7 @@ function StatCard({
       justifyContent: "space-between",
     }}>
       <div style={{
-        fontSize: 10, fontWeight: 800, color: MUTED,
+        fontSize: 10, fontWeight: 800, color: LABEL,
         textTransform: "uppercase", letterSpacing: "0.13em",
       }}>
         {label}
@@ -373,7 +374,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>סטטוס</div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>סטטוס</div>
                   <div onClick={e => e.stopPropagation()}>
                     <StatusDropdown projectId={project.id} status={project.status} small />
                   </div>
@@ -385,7 +386,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>תאריך יעד</div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>תאריך יעד</div>
                   <div style={{ fontSize: 18, fontWeight: 900, color: dlColor, lineHeight: 1 }}>
                     {project.deadline ? dlLabel : "—"}
                   </div>
@@ -397,7 +398,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>יתרה</div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>יתרה</div>
                   <div style={{
                     fontSize: 20, fontWeight: 900, lineHeight: 1,
                     color: finLoaded ? (balance > 0 ? RED_WARN : GREEN) : MUTED,
@@ -412,7 +413,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>מחיר מוסכם</div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.13em" }}>מחיר מוסכם</div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
                     {finLoaded ? `${currency}${agreedPrice.toLocaleString()}` : "…"}
                   </div>
@@ -496,7 +497,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     }}>
                       {latestFile ? latestFile.name : "אין קובץ שמע"}
                     </div>
-                    <div style={{ fontSize: 12, color: MUTED }}>
+                    <div style={{ fontSize: 12, color: TEXT2 }}>
                       {latestFile
                         ? ((latestFile as { versionLabel?: string }).versionLabel ?? "קובץ אחרון")
                         : "העלה קובץ כדי לנגן"}
@@ -612,7 +613,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     borderRadius: "12px 12px 0 0",
                     border: "none",
                     background: active ? "rgba(220,38,38,0.11)" : "transparent",
-                    color: active ? BRAND : MUTED,
+                    color: active ? BRAND : LABEL,
                     cursor: "pointer",
                     fontSize: active ? 15 : 14,
                     fontWeight: active ? 900 : 500,
@@ -625,7 +626,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     textShadow: active ? `0 0 30px rgba(220,38,38,0.70)` : "none",
                   }}
                   onMouseEnter={e => { if (!active) e.currentTarget.style.color = TEXT2; }}
-                  onMouseLeave={e => { if (!active) e.currentTarget.style.color = MUTED; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.color = LABEL; }}
                 >
                   <span style={{ fontSize: active ? 17 : 16, lineHeight: 1 }}>{TAB_ICONS[tab]}</span>
                   {tab}
@@ -777,7 +778,7 @@ function OverviewContent({
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{name}</div>
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{role}</div>
+                  <div style={{ fontSize: 11, color: LABEL, marginTop: 2 }}>{role}</div>
                 </div>
               </div>
             ))}
@@ -895,15 +896,16 @@ function OverviewContent({
       {/* ── ROW 1 COL 2: התקדמות כללית ────────────────────────────────── */}
       <Card style={{ gridColumn: 2, gridRow: 1, alignItems: "center" }}>
         <CardTitle>התקדמות כללית</CardTitle>
-        <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+        <div style={{ position: "relative", width: 118, height: 118, flexShrink: 0, marginBottom: 12 }}>
           <Arc pct={pct} accent={accent} size={118} />
           <div style={{
-            position: "absolute", top: "50%", left: "50%",
-            transform: "translate(-50%, -50%)",
-            textAlign: "center", pointerEvents: "none",
+            position: "absolute", inset: 0,
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            pointerEvents: "none",
           }}>
             <div style={{ fontSize: 29, fontWeight: 900, color: TEXT, letterSpacing: -1, lineHeight: 1 }}>{pct}%</div>
-            <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: "0.12em", marginTop: 4 }}>סיום</div>
+            <div style={{ fontSize: 9, color: LABEL, textTransform: "uppercase", letterSpacing: "0.12em", marginTop: 4 }}>סיום</div>
           </div>
         </div>
         <div style={{ fontSize: 13, color: TEXT2, fontWeight: 700, marginBottom: 16 }}>{project.status}</div>
@@ -922,7 +924,7 @@ function OverviewContent({
               padding: "10px 13px", borderRadius: 11,
               background: CARD_BG2, border: `1px solid ${BORDER}`,
             }}>
-              <span style={{ fontSize: 12, color: MUTED }}>{label}</span>
+              <span style={{ fontSize: 12, color: LABEL }}>{label}</span>
               <span style={{ fontSize: 14, fontWeight: 800, color }}>{val}</span>
             </div>
           ))}
@@ -946,7 +948,7 @@ function OverviewContent({
               padding: "10px 13px", borderRadius: 11,
               background: CARD_BG2, border: `1px solid ${BORDER}`,
             }}>
-              <span style={{ fontSize: 12, color: MUTED }}>{label}</span>
+              <span style={{ fontSize: 12, color: LABEL }}>{label}</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: color ?? TEXT2 }}>{val}</span>
             </div>
           ))}
@@ -954,7 +956,7 @@ function OverviewContent({
         {project.notes && (
           <div style={{
             marginTop: 10, padding: "11px 13px", background: CARD_BG2,
-            borderRadius: 11, fontSize: 12, color: MUTED, lineHeight: 1.7,
+            borderRadius: 11, fontSize: 12, color: TEXT2, lineHeight: 1.7,
             border: `1px solid ${BORDER}`,
           }}>
             {project.notes.slice(0, 130)}{project.notes.length > 130 ? "…" : ""}
@@ -971,7 +973,7 @@ function OverviewContent({
               display: "flex", justifyContent: "space-between", alignItems: "center",
               padding: "12px 14px", borderRadius: 12, background: CARD_BG2, border: `1px solid ${BORDER}`,
             }}>
-              <span style={{ fontSize: 13, color: MUTED }}>מחיר מוסכם</span>
+              <span style={{ fontSize: 13, color: LABEL }}>מחיר מוסכם</span>
               <span style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>{currency}{agreedPrice.toLocaleString()}</span>
             </div>
             <div style={{
@@ -979,7 +981,7 @@ function OverviewContent({
               padding: "12px 14px", borderRadius: 12,
               background: `${GREEN}0C`, border: `1px solid ${GREEN}2A`,
             }}>
-              <span style={{ fontSize: 13, color: MUTED }}>ס״כ התקבל</span>
+              <span style={{ fontSize: 13, color: LABEL }}>ס״כ התקבל</span>
               <span style={{ fontSize: 16, fontWeight: 900, color: GREEN }}>{currency}{received.toLocaleString()}</span>
             </div>
             <div style={{
@@ -987,7 +989,7 @@ function OverviewContent({
               padding: "12px 14px", borderRadius: 12,
               background: `${AMBER}0A`, border: `1px solid ${AMBER}28`,
             }}>
-              <span style={{ fontSize: 13, color: MUTED }}>ס״כ הוצאות</span>
+              <span style={{ fontSize: 13, color: LABEL }}>ס״כ הוצאות</span>
               <span style={{ fontSize: 16, fontWeight: 900, color: AMBER }}>{currency}{totalExp.toLocaleString()}</span>
             </div>
             <div style={{
@@ -1088,7 +1090,7 @@ function TxRow({ tx, currency }: { tx: Transaction; currency: string }) {
           {tx.description || (tx.type === "income" ? "הכנסה" : "הוצאה")}
         </div>
         {tx.date && (
-          <div style={{ fontSize: 11, color: "#555568", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: LABEL, marginTop: 2 }}>
             {new Date(tx.date).toLocaleDateString("he-IL")}
           </div>
         )}
@@ -1134,7 +1136,7 @@ function FinanceContent({
             background: "rgba(255,255,255,0.058)", borderRadius: 14,
             padding: "12px 14px", border: "1px solid rgba(255,255,255,0.14)",
           }}>
-            <div style={{ fontSize: 10, color: "#555568", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>
+            <div style={{ fontSize: 10, color: LABEL, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>
               {label}
             </div>
             <div style={{ fontSize: 18, fontWeight: 900, color }}>
@@ -1146,7 +1148,7 @@ function FinanceContent({
 
       {incomes.length > 0 && (
         <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#555568", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>הכנסות</div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>הכנסות</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {incomes.map(t => <TxRow key={t.id} tx={t} currency={currency} />)}
           </div>
@@ -1155,7 +1157,7 @@ function FinanceContent({
 
       {expenses.length > 0 && (
         <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#555568", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>הוצאות</div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: LABEL, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>הוצאות</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {expenses.map(t => <TxRow key={t.id} tx={t} currency={currency} />)}
           </div>
@@ -1163,7 +1165,7 @@ function FinanceContent({
       )}
 
       {finLoaded && transactions.length === 0 && (
-        <div style={{ textAlign: "center", color: "#555568", fontSize: 13, padding: "40px 0" }}>אין עסקאות עדיין</div>
+        <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "40px 0" }}>אין עסקאות עדיין</div>
       )}
 
       <div style={{ textAlign: "center", fontSize: 11, color: "#555568", paddingTop: 4 }}>
@@ -1200,7 +1202,7 @@ function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone
             background: "rgba(255,255,255,0.058)", borderRadius: 14,
             padding: "12px 14px", border: "1px solid rgba(255,255,255,0.14)",
           }}>
-            <div style={{ fontSize: 10, color: "#555568", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 10, color: LABEL, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{label}</div>
             <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
           </div>
         ))}
@@ -1247,7 +1249,7 @@ function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone
           })}
         </div>
       ) : (
-        <div style={{ textAlign: "center", color: "#555568", fontSize: 13, padding: "40px 0" }}>אין סשנים עדיין</div>
+        <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "40px 0" }}>אין סשנים עדיין</div>
       )}
     </div>
   );
@@ -1256,7 +1258,7 @@ function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone
 // ─── Tab: קבצים ───────────────────────────────────────────────────────────────
 
 function FilesContent({ project }: { project: Project }) {
-  const files = (project.files ?? []) as Array<{ name: string; versionLabel?: string; dropboxShareUrl?: string }>;
+  const files = (project.files ?? []) as Array<{ name: string; url: string; versionLabel?: string; dropboxShareUrl?: string }>;
   const reversed = [...files].reverse();
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1272,37 +1274,42 @@ function FilesContent({ project }: { project: Project }) {
 
       {reversed.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {reversed.map((f, i) => (
-            <div key={i} style={{
+          {reversed.map((f, i) => {
+            const href = f.dropboxShareUrl || f.url || "";
+            const rowStyle: React.CSSProperties = {
               display: "flex", alignItems: "center", gap: 12,
               padding: "10px 14px", background: "rgba(255,255,255,0.034)",
               borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
-            }}>
-              <span style={{ fontSize: 15, color: "#555568", flexShrink: 0 }}>🎵</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#F4F4F4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {f.name}
+              textDecoration: "none",
+              ...(href ? { cursor: "pointer" } : {}),
+            };
+            const inner = (
+              <>
+                <span style={{ fontSize: 15, color: LABEL, flexShrink: 0 }}>🎵</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.name}
+                  </div>
+                  {f.versionLabel && (
+                    <div style={{ fontSize: 11, color: LABEL, marginTop: 2 }}>{f.versionLabel}</div>
+                  )}
                 </div>
-                {f.versionLabel && (
-                  <div style={{ fontSize: 11, color: "#555568", marginTop: 2 }}>{f.versionLabel}</div>
+                {href ? (
+                  <span style={{ fontSize: 11, color: BLUE, whiteSpace: "nowrap", flexShrink: 0 }}>פתח ↗</span>
+                ) : (
+                  <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>אין קישור</span>
                 )}
-              </div>
-              {f.dropboxShareUrl && (
-                <a
-                  href={f.dropboxShareUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  style={{ fontSize: 11, color: "#3B82F6", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}
-                >
-                  פתח ↗
-                </a>
-              )}
-            </div>
-          ))}
+              </>
+            );
+            return href ? (
+              <a key={i} href={href} target="_blank" rel="noreferrer" style={rowStyle}>{inner}</a>
+            ) : (
+              <div key={i} style={rowStyle}>{inner}</div>
+            );
+          })}
         </div>
       ) : (
-        <div style={{ textAlign: "center", color: "#555568", fontSize: 13, padding: "40px 0" }}>אין קבצים עדיין</div>
+        <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "40px 0" }}>אין קבצים עדיין</div>
       )}
     </div>
   );
