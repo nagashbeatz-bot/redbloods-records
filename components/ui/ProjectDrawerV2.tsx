@@ -305,35 +305,43 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 position: "absolute", bottom: 0, right: 0, width: 70, height: 70,
                 background: "radial-gradient(circle at 100% 100%, rgba(220,38,38,0.14) 0%, transparent 65%)",
               }} />
-              <span style={{
-                fontSize: 80, fontWeight: 900, lineHeight: 1, letterSpacing: -5,
-                color: accent,
-                textShadow: `0 0 50px ${accent}BB, 0 0 20px ${accent}66`,
-                position: "relative",
-                userSelect: "none",
-              }}>
-                {project.name.charAt(0)}
-              </span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, position: "relative" }}>
+                <span style={{
+                  fontSize: 86, fontWeight: 900, lineHeight: 1, letterSpacing: -5,
+                  color: accent,
+                  textShadow: `0 0 60px ${accent}CC, 0 0 24px ${accent}77`,
+                  userSelect: "none",
+                }}>
+                  {project.name.charAt(0)}
+                </span>
+                <span style={{
+                  fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.22)",
+                  letterSpacing: "0.22em", textTransform: "uppercase",
+                  userSelect: "none",
+                }}>
+                  PROJECT COVER
+                </span>
+              </div>
             </div>
 
             {/* ── Info + Stats ── */}
             <div dir="rtl" style={{
               flex: 1, minWidth: 0,
               display: "flex", flexDirection: "column",
-              paddingTop: 4,
+              paddingTop: 6,
             }}>
               {/* Name */}
               <div style={{
-                fontSize: 46, fontWeight: 900, color: TEXT,
+                fontSize: 48, fontWeight: 900, color: TEXT,
                 letterSpacing: -2, lineHeight: 1,
-                marginBottom: 10,
+                marginBottom: 12,
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
               }}>
                 {project.name}
               </div>
 
               {/* Type + artist */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
                 <span style={{
                   fontSize: 12, fontWeight: 800, color: accent,
                   background: `${accent}1C`, border: `1.5px solid ${accent}48`,
@@ -341,40 +349,68 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 }}>
                   {project.projectType || "שיר"}
                 </span>
-                <span style={{ fontSize: 15, color: TEXT2, fontWeight: 600 }}>
+                <span style={{ fontSize: 14, color: TEXT2, fontWeight: 600 }}>
                   🎤 {project.artist}
                 </span>
               </div>
 
-              {/* Stats row — 4 tall mini-cards */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+              {/* Stats row — 4 compact fixed-width mini-cards */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
 
-                <StatCard label="סטטוס">
+                <div style={{
+                  width: 160, flexShrink: 0,
+                  background: CARD_BG2, borderRadius: 16,
+                  border: `1px solid ${BORDER2}`,
+                  padding: "14px 16px", minHeight: 84,
+                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>סטטוס</div>
                   <div onClick={e => e.stopPropagation()}>
                     <StatusDropdown projectId={project.id} status={project.status} small />
                   </div>
-                </StatCard>
+                </div>
 
-                <StatCard label="תאריך יעד" borderAccent={dlColor !== TEXT2 ? dlColor : undefined}>
-                  <div style={{ fontSize: 17, fontWeight: 900, color: dlColor, lineHeight: 1 }}>
+                <div style={{
+                  width: 160, flexShrink: 0,
+                  background: CARD_BG2, borderRadius: 16,
+                  border: `1px solid ${dlColor !== TEXT2 ? dlColor + "45" : BORDER2}`,
+                  padding: "14px 16px", minHeight: 84,
+                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>תאריך יעד</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: dlColor, lineHeight: 1 }}>
                     {project.deadline ? dlLabel : "—"}
                   </div>
-                </StatCard>
+                </div>
 
-                <StatCard label="יתרה">
+                <div style={{
+                  width: 160, flexShrink: 0,
+                  background: CARD_BG2, borderRadius: 16,
+                  border: `1px solid ${BORDER2}`,
+                  padding: "14px 16px", minHeight: 84,
+                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>יתרה</div>
                   <div style={{
-                    fontSize: 17, fontWeight: 900, lineHeight: 1,
+                    fontSize: 20, fontWeight: 900, lineHeight: 1,
                     color: finLoaded ? (balance > 0 ? RED_WARN : GREEN) : MUTED,
                   }}>
                     {finLoaded ? `${currency}${balance.toLocaleString()}` : "…"}
                   </div>
-                </StatCard>
+                </div>
 
-                <StatCard label="מחיר מוסכם">
-                  <div style={{ fontSize: 17, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
+                <div style={{
+                  width: 160, flexShrink: 0,
+                  background: CARD_BG2, borderRadius: 16,
+                  border: `1px solid ${BORDER2}`,
+                  padding: "14px 16px", minHeight: 84,
+                  display: "flex", flexDirection: "column", justifyContent: "space-between",
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>מחיר מוסכם</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, lineHeight: 1 }}>
                     {finLoaded ? `${currency}${agreedPrice.toLocaleString()}` : "…"}
                   </div>
-                </StatCard>
+                </div>
 
               </div>
             </div>
