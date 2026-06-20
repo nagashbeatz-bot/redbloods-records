@@ -271,6 +271,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           .v2-upload-overlay button { width: 100% !important; height: 100% !important; border-radius: 0 !important; }
           .v2-select option { background: #111116 !important; color: #F4F4F4 !important; }
           .v2-select { color-scheme: dark; }
+          input[type="number"]::-webkit-outer-spin-button,
+          input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+          input[type="number"] { -moz-appearance: textfield; }
         `}</style>
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -1195,8 +1198,8 @@ function FinanceContent({
 
           <FieldWrap label="סכום *">
             <input
-              type="number" min="0" placeholder="₪ 0"
-              value={fAmount} onChange={e => setFAmount(e.target.value)}
+              type="text" inputMode="numeric" placeholder="₪ 0"
+              value={fAmount} onChange={e => setFAmount(e.target.value.replace(/[^0-9.]/g, ""))}
               style={{ ...inputStyle, fontSize: 18, fontWeight: 700, color: accentForm }}
             />
           </FieldWrap>
