@@ -1075,7 +1075,8 @@ function FinanceContent({
   const [fDate,    setFDate]    = useState("");
   const [fMethod,  setFMethod]  = useState("");
   const [fNote,    setFNote]    = useState("");
-  const [fCat,     setFCat]     = useState("");
+  const [fCat,        setFCat]        = useState("");
+  const [fReceiptRef, setFReceiptRef] = useState("");
   const [saving,   setSaving]   = useState(false);
   const [saveErr,  setSaveErr]  = useState("");
 
@@ -1109,10 +1110,11 @@ function FinanceContent({
           paymentMethod: formType === "income" ? fMethod : "",
           category: formType === "expense" ? fCat : "",
           description: fNote,
+          receiptRef: fReceiptRef.trim(),
         }),
       });
       if (!res.ok) { setSaveErr("שגיאה בשמירה"); return; }
-      setFAmount(""); setFDate(""); setFMethod(""); setFNote(""); setFCat("");
+      setFAmount(""); setFDate(""); setFMethod(""); setFNote(""); setFCat(""); setFReceiptRef("");
       setFStatus("צפוי");
       onTxAdded();
     } catch {
@@ -1231,6 +1233,34 @@ function FinanceContent({
               </select>
             </FieldWrap>
           )}
+
+          <FieldWrap label="אסמכתא">
+            <div style={{ position: "relative" }}>
+              <input
+                type="url" placeholder="הדבק קישור לאסמכתא…"
+                value={fReceiptRef} onChange={e => setFReceiptRef(e.target.value)}
+                style={{ ...inputStyle, paddingLeft: fReceiptRef.trim() ? 68 : 14 }}
+              />
+              <span style={{
+                position: "absolute", top: "50%", right: 14, transform: "translateY(-50%)",
+                fontSize: 13, opacity: 0.35, pointerEvents: "none", lineHeight: 1,
+              }}>🔗</span>
+              {fReceiptRef.trim() && (
+                <a
+                  href={fReceiptRef.trim()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    position: "absolute", top: "50%", left: 10, transform: "translateY(-50%)",
+                    fontSize: 11, fontWeight: 700, color: "#60A5FA",
+                    background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.25)",
+                    borderRadius: 6, padding: "3px 8px", textDecoration: "none",
+                    whiteSpace: "nowrap", lineHeight: 1.4,
+                  }}
+                >פתח</a>
+              )}
+            </div>
+          </FieldWrap>
 
           <FieldWrap label="הערה / תיאור">
             <input
