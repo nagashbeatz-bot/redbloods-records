@@ -424,7 +424,7 @@ export default function ProjectsDesignPreview() {
                 placeholder="חיפוש פרויקטים או אמן..."
                 style={{
                   background: "transparent", border: "none", outline: "none",
-                  color: TEXT, fontSize: 13, fontFamily: "inherit",
+                  color: TEXT, fontSize: isMobile ? 16 : 13, fontFamily: "inherit",
                   flex: 1, direction: "rtl",
                   width: isMobile ? "100%" : 180,
                 }}
