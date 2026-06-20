@@ -763,7 +763,7 @@ function OverviewContent({
           <CardTitle>צוות</CardTitle>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
             {[
-              { name: "ויקטור",    role: "אחראי פרויקט", init: "V" },
+              { name: "הפקה",      role: "אחראי פרויקט", init: "V" },
               { name: "איש סאונד", role: "מיקס / מאסטר", init: "S" },
             ].map(({ name, role, init }) => (
               <div key={name} style={{
@@ -906,9 +906,10 @@ function OverviewContent({
             display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center",
             pointerEvents: "none",
+            transform: "translateY(6px)",
           }}>
             <div style={{ fontSize: 29, fontWeight: 900, color: TEXT, letterSpacing: -1, lineHeight: 1 }}>{pct}%</div>
-            <div style={{ fontSize: 9, color: LABEL, textTransform: "uppercase", letterSpacing: "0.12em", marginTop: 4 }}>סיום</div>
+            <div style={{ fontSize: 9, color: LABEL, textTransform: "uppercase", letterSpacing: "0.12em", marginTop: 3 }}>סיום</div>
           </div>
         </div>
         <div style={{ fontSize: 13, color: TEXT2, fontWeight: 700, marginBottom: 16 }}>{project.status}</div>
