@@ -727,50 +727,95 @@ function OverviewContent({
       minHeight: 0,
     }}>
 
-      {/* ── ROW 1 COL 1: הפעולה הבאה ──────────────────────────────────── */}
+      {/* ── ROW 1 COL 1: עדכונים אחרונים ─────────────────────────────── */}
       <Card style={{ gridColumn: 1, gridRow: 1 }}>
-        <CardTitle>הפעולה הבאה</CardTitle>
+        <CardTitle>עדכונים אחרונים</CardTitle>
         {(() => {
-          const next = sessions
-            .filter(s => s.status !== "התקיים" && s.status !== "בוטל" && s.date)
-            .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
-          return next ? (
-            <div style={{
-              padding: "16px 18px", borderRadius: 14, marginBottom: 12,
-              background: `${BLUE}0E`, border: `1px solid ${BLUE}33`,
-            }}>
-              <div style={{ fontSize: 11, color: BLUE, fontWeight: 800, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                📅 סשן מתוכנן
+          type FeedItem = { icon: string; title: string; sub?: string; date?: string; color: string };
+          const items: FeedItem[] = [];
+
+          // Sessions — last 2 by date descending
+          [...sessions]
+            .filter(s => s.date)
+            .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+            .slice(0, 2)
+            .forEach(s => items.push({
+              icon: "📅",
+              title: `סשן: ${s.status}`,
+              date: s.date ?? undefined,
+              color: BLUE,
+            }));
+
+          // Transactions — last 2 by date descending
+          if (finLoaded) {
+            [...transactions]
+              .filter(tx => tx.date)
+              .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+              .slice(0, 2)
+              .forEach(tx => items.push({
+                icon: tx.type === "income" ? "₪" : "💸",
+                title: tx.type === "income"
+                  ? `תשלום: ${currency}${tx.amount.toLocaleString()}`
+                  : `הוצאה: ${currency}${tx.amount.toLocaleString()}`,
+                sub: tx.description || undefined,
+                date: tx.date ?? undefined,
+                color: tx.type === "income" ? GREEN : AMBER,
+              }));
+          }
+
+          // Sort all dated items newest-first
+          items.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+
+          // Latest file (no timestamp — appended at end)
+          const latestFile = (project.files ?? []).at(-1);
+          if (latestFile) {
+            items.push({ icon: "📁", title: `קובץ: ${latestFile.name}`, color: TEXT2 });
+          }
+
+          const feed = items.slice(0, 5);
+
+          if (feed.length === 0) {
+            return (
+              <div style={{
+                flex: 1, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", gap: 10,
+              }}>
+                <span style={{ fontSize: 36, opacity: 0.22 }}>📋</span>
+                <div style={{ fontSize: 13, color: MUTED }}>עדיין אין פעילות בפרויקט</div>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: TEXT }}>
-                {next.date ? new Date(next.date).toLocaleDateString("he-IL", { day: "numeric", month: "short" }) : "—"}
-              </div>
-            </div>
-          ) : (
-            <div style={{
-              padding: "16px 18px", borderRadius: 14, marginBottom: 12,
-              background: CARD_BG2, border: `1px solid ${BORDER}`,
-              fontSize: 13, color: MUTED, textAlign: "center",
-            }}>
-              אין סשן מתוכנן
+            );
+          }
+
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
+              {feed.map((item, i) => (
+                <div key={i} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "11px 13px", borderRadius: 12,
+                  background: CARD_BG2, border: `1px solid ${BORDER}`,
+                }}>
+                  <span style={{ fontSize: 16, flexShrink: 0, color: item.color }}>{item.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 700, color: TEXT,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>{item.title}</div>
+                    {item.sub && (
+                      <div style={{ fontSize: 11, color: LABEL, marginTop: 2 }}>
+                        {item.sub.slice(0, 50)}
+                      </div>
+                    )}
+                  </div>
+                  {item.date && (
+                    <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>
+                      {new Date(item.date).toLocaleDateString("he-IL", { day: "numeric", month: "short" })}
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           );
         })()}
-        <div style={{
-          padding: "14px 16px", borderRadius: 14,
-          background: BRAND_DIM, border: `1px solid rgba(220,38,38,0.24)`,
-          flex: 1,
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: BRAND, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.12em" }}>
-            הצעה
-          </div>
-          <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.7 }}>
-            {project.status === "בעבודה" ? "זמן להוסיף סשן חדש" :
-             project.status === "הושלם"  ? "הפרויקט הושלם ✓" :
-             project.status === "במיקס"  ? "בדוק עדכונים מהמהנדס" :
-             "עדכן את הסטטוס"}
-          </div>
-        </div>
       </Card>
 
       {/* ── ROW 1 COL 3: התקדמות כללית ────────────────────────────────── */}
