@@ -332,7 +332,6 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
 
             {/* ── Info + Stats ── */}
             <div dir="rtl" style={{
-              flex: 1, minWidth: 0,
               display: "flex", flexDirection: "column",
               paddingTop: 6,
             }}>
@@ -360,11 +359,10 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 </span>
               </div>
 
-              {/* Stats row — 4 compact fixed-width mini-cards */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "nowrap" }}>
+              {/* Stats — 2×2 grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
 
                 <div style={{
-                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
@@ -377,7 +375,6 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 </div>
 
                 <div style={{
-                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${dlColor !== TEXT2 ? dlColor + "45" : BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
@@ -390,7 +387,6 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 </div>
 
                 <div style={{
-                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
@@ -406,7 +402,6 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 </div>
 
                 <div style={{
-                  flex: 1, minWidth: 90,
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
                   padding: "14px 16px", minHeight: 84,
