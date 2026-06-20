@@ -24,6 +24,7 @@ interface Transaction {
   amount:         number;
   payment_status: PaymentStatus;
   description:    string;
+  date?:          string;
 }
 
 interface Session {
@@ -656,6 +657,20 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               statusColor={statusColor}
               onTabChange={setActiveTab}
             />
+          ) : activeTab === "כספים" ? (
+            <FinanceContent
+              transactions={transactions}
+              agreedPrice={agreedPrice}
+              currency={currency}
+              finLoaded={finLoaded}
+              received={received}
+              totalExp={totalExp}
+              balance={balance}
+            />
+          ) : activeTab === "סשנים" ? (
+            <SessionsContent sessions={sessions} sessDone={sessDone} />
+          ) : activeTab === "קבצים" ? (
+            <FilesContent project={project} />
           ) : (
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center",
@@ -1048,6 +1063,247 @@ function OverviewContent({
         </button>
       </Card>
 
+    </div>
+  );
+}
+
+// ─── Tab: כספים ───────────────────────────────────────────────────────────────
+
+const STATUS_COLORS: Record<string, string> = {
+  "שולם": "#10B981", "התקבל": "#10B981",
+  "צפוי": "#F59E0B", "חלקי": "#F59E0B", "לבדיקה": "#F59E0B",
+  "לא שולם": "#EF4444", "בוטל": "#555568",
+};
+
+function TxRow({ tx, currency }: { tx: Transaction; currency: string }) {
+  const col = STATUS_COLORS[tx.payment_status] ?? "#A8A8B8";
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: "10px 14px", background: "rgba(255,255,255,0.034)",
+      borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#F4F4F4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {tx.description || (tx.type === "income" ? "הכנסה" : "הוצאה")}
+        </div>
+        {tx.date && (
+          <div style={{ fontSize: 11, color: "#555568", marginTop: 2 }}>
+            {new Date(tx.date).toLocaleDateString("he-IL")}
+          </div>
+        )}
+      </div>
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: col,
+        background: `${col}18`, border: `1px solid ${col}30`,
+        borderRadius: 8, padding: "3px 8px", whiteSpace: "nowrap",
+      }}>
+        {tx.payment_status}
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 900, color: tx.type === "income" ? "#10B981" : "#EF4444", whiteSpace: "nowrap" }}>
+        {tx.type === "expense" ? "-" : ""}{currency}{tx.amount.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+function FinanceContent({
+  transactions, agreedPrice, currency, finLoaded, received, totalExp, balance,
+}: {
+  transactions: Transaction[];
+  agreedPrice:  number;
+  currency:     string;
+  finLoaded:    boolean;
+  received:     number;
+  totalExp:     number;
+  balance:      number;
+}) {
+  const incomes  = transactions.filter(t => t.type === "income");
+  const expenses = transactions.filter(t => t.type === "expense");
+  const stats = [
+    { label: "מחיר מוסכם", value: agreedPrice,  color: "#F4F4F4" },
+    { label: "התקבל",      value: received,      color: "#10B981" },
+    { label: "הוצאות",     value: totalExp,      color: "#F59E0B" },
+    { label: "יתרה",       value: balance,       color: balance > 0 ? "#EF4444" : "#10B981" },
+  ];
+  return (
+    <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+        {stats.map(({ label, value, color }) => (
+          <div key={label} style={{
+            background: "rgba(255,255,255,0.058)", borderRadius: 14,
+            padding: "12px 14px", border: "1px solid rgba(255,255,255,0.14)",
+          }}>
+            <div style={{ fontSize: 10, color: "#555568", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>
+              {label}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 900, color }}>
+              {finLoaded ? `${currency}${value.toLocaleString()}` : "…"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {incomes.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#555568", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>הכנסות</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {incomes.map(t => <TxRow key={t.id} tx={t} currency={currency} />)}
+          </div>
+        </div>
+      )}
+
+      {expenses.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#555568", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>הוצאות</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {expenses.map(t => <TxRow key={t.id} tx={t} currency={currency} />)}
+          </div>
+        </div>
+      )}
+
+      {finLoaded && transactions.length === 0 && (
+        <div style={{ textAlign: "center", color: "#555568", fontSize: 13, padding: "40px 0" }}>אין עסקאות עדיין</div>
+      )}
+
+      <div style={{ textAlign: "center", fontSize: 11, color: "#555568", paddingTop: 4 }}>
+        לניהול מלא — פתח ב-ProjectDrawer
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: סשנים ───────────────────────────────────────────────────────────────
+
+function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone: number }) {
+  const sessionColor: Record<string, string> = {
+    "התקיים": "#10B981",
+    "מתוכנן": "#3B82F6",
+    "בוטל":   "#555568",
+  };
+
+  const upcoming = [...sessions]
+    .filter(s => s.date && s.status !== "בוטל" && new Date(s.date) >= new Date())
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
+
+  const sorted = [...sessions].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+
+  return (
+    <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        {[
+          { label: "הושלמו", value: sessDone,                   color: "#10B981" },
+          { label: 'סה"כ',   value: sessions.length,            color: "#F4F4F4" },
+          { label: "נותרו",  value: sessions.length - sessDone, color: "#F59E0B" },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{
+            background: "rgba(255,255,255,0.058)", borderRadius: 14,
+            padding: "12px 14px", border: "1px solid rgba(255,255,255,0.14)",
+          }}>
+            <div style={{ fontSize: 10, color: "#555568", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {upcoming && (
+        <div style={{
+          background: "rgba(59,130,246,0.07)", borderRadius: 14,
+          padding: "14px 16px", border: "1px solid rgba(59,130,246,0.25)",
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: "#3B82F6", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>הסשן הבא</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#F4F4F4" }}>
+            {new Date(upcoming.date!).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}
+          </div>
+        </div>
+      )}
+
+      {sessions.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {sorted.map(s => {
+            const col = sessionColor[s.status] ?? "#555568";
+            return (
+              <div key={s.id} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "10px 14px", background: "rgba(255,255,255,0.034)",
+                borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#F4F4F4" }}>
+                    {s.date
+                      ? new Date(s.date).toLocaleDateString("he-IL", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+                      : "ללא תאריך"}
+                  </div>
+                </div>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, color: col,
+                  background: `${col}18`, border: `1px solid ${col}30`,
+                  borderRadius: 8, padding: "3px 8px",
+                }}>
+                  {s.status}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", color: "#555568", fontSize: 13, padding: "40px 0" }}>אין סשנים עדיין</div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: קבצים ───────────────────────────────────────────────────────────────
+
+function FilesContent({ project }: { project: Project }) {
+  const files = (project.files ?? []) as Array<{ name: string; versionLabel?: string; dropboxShareUrl?: string }>;
+  const reversed = [...files].reverse();
+  return (
+    <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <UploadButton
+          projectId={project.id}
+          projectName={project.name}
+          artist={project.artist ?? ""}
+          existingFiles={project.files ?? []}
+          size="sm"
+        />
+      </div>
+
+      {reversed.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {reversed.map((f, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "10px 14px", background: "rgba(255,255,255,0.034)",
+              borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
+            }}>
+              <span style={{ fontSize: 15, color: "#555568", flexShrink: 0 }}>🎵</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#F4F4F4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {f.name}
+                </div>
+                {f.versionLabel && (
+                  <div style={{ fontSize: 11, color: "#555568", marginTop: 2 }}>{f.versionLabel}</div>
+                )}
+              </div>
+              {f.dropboxShareUrl && (
+                <a
+                  href={f.dropboxShareUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  style={{ fontSize: 11, color: "#3B82F6", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}
+                >
+                  פתח ↗
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", color: "#555568", fontSize: 13, padding: "40px 0" }}>אין קבצים עדיין</div>
+      )}
     </div>
   );
 }
