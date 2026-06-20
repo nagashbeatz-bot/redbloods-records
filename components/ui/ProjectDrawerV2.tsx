@@ -38,21 +38,20 @@ interface Session {
 
 // ── Tokens ────────────────────────────────────────────────────────────────────
 
-const PANEL_BG   = "linear-gradient(160deg, #0B0B18 0%, #08080F 55%, #060609 100%)";
-const HDR_BG     = "rgba(0,0,0,0.35)";
-const CARD_BG    = "rgba(255,255,255,0.024)";
-const CARD_BG2   = "rgba(255,255,255,0.04)";
-const BORDER     = "rgba(255,255,255,0.07)";
-const BORDER2    = "rgba(255,255,255,0.10)";
-const PURPLE     = "#8B5CF6";
-const PURPLE_S   = "#A78BFA";
-const BLUE       = "#3B82F6";
-const GREEN      = "#10B981";
-const AMBER      = "#F59E0B";
-const RED        = "#EF4444";
-const TEXT       = "#F0F0FC";
-const TEXT2      = "#B0B0CC";
-const MUTED      = "#5A5A80";
+const PANEL_BG = "linear-gradient(160deg, #0D0D10 0%, #0A0A0D 60%, #080808 100%)";
+const HDR_BG   = "rgba(0,0,0,0.40)";
+const CARD_BG  = "rgba(255,255,255,0.028)";
+const CARD_BG2 = "rgba(255,255,255,0.045)";
+const BORDER   = "rgba(255,255,255,0.08)";
+const BORDER2  = "rgba(255,255,255,0.11)";
+const BRAND    = "#DC2626";
+const BLUE     = "#3B82F6";
+const GREEN    = "#10B981";
+const AMBER    = "#F59E0B";
+const RED_WARN = "#EF4444";
+const TEXT     = "#F2F2F2";
+const TEXT2    = "#A0A0B0";
+const MUTED    = "#52526A";
 
 const PROJECT_TABS = ["סקירה", "כספים", "סשנים", "קליפ", "קבצים", "פעולות"] as const;
 type DrawerTab = typeof PROJECT_TABS[number];
@@ -72,7 +71,7 @@ function accentForType(t: string): string {
   if (t === "EP")     return "#A855F7";
   if (t === "אלבום") return "#EC4899";
   if (t === "קליפ")  return "#8B5CF6";
-  return BLUE;
+  return BRAND; // שיר / default → Redbloods red
 }
 
 function progressForStatus(status: string): number {
@@ -127,7 +126,7 @@ function Row({ label, value, vc }: { label: string; value: string; vc?: string }
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={{
-      background: CARD_BG, borderRadius: 14, padding: 16,
+      background: CARD_BG, borderRadius: 16, padding: 18,
       border: `1px solid ${BORDER}`, ...style,
     }}>
       {children}
@@ -200,7 +199,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const accent      = accentForType(project.projectType);
   const days        = daysUntilDeadline(project.deadline);
   const dlLabel     = deadlineLabel(project.deadline);
-  const dlColor     = days !== null && days < 0 ? RED
+  const dlColor     = days !== null && days < 0 ? RED_WARN
                     : days !== null && days <= 7 ? AMBER
                     : TEXT2;
   const received    = transactions
@@ -246,7 +245,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
         onClick={onClose}
         style={{
           position: "absolute", inset: 0,
-          background: "rgba(0,0,0,0.75)",
+          background: "rgba(0,0,0,0.78)",
           backdropFilter: "blur(6px)",
         }}
       />
@@ -259,11 +258,11 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
         zIndex: 100000,
         display: "flex", flexDirection: "column",
         overflow: "hidden",
-        border: `1px solid rgba(139,92,246,0.28)`,
+        border: `1px solid rgba(220,38,38,0.22)`,
         boxShadow: [
-          `0 0 0 1px rgba(139,92,246,0.08)`,
-          `0 50px 120px rgba(0,0,0,0.95)`,
-          `0 0 100px rgba(80,40,180,0.07)`,
+          `0 0 0 1px rgba(220,38,38,0.06)`,
+          `0 50px 120px rgba(0,0,0,0.92)`,
+          `0 0 80px rgba(220,38,38,0.04)`,
         ].join(", "),
         animation: "v2-in 0.26s cubic-bezier(.32,.72,0,1) forwards",
       }}>
@@ -283,167 +282,188 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           padding: "22px 28px 0",
         }}>
 
-          {/* Top row (LTR for physical left=left layout): cover | info | player | close */}
-          <div dir="ltr" style={{ display: "flex", gap: 20, marginBottom: 18, alignItems: "stretch" }}>
+          {/* Top row (LTR for physical layout): cover | info | player | close */}
+          <div dir="ltr" style={{ display: "flex", gap: 22, marginBottom: 18, alignItems: "stretch" }}>
 
-            {/* Cover art */}
+            {/* Cover art — 180×180 */}
             <div style={{
-              width: 92, height: 92, borderRadius: 14, flexShrink: 0,
-              background: `linear-gradient(145deg, #1C082E 0%, #0E081E 60%, #060610 100%)`,
-              border: `1.5px solid ${accent}44`,
+              width: 180, height: 180, borderRadius: 18, flexShrink: 0,
+              background: `linear-gradient(145deg, #2A0808 0%, #180404 55%, #090202 100%)`,
+              border: `1.5px solid rgba(220,38,38,0.35)`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 34, fontWeight: 900, color: accent,
-              boxShadow: `0 0 28px ${accent}22, inset 0 0 20px rgba(0,0,0,0.4)`,
-              letterSpacing: -1,
+              fontSize: 60, fontWeight: 900, color: accent,
+              boxShadow: `0 0 40px rgba(220,38,38,0.18), inset 0 0 24px rgba(0,0,0,0.5)`,
+              letterSpacing: -2,
             }}>
               {project.name.charAt(0)}
             </div>
 
             {/* Project info (RTL inside) */}
-            <div dir="rtl" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 22, fontWeight: 900, color: TEXT, letterSpacing: -0.5, lineHeight: 1.15 }}>
-                  {project.name}
-                </span>
+            <div dir="rtl" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 4px" }}>
+              {/* Project name — large */}
+              <div style={{
+                fontSize: 44, fontWeight: 900, color: TEXT,
+                letterSpacing: -1.5, lineHeight: 1.05, marginBottom: 8,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {project.name}
+              </div>
+
+              {/* Type badge + artist */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
                 <span style={{
-                  fontSize: 10, fontWeight: 800, color: accent,
+                  fontSize: 11, fontWeight: 800, color: accent,
                   background: `${accent}18`, border: `1px solid ${accent}35`,
-                  borderRadius: 6, padding: "3px 9px", flexShrink: 0, letterSpacing: "0.04em",
+                  borderRadius: 6, padding: "3px 10px", flexShrink: 0, letterSpacing: "0.04em",
                 }}>
                   {project.projectType || "שיר"}
                 </span>
+                <span style={{ fontSize: 13, color: TEXT2 }}>🎤 {project.artist}</span>
               </div>
 
-              <div style={{ fontSize: 12, color: MUTED, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ color: MUTED }}>🎤</span>
-                <span style={{ color: TEXT2 }}>{project.artist}</span>
-              </div>
-
-              {/* Stats row */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <div onClick={e => e.stopPropagation()}>
+              {/* Stats row — 4 items with separators */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 0,
+                background: "rgba(255,255,255,0.03)", borderRadius: 12,
+                border: `1px solid ${BORDER}`, overflow: "hidden",
+              }}>
+                {/* סטטוס */}
+                <div style={{ flex: 1, padding: "10px 14px", borderLeft: `1px solid ${BORDER}` }}
+                     onClick={e => e.stopPropagation()}>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>סטטוס</div>
                   <StatusDropdown projectId={project.id} status={project.status} small />
                 </div>
-                {project.deadline && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, color: dlColor,
-                    background: `${dlColor}14`, border: `1px solid ${dlColor}30`,
-                    borderRadius: 7, padding: "4px 10px", flexShrink: 0,
+                {/* תאריך */}
+                <div style={{ flex: 1, padding: "10px 14px", borderLeft: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>תאריך יעד</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: dlColor }}>
+                    {project.deadline ? dlLabel : "—"}
+                  </div>
+                </div>
+                {/* יתרה */}
+                <div style={{ flex: 1, padding: "10px 14px", borderLeft: `1px solid ${BORDER}` }}>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>יתרה</div>
+                  <div style={{
+                    fontSize: 12, fontWeight: 700,
+                    color: finLoaded ? (balance > 0 ? RED_WARN : GREEN) : MUTED,
                   }}>
-                    📅 {dlLabel}
-                  </span>
-                )}
-                {finLoaded && balance > 0 && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, color: RED,
-                    background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)",
-                    borderRadius: 7, padding: "4px 10px", flexShrink: 0,
-                  }}>
-                    יתרה {currency}{balance.toLocaleString()}
-                  </span>
-                )}
+                    {finLoaded ? `${currency}${balance.toLocaleString()}` : "…"}
+                  </div>
+                </div>
+                {/* מחיר */}
+                <div style={{ flex: 1, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 9, color: MUTED, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>מחיר</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>
+                    {finLoaded ? `${currency}${agreedPrice.toLocaleString()}` : "…"}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Player card */}
-            {latestFile && (
-              <div style={{
-                width: 260, flexShrink: 0,
-                background: "rgba(255,255,255,0.03)",
-                border: `1px solid ${BORDER2}`,
-                borderRadius: 14, padding: "12px 16px",
-                display: "flex", flexDirection: "column", justifyContent: "center", gap: 10,
-              }}>
-                <div dir="rtl" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {/* Purple play button */}
-                  <button
-                    onClick={handlePlay}
-                    style={{
-                      width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
-                      background: isPlaying
-                        ? `linear-gradient(135deg, ${PURPLE}, #6D28D9)`
-                        : `linear-gradient(135deg, #3D1F6E, #2D1550)`,
-                      border: `1.5px solid ${PURPLE}55`,
-                      color: "#fff", cursor: "pointer", fontSize: 15,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontFamily: "inherit",
-                      boxShadow: isPlaying ? `0 0 20px ${PURPLE}66` : `0 0 12px rgba(109,40,217,0.3)`,
-                    }}
-                  >
-                    {isPlaying ? "⏸" : "▶"}
-                  </button>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {latestFile.name}
-                    </div>
-                    <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-                      {(latestFile as { versionLabel?: string }).versionLabel ?? "קובץ אחרון"}
-                    </div>
+            {/* Player card — 470px wide */}
+            <div style={{
+              width: 470, flexShrink: 0,
+              background: "rgba(255,255,255,0.03)",
+              border: `1px solid ${BORDER2}`,
+              borderRadius: 16, padding: "16px 20px",
+              display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 12,
+            }}>
+              {/* Top: close + open link (physical right side since this is LTR column) */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <Link
+                  href={`/projects/${projectId}`}
+                  target="_blank"
+                  style={{
+                    fontSize: 11, color: TEXT2, textDecoration: "none",
+                    border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "6px 12px",
+                    display: "flex", alignItems: "center", gap: 5,
+                    whiteSpace: "nowrap", background: "rgba(255,255,255,0.04)",
+                  }}
+                >
+                  פתח עמוד מלא ↗
+                </Link>
+                <button
+                  onClick={onClose}
+                  style={{
+                    width: 34, height: 34, borderRadius: 9,
+                    background: "rgba(255,255,255,0.05)",
+                    border: `1px solid ${BORDER2}`,
+                    color: TEXT2, cursor: "pointer", fontSize: 17,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Player row */}
+              <div dir="rtl" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {/* Red play button */}
+                <button
+                  onClick={latestFile ? handlePlay : undefined}
+                  style={{
+                    width: 50, height: 50, borderRadius: "50%", flexShrink: 0,
+                    background: latestFile
+                      ? (isPlaying
+                          ? `linear-gradient(135deg, #DC2626, #991B1B)`
+                          : `linear-gradient(135deg, #991B1B, #7F1D1D)`)
+                      : "#1A1A1A",
+                    border: `1.5px solid ${BRAND}55`,
+                    color: "#fff", cursor: latestFile ? "pointer" : "default",
+                    fontSize: 16,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontFamily: "inherit",
+                    boxShadow: latestFile && isPlaying ? `0 0 24px rgba(220,38,38,0.7)` : latestFile ? `0 0 14px rgba(220,38,38,0.35)` : "none",
+                  }}
+                >
+                  {isPlaying ? "⏸" : "▶"}
+                </button>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
+                    {latestFile ? latestFile.name : "אין קובץ שמע"}
+                  </div>
+                  <div style={{ fontSize: 10, color: MUTED }}>
+                    {latestFile
+                      ? ((latestFile as { versionLabel?: string }).versionLabel ?? "קובץ אחרון")
+                      : "העלה קובץ כדי לנגן"}
                   </div>
                 </div>
-                {/* Waveform */}
-                <svg width="100%" height="28" viewBox="0 0 228 28" preserveAspectRatio="none" style={{ opacity: 0.5 }}>
-                  {WAVE_H.map((h, i) => (
-                    <rect
-                      key={i}
-                      x={i * 5.7}
-                      y={(28 - h) / 2}
-                      width={3.2}
-                      height={h}
-                      fill={isPlaying ? PURPLE_S : MUTED}
-                      rx={1.5}
-                    />
-                  ))}
-                </svg>
               </div>
-            )}
 
-            {/* Controls (LTR: rightmost = right side of screen) */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, justifyContent: "center", flexShrink: 0 }}>
-              <Link
-                href={`/projects/${projectId}`}
-                target="_blank"
-                style={{
-                  fontSize: 11, color: TEXT2, textDecoration: "none",
-                  border: `1px solid ${BORDER2}`,
-                  borderRadius: 9, padding: "7px 12px",
-                  display: "flex", alignItems: "center", gap: 5,
-                  whiteSpace: "nowrap",
-                  background: "rgba(255,255,255,0.04)",
-                }}
-              >
-                פתח עמוד מלא ↗
-              </Link>
-              <button
-                onClick={onClose}
-                style={{
-                  width: 38, height: 38, borderRadius: 10,
-                  background: "rgba(255,255,255,0.04)",
-                  border: `1px solid ${BORDER2}`,
-                  color: TEXT2, cursor: "pointer", fontSize: 18,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "inherit",
-                }}
-              >
-                ✕
-              </button>
+              {/* Waveform */}
+              <svg width="100%" height="32" viewBox="0 0 428 32" preserveAspectRatio="none"
+                   style={{ opacity: latestFile ? 0.55 : 0.2 }}>
+                {WAVE_H.map((h, i) => (
+                  <rect
+                    key={i}
+                    x={i * 10.7}
+                    y={(32 - h) / 2}
+                    width={4}
+                    height={h}
+                    fill={isPlaying ? BRAND : MUTED}
+                    rx={2}
+                  />
+                ))}
+              </svg>
             </div>
           </div>
 
           {/* ── Quick Actions ───────────────────────────────────────────────── */}
           <div dir="rtl" style={{ display: "flex", gap: 10, marginBottom: 14 }}>
             {([
-              { label: "סשן חדש", icon: "📅", color: BLUE,  tab: "סשנים" as DrawerTab },
-              { label: "תשלום",   icon: "₪",  color: GREEN, tab: "כספים" as DrawerTab },
-              { label: "הוצאה",  icon: "⊖",  color: AMBER, tab: "כספים" as DrawerTab },
+              { label: "+ סשן חדש", icon: "📅", color: BLUE,  tab: "סשנים" as DrawerTab },
+              { label: "+ תשלום",   icon: "₪",  color: GREEN, tab: "כספים" as DrawerTab },
+              { label: "+ הוצאה",  icon: "⊖",  color: AMBER, tab: "כספים" as DrawerTab },
             ]).map(({ label, icon, color, tab }) => (
               <button
                 key={label}
                 onClick={() => setActiveTab(tab)}
                 style={{
-                  flex: 1, height: 58, borderRadius: 14,
+                  flex: 1, height: 68, borderRadius: 14,
                   background: `${color}0C`, border: `1px solid ${color}28`,
-                  color, cursor: "pointer", fontSize: 13, fontWeight: 700,
+                  color, cursor: "pointer", fontSize: 14, fontWeight: 700,
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                   fontFamily: "inherit",
                   letterSpacing: "0.01em",
@@ -458,14 +478,14 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   e.currentTarget.style.border = `1px solid ${color}28`;
                 }}
               >
-                <span style={{ fontSize: 16 }}>{icon}</span>
+                <span style={{ fontSize: 17 }}>{icon}</span>
                 {label}
               </button>
             ))}
-            {/* Upload */}
+            {/* Upload — red accent */}
             <div style={{
-              flex: 1, height: 58, borderRadius: 14,
-              background: `${PURPLE}0C`, border: `1px solid ${PURPLE}28`,
+              flex: 1, height: 68, borderRadius: 14,
+              background: `rgba(220,38,38,0.05)`, border: `1px solid rgba(220,38,38,0.22)`,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               <UploadButton
@@ -487,20 +507,20 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   style={{
-                    padding: "11px 20px",
-                    borderRadius: "11px 11px 0 0",
+                    padding: "13px 22px",
+                    borderRadius: "12px 12px 0 0",
                     border: "none",
-                    background: active ? "rgba(255,255,255,0.05)" : "transparent",
-                    color: active ? PURPLE_S : MUTED,
+                    background: active ? "rgba(220,38,38,0.07)" : "transparent",
+                    color: active ? BRAND : MUTED,
                     cursor: "pointer", fontSize: 13,
                     fontWeight: active ? 700 : 500,
                     fontFamily: "inherit",
-                    borderBottom: active ? `2.5px solid ${PURPLE}` : "2.5px solid transparent",
+                    borderBottom: active ? `2.5px solid ${BRAND}` : "2.5px solid transparent",
                     whiteSpace: "nowrap",
                     display: "flex", alignItems: "center", gap: 6,
                     transition: "none",
                     flexShrink: 0,
-                    textShadow: active ? `0 0 20px ${PURPLE}88` : "none",
+                    textShadow: active ? `0 0 20px rgba(220,38,38,0.5)` : "none",
                   }}
                 >
                   <span style={{ fontSize: 13 }}>{TAB_ICONS[tab]}</span>
@@ -578,10 +598,9 @@ function OverviewContent({
 }) {
   const days = daysUntilDeadline(project.deadline);
 
-  // RTL grid: col 1 = physical right, col 4 = physical left
-  // We want: sidebar(200px) | progress | status | next-action
+  // RTL grid: col 1 = physical right (sidebar), cols 2-4 = main content left-to-right in DOM
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "200px 1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 1fr 1fr", gridTemplateRows: "auto auto", gap: 14 }}>
 
       {/* ── Col 1, rows 1+2: Sidebar ─────────────────────────────────────── */}
       <div style={{ gridColumn: 1, gridRow: "1 / 3", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -589,28 +608,28 @@ function OverviewContent({
         {/* Quick links */}
         <Card>
           <CardTitle>פעולות מהירות</CardTitle>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {([
-              { icon: "📅", label: "סשנים", color: BLUE,   tab: "סשנים" as DrawerTab },
-              { icon: "₪",  label: "כספים",  color: GREEN,  tab: "כספים" as DrawerTab },
-              { icon: "📁", label: "קבצים",  color: PURPLE, tab: "קבצים" as DrawerTab },
-              { icon: "⚡", label: "פעולות", color: AMBER,  tab: "פעולות" as DrawerTab },
-            ]).map(({ icon, label, color, tab }) => (
+              { icon: "🎧", label: "LISTEN דמו",     color: BRAND  },
+              { icon: "📅", label: "פתיחת יומן",     color: BLUE   },
+              { icon: "📦", label: "פתיחה Dropbox",  color: BLUE   },
+              { icon: "✦",  label: "שליחת דוח AI",  color: "#A855F7" },
+              { icon: "📄", label: "יצירת דוח",      color: MUTED  },
+              { icon: "⊕",  label: "העתק פרויקט",   color: MUTED  },
+            ]).map(({ icon, label, color }) => (
               <button
                 key={label}
-                onClick={() => onTabChange(tab)}
+                disabled
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "8px 10px", borderRadius: 9,
-                  background: `${color}0A`, border: `1px solid ${color}20`,
-                  color, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  background: `${color}08`, border: `1px solid ${color}1E`,
+                  color, fontSize: 12, fontWeight: 600, cursor: "not-allowed",
                   fontFamily: "inherit", textAlign: "right", width: "100%",
-                  transition: "none",
+                  opacity: 0.7,
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = `${color}18`}
-                onMouseLeave={e => e.currentTarget.style.background = `${color}0A`}
               >
-                <span style={{ fontSize: 14 }}>{icon}</span>{label}
+                <span style={{ fontSize: 13 }}>{icon}</span>{label}
               </button>
             ))}
           </div>
@@ -644,69 +663,6 @@ function OverviewContent({
         </Card>
       </div>
 
-      {/* ── Col 2, row 1: התקדמות כללית ────────────────────────────────── */}
-      <Card style={{ gridColumn: 2, gridRow: 1 }}>
-        <CardTitle>התקדמות כללית</CardTitle>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            <Arc pct={pct} accent={accent} size={96} />
-            <div style={{
-              position: "absolute", top: "50%", left: "50%",
-              transform: "translate(-50%, -50%)", textAlign: "center",
-            }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: TEXT, letterSpacing: -1 }}>{pct}%</div>
-            </div>
-          </div>
-          <div style={{ fontSize: 11, color: MUTED }}>{project.status}</div>
-        </div>
-        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 5 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-            <span style={{ color: MUTED }}>סשנים שהתקיימו</span>
-            <span style={{ color: TEXT2, fontWeight: 600 }}>{sessDone}/{sessions.length}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-            <span style={{ color: MUTED }}>קבצים</span>
-            <span style={{ color: TEXT2, fontWeight: 600 }}>{filesCount}</span>
-          </div>
-          {project.deadline && (
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-              <span style={{ color: MUTED }}>ימים לדדליין</span>
-              <span style={{
-                color: days !== null && days < 0 ? RED : days !== null && days <= 7 ? AMBER : TEXT2,
-                fontWeight: 600,
-              }}>
-                {days !== null ? (days < 0 ? `פג ${Math.abs(days)} ימים` : `${days} ימים`) : "—"}
-              </span>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* ── Col 3, row 1: סטטוס פרויקט ─────────────────────────────────── */}
-      <Card style={{ gridColumn: 3, gridRow: 1 }}>
-        <CardTitle>סטטוס פרויקט</CardTitle>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          {([
-            { label: "כספים",  icon: "₪",  val: finLoaded ? (transactions.length > 0 ? "✓ תקין" : "—") : "…", color: transactions.length > 0 ? GREEN : MUTED },
-            { label: "סשנים",  icon: "◷",  val: sessions.length > 0 ? `${sessDone}/${sessions.length}` : "—", color: sessions.length > 0 ? BLUE : MUTED },
-            { label: "קבצים",  icon: "⊞",  val: filesCount > 0 ? `${filesCount}` : "—", color: filesCount > 0 ? BLUE : MUTED },
-            { label: "ויקטור", icon: "🎛️", val: "עדכן בפעולות", color: MUTED },
-            { label: "מסירה",  icon: "📤", val: "לא הוגדר", color: MUTED },
-          ]).map(({ label, icon, val, color }) => (
-            <div key={label} style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "7px 10px", borderRadius: 9,
-              background: `${color}09`, border: `1px solid ${color}1E`,
-            }}>
-              <span style={{ fontSize: 11, color: MUTED }}>
-                <span style={{ marginLeft: 5 }}>{icon}</span>{label}
-              </span>
-              <span style={{ fontSize: 11, fontWeight: 700, color }}>{val}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
-
       {/* ── Col 4, row 1: הפעולה הבאה ──────────────────────────────────── */}
       <Card style={{ gridColumn: 4, gridRow: 1 }}>
         <CardTitle>הפעולה הבאה</CardTitle>
@@ -739,10 +695,9 @@ function OverviewContent({
             אין נתונים
           </div>
         )}
-        {/* Next action suggestion */}
         <div style={{
           marginTop: 12, padding: "10px 12px", borderRadius: 10,
-          background: `${PURPLE}0A`, border: `1px solid ${PURPLE}22`,
+          background: `rgba(220,38,38,0.06)`, border: `1px solid rgba(220,38,38,0.18)`,
         }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, marginBottom: 5 }}>הצעה</div>
           <div style={{ fontSize: 11, color: TEXT2, lineHeight: 1.5 }}>
@@ -754,31 +709,90 @@ function OverviewContent({
         </div>
       </Card>
 
-      {/* ── Col 2, row 2: קבצים אחרונים ─────────────────────────────────── */}
-      <Card style={{ gridColumn: 2, gridRow: 2 }}>
-        <CardTitle>קבצים אחרונים</CardTitle>
-        {project.files && project.files.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {project.files.slice(-4).reverse().map(f => (
-              <div key={f.name} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "7px 10px", borderRadius: 9, background: CARD_BG2,
-              }}>
-                <span style={{ fontSize: 14, flexShrink: 0 }}>
-                  {f.name.toLowerCase().endsWith(".mp3") || f.name.toLowerCase().endsWith(".wav") ? "🎵" : "📄"}
-                </span>
-                <span style={{
-                  fontSize: 11, color: TEXT2, fontWeight: 600,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
-                }}>
-                  {f.name}
-                </span>
-              </div>
-            ))}
+      {/* ── Col 3, row 1: סטטוס פרויקט ─────────────────────────────────── */}
+      <Card style={{ gridColumn: 3, gridRow: 1 }}>
+        <CardTitle>סטטוס פרויקט</CardTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {([
+            { label: "כספים",  icon: "₪",  val: finLoaded ? (transactions.length > 0 ? "✓ תקין" : "—") : "…", color: transactions.length > 0 ? GREEN : MUTED },
+            { label: "סשנים",  icon: "◷",  val: sessions.length > 0 ? `${sessDone}/${sessions.length}` : "—", color: sessions.length > 0 ? BLUE : MUTED },
+            { label: "קבצים",  icon: "⊞",  val: filesCount > 0 ? `${filesCount}` : "—", color: filesCount > 0 ? BLUE : MUTED },
+            { label: "ויקטור", icon: "🎛️", val: "עדכן בפעולות", color: MUTED },
+            { label: "מסירה",  icon: "📤", val: "לא הוגדר", color: MUTED },
+          ]).map(({ label, icon, val, color }) => (
+            <div key={label} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "7px 10px", borderRadius: 9,
+              background: `${color}09`, border: `1px solid ${color}1E`,
+            }}>
+              <span style={{ fontSize: 11, color: MUTED }}>
+                <span style={{ marginLeft: 5 }}>{icon}</span>{label}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color }}>{val}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* ── Col 2, row 1: התקדמות כללית ─────────────────────────────────── */}
+      <Card style={{ gridColumn: 2, gridRow: 1 }}>
+        <CardTitle>התקדמות כללית</CardTitle>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <Arc pct={pct} accent={accent} size={96} />
+            <div style={{
+              position: "absolute", top: "50%", left: "50%",
+              transform: "translate(-50%, -50%)", textAlign: "center",
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: TEXT, letterSpacing: -1 }}>{pct}%</div>
+            </div>
           </div>
-        ) : (
-          <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>
-            אין קבצים
+          <div style={{ fontSize: 11, color: MUTED }}>{project.status}</div>
+        </div>
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+            <span style={{ color: MUTED }}>סשנים שהתקיימו</span>
+            <span style={{ color: TEXT2, fontWeight: 600 }}>{sessDone}/{sessions.length}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+            <span style={{ color: MUTED }}>קבצים</span>
+            <span style={{ color: TEXT2, fontWeight: 600 }}>{filesCount}</span>
+          </div>
+          {project.deadline && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+              <span style={{ color: MUTED }}>ימים לדדליין</span>
+              <span style={{
+                color: days !== null && days < 0 ? RED_WARN : days !== null && days <= 7 ? AMBER : TEXT2,
+                fontWeight: 600,
+              }}>
+                {days !== null ? (days < 0 ? `פג ${Math.abs(days)} ימים` : `${days} ימים`) : "—"}
+              </span>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* ── Col 4, row 2: פרטים כלליים ──────────────────────────────────── */}
+      <Card style={{ gridColumn: 4, gridRow: 2 }}>
+        <CardTitle>פרטים כלליים</CardTitle>
+        <Row label="סוג פרויקט" value={project.projectType || "—"} />
+        <Row label="אמן" value={project.artist || "—"} />
+        <Row
+          label="תאריך התחלה"
+          value={project.startDate ? new Date(project.startDate).toLocaleDateString("he-IL") : "—"}
+        />
+        <Row
+          label="דדליין"
+          value={project.deadline ? new Date(project.deadline).toLocaleDateString("he-IL") : "—"}
+          vc={days !== null && days < 0 ? RED_WARN : days !== null && days <= 7 ? AMBER : undefined}
+        />
+        <Row label="שייך ל" value={project.parentProject || "—"} />
+        {project.notes && (
+          <div style={{
+            marginTop: 10, padding: "8px 10px", background: CARD_BG2,
+            borderRadius: 9, fontSize: 11, color: MUTED, lineHeight: 1.6,
+          }}>
+            {project.notes.slice(0, 120)}{project.notes.length > 120 ? "…" : ""}
           </div>
         )}
       </Card>
@@ -814,8 +828,8 @@ function OverviewContent({
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 padding: "8px 10px", borderRadius: 9, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.22)",
               }}>
-                <span style={{ fontSize: 12, color: RED }}>יתרה לגביה</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: RED }}>{currency}{balance.toLocaleString()}</span>
+                <span style={{ fontSize: 12, color: RED_WARN }}>יתרה לגביה</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: RED_WARN }}>{currency}{balance.toLocaleString()}</span>
               </div>
             )}
           </div>
@@ -824,29 +838,45 @@ function OverviewContent({
         )}
       </Card>
 
-      {/* ── Col 4, row 2: פרטים כלליים ──────────────────────────────────── */}
-      <Card style={{ gridColumn: 4, gridRow: 2 }}>
-        <CardTitle>פרטים כלליים</CardTitle>
-        <Row label="סוג פרויקט" value={project.projectType || "—"} />
-        <Row label="אמן" value={project.artist || "—"} />
-        <Row
-          label="תאריך התחלה"
-          value={project.startDate ? new Date(project.startDate).toLocaleDateString("he-IL") : "—"}
-        />
-        <Row
-          label="דדליין"
-          value={project.deadline ? new Date(project.deadline).toLocaleDateString("he-IL") : "—"}
-          vc={days !== null && days < 0 ? RED : days !== null && days <= 7 ? AMBER : undefined}
-        />
-        <Row label="שייך ל" value={project.parentProject || "—"} />
-        {project.notes && (
-          <div style={{
-            marginTop: 10, padding: "8px 10px", background: CARD_BG2,
-            borderRadius: 9, fontSize: 11, color: MUTED, lineHeight: 1.6,
-          }}>
-            {project.notes.slice(0, 120)}{project.notes.length > 120 ? "…" : ""}
+      {/* ── Col 2, row 2: קבצים אחרונים ─────────────────────────────────── */}
+      <Card style={{ gridColumn: 2, gridRow: 2 }}>
+        <CardTitle>קבצים אחרונים</CardTitle>
+        {project.files && project.files.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {project.files.slice(-4).reverse().map(f => (
+              <div key={f.name} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "7px 10px", borderRadius: 9, background: CARD_BG2,
+              }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>
+                  {f.name.toLowerCase().endsWith(".mp3") || f.name.toLowerCase().endsWith(".wav") ? "🎵" : "📄"}
+                </span>
+                <span style={{
+                  fontSize: 11, color: TEXT2, fontWeight: 600,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
+                }}>
+                  {f.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>
+            אין קבצים
           </div>
         )}
+        <button
+          onClick={() => onTabChange("קבצים")}
+          style={{
+            marginTop: 10, width: "100%", padding: "8px 10px", borderRadius: 9,
+            background: "transparent", border: `1px solid ${BORDER2}`,
+            color: TEXT2, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+            transition: "none",
+          }}
+        >
+          עבור לכל הקבצים ←
+        </button>
       </Card>
 
     </div>
