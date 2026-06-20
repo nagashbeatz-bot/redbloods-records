@@ -127,7 +127,7 @@ export default function AppShell({ children, topRight }: { children: React.React
               background: "#141414",
               borderBottom: "1px solid rgba(255,255,255,0.07)",
               display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: isMobile ? "0 14px" : "0 28px",
+              padding: "0 14px",
               position: "sticky", top: 0, zIndex: 40,
             }}
           >
