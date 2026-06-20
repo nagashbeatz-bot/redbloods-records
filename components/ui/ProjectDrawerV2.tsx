@@ -92,7 +92,7 @@ function Arc({ pct, accent, size = 118 }: { pct: number; accent: string; size?: 
   const circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
   return (
-    <svg width={size} height={size} style={{ transform: "rotate(-90deg)", display: "block" }}>
+    <svg width={size} height={size} overflow="visible" style={{ transform: "rotate(-90deg)", display: "block" }}>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={11} />
       <circle
         cx={cx} cy={cy} r={r} fill="none"
@@ -120,7 +120,7 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 function CardTitle({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: 11, fontWeight: 800, color: LABEL,
+      fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.70)",
       textTransform: "uppercase", letterSpacing: "0.13em", marginBottom: 16,
     }}>
       {children}
@@ -823,18 +823,23 @@ function OverviewContent({
         <CardTitle>התקדמות כללית</CardTitle>
         <div style={{ position: "relative", width: 118, height: 118, flexShrink: 0, marginBottom: 12 }}>
           <Arc pct={pct} accent={accent} size={118} />
+          {/* pct% — geometric center of circle */}
           <div style={{
-            position: "absolute", inset: 0,
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
+            position: "absolute", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            fontSize: 29, fontWeight: 900, color: TEXT, letterSpacing: -1, lineHeight: 1,
             pointerEvents: "none",
-            transform: "translateY(6px)",
-          }}>
-            <div style={{ fontSize: 29, fontWeight: 900, color: TEXT, letterSpacing: -1, lineHeight: 1 }}>{pct}%</div>
-            <div style={{ fontSize: 9, color: LABEL, textTransform: "uppercase", letterSpacing: "0.12em", marginTop: 3 }}>סיום</div>
-          </div>
+          }}>{pct}%</div>
+          {/* "סיום" — below the number, does not affect centering */}
+          <div style={{
+            position: "absolute", top: "calc(50% + 17px)", left: "50%",
+            transform: "translateX(-50%)",
+            fontSize: 9, color: "rgba(255,255,255,0.55)", textTransform: "uppercase",
+            letterSpacing: "0.12em", whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}>סיום</div>
         </div>
-        <div style={{ fontSize: 13, color: TEXT2, fontWeight: 700, marginBottom: 16 }}>{project.status}</div>
+        <div style={{ fontSize: 13, color: TEXT, fontWeight: 700, marginBottom: 16 }}>{project.status}</div>
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 9 }}>
           {[
             { label: "סשנים שהתקיימו", val: `${sessDone} / ${sessions.length || 0}`, color: BLUE },
