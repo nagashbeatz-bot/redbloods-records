@@ -92,7 +92,7 @@ function Arc({ pct, accent, size = 118 }: { pct: number; accent: string; size?: 
   const circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
   return (
-    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+    <svg width={size} height={size} style={{ transform: "rotate(-90deg)", display: "block" }}>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={11} />
       <circle
         cx={cx} cy={cy} r={r} fill="none"
@@ -261,6 +261,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             from { transform: scale(0.96) translateY(16px); opacity: 0; }
             to   { transform: scale(1)    translateY(0);    opacity: 1; }
           }
+          .v2-upload-overlay { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+          .v2-upload-overlay > div { width: 100%; height: 100%; }
+          .v2-upload-overlay button { width: 100% !important; height: 100% !important; border-radius: 0 !important; }
         `}</style>
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -580,7 +583,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               <span style={{ fontSize: 14, fontWeight: 800, color: BRAND, lineHeight: 1, pointerEvents: "none" }}>
                 העלאת קובץ
               </span>
-              <div style={{ position: "absolute", inset: 0, opacity: 0 }}>
+              <div className="v2-upload-overlay">
                 <UploadButton
                   projectId={project.id}
                   projectName={project.name}
