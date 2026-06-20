@@ -333,7 +333,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             {/* ── Info + Stats ── */}
             <div dir="rtl" style={{
               display: "flex", flexDirection: "column",
-              paddingTop: 6,
+              paddingTop: 6, paddingRight: 20,
             }}>
               {/* Name */}
               <div style={{
@@ -360,12 +360,12 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               </div>
 
               {/* Stats — 2×2 grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 165px))", gap: 10 }}>
 
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
-                  padding: "14px 16px", minHeight: 84,
+                  padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>סטטוס</div>
@@ -377,7 +377,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${dlColor !== TEXT2 ? dlColor + "45" : BORDER2}`,
-                  padding: "14px 16px", minHeight: 84,
+                  padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>תאריך יעד</div>
@@ -389,7 +389,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
-                  padding: "14px 16px", minHeight: 84,
+                  padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>יתרה</div>
@@ -404,7 +404,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 <div style={{
                   background: CARD_BG2, borderRadius: 16,
                   border: `1px solid ${BORDER2}`,
-                  padding: "14px 16px", minHeight: 84,
+                  padding: "11px 14px",
                   display: "flex", flexDirection: "column", justifyContent: "space-between",
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.13em" }}>מחיר מוסכם</div>
@@ -418,7 +418,6 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
 
             {/* ── Player column ── */}
             <div style={{
-              width: 480, flexShrink: 0,
               display: "flex", flexDirection: "column", gap: 10,
             }}>
               {/* Controls row */}
