@@ -239,7 +239,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   // ── Panel ──────────────────────────────────────────────────────────────────
 
   return createPortal(
-    <div dir="rtl" style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
+    <div dir="rtl" style={{ position: "fixed", top: 60, bottom: 0, left: 0, right: 248, zIndex: 99999 }}>
 
       {/* Backdrop */}
       <div
@@ -253,7 +253,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
 
       {/* Panel */}
       <div style={{
-        position: "absolute", inset: 14,
+        position: "absolute", inset: 10,
         background: PANEL_BG,
         borderRadius: 22,
         zIndex: 100000,
