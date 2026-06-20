@@ -795,6 +795,7 @@ export default function DashboardDesignPreview() {
       position: "fixed", inset: 0, background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
       display: "flex", flexDirection: "column",
+      transition: "none",
     }}>
       {/* ── Inner row: sidebar + main ── */}
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
