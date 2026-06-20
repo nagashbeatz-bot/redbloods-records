@@ -720,85 +720,15 @@ function OverviewContent({
   return (
     <div style={{
       display: "grid",
-      gridTemplateColumns: "220px 1fr 1fr 1fr",
+      gridTemplateColumns: "1fr 1fr 1fr",
       gridTemplateRows: "1fr 1fr",
       gap: 14,
       height: "100%",
       minHeight: 0,
     }}>
 
-      {/* ── SIDEBAR ────────────────────────────────────────────────────── */}
-      <div style={{ gridColumn: 1, gridRow: "1 / 3", display: "flex", flexDirection: "column", gap: 14 }}>
-
-        <Card style={{ flex: "none" }}>
-          <CardTitle>פעולות מהירות</CardTitle>
-          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            {([
-              { icon: "🎧", label: "LISTEN דמו",    color: BRAND },
-              { icon: "📅", label: "פתיחת יומן",    color: BLUE },
-              { icon: "📦", label: "פתיחה Dropbox", color: BLUE },
-              { icon: "✦",  label: "שלח דוח AI",   color: "#A855F7" },
-              { icon: "📄", label: "יצירת דוח",     color: MUTED },
-              { icon: "⊕",  label: "העתק פרויקט",  color: MUTED },
-            ]).map(({ icon, label, color }) => (
-              <button
-                key={label}
-                disabled
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 13px", borderRadius: 12,
-                  background: `${color}0A`, border: `1px solid ${color}22`,
-                  color, fontSize: 13, fontWeight: 600,
-                  cursor: "not-allowed", fontFamily: "inherit",
-                  textAlign: "right", width: "100%",
-                }}
-              >
-                <span style={{ fontSize: 16 }}>{icon}</span>{label}
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <Card style={{ flex: 1 }}>
-          <CardTitle>צוות</CardTitle>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
-            {[
-              { name: "הפקה",      role: "אחראי פרויקט", init: "V" },
-              { name: "איש סאונד", role: "מיקס / מאסטר", init: "S" },
-            ].map(({ name, role, init }) => (
-              <div key={name} style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: "12px 14px", borderRadius: 13,
-                background: CARD_BG2, border: `1px solid ${BORDER}`,
-              }}>
-                <div style={{
-                  width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
-                  background: BRAND_DIM, border: `1.5px solid rgba(220,38,38,0.32)`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 12, fontWeight: 900, color: BRAND,
-                }}>
-                  {init}
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{name}</div>
-                  <div style={{ fontSize: 11, color: LABEL, marginTop: 2 }}>{role}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button disabled style={{
-            marginTop: 12, width: "100%", padding: "11px 14px", borderRadius: 12,
-            background: "transparent", border: `1px dashed ${BORDER2}`,
-            color: MUTED, fontSize: 12, cursor: "not-allowed", fontFamily: "inherit",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-          }}>
-            <span style={{ fontSize: 16 }}>+</span> הוסף חבר צוות
-          </button>
-        </Card>
-      </div>
-
-      {/* ── ROW 1 COL 4: הפעולה הבאה ──────────────────────────────────── */}
-      <Card style={{ gridColumn: 4, gridRow: 1 }}>
+      {/* ── ROW 1 COL 1: הפעולה הבאה ──────────────────────────────────── */}
+      <Card style={{ gridColumn: 1, gridRow: 1 }}>
         <CardTitle>הפעולה הבאה</CardTitle>
         {(() => {
           const next = sessions
@@ -843,8 +773,8 @@ function OverviewContent({
         </div>
       </Card>
 
-      {/* ── ROW 1 COL 2: התקדמות כללית ────────────────────────────────── */}
-      <Card style={{ gridColumn: 2, gridRow: 1, alignItems: "center" }}>
+      {/* ── ROW 1 COL 3: התקדמות כללית ────────────────────────────────── */}
+      <Card style={{ gridColumn: 3, gridRow: 1, alignItems: "center" }}>
         <CardTitle>התקדמות כללית</CardTitle>
         <div style={{ position: "relative", width: 118, height: 118, flexShrink: 0, marginBottom: 12 }}>
           <Arc pct={pct} accent={accent} size={118} />
@@ -882,8 +812,8 @@ function OverviewContent({
         </div>
       </Card>
 
-      {/* ── ROW 2 COL 3-4: פרטים כלליים ───────────────────────────────── */}
-      <Card style={{ gridColumn: "3 / 5", gridRow: 2 }}>
+      {/* ── ROW 2 COL 1-2: פרטים כלליים ───────────────────────────────── */}
+      <Card style={{ gridColumn: "1 / 3", gridRow: 2 }}>
         <CardTitle>פרטים כלליים</CardTitle>
         <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
           {[
@@ -915,8 +845,8 @@ function OverviewContent({
         )}
       </Card>
 
-      {/* ── ROW 1 COL 3: סיכום כספי ────────────────────────────────────── */}
-      <Card style={{ gridColumn: 3, gridRow: 1 }}>
+      {/* ── ROW 1 COL 2: סיכום כספי ────────────────────────────────────── */}
+      <Card style={{ gridColumn: 2, gridRow: 1 }}>
         <CardTitle>סיכום כספי</CardTitle>
         {finLoaded ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
@@ -962,8 +892,8 @@ function OverviewContent({
         )}
       </Card>
 
-      {/* ── ROW 2 COL 2: קבצים אחרונים ────────────────────────────────── */}
-      <Card style={{ gridColumn: 2, gridRow: 2 }}>
+      {/* ── ROW 2 COL 3: קבצים אחרונים ────────────────────────────────── */}
+      <Card style={{ gridColumn: 3, gridRow: 2 }}>
         <CardTitle>קבצים אחרונים</CardTitle>
         {project.files && project.files.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
