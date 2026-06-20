@@ -830,14 +830,6 @@ function OverviewContent({
             fontSize: 29, fontWeight: 900, color: TEXT, letterSpacing: -1, lineHeight: 1,
             pointerEvents: "none",
           }}>{pct}%</div>
-          {/* "סיום" — below the number, does not affect centering */}
-          <div style={{
-            position: "absolute", top: "calc(50% + 17px)", left: "50%",
-            transform: "translateX(-50%)",
-            fontSize: 9, color: "rgba(255,255,255,0.55)", textTransform: "uppercase",
-            letterSpacing: "0.12em", whiteSpace: "nowrap",
-            pointerEvents: "none",
-          }}>סיום</div>
         </div>
         <div style={{ fontSize: 13, color: TEXT, fontWeight: 700, marginBottom: 16 }}>{project.status}</div>
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 9 }}>
