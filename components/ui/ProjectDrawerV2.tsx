@@ -843,59 +843,6 @@ function OverviewContent({
         </div>
       </Card>
 
-      {/* ── ROW 1 COL 3: סטטוס פרויקט ─────────────────────────────────── */}
-      <Card style={{ gridColumn: 3, gridRow: 1 }}>
-        <CardTitle>סטטוס פרויקט</CardTitle>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, flex: 1 }}>
-          {([
-            {
-              icon: "₪",  label: "כספים",
-              val: finLoaded ? (transactions.filter(t => t.type === "income").length > 0 ? "תקין" : "—") : "…",
-              color: transactions.filter(t => t.type === "income").length > 0 ? GREEN : MUTED,
-            },
-            {
-              icon: "⊞", label: "קבצים",
-              val: filesCount > 0 ? String(filesCount) : "—",
-              color: filesCount > 0 ? BLUE : MUTED,
-            },
-            {
-              icon: "◷", label: "סשנים",
-              val: sessions.length > 0 ? `${sessDone}/${sessions.length}` : "—",
-              color: sessions.length > 0 ? BLUE : MUTED,
-            },
-            {
-              icon: "💰", label: "תקציב",
-              val: finLoaded ? `${currency}${agreedPrice.toLocaleString()}` : "…",
-              color: TEXT2,
-            },
-            {
-              icon: "🎛️", label: "הקלטות",
-              val: sessDone > 0 ? "עודכן" : "—",
-              color: sessDone > 0 ? GREEN : MUTED,
-            },
-            {
-              icon: "✓",  label: "בעיות",
-              val: "אין",
-              color: GREEN,
-            },
-          ]).map(({ icon, label, val, color }) => (
-            <div key={label} style={{
-              padding: "13px 14px", borderRadius: 13,
-              background: `${color}0B`, border: `1px solid ${color}22`,
-              display: "flex", flexDirection: "column", gap: 8,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ fontSize: 14, lineHeight: 1 }}>{icon}</span>
-                <span style={{ fontSize: 10, color: MUTED, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.09em" }}>
-                  {label}
-                </span>
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 900, color }}>{val}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
       {/* ── ROW 1 COL 2: התקדמות כללית ────────────────────────────────── */}
       <Card style={{ gridColumn: 2, gridRow: 1, alignItems: "center" }}>
         <CardTitle>התקדמות כללית</CardTitle>
@@ -935,8 +882,8 @@ function OverviewContent({
         </div>
       </Card>
 
-      {/* ── ROW 2 COL 4: פרטים כלליים ─────────────────────────────────── */}
-      <Card style={{ gridColumn: 4, gridRow: 2 }}>
+      {/* ── ROW 2 COL 3-4: פרטים כלליים ───────────────────────────────── */}
+      <Card style={{ gridColumn: "3 / 5", gridRow: 2 }}>
         <CardTitle>פרטים כלליים</CardTitle>
         <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
           {[
@@ -968,8 +915,8 @@ function OverviewContent({
         )}
       </Card>
 
-      {/* ── ROW 2 COL 3: סיכום כספי ────────────────────────────────────── */}
-      <Card style={{ gridColumn: 3, gridRow: 2 }}>
+      {/* ── ROW 1 COL 3: סיכום כספי ────────────────────────────────────── */}
+      <Card style={{ gridColumn: 3, gridRow: 1 }}>
         <CardTitle>סיכום כספי</CardTitle>
         {finLoaded ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
