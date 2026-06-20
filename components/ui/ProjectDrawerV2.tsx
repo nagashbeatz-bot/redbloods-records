@@ -276,11 +276,11 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           <div dir="ltr" style={{
             display: "grid",
             gridTemplateColumns: "200px minmax(0, 580px) 490px",
-            columnGap: 24,
-            justifyContent: "space-between",
+            columnGap: 32,
+            justifyContent: "center",
             marginBottom: 20,
             alignItems: "start",
-            maxWidth: 1600,
+            maxWidth: 1420,
             marginLeft: "auto",
             marginRight: "auto",
           }}>
