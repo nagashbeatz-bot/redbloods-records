@@ -37,7 +37,7 @@ const QuickActionsBtn = (
     >
       <span>⚡</span>
       פעולות מהירות
-      <span style={{ opacity: 0.7 }}>▾</span>
+      <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
     </button>
   </>
 );
