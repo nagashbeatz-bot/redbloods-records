@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
+import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
 import type { Project } from "@/lib/types";
@@ -1211,7 +1212,7 @@ function FinanceContent({
               </select>
             </FieldWrap>
             <FieldWrap label="תאריך">
-              <input type="date" value={fDate} onChange={e => setFDate(e.target.value)} style={inputStyle} />
+              <DatePickerInput value={fDate} onChange={setFDate} style={inputStyle} />
             </FieldWrap>
           </div>
 
