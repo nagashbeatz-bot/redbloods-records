@@ -36,3 +36,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  try {
+    const { id } = await ctx.params;
+    const { error } = await supabase
+      .from("project_actions")
+      .delete()
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

@@ -475,6 +475,12 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
       .catch(() => {});
   }, [projectId]);
 
+  async function handleDeleteAction(actionId: string): Promise<void> {
+    const res = await fetch(`/api/project-actions/${actionId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("מחיקה נכשלה");
+    setProjectActions(prev => prev.filter(a => a.id !== actionId));
+  }
+
   const project = projects.find(p => p.id === projectId);
   if (!mounted || !project || isMobile) return null;
 
@@ -994,6 +1000,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               transactions={transactions}
               sessions={sessions}
               projectActions={projectActions}
+              onDeleteAction={handleDeleteAction}
               agreedPrice={agreedPrice}
               currency={currency}
               finLoaded={finLoaded}
@@ -1102,36 +1109,53 @@ function OverviewContent({
   project, transactions, sessions, projectActions,
   agreedPrice, currency, finLoaded, accent,
   received, totalExp, balance,
-  pct, filesCount, sessDone, statusColor, onTabChange,
+  pct, filesCount, sessDone, statusColor, onTabChange, onDeleteAction,
 }: {
-  project:        Project;
-  transactions:   Transaction[];
-  sessions:       Session[];
-  projectActions: ProjectAction[];
-  agreedPrice:    number;
-  currency:       string;
-  finLoaded:      boolean;
-  accent:         string;
-  received:       number;
-  totalExp:       number;
-  balance:        number;
-  pct:            number;
-  filesCount:     number;
-  sessDone:       number;
-  statusColor:    string;
-  onTabChange:    (t: DrawerTab) => void;
+  project:         Project;
+  transactions:    Transaction[];
+  sessions:        Session[];
+  projectActions:  ProjectAction[];
+  agreedPrice:     number;
+  currency:        string;
+  finLoaded:       boolean;
+  accent:          string;
+  received:        number;
+  totalExp:        number;
+  balance:         number;
+  pct:             number;
+  filesCount:      number;
+  sessDone:        number;
+  statusColor:     string;
+  onTabChange:     (t: DrawerTab) => void;
+  onDeleteAction:  (id: string) => Promise<void>;
 }) {
   const days = daysUntilDeadline(project.deadline);
 
   // ── פיד עדכונים — state ──────────────────────────────────────────────
   const FEED_PAGE_SIZE = 5;
-  const [feedPage, setFeedPage] = useState(0);
+  const [feedPage,         setFeedPage]         = useState(0);
+  const [deletingActionId, setDeletingActionId] = useState<string | null>(null);
+  const [deleteErrorId,    setDeleteErrorId]    = useState<string | null>(null);
+
+  async function handleDeleteFeedAction(actionId: string) {
+    if (!window.confirm("למחוק פעולה זו?")) return;
+    setDeletingActionId(actionId);
+    setDeleteErrorId(null);
+    try {
+      await onDeleteAction(actionId);
+    } catch {
+      setDeleteErrorId(actionId);
+      setTimeout(() => setDeleteErrorId(null), 3000);
+    } finally {
+      setDeletingActionId(null);
+    }
+  }
 
   // אפס עמוד כשמקורות הנתונים משתנים
   useEffect(() => { setFeedPage(0); }, [transactions.length, sessions.length, (project.files ?? []).length, projectActions.length]);
 
   // ── בניית פיד מלא ────────────────────────────────────────────────────
-  type FeedItem = { icon: string; title: string; sub?: string; sortKey: string; displayDate?: string; color: string };
+  type FeedItem = { icon: string; title: string; sub?: string; sortKey: string; displayDate?: string; color: string; actionId?: string };
 
   const txStatusColor = (status: string, type: "income" | "expense"): string => {
     if (status === "התקבל" || status === "שולם") return GREEN;
@@ -1237,6 +1261,7 @@ function OverviewContent({
       sortKey,
       displayDate: fmtDisplayDate(a.action_date ?? a.created_at) ?? "ללא תאריך",
       color: PURPLE,
+      actionId: a.id,
     });
   });
 
@@ -1250,6 +1275,7 @@ function OverviewContent({
 
   const totalFeedPages = Math.max(1, Math.ceil(allFeedItems.length / FEED_PAGE_SIZE));
   const visibleFeedItems = allFeedItems.slice(feedPage * FEED_PAGE_SIZE, (feedPage + 1) * FEED_PAGE_SIZE);
+
 
   return (
     <div style={{
@@ -1281,7 +1307,8 @@ function OverviewContent({
                 <div key={i} style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "11px 13px", borderRadius: 12,
-                  background: CARD_BG2, border: `1px solid ${BORDER}`,
+                  background: CARD_BG2, border: `1px solid ${item.actionId && deleteErrorId === item.actionId ? RED_WARN + "55" : BORDER}`,
+                  transition: "border-color 0.2s",
                 }}>
                   <span style={{ fontSize: 16, flexShrink: 0, color: item.color }}>{item.icon}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1294,10 +1321,32 @@ function OverviewContent({
                         {item.sub.slice(0, 50)}
                       </div>
                     )}
+                    {item.actionId && deleteErrorId === item.actionId && (
+                      <div style={{ fontSize: 11, color: RED_WARN, marginTop: 2 }}>שגיאה במחיקה</div>
+                    )}
                   </div>
                   <span style={{ fontSize: 11, color: TEXT2, flexShrink: 0, fontWeight: 500 }}>
                     {item.displayDate}
                   </span>
+                  {item.actionId && (
+                    <button
+                      onClick={() => handleDeleteFeedAction(item.actionId!)}
+                      disabled={deletingActionId === item.actionId}
+                      title="מחק פעולה"
+                      style={{
+                        flexShrink: 0,
+                        background: "none", border: "none", cursor: deletingActionId === item.actionId ? "default" : "pointer",
+                        color: deletingActionId === item.actionId ? MUTED : "#6B2020",
+                        fontSize: 14, lineHeight: 1, padding: "2px 4px",
+                        borderRadius: 6, opacity: 0.7, fontFamily: "inherit",
+                        transition: "color 0.15s, opacity 0.15s",
+                      }}
+                      onMouseEnter={e => { if (deletingActionId !== item.actionId) { (e.currentTarget as HTMLElement).style.color = RED_WARN; (e.currentTarget as HTMLElement).style.opacity = "1"; } }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#6B2020"; (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+                    >
+                      {deletingActionId === item.actionId ? "…" : "✕"}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
