@@ -1096,18 +1096,27 @@ function OverviewContent({
 
           // Transactions — last 2 by date descending
           if (finLoaded) {
+            const txStatusColor = (status: string, type: "income" | "expense"): string => {
+              if (status === "התקבל" || status === "שולם") return GREEN;
+              if (status === "לא שולם" || status === "בוטל") return type === "expense" ? RED_WARN : MUTED;
+              if (status === "חלקי")  return AMBER;
+              if (status === "צפוי")  return AMBER;
+              return type === "income" ? GREEN : AMBER;
+            };
+            const txLabel = (status: string, type: "income" | "expense"): string => {
+              const kind = type === "income" ? "תשלום" : "הוצאה";
+              return `${status} ${kind}`;
+            };
             [...transactions]
               .filter(tx => tx.date)
               .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
               .slice(0, 2)
               .forEach(tx => items.push({
                 icon: tx.type === "income" ? "₪" : "💸",
-                title: tx.type === "income"
-                  ? `תשלום: ${currency}${tx.amount.toLocaleString()}`
-                  : `הוצאה: ${currency}${tx.amount.toLocaleString()}`,
+                title: `${txLabel(tx.payment_status, tx.type)}: ${currency}${tx.amount.toLocaleString()}`,
                 sub: tx.description || undefined,
                 date: tx.date ?? undefined,
-                color: tx.type === "income" ? GREEN : AMBER,
+                color: txStatusColor(tx.payment_status, tx.type),
               }));
           }
 
