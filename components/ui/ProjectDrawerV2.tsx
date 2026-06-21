@@ -169,6 +169,183 @@ function StatCard({
   );
 }
 
+// ─── SendModal ────────────────────────────────────────────────────────────────
+const RECIPIENT_ROLES = [
+  { label: "לאמן",             value: "artist" },
+  { label: "ללקוח",            value: "client" },
+  { label: "לאיש סאונד",       value: "sound_engineer" },
+  { label: "להפקה חיצונית",    value: "external_producer" },
+] as const;
+
+const CONTENT_TYPES = [
+  { label: "גרסה",  value: "גרסה" },
+  { label: "לינק",  value: "לינק" },
+  { label: "קובץ",  value: "קובץ" },
+  { label: "הערה",  value: "הערה" },
+] as const;
+
+interface SendModalProps {
+  projectId:   string;
+  artistName:  string;
+  onClose:     () => void;
+}
+
+function SendModal({ projectId, artistName, onClose }: SendModalProps) {
+  const [recipientRole, setRecipientRole] = useState("artist");
+  const [contentType,   setContentType]   = useState("גרסה");
+  const [link,          setLink]          = useState("");
+  const [notes,         setNotes]         = useState("");
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState<string | null>(null);
+
+  const recipientName = recipientRole === "artist" || recipientRole === "client"
+    ? artistName : "";
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/project-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          actionType:    "sent",
+          contentType,
+          recipientRole,
+          recipientName,
+          dropboxUrl:    link || null,
+          notes:         notes || null,
+          actionDate:    new Date().toISOString().slice(0, 10),
+          status:        "pending_feedback",
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as { error?: string }).error ?? "שגיאה בשמירה");
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inpStyle: React.CSSProperties = {
+    width: "100%", padding: "10px 13px", borderRadius: 10,
+    background: CARD_BG2, border: `1px solid ${BORDER2}`,
+    color: TEXT, fontSize: 13, fontFamily: "inherit",
+    outline: "none", boxSizing: "border-box",
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: LABEL,
+    textTransform: "uppercase", letterSpacing: "0.1em",
+    marginBottom: 6, display: "block",
+  };
+
+  return createPortal(
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 199999,
+        background: "rgba(0,0,0,0.65)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <div
+        dir="rtl"
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#111113",
+          border: `1px solid ${BORDER2}`,
+          borderRadius: 20,
+          padding: "28px 28px 24px",
+          width: "min(420px, 92vw)",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.85)",
+          display: "flex", flexDirection: "column", gap: 18,
+        }}
+      >
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>↗ שליחה מהירה</div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none", border: "none", color: MUTED, fontSize: 22,
+              cursor: "pointer", lineHeight: 1, padding: 0,
+            }}
+          >✕</button>
+        </div>
+
+        {/* לאן */}
+        <div>
+          <label style={labelStyle}>לאן</label>
+          <select value={recipientRole} onChange={e => setRecipientRole(e.target.value)} style={inpStyle}>
+            {RECIPIENT_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </div>
+
+        {/* מה */}
+        <div>
+          <label style={labelStyle}>מה נשלח</label>
+          <select value={contentType} onChange={e => setContentType(e.target.value)} style={inpStyle}>
+            {CONTENT_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </div>
+
+        {/* לינק */}
+        <div>
+          <label style={labelStyle}>לינק (אופציונלי)</label>
+          <input
+            type="url"
+            placeholder="https://..."
+            value={link}
+            onChange={e => setLink(e.target.value)}
+            style={inpStyle}
+          />
+        </div>
+
+        {/* הערות */}
+        <div>
+          <label style={labelStyle}>הערות (אופציונלי)</label>
+          <textarea
+            placeholder="הערה חופשית..."
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={2}
+            style={{ ...inpStyle, resize: "vertical" }}
+          />
+        </div>
+
+        {error && (
+          <div style={{ fontSize: 12, color: RED_WARN, background: "rgba(239,68,68,0.1)", borderRadius: 8, padding: "8px 12px" }}>
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            padding: "12px 0", borderRadius: 12, border: "none",
+            background: saving ? MUTED : "#8B5CF6",
+            color: "#fff", fontWeight: 800, fontSize: 14,
+            cursor: saving ? "not-allowed" : "pointer",
+            fontFamily: "inherit",
+            boxShadow: saving ? "none" : "0 4px 18px rgba(139,92,246,0.45)",
+            transition: "none",
+          }}
+        >
+          {saving ? "שומר..." : "שמור שליחה"}
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const { projects, refresh } = useProjects();
@@ -188,6 +365,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [sessions,       setSessions]       = useState<Session[]>([]);
   const [mounted,        setMounted]        = useState(false);
   const [scheduleAction, setScheduleAction] = useState<ActionDef | null>(null);
+  const [showSendModal,  setShowSendModal]  = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -571,16 +749,16 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           {/* ── Quick Actions ─────────────────────────────────────────────── */}
           <div dir="rtl" style={{ display: "flex", gap: 12, marginBottom: 14 }}>
             {([
-              { label: "סשן חדש", icon: "📅", color: BLUE },
-              { label: "תשלום",   icon: "₪",  color: GREEN },
-              { label: "הוצאה",   icon: "⊖",  color: AMBER },
-            ] as { label: string; icon: string; color: string }[]).map(({ label, icon, color }) => (
+              { label: "שלח",     icon: "↗",  color: "#8B5CF6", action: "send" },
+              { label: "סשן חדש", icon: "📅", color: BLUE,      action: "session" },
+              { label: "תשלום",   icon: "₪",  color: GREEN,     action: "income" },
+            ] as { label: string; icon: string; color: string; action: string }[]).map(({ label, icon, color, action }) => (
               <button
                 key={label}
                 onClick={() => {
-                  if (label === "סשן חדש") { setScheduleAction(ACTIONS[0]); return; }
-                  const mode = label === "תשלום" ? "income" : "expense";
-                  setQuickTxMode(mode); setQuickTxSeq(s => s + 1); setQuickTxOpen(true);
+                  if (action === "send")    { setShowSendModal(true); return; }
+                  if (action === "session") { setScheduleAction(ACTIONS[0]); return; }
+                  setQuickTxMode("income"); setQuickTxSeq(s => s + 1); setQuickTxOpen(true);
                 }}
                 style={{
                   flex: 1, height: 74, borderRadius: 16,
@@ -602,8 +780,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   e.currentTarget.style.borderColor = `${color}35`;
                 }}
               >
-                <span style={{ fontSize: 26, lineHeight: 1 }}>{icon}</span>
-                <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1 }}>+ {label}</span>
+                <span style={{ fontSize: action === "send" ? 22 : 26, lineHeight: 1, fontWeight: action === "send" ? 700 : 400 }}>{icon}</span>
+                <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1 }}>{action === "send" ? label : `+ ${label}`}</span>
               </button>
             ))}
 
@@ -772,6 +950,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               .catch(() => {});
             setScheduleAction(null);
           }}
+        />
+      )}
+      {showSendModal && (
+        <SendModal
+          projectId={projectId}
+          artistName={project.artist}
+          onClose={() => setShowSendModal(false)}
         />
       )}
     </div>,
