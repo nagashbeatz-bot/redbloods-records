@@ -1003,6 +1003,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   })
                   .catch(() => {});
               }}
+              onPriceUpdate={(newPrice: number) => setAgreedPrice(newPrice)}
             />
           ) : activeTab === "סשנים" ? (
             <SessionsContent sessions={sessions} sessDone={sessDone} />
@@ -1675,7 +1676,7 @@ function QuickTransactionModal({
 // ─── FinanceContent ────────────────────────────────────────────────────────────
 function FinanceContent({
   transactions, agreedPrice, currency, finLoaded, received, totalExp, balance,
-  projectId, initialFormType, onTxAdded,
+  projectId, initialFormType, onTxAdded, onPriceUpdate,
 }: {
   transactions:    Transaction[];
   agreedPrice:     number;
@@ -1687,10 +1688,39 @@ function FinanceContent({
   projectId:       string;
   initialFormType: "income" | "expense";
   onTxAdded:       () => void;
+  onPriceUpdate:   (newPrice: number) => void;
 }) {
   const [deletingTxId,    setDeletingTxId]    = useState<string | null>(null);
   const [txActionLoading, setTxActionLoading] = useState<string | null>(null);
   const [statusMenuTxId,  setStatusMenuTxId]  = useState<string | null>(null);
+
+  // ── edit agreed price ──────────────────────────────────────────────
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceInput,   setPriceInput]   = useState("");
+  const [priceSaving,  setPriceSaving]  = useState(false);
+  const [priceFeedback, setPriceFeedback] = useState<"" | "saved" | "error">("");
+
+  async function handleSavePrice() {
+    const val = Number(priceInput.replace(/,/g, ""));
+    if (!priceInput.trim() || isNaN(val) || val < 0) { setPriceFeedback("error"); return; }
+    setPriceSaving(true);
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "settings", projectId, agreedPrice: val }),
+      });
+      if (!res.ok) throw new Error();
+      onPriceUpdate(val);
+      setEditingPrice(false);
+      setPriceFeedback("saved");
+      setTimeout(() => setPriceFeedback(""), 2000);
+    } catch {
+      setPriceFeedback("error");
+    } finally {
+      setPriceSaving(false);
+    }
+  }
 
   async function handleDeleteTx(id: string) {
     setTxActionLoading(id);
@@ -1741,20 +1771,80 @@ function FinanceContent({
 
       {/* ── KPI row ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-        {kpis.map(({ label, value, color, sub }) => (
-          <div key={label} style={{
-            background: `${color}0D`, borderRadius: 16,
-            border: `1px solid ${color}28`, padding: "18px 20px",
-          }}>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.62)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 10 }}>
-              {label}
+        {kpis.map(({ label, value, color, sub }) => {
+          const isAgreed = label === "מחיר מוסכם";
+          return (
+            <div key={label} style={{
+              background: `${color}0D`, borderRadius: 16,
+              border: `1px solid ${color}28`, padding: "18px 20px",
+              position: "relative",
+            }}>
+              {/* Header row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.62)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em" }}>
+                  {label}
+                </div>
+                {isAgreed && !editingPrice && (
+                  <button
+                    onClick={() => { setPriceInput(agreedPrice > 0 ? String(agreedPrice) : ""); setEditingPrice(true); setPriceFeedback(""); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 12, padding: 0, fontFamily: "inherit" }}
+                    title="ערוך מחיר מוסכם"
+                  >✏️</button>
+                )}
+              </div>
+
+              {/* Value or edit input */}
+              {isAgreed && editingPrice ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <input
+                    autoFocus
+                    type="number"
+                    min="0"
+                    value={priceInput}
+                    onChange={e => { setPriceInput(e.target.value); setPriceFeedback(""); }}
+                    onKeyDown={e => { if (e.key === "Enter") handleSavePrice(); if (e.key === "Escape") setEditingPrice(false); }}
+                    style={{
+                      width: "100%", padding: "7px 10px", borderRadius: 8, fontSize: 18, fontWeight: 900,
+                      background: "rgba(255,255,255,0.07)", border: `1.5px solid ${priceFeedback === "error" ? RED_WARN : BORDER2}`,
+                      color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                    }}
+                  />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={handleSavePrice}
+                      disabled={priceSaving}
+                      style={{
+                        flex: 1, padding: "6px 0", borderRadius: 7, fontSize: 12, fontWeight: 700,
+                        background: GREEN, border: "none", color: "#fff", cursor: priceSaving ? "default" : "pointer",
+                        fontFamily: "inherit", opacity: priceSaving ? 0.7 : 1,
+                      }}
+                    >{priceSaving ? "…" : "שמור"}</button>
+                    <button
+                      onClick={() => { setEditingPrice(false); setPriceFeedback(""); }}
+                      style={{
+                        flex: 1, padding: "6px 0", borderRadius: 7, fontSize: 12, fontWeight: 700,
+                        background: "none", border: `1px solid ${BORDER2}`, color: TEXT2,
+                        cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >בטל</button>
+                  </div>
+                  {priceFeedback === "error" && (
+                    <div style={{ fontSize: 11, color: RED_WARN }}>ערך לא תקין</div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1, marginBottom: 7 }}>
+                    {finLoaded ? `${currency}${value.toLocaleString()}` : "…"}
+                  </div>
+                  <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>
+                    {isAgreed && priceFeedback === "saved" ? <span style={{ color: GREEN }}>✓ נשמר</span> : sub}
+                  </div>
+                </>
+              )}
             </div>
-            <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1, marginBottom: 7 }}>
-              {finLoaded ? `${currency}${value.toLocaleString()}` : "…"}
-            </div>
-            <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>{sub}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── body: form right | incomes | expenses ── */}
