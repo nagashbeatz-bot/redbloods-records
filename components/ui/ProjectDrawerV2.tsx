@@ -76,6 +76,11 @@ const WAVE_H = [
   15,12,22,7,18,12,9,15,22,12,20,7,12,26,9,15,12,18,9,15,
 ];
 
+function fmt(s: number): string {
+  const m = Math.floor(s / 60);
+  return `${m}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
+}
+
 function accentForType(t: string): string {
   if (t === "EP")     return "#A855F7";
   if (t === "אלבום") return "#EC4899";
@@ -766,29 +771,53 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   </div>
 
                   {latestFile && (
-                    <div style={{ fontSize: 12, color: MUTED, fontWeight: 700, flexShrink: 0 }}>—:——</div>
+                    <div style={{ fontSize: 12, color: MUTED, fontWeight: 700, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+                      {isPlaying || (player?.track?.projectId === projectId && (player?.currentTime ?? 0) > 0)
+                        ? `${fmt(player?.currentTime ?? 0)} / ${player?.duration ? fmt(player.duration) : "--:--"}`
+                        : "--:--"}
+                    </div>
                   )}
                 </div>
 
-                {/* Waveform — taller bars */}
-                <svg
-                  width="100%" height="44"
-                  viewBox="0 0 440 44"
-                  preserveAspectRatio="none"
-                  style={{ opacity: latestFile ? 0.72 : 0.18, display: "block" }}
-                >
-                  {WAVE_H.map((h, i) => (
-                    <rect
-                      key={i}
-                      x={i * 11}
-                      y={(44 - h) / 2}
-                      width={4.5}
-                      height={h}
-                      fill={isPlaying ? BRAND : MUTED}
-                      rx={2.5}
-                    />
-                  ))}
-                </svg>
+                {/* Waveform — progress + seek */}
+                {(() => {
+                  const thisTrack = player?.track?.projectId === projectId;
+                  const wavePct   = thisTrack && (player?.duration ?? 0) > 0
+                    ? (player!.currentTime / player!.duration)
+                    : 0;
+                  return (
+                    <svg
+                      width="100%" height="44"
+                      viewBox="0 0 440 44"
+                      preserveAspectRatio="none"
+                      style={{ display: "block", cursor: latestFile ? "pointer" : "default" }}
+                      onClick={latestFile && player && (player.duration ?? 0) > 0 ? (e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        player.seek(((e.clientX - rect.left) / rect.width) * player.duration);
+                      } : undefined}
+                    >
+                      {WAVE_H.map((h, i) => {
+                        const barPct = i / WAVE_H.length;
+                        const fill = !latestFile
+                          ? MUTED
+                          : wavePct > 0 && barPct <= wavePct
+                            ? BRAND
+                            : wavePct > 0
+                              ? "rgba(220,38,38,0.22)"
+                              : isPlaying ? BRAND : MUTED;
+                        return (
+                          <rect
+                            key={i}
+                            x={i * 11} y={(44 - h) / 2}
+                            width={4.5} height={h}
+                            fill={fill} rx={2.5}
+                            opacity={!latestFile ? 0.18 : 1}
+                          />
+                        );
+                      })}
+                    </svg>
+                  );
+                })()}
               </div>
             </div>
           </div>
