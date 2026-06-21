@@ -1236,7 +1236,7 @@ function OverviewContent({
                       </div>
                     )}
                   </div>
-                  <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: TEXT2, flexShrink: 0, fontWeight: 500 }}>
                     {item.displayDate}
                   </span>
                 </div>
