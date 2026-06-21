@@ -727,18 +727,6 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             }}>
               {/* Controls row */}
               <div dir="ltr" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <Link
-                  href={`/projects/${projectId}`}
-                  target="_blank"
-                  style={{
-                    fontSize: 12, color: TEXT2, textDecoration: "none",
-                    border: `1px solid ${BORDER2}`, borderRadius: 10, padding: "7px 14px",
-                    display: "flex", alignItems: "center", gap: 6,
-                    background: CARD_BG2, whiteSpace: "nowrap", fontWeight: 600,
-                  }}
-                >
-                  פתח עמוד מלא ↗
-                </Link>
                 <button
                   onClick={onClose}
                   style={{
