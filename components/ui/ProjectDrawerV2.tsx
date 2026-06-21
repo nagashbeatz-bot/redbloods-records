@@ -1813,10 +1813,10 @@ function FinanceContent({
     if (!cleaned || isNaN(val) || val < 0) { setPriceFeedback("error"); return; }
     setPriceSaving(true);
     try {
-      const res = await fetch("/api/transactions", {
+      const res = await fetch(`/api/transactions?projectId=${encodeURIComponent(projectId)}&type=settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "settings", projectId, agreedPrice: val }),
+        body: JSON.stringify({ agreedPrice: val }),
       });
       if (!res.ok) throw new Error();
       onPriceUpdate(val);
