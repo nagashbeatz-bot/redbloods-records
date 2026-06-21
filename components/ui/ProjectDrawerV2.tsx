@@ -1351,7 +1351,8 @@ function OverviewContent({
                 <div key={i} style={{
                   position: "relative",
                   display: "flex", alignItems: "center", gap: 12,
-                  padding: "11px 13px", borderRadius: 12,
+                  padding: item.actionId ? "11px 13px 11px 36px" : "11px 13px",
+                  borderRadius: 12,
                   background: CARD_BG2, border: `1px solid ${item.actionId && deleteErrorId === item.actionId ? RED_WARN + "55" : BORDER}`,
                   transition: "border-color 0.2s",
                 }}>
@@ -1383,16 +1384,18 @@ function OverviewContent({
                       title="מחק פעולה"
                       style={{
                         position: "absolute", top: "50%", transform: "translateY(-50%)",
-                        left: 6,
+                        left: 10, zIndex: 2,
                         background: "none", border: "none",
                         cursor: deletingActionId === item.actionId ? "default" : "pointer",
-                        color: deletingActionId === item.actionId ? MUTED : "#6B2020",
-                        fontSize: 13, lineHeight: 1, padding: "2px 5px",
-                        borderRadius: 5, opacity: 0.55, fontFamily: "inherit",
+                        color: MUTED,
+                        fontSize: 13, lineHeight: 1, padding: "4px 6px",
+                        borderRadius: 6, opacity: 0.7, fontFamily: "inherit",
+                        minWidth: 22, minHeight: 22,
+                        display: "flex", alignItems: "center", justifyContent: "center",
                         transition: "color 0.15s, opacity 0.15s",
                       }}
                       onMouseEnter={e => { if (deletingActionId !== item.actionId) { (e.currentTarget as HTMLElement).style.color = RED_WARN; (e.currentTarget as HTMLElement).style.opacity = "1"; } }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#6B2020"; (e.currentTarget as HTMLElement).style.opacity = "0.55"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED; (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
                     >
                       {deletingActionId === item.actionId ? "…" : "✕"}
                     </button>
