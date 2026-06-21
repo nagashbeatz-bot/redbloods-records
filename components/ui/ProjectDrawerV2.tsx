@@ -171,6 +171,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [activeTab,       setActiveTab]       = useState<DrawerTab>("סקירה");
   const [financeFormType, setFinanceFormType] = useState<"income" | "expense">("income");
   const [financeFormSeq,  setFinanceFormSeq]  = useState(0);
+  const [quickTxOpen,  setQuickTxOpen]  = useState(false);
+  const [quickTxMode,  setQuickTxMode]  = useState<"income" | "expense">("income");
+  const [quickTxSeq,   setQuickTxSeq]   = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [agreedPrice,  setAgreedPrice]  = useState(0);
   const [currency,     setCurrency]     = useState("₪");
@@ -560,13 +563,17 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           {/* ── Quick Actions ─────────────────────────────────────────────── */}
           <div dir="rtl" style={{ display: "flex", gap: 12, marginBottom: 14 }}>
             {([
-              { label: "סשן חדש", icon: "📅", color: BLUE,  tab: "סשנים" as DrawerTab, mode: null },
-              { label: "תשלום",   icon: "₪",  color: GREEN, tab: "כספים" as DrawerTab, mode: "income" as const },
-              { label: "הוצאה",   icon: "⊖",  color: AMBER, tab: "כספים" as DrawerTab, mode: "expense" as const },
-            ] as { label: string; icon: string; color: string; tab: DrawerTab; mode: "income" | "expense" | null }[]).map(({ label, icon, color, tab, mode }) => (
+              { label: "סשן חדש", icon: "📅", color: BLUE },
+              { label: "תשלום",   icon: "₪",  color: GREEN },
+              { label: "הוצאה",   icon: "⊖",  color: AMBER },
+            ] as { label: string; icon: string; color: string }[]).map(({ label, icon, color }) => (
               <button
                 key={label}
-                onClick={() => { setActiveTab(tab); if (mode) { setFinanceFormType(mode); setFinanceFormSeq(s => s + 1); } }}
+                onClick={() => {
+                  if (label === "סשן חדש") { setActiveTab("סשנים"); return; }
+                  const mode = label === "תשלום" ? "income" : "expense";
+                  setQuickTxMode(mode); setQuickTxSeq(s => s + 1); setQuickTxOpen(true);
+                }}
                 style={{
                   flex: 1, height: 74, borderRadius: 16,
                   background: `linear-gradient(160deg, ${color}12 0%, ${color}08 100%)`,
@@ -721,6 +728,26 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {/* ── Quick Transaction Modal ── */}
+      {quickTxOpen && (
+        <QuickTransactionModal
+          mode={quickTxMode}
+          projectId={projectId}
+          currency={currency}
+          formKey={quickTxSeq}
+          onSaved={() => {
+            fetch(`/api/transactions?projectId=${projectId}`)
+              .then(r => r.json())
+              .then(d => {
+                setTransactions(d.transactions ?? []);
+                setAgreedPrice(d.agreedPrice ?? 0);
+              })
+              .catch(() => {});
+          }}
+          onClose={() => setQuickTxOpen(false)}
+        />
+      )}
     </div>,
     document.body
   );
@@ -1061,46 +1088,28 @@ function FieldWrap({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function FinanceContent({
-  transactions, agreedPrice, currency, finLoaded, received, totalExp, balance,
-  projectId, initialFormType, onTxAdded,
+// ─── QuickTransactionForm ─────────────────────────────────────────────────────
+// Self-contained form card. Used in FinanceContent tab and QuickTransactionModal.
+function QuickTransactionForm({
+  initialType, projectId, currency, onSaved,
 }: {
-  transactions:    Transaction[];
-  agreedPrice:     number;
-  currency:        string;
-  finLoaded:       boolean;
-  received:        number;
-  totalExp:        number;
-  balance:         number;
-  projectId:       string;
-  initialFormType: "income" | "expense";
-  onTxAdded:       () => void;
+  initialType: "income" | "expense";
+  projectId:   string;
+  currency:    string;
+  onSaved:     () => void;
 }) {
-  const [formType, setFormType] = useState<"income" | "expense">(initialFormType);
-
-  useEffect(() => { setFormType(initialFormType); }, [initialFormType]);
-  const [fAmount,  setFAmount]  = useState("");
-  const [fStatus,  setFStatus]  = useState<PaymentStatus>("צפוי");
-  const [fDate,    setFDate]    = useState("");
-  const [fMethod,  setFMethod]  = useState("");
-  const [fNote,    setFNote]    = useState("");
+  const [formType,    setFormType]    = useState<"income" | "expense">(initialType);
+  const [fAmount,     setFAmount]     = useState("");
+  const [fStatus,     setFStatus]     = useState<PaymentStatus>("צפוי");
+  const [fDate,       setFDate]       = useState("");
+  const [fMethod,     setFMethod]     = useState("");
+  const [fNote,       setFNote]       = useState("");
   const [fCat,        setFCat]        = useState("");
   const [fReceiptRef, setFReceiptRef] = useState("");
-  const [saving,   setSaving]   = useState(false);
-  const [saveErr,  setSaveErr]  = useState("");
+  const [saving,      setSaving]      = useState(false);
+  const [saveErr,     setSaveErr]     = useState("");
 
-  const incomes  = transactions.filter(t => t.type === "income");
-  const expenses = transactions.filter(t => t.type === "expense");
-
-  const pctOf = (n: number) => agreedPrice > 0 ? Math.round(n / agreedPrice * 100) : 0;
-
-  const kpis = [
-    { label: "מחיר מוסכם", value: agreedPrice,       color: TEXT,     sub: "סכום כולל" },
-    { label: "התקבל",       value: received,          color: GREEN,    sub: `${pctOf(received)}% מהסכום` },
-    { label: "הוצאות",      value: totalExp,          color: AMBER,    sub: `${pctOf(totalExp)}% מהסכום` },
-    { label: "יתרה לקבלה", value: Math.abs(balance), color: balance > 0 ? RED_WARN : GREEN,
-      sub: balance > 0 ? "טרם שולם" : balance < 0 ? "שולם ביתר" : "שולם במלואו ✓" },
-  ];
+  const accentForm = formType === "income" ? GREEN : AMBER;
 
   async function handleSave() {
     if (!fAmount || saving) return;
@@ -1125,7 +1134,7 @@ function FinanceContent({
       if (!res.ok) { setSaveErr("שגיאה בשמירה"); return; }
       setFAmount(""); setFDate(""); setFMethod(""); setFNote(""); setFCat(""); setFReceiptRef("");
       setFStatus("צפוי");
-      onTxAdded();
+      onSaved();
     } catch {
       setSaveErr("שגיאה בשמירה");
     } finally {
@@ -1133,15 +1142,224 @@ function FinanceContent({
     }
   }
 
-  const accentForm = formType === "income" ? GREEN : AMBER;
+  return (
+    <div style={{
+      background: CARD_BG, borderRadius: 18,
+      border: `1px solid ${accentForm}30`,
+      padding: "22px 24px",
+      display: "flex", flexDirection: "column", gap: 14,
+      boxShadow: `0 0 0 1px ${accentForm}10`,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 2 }}>
+        {formType === "income" ? "➕ הוספת תשלום" : "➕ הוספת הוצאה"}
+      </div>
+
+      {/* Toggle */}
+      <div style={{
+        display: "flex", gap: 6, padding: 5,
+        background: "rgba(0,0,0,0.30)", borderRadius: 14,
+        border: `1px solid ${BORDER}`,
+      }}>
+        {(["income", "expense"] as const).map(t => {
+          const active = formType === t;
+          const ac = t === "income" ? GREEN : AMBER;
+          return (
+            <button key={t} onClick={() => { setFormType(t); setFMethod(""); setFCat(""); }} style={{
+              flex: 1, padding: "11px 0", borderRadius: 10, cursor: "pointer",
+              background: active ? `${ac}22` : "transparent",
+              border: active ? `1px solid ${ac}55` : "1px solid transparent",
+              color: active ? ac : LABEL,
+              fontSize: 14, fontWeight: 800, fontFamily: "inherit", transition: "none",
+            }}>
+              {t === "income" ? "תשלום" : "הוצאה"}
+            </button>
+          );
+        })}
+      </div>
+
+      <FieldWrap label="סכום *">
+        <input
+          type="text" inputMode="numeric" placeholder="₪ 0"
+          value={fAmount} onChange={e => setFAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+          style={{ ...inputStyle, fontSize: 18, fontWeight: 700, color: accentForm }}
+        />
+      </FieldWrap>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <FieldWrap label="סטטוס">
+          <select className="v2-select" value={fStatus} onChange={e => setFStatus(e.target.value as PaymentStatus)} style={inputStyle}>
+            {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </FieldWrap>
+        <FieldWrap label="תאריך">
+          <DatePickerInput value={fDate} onChange={setFDate} style={inputStyle} />
+        </FieldWrap>
+      </div>
+
+      {formType === "income" ? (
+        <FieldWrap label="אמצעי תשלום">
+          <select className="v2-select" value={fMethod} onChange={e => setFMethod(e.target.value)} style={inputStyle}>
+            <option value="">בחר…</option>
+            {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </FieldWrap>
+      ) : (
+        <FieldWrap label="קטגוריה">
+          <select className="v2-select" value={fCat} onChange={e => setFCat(e.target.value)} style={inputStyle}>
+            <option value="">בחר…</option>
+            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </FieldWrap>
+      )}
+
+      <FieldWrap label="אסמכתא">
+        <div style={{ position: "relative" }}>
+          <input
+            type="url" placeholder="הדבק קישור לאסמכתא…"
+            value={fReceiptRef} onChange={e => setFReceiptRef(e.target.value)}
+            style={{ ...inputStyle, paddingLeft: fReceiptRef.trim() ? 68 : 14 }}
+          />
+          <span style={{
+            position: "absolute", top: "50%", right: 14, transform: "translateY(-50%)",
+            fontSize: 13, opacity: 0.35, pointerEvents: "none", lineHeight: 1,
+          }}>🔗</span>
+          {fReceiptRef.trim() && (
+            <a href={fReceiptRef.trim()} target="_blank" rel="noopener noreferrer" style={{
+              position: "absolute", top: "50%", left: 10, transform: "translateY(-50%)",
+              fontSize: 11, fontWeight: 700, color: "#60A5FA",
+              background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.25)",
+              borderRadius: 6, padding: "3px 8px", textDecoration: "none",
+              whiteSpace: "nowrap", lineHeight: 1.4,
+            }}>פתח</a>
+          )}
+        </div>
+      </FieldWrap>
+
+      <FieldWrap label="הערה / תיאור">
+        <input
+          type="text" placeholder="תיאור קצר…"
+          value={fNote} onChange={e => setFNote(e.target.value)}
+          style={inputStyle}
+        />
+      </FieldWrap>
+
+      {saveErr && (
+        <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, borderRadius: 8, padding: "8px 12px" }}>
+          {saveErr}
+        </div>
+      )}
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          width: "100%", padding: "15px 0", borderRadius: 12,
+          background: !fAmount ? `${accentForm}18` : saving ? `${accentForm}88` : accentForm,
+          border: !fAmount ? `1.5px dashed ${accentForm}44` : "none",
+          color: !fAmount ? accentForm : "#000",
+          fontSize: 15, fontWeight: 900,
+          cursor: saving || !fAmount ? "default" : "pointer",
+          fontFamily: "inherit", transition: "none",
+          opacity: saving ? 0.7 : 1,
+        }}
+      >
+        {saving ? "שומר…" : !fAmount ? "הזן סכום לשמירה" : formType === "income" ? "שמור תשלום ✓" : "שמור הוצאה ✓"}
+      </button>
+    </div>
+  );
+}
+
+// ─── QuickTransactionModal ─────────────────────────────────────────────────────
+function QuickTransactionModal({
+  mode, projectId, currency, formKey, onSaved, onClose,
+}: {
+  mode:      "income" | "expense";
+  projectId: string;
+  currency:  string;
+  formKey:   number;
+  onSaved:   () => void;
+  onClose:   () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const accent = mode === "income" ? GREEN : AMBER;
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 199999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* overlay */}
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)" }} />
+      {/* card */}
+      <div dir="rtl" style={{
+        position: "relative", width: 460, maxHeight: "90vh", overflowY: "auto",
+        borderRadius: 22,
+        background: "linear-gradient(160deg, #12121A 0%, #0E0E14 100%)",
+        border: `1.5px solid ${accent}40`,
+        boxShadow: `0 32px 80px rgba(0,0,0,0.85), 0 0 0 1px ${accent}18`,
+        padding: 4,
+      }}>
+        {/* X close */}
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute", top: 14, left: 14, zIndex: 1,
+            width: 32, height: 32, borderRadius: "50%",
+            background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER2}`,
+            color: TEXT2, fontSize: 16, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "inherit", transition: "none", outline: "none",
+          }}
+        >✕</button>
+        <QuickTransactionForm
+          key={formKey}
+          initialType={mode}
+          projectId={projectId}
+          currency={currency}
+          onSaved={() => { onSaved(); onClose(); }}
+        />
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── FinanceContent ────────────────────────────────────────────────────────────
+function FinanceContent({
+  transactions, agreedPrice, currency, finLoaded, received, totalExp, balance,
+  projectId, initialFormType, onTxAdded,
+}: {
+  transactions:    Transaction[];
+  agreedPrice:     number;
+  currency:        string;
+  finLoaded:       boolean;
+  received:        number;
+  totalExp:        number;
+  balance:         number;
+  projectId:       string;
+  initialFormType: "income" | "expense";
+  onTxAdded:       () => void;
+}) {
+  const incomes  = transactions.filter(t => t.type === "income");
+  const expenses = transactions.filter(t => t.type === "expense");
+
+  const pctOf = (n: number) => agreedPrice > 0 ? Math.round(n / agreedPrice * 100) : 0;
+
+  const kpis = [
+    { label: "מחיר מוסכם", value: agreedPrice,       color: TEXT,     sub: "סכום כולל" },
+    { label: "התקבל",       value: received,          color: GREEN,    sub: `${pctOf(received)}% מהסכום` },
+    { label: "הוצאות",      value: totalExp,          color: AMBER,    sub: `${pctOf(totalExp)}% מהסכום` },
+    { label: "יתרה לקבלה", value: Math.abs(balance), color: balance > 0 ? RED_WARN : GREEN,
+      sub: balance > 0 ? "טרם שולם" : balance < 0 ? "שולם ביתר" : "שולם במלואו ✓" },
+  ];
 
   const CardHdr = ({ children }: { children: React.ReactNode }) => (
     <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 14, letterSpacing: "0.02em" }}>
       {children}
     </div>
   );
-
-
 
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1169,136 +1387,12 @@ function FinanceContent({
       <div style={{ display: "grid", gridTemplateColumns: "360px 1fr 1fr", gap: 14, alignItems: "start" }}>
 
         {/* ── הוספת תשלום (RIGHT in RTL) ── */}
-        <div style={{
-          background: CARD_BG, borderRadius: 18,
-          border: `1px solid ${accentForm}30`,
-          padding: "22px 24px",
-          display: "flex", flexDirection: "column", gap: 14,
-          boxShadow: `0 0 0 1px ${accentForm}10`,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 2 }}>
-            {formType === "income" ? "➕ הוספת תשלום" : "➕ הוספת הוצאה"}
-          </div>
-
-          {/* Toggle */}
-          <div style={{
-            display: "flex", gap: 6, padding: 5,
-            background: "rgba(0,0,0,0.30)", borderRadius: 14,
-            border: `1px solid ${BORDER}`,
-          }}>
-            {(["income", "expense"] as const).map(t => {
-              const active = formType === t;
-              const ac = t === "income" ? GREEN : AMBER;
-              return (
-                <button key={t} onClick={() => { setFormType(t); setFMethod(""); setFCat(""); }} style={{
-                  flex: 1, padding: "11px 0", borderRadius: 10, cursor: "pointer",
-                  background: active ? `${ac}22` : "transparent",
-                  border: active ? `1px solid ${ac}55` : "1px solid transparent",
-                  color: active ? ac : LABEL,
-                  fontSize: 14, fontWeight: 800, fontFamily: "inherit", transition: "none",
-                }}>
-                  {t === "income" ? "תשלום" : "הוצאה"}
-                </button>
-              );
-            })}
-          </div>
-
-          <FieldWrap label="סכום *">
-            <input
-              type="text" inputMode="numeric" placeholder="₪ 0"
-              value={fAmount} onChange={e => setFAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-              style={{ ...inputStyle, fontSize: 18, fontWeight: 700, color: accentForm }}
-            />
-          </FieldWrap>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <FieldWrap label="סטטוס">
-              <select className="v2-select" value={fStatus} onChange={e => setFStatus(e.target.value as PaymentStatus)} style={inputStyle}>
-                {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </FieldWrap>
-            <FieldWrap label="תאריך">
-              <DatePickerInput value={fDate} onChange={setFDate} style={inputStyle} />
-            </FieldWrap>
-          </div>
-
-          {formType === "income" ? (
-            <FieldWrap label="אמצעי תשלום">
-              <select className="v2-select" value={fMethod} onChange={e => setFMethod(e.target.value)} style={inputStyle}>
-                <option value="">בחר…</option>
-                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </FieldWrap>
-          ) : (
-            <FieldWrap label="קטגוריה">
-              <select className="v2-select" value={fCat} onChange={e => setFCat(e.target.value)} style={inputStyle}>
-                <option value="">בחר…</option>
-                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </FieldWrap>
-          )}
-
-          <FieldWrap label="אסמכתא">
-            <div style={{ position: "relative" }}>
-              <input
-                type="url" placeholder="הדבק קישור לאסמכתא…"
-                value={fReceiptRef} onChange={e => setFReceiptRef(e.target.value)}
-                style={{ ...inputStyle, paddingLeft: fReceiptRef.trim() ? 68 : 14 }}
-              />
-              <span style={{
-                position: "absolute", top: "50%", right: 14, transform: "translateY(-50%)",
-                fontSize: 13, opacity: 0.35, pointerEvents: "none", lineHeight: 1,
-              }}>🔗</span>
-              {fReceiptRef.trim() && (
-                <a
-                  href={fReceiptRef.trim()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    position: "absolute", top: "50%", left: 10, transform: "translateY(-50%)",
-                    fontSize: 11, fontWeight: 700, color: "#60A5FA",
-                    background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.25)",
-                    borderRadius: 6, padding: "3px 8px", textDecoration: "none",
-                    whiteSpace: "nowrap", lineHeight: 1.4,
-                  }}
-                >פתח</a>
-              )}
-            </div>
-          </FieldWrap>
-
-          <FieldWrap label="הערה / תיאור">
-            <input
-              type="text" placeholder="תיאור קצר…"
-              value={fNote} onChange={e => setFNote(e.target.value)}
-              style={inputStyle}
-            />
-          </FieldWrap>
-
-          {saveErr && (
-            <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, borderRadius: 8, padding: "8px 12px" }}>
-              {saveErr}
-            </div>
-          )}
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              width: "100%", padding: "15px 0", borderRadius: 12,
-              background: !fAmount
-                ? `${accentForm}18`
-                : saving ? `${accentForm}88` : accentForm,
-              border: !fAmount ? `1.5px dashed ${accentForm}44` : "none",
-              color: !fAmount ? accentForm : "#000",
-              fontSize: 15, fontWeight: 900,
-              cursor: saving || !fAmount ? "default" : "pointer",
-              fontFamily: "inherit", transition: "none",
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
-            {saving ? "שומר…" : !fAmount ? `הזן סכום לשמירה` : formType === "income" ? "שמור תשלום ✓" : "שמור הוצאה ✓"}
-          </button>
-        </div>
+        <QuickTransactionForm
+          initialType={initialFormType}
+          projectId={projectId}
+          currency={currency}
+          onSaved={onTxAdded}
+        />
 
         {/* ── תשלומים שהתקבלו ── */}
         <div style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${BORDER}`, padding: "22px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
