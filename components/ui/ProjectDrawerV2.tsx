@@ -1808,8 +1808,9 @@ function FinanceContent({
   const [priceFeedback, setPriceFeedback] = useState<"" | "saved" | "error">("");
 
   async function handleSavePrice() {
-    const val = Number(priceInput.replace(/,/g, ""));
-    if (!priceInput.trim() || isNaN(val) || val < 0) { setPriceFeedback("error"); return; }
+    const cleaned = priceInput.replace(/[₪,\s]/g, "");
+    const val = Number(cleaned);
+    if (!cleaned || isNaN(val) || val < 0) { setPriceFeedback("error"); return; }
     setPriceSaving(true);
     try {
       const res = await fetch("/api/transactions", {
@@ -1905,8 +1906,9 @@ function FinanceContent({
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <input
                     autoFocus
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
+                    dir="ltr"
                     value={priceInput}
                     onChange={e => { setPriceInput(e.target.value); setPriceFeedback(""); }}
                     onKeyDown={e => { if (e.key === "Enter") handleSavePrice(); if (e.key === "Escape") setEditingPrice(false); }}
