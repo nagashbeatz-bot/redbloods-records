@@ -1214,11 +1214,19 @@ function OverviewContent({
     const name = a.recipient_name ?? "";
     const role = a.recipient_role ?? "";
     const ct   = a.content_type  ?? "";
-    if (role === "הפקה")         return `נשלח להפקה${name ? `: ${name}` : ""}`;
-    if (role === "מיקס" || role === "מאסטר" || role === "מיקס / מאסטר")
+    // הפקה (עברית או אנגלית)
+    if (role === "external_producer" || role === "הפקה" || ct === "הפקה")
+      return `נשלח להפקה${name ? `: ${name}` : ""}`;
+    // מיקס / מאסטר
+    if (role === "sound_engineer" || role === "מיקס" || role === "מאסטר" || role === "מיקס / מאסטר" || ct === "מיקס / מאסטר")
       return `נשלח למיקס / מאסטר${name ? `: ${name}` : ""}`;
-    if (role === "לקוח")         return `נשלח ללקוח${ct ? `: ${ct}` : ""}`;
-    return `נשלח${name ? `: ${name}` : ct ? `: ${ct}` : ""}`;
+    // לקוח — מציגים את content_type כסוג השליחה
+    if (role === "client" || role === "לקוח")
+      return `נשלח ללקוח${ct ? `: ${ct}` : name ? `: ${name}` : ""}`;
+    // fallback — מנסה להציג context מובן
+    if (ct)   return `נשלח: ${ct}`;
+    if (name) return `נשלח: ${name}`;
+    return "נשלח";
   };
 
   projectActions.forEach(a => {
