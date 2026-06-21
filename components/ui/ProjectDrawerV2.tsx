@@ -10,6 +10,8 @@ import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
 import type { Project } from "@/lib/types";
+import ScheduleModal from "@/components/project/ScheduleModal";
+import { ACTIONS, type ActionDef } from "@/lib/action-types";
 
 interface Props {
   projectId: string;
@@ -41,29 +43,6 @@ interface Session {
   notes?:       string;
 }
 
-type SessionStatus = "מתוכנן" | "התקיים" | "בוטל" | "נדחה" | "לא הגיע";
-type SessionType   = "סשן" | "ניקוי מיקס" | "חזרה" | "צילום קליפ";
-
-interface SessionDraft {
-  date:        string;
-  startTime:   string;
-  endTime:     string;
-  status:      SessionStatus;
-  sessionType: SessionType;
-  notes:       string;
-}
-
-const SESSION_STATUS_OPTIONS: SessionStatus[] = ["מתוכנן", "התקיים", "בוטל", "נדחה", "לא הגיע"];
-const SESSION_TYPE_OPTIONS:   SessionType[]   = ["סשן", "ניקוי מיקס", "חזרה", "צילום קליפ"];
-const SESSION_TIME_SLOTS: string[] = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2).toString().padStart(2, "0");
-  const m = i % 2 === 0 ? "00" : "30";
-  return `${h}:${m}`;
-});
-
-function emptySessionDraft(): SessionDraft {
-  return { date: "", startTime: "", endTime: "", status: "מתוכנן", sessionType: "סשן", notes: "" };
-}
 
 // ─── Tokens ────────────────────────────────────────────────────────────────────
 const PANEL_BG  = "linear-gradient(170deg, #0E0E12 0%, #0B0B0F 50%, #080808 100%)";
@@ -206,11 +185,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [agreedPrice,  setAgreedPrice]  = useState(0);
   const [currency,     setCurrency]     = useState("₪");
   const [finLoaded,    setFinLoaded]    = useState(false);
-  const [sessions,        setSessions]        = useState<Session[]>([]);
-  const [mounted,         setMounted]         = useState(false);
-  const [showSessionModal, setShowSessionModal] = useState(false);
-  const [sessionDraft,    setSessionDraft]    = useState<SessionDraft>(emptySessionDraft);
-  const [sessionSaving,   setSessionSaving]   = useState(false);
+  const [sessions,       setSessions]       = useState<Session[]>([]);
+  const [mounted,        setMounted]        = useState(false);
+  const [scheduleAction, setScheduleAction] = useState<ActionDef | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -276,33 +253,6 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     } else {
       const url = await getFreshPlayUrl(latestFile);
       player.play({ projectId, projectName: project.name, artist: project.artist, fileName: latestFile.name, url });
-    }
-  }
-
-  async function handleAddSession() {
-    setSessionSaving(true);
-    try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          date:        sessionDraft.date      || null,
-          startTime:   sessionDraft.startTime || null,
-          endTime:     sessionDraft.endTime   || null,
-          status:      sessionDraft.status,
-          sessionType: sessionDraft.sessionType,
-          notes:       sessionDraft.notes,
-        }),
-      });
-      const data = await res.json();
-      if (data.session) {
-        setSessions(prev => [...prev, data.session]);
-        setSessionDraft(emptySessionDraft());
-        setShowSessionModal(false);
-      }
-    } finally {
-      setSessionSaving(false);
     }
   }
 
@@ -628,7 +578,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               <button
                 key={label}
                 onClick={() => {
-                  if (label === "סשן חדש") { setSessionDraft(emptySessionDraft()); setShowSessionModal(true); return; }
+                  if (label === "סשן חדש") { setScheduleAction(ACTIONS[0]); return; }
                   const mode = label === "תשלום" ? "income" : "expense";
                   setQuickTxMode(mode); setQuickTxSeq(s => s + 1); setQuickTxOpen(true);
                 }}
@@ -807,14 +757,21 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
         />
       )}
 
-      {/* ── New Session Modal ── */}
-      {showSessionModal && (
-        <SessionModal
-          draft={sessionDraft}
-          setDraft={setSessionDraft}
-          saving={sessionSaving}
-          onSave={handleAddSession}
-          onClose={() => { setShowSessionModal(false); setSessionDraft(emptySessionDraft()); }}
+      {/* ── Schedule Session Modal ── */}
+      {scheduleAction && (
+        <ScheduleModal
+          action={scheduleAction}
+          projectId={projectId}
+          projectName={project.name}
+          artist={project.artist}
+          onClose={() => setScheduleAction(null)}
+          onSessionCreated={() => {
+            fetch(`/api/sessions?projectId=${projectId}`)
+              .then(r => r.json())
+              .then(d => setSessions(d.sessions ?? []))
+              .catch(() => {});
+            setScheduleAction(null);
+          }}
         />
       )}
     </div>,
@@ -1737,151 +1694,6 @@ function FinanceContent({
 
       </div>
     </div>
-  );
-}
-
-// ─── Session Modal ────────────────────────────────────────────────────────────
-function SessionModal({
-  draft, setDraft, saving, onSave, onClose,
-}: {
-  draft:    SessionDraft;
-  setDraft: (d: SessionDraft) => void;
-  saving:   boolean;
-  onSave:   () => void;
-  onClose:  () => void;
-}) {
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "9px 12px", borderRadius: 10, fontSize: 13,
-    background: "rgba(255,255,255,0.058)", border: "1px solid rgba(255,255,255,0.14)",
-    color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
-    colorScheme: "dark",
-  };
-
-  return createPortal(
-    <div
-      dir="rtl"
-      style={{ position: "fixed", inset: 0, zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onKeyDown={e => { if (e.key === "Escape") onClose(); }}
-    >
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)" }}
-      />
-
-      {/* Panel */}
-      <div style={{
-        position: "relative", zIndex: 1,
-        background: "linear-gradient(170deg, #141418 0%, #0E0E12 100%)",
-        border: `1px solid rgba(59,130,246,0.35)`,
-        borderRadius: 20,
-        boxShadow: "0 40px 100px rgba(0,0,0,0.92), 0 0 60px rgba(59,130,246,0.08)",
-        width: "100%", maxWidth: 420,
-        padding: "28px 28px 24px",
-        display: "flex", flexDirection: "column", gap: 14,
-      }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>קביעת סשן חדש</div>
-          <button
-            onClick={onClose}
-            style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 22, lineHeight: 1, padding: "0 2px", transition: "none" }}
-            onMouseEnter={e => (e.currentTarget.style.color = TEXT2)}
-            onMouseLeave={e => (e.currentTarget.style.color = MUTED)}
-          >✕</button>
-        </div>
-
-        {/* Date */}
-        <DatePickerInput
-          value={draft.date}
-          onChange={v => setDraft({ ...draft, date: v })}
-          style={{ ...inputStyle }}
-        />
-
-        {/* Time row */}
-        <div style={{ display: "flex", gap: 8 }}>
-          <select
-            value={draft.startTime}
-            onChange={e => setDraft({ ...draft, startTime: e.target.value })}
-            className="v2-select"
-            style={{ ...inputStyle, flex: 1 }}
-          >
-            <option value="">שעת התחלה</option>
-            {SESSION_TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <span style={{ color: MUTED, fontSize: 13, alignSelf: "center", flexShrink: 0 }}>—</span>
-          <select
-            value={draft.endTime}
-            onChange={e => setDraft({ ...draft, endTime: e.target.value })}
-            className="v2-select"
-            style={{ ...inputStyle, flex: 1 }}
-          >
-            <option value="">שעת סיום</option>
-            {SESSION_TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-
-        {/* Type + Status */}
-        <div style={{ display: "flex", gap: 8 }}>
-          <select
-            value={draft.sessionType}
-            onChange={e => setDraft({ ...draft, sessionType: e.target.value as SessionType })}
-            className="v2-select"
-            style={{ ...inputStyle, flex: 1 }}
-          >
-            {SESSION_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select
-            value={draft.status}
-            onChange={e => setDraft({ ...draft, status: e.target.value as SessionStatus })}
-            className="v2-select"
-            style={{ ...inputStyle, flex: 1 }}
-          >
-            {SESSION_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-
-        {/* Notes */}
-        <input
-          type="text"
-          value={draft.notes}
-          onChange={e => setDraft({ ...draft, notes: e.target.value })}
-          placeholder="הערות (אופציונלי)"
-          style={inputStyle}
-          onKeyDown={e => { if (e.key === "Enter") onSave(); if (e.key === "Escape") onClose(); }}
-        />
-
-        {/* Buttons */}
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            style={{
-              flex: 1, padding: "10px 0", borderRadius: 12, border: "none",
-              background: saving ? "rgba(59,130,246,0.3)" : BLUE,
-              color: saving ? TEXT2 : "#fff",
-              fontSize: 14, fontWeight: 800, cursor: saving ? "default" : "pointer",
-              fontFamily: "inherit", transition: "none",
-              boxShadow: saving ? "none" : "0 4px 18px rgba(59,130,246,0.45)",
-            }}
-          >
-            {saving ? "שומר..." : "שמור סשן"}
-          </button>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "10px 18px", borderRadius: 12, border: `1px solid ${BORDER2}`,
-              background: "transparent", color: TEXT2,
-              fontSize: 14, fontWeight: 600, cursor: "pointer",
-              fontFamily: "inherit", transition: "none",
-            }}
-          >
-            ביטול
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
   );
 }
 
