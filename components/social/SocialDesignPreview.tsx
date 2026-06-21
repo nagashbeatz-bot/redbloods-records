@@ -16,10 +16,10 @@ const PURPLE = "#8B5CF6";
 const CYAN   = "#06B6D4";
 const BLUE   = "#3B82F6";
 const BG     = "#090910";
-const CARD   = "rgba(255,255,255,0.04)";
-const CARD2  = "rgba(255,255,255,0.07)";
+const CARD   = "rgba(255,255,255,0.045)";
+const CARD2  = "rgba(255,255,255,0.075)";
 const BDR    = "rgba(255,255,255,0.08)";
-const BDR2   = "rgba(255,255,255,0.14)";
+const BDR2   = "rgba(255,255,255,0.15)";
 const TEXT   = "#F2F2F2";
 const TEXT2  = "#A0A0B0";
 const MUTED  = "#52526A";
@@ -49,28 +49,28 @@ const MOCK_ROWS: MockRow[] = [
 ];
 
 const MOCK_FILES = [
-  { id:"f1", name:"cover_laila_city.jpg",  ext:"JPG", ctx:"תמונת קאבר לקליפ",   type:"image", dur:null,    bg:"rgba(180,20,20,0.45)"  },
-  { id:"f2", name:"studio_bts_02.jpg",     ext:"JPG", ctx:"תמונת אולפן",         type:"image", dur:null,    bg:"rgba(20,30,120,0.45)"  },
-  { id:"f3", name:"reel_bts_02.mp4",       ext:"MP4", ctx:"רילס מאחורי הקלעים",  type:"video", dur:"00:21", bg:"rgba(20,100,40,0.45)"  },
-  { id:"f4", name:"teaser_laila_city.png", ext:"PNG", ctx:"טיזר לקליפ",          type:"image", dur:null,    bg:"rgba(180,20,80,0.45)"  },
-  { id:"f5", name:"clip_cut_01.mp4",       ext:"MP4", ctx:"קליפ גרסה 1",         type:"video", dur:"01:15", bg:"rgba(20,70,180,0.45)"  },
-  { id:"f6", name:"qa_story_01.jpg",       ext:"JPG", ctx:"סטורי – שאלות לקהל",  type:"image", dur:null,    bg:"rgba(120,60,20,0.45)"  },
+  { id:"f1", name:"cover_laila_city.jpg",  ext:"JPG", ctx:"תמונת קאבר לקליפ",   type:"image" as const, dur:null,    label:"קאבר",  accent:BRAND,   thumb:"linear-gradient(145deg,#3D0000 0%,#8B0000 35%,#DC2626 65%,#FF7B50 95%)" },
+  { id:"f2", name:"studio_bts_02.jpg",     ext:"JPG", ctx:"תמונת אולפן",         type:"image" as const, dur:null,    label:"BTS",   accent:BLUE,    thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)" },
+  { id:"f3", name:"reel_bts_02.mp4",       ext:"MP4", ctx:"רילס מאחורי הקלעים",  type:"video" as const, dur:"00:21", label:"ריל",   accent:GREEN,   thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)" },
+  { id:"f4", name:"teaser_laila_city.png", ext:"PNG", ctx:"טיזר לקליפ",          type:"image" as const, dur:null,    label:"טיזר",  accent:"#C026D3",thumb:"linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)" },
+  { id:"f5", name:"clip_cut_01.mp4",       ext:"MP4", ctx:"קליפ גרסה 1",         type:"video" as const, dur:"01:15", label:"קליפ",  accent:PURPLE,  thumb:"linear-gradient(145deg,#09060F 0%,#1E0A3E 35%,#3B1A8A 65%,#8B5CF6 95%)" },
+  { id:"f6", name:"qa_story_01.jpg",       ext:"JPG", ctx:"סטורי – שאלות לקהל",  type:"image" as const, dur:null,    label:"סטורי", accent:AMBER,   thumb:"linear-gradient(145deg,#150900 0%,#3D1E00 35%,#7A4500 65%,#F59E0B 95%)" },
 ];
 
 const WEEK_DAYS = [
-  { label:"ראשון", date:"15.06", today:false, items:[{ t:"פוסט", c:BRAND }, { t:"שאלות", c:MUTED }] },
-  { label:"שני",   date:"16.06", today:false, items:[{ t:"ריל", c:PURPLE }] },
-  { label:"שלישי", date:"17.06", today:false, items:[{ t:"BTS פרק", c:BLUE }, { t:"ריל", c:PURPLE }] },
-  { label:"רביעי", date:"18.06", today:false, items:[{ t:"פוסט", c:GREEN }] },
-  { label:"חמישי", date:"19.06", today:false, items:[] },
-  { label:"שישי",  date:"20.06", today:false, items:[{ t:"ריל", c:PURPLE }, { t:"טיזר", c:AMBER }] },
-  { label:"שבת",   date:"21.06", today:true,  items:[] },
+  { label:"א׳", date:"15.06", today:false, items:[{ t:"פוסט", c:BRAND }, { t:"שאלות", c:MUTED }] },
+  { label:"ב׳", date:"16.06", today:false, items:[{ t:"ריל", c:PURPLE }] },
+  { label:"ג׳", date:"17.06", today:false, items:[{ t:"BTS", c:BLUE }, { t:"ריל", c:PURPLE }] },
+  { label:"ד׳", date:"18.06", today:false, items:[{ t:"פוסט", c:GREEN }] },
+  { label:"ה׳", date:"19.06", today:false, items:[] },
+  { label:"ו׳", date:"20.06", today:false, items:[{ t:"ריל", c:PURPLE }, { t:"טיזר", c:AMBER }] },
+  { label:"ש׳", date:"22.06", today:true,  items:[] },
 ];
 
 const MOCK_CAMPAIGNS = [
-  { id:"c1", title:"קליפ ראשון – לילה בעיר", sub:"בדרך אליי",   progress:72, deadline:"28.06.24", color:BRAND  },
-  { id:"c2", title:"שיר חדש – בדרך אליי",    sub:"שיר חדש",     progress:54, deadline:"12.07.24", color:AMBER  },
-  { id:"c3", title:"BTS אולפן לאלבום",        sub:"אולפן לאלבום", progress:38, deadline:"30.07.24", color:PURPLE },
+  { id:"c1", title:"קליפ ראשון – לילה בעיר", progress:72, deadline:"28.06.26", color:BRAND  },
+  { id:"c2", title:"שיר חדש – בדרך אליי",    progress:54, deadline:"12.07.26", color:AMBER  },
+  { id:"c3", title:"BTS אולפן לאלבום",        progress:38, deadline:"30.07.26", color:PURPLE },
 ];
 
 const MOCK_ACTIVITY = [
@@ -80,14 +80,14 @@ const MOCK_ACTIVITY = [
 ];
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
-function ProgressRing({ pct, color, size = 56 }: { pct: number; color: string; size?: number }) {
-  const r = (size - 9) / 2;
+function ProgressRing({ pct, color, size = 52 }: { pct: number; color: string; size?: number }) {
+  const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (pct / 100) * circ;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={BDR2} strokeWidth={4.5} />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={4.5}
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={BDR2} strokeWidth={5} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={5}
         strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" />
     </svg>
   );
@@ -117,11 +117,22 @@ function PlatformBadge({ platform }: { platform: SocialPlatform }) {
   );
 }
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+// Card with optional colored accent border + glow
+function SCard({
+  children, style, accent,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  accent?: string;
+}) {
   return (
     <div style={{
-      background: CARD, border: `1px solid ${BDR}`, borderRadius: 16,
-      padding: 20, ...style,
+      background: CARD,
+      border: `1px solid ${accent ? accent + "2E" : BDR}`,
+      borderRadius: 16,
+      padding: 20,
+      boxShadow: accent ? `0 4px 24px ${accent}0C` : "none",
+      ...style,
     }}>
       {children}
     </div>
@@ -132,9 +143,9 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 export default function SocialDesignPreview() {
   const [campaigns, setCampaigns] = useState<SocialCampaign[]>([]);
   const [rows, setRows] = useState<MockRow[]>(MOCK_ROWS);
-  const [searchQ, setSearchQ]           = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const [filterPlatform, setFilterPlatform] = useState("all");
-  const [filterStatus,   setFilterStatus]   = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
 
   useEffect(() => {
     fetch("/api/social/campaigns")
@@ -169,19 +180,19 @@ export default function SocialDesignPreview() {
       .catch(() => {});
   }, []);
 
-  // KPI — real data where possible, sensible fallback
+  // KPI — real data where available, sensible mock fallback
   const activeCampaigns = campaigns.filter(c => c.status === "active").length || MOCK_CAMPAIGNS.length;
-  const postsThisMonth  = rows.filter(r => r.status === "posted").length || 18;
+  const postsThisMonth  = rows.filter(r => r.status === "posted").length    || 18;
   const pendingReview   = rows.filter(r => r.status === "needs_review").length || 4;
   const scheduledWeek   = rows.filter(r => r.status === "scheduled").length || 9;
-  const missingAssets   = rows.filter(r => r.assets === 0).length || 2;
+  const missingAssets   = rows.filter(r => r.assets === 0).length           || 2;
 
   const KPI_CARDS = [
-    { label: "קמפיינים פעילים", sub: "קמפיינים", icon: "🎯", value: activeCampaigns, color: BRAND  },
-    { label: "פוסטים החודש",    sub: "פוסטים",   icon: "💬", value: postsThisMonth,  color: GREEN  },
-    { label: "ממתינים לאישור",  sub: "פוסטים",   icon: "⏰", value: pendingReview,   color: AMBER  },
-    { label: "מתוכננים השבוע",  sub: "פוסטים",   icon: "📅", value: scheduledWeek,   color: CYAN   },
-    { label: "חסרים נכסים",     sub: "נכסים",    icon: "⚠️", value: missingAssets,   color: "#EF4444" },
+    { label:"קמפיינים פעילים", sub:"קמפיינים", icon:"🎯", value:activeCampaigns, color:BRAND    },
+    { label:"פוסטים החודש",    sub:"פוסטים",   icon:"💬", value:postsThisMonth,  color:GREEN    },
+    { label:"ממתינים לאישור",  sub:"לאישור",   icon:"⏰", value:pendingReview,   color:AMBER    },
+    { label:"מתוכננים השבוע",  sub:"פוסטים",   icon:"📅", value:scheduledWeek,   color:CYAN     },
+    { label:"חסרים נכסים",     sub:"נכסים",    icon:"⚠️", value:missingAssets,   color:"#EF4444"},
   ];
 
   const filteredRows = rows.filter(r => {
@@ -200,378 +211,518 @@ export default function SocialDesignPreview() {
   return (
     <div style={{
       minHeight: "100vh", background: BG, direction: "rtl",
-      padding: "28px 32px 80px",
-      fontFamily: "'Heebo', Arial, sans-serif", color: TEXT, overflowX: "hidden",
+      fontFamily: "'Heebo', Arial, sans-serif", color: TEXT,
+      padding: "20px 20px 80px",
     }}>
+      <div style={{ maxWidth: 1540, margin: "0 auto" }}>
 
-      {/* ── Block 1: Page Header ──────────────────────────────────────────────── */}
-      <div style={{ marginBottom: 26 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 6 }}>
-          <h1 style={{
-            margin: 0, fontSize: 30, fontWeight: 900, letterSpacing: "-0.02em",
-            background: `linear-gradient(130deg, ${TEXT} 55%, ${BRAND})`,
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          }}>
-            סושיאל — {ARTIST_NAME}
-          </h1>
-          <span style={{ fontSize: 20 }}>📱</span>
-        </div>
-        <p style={{ margin: 0, fontSize: 13, color: TEXT2 }}>
-          ניהול תוכן, קמפיינים ופרסום עבור {ARTIST_NAME}
-        </p>
-      </div>
-
-      {/* ── Block 2: Artist Card + KPI Row ───────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "210px 1fr", gap: 16, marginBottom: 22 }}>
-
-        {/* Artist Card */}
-        <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center", padding: "22px 16px" }}>
-          <div style={{
-            width: 80, height: 80, borderRadius: 14,
-            background: "linear-gradient(145deg, rgba(220,38,38,0.55), rgba(60,8,8,0.95))",
-            border: `2px solid rgba(220,38,38,0.45)`,
-            boxShadow: "0 0 28px rgba(220,38,38,0.22)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 34,
-          }}>🎤</div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{ARTIST_NAME}</div>
-            <div style={{ fontSize: 11, color: TEXT2, marginBottom: 2 }}>מוסיקאי</div>
-            <div style={{ fontSize: 11, color: MUTED }}>{ARTIST_GENRE}</div>
+        {/* ── Block 1: Page Header ─────────────────────────────────────────── */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+            <h1 style={{
+              margin: 0, fontSize: 27, fontWeight: 900, letterSpacing: "-0.02em",
+              background: `linear-gradient(130deg, ${TEXT} 55%, ${BRAND} 100%)`,
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            }}>
+              סושיאל — {ARTIST_NAME}
+            </h1>
+            <span style={{ fontSize: 17 }}>📱</span>
           </div>
-          <button style={{
-            padding: "7px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-            background: `rgba(220,38,38,0.12)`, border: `1px solid rgba(220,38,38,0.35)`,
-            color: BRAND, cursor: "pointer", outline: "none",
-          }}>
-            הצג פרופיל אמן ↗
-          </button>
-        </Card>
-
-        {/* KPI Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
-          {KPI_CARDS.map(kpi => (
-            <Card key={kpi.label} style={{ padding: "16px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <span style={{ fontSize: 18 }}>{kpi.icon}</span>
-                <span style={{
-                  fontSize: 9, color: LABEL, fontWeight: 700,
-                  letterSpacing: "0.04em", textAlign: "left",
-                  maxWidth: 60, lineHeight: 1.3,
-                }}>{kpi.label}</span>
-              </div>
-              <div style={{ fontSize: 34, fontWeight: 900, color: kpi.color, lineHeight: 1 }}>
-                {kpi.value}
-              </div>
-              <div style={{ fontSize: 10, color: MUTED }}>{kpi.sub}</div>
-            </Card>
-          ))}
+          <p style={{ margin: 0, fontSize: 12, color: TEXT2 }}>
+            ניהול תוכן, קמפיינים ופרסום עבור {ARTIST_NAME}
+          </p>
         </div>
-      </div>
 
-      {/* ── Block 3: Content Table ────────────────────────────────────────────── */}
-      <Card style={{ marginBottom: 22, padding: 0, overflow: "hidden" }}>
-        {/* Header + controls */}
-        <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${BDR}` }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        {/* ── Block 2: Artist Card + KPI Row ───────────────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "256px 1fr", gap: 14, marginBottom: 16 }}>
+
+          {/* Artist Card */}
+          <SCard accent={BRAND} style={{
+            display: "flex", flexDirection: "column", gap: 14, padding: "20px 18px",
+            background: "linear-gradient(145deg, rgba(220,38,38,0.07) 0%, rgba(255,255,255,0.04) 100%)",
+          }}>
+            {/* Top: avatar + name */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 14, flexShrink: 0,
+                background: "linear-gradient(145deg, #5A0000, #DC2626 60%, #FF7B50)",
+                border: `2px solid rgba(220,38,38,0.55)`,
+                boxShadow: "0 0 22px rgba(220,38,38,0.4), 0 0 50px rgba(220,38,38,0.1)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 28,
+              }}>🎤</div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 2 }}>{ARTIST_NAME}</div>
+                <div style={{ fontSize: 11, color: TEXT2 }}>מוסיקאי</div>
+                <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{ARTIST_GENRE}</div>
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4,
+              padding: "10px 0",
+              borderTop: `1px solid ${BDR}`, borderBottom: `1px solid ${BDR}`,
+            }}>
+              {[
+                { val: "12", lbl: "שירים"   },
+                { val: "3",  lbl: "קמפיינים"},
+                { val: "47", lbl: "פוסטים"  },
+              ].map(s => (
+                <div key={s.lbl} style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</div>
+                  <div style={{ fontSize: 9, color: MUTED, marginTop: 3, letterSpacing: "0.03em" }}>{s.lbl}</div>
+                </div>
+              ))}
+            </div>
+
+            <button style={{
+              padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+              background: "rgba(220,38,38,0.13)", border: "1px solid rgba(220,38,38,0.38)",
+              color: BRAND, cursor: "pointer", outline: "none", width: "100%",
+              boxShadow: "0 2px 10px rgba(220,38,38,0.12)",
+              transition: "none",
+            }}>
+              הצג פרופיל אמן ↗
+            </button>
+          </SCard>
+
+          {/* KPI Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+            {KPI_CARDS.map(kpi => (
+              <SCard key={kpi.label} accent={kpi.color} style={{
+                padding: "15px 16px",
+                display: "flex", flexDirection: "column", justifyContent: "space-between",
+                background: `linear-gradient(145deg, ${kpi.color}09 0%, ${CARD} 100%)`,
+              }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, color: LABEL,
+                  textTransform: "uppercase", letterSpacing: "0.07em",
+                  lineHeight: 1.3, marginBottom: 10,
+                }}>{kpi.label}</div>
+                <div style={{
+                  fontSize: 42, fontWeight: 900, color: kpi.color,
+                  lineHeight: 1, marginBottom: 10,
+                  textShadow: `0 0 20px ${kpi.color}40`,
+                }}>{kpi.value}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{
+                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    background: kpi.color + "22",
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10,
+                  }}>{kpi.icon}</span>
+                  <span style={{ fontSize: 10, color: MUTED }}>{kpi.sub}</span>
+                </div>
+              </SCard>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Block 3: Content Table ───────────────────────────────────────── */}
+        <SCard style={{ marginBottom: 16, padding: 0, overflow: "hidden" }}>
+          {/* Header */}
+          <div style={{
+            padding: "16px 22px 14px",
+            borderBottom: `1px solid ${BDR}`,
+            background: "rgba(255,255,255,0.02)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
+                  לוח תוכן — {ARTIST_NAME}
+                </span>
+                <span style={{
+                  background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+                  fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                }}>{filteredRows.length} פריטים</span>
+              </div>
+              <button style={{
+                fontSize: 12, fontWeight: 800, padding: "8px 20px", borderRadius: 8,
+                background: BRAND, border: "none", color: "#fff", cursor: "pointer",
+                boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
+                transition: "none",
+              }}>+ הוסף תוכן</button>
+            </div>
+            {/* Controls */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>
-                לוח תוכן — {ARTIST_NAME}
-              </span>
-              <span style={{
-                background: CARD2, border: `1px solid ${BDR2}`,
-                color: TEXT2, fontSize: 11, fontWeight: 700,
-                padding: "2px 8px", borderRadius: 6,
-              }}>{filteredRows.length} תוכן</span>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: MUTED, pointerEvents: "none" }}>🔍</span>
+                <input
+                  value={searchQ}
+                  onChange={e => setSearchQ(e.target.value)}
+                  placeholder="חיפוש בתוכן..."
+                  style={{ ...selStyle, paddingRight: 28, width: 180, background: CARD2, color: TEXT }}
+                />
+              </div>
+              <select value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)} style={selStyle}>
+                <option value="all">כל הפלטפורמות</option>
+                <option value="instagram">Instagram</option>
+                <option value="tiktok">TikTok</option>
+                <option value="youtube">YouTube</option>
+                <option value="spotify">Spotify</option>
+              </select>
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selStyle}>
+                <option value="all">כל הסטטוסים</option>
+                <option value="idea">רעיון</option>
+                <option value="needs_shoot">צריך צילום</option>
+                <option value="shot">צולם</option>
+                <option value="in_edit">בעריכה</option>
+                <option value="needs_review">ממתין לאישור</option>
+                <option value="ready">מוכן להעלאה</option>
+                <option value="scheduled">תוזמן</option>
+                <option value="posted">פורסם</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.025)" }}>
+                  {["#", "שם התוכן", "סוג", "פלטפורמה", "סטטוס", "תאריך פרסום", "נכסים", "הערות", ""].map(h => (
+                    <th key={h} style={{
+                      padding: "10px 16px", textAlign: "right", fontSize: 10,
+                      fontWeight: 700, color: LABEL,
+                      textTransform: "uppercase", letterSpacing: "0.06em",
+                      whiteSpace: "nowrap",
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map(row => (
+                  <tr
+                    key={row.id}
+                    style={{ borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = CARD2; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <td style={{ padding: "13px 16px", whiteSpace: "nowrap" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: BRAND, display: "inline-block", flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>{row.num}</span>
+                      </span>
+                    </td>
+                    <td style={{ padding: "13px 16px", maxWidth: 240 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.title}
+                      </div>
+                    </td>
+                    <td style={{ padding: "13px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
+                      {row.content_type}
+                    </td>
+                    <td style={{ padding: "13px 16px" }}>
+                      <PlatformBadge platform={row.platform} />
+                    </td>
+                    <td style={{ padding: "13px 16px" }}>
+                      <StatusBadge status={row.status} />
+                    </td>
+                    <td style={{ padding: "13px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
+                      {row.publish_date}
+                    </td>
+                    <td style={{ padding: "13px 16px" }}>
+                      {row.assets > 0 ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          {Array.from({ length: Math.min(row.assets, 3) }).map((_, i) => (
+                            <div key={i} style={{
+                              width: 26, height: 26, borderRadius: 6,
+                              background: `rgba(220,38,38,${0.1 + i * 0.07})`,
+                              border: `1px solid ${BDR2}`,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 11, flexShrink: 0,
+                            }}>🖼</div>
+                          ))}
+                          {row.assets > 3 && (
+                            <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700 }}>+{row.assets - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 11, color: MUTED }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "13px 16px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap", maxWidth: 140 }}>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.notes || <span style={{ color: MUTED }}>—</span>}
+                      </div>
+                    </td>
+                    <td style={{ padding: "13px 10px" }}>
+                      <button style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 4px", lineHeight: 1 }}>⋮</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SCard>
+
+        {/* ── Block 4: File Gallery ─────────────────────────────────────────── */}
+        <SCard style={{ marginBottom: 16, padding: "18px 22px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 8,
+                background: "rgba(220,38,38,0.14)", border: "1px solid rgba(220,38,38,0.3)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0,
+              }}>☁️</div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
+                <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
+                  {MOCK_FILES.length} קבצים · עדכון אחרון לפני שעה
+                </div>
+              </div>
             </div>
             <button style={{
-              fontSize: 12, fontWeight: 700, padding: "7px 16px", borderRadius: 8,
-              background: BRAND, border: "none", color: "#fff", cursor: "pointer",
-            }}>+ הוסף תוכן</button>
+              fontSize: 11, fontWeight: 700, padding: "7px 14px", borderRadius: 8,
+              background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+              cursor: "pointer", transition: "none",
+            }}>+ העלאת קובץ</button>
           </div>
-          {/* Controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ position: "relative" }}>
-              <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: MUTED, pointerEvents: "none" }}>
-                🔍
-              </span>
-              <input
-                value={searchQ}
-                onChange={e => setSearchQ(e.target.value)}
-                placeholder="חיפוש בתוכן..."
+
+          {/* Full-width grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+            {MOCK_FILES.map(f => (
+              <div
+                key={f.id}
                 style={{
-                  ...selStyle, paddingRight: 28, width: 170,
-                  background: CARD2, color: TEXT,
+                  borderRadius: 12, border: `1px solid ${BDR}`, overflow: "hidden",
+                  background: CARD2, cursor: "pointer",
+                  transition: "transform 0.15s, border-color 0.15s, box-shadow 0.15s",
                 }}
-              />
-            </div>
-            <select value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)} style={selStyle}>
-              <option value="all">כל הפלטפורמות</option>
-              <option value="instagram">Instagram</option>
-              <option value="tiktok">TikTok</option>
-              <option value="youtube">YouTube</option>
-              <option value="spotify">Spotify</option>
-            </select>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selStyle}>
-              <option value="all">כל הסטטוסים</option>
-              <option value="idea">רעיון</option>
-              <option value="needs_shoot">צריך צילום</option>
-              <option value="shot">צולם</option>
-              <option value="in_edit">בעריכה</option>
-              <option value="needs_review">ממתין לאישור</option>
-              <option value="ready">מוכן להעלאה</option>
-              <option value="scheduled">תוזמן</option>
-              <option value="posted">פורסם</option>
-            </select>
-            <select style={selStyle}>
-              <option>סינון ▾</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Table */}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${BDR}` }}>
-                {["#", "שם התוכן", "סוג התוכן", "פלטפורמה", "סטטוס", "תאריך פרסום", "נכסים", "הערות", ""].map(h => (
-                  <th key={h} style={{
-                    padding: "9px 14px", textAlign: "right", fontSize: 10,
-                    fontWeight: 700, color: LABEL,
-                    textTransform: "uppercase", letterSpacing: "0.05em",
-                    whiteSpace: "nowrap", background: "rgba(255,255,255,0.02)",
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map(row => (
-                <tr
-                  key={row.id}
-                  style={{ borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = CARD2; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                >
-                  <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: BRAND, display: "inline-block", flexShrink: 0 }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>{row.num}</span>
-                    </span>
-                  </td>
-                  <td style={{ padding: "11px 14px", maxWidth: 230 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {row.title}
-                    </div>
-                  </td>
-                  <td style={{ padding: "11px 14px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
-                    {row.content_type}
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <PlatformBadge platform={row.platform} />
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    <StatusBadge status={row.status} />
-                  </td>
-                  <td style={{ padding: "11px 14px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
-                    {row.publish_date}
-                  </td>
-                  <td style={{ padding: "11px 14px" }}>
-                    {row.assets > 0 ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        {Array.from({ length: Math.min(row.assets, 3) }).map((_, i) => (
-                          <div key={i} style={{
-                            width: 24, height: 24, borderRadius: 5,
-                            background: `rgba(220,38,38,${0.1 + i * 0.06})`,
-                            border: `1px solid ${BDR2}`,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 10, flexShrink: 0,
-                          }}>🖼</div>
-                        ))}
-                        {row.assets > 3 && (
-                          <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700 }}>+{row.assets - 3}</span>
-                        )}
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: 11, color: MUTED }}>—</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "11px 14px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap" }}>
-                    {row.notes || <span style={{ color: MUTED }}>—</span>}
-                  </td>
-                  <td style={{ padding: "11px 10px" }}>
-                    <button style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 4px", lineHeight: 1 }}>
-                      ⋮
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* ── Block 4: File Previews ────────────────────────────────────────────── */}
-      <Card style={{ marginBottom: 22 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 16 }}>☁️</span>
-            <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</span>
-          </div>
-          <button style={{
-            fontSize: 11, fontWeight: 700, padding: "6px 14px", borderRadius: 8,
-            background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer",
-          }}>+ העלאת קובץ</button>
-        </div>
-        <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 6 }}>
-          {MOCK_FILES.map(f => (
-            <div key={f.id} style={{
-              flexShrink: 0, width: 158, borderRadius: 12,
-              border: `1px solid ${BDR}`, overflow: "hidden",
-              background: CARD2, cursor: "pointer",
-              transition: "border-color 0.15s",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = BDR2; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BDR;  }}
-            >
-              {/* Thumbnail */}
-              <div style={{
-                width: "100%", height: 108, background: f.bg,
-                position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <span style={{ fontSize: 30, opacity: 0.65 }}>{f.type === "video" ? "🎬" : "🖼"}</span>
-                {f.dur && (
-                  <span style={{
-                    position: "absolute", bottom: 6, left: 6,
-                    background: "rgba(0,0,0,0.75)", color: "#fff",
-                    fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4,
-                  }}>{f.dur}</span>
-                )}
-                <span style={{
-                  position: "absolute", top: 6, left: 6,
-                  background: f.type === "video" ? BRAND : BLUE,
-                  color: "#fff", fontSize: 9, fontWeight: 800,
-                  padding: "2px 5px", borderRadius: 4,
-                }}>{f.ext}</span>
-              </div>
-              {/* Info */}
-              <div style={{ padding: "10px 10px 12px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 4 }}>
-                  {f.name}
-                </div>
-                <div style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {f.ctx}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* ── Block 5: Bottom 3-col grid ────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-
-        {/* Col 1: Active Campaigns */}
-        <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 15 }}>🎯</span>
-            <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קמפיינים פעילים</span>
-          </div>
-          {MOCK_CAMPAIGNS.map(camp => (
-            <div key={camp.id} style={{
-              display: "flex", alignItems: "center", gap: 12,
-              padding: "12px 14px", background: CARD2,
-              borderRadius: 10, border: `1px solid ${BDR}`,
-            }}>
-              <div style={{ position: "relative", flexShrink: 0, width: 56, height: 56 }}>
-                <ProgressRing pct={camp.progress} color={camp.color} size={56} />
+                onMouseEnter={e => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.borderColor = f.accent + "55";
+                  el.style.transform = "translateY(-2px)";
+                  el.style.boxShadow = `0 8px 28px ${f.accent}1A`;
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.borderColor = BDR;
+                  el.style.transform = "translateY(0)";
+                  el.style.boxShadow = "none";
+                }}
+              >
+                {/* Thumbnail */}
                 <div style={{
-                  position: "absolute", inset: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 11, fontWeight: 900, color: camp.color,
-                }}>{camp.progress}%</div>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
-                  {camp.title}
-                </div>
-                <div style={{ fontSize: 10, color: MUTED }}>סיום משוער: {camp.deadline}</div>
-              </div>
-            </div>
-          ))}
-          <button style={{ marginTop: 4, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "right", padding: 0 }}>
-            הצג את כל הקמפיינים →
-          </button>
-        </Card>
+                  width: "100%", height: 134, background: f.thumb,
+                  position: "relative", overflow: "hidden",
+                }}>
+                  {/* Bottom fade overlay */}
+                  <div style={{
+                    position: "absolute", inset: 0,
+                    background: "linear-gradient(to bottom, transparent 35%, rgba(0,0,0,0.6) 100%)",
+                  }} />
 
-        {/* Col 2: Weekly Board */}
-        <Card style={{ padding: "18px 16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <span style={{ fontSize: 15 }}>📅</span>
-            <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>לוח שבועי</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
-            {WEEK_DAYS.map(day => (
-              <div key={day.label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <div style={{ textAlign: "center", marginBottom: 4 }}>
-                  <div style={{ fontSize: 8, fontWeight: 700, color: day.today ? BRAND : MUTED, textTransform: "uppercase", marginBottom: 3 }}>
-                    {day.label}
+                  {/* Center element */}
+                  <div style={{
+                    position: "absolute", inset: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    zIndex: 1,
+                  }}>
+                    {f.type === "video" ? (
+                      <div style={{
+                        width: 40, height: 40, borderRadius: "50%",
+                        background: "rgba(0,0,0,0.62)", border: "2.5px solid rgba(255,255,255,0.88)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.55)",
+                        paddingRight: 2,
+                        fontSize: 14, color: "#fff",
+                      }}>▶</div>
+                    ) : (
+                      <span style={{ fontSize: 36, opacity: 0.55 }}>🖼</span>
+                    )}
                   </div>
+
+                  {/* Content type label — top right */}
                   <span style={{
-                    fontSize: 9, fontWeight: 800,
-                    color: day.today ? "#fff" : TEXT2,
-                    background: day.today ? BRAND : "transparent",
-                    borderRadius: 4, padding: day.today ? "2px 4px" : "0",
-                    display: "inline-block",
-                  }}>{day.date}</span>
+                    position: "absolute", top: 7, right: 7, zIndex: 2,
+                    background: f.accent + "E0",
+                    color: "#fff", fontSize: 9, fontWeight: 800,
+                    padding: "2px 7px", borderRadius: 5,
+                    letterSpacing: "0.04em",
+                  }}>{f.label}</span>
+
+                  {/* File ext — bottom right */}
+                  <span style={{
+                    position: "absolute", bottom: 7, right: 7, zIndex: 2,
+                    background: "rgba(0,0,0,0.72)", color: TEXT2,
+                    fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4,
+                  }}>{f.ext}</span>
+
+                  {/* Duration — bottom left (video only) */}
+                  {f.dur && (
+                    <span style={{
+                      position: "absolute", bottom: 7, left: 7, zIndex: 2,
+                      background: "rgba(0,0,0,0.82)", color: "#fff",
+                      fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4,
+                      letterSpacing: "0.05em",
+                    }}>{f.dur}</span>
+                  )}
                 </div>
-                {day.items.map((item, idx) => (
-                  <div key={idx} style={{
-                    background: item.c + "22", border: `1px solid ${item.c}40`,
-                    borderRadius: 4, padding: "3px 3px",
-                    fontSize: 8, fontWeight: 700, color: item.c,
-                    textAlign: "center", overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    lineHeight: 1.4,
-                  }}>{item.t}</div>
-                ))}
+
+                {/* Info */}
+                <div style={{ padding: "9px 10px 11px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
+                    {f.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.ctx}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
-          <button style={{ marginTop: 14, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, display: "block" }}>
-            הצג לוח מלא →
-          </button>
-        </Card>
+        </SCard>
 
-        {/* Col 3: Activity Feed */}
-        <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-            <span style={{ fontSize: 15 }}>⚡</span>
-            <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>הערות ופעילות אחרונה</span>
-          </div>
-          {MOCK_ACTIVITY.map(act => (
-            <div key={act.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-                background: act.color + "20", border: `1.5px solid ${act.color}50`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 800, color: act.color,
-              }}>{act.init}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.4, marginBottom: 3 }}>
-                  <span style={{ fontWeight: 700, color: TEXT }}>{act.user}</span>
-                  {" — "}
-                  {act.text}
-                </div>
-                <div style={{ fontSize: 10, color: MUTED }}>{act.time}</div>
+        {/* ── Block 5: Bottom 3-col grid ────────────────────────────────────── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+
+          {/* Col 1: Active Campaigns */}
+          <SCard accent={BRAND} style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14 }}>🎯</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קמפיינים פעילים</span>
               </div>
+              <span style={{
+                background: BRAND + "18", border: `1px solid ${BRAND}35`,
+                color: BRAND, fontSize: 10, fontWeight: 700,
+                padding: "2px 8px", borderRadius: 10,
+              }}>{MOCK_CAMPAIGNS.length} פעילים</span>
             </div>
-          ))}
-          <div style={{ marginTop: "auto", paddingTop: 10, borderTop: `1px solid ${BDR}` }}>
-            <button style={{ background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>
-              הצג את כל הפעילות →
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {MOCK_CAMPAIGNS.map(camp => (
+                <div key={camp.id} style={{
+                  padding: "12px 14px", background: CARD2,
+                  borderRadius: 12, border: `1px solid ${camp.color}22`,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                    <div style={{ position: "relative", flexShrink: 0, width: 52, height: 52 }}>
+                      <ProgressRing pct={camp.progress} color={camp.color} size={52} />
+                      <div style={{
+                        position: "absolute", inset: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 10, fontWeight: 900, color: camp.color,
+                      }}>{camp.progress}%</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
+                        {camp.title}
+                      </div>
+                      <div style={{ fontSize: 10, color: MUTED }}>יעד: {camp.deadline}</div>
+                    </div>
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{ height: 3, background: BDR2, borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%", width: `${camp.progress}%`,
+                      background: `linear-gradient(90deg, ${camp.color}88, ${camp.color})`,
+                      borderRadius: 2,
+                    }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button style={{ marginTop: 14, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "right", padding: 0 }}>
+              הצג את כל הקמפיינים →
             </button>
-          </div>
-        </Card>
+          </SCard>
+
+          {/* Col 2: Weekly Board */}
+          <SCard style={{ padding: "18px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14 }}>📅</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>לוח שבועי</span>
+              </div>
+              <span style={{ fontSize: 10, color: MUTED }}>15–22 ביוני</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
+              {WEEK_DAYS.map(day => (
+                <div key={day.label} style={{
+                  display: "flex", flexDirection: "column", gap: 4,
+                  background: day.today ? "rgba(220,38,38,0.08)" : "transparent",
+                  border: day.today ? "1px solid rgba(220,38,38,0.28)" : "1px solid transparent",
+                  borderRadius: 8, padding: "5px 2px",
+                }}>
+                  <div style={{ textAlign: "center", marginBottom: 2 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: day.today ? BRAND : MUTED, marginBottom: 3 }}>
+                      {day.label}
+                    </div>
+                    <div style={{
+                      fontSize: 10, fontWeight: 800,
+                      color: day.today ? "#fff" : TEXT2,
+                      background: day.today ? BRAND : "transparent",
+                      borderRadius: 4, padding: day.today ? "2px 3px" : "0",
+                      display: "inline-block",
+                      boxShadow: day.today ? "0 2px 8px rgba(220,38,38,0.45)" : "none",
+                    }}>{day.date}</div>
+                  </div>
+                  {day.items.map((item, idx) => (
+                    <div key={idx} style={{
+                      background: item.c + "25", border: `1px solid ${item.c}45`,
+                      borderRadius: 4, padding: "3px 3px",
+                      fontSize: 8, fontWeight: 700, color: item.c,
+                      textAlign: "center", overflow: "hidden",
+                      textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4,
+                    }}>{item.t}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <button style={{ marginTop: 14, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, display: "block" }}>
+              הצג לוח מלא →
+            </button>
+          </SCard>
+
+          {/* Col 3: Activity Feed */}
+          <SCard style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14 }}>⚡</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>פעילות אחרונה</span>
+              </div>
+              <span style={{ fontSize: 10, color: MUTED }}>היום</span>
+            </div>
+
+            <div style={{ flex: 1 }}>
+              {MOCK_ACTIVITY.map((act, idx) => (
+                <div key={act.id} style={{
+                  display: "flex", gap: 12, alignItems: "flex-start",
+                  padding: "13px 0",
+                  borderBottom: idx < MOCK_ACTIVITY.length - 1 ? `1px solid ${BDR}` : "none",
+                }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                    background: `linear-gradient(135deg, ${act.color}28, ${act.color}10)`,
+                    border: `1.5px solid ${act.color}55`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 13, fontWeight: 800, color: act.color,
+                    boxShadow: `0 2px 10px ${act.color}18`,
+                  }}>{act.init}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.45, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, color: TEXT }}>{act.user}</span>
+                      {" — "}
+                      {act.text}
+                    </div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{act.time}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ paddingTop: 12, borderTop: `1px solid ${BDR}`, marginTop: 4 }}>
+              <button style={{ background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                הצג את כל הפעילות →
+              </button>
+            </div>
+          </SCard>
+
+        </div>
       </div>
     </div>
   );
