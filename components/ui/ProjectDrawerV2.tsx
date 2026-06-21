@@ -1523,8 +1523,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const PAYMENT_METHODS = ["העברה בנקאית", "Bit", "PayBox", "מזומן", "צ'ק", "אחר"];
 const EXPENSE_CATEGORIES = ["שירותים", "ציוד", "אולפן", "שיווק", "אחר"];
-const INCOME_STATUSES:  PaymentStatus[] = ["צפוי", "התקבל"];
-const EXPENSE_STATUSES: PaymentStatus[] = ["צפוי", "לא שולם", "חלקי", "שולם"];
+const INCOME_STATUSES:  PaymentStatus[] = ["התקבל", "צפוי"];
+const EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "צפוי", "בוטל"];
 
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "12px 14px", borderRadius: 11, fontSize: 14,
@@ -1554,8 +1554,8 @@ function QuickTransactionForm({
 }) {
   const [formType,    setFormType]    = useState<"income" | "expense">(initialType);
   const [fAmount,     setFAmount]     = useState("");
-  const [fStatus,     setFStatus]     = useState<PaymentStatus>("צפוי");
-  const [fDate,       setFDate]       = useState("");
+  const [fStatus,     setFStatus]     = useState<PaymentStatus>(initialType === "expense" ? "שולם" : "התקבל");
+  const [fDate,       setFDate]       = useState(() => new Date().toISOString().slice(0, 10));
   const [fMethod,     setFMethod]     = useState("");
   const [fNote,       setFNote]       = useState("");
   const [fCat,        setFCat]        = useState("");
@@ -1586,8 +1586,8 @@ function QuickTransactionForm({
         }),
       });
       if (!res.ok) { setSaveErr("שגיאה בשמירה"); return; }
-      setFAmount(""); setFDate(""); setFMethod(""); setFNote(""); setFCat(""); setFReceiptRef("");
-      setFStatus("צפוי");
+      setFAmount(""); setFDate(new Date().toISOString().slice(0, 10)); setFMethod(""); setFNote(""); setFCat(""); setFReceiptRef("");
+      setFStatus(formType === "expense" ? "שולם" : "התקבל");
       onSaved();
     } catch {
       setSaveErr("שגיאה בשמירה");
@@ -1618,7 +1618,7 @@ function QuickTransactionForm({
           const active = formType === t;
           const ac = t === "income" ? GREEN : AMBER;
           return (
-            <button key={t} onClick={() => { setFormType(t); setFStatus("צפוי"); setFMethod(""); setFCat(""); }} style={{
+            <button key={t} onClick={() => { setFormType(t); setFStatus(t === "expense" ? "שולם" : "התקבל"); setFMethod(""); setFCat(""); }} style={{
               flex: 1, padding: "11px 0", borderRadius: 10, cursor: "pointer",
               background: active ? `${ac}22` : "transparent",
               border: active ? `1px solid ${ac}55` : "1px solid transparent",
