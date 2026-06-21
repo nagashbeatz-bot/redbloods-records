@@ -170,56 +170,64 @@ function StatCard({
 }
 
 // ─── SendModal ────────────────────────────────────────────────────────────────
-const RECIPIENT_ROLES = [
-  { label: "לאמן",             value: "artist" },
-  { label: "ללקוח",            value: "client" },
-  { label: "לאיש סאונד",       value: "sound_engineer" },
-  { label: "להפקה חיצונית",    value: "external_producer" },
-] as const;
+type SendDestination = "הפקה" | "מיקס / מאסטר" | "לקוח";
 
-const CONTENT_TYPES = [
-  { label: "גרסה",  value: "גרסה" },
-  { label: "לינק",  value: "לינק" },
-  { label: "קובץ",  value: "קובץ" },
-  { label: "הערה",  value: "הערה" },
-] as const;
+const CLIENT_CONTENT_TYPES = ["סקיצה", "גרסה לאישור", "בקשת הערות", "אישור סופי"] as const;
+const PURPLE = "#8B5CF6";
 
 interface SendModalProps {
-  projectId:   string;
-  artistName:  string;
-  onClose:     () => void;
+  projectId:  string;
+  artistName: string;
+  onClose:    () => void;
 }
 
 function SendModal({ projectId, artistName, onClose }: SendModalProps) {
-  const [recipientRole, setRecipientRole] = useState("artist");
-  const [contentType,   setContentType]   = useState("גרסה");
-  const [link,          setLink]          = useState("");
-  const [notes,         setNotes]         = useState("");
-  const [saving,        setSaving]        = useState(false);
-  const [error,         setError]         = useState<string | null>(null);
+  const [step,       setStep]      = useState<1 | 2>(1);
+  const [dest,       setDest]      = useState<SendDestination | null>(null);
+  const [selection,  setSelection] = useState<string | null>(null);
+  const [saving,     setSaving]    = useState(false);
+  const [error,      setError]     = useState<string | null>(null);
 
-  const recipientName = recipientRole === "artist" || recipientRole === "client"
-    ? artistName : "";
+  function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); }
+
+  function buildPayload() {
+    const base = { projectId, actionType: "sent", actionDate: new Date().toISOString().slice(0, 10) };
+    if (dest === "הפקה") return {
+      ...base,
+      recipientRole: "external_producer",
+      recipientName: "ויקטור",
+      contentType:   "הפקה",
+      notes:         "נשלח להפקה",
+      status:        "pending_version",
+    };
+    if (dest === "מיקס / מאסטר") return {
+      ...base,
+      recipientRole: "sound_engineer",
+      recipientName: selection ?? "",
+      contentType:   "מיקס / מאסטר",
+      notes:         "נשלח למיקס / מאסטר",
+      status:        "pending_version",
+    };
+    // לקוח
+    return {
+      ...base,
+      recipientRole: "client",
+      recipientName: artistName || "לקוח",
+      contentType:   selection ?? "",
+      notes:         `נשלח ללקוח — ${selection ?? ""}`,
+      status:        "pending_feedback",
+    };
+  }
 
   async function handleSave() {
-    if (saving) return;
+    if (saving || !selection) return;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/project-actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          actionType:    "sent",
-          contentType,
-          recipientRole,
-          recipientName,
-          dropboxUrl:    link || null,
-          notes:         notes || null,
-          actionDate:    new Date().toISOString().slice(0, 10),
-          status:        "pending_feedback",
-        }),
+        body: JSON.stringify(buildPayload()),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -233,17 +241,26 @@ function SendModal({ projectId, artistName, onClose }: SendModalProps) {
     }
   }
 
-  const inpStyle: React.CSSProperties = {
-    width: "100%", padding: "10px 13px", borderRadius: 10,
-    background: CARD_BG2, border: `1px solid ${BORDER2}`,
-    color: TEXT, fontSize: 13, fontFamily: "inherit",
-    outline: "none", boxSizing: "border-box",
-  };
-  const labelStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 700, color: LABEL,
-    textTransform: "uppercase", letterSpacing: "0.1em",
-    marginBottom: 6, display: "block",
-  };
+  // ── card grid for choices ──────────────────────────────────────────────────
+  function ChoiceCard({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          padding: "16px 12px", borderRadius: 14,
+          border: selected ? `2px solid ${PURPLE}` : `1.5px solid ${BORDER2}`,
+          background: selected ? `${PURPLE}18` : CARD_BG2,
+          color: selected ? "#C4B5FD" : TEXT2,
+          fontWeight: selected ? 800 : 600,
+          fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+          textAlign: "center", transition: "none",
+          boxShadow: selected ? `0 0 0 3px ${PURPLE}22` : "none",
+        }}
+      >{label}</button>
+    );
+  }
+
+  const destinations: SendDestination[] = ["הפקה", "מיקס / מאסטר", "לקוח"];
 
   return createPortal(
     <div
@@ -261,85 +278,115 @@ function SendModal({ projectId, artistName, onClose }: SendModalProps) {
           background: "#111113",
           border: `1px solid ${BORDER2}`,
           borderRadius: 20,
-          padding: "28px 28px 24px",
-          width: "min(420px, 92vw)",
+          padding: "26px 26px 22px",
+          width: "min(400px, 92vw)",
           boxShadow: "0 32px 80px rgba(0,0,0,0.85)",
-          display: "flex", flexDirection: "column", gap: 18,
+          display: "flex", flexDirection: "column", gap: 20,
         }}
       >
-        {/* header */}
+        {/* ── header ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>↗ שליחה מהירה</div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none", border: "none", color: MUTED, fontSize: 22,
-              cursor: "pointer", lineHeight: 1, padding: 0,
-            }}
-          >✕</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {step === 2 && (
+              <button onClick={goBack} style={{
+                background: "none", border: "none", color: TEXT2,
+                fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+              }}>←</button>
+            )}
+            <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>
+              {step === 1 ? "↗ שלח ל..." : `↗ ${dest}`}
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", color: MUTED,
+            fontSize: 22, cursor: "pointer", lineHeight: 1, padding: 0,
+          }}>✕</button>
         </div>
 
-        {/* לאן */}
-        <div>
-          <label style={labelStyle}>לאן</label>
-          <select value={recipientRole} onChange={e => setRecipientRole(e.target.value)} style={inpStyle}>
-            {RECIPIENT_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
-        </div>
+        {/* ── step 1: בחירת יעד ── */}
+        {step === 1 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            {destinations.map(d => (
+              <button
+                key={d}
+                onClick={() => { setDest(d); setSelection(d === "הפקה" ? "ויקטור" : null); setStep(2); }}
+                style={{
+                  padding: "22px 8px", borderRadius: 14,
+                  border: `1.5px solid ${BORDER2}`,
+                  background: CARD_BG2,
+                  color: TEXT,
+                  fontWeight: 700, fontSize: 13,
+                  cursor: "pointer", fontFamily: "inherit",
+                  textAlign: "center", transition: "none",
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", gap: 8,
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = PURPLE;
+                  e.currentTarget.style.background = `${PURPLE}12`;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = BORDER2;
+                  e.currentTarget.style.background = CARD_BG2;
+                }}
+              >
+                <span style={{ fontSize: 24 }}>
+                  {d === "הפקה" ? "🎵" : d === "מיקס / מאסטר" ? "🎚" : "🎤"}
+                </span>
+                {d}
+              </button>
+            ))}
+          </div>
+        )}
 
-        {/* מה */}
-        <div>
-          <label style={labelStyle}>מה נשלח</label>
-          <select value={contentType} onChange={e => setContentType(e.target.value)} style={inpStyle}>
-            {CONTENT_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-        </div>
+        {/* ── step 2: בחירות משנה ── */}
+        {step === 2 && dest === "הפקה" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <ChoiceCard label="ויקטור" selected={selection === "ויקטור"} onClick={() => setSelection("ויקטור")} />
+          </div>
+        )}
 
-        {/* לינק */}
-        <div>
-          <label style={labelStyle}>לינק (אופציונלי)</label>
-          <input
-            type="url"
-            placeholder="https://..."
-            value={link}
-            onChange={e => setLink(e.target.value)}
-            style={inpStyle}
-          />
-        </div>
+        {step === 2 && dest === "מיקס / מאסטר" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {["Bill", "Steven"].map(name => (
+              <ChoiceCard key={name} label={name} selected={selection === name} onClick={() => setSelection(name)} />
+            ))}
+          </div>
+        )}
 
-        {/* הערות */}
-        <div>
-          <label style={labelStyle}>הערות (אופציונלי)</label>
-          <textarea
-            placeholder="הערה חופשית..."
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            rows={2}
-            style={{ ...inpStyle, resize: "vertical" }}
-          />
-        </div>
+        {step === 2 && dest === "לקוח" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {CLIENT_CONTENT_TYPES.map(ct => (
+              <ChoiceCard key={ct} label={ct} selected={selection === ct} onClick={() => setSelection(ct)} />
+            ))}
+          </div>
+        )}
 
+        {/* ── error ── */}
         {error && (
           <div style={{ fontSize: 12, color: RED_WARN, background: "rgba(239,68,68,0.1)", borderRadius: 8, padding: "8px 12px" }}>
             {error}
           </div>
         )}
 
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          style={{
-            padding: "12px 0", borderRadius: 12, border: "none",
-            background: saving ? MUTED : "#8B5CF6",
-            color: "#fff", fontWeight: 800, fontSize: 14,
-            cursor: saving ? "not-allowed" : "pointer",
-            fontFamily: "inherit",
-            boxShadow: saving ? "none" : "0 4px 18px rgba(139,92,246,0.45)",
-            transition: "none",
-          }}
-        >
-          {saving ? "שומר..." : "שמור שליחה"}
-        </button>
+        {/* ── save button (step 2 only) ── */}
+        {step === 2 && (
+          <button
+            onClick={handleSave}
+            disabled={saving || !selection}
+            style={{
+              padding: "13px 0", borderRadius: 12, border: "none",
+              background: (!selection || saving) ? MUTED : PURPLE,
+              color: "#fff", fontWeight: 800, fontSize: 14,
+              cursor: (!selection || saving) ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+              boxShadow: (!selection || saving) ? "none" : `0 4px 18px ${PURPLE}55`,
+              transition: "none",
+            }}
+          >
+            {saving ? "שומר..." : "שמור פעולה"}
+          </button>
+        )}
       </div>
     </div>,
     document.body
