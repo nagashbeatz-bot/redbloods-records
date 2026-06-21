@@ -212,9 +212,9 @@ export default function SocialDesignPreview() {
     <div style={{
       minHeight: "100vh", background: BG, direction: "rtl",
       fontFamily: "'Heebo', Arial, sans-serif", color: TEXT,
-      padding: "20px 20px 80px",
+      padding: "16px 8px 80px",
     }}>
-      <div style={{ maxWidth: 1540, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1800, margin: "0 auto", padding: "0 8px" }}>
 
         {/* ── Block 1: Page Header ─────────────────────────────────────────── */}
         <div style={{ marginBottom: 18 }}>
@@ -234,7 +234,7 @@ export default function SocialDesignPreview() {
         </div>
 
         {/* ── Block 2: Artist Card + KPI Row ───────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "256px 1fr", gap: 14, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16, marginBottom: 16 }}>
 
           {/* Artist Card */}
           <SCard accent={BRAND} style={{
@@ -291,7 +291,7 @@ export default function SocialDesignPreview() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
             {KPI_CARDS.map(kpi => (
               <SCard key={kpi.label} accent={kpi.color} style={{
-                padding: "15px 16px",
+                padding: "18px 18px",
                 display: "flex", flexDirection: "column", justifyContent: "space-between",
                 background: `linear-gradient(145deg, ${kpi.color}09 0%, ${CARD} 100%)`,
               }}>
@@ -505,7 +505,7 @@ export default function SocialDesignPreview() {
               >
                 {/* Thumbnail */}
                 <div style={{
-                  width: "100%", height: 134, background: f.thumb,
+                  width: "100%", height: 148, background: f.thumb,
                   position: "relative", overflow: "hidden",
                 }}>
                   {/* Bottom fade overlay */}
@@ -576,7 +576,7 @@ export default function SocialDesignPreview() {
         </SCard>
 
         {/* ── Block 5: Bottom 3-col grid ────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, minHeight: 360 }}>
 
           {/* Col 1: Active Campaigns */}
           <SCard accent={BRAND} style={{ display: "flex", flexDirection: "column" }}>
@@ -595,7 +595,7 @@ export default function SocialDesignPreview() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {MOCK_CAMPAIGNS.map(camp => (
                 <div key={camp.id} style={{
-                  padding: "12px 14px", background: CARD2,
+                  padding: "14px 16px", background: CARD2,
                   borderRadius: 12, border: `1px solid ${camp.color}22`,
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
@@ -632,7 +632,7 @@ export default function SocialDesignPreview() {
           </SCard>
 
           {/* Col 2: Weekly Board */}
-          <SCard style={{ padding: "18px 16px" }}>
+          <SCard style={{ padding: "20px 18px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 14 }}>📅</span>
@@ -640,23 +640,23 @@ export default function SocialDesignPreview() {
               </div>
               <span style={{ fontSize: 10, color: MUTED }}>15–22 ביוני</span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 7 }}>
               {WEEK_DAYS.map(day => (
                 <div key={day.label} style={{
                   display: "flex", flexDirection: "column", gap: 4,
                   background: day.today ? "rgba(220,38,38,0.08)" : "transparent",
                   border: day.today ? "1px solid rgba(220,38,38,0.28)" : "1px solid transparent",
-                  borderRadius: 8, padding: "5px 2px",
+                  borderRadius: 8, padding: "6px 3px",
                 }}>
                   <div style={{ textAlign: "center", marginBottom: 2 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: day.today ? BRAND : MUTED, marginBottom: 3 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: day.today ? BRAND : MUTED, marginBottom: 3 }}>
                       {day.label}
                     </div>
                     <div style={{
-                      fontSize: 10, fontWeight: 800,
+                      fontSize: 11, fontWeight: 800,
                       color: day.today ? "#fff" : TEXT2,
                       background: day.today ? BRAND : "transparent",
-                      borderRadius: 4, padding: day.today ? "2px 3px" : "0",
+                      borderRadius: 4, padding: day.today ? "2px 5px" : "0",
                       display: "inline-block",
                       boxShadow: day.today ? "0 2px 8px rgba(220,38,38,0.45)" : "none",
                     }}>{day.date}</div>
@@ -664,8 +664,8 @@ export default function SocialDesignPreview() {
                   {day.items.map((item, idx) => (
                     <div key={idx} style={{
                       background: item.c + "25", border: `1px solid ${item.c}45`,
-                      borderRadius: 4, padding: "3px 3px",
-                      fontSize: 8, fontWeight: 700, color: item.c,
+                      borderRadius: 4, padding: "4px 4px",
+                      fontSize: 9, fontWeight: 700, color: item.c,
                       textAlign: "center", overflow: "hidden",
                       textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4,
                     }}>{item.t}</div>
