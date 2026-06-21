@@ -1069,14 +1069,14 @@ function OverviewContent({
     <div style={{
       display: "grid",
       gridTemplateColumns: "1fr 1fr 1fr",
-      gridTemplateRows: "1fr 1fr",
+      gridTemplateRows: "auto auto",
       gap: 14,
       height: "100%",
       minHeight: 0,
     }}>
 
-      {/* ── ROW 1 COL 1: עדכונים אחרונים ─────────────────────────────── */}
-      <Card style={{ gridColumn: 1, gridRow: 1 }}>
+      {/* ── ROWS 1-2 COL 2-3: עדכונים אחרונים (גדול) ─────────────────── */}
+      <Card style={{ gridColumn: "2 / 4", gridRow: "1 / 3" }}>
         <CardTitle>עדכונים אחרונים</CardTitle>
         {(() => {
           type FeedItem = { icon: string; title: string; sub?: string; date?: string; color: string };
@@ -1180,8 +1180,8 @@ function OverviewContent({
         })()}
       </Card>
 
-      {/* ── ROW 1 COL 3: התקדמות כללית ────────────────────────────────── */}
-      <Card style={{ gridColumn: 3, gridRow: 1, alignItems: "center" }}>
+      {/* ── ROW 2 COL 1: התקדמות כללית ────────────────────────────────── */}
+      <Card style={{ gridColumn: 1, gridRow: 2, alignItems: "center" }}>
         <CardTitle>התקדמות כללית</CardTitle>
         <div style={{ position: "relative", width: 118, height: 118, flexShrink: 0, marginBottom: 12 }}>
           <Arc pct={pct} accent={accent} size={118} />
@@ -1216,8 +1216,8 @@ function OverviewContent({
         </div>
       </Card>
 
-      {/* ── ROW 2 COL 1-2: פרטים כלליים ───────────────────────────────── */}
-      <Card style={{ gridColumn: "1 / 3", gridRow: 2 }}>
+      {/* ── ROW 2 COL 2: פרטים כלליים ─────────────────────────────────── */}
+      <Card style={{ gridColumn: 2, gridRow: 2 }}>
         <CardTitle>פרטים כלליים</CardTitle>
         <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
           {[
@@ -1249,8 +1249,8 @@ function OverviewContent({
         )}
       </Card>
 
-      {/* ── ROW 1 COL 2: סיכום כספי ────────────────────────────────────── */}
-      <Card style={{ gridColumn: 2, gridRow: 1 }}>
+      {/* ── ROW 1 COL 1: סיכום כספי ────────────────────────────────────── */}
+      <Card style={{ gridColumn: 1, gridRow: 1 }}>
         <CardTitle>סיכום כספי</CardTitle>
         {finLoaded ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
@@ -1303,59 +1303,6 @@ function OverviewContent({
         )}
       </Card>
 
-      {/* ── ROW 2 COL 3: קבצים אחרונים ────────────────────────────────── */}
-      <Card style={{ gridColumn: 3, gridRow: 2 }}>
-        <CardTitle>קבצים אחרונים</CardTitle>
-        {project.files && project.files.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
-            {project.files.slice(-4).reverse().map(f => {
-              const isAudio = f.name.toLowerCase().endsWith(".mp3") || f.name.toLowerCase().endsWith(".wav");
-              return (
-                <div key={f.name} style={{
-                  display: "flex", alignItems: "center", gap: 13,
-                  padding: "11px 14px", borderRadius: 13,
-                  background: CARD_BG2, border: `1px solid ${BORDER}`,
-                }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                    background: isAudio ? `${BRAND}16` : "rgba(255,255,255,0.06)",
-                    border: `1px solid ${isAudio ? BRAND + "34" : BORDER}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 17,
-                  }}>
-                    {isAudio ? "🎵" : "📄"}
-                  </div>
-                  <span style={{
-                    fontSize: 13, color: TEXT2, fontWeight: 600,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
-                  }}>
-                    {f.name}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: MUTED }}>
-            אין קבצים
-          </div>
-        )}
-        <button
-          onClick={() => onTabChange("קבצים")}
-          style={{
-            marginTop: 12, width: "100%", padding: "12px 14px", borderRadius: 12,
-            background: "transparent", border: `1.5px solid ${BORDER2}`,
-            color: TEXT2, fontSize: 13, fontWeight: 700,
-            cursor: "pointer", fontFamily: "inherit",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            transition: "none",
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = CARD_BG2; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-        >
-          עבור לכל הקבצים ←
-        </button>
-      </Card>
 
     </div>
   );
