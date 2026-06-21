@@ -1094,7 +1094,7 @@ function OverviewContent({
               color: BLUE,
             }));
 
-          // Transactions — last 2 by date descending
+          // Transactions — last 3, include those without a date (appear as most recent)
           if (finLoaded) {
             const txStatusColor = (status: string, type: "income" | "expense"): string => {
               if (status === "התקבל" || status === "שולם") return GREEN;
@@ -1107,10 +1107,15 @@ function OverviewContent({
               const kind = type === "income" ? "תשלום" : "הוצאה";
               return `${status} ${kind}`;
             };
+            // Sort: entries with date descending first, then undated entries (most recently added)
+            // undated entries get a high sort key so they float to the top
             [...transactions]
-              .filter(tx => tx.date)
-              .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
-              .slice(0, 2)
+              .sort((a, b) => {
+                const da = a.date ?? "9999-99-99";
+                const db = b.date ?? "9999-99-99";
+                return db.localeCompare(da);
+              })
+              .slice(0, 3)
               .forEach(tx => items.push({
                 icon: tx.type === "income" ? "₪" : "💸",
                 title: `${txLabel(tx.payment_status, tx.type)}: ${currency}${tx.amount.toLocaleString()}`,
@@ -1120,8 +1125,8 @@ function OverviewContent({
               }));
           }
 
-          // Sort all dated items newest-first
-          items.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+          // Sort all items: dated items by date desc, undated float to top
+          items.sort((a, b) => (b.date ?? "9999-99-99").localeCompare(a.date ?? "9999-99-99"));
 
           // Latest file (no timestamp — appended at end)
           const latestFile = (project.files ?? []).at(-1);
