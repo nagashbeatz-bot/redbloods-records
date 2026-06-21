@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -437,6 +437,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [scheduleAction, setScheduleAction] = useState<ActionDef | null>(null);
   const [showSendModal,  setShowSendModal]  = useState(false);
   const [copyFeedback,   setCopyFeedback]   = useState<"idle" | "copied" | "nolink">("idle");
+  const uploadWrapRef  = useRef<HTMLDivElement>(null);
+  const [uploadTitle,  setUploadTitle]  = useState("");
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -477,6 +479,18 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
       .catch(() => {});
   }, [projectId]);
 
+  // MutationObserver: reads title attribute of the sm UploadButton to derive upload state/progress
+  useEffect(() => {
+    setUploadTitle("");
+    const container = uploadWrapRef.current;
+    if (!container) return;
+    const btn = container.querySelector("button");
+    if (!btn) return;
+    const obs = new MutationObserver(() => setUploadTitle(btn.title ?? ""));
+    obs.observe(btn, { attributes: true, attributeFilter: ["title"] });
+    return () => obs.disconnect();
+  }, [projectId, mounted]);
+
   async function handleDeleteAction(actionId: string): Promise<void> {
     const res = await fetch(`/api/project-actions/${actionId}`, { method: "DELETE" });
     if (!res.ok) throw new Error("מחיקה נכשלה");
@@ -485,6 +499,12 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
 
   const project = projects.find(p => p.id === projectId);
   if (!mounted || !project || isMobile) return null;
+
+  const isUploading    = uploadTitle.startsWith("מעלה");
+  const uploadDone     = uploadTitle === "הועלה בהצלחה ✓";
+  const uploadProgress = isUploading
+    ? Math.min(100, parseInt(uploadTitle.match(/(\d+)/)?.[1] ?? "0", 10))
+    : uploadDone ? 100 : 0;
 
   const accent      = accentForType(project.projectType);
   const days        = daysUntilDeadline(project.deadline);
@@ -912,17 +932,42 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             ))}
 
             {/* Upload */}
-            <div style={{
+            <div ref={uploadWrapRef} style={{
               flex: 1, height: 74, borderRadius: 16,
               background: `linear-gradient(160deg, rgba(220,38,38,0.14) 0%, rgba(220,38,38,0.08) 100%)`,
-              border: `1.5px solid rgba(220,38,38,0.34)`,
+              border: `1.5px solid ${isUploading ? "rgba(220,38,38,0.6)" : uploadDone ? "rgba(16,185,129,0.45)" : "rgba(220,38,38,0.34)"}`,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
               position: "relative", overflow: "hidden",
-              boxShadow: `inset 0 1px 0 rgba(220,38,38,0.18)`,
+              boxShadow: isUploading
+                ? `inset 0 1px 0 rgba(220,38,38,0.3), 0 0 20px rgba(220,38,38,0.15)`
+                : `inset 0 1px 0 rgba(220,38,38,0.18)`,
+              transition: "border-color 0.3s, box-shadow 0.3s",
             }}>
-              <span style={{ fontSize: 26, lineHeight: 1, pointerEvents: "none" }}>☁</span>
-              <span style={{ fontSize: 14, fontWeight: 800, color: BRAND, lineHeight: 1, pointerEvents: "none" }}>
-                העלאת קובץ
+              {/* Progress fill bar */}
+              {(isUploading || uploadDone) && (
+                <div style={{
+                  position: "absolute", top: 0, bottom: 0, left: 0,
+                  width: `${uploadProgress}%`,
+                  background: uploadDone
+                    ? "rgba(16,185,129,0.18)"
+                    : "rgba(220,38,38,0.2)",
+                  borderRadius: 16,
+                  transition: "width 0.5s ease",
+                  pointerEvents: "none",
+                }} />
+              )}
+              <span style={{ fontSize: 26, lineHeight: 1, pointerEvents: "none", position: "relative", zIndex: 1 }}>
+                {uploadDone ? "✓" : "☁"}
+              </span>
+              <span style={{
+                fontSize: 14, fontWeight: 800,
+                color: uploadDone ? GREEN : BRAND,
+                lineHeight: 1, pointerEvents: "none", position: "relative", zIndex: 1,
+              }}>
+                {isUploading
+                  ? `מעלה... ${uploadProgress > 0 ? `${uploadProgress}%` : ""}`.trim()
+                  : uploadDone ? "הועלה ✓"
+                  : "העלאת קובץ"}
               </span>
               <div className="v2-upload-overlay">
                 <UploadButton
