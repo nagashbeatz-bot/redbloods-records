@@ -1095,6 +1095,103 @@ function OverviewContent({
 }) {
   const days = daysUntilDeadline(project.deadline);
 
+  // ── פיד עדכונים — state ──────────────────────────────────────────────
+  const FEED_PAGE_SIZE = 5;
+  const [feedPage, setFeedPage] = useState(0);
+
+  // אפס עמוד כשמקורות הנתונים משתנים
+  useEffect(() => { setFeedPage(0); }, [transactions.length, sessions.length, (project.files ?? []).length]);
+
+  // ── בניית פיד מלא ────────────────────────────────────────────────────
+  type FeedItem = { icon: string; title: string; sub?: string; sortKey: string; displayDate?: string; color: string };
+
+  const txStatusColor = (status: string, type: "income" | "expense"): string => {
+    if (status === "התקבל" || status === "שולם") return GREEN;
+    if (status === "לא שולם") return type === "expense" ? RED_WARN : MUTED;
+    if (status === "בוטל")   return MUTED;
+    if (status === "חלקי")   return AMBER;
+    if (status === "צפוי")   return AMBER;
+    return type === "income" ? GREEN : AMBER;
+  };
+
+  const txTitle = (status: string, type: "income" | "expense", amount: number): string => {
+    const amt = `${currency}${amount.toLocaleString()}`;
+    if (type === "income") {
+      if (status === "התקבל") return `התקבל תשלום: ${amt}`;
+      if (status === "שולם")  return `שולם תשלום: ${amt}`;
+      if (status === "חלקי")  return `חלקי תשלום: ${amt}`;
+      return `${status} תשלום: ${amt}`;
+    } else {
+      if (status === "שולם")     return `שולם הוצאה: ${amt}`;
+      if (status === "לא שולם")  return `לא שולם הוצאה: ${amt}`;
+      if (status === "בוטל")     return `בוטל הוצאה: ${amt}`;
+      return `${status} הוצאה: ${amt}`;
+    }
+  };
+
+  const sessionTitle = (status: string): string => {
+    if (status === "מתוכנן" || status === "נקבע") return "סשן נקבע";
+    if (status === "התקיים") return "סשן התקיים";
+    if (status === "בוטל" || status === "נדחה")   return "סשן נדחה";
+    return `סשן: ${status}`;
+  };
+
+  const fmtDisplayDate = (d?: string | null): string | undefined => {
+    if (!d) return undefined;
+    try {
+      return new Date(d).toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit" });
+    } catch { return undefined; }
+  };
+
+  const allFeedItems: FeedItem[] = [];
+
+  // Sessions — כולם, ללא filter על date
+  sessions.forEach(s => {
+    allFeedItems.push({
+      icon: "📅",
+      title: sessionTitle(s.status),
+      sortKey: s.date ?? "",
+      displayDate: fmtDisplayDate(s.date) ?? "ללא תאריך",
+      color: BLUE,
+    });
+  });
+
+  // Transactions — כולם
+  if (finLoaded) {
+    transactions.forEach(tx => {
+      allFeedItems.push({
+        icon: tx.type === "income" ? "₪" : "💸",
+        title: txTitle(tx.payment_status, tx.type, tx.amount),
+        sub: tx.description || undefined,
+        sortKey: tx.date ?? "",
+        displayDate: fmtDisplayDate(tx.date) ?? "ללא תאריך",
+        color: txStatusColor(tx.payment_status, tx.type),
+      });
+    });
+  }
+
+  // Files — כולם, כותרת "הועלה קובץ", ללא תאריך (FileLink אין timestamp)
+  (project.files ?? []).forEach(() => {
+    allFeedItems.push({
+      icon: "📁",
+      title: "הועלה קובץ",
+      sortKey: "",
+      displayDate: "ללא תאריך",
+      color: TEXT2,
+    });
+  });
+
+  // מיון: date יורד; ללא date (sortKey = "") → סוף הפיד
+  allFeedItems.sort((a, b) => {
+    if (!a.sortKey && !b.sortKey) return 0;
+    if (!a.sortKey) return 1;
+    if (!b.sortKey) return -1;
+    return b.sortKey.localeCompare(a.sortKey);
+  });
+
+  const totalFeedPages = Math.max(1, Math.ceil(allFeedItems.length / FEED_PAGE_SIZE));
+  const visibleFeedItems = allFeedItems.slice(feedPage * FEED_PAGE_SIZE, (feedPage + 1) * FEED_PAGE_SIZE);
+
   return (
     <div style={{
       display: "grid",
@@ -1108,79 +1205,20 @@ function OverviewContent({
       {/* ── ROWS 1-2 COL 3: עדכונים אחרונים (גדול — RTL שמאל) ─────────── */}
       <Card style={{ gridColumn: 3, gridRow: "1 / 3" }}>
         <CardTitle>עדכונים אחרונים</CardTitle>
-        {(() => {
-          type FeedItem = { icon: string; title: string; sub?: string; date?: string; color: string };
-          const items: FeedItem[] = [];
 
-          // Sessions — last 2 by date descending
-          [...sessions]
-            .filter(s => s.date)
-            .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
-            .slice(0, 2)
-            .forEach(s => items.push({
-              icon: "📅",
-              title: `סשן: ${s.status}`,
-              date: s.date ?? undefined,
-              color: BLUE,
-            }));
-
-          // Transactions — last 3, include those without a date (appear as most recent)
-          if (finLoaded) {
-            const txStatusColor = (status: string, type: "income" | "expense"): string => {
-              if (status === "התקבל" || status === "שולם") return GREEN;
-              if (status === "לא שולם" || status === "בוטל") return type === "expense" ? RED_WARN : MUTED;
-              if (status === "חלקי")  return AMBER;
-              if (status === "צפוי")  return AMBER;
-              return type === "income" ? GREEN : AMBER;
-            };
-            const txLabel = (status: string, type: "income" | "expense"): string => {
-              const kind = type === "income" ? "תשלום" : "הוצאה";
-              return `${status} ${kind}`;
-            };
-            // Sort: entries with date descending first, then undated entries (most recently added)
-            // undated entries get a high sort key so they float to the top
-            [...transactions]
-              .sort((a, b) => {
-                const da = a.date ?? "9999-99-99";
-                const db = b.date ?? "9999-99-99";
-                return db.localeCompare(da);
-              })
-              .slice(0, 3)
-              .forEach(tx => items.push({
-                icon: tx.type === "income" ? "₪" : "💸",
-                title: `${txLabel(tx.payment_status, tx.type)}: ${currency}${tx.amount.toLocaleString()}`,
-                sub: tx.description || undefined,
-                date: tx.date ?? undefined,
-                color: txStatusColor(tx.payment_status, tx.type),
-              }));
-          }
-
-          // Sort all items: dated items by date desc, undated float to top
-          items.sort((a, b) => (b.date ?? "9999-99-99").localeCompare(a.date ?? "9999-99-99"));
-
-          // Latest file (no timestamp — appended at end)
-          const latestFile = (project.files ?? []).at(-1);
-          if (latestFile) {
-            items.push({ icon: "📁", title: `קובץ: ${latestFile.name}`, color: TEXT2 });
-          }
-
-          const feed = items.slice(0, 5);
-
-          if (feed.length === 0) {
-            return (
-              <div style={{
-                flex: 1, display: "flex", flexDirection: "column",
-                alignItems: "center", justifyContent: "center", gap: 10,
-              }}>
-                <span style={{ fontSize: 36, opacity: 0.22 }}>📋</span>
-                <div style={{ fontSize: 13, color: MUTED }}>עדיין אין פעילות בפרויקט</div>
-              </div>
-            );
-          }
-
-          return (
+        {allFeedItems.length === 0 ? (
+          <div style={{
+            flex: 1, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", gap: 10,
+          }}>
+            <span style={{ fontSize: 36, opacity: 0.22 }}>📋</span>
+            <div style={{ fontSize: 13, color: MUTED }}>עדיין אין פעילות בפרויקט</div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+            {/* פריטי הפיד */}
             <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
-              {feed.map((item, i) => (
+              {visibleFeedItems.map((item, i) => (
                 <div key={i} style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "11px 13px", borderRadius: 12,
@@ -1198,16 +1236,45 @@ function OverviewContent({
                       </div>
                     )}
                   </div>
-                  {item.date && (
-                    <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>
-                      {new Date(item.date).toLocaleDateString("he-IL", { day: "numeric", month: "short" })}
-                    </span>
-                  )}
+                  <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>
+                    {item.displayDate}
+                  </span>
                 </div>
               ))}
             </div>
-          );
-        })()}
+
+            {/* Pagination */}
+            {totalFeedPages > 1 && (
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BORDER}`,
+              }}>
+                <button
+                  onClick={() => setFeedPage(p => Math.max(0, p - 1))}
+                  disabled={feedPage === 0}
+                  style={{
+                    background: "none", border: `1px solid ${BORDER2}`, borderRadius: 8,
+                    padding: "5px 10px", fontSize: 12, color: feedPage === 0 ? MUTED : TEXT2,
+                    cursor: feedPage === 0 ? "default" : "pointer", fontFamily: "inherit",
+                  }}
+                >← הקודם</button>
+                <span style={{ fontSize: 11, color: MUTED }}>
+                  {feedPage + 1} / {totalFeedPages}
+                </span>
+                <button
+                  onClick={() => setFeedPage(p => Math.min(totalFeedPages - 1, p + 1))}
+                  disabled={feedPage >= totalFeedPages - 1}
+                  style={{
+                    background: "none", border: `1px solid ${BORDER2}`, borderRadius: 8,
+                    padding: "5px 10px", fontSize: 12,
+                    color: feedPage >= totalFeedPages - 1 ? MUTED : TEXT2,
+                    cursor: feedPage >= totalFeedPages - 1 ? "default" : "pointer", fontFamily: "inherit",
+                  }}
+                >הבא →</button>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* ── ROW 1 COL 1: התקדמות כללית ────────────────────────────────── */}
