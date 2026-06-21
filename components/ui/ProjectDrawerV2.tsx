@@ -76,12 +76,12 @@ const TEXT2     = "#A8A8B8";
 const MUTED     = "#555568";
 const LABEL     = "rgba(255,255,255,0.50)";  // readable secondary label on dark bg
 
-const PROJECT_TABS = ["סקירה", "כספים", "סשנים", "קליפ", "קבצים", "פעולות"] as const;
+const PROJECT_TABS = ["סקירה", "כספים", "סשנים", "קליפ", "קבצים"] as const;
 type DrawerTab = typeof PROJECT_TABS[number];
 
 const TAB_ICONS: Record<DrawerTab, string> = {
   "סקירה": "◈", "כספים": "₪", "סשנים": "◷",
-  "קליפ": "▷", "קבצים": "⊞", "פעולות": "⚡",
+  "קליפ": "▷", "קבצים": "⊞",
 };
 
 // Taller waveform bars for visual presence
