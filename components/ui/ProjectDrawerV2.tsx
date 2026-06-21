@@ -28,6 +28,7 @@ interface Transaction {
   payment_status:  PaymentStatus;
   description:     string;
   date?:           string;
+  created_at?:     string;
   payment_method?: string;
   category?:       string;
   notes?:          string;
@@ -40,6 +41,7 @@ interface Session {
   session_type?: string;
   start_time?:  string;
   end_time?:    string;
+  created_at?:  string;
   notes?:       string;
 }
 
@@ -1155,7 +1157,7 @@ function OverviewContent({
   useEffect(() => { setFeedPage(0); }, [transactions.length, sessions.length, (project.files ?? []).length, projectActions.length]);
 
   // ── בניית פיד מלא ────────────────────────────────────────────────────
-  type FeedItem = { icon: string; title: string; sub?: string; sortKey: string; displayDate?: string; color: string; actionId?: string };
+  type FeedItem = { icon: string; title: string; sub?: string; sortKey: string; displayDate?: string; displayTime?: string; color: string; actionId?: string };
 
   const txStatusColor = (status: string, type: "income" | "expense"): string => {
     if (status === "התקבל" || status === "שולם") return GREEN;
@@ -1195,6 +1197,13 @@ function OverviewContent({
     } catch { return undefined; }
   };
 
+  const fmtTime = (iso?: string | null): string | undefined => {
+    if (!iso) return undefined;
+    try {
+      return new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+    } catch { return undefined; }
+  };
+
   const allFeedItems: FeedItem[] = [];
 
   // Sessions — כולם, ללא filter על date
@@ -1202,8 +1211,9 @@ function OverviewContent({
     allFeedItems.push({
       icon: "📅",
       title: sessionTitle(s.status),
-      sortKey: s.date ?? "",
+      sortKey: s.created_at ?? s.date ?? "",
       displayDate: fmtDisplayDate(s.date) ?? "ללא תאריך",
+      displayTime: s.start_time?.slice(0, 5),
       color: BLUE,
     });
   });
@@ -1215,8 +1225,9 @@ function OverviewContent({
         icon: tx.type === "income" ? "₪" : "💸",
         title: txTitle(tx.payment_status, tx.type, tx.amount),
         sub: tx.description || undefined,
-        sortKey: tx.date ?? "",
-        displayDate: fmtDisplayDate(tx.date) ?? "ללא תאריך",
+        sortKey: tx.created_at ?? tx.date ?? "",
+        displayDate: fmtDisplayDate(tx.date ?? tx.created_at) ?? "ללא תאריך",
+        displayTime: fmtTime(tx.created_at),
         color: txStatusColor(tx.payment_status, tx.type),
       });
     });
@@ -1254,12 +1265,12 @@ function OverviewContent({
   };
 
   projectActions.forEach(a => {
-    const sortKey = a.action_date ?? a.created_at ?? "";
     allFeedItems.push({
       icon: "📤",
       title: actionFeedTitle(a),
-      sortKey,
+      sortKey: a.created_at ?? a.action_date ?? "",
       displayDate: fmtDisplayDate(a.action_date ?? a.created_at) ?? "ללא תאריך",
+      displayTime: fmtTime(a.created_at),
       color: PURPLE,
       actionId: a.id,
     });
@@ -1305,6 +1316,7 @@ function OverviewContent({
             <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
               {visibleFeedItems.map((item, i) => (
                 <div key={i} style={{
+                  position: "relative",
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "11px 13px", borderRadius: 12,
                   background: CARD_BG2, border: `1px solid ${item.actionId && deleteErrorId === item.actionId ? RED_WARN + "55" : BORDER}`,
@@ -1327,6 +1339,9 @@ function OverviewContent({
                   </div>
                   <span style={{ fontSize: 11, color: TEXT2, flexShrink: 0, fontWeight: 500 }}>
                     {item.displayDate}
+                    {item.displayTime && (
+                      <span style={{ color: MUTED }}> · {item.displayTime}</span>
+                    )}
                   </span>
                   {item.actionId && (
                     <button
@@ -1334,15 +1349,17 @@ function OverviewContent({
                       disabled={deletingActionId === item.actionId}
                       title="מחק פעולה"
                       style={{
-                        flexShrink: 0,
-                        background: "none", border: "none", cursor: deletingActionId === item.actionId ? "default" : "pointer",
+                        position: "absolute", top: "50%", transform: "translateY(-50%)",
+                        left: 6,
+                        background: "none", border: "none",
+                        cursor: deletingActionId === item.actionId ? "default" : "pointer",
                         color: deletingActionId === item.actionId ? MUTED : "#6B2020",
-                        fontSize: 14, lineHeight: 1, padding: "2px 4px",
-                        borderRadius: 6, opacity: 0.7, fontFamily: "inherit",
+                        fontSize: 13, lineHeight: 1, padding: "2px 5px",
+                        borderRadius: 5, opacity: 0.55, fontFamily: "inherit",
                         transition: "color 0.15s, opacity 0.15s",
                       }}
                       onMouseEnter={e => { if (deletingActionId !== item.actionId) { (e.currentTarget as HTMLElement).style.color = RED_WARN; (e.currentTarget as HTMLElement).style.opacity = "1"; } }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#6B2020"; (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#6B2020"; (e.currentTarget as HTMLElement).style.opacity = "0.55"; }}
                     >
                       {deletingActionId === item.actionId ? "…" : "✕"}
                     </button>
