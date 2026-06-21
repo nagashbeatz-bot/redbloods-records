@@ -1070,7 +1070,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const PAYMENT_METHODS = ["העברה בנקאית", "Bit", "PayBox", "מזומן", "צ'ק", "אחר"];
 const EXPENSE_CATEGORIES = ["שירותים", "ציוד", "אולפן", "שיווק", "אחר"];
-const ALL_STATUSES: PaymentStatus[] = ["צפוי", "התקבל", "שולם", "חלקי", "לא שולם", "לבדיקה", "בוטל"];
+const INCOME_STATUSES:  PaymentStatus[] = ["צפוי", "התקבל"];
+const EXPENSE_STATUSES: PaymentStatus[] = ["צפוי", "לא שולם", "חלקי", "שולם"];
 
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "12px 14px", borderRadius: 11, fontSize: 14,
@@ -1164,7 +1165,7 @@ function QuickTransactionForm({
           const active = formType === t;
           const ac = t === "income" ? GREEN : AMBER;
           return (
-            <button key={t} onClick={() => { setFormType(t); setFMethod(""); setFCat(""); }} style={{
+            <button key={t} onClick={() => { setFormType(t); setFStatus("צפוי"); setFMethod(""); setFCat(""); }} style={{
               flex: 1, padding: "11px 0", borderRadius: 10, cursor: "pointer",
               background: active ? `${ac}22` : "transparent",
               border: active ? `1px solid ${ac}55` : "1px solid transparent",
@@ -1188,7 +1189,7 @@ function QuickTransactionForm({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <FieldWrap label="סטטוס">
           <select className="v2-select" value={fStatus} onChange={e => setFStatus(e.target.value as PaymentStatus)} style={inputStyle}>
-            {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {(formType === "income" ? INCOME_STATUSES : EXPENSE_STATUSES).map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </FieldWrap>
         <FieldWrap label="תאריך">
