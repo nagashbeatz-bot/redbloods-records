@@ -1344,6 +1344,7 @@ function FinanceContent({
 }) {
   const [deletingTxId,    setDeletingTxId]    = useState<string | null>(null);
   const [txActionLoading, setTxActionLoading] = useState<string | null>(null);
+  const [statusMenuTxId,  setStatusMenuTxId]  = useState<string | null>(null);
 
   async function handleDeleteTx(id: string) {
     setTxActionLoading(id);
@@ -1437,15 +1438,18 @@ function FinanceContent({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {incomes.map(tx => {
-                const col      = STATUS_COLORS[tx.payment_status] ?? TEXT2;
-                const isLoading = txActionLoading === tx.id;
-                const isDelConf = deletingTxId === tx.id;
+                const col          = STATUS_COLORS[tx.payment_status] ?? TEXT2;
+                const isLoading    = txActionLoading === tx.id;
+                const isDelConf    = deletingTxId === tx.id;
+                const isStatusOpen = statusMenuTxId === tx.id;
+                const canMarkPaid  = tx.payment_status === "צפוי";
                 return (
                   <div key={tx.id} style={{
                     padding: "13px 15px", background: CARD_BG2,
                     borderRadius: 13, border: `1px solid ${BORDER}`,
                     display: "flex", flexDirection: "column", gap: 7,
                     opacity: isLoading ? 0.5 : 1,
+                    position: "relative",
                   }}>
                     {/* top row: description + amount */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
@@ -1456,15 +1460,18 @@ function FinanceContent({
                         +{currency}{tx.amount.toLocaleString()}
                       </div>
                     </div>
-                    {/* bottom row: date + method + status badge + actions */}
+                    {/* bottom row */}
                     {isDelConf ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
-                        <span style={{ fontSize: 12, color: TEXT2 }}>למחוק? פעולה זו קבועה.</span>
+                        <div>
+                          <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>למחוק את התשלום?</div>
+                          <div style={{ fontSize: 11, color: MUTED }}>הפעולה אינה ניתנת לביטול</div>
+                        </div>
                         <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => setDeletingTxId(null)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}>
+                          <button onClick={() => setDeletingTxId(null)} disabled={isLoading} style={{ fontSize: 12, padding: "4px 11px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}>
                             ביטול
                           </button>
-                          <button onClick={() => handleDeleteTx(tx.id)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: `${RED_WARN}18`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700 }}>
+                          <button onClick={() => handleDeleteTx(tx.id)} disabled={isLoading} style={{ fontSize: 12, padding: "4px 11px", borderRadius: 7, background: `${RED_WARN}15`, border: `1px solid ${RED_WARN}35`, color: RED_WARN, cursor: "pointer", fontWeight: 700 }}>
                             מחק
                           </button>
                         </div>
@@ -1479,16 +1486,55 @@ function FinanceContent({
                         {tx.payment_method && (
                           <span style={{ fontSize: 11, color: MUTED }}>· {tx.payment_method}</span>
                         )}
-                        <span style={{ marginRight: "auto", fontSize: 11, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}30`, borderRadius: 7, padding: "2px 8px" }}>
-                          {tx.payment_status}
-                        </span>
-                        {tx.payment_status === "צפוי" && (
-                          <button onClick={() => handleMarkPaid(tx)} disabled={isLoading} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 7, background: `${GREEN}18`, border: `1px solid ${GREEN}40`, color: GREEN, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>
-                            ✓ שולם
-                          </button>
-                        )}
-                        <button onClick={() => setDeletingTxId(tx.id)} disabled={isLoading} style={{ fontSize: 13, padding: "2px 6px", borderRadius: 6, background: "transparent", border: "none", color: MUTED, cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>
-                          🗑
+                        {/* clickable status badge — opens mini menu only when canMarkPaid */}
+                        <div style={{ position: "relative", marginRight: "auto" }}>
+                          <span
+                            onClick={() => canMarkPaid && !isLoading && setStatusMenuTxId(isStatusOpen ? null : tx.id)}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              fontSize: 11, fontWeight: 700, color: col,
+                              background: `${col}18`, border: `1px solid ${col}30`,
+                              borderRadius: 7, padding: "2px 8px",
+                              cursor: canMarkPaid ? "pointer" : "default",
+                            }}
+                          >
+                            {tx.payment_status}
+                            {canMarkPaid && <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>}
+                          </span>
+                          {isStatusOpen && (
+                            <div style={{
+                              position: "absolute", top: "calc(100% + 4px)", right: 0,
+                              background: "#1C1C22", border: `1px solid ${BORDER2}`,
+                              borderRadius: 10, overflow: "hidden",
+                              boxShadow: "0 8px 24px rgba(0,0,0,0.55)",
+                              zIndex: 10, minWidth: 120,
+                            }}>
+                              <button
+                                onClick={() => { setStatusMenuTxId(null); handleMarkPaid(tx); }}
+                                style={{
+                                  display: "block", width: "100%", textAlign: "right",
+                                  padding: "9px 14px", fontSize: 12, fontWeight: 700,
+                                  color: GREEN, background: "transparent", border: "none",
+                                  cursor: "pointer",
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = `${GREEN}12`)}
+                                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                              >
+                                ✓ סמן כשולם
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {/* subtle trash icon */}
+                        <button
+                          onClick={() => { setStatusMenuTxId(null); setDeletingTxId(tx.id); }}
+                          disabled={isLoading}
+                          title="מחק תשלום"
+                          style={{ background: "none", border: "none", padding: "2px 4px", cursor: "pointer", color: "#44445A", lineHeight: 1, flexShrink: 0, fontSize: 13, borderRadius: 5, transition: "color 0.15s" }}
+                          onMouseEnter={e => (e.currentTarget.style.color = RED_WARN)}
+                          onMouseLeave={e => (e.currentTarget.style.color = "#44445A")}
+                        >
+                          ⌫
                         </button>
                       </div>
                     )}
@@ -1514,14 +1560,18 @@ function FinanceContent({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {expenses.map(tx => {
-                const isLoading = txActionLoading === tx.id;
-                const isDelConf = deletingTxId === tx.id;
+                const col          = STATUS_COLORS[tx.payment_status] ?? TEXT2;
+                const isLoading    = txActionLoading === tx.id;
+                const isDelConf    = deletingTxId === tx.id;
+                const isStatusOpen = statusMenuTxId === tx.id;
+                const canMarkPaid  = tx.payment_status === "צפוי";
                 return (
                   <div key={tx.id} style={{
                     padding: "13px 15px", background: CARD_BG2,
                     borderRadius: 13, border: `1px solid ${BORDER}`,
                     display: "flex", flexDirection: "column", gap: 7,
                     opacity: isLoading ? 0.5 : 1,
+                    position: "relative",
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
@@ -1533,12 +1583,15 @@ function FinanceContent({
                     </div>
                     {isDelConf ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
-                        <span style={{ fontSize: 12, color: TEXT2 }}>למחוק? פעולה זו קבועה.</span>
+                        <div>
+                          <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>למחוק את ההוצאה?</div>
+                          <div style={{ fontSize: 11, color: MUTED }}>הפעולה אינה ניתנת לביטול</div>
+                        </div>
                         <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => setDeletingTxId(null)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}>
+                          <button onClick={() => setDeletingTxId(null)} disabled={isLoading} style={{ fontSize: 12, padding: "4px 11px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}>
                             ביטול
                           </button>
-                          <button onClick={() => handleDeleteTx(tx.id)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: `${RED_WARN}18`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700 }}>
+                          <button onClick={() => handleDeleteTx(tx.id)} disabled={isLoading} style={{ fontSize: 12, padding: "4px 11px", borderRadius: 7, background: `${RED_WARN}15`, border: `1px solid ${RED_WARN}35`, color: RED_WARN, cursor: "pointer", fontWeight: 700 }}>
                             מחק
                           </button>
                         </div>
@@ -1553,9 +1606,55 @@ function FinanceContent({
                         {tx.category && (
                           <span style={{ fontSize: 11, color: MUTED }}>· {tx.category}</span>
                         )}
-                        <span style={{ marginRight: "auto" }} />
-                        <button onClick={() => setDeletingTxId(tx.id)} disabled={isLoading} style={{ fontSize: 13, padding: "2px 6px", borderRadius: 6, background: "transparent", border: "none", color: MUTED, cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>
-                          🗑
+                        {/* clickable status badge */}
+                        <div style={{ position: "relative", marginRight: "auto" }}>
+                          <span
+                            onClick={() => canMarkPaid && !isLoading && setStatusMenuTxId(isStatusOpen ? null : tx.id)}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              fontSize: 11, fontWeight: 700, color: col,
+                              background: `${col}18`, border: `1px solid ${col}30`,
+                              borderRadius: 7, padding: "2px 8px",
+                              cursor: canMarkPaid ? "pointer" : "default",
+                            }}
+                          >
+                            {tx.payment_status}
+                            {canMarkPaid && <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>}
+                          </span>
+                          {isStatusOpen && (
+                            <div style={{
+                              position: "absolute", top: "calc(100% + 4px)", right: 0,
+                              background: "#1C1C22", border: `1px solid ${BORDER2}`,
+                              borderRadius: 10, overflow: "hidden",
+                              boxShadow: "0 8px 24px rgba(0,0,0,0.55)",
+                              zIndex: 10, minWidth: 120,
+                            }}>
+                              <button
+                                onClick={() => { setStatusMenuTxId(null); handleMarkPaid(tx); }}
+                                style={{
+                                  display: "block", width: "100%", textAlign: "right",
+                                  padding: "9px 14px", fontSize: 12, fontWeight: 700,
+                                  color: GREEN, background: "transparent", border: "none",
+                                  cursor: "pointer",
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = `${GREEN}12`)}
+                                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                              >
+                                ✓ סמן כשולם
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {/* subtle trash icon */}
+                        <button
+                          onClick={() => { setStatusMenuTxId(null); setDeletingTxId(tx.id); }}
+                          disabled={isLoading}
+                          title="מחק הוצאה"
+                          style={{ background: "none", border: "none", padding: "2px 4px", cursor: "pointer", color: "#44445A", lineHeight: 1, flexShrink: 0, fontSize: 13, borderRadius: 5, transition: "color 0.15s" }}
+                          onMouseEnter={e => (e.currentTarget.style.color = RED_WARN)}
+                          onMouseLeave={e => (e.currentTarget.style.color = "#44445A")}
+                        >
+                          ⌫
                         </button>
                       </div>
                     )}
