@@ -1342,6 +1342,34 @@ function FinanceContent({
   initialFormType: "income" | "expense";
   onTxAdded:       () => void;
 }) {
+  const [deletingTxId,    setDeletingTxId]    = useState<string | null>(null);
+  const [txActionLoading, setTxActionLoading] = useState<string | null>(null);
+
+  async function handleDeleteTx(id: string) {
+    setTxActionLoading(id);
+    setDeletingTxId(null);
+    try {
+      await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      onTxAdded();
+    } finally {
+      setTxActionLoading(null);
+    }
+  }
+
+  async function handleMarkPaid(tx: Transaction) {
+    setTxActionLoading(tx.id);
+    try {
+      await fetch(`/api/transactions/${tx.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentStatus: "שולם" }),
+      });
+      onTxAdded();
+    } finally {
+      setTxActionLoading(null);
+    }
+  }
+
   const incomes  = transactions.filter(t => t.type === "income");
   const expenses = transactions.filter(t => t.type === "expense");
 
@@ -1409,12 +1437,15 @@ function FinanceContent({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {incomes.map(tx => {
-                const col = STATUS_COLORS[tx.payment_status] ?? TEXT2;
+                const col      = STATUS_COLORS[tx.payment_status] ?? TEXT2;
+                const isLoading = txActionLoading === tx.id;
+                const isDelConf = deletingTxId === tx.id;
                 return (
                   <div key={tx.id} style={{
                     padding: "13px 15px", background: CARD_BG2,
                     borderRadius: 13, border: `1px solid ${BORDER}`,
                     display: "flex", flexDirection: "column", gap: 7,
+                    opacity: isLoading ? 0.5 : 1,
                   }}>
                     {/* top row: description + amount */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
@@ -1425,20 +1456,42 @@ function FinanceContent({
                         +{currency}{tx.amount.toLocaleString()}
                       </div>
                     </div>
-                    {/* bottom row: date + method + status badge */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {tx.date && (
-                        <span style={{ fontSize: 11, color: MUTED }}>
-                          {new Date(tx.date).toLocaleDateString("he-IL")}
+                    {/* bottom row: date + method + status badge + actions */}
+                    {isDelConf ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 12, color: TEXT2 }}>למחוק? פעולה זו קבועה.</span>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => setDeletingTxId(null)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}>
+                            ביטול
+                          </button>
+                          <button onClick={() => handleDeleteTx(tx.id)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: `${RED_WARN}18`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700 }}>
+                            מחק
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {tx.date && (
+                          <span style={{ fontSize: 11, color: MUTED }}>
+                            {new Date(tx.date).toLocaleDateString("he-IL")}
+                          </span>
+                        )}
+                        {tx.payment_method && (
+                          <span style={{ fontSize: 11, color: MUTED }}>· {tx.payment_method}</span>
+                        )}
+                        <span style={{ marginRight: "auto", fontSize: 11, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}30`, borderRadius: 7, padding: "2px 8px" }}>
+                          {tx.payment_status}
                         </span>
-                      )}
-                      {tx.payment_method && (
-                        <span style={{ fontSize: 11, color: MUTED }}>· {tx.payment_method}</span>
-                      )}
-                      <span style={{ marginRight: "auto", fontSize: 11, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}30`, borderRadius: 7, padding: "2px 8px" }}>
-                        {tx.payment_status}
-                      </span>
-                    </div>
+                        {tx.payment_status === "צפוי" && (
+                          <button onClick={() => handleMarkPaid(tx)} disabled={isLoading} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 7, background: `${GREEN}18`, border: `1px solid ${GREEN}40`, color: GREEN, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>
+                            ✓ שולם
+                          </button>
+                        )}
+                        <button onClick={() => setDeletingTxId(tx.id)} disabled={isLoading} style={{ fontSize: 13, padding: "2px 6px", borderRadius: 6, background: "transparent", border: "none", color: MUTED, cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>
+                          🗑
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1460,32 +1513,55 @@ function FinanceContent({
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {expenses.map(tx => (
-                <div key={tx.id} style={{
-                  padding: "13px 15px", background: CARD_BG2,
-                  borderRadius: 13, border: `1px solid ${BORDER}`,
-                  display: "flex", flexDirection: "column", gap: 7,
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                      {tx.description || "הוצאה"}
+              {expenses.map(tx => {
+                const isLoading = txActionLoading === tx.id;
+                const isDelConf = deletingTxId === tx.id;
+                return (
+                  <div key={tx.id} style={{
+                    padding: "13px 15px", background: CARD_BG2,
+                    borderRadius: 13, border: `1px solid ${BORDER}`,
+                    display: "flex", flexDirection: "column", gap: 7,
+                    opacity: isLoading ? 0.5 : 1,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                        {tx.description || "הוצאה"}
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: AMBER, whiteSpace: "nowrap", flexShrink: 0 }}>
+                        -{currency}{tx.amount.toLocaleString()}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 900, color: AMBER, whiteSpace: "nowrap", flexShrink: 0 }}>
-                      -{currency}{tx.amount.toLocaleString()}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {tx.date && (
-                      <span style={{ fontSize: 11, color: MUTED }}>
-                        {new Date(tx.date).toLocaleDateString("he-IL")}
-                      </span>
+                    {isDelConf ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 12, color: TEXT2 }}>למחוק? פעולה זו קבועה.</span>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => setDeletingTxId(null)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}>
+                            ביטול
+                          </button>
+                          <button onClick={() => handleDeleteTx(tx.id)} disabled={isLoading} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 7, background: `${RED_WARN}18`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700 }}>
+                            מחק
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {tx.date && (
+                          <span style={{ fontSize: 11, color: MUTED }}>
+                            {new Date(tx.date).toLocaleDateString("he-IL")}
+                          </span>
+                        )}
+                        {tx.category && (
+                          <span style={{ fontSize: 11, color: MUTED }}>· {tx.category}</span>
+                        )}
+                        <span style={{ marginRight: "auto" }} />
+                        <button onClick={() => setDeletingTxId(tx.id)} disabled={isLoading} style={{ fontSize: 13, padding: "2px 6px", borderRadius: 6, background: "transparent", border: "none", color: MUTED, cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>
+                          🗑
+                        </button>
+                      </div>
                     )}
-                    {tx.category && (
-                      <span style={{ fontSize: 11, color: MUTED }}>· {tx.category}</span>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
