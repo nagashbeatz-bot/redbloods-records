@@ -418,6 +418,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [mounted,        setMounted]        = useState(false);
   const [scheduleAction, setScheduleAction] = useState<ActionDef | null>(null);
   const [showSendModal,  setShowSendModal]  = useState(false);
+  const [copyFeedback,   setCopyFeedback]   = useState<"idle" | "copied" | "nolink">("idle");
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -763,11 +764,40 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     }}>
                       {latestFile ? latestFile.name : "אין קובץ שמע"}
                     </div>
-                    <div style={{ fontSize: 12, color: TEXT2 }}>
-                      {latestFile
-                        ? ((latestFile as { versionLabel?: string }).versionLabel ?? "קובץ אחרון")
-                        : "העלה קובץ כדי לנגן"}
-                    </div>
+                    {latestFile ? (
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          const link = (latestFile as { dropboxShareUrl?: string; url?: string }).dropboxShareUrl
+                            ?? (latestFile as { url?: string }).url
+                            ?? "";
+                          if (!link) { setCopyFeedback("nolink"); setTimeout(() => setCopyFeedback("idle"), 1800); return; }
+                          if (navigator?.clipboard?.writeText) {
+                            navigator.clipboard.writeText(link).then(() => {
+                              setCopyFeedback("copied");
+                              setTimeout(() => setCopyFeedback("idle"), 1800);
+                            }).catch(() => { setCopyFeedback("nolink"); setTimeout(() => setCopyFeedback("idle"), 1800); });
+                          } else {
+                            setCopyFeedback("nolink");
+                            setTimeout(() => setCopyFeedback("idle"), 1800);
+                          }
+                        }}
+                        style={{
+                          background: "none", border: "none", padding: 0,
+                          cursor: "pointer", fontFamily: "inherit",
+                          fontSize: 12,
+                          color: copyFeedback === "copied" ? GREEN : copyFeedback === "nolink" ? RED_WARN : TEXT2,
+                          display: "flex", alignItems: "center", gap: 4,
+                          transition: "color 0.15s",
+                        }}
+                        onMouseEnter={e => { if (copyFeedback === "idle") e.currentTarget.style.color = TEXT; }}
+                        onMouseLeave={e => { if (copyFeedback === "idle") e.currentTarget.style.color = TEXT2; }}
+                      >
+                        {copyFeedback === "copied" ? "✓ הקישור הועתק" : copyFeedback === "nolink" ? "אין קישור" : "⎘ העתק לינק"}
+                      </button>
+                    ) : (
+                      <div style={{ fontSize: 12, color: TEXT2 }}>העלה קובץ כדי לנגן</div>
+                    )}
                   </div>
 
                   {latestFile && (
