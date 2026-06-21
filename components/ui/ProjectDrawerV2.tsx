@@ -1171,11 +1171,12 @@ function OverviewContent({
   const [feedPage,         setFeedPage]         = useState(0);
   const [deletingActionId, setDeletingActionId] = useState<string | null>(null);
   const [deleteErrorId,    setDeleteErrorId]    = useState<string | null>(null);
+  const [confirmDeleteId,  setConfirmDeleteId]  = useState<string | null>(null);
 
   async function handleDeleteFeedAction(actionId: string) {
-    if (!window.confirm("למחוק פעולה זו?")) return;
     setDeletingActionId(actionId);
     setDeleteErrorId(null);
+    setConfirmDeleteId(null);
     try {
       await onDeleteAction(actionId);
     } catch {
@@ -1377,9 +1378,35 @@ function OverviewContent({
                       <span style={{ color: MUTED }}> · {item.displayTime}</span>
                     )}
                   </span>
-                  {item.actionId && (
+                  {item.actionId && confirmDeleteId === item.actionId ? (
+                    <div style={{
+                      position: "absolute", top: "50%", transform: "translateY(-50%)",
+                      left: 6, zIndex: 2,
+                      display: "flex", alignItems: "center", gap: 5,
+                    }}>
+                      <span style={{ fontSize: 11, color: TEXT2, whiteSpace: "nowrap" }}>למחוק?</span>
+                      <button
+                        onClick={() => handleDeleteFeedAction(item.actionId!)}
+                        style={{
+                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6,
+                          background: "rgba(239,68,68,0.18)", border: `1px solid ${RED_WARN}55`,
+                          color: RED_WARN, cursor: "pointer", fontFamily: "inherit",
+                          lineHeight: 1, transition: "background 0.15s",
+                        }}
+                      >אישור</button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        style={{
+                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6,
+                          background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER}`,
+                          color: MUTED, cursor: "pointer", fontFamily: "inherit",
+                          lineHeight: 1, transition: "background 0.15s",
+                        }}
+                      >בטל</button>
+                    </div>
+                  ) : item.actionId ? (
                     <button
-                      onClick={() => handleDeleteFeedAction(item.actionId!)}
+                      onClick={() => { if (deletingActionId !== item.actionId) setConfirmDeleteId(item.actionId!); }}
                       disabled={deletingActionId === item.actionId}
                       title="מחק פעולה"
                       style={{
@@ -1399,7 +1426,7 @@ function OverviewContent({
                     >
                       {deletingActionId === item.actionId ? "…" : "✕"}
                     </button>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
