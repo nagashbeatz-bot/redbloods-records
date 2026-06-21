@@ -1348,87 +1348,97 @@ function OverviewContent({
           <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
             {/* פריטי הפיד */}
             <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
-              {visibleFeedItems.map((item, i) => (
-                <div key={i} style={{
-                  position: "relative",
-                  display: "flex", alignItems: "center", gap: 12,
-                  padding: item.actionId ? "11px 13px 11px 36px" : "11px 13px",
-                  borderRadius: 12,
-                  background: CARD_BG2, border: `1px solid ${item.actionId && deleteErrorId === item.actionId ? RED_WARN + "55" : BORDER}`,
-                  transition: "border-color 0.2s",
-                }}>
-                  <span style={{ fontSize: 16, flexShrink: 0, color: item.color }}>{item.icon}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 700, color: TEXT,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}>{item.title}</div>
-                    {item.sub && (
-                      <div style={{ fontSize: 11, color: LABEL, marginTop: 2 }}>
-                        {item.sub.slice(0, 50)}
-                      </div>
-                    )}
-                    {item.actionId && deleteErrorId === item.actionId && (
-                      <div style={{ fontSize: 11, color: RED_WARN, marginTop: 2 }}>שגיאה במחיקה</div>
-                    )}
-                  </div>
-                  <span style={{ fontSize: 11, color: TEXT2, flexShrink: 0, fontWeight: 500 }}>
-                    {item.displayDate}
-                    {item.displayTime && (
-                      <span style={{ color: MUTED }}> · {item.displayTime}</span>
-                    )}
-                  </span>
-                  {item.actionId && confirmDeleteId === item.actionId ? (
-                    <div style={{
-                      position: "absolute", top: "50%", transform: "translateY(-50%)",
-                      left: 6, zIndex: 2,
-                      display: "flex", alignItems: "center", gap: 5,
+              {visibleFeedItems.map((item, i) => {
+                  const isConfirm = item.actionId ? confirmDeleteId === item.actionId : false;
+                  return (
+                    <div key={i} style={{
+                      position: "relative",
+                      display: "flex",
+                      flexDirection: isConfirm ? "column" : "row",
+                      alignItems: isConfirm ? "stretch" : "center",
+                      gap: isConfirm ? 0 : 12,
+                      padding: (!isConfirm && item.actionId) ? "11px 13px 11px 36px" : "11px 13px",
+                      borderRadius: 12,
+                      background: CARD_BG2,
+                      border: `1px solid ${deleteErrorId === item.actionId ? RED_WARN + "55" : isConfirm ? RED_WARN + "33" : BORDER}`,
+                      transition: "border-color 0.2s",
                     }}>
-                      <span style={{ fontSize: 11, color: TEXT2, whiteSpace: "nowrap" }}>למחוק?</span>
-                      <button
-                        onClick={() => handleDeleteFeedAction(item.actionId!)}
-                        style={{
-                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6,
-                          background: "rgba(239,68,68,0.18)", border: `1px solid ${RED_WARN}55`,
-                          color: RED_WARN, cursor: "pointer", fontFamily: "inherit",
-                          lineHeight: 1, transition: "background 0.15s",
-                        }}
-                      >אישור</button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        style={{
-                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6,
-                          background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER}`,
-                          color: MUTED, cursor: "pointer", fontFamily: "inherit",
-                          lineHeight: 1, transition: "background 0.15s",
-                        }}
-                      >בטל</button>
+                      {/* שורה ראשית — תמיד מוצגת */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: 16, flexShrink: 0, color: item.color }}>{item.icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 13, fontWeight: 700, color: TEXT,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>{item.title}</div>
+                          {item.sub && (
+                            <div style={{ fontSize: 11, color: LABEL, marginTop: 2 }}>
+                              {item.sub.slice(0, 50)}
+                            </div>
+                          )}
+                          {item.actionId && deleteErrorId === item.actionId && (
+                            <div style={{ fontSize: 11, color: RED_WARN, marginTop: 2 }}>שגיאה במחיקה</div>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 11, color: TEXT2, flexShrink: 0, fontWeight: 500 }}>
+                          {item.displayDate}
+                          {item.displayTime && (
+                            <span style={{ color: MUTED }}> · {item.displayTime}</span>
+                          )}
+                        </span>
+                      </div>
+                      {/* X — רק במצב רגיל */}
+                      {!isConfirm && item.actionId && (
+                        <button
+                          onClick={() => { if (deletingActionId !== item.actionId) setConfirmDeleteId(item.actionId!); }}
+                          disabled={deletingActionId === item.actionId}
+                          title="מחק פעולה"
+                          style={{
+                            position: "absolute", top: "50%", transform: "translateY(-50%)",
+                            left: 10, zIndex: 2,
+                            background: "none", border: "none",
+                            cursor: deletingActionId === item.actionId ? "default" : "pointer",
+                            color: MUTED,
+                            fontSize: 13, lineHeight: 1, padding: "4px 6px",
+                            borderRadius: 6, opacity: 0.7, fontFamily: "inherit",
+                            minWidth: 22, minHeight: 22,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            transition: "color 0.15s, opacity 0.15s",
+                          }}
+                          onMouseEnter={e => { if (deletingActionId !== item.actionId) { (e.currentTarget as HTMLElement).style.color = RED_WARN; (e.currentTarget as HTMLElement).style.opacity = "1"; } }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED; (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+                        >
+                          {deletingActionId === item.actionId ? "…" : "✕"}
+                        </button>
+                      )}
+                      {/* Confirm row — רק במצב confirm */}
+                      {isConfirm && (
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BORDER}`,
+                        }}>
+                          <span style={{ fontSize: 11, color: TEXT2, flex: 1 }}>למחוק פעולה זו?</span>
+                          <button
+                            onClick={() => handleDeleteFeedAction(item.actionId!)}
+                            style={{
+                              fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 6,
+                              background: "rgba(239,68,68,0.18)", border: `1px solid ${RED_WARN}55`,
+                              color: RED_WARN, cursor: "pointer", fontFamily: "inherit", lineHeight: 1,
+                            }}
+                          >אישור</button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            style={{
+                              fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 6,
+                              background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER}`,
+                              color: MUTED, cursor: "pointer", fontFamily: "inherit", lineHeight: 1,
+                            }}
+                          >בטל</button>
+                        </div>
+                      )}
                     </div>
-                  ) : item.actionId ? (
-                    <button
-                      onClick={() => { if (deletingActionId !== item.actionId) setConfirmDeleteId(item.actionId!); }}
-                      disabled={deletingActionId === item.actionId}
-                      title="מחק פעולה"
-                      style={{
-                        position: "absolute", top: "50%", transform: "translateY(-50%)",
-                        left: 10, zIndex: 2,
-                        background: "none", border: "none",
-                        cursor: deletingActionId === item.actionId ? "default" : "pointer",
-                        color: MUTED,
-                        fontSize: 13, lineHeight: 1, padding: "4px 6px",
-                        borderRadius: 6, opacity: 0.7, fontFamily: "inherit",
-                        minWidth: 22, minHeight: 22,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "color 0.15s, opacity 0.15s",
-                      }}
-                      onMouseEnter={e => { if (deletingActionId !== item.actionId) { (e.currentTarget as HTMLElement).style.color = RED_WARN; (e.currentTarget as HTMLElement).style.opacity = "1"; } }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = MUTED; (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
-                    >
-                      {deletingActionId === item.actionId ? "…" : "✕"}
-                    </button>
-                  ) : null}
-                </div>
-              ))}
+                  );
+              })}
             </div>
 
             {/* Pagination */}
