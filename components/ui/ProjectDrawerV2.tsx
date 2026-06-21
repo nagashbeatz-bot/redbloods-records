@@ -1075,8 +1075,8 @@ function OverviewContent({
       minHeight: 0,
     }}>
 
-      {/* ── ROWS 1-2 COL 2-3: עדכונים אחרונים (גדול) ─────────────────── */}
-      <Card style={{ gridColumn: "2 / 4", gridRow: "1 / 3" }}>
+      {/* ── ROWS 1-2 COL 3: עדכונים אחרונים (גדול — RTL שמאל) ─────────── */}
+      <Card style={{ gridColumn: 3, gridRow: "1 / 3" }}>
         <CardTitle>עדכונים אחרונים</CardTitle>
         {(() => {
           type FeedItem = { icon: string; title: string; sub?: string; date?: string; color: string };
@@ -1180,8 +1180,8 @@ function OverviewContent({
         })()}
       </Card>
 
-      {/* ── ROW 2 COL 1: התקדמות כללית ────────────────────────────────── */}
-      <Card style={{ gridColumn: 1, gridRow: 2, alignItems: "center" }}>
+      {/* ── ROW 1 COL 1: התקדמות כללית ────────────────────────────────── */}
+      <Card style={{ gridColumn: 1, gridRow: 1, alignItems: "center" }}>
         <CardTitle>התקדמות כללית</CardTitle>
         <div style={{ position: "relative", width: 118, height: 118, flexShrink: 0, marginBottom: 12 }}>
           <Arc pct={pct} accent={accent} size={118} />
@@ -1216,8 +1216,8 @@ function OverviewContent({
         </div>
       </Card>
 
-      {/* ── ROW 2 COL 2: פרטים כלליים ─────────────────────────────────── */}
-      <Card style={{ gridColumn: 2, gridRow: 2 }}>
+      {/* ── ROW 2 COL 1: פרטים כלליים ─────────────────────────────────── */}
+      <Card style={{ gridColumn: 1, gridRow: 2 }}>
         <CardTitle>פרטים כלליים</CardTitle>
         <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1 }}>
           {[
@@ -1249,8 +1249,8 @@ function OverviewContent({
         )}
       </Card>
 
-      {/* ── ROW 1 COL 1: סיכום כספי ────────────────────────────────────── */}
-      <Card style={{ gridColumn: 1, gridRow: 1 }}>
+      {/* ── ROW 1 COL 2: סיכום כספי ────────────────────────────────────── */}
+      <Card style={{ gridColumn: 2, gridRow: 1 }}>
         <CardTitle>סיכום כספי</CardTitle>
         {finLoaded ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
