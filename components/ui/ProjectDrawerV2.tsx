@@ -43,6 +43,18 @@ interface Session {
   notes?:       string;
 }
 
+interface ProjectAction {
+  id:             string;
+  action_type?:   string;
+  content_type?:  string;
+  recipient_role?: string;
+  recipient_name?: string;
+  action_date?:   string;
+  created_at?:    string;
+  status?:        string;
+  notes?:         string;
+}
+
 
 // ─── Tokens ────────────────────────────────────────────────────────────────────
 const PANEL_BG  = "linear-gradient(170deg, #0E0E12 0%, #0B0B0F 50%, #080808 100%)";
@@ -181,12 +193,13 @@ const CLIENT_CONTENT_TYPES = ["סקיצה", "גרסה לאישור", "בקשת �
 const PURPLE = "#8B5CF6";
 
 interface SendModalProps {
-  projectId:  string;
-  artistName: string;
-  onClose:    () => void;
+  projectId:     string;
+  artistName:    string;
+  onClose:       () => void;
+  onActionSent?: (action: ProjectAction) => void;
 }
 
-function SendModal({ projectId, artistName, onClose }: SendModalProps) {
+function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalProps) {
   const [step,       setStep]      = useState<1 | 2>(1);
   const [dest,       setDest]      = useState<SendDestination | null>(null);
   const [selection,  setSelection] = useState<string | null>(null);
@@ -238,6 +251,8 @@ function SendModal({ projectId, artistName, onClose }: SendModalProps) {
         const d = await res.json().catch(() => ({}));
         throw new Error((d as { error?: string }).error ?? "שגיאה בשמירה");
       }
+      const resData = await res.json().catch(() => ({}));
+      if (onActionSent && resData.action) onActionSent(resData.action as ProjectAction);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
@@ -389,7 +404,7 @@ function SendModal({ projectId, artistName, onClose }: SendModalProps) {
               transition: "none",
             }}
           >
-            {saving ? "שומר..." : "שמור פעולה"}
+            {saving ? "שולח..." : "שלח"}
           </button>
         )}
       </div>
@@ -414,8 +429,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [agreedPrice,  setAgreedPrice]  = useState(0);
   const [currency,     setCurrency]     = useState("₪");
   const [finLoaded,    setFinLoaded]    = useState(false);
-  const [sessions,       setSessions]       = useState<Session[]>([]);
-  const [mounted,        setMounted]        = useState(false);
+  const [sessions,        setSessions]        = useState<Session[]>([]);
+  const [projectActions,  setProjectActions]  = useState<ProjectAction[]>([]);
+  const [mounted,         setMounted]         = useState(false);
   const [scheduleAction, setScheduleAction] = useState<ActionDef | null>(null);
   const [showSendModal,  setShowSendModal]  = useState(false);
   const [copyFeedback,   setCopyFeedback]   = useState<"idle" | "copied" | "nolink">("idle");
@@ -448,6 +464,14 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     fetch(`/api/sessions?projectId=${projectId}`)
       .then(r => r.json())
       .then(d => setSessions(d.sessions ?? []))
+      .catch(() => {});
+  }, [projectId]);
+
+  useEffect(() => {
+    setProjectActions([]);
+    fetch(`/api/project-actions?projectId=${projectId}`)
+      .then(r => r.json())
+      .then(d => setProjectActions(d.actions ?? []))
       .catch(() => {});
   }, [projectId]);
 
@@ -969,6 +993,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               project={project}
               transactions={transactions}
               sessions={sessions}
+              projectActions={projectActions}
               agreedPrice={agreedPrice}
               currency={currency}
               finLoaded={finLoaded}
@@ -1064,6 +1089,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           projectId={projectId}
           artistName={project.artist}
           onClose={() => setShowSendModal(false)}
+          onActionSent={action => setProjectActions(prev => [action, ...prev])}
         />
       )}
     </div>,
@@ -1073,26 +1099,27 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
 
 // ─── Overview tab ──────────────────────────────────────────────────────────────
 function OverviewContent({
-  project, transactions, sessions,
+  project, transactions, sessions, projectActions,
   agreedPrice, currency, finLoaded, accent,
   received, totalExp, balance,
   pct, filesCount, sessDone, statusColor, onTabChange,
 }: {
-  project:      Project;
-  transactions: Transaction[];
-  sessions:     Session[];
-  agreedPrice:  number;
-  currency:     string;
-  finLoaded:    boolean;
-  accent:       string;
-  received:     number;
-  totalExp:     number;
-  balance:      number;
-  pct:          number;
-  filesCount:   number;
-  sessDone:     number;
-  statusColor:  string;
-  onTabChange:  (t: DrawerTab) => void;
+  project:        Project;
+  transactions:   Transaction[];
+  sessions:       Session[];
+  projectActions: ProjectAction[];
+  agreedPrice:    number;
+  currency:       string;
+  finLoaded:      boolean;
+  accent:         string;
+  received:       number;
+  totalExp:       number;
+  balance:        number;
+  pct:            number;
+  filesCount:     number;
+  sessDone:       number;
+  statusColor:    string;
+  onTabChange:    (t: DrawerTab) => void;
 }) {
   const days = daysUntilDeadline(project.deadline);
 
@@ -1101,7 +1128,7 @@ function OverviewContent({
   const [feedPage, setFeedPage] = useState(0);
 
   // אפס עמוד כשמקורות הנתונים משתנים
-  useEffect(() => { setFeedPage(0); }, [transactions.length, sessions.length, (project.files ?? []).length]);
+  useEffect(() => { setFeedPage(0); }, [transactions.length, sessions.length, (project.files ?? []).length, projectActions.length]);
 
   // ── בניית פיד מלא ────────────────────────────────────────────────────
   type FeedItem = { icon: string; title: string; sub?: string; sortKey: string; displayDate?: string; color: string };
@@ -1179,6 +1206,29 @@ function OverviewContent({
       sortKey: "",
       displayDate: "ללא תאריך",
       color: TEXT2,
+    });
+  });
+
+  // Project actions — שליחות (מ-GET /api/project-actions + optimistic אחרי POST)
+  const actionFeedTitle = (a: ProjectAction): string => {
+    const name = a.recipient_name ?? "";
+    const role = a.recipient_role ?? "";
+    const ct   = a.content_type  ?? "";
+    if (role === "הפקה")         return `נשלח להפקה${name ? `: ${name}` : ""}`;
+    if (role === "מיקס" || role === "מאסטר" || role === "מיקס / מאסטר")
+      return `נשלח למיקס / מאסטר${name ? `: ${name}` : ""}`;
+    if (role === "לקוח")         return `נשלח ללקוח${ct ? `: ${ct}` : ""}`;
+    return `נשלח${name ? `: ${name}` : ct ? `: ${ct}` : ""}`;
+  };
+
+  projectActions.forEach(a => {
+    const sortKey = a.action_date ?? a.created_at ?? "";
+    allFeedItems.push({
+      icon: "📤",
+      title: actionFeedTitle(a),
+      sortKey,
+      displayDate: fmtDisplayDate(a.action_date ?? a.created_at) ?? "ללא תאריך",
+      color: PURPLE,
     });
   });
 
