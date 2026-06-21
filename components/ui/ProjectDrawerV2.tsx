@@ -164,7 +164,7 @@ function StatCard({
 
 // ─── Main component ────────────────────────────────────────────────────────────
 export default function ProjectDrawerV2({ projectId, onClose }: Props) {
-  const { projects } = useProjects();
+  const { projects, refresh } = useProjects();
   const player = usePlayerSafe();
 
   const [isMobile,     setIsMobile]     = useState(false);
@@ -715,7 +715,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           ) : activeTab === "סשנים" ? (
             <SessionsContent sessions={sessions} sessDone={sessDone} />
           ) : activeTab === "קבצים" ? (
-            <FilesContent project={project} />
+            <FilesContent project={project} onFileDeleted={refresh} />
           ) : (
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center",
@@ -1753,9 +1753,35 @@ function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone
 
 // ─── Tab: קבצים ───────────────────────────────────────────────────────────────
 
-function FilesContent({ project }: { project: Project }) {
-  const files = (project.files ?? []) as Array<{ name: string; url: string; versionLabel?: string; dropboxShareUrl?: string }>;
+function FilesContent({ project, onFileDeleted }: { project: Project; onFileDeleted: () => void }) {
+  const files = project.files ?? [];
   const reversed = [...files].reverse();
+
+  const [deletingFilePath, setDeletingFilePath] = useState<string | null>(null);
+  const [fileDelLoading,   setFileDelLoading]   = useState(false);
+  const [fileDelErr,       setFileDelErr]        = useState<string | null>(null);
+
+  async function handleDeleteFile(dropboxPath: string) {
+    setFileDelLoading(true);
+    setFileDelErr(null);
+    try {
+      const res = await fetch("/api/dropbox/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dropboxPath, projectId: project.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "מחיקה נכשלה");
+      setDeletingFilePath(null);
+      onFileDeleted();
+    } catch (err) {
+      setFileDelErr(err instanceof Error ? err.message : "שגיאה במחיקה");
+      setTimeout(() => setFileDelErr(null), 4000);
+    } finally {
+      setFileDelLoading(false);
+    }
+  }
+
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
@@ -1768,18 +1794,56 @@ function FilesContent({ project }: { project: Project }) {
         />
       </div>
 
+      {fileDelErr && (
+        <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}30`, borderRadius: 8, padding: "8px 12px" }}>
+          {fileDelErr}
+        </div>
+      )}
+
       {reversed.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {reversed.map((f, i) => {
-            const href = f.dropboxShareUrl || f.url || "";
-            const rowStyle: React.CSSProperties = {
-              display: "flex", alignItems: "center", gap: 12,
-              padding: "10px 14px", background: "rgba(255,255,255,0.034)",
-              borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
-              textDecoration: "none",
-              ...(href ? { cursor: "pointer" } : {}),
-            };
-            const inner = (
+            const href        = f.dropboxShareUrl || f.url || "";
+            const isDelConf   = deletingFilePath === (f.dropboxPath ?? `__idx_${i}`);
+            const canDelete   = !!f.dropboxPath;
+
+            if (isDelConf) {
+              return (
+                <div key={i} style={{
+                  padding: "12px 14px", background: `${RED_WARN}08`,
+                  borderRadius: 12, border: `1px solid ${RED_WARN}25`,
+                  display: "flex", flexDirection: "column", gap: 8,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>למחוק את הקובץ?</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                      הקובץ יימחק גם מ-Dropbox. הפעולה אינה ניתנת לביטול.
+                    </div>
+                    <div style={{ fontSize: 11, color: LABEL, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {f.name}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-start" }}>
+                    <button
+                      onClick={() => setDeletingFilePath(null)}
+                      disabled={fileDelLoading}
+                      style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}
+                    >
+                      ביטול
+                    </button>
+                    <button
+                      onClick={() => handleDeleteFile(f.dropboxPath!)}
+                      disabled={fileDelLoading}
+                      style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, background: `${RED_WARN}15`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700, opacity: fileDelLoading ? 0.5 : 1 }}
+                    >
+                      {fileDelLoading ? "מוחק…" : "מחק קובץ"}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            const rowContent = (
               <>
                 <span style={{ fontSize: 15, color: LABEL, flexShrink: 0 }}>🎵</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1795,12 +1859,32 @@ function FilesContent({ project }: { project: Project }) {
                 ) : (
                   <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>אין קישור</span>
                 )}
+                {canDelete && (
+                  <button
+                    onClick={e => { e.preventDefault(); e.stopPropagation(); setDeletingFilePath(f.dropboxPath!); }}
+                    title="מחק קובץ"
+                    style={{ background: "none", border: "none", padding: "2px 4px", cursor: "pointer", color: "#44445A", lineHeight: 1, flexShrink: 0, fontSize: 13, borderRadius: 5, marginRight: 2 }}
+                    onMouseEnter={e => (e.currentTarget.style.color = RED_WARN)}
+                    onMouseLeave={e => (e.currentTarget.style.color = "#44445A")}
+                  >
+                    ⌫
+                  </button>
+                )}
               </>
             );
+
+            const rowStyle: React.CSSProperties = {
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "10px 14px", background: "rgba(255,255,255,0.034)",
+              borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
+              textDecoration: "none",
+              ...(href ? { cursor: "pointer" } : {}),
+            };
+
             return href ? (
-              <a key={i} href={href} target="_blank" rel="noreferrer" style={rowStyle}>{inner}</a>
+              <a key={i} href={href} target="_blank" rel="noreferrer" style={rowStyle}>{rowContent}</a>
             ) : (
-              <div key={i} style={rowStyle}>{inner}</div>
+              <div key={i} style={rowStyle}>{rowContent}</div>
             );
           })}
         </div>
