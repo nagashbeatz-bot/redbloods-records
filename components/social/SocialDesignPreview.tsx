@@ -191,8 +191,9 @@ function SCard({
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function SocialDesignPreview() {
   const [campaigns, setCampaigns] = useState<SocialCampaign[]>([]);
-  const [rows, setRows] = useState<MockRow[]>(MOCK_ROWS);
-  const [files, setFiles] = useState<FileCard[]>(MOCK_FILES);
+  const [rows, setRows] = useState<MockRow[]>([]);
+  const [files, setFiles] = useState<FileCard[]>([]);
+  const [socialLoading, setSocialLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<FileCard | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [filterPlatform, setFilterPlatform] = useState("all");
@@ -202,41 +203,53 @@ export default function SocialDesignPreview() {
     fetch("/api/social/campaigns")
       .then(r => r.json())
       .then(d => {
-        if (!Array.isArray(d.campaigns) || d.campaigns.length === 0) return;
+        if (!Array.isArray(d.campaigns) || d.campaigns.length === 0) {
+          setRows(MOCK_ROWS);
+          setFiles(MOCK_FILES);
+          setSocialLoading(false);
+          return;
+        }
         setCampaigns(d.campaigns);
         const active: SocialCampaign =
           d.campaigns.find((c: SocialCampaign) => c.status === "active") ?? d.campaigns[0];
-        // Fetch files for active campaign
-        fetch(`/api/social/files?campaignId=${active.id}`)
-          .then(r => r.json())
-          .then(d => {
-            if (Array.isArray(d.files) && d.files.length > 0)
-              setFiles(d.files.slice(0, 6).map((f: SocialContentFile, i: number) => mapApiFileToCard(f, i)));
-          })
-          .catch(() => {});
-        fetch(`/api/social/content?campaignId=${active.id}`)
-          .then(r2 => r2.json())
-          .then(d2 => {
-            if (!Array.isArray(d2.items) || d2.items.length === 0) return;
-            setRows(
-              d2.items.slice(0, 8).map((item: SocialContentItem, idx: number) => ({
-                id: item.id,
-                num: String(idx + 1).padStart(3, "0"),
-                title: item.title,
-                content_type: item.content_type,
-                platform: (item.platform ?? "other") as SocialPlatform,
-                status: item.status as SocialContentStatus,
-                publish_date: item.publish_date
-                  ? new Date(item.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
-                  : "—",
-                assets: item.asset_link ? 1 : 0,
-                notes: item.notes ?? "",
-              }))
-            );
-          })
-          .catch(() => {});
+        Promise.all([
+          fetch(`/api/social/files?campaignId=${active.id}`)
+            .then(r => r.json())
+            .then(d => {
+              if (Array.isArray(d.files) && d.files.length > 0)
+                setFiles(d.files.slice(0, 6).map((f: SocialContentFile, i: number) => mapApiFileToCard(f, i)));
+              else
+                setFiles(MOCK_FILES);
+            })
+            .catch(() => setFiles(MOCK_FILES)),
+          fetch(`/api/social/content?campaignId=${active.id}`)
+            .then(r => r.json())
+            .then(d => {
+              if (!Array.isArray(d.items) || d.items.length === 0) { setRows(MOCK_ROWS); return; }
+              setRows(
+                d.items.slice(0, 8).map((item: SocialContentItem, idx: number) => ({
+                  id: item.id,
+                  num: String(idx + 1).padStart(3, "0"),
+                  title: item.title,
+                  content_type: item.content_type,
+                  platform: (item.platform ?? "other") as SocialPlatform,
+                  status: item.status as SocialContentStatus,
+                  publish_date: item.publish_date
+                    ? new Date(item.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
+                    : "—",
+                  assets: item.asset_link ? 1 : 0,
+                  notes: item.notes ?? "",
+                }))
+              );
+            })
+            .catch(() => setRows(MOCK_ROWS)),
+        ]).finally(() => setSocialLoading(false));
       })
-      .catch(() => {});
+      .catch(() => {
+        setRows(MOCK_ROWS);
+        setFiles(MOCK_FILES);
+        setSocialLoading(false);
+      });
   }, []);
 
   // KPI — real data where available, sensible mock fallback
@@ -471,7 +484,17 @@ export default function SocialDesignPreview() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map(row => (
+                {socialLoading
+                  ? Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${BDR}` }}>
+                        {Array.from({ length: 9 }).map((_, j) => (
+                          <td key={j} style={{ padding: "15px 16px" }}>
+                            <div style={{ height: 10, borderRadius: 4, background: "rgba(255,255,255,0.06)", width: j === 1 ? "80%" : j === 0 ? "40%" : "60%" }} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  : filteredRows.map(row => (
                   <tr
                     key={row.id}
                     style={{ borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}
@@ -546,7 +569,7 @@ export default function SocialDesignPreview() {
                       <button style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 4px", lineHeight: 1 }}>⋮</button>
                     </td>
                   </tr>
-                ))}
+                  ))}
               </tbody>
             </table>
           </div>
@@ -577,7 +600,17 @@ export default function SocialDesignPreview() {
 
           {/* Full-width grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
-            {files.map(f => (
+            {socialLoading
+              ? Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} style={{ borderRadius: 12, border: `1px solid ${BDR}`, background: CARD2, overflow: "hidden" }}>
+                    <div style={{ height: 148, background: "rgba(255,255,255,0.04)" }} />
+                    <div style={{ padding: "9px 10px 11px" }}>
+                      <div style={{ height: 10, width: "70%", borderRadius: 4, background: "rgba(255,255,255,0.06)", marginBottom: 5 }} />
+                      <div style={{ height: 8,  width: "50%", borderRadius: 4, background: "rgba(255,255,255,0.04)" }} />
+                    </div>
+                  </div>
+                ))
+              : files.map(f => (
               <div
                 key={f.id}
                 onClick={() => setSelectedFile(f)}
