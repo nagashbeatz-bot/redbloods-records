@@ -48,13 +48,13 @@ const MOCK_ROWS: MockRow[] = [
   { id:"5", num:"005", title:"רילס – מאחורי הקלעים",            content_type:"ריל",      platform:"instagram", status:"ready",        publish_date:"27.6.26", assets:1, notes:"" },
 ];
 
-const MOCK_FILES = [
-  { id:"f1", name:"cover_laila_city.jpg",  ext:"JPG", ctx:"תמונת קאבר לקליפ",   type:"image" as const, dur:null,    label:"קאבר",  accent:BRAND,   thumb:"linear-gradient(145deg,#3D0000 0%,#8B0000 35%,#DC2626 65%,#FF7B50 95%)" },
-  { id:"f2", name:"studio_bts_02.jpg",     ext:"JPG", ctx:"תמונת אולפן",         type:"image" as const, dur:null,    label:"BTS",   accent:BLUE,    thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)" },
-  { id:"f3", name:"reel_bts_02.mp4",       ext:"MP4", ctx:"רילס מאחורי הקלעים",  type:"video" as const, dur:"00:21", label:"ריל",   accent:GREEN,   thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)" },
-  { id:"f4", name:"teaser_laila_city.png", ext:"PNG", ctx:"טיזר לקליפ",          type:"image" as const, dur:null,    label:"טיזר",  accent:"#C026D3",thumb:"linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)" },
-  { id:"f5", name:"clip_cut_01.mp4",       ext:"MP4", ctx:"קליפ גרסה 1",         type:"video" as const, dur:"01:15", label:"קליפ",  accent:PURPLE,  thumb:"linear-gradient(145deg,#09060F 0%,#1E0A3E 35%,#3B1A8A 65%,#8B5CF6 95%)" },
-  { id:"f6", name:"qa_story_01.jpg",       ext:"JPG", ctx:"סטורי – שאלות לקהל",  type:"image" as const, dur:null,    label:"סטורי", accent:AMBER,   thumb:"linear-gradient(145deg,#150900 0%,#3D1E00 35%,#7A4500 65%,#F59E0B 95%)" },
+const MOCK_FILES: FileCard[] = [
+  { id:"f1", name:"cover_laila_city.jpg",  ext:"JPG", ctx:"תמונת קאבר לקליפ",   type:"image", dur:null,    label:"קאבר",  accent:BRAND,    thumb:"linear-gradient(145deg,#3D0000 0%,#8B0000 35%,#DC2626 65%,#FF7B50 95%)",    link:null },
+  { id:"f2", name:"studio_bts_02.jpg",     ext:"JPG", ctx:"תמונת אולפן",         type:"image", dur:null,    label:"BTS",   accent:BLUE,     thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)",    link:null },
+  { id:"f3", name:"reel_bts_02.mp4",       ext:"MP4", ctx:"רילס מאחורי הקלעים",  type:"video", dur:"00:21", label:"ריל",   accent:GREEN,    thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)",    link:null },
+  { id:"f4", name:"teaser_laila_city.png", ext:"PNG", ctx:"טיזר לקליפ",          type:"image", dur:null,    label:"טיזר",  accent:"#C026D3",thumb:"linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)",    link:null },
+  { id:"f5", name:"clip_cut_01.mp4",       ext:"MP4", ctx:"קליפ גרסה 1",         type:"video", dur:"01:15", label:"קליפ",  accent:PURPLE,   thumb:"linear-gradient(145deg,#09060F 0%,#1E0A3E 35%,#3B1A8A 65%,#8B5CF6 95%)",   link:null },
+  { id:"f6", name:"qa_story_01.jpg",       ext:"JPG", ctx:"סטורי – שאלות לקהל",  type:"image", dur:null,    label:"סטורי", accent:AMBER,    thumb:"linear-gradient(145deg,#150900 0%,#3D1E00 35%,#7A4500 65%,#F59E0B 95%)",    link:null },
 ];
 
 const WEEK_DAYS = [
@@ -84,6 +84,7 @@ type FileCard = {
   id: string; name: string; ext: string; ctx: string;
   type: "image" | "video"; dur: string | null;
   label: string; accent: string; thumb: string;
+  link: string | null;
 };
 
 const EXT_STYLES: Record<string, { accent: string; thumb: string }> = {
@@ -114,6 +115,7 @@ function mapApiFileToCard(f: SocialContentFile, idx: number): FileCard {
     label: labels[idx % labels.length],
     accent: style.accent,
     thumb: style.thumb,
+    link: f.dropbox_share_link ?? null,
   };
 }
 
@@ -547,9 +549,11 @@ export default function SocialDesignPreview() {
             {files.map(f => (
               <div
                 key={f.id}
+                title={f.link ? "פתח בדרופבוקס" : undefined}
+                onClick={f.link ? () => window.open(f.link!, "_blank", "noopener,noreferrer") : undefined}
                 style={{
                   borderRadius: 12, border: `1px solid ${BDR}`, overflow: "hidden",
-                  background: CARD2, cursor: "pointer",
+                  background: CARD2, cursor: f.link ? "pointer" : "default",
                   transition: "transform 0.15s, border-color 0.15s, box-shadow 0.15s",
                 }}
                 onMouseEnter={e => {
