@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { SocialCampaign, SocialContentItem, SocialContentStatus, SocialPlatform } from "@/lib/types";
+import type { SocialCampaign, SocialContentItem, SocialContentFile, SocialContentStatus, SocialPlatform } from "@/lib/types";
 import {
   SOCIAL_CONTENT_STATUS_LABELS,
   SOCIAL_CONTENT_STATUS_COLORS,
@@ -79,6 +79,44 @@ const MOCK_ACTIVITY = [
   { id:"a3", init:"S", user:"מערכת",     text:"הועלו 5 קבצים חדשים: BTS אולפן – פרק 2", time:"לפני 3 שעות",  color:CYAN  },
 ];
 
+// ── File card helpers ──────────────────────────────────────────────────────────
+type FileCard = {
+  id: string; name: string; ext: string; ctx: string;
+  type: "image" | "video"; dur: string | null;
+  label: string; accent: string; thumb: string;
+};
+
+const EXT_STYLES: Record<string, { accent: string; thumb: string }> = {
+  MP4:  { accent: GREEN,     thumb: "linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)" },
+  MOV:  { accent: GREEN,     thumb: "linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)" },
+  JPG:  { accent: BLUE,      thumb: "linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)" },
+  JPEG: { accent: BLUE,      thumb: "linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)" },
+  PNG:  { accent: "#C026D3", thumb: "linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)" },
+  PSD:  { accent: PURPLE,    thumb: "linear-gradient(145deg,#09060F 0%,#1E0A3E 35%,#3B1A8A 65%,#8B5CF6 95%)" },
+  PDF:  { accent: BRAND,     thumb: "linear-gradient(145deg,#3D0000 0%,#8B0000 35%,#DC2626 65%,#FF7B50 95%)" },
+};
+
+function mapApiFileToCard(f: SocialContentFile, idx: number): FileCard {
+  const ext = (f.file_name.split(".").pop() ?? "FILE").toUpperCase();
+  const isVideo = f.file_type ? f.file_type.startsWith("video") : (ext === "MP4" || ext === "MOV");
+  const style = EXT_STYLES[ext] ?? {
+    accent: AMBER,
+    thumb: "linear-gradient(145deg,#150900 0%,#3D1E00 35%,#7A4500 65%,#F59E0B 95%)",
+  };
+  const labels = ["קאבר", "BTS", "ריל", "טיזר", "קליפ", "סטורי", "פוסט", "אחר"];
+  return {
+    id: f.id,
+    name: f.file_name,
+    ext,
+    ctx: f.file_name,
+    type: isVideo ? "video" : "image",
+    dur: null,
+    label: labels[idx % labels.length],
+    accent: style.accent,
+    thumb: style.thumb,
+  };
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 function ProgressRing({ pct, color, size = 52 }: { pct: number; color: string; size?: number }) {
   const r = (size - 8) / 2;
@@ -143,6 +181,7 @@ function SCard({
 export default function SocialDesignPreview() {
   const [campaigns, setCampaigns] = useState<SocialCampaign[]>([]);
   const [rows, setRows] = useState<MockRow[]>(MOCK_ROWS);
+  const [files, setFiles] = useState<FileCard[]>(MOCK_FILES);
   const [searchQ, setSearchQ] = useState("");
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -155,6 +194,14 @@ export default function SocialDesignPreview() {
         setCampaigns(d.campaigns);
         const active: SocialCampaign =
           d.campaigns.find((c: SocialCampaign) => c.status === "active") ?? d.campaigns[0];
+        // Fetch files for active campaign
+        fetch(`/api/social/files?campaignId=${active.id}`)
+          .then(r => r.json())
+          .then(d => {
+            if (Array.isArray(d.files) && d.files.length > 0)
+              setFiles(d.files.slice(0, 6).map((f: SocialContentFile, i: number) => mapApiFileToCard(f, i)));
+          })
+          .catch(() => {});
         fetch(`/api/social/content?campaignId=${active.id}`)
           .then(r2 => r2.json())
           .then(d2 => {
@@ -181,11 +228,26 @@ export default function SocialDesignPreview() {
   }, []);
 
   // KPI — real data where available, sensible mock fallback
-  const activeCampaigns = campaigns.filter(c => c.status === "active").length || MOCK_CAMPAIGNS.length;
+  const activeCampaigns = campaigns.filter(c => c.status === "active").length || MOCK_CAMPAIGNS.length; // KPI uses raw count before displayCampaigns is defined
   const postsThisMonth  = rows.filter(r => r.status === "posted").length    || 18;
   const pendingReview   = rows.filter(r => r.status === "needs_review").length || 4;
   const scheduledWeek   = rows.filter(r => r.status === "scheduled").length || 9;
   const missingAssets   = rows.filter(r => r.assets === 0).length           || 2;
+
+  // Campaigns — real active campaigns or fallback to mock
+  const CAMP_COLORS = [BRAND, AMBER, PURPLE, CYAN, GREEN];
+  const activeCamps = campaigns.filter(c => c.status === "active");
+  const displayCampaigns = activeCamps.length > 0
+    ? activeCamps.slice(0, 3).map((c, i) => ({
+        id: c.id,
+        title: c.title,
+        progress: 0,
+        deadline: c.release_date
+          ? new Date(c.release_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
+          : "—",
+        color: CAMP_COLORS[i % CAMP_COLORS.length],
+      }))
+    : MOCK_CAMPAIGNS;
 
   const KPI_CARDS = [
     { label:"קמפיינים פעילים", sub:"קמפיינים", icon:"🎯", value:activeCampaigns, color:BRAND    },
@@ -482,7 +544,7 @@ export default function SocialDesignPreview() {
 
           {/* Full-width grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
-            {MOCK_FILES.map(f => (
+            {files.map(f => (
               <div
                 key={f.id}
                 style={{
@@ -589,11 +651,11 @@ export default function SocialDesignPreview() {
                 background: BRAND + "18", border: `1px solid ${BRAND}35`,
                 color: BRAND, fontSize: 10, fontWeight: 700,
                 padding: "2px 8px", borderRadius: 10,
-              }}>{MOCK_CAMPAIGNS.length} פעילים</span>
+              }}>{displayCampaigns.length} פעילים</span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {MOCK_CAMPAIGNS.map(camp => (
+              {displayCampaigns.map(camp => (
                 <div key={camp.id} style={{
                   padding: "14px 16px", background: CARD2,
                   borderRadius: 12, border: `1px solid ${camp.color}22`,
