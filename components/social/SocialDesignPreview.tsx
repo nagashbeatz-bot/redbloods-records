@@ -49,12 +49,12 @@ const MOCK_ROWS: MockRow[] = [
 ];
 
 const MOCK_FILES: FileCard[] = [
-  { id:"f1", name:"cover_laila_city.jpg",  ext:"JPG", ctx:"תמונת קאבר לקליפ",   type:"image", dur:null,    label:"קאבר",  accent:BRAND,    thumb:"linear-gradient(145deg,#3D0000 0%,#8B0000 35%,#DC2626 65%,#FF7B50 95%)",    link:null },
-  { id:"f2", name:"studio_bts_02.jpg",     ext:"JPG", ctx:"תמונת אולפן",         type:"image", dur:null,    label:"BTS",   accent:BLUE,     thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)",    link:null },
-  { id:"f3", name:"reel_bts_02.mp4",       ext:"MP4", ctx:"רילס מאחורי הקלעים",  type:"video", dur:"00:21", label:"ריל",   accent:GREEN,    thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)",    link:null },
-  { id:"f4", name:"teaser_laila_city.png", ext:"PNG", ctx:"טיזר לקליפ",          type:"image", dur:null,    label:"טיזר",  accent:"#C026D3",thumb:"linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)",    link:null },
-  { id:"f5", name:"clip_cut_01.mp4",       ext:"MP4", ctx:"קליפ גרסה 1",         type:"video", dur:"01:15", label:"קליפ",  accent:PURPLE,   thumb:"linear-gradient(145deg,#09060F 0%,#1E0A3E 35%,#3B1A8A 65%,#8B5CF6 95%)",   link:null },
-  { id:"f6", name:"qa_story_01.jpg",       ext:"JPG", ctx:"סטורי – שאלות לקהל",  type:"image", dur:null,    label:"סטורי", accent:AMBER,    thumb:"linear-gradient(145deg,#150900 0%,#3D1E00 35%,#7A4500 65%,#F59E0B 95%)",    link:null },
+  { id:"f1", name:"cover_laila_city.jpg",  ext:"JPG", ctx:"תמונת קאבר לקליפ",   type:"image", dur:null,    label:"קאבר",  accent:BRAND,    thumb:"linear-gradient(145deg,#3D0000 0%,#8B0000 35%,#DC2626 65%,#FF7B50 95%)",    link:null, contentItemId:null },
+  { id:"f2", name:"studio_bts_02.jpg",     ext:"JPG", ctx:"תמונת אולפן",         type:"image", dur:null,    label:"BTS",   accent:BLUE,     thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)",    link:null, contentItemId:null },
+  { id:"f3", name:"reel_bts_02.mp4",       ext:"MP4", ctx:"רילס מאחורי הקלעים",  type:"video", dur:"00:21", label:"ריל",   accent:GREEN,    thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)",    link:null, contentItemId:null },
+  { id:"f4", name:"teaser_laila_city.png", ext:"PNG", ctx:"טיזר לקליפ",          type:"image", dur:null,    label:"טיזר",  accent:"#C026D3",thumb:"linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)",    link:null, contentItemId:null },
+  { id:"f5", name:"clip_cut_01.mp4",       ext:"MP4", ctx:"קליפ גרסה 1",         type:"video", dur:"01:15", label:"קליפ",  accent:PURPLE,   thumb:"linear-gradient(145deg,#09060F 0%,#1E0A3E 35%,#3B1A8A 65%,#8B5CF6 95%)",   link:null, contentItemId:null },
+  { id:"f6", name:"qa_story_01.jpg",       ext:"JPG", ctx:"סטורי – שאלות לקהל",  type:"image", dur:null,    label:"סטורי", accent:AMBER,    thumb:"linear-gradient(145deg,#150900 0%,#3D1E00 35%,#7A4500 65%,#F59E0B 95%)",    link:null, contentItemId:null },
 ];
 
 const WEEK_DAYS = [
@@ -85,7 +85,15 @@ type FileCard = {
   type: "image" | "video"; dur: string | null;
   label: string; accent: string; thumb: string;
   link: string | null;
+  contentItemId: string | null;
 };
+
+function toDirectLink(link: string): string {
+  return link
+    .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+    .replace("?dl=0", "")
+    .replace("&dl=0", "");
+}
 
 const EXT_STYLES: Record<string, { accent: string; thumb: string }> = {
   MP4:  { accent: GREEN,     thumb: "linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)" },
@@ -116,6 +124,7 @@ function mapApiFileToCard(f: SocialContentFile, idx: number): FileCard {
     accent: style.accent,
     thumb: style.thumb,
     link: f.dropbox_share_link ?? null,
+    contentItemId: f.content_item_id ?? null,
   };
 }
 
@@ -184,6 +193,7 @@ export default function SocialDesignPreview() {
   const [campaigns, setCampaigns] = useState<SocialCampaign[]>([]);
   const [rows, setRows] = useState<MockRow[]>(MOCK_ROWS);
   const [files, setFiles] = useState<FileCard[]>(MOCK_FILES);
+  const [selectedFile, setSelectedFile] = useState<FileCard | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -265,6 +275,11 @@ export default function SocialDesignPreview() {
     const matchS = filterStatus   === "all" || r.status   === filterStatus;
     return matchQ && matchP && matchS;
   });
+
+  // Map contentItemId → FileCard for thumbnail lookup in table
+  const fileByContentItem: Record<string, FileCard> = Object.fromEntries(
+    files.filter(f => f.contentItemId).map(f => [f.contentItemId!, f])
+  );
 
   const selStyle: React.CSSProperties = {
     padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600,
@@ -487,24 +502,40 @@ export default function SocialDesignPreview() {
                       {row.publish_date}
                     </td>
                     <td style={{ padding: "15px 16px" }}>
-                      {row.assets > 0 ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          {Array.from({ length: Math.min(row.assets, 3) }).map((_, i) => (
-                            <div key={i} style={{
-                              width: 26, height: 26, borderRadius: 6,
-                              background: `rgba(220,38,38,${0.1 + i * 0.07})`,
-                              border: `1px solid ${BDR2}`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 11, flexShrink: 0,
-                            }}>🖼</div>
-                          ))}
-                          {row.assets > 3 && (
-                            <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700 }}>+{row.assets - 3}</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: 11, color: MUTED }}>—</span>
-                      )}
+                      {(() => {
+                        const rowThumb = fileByContentItem[row.id];
+                        if (rowThumb) {
+                          return (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <div style={{
+                                width: 32, height: 32, borderRadius: 6, flexShrink: 0,
+                                background: rowThumb.thumb,
+                                border: `1px solid ${rowThumb.accent}44`,
+                              }} title={rowThumb.name} />
+                              <span style={{ fontSize: 10, color: TEXT2, fontWeight: 700 }}>{rowThumb.ext}</span>
+                            </div>
+                          );
+                        }
+                        if (row.assets > 0) {
+                          return (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              {Array.from({ length: Math.min(row.assets, 3) }).map((_, i) => (
+                                <div key={i} style={{
+                                  width: 26, height: 26, borderRadius: 6,
+                                  background: `rgba(220,38,38,${0.1 + i * 0.07})`,
+                                  border: `1px solid ${BDR2}`,
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  fontSize: 11, flexShrink: 0,
+                                }}>🖼</div>
+                              ))}
+                              {row.assets > 3 && (
+                                <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700 }}>+{row.assets - 3}</span>
+                              )}
+                            </div>
+                          );
+                        }
+                        return <span style={{ fontSize: 11, color: MUTED }}>—</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "15px 16px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap", maxWidth: 140 }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -533,7 +564,7 @@ export default function SocialDesignPreview() {
               <div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-                  {MOCK_FILES.length} קבצים · עדכון אחרון לפני שעה
+                  {files.length} קבצים · עדכון אחרון לפני שעה
                 </div>
               </div>
             </div>
@@ -549,11 +580,10 @@ export default function SocialDesignPreview() {
             {files.map(f => (
               <div
                 key={f.id}
-                title={f.link ? "פתח בדרופבוקס" : undefined}
-                onClick={f.link ? () => window.open(f.link!, "_blank", "noopener,noreferrer") : undefined}
+                onClick={() => setSelectedFile(f)}
                 style={{
                   borderRadius: 12, border: `1px solid ${BDR}`, overflow: "hidden",
-                  background: CARD2, cursor: f.link ? "pointer" : "default",
+                  background: CARD2, cursor: "pointer",
                   transition: "transform 0.15s, border-color 0.15s, box-shadow 0.15s",
                 }}
                 onMouseEnter={e => {
@@ -790,6 +820,108 @@ export default function SocialDesignPreview() {
 
         </div>
       </div>
+
+      {/* ── File Viewer Modal ──────────────────────────────────────────────── */}
+      {selectedFile && (
+        <div
+          onClick={() => setSelectedFile(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0,0,0,0.88)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "#141414",
+              borderRadius: 18,
+              border: `1px solid ${BDR2}`,
+              padding: 24,
+              maxWidth: 760,
+              width: "100%",
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+              boxShadow: "0 32px 100px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04)",
+              overflowY: "auto",
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div style={{
+                  padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 800,
+                  background: selectedFile.accent + "22", border: `1px solid ${selectedFile.accent}55`,
+                  color: selectedFile.accent, flexShrink: 0,
+                }}>{selectedFile.ext}</div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {selectedFile.name}
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedFile(null)}
+                style={{
+                  background: "none", border: "none", color: MUTED,
+                  fontSize: 22, cursor: "pointer", lineHeight: 1,
+                  flexShrink: 0, padding: "0 4px",
+                  transition: "none",
+                }}
+              >✕</button>
+            </div>
+
+            {/* Media area */}
+            {selectedFile.link ? (
+              selectedFile.type === "video" ? (
+                <video
+                  controls
+                  src={toDirectLink(selectedFile.link)}
+                  style={{ width: "100%", borderRadius: 10, background: "#000", maxHeight: 480 }}
+                />
+              ) : (
+                <img
+                  src={toDirectLink(selectedFile.link)}
+                  alt={selectedFile.name}
+                  style={{ width: "100%", borderRadius: 10, maxHeight: 480, objectFit: "contain", background: "#000" }}
+                />
+              )
+            ) : (
+              <div style={{
+                background: selectedFile.thumb,
+                borderRadius: 10, height: 260,
+                display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", gap: 10,
+              }}>
+                <span style={{ fontSize: 48, opacity: 0.45 }}>
+                  {selectedFile.type === "video" ? "▶" : "🖼"}
+                </span>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                  {selectedFile.name}
+                </span>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ fontSize: 11, color: MUTED }}>{selectedFile.ctx}</span>
+              {selectedFile.link && (
+                <button
+                  onClick={() => window.open(selectedFile.link!, "_blank", "noopener,noreferrer")}
+                  style={{
+                    padding: "8px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+                    cursor: "pointer", transition: "none", whiteSpace: "nowrap",
+                  }}
+                >
+                  פתח בדרופבוקס ↗
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
