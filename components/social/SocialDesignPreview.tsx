@@ -16,10 +16,10 @@ const PURPLE = "#8B5CF6";
 const CYAN   = "#06B6D4";
 const BLUE   = "#3B82F6";
 const BG     = "#090910";
-const CARD   = "rgba(255,255,255,0.045)";
-const CARD2  = "rgba(255,255,255,0.075)";
-const BDR    = "rgba(255,255,255,0.08)";
-const BDR2   = "rgba(255,255,255,0.15)";
+const CARD   = "rgba(255,255,255,0.058)";
+const CARD2  = "rgba(255,255,255,0.085)";
+const BDR    = "rgba(255,255,255,0.10)";
+const BDR2   = "rgba(255,255,255,0.18)";
 const TEXT   = "#F2F2F2";
 const TEXT2  = "#A0A0B0";
 const MUTED  = "#52526A";
@@ -100,7 +100,7 @@ function StatusBadge({ status }: { status: SocialContentStatus }) {
     <span style={{
       display: "inline-flex", alignItems: "center", padding: "3px 10px",
       borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-      background: color + "22", border: `1px solid ${color}55`, color,
+      background: color + "2C", border: `1px solid ${color}70`, color,
     }}>{label}</span>
   );
 }
@@ -112,7 +112,7 @@ function PlatformBadge({ platform }: { platform: SocialPlatform }) {
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 4,
       padding: "3px 9px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-      background: color + "18", border: `1px solid ${color}40`, color,
+      background: color + "22", border: `1px solid ${color}60`, color,
     }}>{icon}</span>
   );
 }
@@ -128,10 +128,10 @@ function SCard({
   return (
     <div style={{
       background: CARD,
-      border: `1px solid ${accent ? accent + "2E" : BDR}`,
+      border: `1px solid ${accent ? accent + "45" : BDR}`,
       borderRadius: 16,
       padding: 20,
-      boxShadow: accent ? `0 4px 24px ${accent}0C` : "none",
+      boxShadow: accent ? `0 4px 28px ${accent}18` : "0 2px 18px rgba(0,0,0,0.4)",
       ...style,
     }}>
       {children}
@@ -325,11 +325,11 @@ export default function SocialDesignPreview() {
           <div style={{
             padding: "16px 22px 14px",
             borderBottom: `1px solid ${BDR}`,
-            background: "rgba(255,255,255,0.02)",
+            background: "rgba(255,255,255,0.03)",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
+                <span style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>
                   לוח תוכן — {ARTIST_NAME}
                 </span>
                 <span style={{
@@ -380,11 +380,11 @@ export default function SocialDesignPreview() {
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.025)" }}>
+                <tr style={{ borderBottom: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.04)" }}>
                   {["#", "שם התוכן", "סוג", "פלטפורמה", "סטטוס", "תאריך פרסום", "נכסים", "הערות", ""].map(h => (
                     <th key={h} style={{
-                      padding: "10px 16px", textAlign: "right", fontSize: 10,
-                      fontWeight: 700, color: LABEL,
+                      padding: "11px 16px", textAlign: "right", fontSize: 10,
+                      fontWeight: 800, color: TEXT2,
                       textTransform: "uppercase", letterSpacing: "0.06em",
                       whiteSpace: "nowrap",
                     }}>{h}</th>
@@ -399,30 +399,30 @@ export default function SocialDesignPreview() {
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = CARD2; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
-                    <td style={{ padding: "13px 16px", whiteSpace: "nowrap" }}>
+                    <td style={{ padding: "15px 16px", whiteSpace: "nowrap" }}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                         <span style={{ width: 6, height: 6, borderRadius: "50%", background: BRAND, display: "inline-block", flexShrink: 0 }} />
                         <span style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>{row.num}</span>
                       </span>
                     </td>
-                    <td style={{ padding: "13px 16px", maxWidth: 240 }}>
+                    <td style={{ padding: "15px 16px", maxWidth: 240 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.title}
                       </div>
                     </td>
-                    <td style={{ padding: "13px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
+                    <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
                       {row.content_type}
                     </td>
-                    <td style={{ padding: "13px 16px" }}>
+                    <td style={{ padding: "15px 16px" }}>
                       <PlatformBadge platform={row.platform} />
                     </td>
-                    <td style={{ padding: "13px 16px" }}>
+                    <td style={{ padding: "15px 16px" }}>
                       <StatusBadge status={row.status} />
                     </td>
-                    <td style={{ padding: "13px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
+                    <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
                       {row.publish_date}
                     </td>
-                    <td style={{ padding: "13px 16px" }}>
+                    <td style={{ padding: "15px 16px" }}>
                       {row.assets > 0 ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           {Array.from({ length: Math.min(row.assets, 3) }).map((_, i) => (
@@ -442,12 +442,12 @@ export default function SocialDesignPreview() {
                         <span style={{ fontSize: 11, color: MUTED }}>—</span>
                       )}
                     </td>
-                    <td style={{ padding: "13px 16px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap", maxWidth: 140 }}>
+                    <td style={{ padding: "15px 16px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap", maxWidth: 140 }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.notes || <span style={{ color: MUTED }}>—</span>}
                       </div>
                     </td>
-                    <td style={{ padding: "13px 10px" }}>
+                    <td style={{ padding: "15px 10px" }}>
                       <button style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 4px", lineHeight: 1 }}>⋮</button>
                     </td>
                   </tr>
@@ -467,7 +467,7 @@ export default function SocialDesignPreview() {
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0,
               }}>☁️</div>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
                   {MOCK_FILES.length} קבצים · עדכון אחרון לפני שעה
                 </div>
@@ -583,7 +583,7 @@ export default function SocialDesignPreview() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 14 }}>🎯</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קמפיינים פעילים</span>
+                <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>קמפיינים פעילים</span>
               </div>
               <span style={{
                 background: BRAND + "18", border: `1px solid ${BRAND}35`,
@@ -636,7 +636,7 @@ export default function SocialDesignPreview() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 14 }}>📅</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>לוח שבועי</span>
+                <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>לוח שבועי</span>
               </div>
               <span style={{ fontSize: 10, color: MUTED }}>15–22 ביוני</span>
             </div>
@@ -665,7 +665,7 @@ export default function SocialDesignPreview() {
                     <div key={idx} style={{
                       background: item.c + "25", border: `1px solid ${item.c}45`,
                       borderRadius: 4, padding: "4px 4px",
-                      fontSize: 9, fontWeight: 700, color: item.c,
+                      fontSize: 10, fontWeight: 700, color: item.c,
                       textAlign: "center", overflow: "hidden",
                       textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4,
                     }}>{item.t}</div>
@@ -683,7 +683,7 @@ export default function SocialDesignPreview() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 14 }}>⚡</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>פעילות אחרונה</span>
+                <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>פעילות אחרונה</span>
               </div>
               <span style={{ fontSize: 10, color: MUTED }}>היום</span>
             </div>
