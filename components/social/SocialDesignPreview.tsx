@@ -34,6 +34,9 @@ const PLT_COLORS: Record<string, string> = {
 const ARTIST_NAME  = "שליו טסמה";
 const ARTIST_GENRE = "אפרו / פופ";
 const ARTIST_ROLE  = "אמן / יוצר";
+const CAMPAIGN_NAME = "פרנציפ";
+const CAMPAIGN_TYPE = "סינגל";
+const CAMPAIGN_DATE = "30.06.26";
 
 type MockRow = {
   id: string; num: string; title: string; content_type: string;
@@ -287,8 +290,8 @@ export default function SocialDesignPreview() {
     { label:"חסרים נכסים",    sub:"דרוש טיפול",  icon:"⚠️", value:missingAssets,   color:"#EF4444" },
     { label:"מתוזמנים",       sub:"בשבוע הקרוב", icon:"📅", value:scheduledWeek,   color:CYAN      },
     { label:"ממתינים לאישור", sub:"ממתין לאישור", icon:"⏳", value:pendingReview,   color:AMBER     },
-    { label:"פוסטים החודש",   sub:"בחודש יוני",  icon:"📊", value:postsThisMonth,  color:GREEN     },
-    { label:"קמפיינים פעילים",sub:"פעילים כעת",  icon:"🎯", value:activeCampaigns, color:BRAND     },
+    { label:"פוסטים בקמפיין", sub:"בקמפיין הזה",  icon:"📊", value:postsThisMonth,  color:GREEN     },
+    { label:"שלבים פעילים",   sub:"פעילים כעת",  icon:"🚀", value:activeCampaigns, color:BRAND     },
   ];
 
   const filteredRows = rows.filter(r => {
@@ -326,12 +329,12 @@ export default function SocialDesignPreview() {
               background: `linear-gradient(130deg, ${TEXT} 55%, ${BRAND} 100%)`,
               WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
             }}>
-              סושיאל — {ARTIST_NAME}
+              קמפיין — {CAMPAIGN_NAME}
             </h1>
-            <span style={{ fontSize: 17 }}>📱</span>
+            <span style={{ fontSize: 17 }}>🎯</span>
           </div>
           <p style={{ margin: 0, fontSize: 12, color: TEXT2 }}>
-            ניהול תוכן, קמפיינים ופרסום עבור {ARTIST_NAME}
+            {ARTIST_NAME} · {CAMPAIGN_TYPE} · תאריך יציאה {CAMPAIGN_DATE}
           </p>
         </div>
 
@@ -367,9 +370,9 @@ export default function SocialDesignPreview() {
               borderTop: `1px solid ${BDR}`, borderBottom: `1px solid ${BDR}`,
             }}>
               {[
-                { val: "4",  lbl: "שירים"   },
-                { val: "3",  lbl: "קמפיינים"},
-                { val: "51", lbl: "פוסטים"  },
+                { val: "48", lbl: "פוסטים"   },
+                { val: "12", lbl: "קמפיינים"},
+                { val: "3",  lbl: "שלבים"   },
               ].map(s => (
                 <div key={s.lbl} style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</div>
@@ -443,19 +446,26 @@ export default function SocialDesignPreview() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>
-                  לוח תוכן — {ARTIST_NAME}
+                  לוח תוכן — {CAMPAIGN_NAME}
                 </span>
                 <span style={{
                   background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
                   fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
                 }}>{filteredRows.length} פריטים</span>
               </div>
-              <button style={{
-                fontSize: 12, fontWeight: 800, padding: "8px 20px", borderRadius: 8,
-                background: BRAND, border: "none", color: "#fff", cursor: "pointer",
-                boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
-                transition: "none",
-              }}>+ הוסף תוכן</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button style={{
+                  fontSize: 12, fontWeight: 800, padding: "8px 16px", borderRadius: 8,
+                  background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer",
+                  transition: "none",
+                }}>+ העלאת קובץ</button>
+                <button style={{
+                  fontSize: 12, fontWeight: 800, padding: "8px 20px", borderRadius: 8,
+                  background: BRAND, border: "none", color: "#fff", cursor: "pointer",
+                  boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
+                  transition: "none",
+                }}>+ הוסף תוכן</button>
+              </div>
             </div>
             {/* Controls */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -785,14 +795,14 @@ export default function SocialDesignPreview() {
           <SCard accent={BRAND} style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>🎯</span>
-                <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>קמפיינים פעילים</span>
+                <span style={{ fontSize: 14 }}>🚀</span>
+                <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>שלבי הקמפיין</span>
               </div>
               <span style={{
                 background: BRAND + "18", border: `1px solid ${BRAND}35`,
                 color: BRAND, fontSize: 10, fontWeight: 700,
                 padding: "2px 8px", borderRadius: 10,
-              }}>{displayCampaigns ? displayCampaigns.length : "—"} פעילים</span>
+              }}>{displayCampaigns ? displayCampaigns.length : "—"} שלבים</span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -842,7 +852,7 @@ export default function SocialDesignPreview() {
             </div>
 
             <button style={{ marginTop: 14, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "right", padding: 0 }}>
-              הצג את כל הקמפיינים →
+              הצג את כל השלבים →
             </button>
           </SCard>
 
