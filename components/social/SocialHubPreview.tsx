@@ -242,8 +242,8 @@ export default function SocialHubPreview() {
       color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif",
       direction: "rtl",
-      padding: "28px 28px 60px",
-      maxWidth: 1360,
+      padding: "32px 32px 72px",
+      maxWidth: 1460,
       margin: "0 auto",
       width: "100%",
     }}>
@@ -475,7 +475,7 @@ export default function SocialHubPreview() {
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2fr) minmax(0,1fr)", gap: 16, alignItems: "start" }}>
 
         {/* ── Activity ── */}
-        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "18px 20px" }}>
+        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 14 }}>⚡</span> פעילות אחרונה
           </div>
@@ -516,7 +516,7 @@ export default function SocialHubPreview() {
         </div>
 
         {/* ── Weekly board ── */}
-        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "18px 20px" }}>
+        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 14 }}>📅</span> לוח תכנון שבועי
@@ -560,7 +560,7 @@ export default function SocialHubPreview() {
                         </div>
                       </div>
                       {/* Day items */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 80 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, minHeight: 110 }}>
                         {dayItems.slice(0, 3).map(item => {
                           const plts   = item.platform ? item.platform.split(",") : [];
                           const pColor = PLT_COLOR[plts[0]] ?? CONTENT_STATUS_COLOR[item.status] ?? BRAND;
@@ -595,7 +595,7 @@ export default function SocialHubPreview() {
         </div>
 
         {/* ── Recent assets ── */}
-        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "18px 20px" }}>
+        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 14 }}>🗂</span> נכסים אחרונים
           </div>
