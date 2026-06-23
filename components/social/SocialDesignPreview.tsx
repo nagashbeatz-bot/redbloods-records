@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import type { SocialCampaign, SocialContentItem, SocialContentFile, SocialContentStatus, SocialPlatform } from "@/lib/types";
 import {
   SOCIAL_CONTENT_STATUS_LABELS,
@@ -218,6 +218,310 @@ function SCard({
   );
 }
 
+// ── Shared modal input style ───────────────────────────────────────────────────
+const MINPUT: React.CSSProperties = {
+  width: "100%", padding: "10px 12px", borderRadius: 9, fontSize: 13,
+  background: "rgba(255,255,255,0.085)", border: "1px solid rgba(255,255,255,0.18)",
+  color: "#F2F2F2", outline: "none", boxSizing: "border-box",
+  fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+};
+
+// ── AddContentItemModal ────────────────────────────────────────────────────────
+function AddContentItemModal({
+  campaignId, onClose, onSuccess,
+}: {
+  campaignId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [contentType, setContentType] = useState("טיזר");
+  const [platform, setPlatform] = useState("");
+  const [publishDate, setPublishDate] = useState("");
+  const [status, setStatus] = useState<SocialContentStatus>("idea");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!title.trim() || saving) return;
+    setSaving(true); setError("");
+    try {
+      const res = await fetch("/api/social/content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign_id: campaignId,
+          title: title.trim(),
+          content_type: contentType,
+          platform: platform || null,
+          publish_date: publishDate || null,
+          status,
+          notes,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      onSuccess(); onClose();
+    } catch {
+      setError("שגיאה בשמירה — נסה שוב");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const canSave = title.trim().length > 0 && !saving;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div style={{
+        background: "#0D0D16", border: "1px solid rgba(255,255,255,0.18)",
+        borderRadius: 18, padding: "28px 28px 24px",
+        width: 480, maxWidth: "92vw",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.85), 0 0 60px rgba(220,38,38,0.07)",
+        direction: "rtl",
+      }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#F2F2F2" }}>+ פריט תוכן חדש</div>
+            <div style={{ fontSize: 11, color: "#52526A", marginTop: 2 }}>הוספת פריט תוכן לקמפיין</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#52526A", fontSize: 20, cursor: "pointer", padding: "0 4px", transition: "none" }}>✕</button>
+        </div>
+
+        {/* Fields */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>שם הפריט *</div>
+            <input
+              value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="לדוגמה: טיזר ראשון, קאבר סינגל..."
+              autoFocus
+              style={MINPUT}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סוג תוכן</div>
+              <select value={contentType} onChange={e => setContentType(e.target.value)} style={MINPUT}>
+                {["טיזר","BTS","ליפסינק","סטורי","קליפ קצר","פוסט","ריל","הכרזה","תוכן אישי","אחר"].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>פלטפורמה</div>
+              <select value={platform} onChange={e => setPlatform(e.target.value)} style={MINPUT}>
+                <option value="">— ללא —</option>
+                <option value="instagram">Instagram</option>
+                <option value="tiktok">TikTok</option>
+                <option value="youtube">YouTube</option>
+                <option value="spotify">Spotify</option>
+                <option value="other">אחר</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>תאריך פרסום</div>
+              <input type="date" value={publishDate} onChange={e => setPublishDate(e.target.value)} style={{ ...MINPUT, colorScheme: "dark" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סטטוס</div>
+              <select value={status} onChange={e => setStatus(e.target.value as SocialContentStatus)} style={MINPUT}>
+                {(["idea","needs_shoot","shot","in_edit","needs_review","ready","scheduled","posted"] as SocialContentStatus[]).map(s => (
+                  <option key={s} value={s}>{SOCIAL_CONTENT_STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>הערות</div>
+            <textarea
+              value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="הערות נוספות..." rows={2}
+              style={{ ...MINPUT, resize: "none" } as React.CSSProperties}
+            />
+          </div>
+        </div>
+
+        {error && <div style={{ fontSize: 12, color: "#EF4444", marginTop: 10 }}>{error}</div>}
+
+        {/* Footer */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
+          <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: "pointer", transition: "none" }}>
+            ביטול
+          </button>
+          <button onClick={handleSave} disabled={!canSave} style={{
+            padding: "9px 24px", borderRadius: 8, fontSize: 12, fontWeight: 800,
+            background: canSave ? "#DC2626" : "#52526A", border: "none", color: "#fff",
+            cursor: canSave ? "pointer" : "default",
+            boxShadow: canSave ? "0 2px 12px rgba(220,38,38,0.4)" : "none",
+            transition: "none",
+          }}>
+            {saving ? "שומר..." : "שמור פריט"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── UploadAssetModal ───────────────────────────────────────────────────────────
+function UploadAssetModal({
+  campaignId, rows, onClose, onSuccess,
+}: {
+  campaignId: string;
+  rows: MockRow[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [step, setStep] = useState<1 | 2>(rows.length === 0 ? 2 : 1);
+  const [selectedItemId, setSelectedItemId] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+
+  function handleFile(file: File) {
+    if (!selectedItemId) { setError("יש לבחור פריט תוכן תחילה"); return; }
+    setUploading(true); setProgress(0); setError("");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("contentItemId", selectedItemId);
+    fd.append("campaignId", campaignId);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/social/upload");
+    xhr.upload.onprogress = e => { if (e.lengthComputable) setProgress(Math.round(e.loaded / e.total * 100)); };
+    xhr.onload = () => {
+      if (xhr.status === 200) { onSuccess(); onClose(); }
+      else { setError("שגיאה בהעלאה — נסה שוב"); setUploading(false); }
+    };
+    xhr.onerror = () => { setError("שגיאה בהעלאה — נסה שוב"); setUploading(false); };
+    xhr.send(fd);
+  }
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div style={{
+        background: "#0D0D16", border: "1px solid rgba(255,255,255,0.18)",
+        borderRadius: 18, padding: "28px 28px 24px",
+        width: 500, maxWidth: "92vw",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.85), 0 0 60px rgba(220,38,38,0.07)",
+        direction: "rtl",
+      }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#F2F2F2" }}>+ העלאת נכס</div>
+            <div style={{ fontSize: 11, color: "#52526A", marginTop: 2 }}>
+              {step === 1 ? "שלב 1 — בחר פריט תוכן לשיוך" : "שלב 2 — בחר קובץ להעלאה"}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              {[1, 2].map(s => (
+                <div key={s} style={{ width: 6, height: 6, borderRadius: "50%", background: step >= s ? "#DC2626" : "rgba(255,255,255,0.18)" }} />
+              ))}
+            </div>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: "#52526A", fontSize: 20, cursor: "pointer", padding: "0 4px", transition: "none" }}>✕</button>
+          </div>
+        </div>
+
+        {/* Step 1 — pick content item */}
+        {step === 1 && (
+          <div>
+            {rows.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px 0", color: "#52526A", fontSize: 13 }}>
+                אין פריטי תוכן בקמפיין — צור פריט תוכן תחילה
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+                {rows.map(row => (
+                  <div key={row.id} onClick={() => setSelectedItemId(row.id)} style={{
+                    padding: "12px 14px", borderRadius: 10,
+                    background: selectedItemId === row.id ? "rgba(220,38,38,0.12)" : "rgba(255,255,255,0.05)",
+                    border: `1px solid ${selectedItemId === row.id ? "rgba(220,38,38,0.45)" : "rgba(255,255,255,0.10)"}`,
+                    cursor: "pointer",
+                    transition: "none",
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#F2F2F2" }}>{row.title}</div>
+                    <div style={{ fontSize: 11, color: "#70709A", marginTop: 3 }}>{row.content_type} · {row.publish_date}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
+              <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: "pointer", transition: "none" }}>ביטול</button>
+              <button onClick={() => setStep(2)} disabled={!selectedItemId} style={{
+                padding: "9px 24px", borderRadius: 8, fontSize: 12, fontWeight: 800,
+                background: selectedItemId ? "#DC2626" : "#52526A", border: "none", color: "#fff",
+                cursor: selectedItemId ? "pointer" : "default",
+                boxShadow: selectedItemId ? "0 2px 12px rgba(220,38,38,0.4)" : "none",
+                transition: "none",
+              }}>הבא ←</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — file upload */}
+        {step === 2 && (
+          <div>
+            {!uploading ? (
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+                style={{
+                  border: `2px dashed ${dragOver ? "#DC2626" : "rgba(255,255,255,0.22)"}`,
+                  borderRadius: 12, padding: "36px 20px",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                  background: dragOver ? "rgba(220,38,38,0.06)" : "rgba(255,255,255,0.03)",
+                  cursor: "pointer", transition: "none",
+                }}
+                onClick={() => { const i = document.createElement("input"); i.type = "file"; i.onchange = e => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) handleFile(f); }; i.click(); }}
+              >
+                <div style={{ fontSize: 36, opacity: 0.5 }}>☁</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#A0A0B0" }}>גרור קובץ לכאן</div>
+                <div style={{ fontSize: 11, color: "#52526A" }}>או לחץ לבחירת קובץ · עד 500MB</div>
+              </div>
+            ) : (
+              <div style={{ padding: "24px 0" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#F2F2F2", marginBottom: 12, textAlign: "center" }}>מעלה... {progress}%</div>
+                <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg,#DC2626,#F97316)", borderRadius: 3, transition: "width 0.15s" }} />
+                </div>
+              </div>
+            )}
+            {error && <div style={{ fontSize: 12, color: "#EF4444", marginTop: 10 }}>{error}</div>}
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
+              <button onClick={() => setStep(1)} disabled={uploading} style={{ padding: "9px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: uploading ? "default" : "pointer", transition: "none" }}>← חזרה</button>
+              {selectedItemId && rows.find(r => r.id === selectedItemId) && (
+                <div style={{ fontSize: 11, color: "#70709A", alignSelf: "center" }}>
+                  משויך ל: {rows.find(r => r.id === selectedItemId)?.title}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function SocialDesignPreview() {
   const [campaigns, setCampaigns] = useState<SocialCampaign[]>([]);
@@ -230,6 +534,9 @@ export default function SocialDesignPreview() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterCampaign, setFilterCampaign] = useState("all");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [showAddContent, setShowAddContent] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   useEffect(() => {
     fetch("/api/social/campaigns")
@@ -244,6 +551,7 @@ export default function SocialDesignPreview() {
         setCampaigns(d.campaigns);
         const active: SocialCampaign =
           d.campaigns.find((c: SocialCampaign) => c.status === "active") ?? d.campaigns[0];
+        setActiveCampaignId(active.id);
         Promise.all([
           fetch(`/api/social/files?campaignId=${active.id}`)
             .then(r => r.json())
@@ -311,6 +619,42 @@ export default function SocialDesignPreview() {
     { label:"פורסמו",            sub:"מתוך הקמפיין",        icon:"📊", value:published,        color:GREEN     },
     { label:"התקדמות קמפיין",   sub:"לפי שלבי הקמפיין",   icon:"🎯", value:campaignProgress, color:BRAND     },
   ];
+
+  function refreshContent() {
+    if (!activeCampaignId) return;
+    fetch(`/api/social/content?campaignId=${activeCampaignId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!Array.isArray(d.items) || d.items.length === 0) return;
+        setRows(d.items.slice(0, 8).map((item: SocialContentItem, idx: number) => ({
+          id: item.id,
+          num: String(idx + 1).padStart(3, "0"),
+          title: item.title,
+          content_type: item.content_type,
+          platforms: item.platform ? [(item.platform as SocialPlatform)] : [],
+          campaign: campaigns.find(c => c.id === item.campaign_id)?.title ?? "—",
+          status: item.status as SocialContentStatus,
+          publish_date: item.publish_date
+            ? new Date(item.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
+            : "—",
+          publish_time: undefined,
+          assets: item.asset_link ? 1 : 0,
+          notes: (item as unknown as { notes?: string }).notes ?? "",
+        })));
+      })
+      .catch(() => {});
+  }
+
+  function refreshFiles() {
+    if (!activeCampaignId) return;
+    fetch(`/api/social/files?campaignId=${activeCampaignId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d.files) && d.files.length > 0)
+          setFiles(d.files.slice(0, 6).map((f: SocialContentFile, i: number) => mapApiFileToCard(f, i)));
+      })
+      .catch(() => {});
+  }
 
   const filteredRows = rows.filter(r => {
     const matchQ = !searchQ || r.title.includes(searchQ) || r.content_type.includes(searchQ);
@@ -475,12 +819,12 @@ export default function SocialDesignPreview() {
                 }}>{filteredRows.length} פריטים</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button style={{
+                <button onClick={() => setShowUploadModal(true)} style={{
                   fontSize: 12, fontWeight: 800, padding: "8px 16px", borderRadius: 8,
                   background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer",
                   transition: "none",
                 }}>+ העלאת קובץ</button>
-                <button style={{
+                <button onClick={() => setShowAddContent(true)} style={{
                   fontSize: 12, fontWeight: 800, padding: "8px 20px", borderRadius: 8,
                   background: BRAND, border: "none", color: "#fff", cursor: "pointer",
                   boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
@@ -696,7 +1040,7 @@ export default function SocialDesignPreview() {
               fontSize: 11, fontWeight: 700, padding: "7px 14px", borderRadius: 8,
               background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
               cursor: "pointer", transition: "none",
-            }}>+ העלאת קובץ</button>
+            }} onClick={() => setShowUploadModal(true)}>+ העלאת קובץ</button>
           </div>
 
           {/* Full-width grid */}
@@ -834,6 +1178,7 @@ export default function SocialDesignPreview() {
                 gap: 8, cursor: "pointer", minHeight: 200,
                 transition: "border-color 0.15s",
               }}
+              onClick={() => setShowUploadModal(true)}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.32)"; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BDR2; }}
               >
@@ -1043,6 +1388,25 @@ export default function SocialDesignPreview() {
       </div>
 
       {/* ── File Viewer Modal ──────────────────────────────────────────────── */}
+      {/* ── Add Content Modal ──────────────────────────────────────────────── */}
+      {showAddContent && activeCampaignId && (
+        <AddContentItemModal
+          campaignId={activeCampaignId}
+          onClose={() => setShowAddContent(false)}
+          onSuccess={() => { refreshContent(); }}
+        />
+      )}
+
+      {/* ── Upload Asset Modal ─────────────────────────────────────────────── */}
+      {showUploadModal && activeCampaignId && (
+        <UploadAssetModal
+          campaignId={activeCampaignId}
+          rows={rows}
+          onClose={() => setShowUploadModal(false)}
+          onSuccess={() => { refreshFiles(); }}
+        />
+      )}
+
       {selectedFile && (
         <div
           onClick={() => setSelectedFile(null)}
