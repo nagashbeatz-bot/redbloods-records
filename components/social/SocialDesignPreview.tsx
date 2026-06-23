@@ -1327,7 +1327,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
             }}>
               {[
                 { val: socialLoading ? "—" : String(countPublished ?? 0), lbl: "פוסטים"    },
-                { val: socialLoading ? "—" : String(campaigns.length),    lbl: "קמפיינים" },
+                { val: socialLoading ? "—" : String(campaigns.filter(c => (c.artist_name ?? "").trim().toLowerCase() === (activeCampaign?.artist_name ?? "").trim().toLowerCase()).length), lbl: "קמפיינים" },
               ].map(s => (
                 <div key={s.lbl} style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</div>
