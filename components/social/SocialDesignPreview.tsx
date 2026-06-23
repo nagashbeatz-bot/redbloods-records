@@ -1110,7 +1110,7 @@ export default function SocialDesignPreview() {
                     </td>
                     <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
                       <div>{row.publish_date === "—" ? "לא נקבע" : row.publish_date}</div>
-                      <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{row.publish_time ?? "—"}</div>
+                      <div style={{ fontSize: 10, color: "#A0A0B0", marginTop: 1 }}>{row.publish_time ?? "—"}</div>
                     </td>
                     <td style={{ padding: "15px 16px" }}>
                       {(() => {
