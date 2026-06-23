@@ -81,6 +81,14 @@ export async function deleteSocialFile(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+export async function updateSocialFilePath(id: string, newPath: string): Promise<void> {
+  const { error } = await supabase
+    .from("social_content_files")
+    .update({ dropbox_path: newPath })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 export async function countFilesByContentItems(
   contentItemIds: string[]
 ): Promise<Record<string, number>> {

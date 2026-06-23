@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSocialFile } from "@/lib/social-files-store";
+import { getCampaign } from "@/lib/social-store";
+import { createDropboxFolder } from "@/lib/dropbox-folder";
 
 export const maxDuration = 300;
 
@@ -31,10 +33,26 @@ export async function POST(req: NextRequest) {
     }
 
     const sanitizedName = file.name.replace(/[<>:"/\\|?*]/g, "_");
-    const basePath = projectId
-      ? `/${projectId}/Social/${contentItemId}`
-      : `/Social/${campaignId}/${contentItemId}`;
-    const dropboxPath = `${basePath}/${sanitizedName}`;
+
+    let dropboxPath: string;
+    if (projectId) {
+      // פרויקט הפקה — path קיים נשאר
+      dropboxPath = `/${projectId}/Social/${contentItemId}/${sanitizedName}`;
+    } else {
+      // social campaign — תיקיית קמפיין לפי שם
+      const campaign = await getCampaign(campaignId);
+      const campaignFolder = (campaign?.title ?? "")
+        .trim()
+        .replace(/[<>:"/\\|?*]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 60)
+        || `campaign-${campaignId}`;
+      const mediaFolder = `/Social/${campaignFolder}/Media`;
+      await createDropboxFolder(token, `/Social/${campaignFolder}`);
+      await createDropboxFolder(token, mediaFolder);
+      dropboxPath = `${mediaFolder}/${sanitizedName}`;
+    }
 
     // Upload to Dropbox
     const buffer = Buffer.from(await file.arrayBuffer());
