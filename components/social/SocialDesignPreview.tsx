@@ -32,51 +32,55 @@ const PLT_COLORS: Record<string, string> = {
 
 // ── Mock Data ──────────────────────────────────────────────────────────────────
 const ARTIST_NAME  = "שליו טסמה";
-const ARTIST_GENRE = "R&B • אלקטרוני";
+const ARTIST_GENRE = "אפרו / פופ";
+const ARTIST_ROLE  = "אמן / יוצר";
 
 type MockRow = {
   id: string; num: string; title: string; content_type: string;
-  platform: SocialPlatform; status: SocialContentStatus;
-  publish_date: string; assets: number; notes: string;
+  platforms: SocialPlatform[]; campaign: string;
+  status: SocialContentStatus;
+  publish_date: string; publish_time?: string;
+  assets: number; notes: string;
 };
 
 const MOCK_ROWS: MockRow[] = [
-  { id:"1", num:"001", title:"טיזר לקליפ – לילה בעיר",         content_type:"טיזר",     platform:"instagram", status:"needs_review", publish_date:"21.6.26", assets:2, notes:"חסר גרסת אנגלית" },
-  { id:"2", num:"002", title:"קליפ ראשון – לילה בעיר",         content_type:"קליפ קצר", platform:"youtube",   status:"ready",        publish_date:"24.6.26", assets:3, notes:"✓ אושר" },
-  { id:"3", num:"003", title:"שאלות לקהל – איזה שיר?",          content_type:"סטורי",    platform:"instagram", status:"in_edit",      publish_date:"25.6.26", assets:0, notes:"סטורי + פיד" },
-  { id:"4", num:"004", title:"BTS אולפן – פרק 2",               content_type:"BTS",      platform:"tiktok",    status:"shot",         publish_date:"26.6.26", assets:4, notes:"בתהליך" },
-  { id:"5", num:"005", title:"רילס – מאחורי הקלעים",            content_type:"ריל",      platform:"instagram", status:"ready",        publish_date:"27.6.26", assets:1, notes:"" },
+  { id:"1", num:"001", title:"טיזר ראשון",   content_type:"סינגל", platforms:["instagram","tiktok","youtube"],  campaign:"קמפיין: פרנציפ",            status:"scheduled",    publish_date:"21.06.26", publish_time:"20:00", assets:2, notes:"ללא הערות"   },
+  { id:"2", num:"002", title:"קאבר סינגל",   content_type:"סינגל", platforms:["spotify","instagram","youtube"], campaign:"קמפיין: פרנציפ",            status:"needs_review", publish_date:"23.06.26", publish_time:"19:00", assets:1, notes:"לאישור אמן"  },
+  { id:"3", num:"003", title:"BTS מהקליפ",   content_type:"BTS",   platforms:["instagram","tiktok"],            campaign:"קמפיין BTS קליפ - פרנציפ", status:"in_edit",      publish_date:"24.06.26", publish_time:"19:00", assets:3, notes:"עריכה אחרונה" },
+  { id:"4", num:"004", title:"סטורי הכרזה",  content_type:"תדמית", platforms:["instagram"],                     campaign:"קמפיין תדמית - שליו טסמה", status:"ready",        publish_date:"26.06.26", publish_time:"12:00", assets:0, notes:"עיצוב גרפי"  },
 ];
 
 const MOCK_FILES: FileCard[] = [
-  { id:"f1", name:"cover_laila_city.jpg",  ext:"JPG", ctx:"תמונת קאבר לקליפ",   type:"image", dur:null,    label:"קאבר",  accent:BRAND,    thumb:"linear-gradient(145deg,#3D0000 0%,#8B0000 35%,#DC2626 65%,#FF7B50 95%)",    link:null, contentItemId:null },
-  { id:"f2", name:"studio_bts_02.jpg",     ext:"JPG", ctx:"תמונת אולפן",         type:"image", dur:null,    label:"BTS",   accent:BLUE,     thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)",    link:null, contentItemId:null },
-  { id:"f3", name:"reel_bts_02.mp4",       ext:"MP4", ctx:"רילס מאחורי הקלעים",  type:"video", dur:"00:21", label:"ריל",   accent:GREEN,    thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)",    link:null, contentItemId:null },
-  { id:"f4", name:"teaser_laila_city.png", ext:"PNG", ctx:"טיזר לקליפ",          type:"image", dur:null,    label:"טיזר",  accent:"#C026D3",thumb:"linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)",    link:null, contentItemId:null },
-  { id:"f5", name:"clip_cut_01.mp4",       ext:"MP4", ctx:"קליפ גרסה 1",         type:"video", dur:"01:15", label:"קליפ",  accent:PURPLE,   thumb:"linear-gradient(145deg,#09060F 0%,#1E0A3E 35%,#3B1A8A 65%,#8B5CF6 95%)",   link:null, contentItemId:null },
-  { id:"f6", name:"qa_story_01.jpg",       ext:"JPG", ctx:"סטורי – שאלות לקהל",  type:"image", dur:null,    label:"סטורי", accent:AMBER,    thumb:"linear-gradient(145deg,#150900 0%,#3D1E00 35%,#7A4500 65%,#F59E0B 95%)",    link:null, contentItemId:null },
+  { id:"f1", name:"טיזר_ראשון.mp4",      ext:"MP4", ctx:"קמפיין: פרנציפ",            type:"video", dur:"00:18", label:"טיזר",  accent:GREEN,    thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)",    link:null, contentItemId:null },
+  { id:"f2", name:"קאבר_סינגל.jpg",      ext:"JPG", ctx:"קמפיין: פרנציפ",            type:"image", dur:null,    label:"קאבר",  accent:BLUE,     thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)",    link:null, contentItemId:null },
+  { id:"f3", name:"BTS_מהקליפ.mp4",      ext:"MP4", ctx:"קמפיין BTS קליפ - פרנציפ", type:"video", dur:"00:27", label:"BTS",   accent:GREEN,    thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)",    link:null, contentItemId:null },
+  { id:"f4", name:"שליו_סטודיו.jpg",     ext:"JPG", ctx:"קמפיין תדמית - שליו טסמה", type:"image", dur:null,    label:"תדמית", accent:BLUE,     thumb:"linear-gradient(145deg,#060618 0%,#0F1540 35%,#1E3A8A 65%,#3B82F6 95%)",    link:null, contentItemId:null },
+  { id:"f5", name:"לוגו_פרנציפ.png",    ext:"PNG", ctx:"קמפיין: פרנציפ",            type:"image", dur:null,    label:"לוגו",  accent:"#C026D3",thumb:"linear-gradient(145deg,#1A0015 0%,#4A0040 35%,#8B0070 65%,#C026D3 95%)",    link:null, contentItemId:null },
+  { id:"f6", name:"BTS_קליפ4.mp4",       ext:"MP4", ctx:"קמפיין BTS קליפ - פרנציפ", type:"video", dur:"00:32", label:"BTS",   accent:GREEN,    thumb:"linear-gradient(145deg,#011A0A 0%,#044020 35%,#087C40 65%,#10B981 95%)",    link:null, contentItemId:null },
 ];
 
 const WEEK_DAYS = [
-  { label:"א׳", date:"15.06", today:false, items:[{ t:"פוסט", c:BRAND }, { t:"שאלות", c:MUTED }] },
-  { label:"ב׳", date:"16.06", today:false, items:[{ t:"ריל", c:PURPLE }] },
-  { label:"ג׳", date:"17.06", today:false, items:[{ t:"BTS", c:BLUE }, { t:"ריל", c:PURPLE }] },
-  { label:"ד׳", date:"18.06", today:false, items:[{ t:"פוסט", c:GREEN }] },
-  { label:"ה׳", date:"19.06", today:false, items:[] },
-  { label:"ו׳", date:"20.06", today:false, items:[{ t:"ריל", c:PURPLE }, { t:"טיזר", c:AMBER }] },
-  { label:"ש׳", date:"22.06", today:true,  items:[] },
+  { label:"שבת",   date:"21.06", today:false, items:[{ t:"טיזר ראשון",  c:BRAND  }] },
+  { label:"ראשון", date:"22.06", today:false, items:[{ t:"טיזר ראשון",  c:BRAND  }, { t:"סטורי הכרזה", c:PURPLE }] },
+  { label:"שני",   date:"23.06", today:true,  items:[{ t:"קאבר סינגל",  c:BLUE   }] },
+  { label:"שלישי", date:"24.06", today:false, items:[{ t:"BTS מהקליפ",  c:GREEN  }, { t:"קאבר סינגל",  c:BLUE   }] },
+  { label:"רביעי", date:"25.06", today:false, items:[] },
+  { label:"חמישי", date:"26.06", today:false, items:[{ t:"סטורי הכרזה", c:PURPLE }] },
+  { label:"שישי",  date:"27.06", today:false, items:[] },
 ];
 
-const MOCK_CAMPAIGNS = [
-  { id:"c1", title:"קליפ ראשון – לילה בעיר", progress:72, deadline:"28.06.26", color:BRAND  },
-  { id:"c2", title:"שיר חדש – בדרך אליי",    progress:54, deadline:"12.07.26", color:AMBER  },
-  { id:"c3", title:"BTS אולפן לאלבום",        progress:38, deadline:"30.07.26", color:PURPLE },
+type DisplayCampaign = { id: string; title: string; type?: string; progress: number; deadline: string; color: string; };
+
+const MOCK_CAMPAIGNS: DisplayCampaign[] = [
+  { id:"c1", title:"השקת סינגל — פרנציפ",      type:"סינגל", progress:68, deadline:"30.06.26", color:BRAND },
+  { id:"c2", title:"BTS קליפ — פרנציפ",         type:"BTS",   progress:42, deadline:"05.07.26", color:BLUE  },
+  { id:"c3", title:"קמפיין תדמית — שליו טסמה", type:"תדמית", progress:25, deadline:"15.07.26", color:GREEN },
 ];
 
 const MOCK_ACTIVITY = [
-  { id:"a1", init:"י", user:"יוני לוי",  text:"אישר תוכן: קליפ ראשון – לילה בעיר",     time:"לפני 12 דקות", color:GREEN },
-  { id:"a2", init:"ד", user:"דניאל כהן", text:"הוסיף הערה – קליפ מאחורי הקלעים",        time:"לפני שעה",     color:AMBER },
-  { id:"a3", init:"S", user:"מערכת",     text:"הועלו 5 קבצים חדשים: BTS אולפן – פרק 2", time:"לפני 3 שעות",  color:CYAN  },
+  { id:"a1", init:"ש", user:"שליו",  text:"עדכן סטטוס של 'קאבר סינגל' לממתין לאישור", time:"לפני 12 דקות", color:GREEN },
+  { id:"a2", init:"מ", user:"מיכל",  text:"העלתה קובץ חדש: BTS_מהקליפ.mp4",           time:"לפני 36 דקות", color:BLUE  },
+  { id:"a3", init:"ד", user:"דניאל", text:"הוסיף הערה לפריט 'טיזר ראשון'",             time:"לפני שעה",     color:AMBER },
 ];
 
 // ── File card helpers ──────────────────────────────────────────────────────────
@@ -198,6 +202,7 @@ export default function SocialDesignPreview() {
   const [searchQ, setSearchQ] = useState("");
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterCampaign, setFilterCampaign] = useState("all");
 
   useEffect(() => {
     fetch("/api/social/campaigns")
@@ -232,13 +237,15 @@ export default function SocialDesignPreview() {
                   num: String(idx + 1).padStart(3, "0"),
                   title: item.title,
                   content_type: item.content_type,
-                  platform: (item.platform ?? "other") as SocialPlatform,
+                  platforms: item.platform ? [(item.platform as SocialPlatform)] : [],
+                  campaign: campaigns.find(c => c.id === item.campaign_id)?.title ?? "—",
                   status: item.status as SocialContentStatus,
                   publish_date: item.publish_date
                     ? new Date(item.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
                     : "—",
+                  publish_time: undefined,
                   assets: item.asset_link ? 1 : 0,
-                  notes: item.notes ?? "",
+                  notes: (item as unknown as { notes?: string }).notes ?? "",
                 }))
               );
             })
@@ -260,9 +267,9 @@ export default function SocialDesignPreview() {
   const missingAssets   = socialLoading ? null : (rows.filter(r => r.assets === 0).length           || 2);
 
   // Campaigns — gated by socialLoading to avoid MOCK→real flash mid-load
-  const CAMP_COLORS = [BRAND, AMBER, PURPLE, CYAN, GREEN];
+  const CAMP_COLORS = [BRAND, BLUE, GREEN, AMBER, PURPLE, CYAN];
   const activeCamps = campaigns.filter(c => c.status === "active");
-  const displayCampaigns = socialLoading
+  const displayCampaigns: DisplayCampaign[] | null = socialLoading
     ? null
     : activeCamps.length > 0
       ? activeCamps.slice(0, 3).map((c, i) => ({
@@ -277,18 +284,19 @@ export default function SocialDesignPreview() {
       : MOCK_CAMPAIGNS;
 
   const KPI_CARDS = [
-    { label:"קמפיינים פעילים", sub:"קמפיינים", icon:"🎯", value:activeCampaigns, color:BRAND    },
-    { label:"פוסטים החודש",    sub:"פוסטים",   icon:"💬", value:postsThisMonth,  color:GREEN    },
-    { label:"ממתינים לאישור",  sub:"לאישור",   icon:"⏰", value:pendingReview,   color:AMBER    },
-    { label:"מתוכננים השבוע",  sub:"פוסטים",   icon:"📅", value:scheduledWeek,   color:CYAN     },
-    { label:"חסרים נכסים",     sub:"נכסים",    icon:"⚠️", value:missingAssets,   color:"#EF4444"},
+    { label:"חסרים נכסים",    sub:"דרוש טיפול",  icon:"⚠️", value:missingAssets,   color:"#EF4444" },
+    { label:"מתוזמנים",       sub:"בשבוע הקרוב", icon:"📅", value:scheduledWeek,   color:CYAN      },
+    { label:"ממתינים לאישור", sub:"ממתין לאישור", icon:"⏳", value:pendingReview,   color:AMBER     },
+    { label:"פוסטים החודש",   sub:"בחודש יוני",  icon:"📊", value:postsThisMonth,  color:GREEN     },
+    { label:"קמפיינים פעילים",sub:"פעילים כעת",  icon:"🎯", value:activeCampaigns, color:BRAND     },
   ];
 
   const filteredRows = rows.filter(r => {
     const matchQ = !searchQ || r.title.includes(searchQ) || r.content_type.includes(searchQ);
-    const matchP = filterPlatform === "all" || r.platform === filterPlatform;
-    const matchS = filterStatus   === "all" || r.status   === filterStatus;
-    return matchQ && matchP && matchS;
+    const matchP = filterPlatform === "all" || (r.platforms ?? []).includes(filterPlatform as SocialPlatform);
+    const matchS = filterStatus   === "all" || r.status === filterStatus;
+    const matchC = filterCampaign === "all" || r.campaign === filterCampaign;
+    return matchQ && matchP && matchS && matchC;
   });
 
   // Map contentItemId → FileCard for thumbnail lookup in table
@@ -338,16 +346,16 @@ export default function SocialDesignPreview() {
             {/* Top: avatar + name */}
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{
-                width: 64, height: 64, borderRadius: 14, flexShrink: 0,
+                width: 72, height: 72, borderRadius: "50%", flexShrink: 0,
                 background: "linear-gradient(145deg, #5A0000, #DC2626 60%, #FF7B50)",
                 border: `2px solid rgba(220,38,38,0.55)`,
                 boxShadow: "0 0 22px rgba(220,38,38,0.4), 0 0 50px rgba(220,38,38,0.1)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 28,
+                fontSize: 30,
               }}>🎤</div>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 2 }}>{ARTIST_NAME}</div>
-                <div style={{ fontSize: 11, color: TEXT2 }}>מוסיקאי</div>
+                <div style={{ fontSize: 11, color: TEXT2 }}>{ARTIST_ROLE}</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{ARTIST_GENRE}</div>
               </div>
             </div>
@@ -359,9 +367,9 @@ export default function SocialDesignPreview() {
               borderTop: `1px solid ${BDR}`, borderBottom: `1px solid ${BDR}`,
             }}>
               {[
-                { val: "12", lbl: "שירים"   },
+                { val: "4",  lbl: "שירים"   },
                 { val: "3",  lbl: "קמפיינים"},
-                { val: "47", lbl: "פוסטים"  },
+                { val: "51", lbl: "פוסטים"  },
               ].map(s => (
                 <div key={s.lbl} style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</div>
@@ -388,7 +396,13 @@ export default function SocialDesignPreview() {
                 padding: "18px 18px",
                 display: "flex", flexDirection: "column", justifyContent: "space-between",
                 background: `linear-gradient(145deg, ${kpi.color}09 0%, ${CARD} 100%)`,
+                position: "relative", overflow: "hidden",
               }}>
+                {/* Ghost icon background */}
+                <div style={{
+                  position: "absolute", bottom: -8, left: -4,
+                  fontSize: 64, opacity: 0.04, userSelect: "none", pointerEvents: "none", lineHeight: 1,
+                }}>{kpi.icon}</div>
                 <div style={{
                   fontSize: 9, fontWeight: 700, color: LABEL,
                   textTransform: "uppercase", letterSpacing: "0.07em",
@@ -398,10 +412,13 @@ export default function SocialDesignPreview() {
                   ? <div style={{ height: 42, width: "55%", borderRadius: 6, background: "rgba(255,255,255,0.07)", margin: "0 auto 10px" }} />
                   : <div style={{
                       fontSize: 42, fontWeight: 900, color: kpi.color,
-                      lineHeight: 1, marginBottom: 10,
+                      lineHeight: 1, marginBottom: 4,
                       textShadow: `0 0 20px ${kpi.color}40`,
                     }}>{kpi.value}</div>
                 }
+                {kpi.value !== null && (
+                  <div style={{ fontSize: 10, color: kpi.color, opacity: 0.75, marginBottom: 6 }}>{kpi.sub}</div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <span style={{
                     width: 18, height: 18, borderRadius: 5, flexShrink: 0,
@@ -409,7 +426,6 @@ export default function SocialDesignPreview() {
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     fontSize: 10,
                   }}>{kpi.icon}</span>
-                  <span style={{ fontSize: 10, color: MUTED }}>{kpi.sub}</span>
                 </div>
               </SCard>
             ))}
@@ -459,6 +475,12 @@ export default function SocialDesignPreview() {
                 <option value="youtube">YouTube</option>
                 <option value="spotify">Spotify</option>
               </select>
+              <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} style={selStyle}>
+                <option value="all">כל הקמפיינים</option>
+                {Array.from(new Set(rows.map(r => r.campaign).filter(Boolean))).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selStyle}>
                 <option value="all">כל הסטטוסים</option>
                 <option value="idea">רעיון</option>
@@ -478,7 +500,7 @@ export default function SocialDesignPreview() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.04)" }}>
-                  {["#", "שם התוכן", "סוג", "פלטפורמה", "סטטוס", "תאריך פרסום", "נכסים", "הערות", ""].map(h => (
+                  {["#", "פריט תוכן", "קמפיין / פרויקט", "סוג", "פלטפורמות", "תאריך פרסום", "נכס מצורף", "סטטוס", "הערות", ""].map(h => (
                     <th key={h} style={{
                       padding: "11px 16px", textAlign: "right", fontSize: 10,
                       fontWeight: 800, color: TEXT2,
@@ -492,7 +514,7 @@ export default function SocialDesignPreview() {
                 {socialLoading
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i} style={{ borderBottom: `1px solid ${BDR}` }}>
-                        {Array.from({ length: 9 }).map((_, j) => (
+                        {Array.from({ length: 10 }).map((_, j) => (
                           <td key={j} style={{ padding: "15px 16px" }}>
                             <div style={{ height: 10, borderRadius: 4, background: "rgba(255,255,255,0.06)", width: j === 1 ? "80%" : j === 0 ? "40%" : "60%" }} />
                           </td>
@@ -512,22 +534,30 @@ export default function SocialDesignPreview() {
                         <span style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>{row.num}</span>
                       </span>
                     </td>
-                    <td style={{ padding: "15px 16px", maxWidth: 240 }}>
+                    <td style={{ padding: "15px 16px", maxWidth: 220 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.title}
                       </div>
+                    </td>
+                    <td style={{ padding: "15px 16px", maxWidth: 170 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: 160, display: "inline-block", textOverflow: "ellipsis" }}>
+                        {row.campaign || "—"}
+                      </span>
                     </td>
                     <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
                       {row.content_type}
                     </td>
                     <td style={{ padding: "15px 16px" }}>
-                      <PlatformBadge platform={row.platform} />
-                    </td>
-                    <td style={{ padding: "15px 16px" }}>
-                      <StatusBadge status={row.status} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "nowrap" }}>
+                        {(row.platforms ?? []).map(p => (
+                          <PlatformBadge key={p} platform={p} />
+                        ))}
+                        {(row.platforms ?? []).length === 0 && <span style={{ color: MUTED, fontSize: 11 }}>—</span>}
+                      </div>
                     </td>
                     <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
-                      {row.publish_date}
+                      <div>{row.publish_date}</div>
+                      {row.publish_time && <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{row.publish_time}</div>}
                     </td>
                     <td style={{ padding: "15px 16px" }}>
                       {(() => {
@@ -574,6 +604,9 @@ export default function SocialDesignPreview() {
                         }
                         return <span style={{ fontSize: 11, color: MUTED }}>—</span>;
                       })()}
+                    </td>
+                    <td style={{ padding: "15px 16px" }}>
+                      <StatusBadge status={row.status} />
                     </td>
                     <td style={{ padding: "15px 16px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap", maxWidth: 140 }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -726,6 +759,22 @@ export default function SocialDesignPreview() {
                 </div>
               </div>
             ))}
+            {/* Upload tile */}
+            {!socialLoading && (
+              <div style={{
+                borderRadius: 12, border: `2px dashed ${BDR2}`, background: "rgba(255,255,255,0.02)",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: 8, cursor: "pointer", minHeight: 200,
+                transition: "border-color 0.15s",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.32)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BDR2; }}
+              >
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: CARD2, border: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: MUTED }}>☁</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>גרור קבצים לכאן</div>
+                <div style={{ fontSize: 10, color: MUTED, opacity: 0.6 }}>או לחץ להעלאה</div>
+              </div>
+            )}
           </div>
         </SCard>
 
@@ -760,8 +809,8 @@ export default function SocialDesignPreview() {
                   borderRadius: 12, border: `1px solid ${camp.color}22`,
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                    <div style={{ position: "relative", flexShrink: 0, width: 52, height: 52 }}>
-                      <ProgressRing pct={camp.progress} color={camp.color} size={52} />
+                    <div style={{ position: "relative", flexShrink: 0, width: 62, height: 62 }}>
+                      <ProgressRing pct={camp.progress} color={camp.color} size={62} />
                       <div style={{
                         position: "absolute", inset: 0,
                         display: "flex", alignItems: "center", justifyContent: "center",
@@ -769,10 +818,15 @@ export default function SocialDesignPreview() {
                       }}>{camp.progress}%</div>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
+                      {camp.type && (
+                        <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 6, background: camp.color + "22", border: `1px solid ${camp.color}44`, color: camp.color, letterSpacing: "0.05em", display: "inline-block", marginBottom: 4 }}>
+                          {camp.type}
+                        </span>
+                      )}
                       <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
                         {camp.title}
                       </div>
-                      <div style={{ fontSize: 10, color: MUTED }}>יעד: {camp.deadline}</div>
+                      <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>פרויקט: {ARTIST_NAME} · יעד: {camp.deadline}</div>
                     </div>
                   </div>
                   {/* Progress bar */}
@@ -799,7 +853,7 @@ export default function SocialDesignPreview() {
                 <span style={{ fontSize: 14 }}>📅</span>
                 <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>לוח שבועי</span>
               </div>
-              <span style={{ fontSize: 10, color: MUTED }}>15–22 ביוני</span>
+              <span style={{ fontSize: 10, color: MUTED }}>21–27 ביוני</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 7 }}>
               {WEEK_DAYS.map(day => (
