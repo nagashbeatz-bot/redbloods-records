@@ -594,11 +594,12 @@ function rowDateToInput(d: string): string {
 
 // ── EditContentItemModal ───────────────────────────────────────────────────────
 function EditContentItemModal({
-  row, onClose, onSaved,
+  row, onClose, onSaved, onDeleted,
 }: {
   row: { id: string; title: string; platforms: string[]; publish_date: string; publish_time?: string; status: SocialContentStatus; notes: string };
   onClose: () => void;
   onSaved: (patch: { title: string; platform: string | null; publish_date: string | null; publish_time: string | null; status: SocialContentStatus; notes: string }) => void;
+  onDeleted?: (id: string) => void;
 }) {
   const [title,       setTitle]       = useState(row.title);
   const [platform,    setPlatform]    = useState(row.platforms[0] ?? "");
@@ -608,6 +609,23 @@ function EditContentItemModal({
   const [notes,       setNotes]       = useState(row.notes);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [deleteError,  setDeleteError]  = useState("");
+
+  async function handleDelete() {
+    setDeleting(true); setDeleteError("");
+    try {
+      const res = await fetch(`/api/social/content/${row.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      onDeleted?.(row.id);
+      onClose();
+    } catch {
+      setDeleteError("שגיאה במחיקה — נסה שוב");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleSave() {
     if (!title.trim() || saving) return;
@@ -719,10 +737,43 @@ function EditContentItemModal({
 
         {error && <div style={{ fontSize: 12, color: "#EF4444", marginTop: 10 }}>{error}</div>}
 
+        {/* Delete confirm section */}
+        {confirmDelete && (
+          <div style={{
+            marginTop: 16, padding: "14px 16px", borderRadius: 10,
+            background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.28)",
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#F2F2F2", marginBottom: 10 }}>
+              למחוק את פריט התוכן ואת כל קבצי המדיה שמקושרים אליו?
+            </div>
+            {deleteError && <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 8 }}>{deleteError}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => { setConfirmDelete(false); setDeleteError(""); }}
+                disabled={deleting}
+                style={{ padding: "7px 16px", borderRadius: 7, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: deleting ? "default" : "pointer", transition: "none" }}
+              >בטל</button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ padding: "7px 18px", borderRadius: 7, fontSize: 12, fontWeight: 800, background: deleting ? "#52526A" : "#DC2626", border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", boxShadow: deleting ? "none" : "0 2px 10px rgba(220,38,38,0.45)", transition: "none" }}
+              >{deleting ? "מוחק..." : "אישור מחיקה"}</button>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
-          <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: "pointer", transition: "none" }}>
-            ביטול
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: "pointer", transition: "none" }}>
+              ביטול
+            </button>
+            {onDeleted && !confirmDelete && (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                style={{ padding: "9px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(220,38,38,0.35)", color: "#EF4444", cursor: "pointer", transition: "none" }}
+              >מחק תוכן</button>
+            )}
+          </div>
           <button onClick={handleSave} disabled={!canSave} style={{
             padding: "9px 24px", borderRadius: 8, fontSize: 12, fontWeight: 800,
             background: canSave ? "#DC2626" : "#52526A", border: "none", color: "#fff",
@@ -2203,6 +2254,11 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
         <EditContentItemModal
           row={editingRow}
           onClose={() => setEditingRow(null)}
+          onDeleted={id => {
+            setRows(prev => prev.filter(r => r.id !== id));
+            setFiles(prev => prev.filter(f => f.contentItemId !== id));
+            setEditingRow(null);
+          }}
           onSaved={patch => {
             setRows(prev => prev.map(r => {
               if (r.id !== editingRow.id) return r;
