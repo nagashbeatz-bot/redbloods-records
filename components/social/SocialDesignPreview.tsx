@@ -590,6 +590,19 @@ export default function SocialDesignPreview() {
                                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                                   />
                                 )}
+                                {rowThumb.type === "video" && rowThumb.link && (
+                                  <video
+                                    src={toDirectLink(rowThumb.link)}
+                                    muted
+                                    preload="metadata"
+                                    playsInline
+                                    onLoadedMetadata={e => {
+                                      try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch {}
+                                    }}
+                                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                    onError={e => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
+                                  />
+                                )}
                               </div>
                               <span style={{ fontSize: 10, color: TEXT2, fontWeight: 700 }}>{rowThumb.ext}</span>
                             </div>
@@ -696,7 +709,7 @@ export default function SocialDesignPreview() {
                   width: "100%", height: 148, background: f.thumb,
                   position: "relative", overflow: "hidden",
                 }}>
-                  {/* Real image preview for image files with a dropbox link */}
+                  {/* Real image preview */}
                   {f.type === "image" && f.link && (
                     <img
                       src={toDirectLink(f.link)}
@@ -704,6 +717,20 @@ export default function SocialDesignPreview() {
                       loading="lazy"
                       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 }}
                       onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                  )}
+                  {/* Real video preview — first frame via preload="metadata" */}
+                  {f.type === "video" && f.link && (
+                    <video
+                      src={toDirectLink(f.link)}
+                      muted
+                      preload="metadata"
+                      playsInline
+                      onLoadedMetadata={e => {
+                        try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch {}
+                      }}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 }}
+                      onError={e => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
                     />
                   )}
                   {/* Bottom fade overlay */}
