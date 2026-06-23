@@ -291,7 +291,7 @@ export default function SocialHubPreview() {
           }}>
             <div style={{ position: "absolute", bottom: -8, left: -6, fontSize: 52, opacity: 0.07, userSelect: "none", lineHeight: 1 }}>{kpi.icon}</div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: "uppercase", letterSpacing: "0.10em" }}>{kpi.label}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: "uppercase", letterSpacing: "0.08em" }}>{kpi.label}</div>
               <div style={{
                 width: 28, height: 28, borderRadius: 8,
                 background: `${kpi.color}1A`, border: `1px solid ${kpi.color}33`,
@@ -300,9 +300,9 @@ export default function SocialHubPreview() {
             </div>
             {loading
               ? <div style={{ height: 36, width: "50%", borderRadius: 6, background: "rgba(255,255,255,0.07)", marginBottom: 6 }} />
-              : <div style={{ fontSize: 38, fontWeight: 900, color: kpi.color, lineHeight: 1, marginBottom: 5 }}>{kpi.value}</div>
+              : <div style={{ fontSize: 42, fontWeight: 900, color: kpi.color, lineHeight: 1, marginBottom: 5 }}>{kpi.value}</div>
             }
-            <div style={{ fontSize: 11, color: MUTED }}>{kpi.sub}</div>
+            <div style={{ fontSize: 12, color: MUTED }}>{kpi.sub}</div>
           </div>
         ))}
       </div>
@@ -457,11 +457,6 @@ export default function SocialHubPreview() {
                           display: "block", boxShadow: "0 2px 10px rgba(220,38,38,0.35)",
                         }}
                       >צפה</Link>
-                      <button style={{
-                        flex: 1, padding: "8px 0", borderRadius: 9, fontSize: 12, fontWeight: 600,
-                        background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR}`,
-                        color: MUTED, cursor: "default", transition: "none",
-                      }}>סטטיסטיקות</button>
                     </div>
                   </div>
                 </div>
@@ -560,7 +555,7 @@ export default function SocialHubPreview() {
                         </div>
                       </div>
                       {/* Day items */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5, minHeight: 110 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, minHeight: 140 }}>
                         {dayItems.slice(0, 3).map(item => {
                           const plts      = item.platform ? item.platform.split(",") : [];
                           const pColor    = PLT_COLOR[plts[0]] ?? CONTENT_STATUS_COLOR[item.status] ?? BRAND;
