@@ -306,6 +306,9 @@ export default function SocialDesignPreview() {
   const fileByContentItem: Record<string, FileCard> = Object.fromEntries(
     files.filter(f => f.contentItemId).map(f => [f.contentItemId!, f])
   );
+  const rowByContentItemId: Record<string, MockRow> = Object.fromEntries(
+    rows.map(r => [r.id, r])
+  );
 
   const selStyle: React.CSSProperties = {
     padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600,
@@ -797,10 +800,10 @@ export default function SocialDesignPreview() {
                 {/* Info */}
                 <div style={{ padding: "9px 10px 11px" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
-                    {f.name}
+                    {(f.contentItemId && rowByContentItemId[f.contentItemId]?.title) || f.name}
                   </div>
                   <div style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.ctx}
+                    {f.contentItemId && rowByContentItemId[f.contentItemId]?.title ? f.name : f.ctx}
                   </div>
                 </div>
               </div>
