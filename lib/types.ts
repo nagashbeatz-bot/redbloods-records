@@ -398,6 +398,10 @@ export const SOCIAL_CAMPAIGN_STATUS_LABELS: Record<SocialCampaignStatus, string>
 };
 
 export type SocialContentStatus =
+  | "draft"
+  | "in_progress"
+  | "ready_to_post"
+  | "published"
   | "idea"
   | "needs_shoot"
   | "shot"
@@ -409,10 +413,15 @@ export type SocialContentStatus =
   | "cancelled";
 
 export const SOCIAL_CONTENT_STATUSES: SocialContentStatus[] = [
+  "draft", "in_progress", "ready_to_post", "published",
   "idea", "needs_shoot", "shot", "in_edit", "needs_review", "ready", "scheduled", "posted", "cancelled",
 ];
 
 export const SOCIAL_CONTENT_STATUS_LABELS: Record<SocialContentStatus, string> = {
+  draft: "רעיון",
+  in_progress: "בעבודה",
+  ready_to_post: "מוכן להעלאה",
+  published: "פורסם",
   idea: "רעיון",
   needs_shoot: "צריך צילום",
   shot: "צולם",
@@ -425,14 +434,18 @@ export const SOCIAL_CONTENT_STATUS_LABELS: Record<SocialContentStatus, string> =
 };
 
 export const SOCIAL_CONTENT_STATUS_COLORS: Record<SocialContentStatus, string> = {
-  idea: "#6B7280",
-  needs_shoot: "#F59E0B",
+  draft: "#8B5CF6",
+  in_progress: "#3B82F6",
+  ready_to_post: "#F59E0B",
+  published: "#10B981",
+  idea: "#8B5CF6",
+  needs_shoot: "#3B82F6",
   shot: "#3B82F6",
-  in_edit: "#8B5CF6",
-  needs_review: "#EC4899",
-  ready: "#10B981",
-  scheduled: "#06B6D4",
-  posted: "#22C55E",
+  in_edit: "#3B82F6",
+  needs_review: "#3B82F6",
+  ready: "#F59E0B",
+  scheduled: "#F59E0B",
+  posted: "#10B981",
   cancelled: "#EF4444",
 };
 

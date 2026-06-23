@@ -346,7 +346,7 @@ function AddContentItemModal({
   const [contentType, setContentType] = useState("טיזר");
   const [platform, setPlatform] = useState("");
   const [publishDate, setPublishDate] = useState("");
-  const [status, setStatus] = useState<SocialContentStatus>("idea");
+  const [status, setStatus] = useState<SocialContentStatus>("draft");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -450,7 +450,7 @@ function AddContentItemModal({
               <CustomSelect
                 value={status}
                 onChange={v => setStatus(v as SocialContentStatus)}
-                options={(["idea","needs_shoot","shot","in_edit","needs_review","ready","scheduled","posted"] as SocialContentStatus[]).map(s => ({
+                options={(["draft","in_progress","ready_to_post","published"] as SocialContentStatus[]).map(s => ({
                   value: s,
                   label: SOCIAL_CONTENT_STATUS_LABELS[s],
                 }))}
@@ -721,21 +721,26 @@ export default function SocialDesignPreview() {
   }, []);
 
   // KPI — gated by socialLoading so numbers never flash from fallback→real
-  const missingAssets      = socialLoading ? null : (rows.filter(r => r.assets === 0).length             || 2);
-  const pendingReview      = socialLoading ? null : (rows.filter(r => r.status === "needs_review").length || 4);
-  const scheduledWeek      = socialLoading ? null : (rows.filter(r => r.status === "scheduled").length   || 9);
-  const published          = socialLoading ? null : (rows.filter(r => r.status === "posted").length      || 18);
-  const campaignProgress   = socialLoading ? null : `${MOCK_CAMPAIGNS[0]?.progress ?? 68}%`;
+  const DRAFT_STATUSES   = new Set(["draft", "idea"]);
+  const WORK_STATUSES    = new Set(["in_progress", "needs_shoot", "shot", "in_edit", "needs_review"]);
+  const READY_STATUSES   = new Set(["ready_to_post", "ready", "scheduled"]);
+  const PUB_STATUSES     = new Set(["published", "posted"]);
+
+  const countDraft       = socialLoading ? null : (rows.filter(r => DRAFT_STATUSES.has(r.status)).length  || 1);
+  const countWork        = socialLoading ? null : (rows.filter(r => WORK_STATUSES.has(r.status)).length   || 2);
+  const countReady       = socialLoading ? null : (rows.filter(r => READY_STATUSES.has(r.status)).length  || 1);
+  const countPublished   = socialLoading ? null : (rows.filter(r => PUB_STATUSES.has(r.status)).length    || 0);
+  const campaignProgress = socialLoading ? null : `${MOCK_CAMPAIGNS[0]?.progress ?? 68}%`;
 
   // Campaigns — always show MOCK_CAMPAIGNS as structural stages (progress % not tracked in DB)
   const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : MOCK_CAMPAIGNS;
 
   const KPI_CARDS: { label: string; sub: string; icon: string; value: number | string | null; color: string }[] = [
-    { label:"חסרים להשלמה",     sub:"דרוש טיפול",          icon:"⚠️", value:missingAssets,    color:"#EF4444" },
-    { label:"ממתין לאישור",      sub:"אישור אמן / צוות",   icon:"⏳", value:pendingReview,    color:AMBER     },
-    { label:"מתוזמנים",          sub:"השבוע הקרוב",         icon:"📅", value:scheduledWeek,    color:CYAN      },
-    { label:"פורסמו",            sub:"מתוך הקמפיין",        icon:"📊", value:published,        color:GREEN     },
     { label:"התקדמות קמפיין",   sub:"לפי שלבי הקמפיין",   icon:"🎯", value:campaignProgress, color:BRAND     },
+    { label:"רעיון",             sub:"תוכן בשלב רעיון",     icon:"💡", value:countDraft,       color:PURPLE    },
+    { label:"בעבודה",            sub:"תוכן בייצור",          icon:"🎬", value:countWork,        color:BLUE      },
+    { label:"מוכן להעלאה",       sub:"ממתין לפרסום",        icon:"📅", value:countReady,       color:AMBER     },
+    { label:"פורסם",             sub:"מתוך הקמפיין",        icon:"📊", value:countPublished,   color:GREEN     },
   ];
 
   function refreshContent() {
@@ -794,7 +799,15 @@ export default function SocialDesignPreview() {
   const filteredRows = rows.filter(r => {
     const matchQ = !searchQ || r.title.includes(searchQ) || r.content_type.includes(searchQ);
     const matchP = filterPlatform === "all" || (r.platforms ?? []).includes(filterPlatform as SocialPlatform);
-    const matchS = filterStatus   === "all" || r.status === filterStatus;
+    const STATUS_GROUPS: Record<string, Set<string>> = {
+      draft:        DRAFT_STATUSES,
+      in_progress:  WORK_STATUSES,
+      ready_to_post: READY_STATUSES,
+      published:    PUB_STATUSES,
+    };
+    const matchS = filterStatus === "all" || (STATUS_GROUPS[filterStatus]
+      ? STATUS_GROUPS[filterStatus].has(r.status)
+      : r.status === filterStatus);
     const matchC = filterCampaign === "all" || r.campaign === filterCampaign;
     return matchQ && matchP && matchS && matchC;
   });
@@ -996,14 +1009,10 @@ export default function SocialDesignPreview() {
               </select>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selStyle}>
                 <option value="all">כל הסטטוסים</option>
-                <option value="idea">רעיון</option>
-                <option value="needs_shoot">צריך צילום</option>
-                <option value="shot">צולם</option>
-                <option value="in_edit">בעריכה</option>
-                <option value="needs_review">ממתין לאישור</option>
-                <option value="ready">מוכן להעלאה</option>
-                <option value="scheduled">תוזמן</option>
-                <option value="posted">פורסם</option>
+                <option value="draft">רעיון</option>
+                <option value="in_progress">בעבודה</option>
+                <option value="ready_to_post">מוכן להעלאה</option>
+                <option value="published">פורסם</option>
               </select>
             </div>
           </div>
