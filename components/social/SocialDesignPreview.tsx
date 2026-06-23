@@ -721,8 +721,8 @@ export default function SocialDesignPreview() {
   }, []);
 
   // KPI — gated by socialLoading so numbers never flash from fallback→real
-  const DRAFT_STATUSES   = new Set(["draft", "idea"]);
-  const WORK_STATUSES    = new Set(["in_progress", "needs_shoot", "shot", "in_edit", "needs_review"]);
+  const DRAFT_STATUSES   = new Set(["draft", "idea", "needs_shoot", "shot"]);
+  const WORK_STATUSES    = new Set(["in_progress", "in_edit", "needs_review"]);
   const READY_STATUSES   = new Set(["ready_to_post", "ready", "scheduled"]);
   const PUB_STATUSES     = new Set(["published", "posted"]);
 
