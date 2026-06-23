@@ -226,6 +226,71 @@ const MINPUT: React.CSSProperties = {
   fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
 };
 
+// ── CustomSelect (dark dropdown — replaces native select in modals) ───────────
+function CustomSelect({
+  value, onChange, options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          ...MINPUT,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          cursor: "pointer", userSelect: "none",
+        }}
+      >
+        <span style={{ color: selected ? "#F2F2F2" : "#52526A" }}>
+          {selected?.label ?? "בחר..."}
+        </span>
+        <span style={{ fontSize: 9, opacity: 0.55 }}>{open ? "▲" : "▼"}</span>
+      </div>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+          zIndex: 10001, background: "#15151F",
+          border: "1px solid rgba(255,255,255,0.18)", borderRadius: 9,
+          boxShadow: "0 10px 32px rgba(0,0,0,0.85)", maxHeight: 220, overflowY: "auto",
+        }}>
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              style={{
+                padding: "9px 12px", fontSize: 13, direction: "rtl", cursor: "pointer",
+                color: opt.value === value ? "#DC2626" : "#F2F2F2",
+                background: opt.value === value ? "rgba(220,38,38,0.10)" : "transparent",
+              }}
+              onMouseEnter={e => { if (opt.value !== value) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.07)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = opt.value === value ? "rgba(220,38,38,0.10)" : "transparent"; }}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AddContentItemModal ────────────────────────────────────────────────────────
 function AddContentItemModal({
   campaignId, onClose, onSuccess,
@@ -309,22 +374,26 @@ function AddContentItemModal({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סוג תוכן</div>
-              <select value={contentType} onChange={e => setContentType(e.target.value)} style={MINPUT}>
-                {["טיזר","BTS","ליפסינק","סטורי","קליפ קצר","פוסט","ריל","הכרזה","תוכן אישי","אחר"].map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              <CustomSelect
+                value={contentType}
+                onChange={setContentType}
+                options={["טיזר","BTS","ליפסינק","סטורי","קליפ קצר","פוסט","ריל","הכרזה","תוכן אישי","אחר"].map(t => ({ value: t, label: t }))}
+              />
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>פלטפורמה</div>
-              <select value={platform} onChange={e => setPlatform(e.target.value)} style={MINPUT}>
-                <option value="">— ללא —</option>
-                <option value="instagram">Instagram</option>
-                <option value="tiktok">TikTok</option>
-                <option value="youtube">YouTube</option>
-                <option value="spotify">Spotify</option>
-                <option value="other">אחר</option>
-              </select>
+              <CustomSelect
+                value={platform}
+                onChange={setPlatform}
+                options={[
+                  { value: "", label: "— ללא —" },
+                  { value: "instagram", label: "Instagram" },
+                  { value: "tiktok", label: "TikTok" },
+                  { value: "youtube", label: "YouTube" },
+                  { value: "spotify", label: "Spotify" },
+                  { value: "other", label: "אחר" },
+                ]}
+              />
             </div>
           </div>
 
@@ -335,11 +404,14 @@ function AddContentItemModal({
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סטטוס</div>
-              <select value={status} onChange={e => setStatus(e.target.value as SocialContentStatus)} style={MINPUT}>
-                {(["idea","needs_shoot","shot","in_edit","needs_review","ready","scheduled","posted"] as SocialContentStatus[]).map(s => (
-                  <option key={s} value={s}>{SOCIAL_CONTENT_STATUS_LABELS[s]}</option>
-                ))}
-              </select>
+              <CustomSelect
+                value={status}
+                onChange={v => setStatus(v as SocialContentStatus)}
+                options={(["idea","needs_shoot","shot","in_edit","needs_review","ready","scheduled","posted"] as SocialContentStatus[]).map(s => ({
+                  value: s,
+                  label: SOCIAL_CONTENT_STATUS_LABELS[s],
+                }))}
+              />
             </div>
           </div>
 
