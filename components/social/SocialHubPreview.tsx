@@ -608,7 +608,7 @@ export default function SocialHubPreview() {
         {/* ── Recent assets ── */}
         <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 14 }}>🗂</span> נכסים אחרונים
+            <span style={{ fontSize: 14 }}>🗂</span> קבצים אחרונים
           </div>
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
