@@ -789,7 +789,7 @@ function UploadAssetModal({
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: "#F2F2F2" }}>+ העלאת נכס</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#F2F2F2" }}>+ העלאת קובץ</div>
             <div style={{ fontSize: 11, color: "#52526A", marginTop: 2 }}>
               {step === 1 ? "שלב 1 — בחר פריט תוכן לשיוך" : "שלב 2 — בחר קובץ להעלאה"}
             </div>
@@ -1703,6 +1703,12 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
           </div>
 
           {/* Full-width grid */}
+          {!socialLoading && files.length === 0 && (
+            <div style={{ padding: "40px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+              <div style={{ fontSize: 36, opacity: 0.25 }}>📁</div>
+              <div style={{ fontSize: 13, color: MUTED }}>אין קבצים שהועלו עדיין</div>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
             {socialLoading
               ? Array.from({ length: 6 }).map((_, i) => (
@@ -1864,23 +1870,6 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                 </div>
               </div>
             ))}
-            {/* Upload tile */}
-            {!socialLoading && (
-              <div style={{
-                borderRadius: 12, border: `2px dashed ${BDR2}`, background: "rgba(255,255,255,0.02)",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                gap: 8, cursor: "pointer", minHeight: 200,
-                transition: "border-color 0.15s",
-              }}
-              onClick={() => setShowUploadModal(true)}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.32)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BDR2; }}
-              >
-                <div style={{ width: 40, height: 40, borderRadius: "50%", background: CARD2, border: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: MUTED }}>☁</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>גרור קבצים לכאן</div>
-                <div style={{ fontSize: 10, color: MUTED, opacity: 0.6 }}>או לחץ להעלאה</div>
-              </div>
-            )}
           </div>
         </SCard>
 
