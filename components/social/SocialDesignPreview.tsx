@@ -609,6 +609,9 @@ export default function SocialDesignPreview() {
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [showAddContent, setShowAddContent] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/social/campaigns")
@@ -724,8 +727,25 @@ export default function SocialDesignPreview() {
       .then(d => {
         if (Array.isArray(d.files) && d.files.length > 0)
           setFiles(d.files.slice(0, 6).map((f: SocialContentFile, i: number) => mapApiFileToCard(f, i)));
+        else
+          setFiles([]);
       })
       .catch(() => {});
+  }
+
+  async function handleDeleteFile(fileId: string) {
+    setDeleteInProgress(fileId);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/social/files?id=${fileId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setDeletingFileId(null);
+      refreshFiles();
+    } catch {
+      setDeleteError(fileId);
+    } finally {
+      setDeleteInProgress(null);
+    }
   }
 
   const filteredRows = rows.filter(r => {
@@ -1093,8 +1113,48 @@ export default function SocialDesignPreview() {
                         {row.notes || <span style={{ color: MUTED }}>—</span>}
                       </div>
                     </td>
-                    <td style={{ padding: "15px 10px" }}>
-                      <button style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 4px", lineHeight: 1 }}>⋮</button>
+                    <td style={{ padding: "15px 10px", position: "relative" }}>
+                      {(() => {
+                        const rowFiles = filesByContentItem[row.id] ?? [];
+                        if (rowFiles.length === 0) return <span style={{ color: MUTED, fontSize: 12 }}>—</span>;
+                        const rowDelKey = `row_${row.id}`;
+                        if (deletingFileId === rowDelKey) {
+                          return (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 130 }}>
+                              {rowFiles.map(rf => (
+                                <div key={rf.id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <span style={{ fontSize: 10, color: TEXT2, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 70 }}>{rf.name}</span>
+                                  {deletingFileId === rowDelKey && deleteInProgress === rf.id
+                                    ? <span style={{ fontSize: 10, color: MUTED }}>מוחק...</span>
+                                    : deleteError === rf.id
+                                    ? <span style={{ fontSize: 10, color: "#EF4444" }}>שגיאה</span>
+                                    : (
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleDeleteFile(rf.id); }}
+                                        style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 13, padding: "1px 4px", borderRadius: 4, transition: "none", flexShrink: 0 }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#DC2626"}
+                                        onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = MUTED}
+                                      >🗑</button>
+                                    )
+                                  }
+                                </div>
+                              ))}
+                              <button
+                                onClick={e => { e.stopPropagation(); setDeletingFileId(null); setDeleteError(null); }}
+                                style={{ fontSize: 10, color: MUTED, background: "none", border: "none", cursor: "pointer", textAlign: "right", padding: 0, transition: "none" }}
+                              >ביטול</button>
+                            </div>
+                          );
+                        }
+                        return (
+                          <button
+                            onClick={e => { e.stopPropagation(); setDeletingFileId(rowDelKey); setDeleteError(null); }}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14, padding: "2px 6px", borderRadius: 6, transition: "none" }}
+                            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#DC2626"}
+                            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = MUTED}
+                          >🗑</button>
+                        );
+                      })()}
                     </td>
                   </tr>
                   ))}
@@ -1141,10 +1201,10 @@ export default function SocialDesignPreview() {
               : files.map(f => (
               <div
                 key={f.id}
-                onClick={() => setSelectedFile(f)}
+                onClick={() => { if (deletingFileId !== f.id) setSelectedFile(f); }}
                 style={{
                   borderRadius: 12, border: `1px solid ${BDR}`, overflow: "hidden",
-                  background: CARD2, cursor: "pointer",
+                  background: CARD2, cursor: "pointer", position: "relative",
                   transition: "transform 0.15s, border-color 0.15s, box-shadow 0.15s",
                 }}
                 onMouseEnter={e => {
@@ -1240,7 +1300,51 @@ export default function SocialDesignPreview() {
                       letterSpacing: "0.05em",
                     }}>{f.dur}</span>
                   )}
+
+                  {/* Trash button — top left */}
+                  <button
+                    onClick={e => { e.stopPropagation(); setDeletingFileId(f.id); setDeleteError(null); }}
+                    style={{
+                      position: "absolute", top: 8, left: 8, zIndex: 3,
+                      background: "rgba(0,0,0,0.60)", border: "1px solid rgba(255,255,255,0.14)",
+                      borderRadius: 7, width: 28, height: 28,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: "pointer", color: "#A0A0B0", fontSize: 13, transition: "none",
+                    }}
+                    onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#DC2626"}
+                    onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "#A0A0B0"}
+                  >🗑</button>
                 </div>
+
+                {/* Confirm overlay — covers whole card */}
+                {deletingFileId === f.id && (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: "absolute", inset: 0, zIndex: 10,
+                      background: "rgba(9,9,16,0.92)", backdropFilter: "blur(3px)",
+                      display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center", gap: 10, padding: 14,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#F2F2F2", textAlign: "center" }}>למחוק את הקובץ?</div>
+                    <div style={{ fontSize: 10, color: "#52526A", textAlign: "center", wordBreak: "break-all", maxWidth: "90%" }}>{f.name}</div>
+                    {deleteError === f.id && (
+                      <div style={{ fontSize: 10, color: "#EF4444" }}>שגיאה — נסה שוב</div>
+                    )}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => { setDeletingFileId(null); setDeleteError(null); }}
+                        style={{ padding: "6px 14px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: "pointer", transition: "none" }}
+                      >ביטול</button>
+                      <button
+                        onClick={() => handleDeleteFile(f.id)}
+                        disabled={deleteInProgress === f.id}
+                        style={{ padding: "6px 14px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleteInProgress === f.id ? "#52526A" : "#DC2626", border: "none", color: "#fff", cursor: deleteInProgress === f.id ? "default" : "pointer", boxShadow: deleteInProgress === f.id ? "none" : "0 2px 10px rgba(220,38,38,0.45)", transition: "none" }}
+                      >{deleteInProgress === f.id ? "מוחק..." : "מחק"}</button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Info */}
                 <div style={{ padding: "9px 10px 11px" }}>
