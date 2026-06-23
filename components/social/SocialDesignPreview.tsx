@@ -346,6 +346,82 @@ function CustomSelect({
   );
 }
 
+// ── TimePickerField ────────────────────────────────────────────────────────────
+const HOURS   = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const MINUTES = ["00","05","10","15","20","25","30","35","40","45","50","55"];
+
+function TimePickerField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [openH, setOpenH] = useState(false);
+  const [openM, setOpenM] = useState(false);
+  const [h, m] = value ? value.split(":") : ["", ""];
+
+  const dropStyle: React.CSSProperties = {
+    position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 9999,
+    background: "#141418", border: "1px solid rgba(255,255,255,0.14)",
+    borderRadius: 10, padding: "4px 0",
+    maxHeight: 180, overflowY: "auto",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.75)",
+    scrollbarWidth: "thin",
+  };
+  const trigStyle: React.CSSProperties = {
+    ...MINPUT, display: "flex", alignItems: "center", justifyContent: "space-between",
+    cursor: "pointer", userSelect: "none", padding: "10px 10px",
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {/* Hour */}
+      <div style={{ position: "relative", flex: 1 }}>
+        <div style={trigStyle} onClick={() => { setOpenH(o => !o); setOpenM(false); }}>
+          <span style={{ color: h ? "#F2F2F2" : "#52526A" }}>{h || "--"}</span>
+          <span style={{ fontSize: 9, opacity: 0.5, color: "#A0A0B0" }}>▾</span>
+        </div>
+        {openH && (
+          <div style={dropStyle}>
+            {HOURS.map(opt => (
+              <div key={opt}
+                style={{ padding: "7px 12px", fontSize: 13, cursor: "pointer", textAlign: "center",
+                  color: opt === h ? "#fff" : "#A0A0B0",
+                  background: opt === h ? "rgba(220,38,38,0.18)" : "transparent" }}
+                onMouseEnter={e => { if (opt !== h) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e => { if (opt !== h) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                onClick={() => { onChange(`${opt}:${m || "00"}`); setOpenH(false); }}
+              >{opt}</div>
+            ))}
+          </div>
+        )}
+      </div>
+      <span style={{ color: "#52526A", fontSize: 14, fontWeight: 700, flexShrink: 0 }}>:</span>
+      {/* Minute */}
+      <div style={{ position: "relative", flex: 1 }}>
+        <div style={trigStyle} onClick={() => { setOpenM(o => !o); setOpenH(false); }}>
+          <span style={{ color: m ? "#F2F2F2" : "#52526A" }}>{m || "--"}</span>
+          <span style={{ fontSize: 9, opacity: 0.5, color: "#A0A0B0" }}>▾</span>
+        </div>
+        {openM && (
+          <div style={dropStyle}>
+            {MINUTES.map(opt => (
+              <div key={opt}
+                style={{ padding: "7px 12px", fontSize: 13, cursor: "pointer", textAlign: "center",
+                  color: opt === m ? "#fff" : "#A0A0B0",
+                  background: opt === m ? "rgba(220,38,38,0.18)" : "transparent" }}
+                onMouseEnter={e => { if (opt !== m) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e => { if (opt !== m) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                onClick={() => { onChange(`${h || "00"}:${opt}`); setOpenM(false); }}
+              >{opt}</div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Clear */}
+      {value && (
+        <button onClick={() => onChange("")}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "#52526A", fontSize: 16, padding: "0 2px", lineHeight: 1, flexShrink: 0, transition: "none" }}>×</button>
+      )}
+    </div>
+  );
+}
+
 // ── AddContentItemModal ────────────────────────────────────────────────────────
 function AddContentItemModal({
   campaignId, onClose, onSuccess,
@@ -461,7 +537,7 @@ function AddContentItemModal({
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>שעת פרסום</div>
-              <input type="time" value={publishTime} onChange={e => setPublishTime(e.target.value)} style={{ ...MINPUT, colorScheme: "dark" }} />
+              <TimePickerField value={publishTime} onChange={setPublishTime} />
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סטטוס</div>
@@ -616,7 +692,7 @@ function EditContentItemModal({
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>שעת פרסום</div>
-              <input type="time" value={publishTime} onChange={e => setPublishTime(e.target.value)} style={{ ...MINPUT, colorScheme: "dark" }} />
+              <TimePickerField value={publishTime} onChange={setPublishTime} />
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סטטוס</div>
