@@ -252,27 +252,29 @@ export default function SocialDesignPreview() {
       });
   }, []);
 
-  // KPI — real data where available, sensible mock fallback
-  const activeCampaigns = campaigns.filter(c => c.status === "active").length || MOCK_CAMPAIGNS.length; // KPI uses raw count before displayCampaigns is defined
-  const postsThisMonth  = rows.filter(r => r.status === "posted").length    || 18;
-  const pendingReview   = rows.filter(r => r.status === "needs_review").length || 4;
-  const scheduledWeek   = rows.filter(r => r.status === "scheduled").length || 9;
-  const missingAssets   = rows.filter(r => r.assets === 0).length           || 2;
+  // KPI — gated by socialLoading so numbers never flash from fallback→real
+  const activeCampaigns = socialLoading ? null : (campaigns.filter(c => c.status === "active").length || MOCK_CAMPAIGNS.length);
+  const postsThisMonth  = socialLoading ? null : (rows.filter(r => r.status === "posted").length    || 18);
+  const pendingReview   = socialLoading ? null : (rows.filter(r => r.status === "needs_review").length || 4);
+  const scheduledWeek   = socialLoading ? null : (rows.filter(r => r.status === "scheduled").length || 9);
+  const missingAssets   = socialLoading ? null : (rows.filter(r => r.assets === 0).length           || 2);
 
-  // Campaigns — real active campaigns or fallback to mock
+  // Campaigns — gated by socialLoading to avoid MOCK→real flash mid-load
   const CAMP_COLORS = [BRAND, AMBER, PURPLE, CYAN, GREEN];
   const activeCamps = campaigns.filter(c => c.status === "active");
-  const displayCampaigns = activeCamps.length > 0
-    ? activeCamps.slice(0, 3).map((c, i) => ({
-        id: c.id,
-        title: c.title,
-        progress: 0,
-        deadline: c.release_date
-          ? new Date(c.release_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
-          : "—",
-        color: CAMP_COLORS[i % CAMP_COLORS.length],
-      }))
-    : MOCK_CAMPAIGNS;
+  const displayCampaigns = socialLoading
+    ? null
+    : activeCamps.length > 0
+      ? activeCamps.slice(0, 3).map((c, i) => ({
+          id: c.id,
+          title: c.title,
+          progress: 0,
+          deadline: c.release_date
+            ? new Date(c.release_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
+            : "—",
+          color: CAMP_COLORS[i % CAMP_COLORS.length],
+        }))
+      : MOCK_CAMPAIGNS;
 
   const KPI_CARDS = [
     { label:"קמפיינים פעילים", sub:"קמפיינים", icon:"🎯", value:activeCampaigns, color:BRAND    },
@@ -392,11 +394,14 @@ export default function SocialDesignPreview() {
                   textTransform: "uppercase", letterSpacing: "0.07em",
                   lineHeight: 1.3, marginBottom: 10,
                 }}>{kpi.label}</div>
-                <div style={{
-                  fontSize: 42, fontWeight: 900, color: kpi.color,
-                  lineHeight: 1, marginBottom: 10,
-                  textShadow: `0 0 20px ${kpi.color}40`,
-                }}>{kpi.value}</div>
+                {kpi.value === null
+                  ? <div style={{ height: 42, width: "55%", borderRadius: 6, background: "rgba(255,255,255,0.07)", margin: "0 auto 10px" }} />
+                  : <div style={{
+                      fontSize: 42, fontWeight: 900, color: kpi.color,
+                      lineHeight: 1, marginBottom: 10,
+                      textShadow: `0 0 20px ${kpi.color}40`,
+                    }}>{kpi.value}</div>
+                }
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <span style={{
                     width: 18, height: 18, borderRadius: 5, flexShrink: 0,
@@ -587,7 +592,7 @@ export default function SocialDesignPreview() {
               <div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-                  {files.length} קבצים · עדכון אחרון לפני שעה
+                  {socialLoading ? "טוען..." : `${files.length} קבצים · עדכון אחרון לפני שעה`}
                 </div>
               </div>
             </div>
@@ -718,11 +723,18 @@ export default function SocialDesignPreview() {
                 background: BRAND + "18", border: `1px solid ${BRAND}35`,
                 color: BRAND, fontSize: 10, fontWeight: 700,
                 padding: "2px 8px", borderRadius: 10,
-              }}>{displayCampaigns.length} פעילים</span>
+              }}>{displayCampaigns ? displayCampaigns.length : "—"} פעילים</span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {displayCampaigns.map(camp => (
+              {!displayCampaigns
+                ? Array.from({ length: 2 }).map((_, i) => (
+                    <div key={i} style={{ padding: "14px 16px", borderRadius: 12, background: CARD2, border: `1px solid ${BDR}` }}>
+                      <div style={{ height: 11, width: "70%", borderRadius: 4, background: "rgba(255,255,255,0.06)", marginBottom: 8 }} />
+                      <div style={{ height: 8,  width: "45%", borderRadius: 4, background: "rgba(255,255,255,0.04)" }} />
+                    </div>
+                  ))
+                : displayCampaigns.map(camp => (
                 <div key={camp.id} style={{
                   padding: "14px 16px", background: CARD2,
                   borderRadius: 12, border: `1px solid ${camp.color}22`,
@@ -752,7 +764,7 @@ export default function SocialDesignPreview() {
                     }} />
                   </div>
                 </div>
-              ))}
+                ))}
             </div>
 
             <button style={{ marginTop: 14, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "right", padding: 0 }}>
