@@ -433,7 +433,7 @@ function AddContentItemModal({
 }) {
   const [title, setTitle] = useState("");
   const [contentType, setContentType] = useState("טיזר");
-  const [platform, setPlatform] = useState("");
+  const [platform, setPlatform] = useState("instagram,tiktok");
   const [publishDate, setPublishDate] = useState("");
   const [publishTime, setPublishTime] = useState("");
   const [status, setStatus] = useState<SocialContentStatus>("draft");
@@ -520,6 +520,7 @@ function AddContentItemModal({
                 value={platform}
                 onChange={setPlatform}
                 options={[
+                  { value: "instagram,tiktok", label: "Instagram + TikTok" },
                   { value: "", label: "— ללא —" },
                   { value: "instagram", label: "Instagram" },
                   { value: "tiktok", label: "TikTok" },
@@ -603,7 +604,11 @@ function EditContentItemModal({
   onDeleted?: (id: string) => void;
 }) {
   const [title,       setTitle]       = useState(row.title);
-  const [platform,    setPlatform]    = useState(row.platforms[0] ?? "");
+  const [platform,    setPlatform]    = useState(() => {
+    const sorted = [...row.platforms].sort().join(",");
+    if (sorted === "instagram,tiktok" || sorted === "tiktok,instagram") return "instagram,tiktok";
+    return row.platforms[0] ?? "";
+  });
   const [publishDate, setPublishDate] = useState(rowDateToInput(row.publish_date));
   const [publishTime, setPublishTime] = useState(row.publish_time ?? "");
   const [status,      setStatus]      = useState<SocialContentStatus>(row.status);
@@ -694,6 +699,7 @@ function EditContentItemModal({
               value={platform}
               onChange={setPlatform}
               options={[
+                { value: "instagram,tiktok", label: "Instagram + TikTok" },
                 { value: "", label: "— ללא —" },
                 { value: "instagram", label: "Instagram" },
                 { value: "tiktok", label: "TikTok" },
@@ -1062,7 +1068,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                   num: String(idx + 1).padStart(3, "0"),
                   title: item.title,
                   content_type: item.content_type,
-                  platforms: item.platform ? [(item.platform as SocialPlatform)] : [],
+                  platforms: item.platform ? item.platform.split(",").filter(Boolean) as SocialPlatform[] : [],
                   campaign: d.campaigns?.find((c: SocialCampaign) => c.id === item.campaign_id)?.title ?? "—",
                   status: item.status as SocialContentStatus,
                   publish_date: item.publish_date
