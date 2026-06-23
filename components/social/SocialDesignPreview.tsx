@@ -921,15 +921,15 @@ export default function SocialDesignPreview() {
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => setWeekOffset(o => o - 1)}
-                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", color: TEXT2, fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none", transition: "none" }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 9, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.18)", color: TEXT, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: "none", transition: "none", whiteSpace: "nowrap" }}
                 >
-                  <span style={{ fontSize: 10 }}>›</span> שבוע קודם
+                  <span style={{ fontSize: 12, lineHeight: 1 }}>›</span> שבוע קודם
                 </button>
                 <button
                   onClick={() => setWeekOffset(o => o + 1)}
-                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", color: TEXT2, fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none", transition: "none" }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 9, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.18)", color: TEXT, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: "none", transition: "none", whiteSpace: "nowrap" }}
                 >
-                  שבוע הבא <span style={{ fontSize: 10 }}>‹</span>
+                  שבוע הבא <span style={{ fontSize: 12, lineHeight: 1 }}>‹</span>
                 </button>
               </div>
               {/* Title + range — right side */}
@@ -956,15 +956,15 @@ export default function SocialDesignPreview() {
                   minHeight: 180,
                 }}>
                   {/* Day label */}
-                  <div style={{ textAlign: "center", marginBottom: 4 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: day.today ? BRAND : MUTED, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  <div style={{ textAlign: "center", marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: day.today ? BRAND : MUTED, marginBottom: 5, letterSpacing: "0.03em" }}>
                       {day.label}
                     </div>
                     <div style={{
-                      fontSize: 12, fontWeight: 900,
+                      fontSize: 13, fontWeight: 900,
                       color: day.today ? "#fff" : TEXT2,
                       background: day.today ? BRAND : "transparent",
-                      borderRadius: 6, padding: day.today ? "3px 6px" : "0",
+                      borderRadius: 6, padding: day.today ? "3px 7px" : "0",
                       display: "inline-block",
                       boxShadow: day.today ? "0 2px 10px rgba(220,38,38,0.5)" : "none",
                     }}>{day.date}</div>
@@ -974,16 +974,16 @@ export default function SocialDesignPreview() {
                   {(weekOffset === 0 ? day.items : []).map((item, idx) => (
                     <div key={idx} style={{
                       background: item.c + "22", border: `1px solid ${item.c}50`,
-                      borderRadius: 7, padding: "7px 6px 6px",
+                      borderRadius: 8, padding: "8px 8px 7px",
                       overflow: "hidden",
                     }}>
                       {/* Name + icon */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 3, marginBottom: 4 }}>
-                        <span style={{ fontSize: 9, fontWeight: 800, color: item.c, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.t}</span>
-                        <span style={{ fontSize: 11, flexShrink: 0 }}>{item.icon}</span>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginBottom: 5 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: item.c, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.t}</span>
+                        <span style={{ fontSize: 12, flexShrink: 0 }}>{item.icon}</span>
                       </div>
                       {/* Time */}
-                      <div style={{ fontSize: 10, fontWeight: 700, color: item.c, opacity: 0.85 }}>{item.time}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: item.c, opacity: 0.9 }}>{item.time}</div>
                     </div>
                   ))}
                 </div>
