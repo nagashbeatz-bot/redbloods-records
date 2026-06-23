@@ -891,6 +891,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
   const [rows, setRows] = useState<MockRow[]>([]);
   const [files, setFiles] = useState<FileCard[]>([]);
   const [socialLoading, setSocialLoading] = useState(true);
+  const [campaignNotFound, setCampaignNotFound] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileCard | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [filterPlatform, setFilterPlatform] = useState("all");
@@ -939,21 +940,41 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
   }, [statusDropdownId]);
 
   useEffect(() => {
+    // When campaignId prop is provided, never use mock fallbacks — show real data or empty state
+    const useMock = !campaignId;
+
     fetch("/api/social/campaigns")
       .then(r => r.json())
       .then(d => {
         if (!Array.isArray(d.campaigns) || d.campaigns.length === 0) {
-          setRows(MOCK_ROWS);
-          setFiles(MOCK_FILES);
+          if (campaignId) {
+            setCampaignNotFound(true);
+          } else {
+            setRows(MOCK_ROWS);
+            setFiles(MOCK_FILES);
+          }
           setSocialLoading(false);
           return;
         }
         setCampaigns(d.campaigns);
-        const active: SocialCampaign =
-          (campaignId ? d.campaigns.find((c: SocialCampaign) => c.id === campaignId) : null)
+
+        // With campaignId prop: find exact campaign or show not-found, never fall back to another
+        const foundById = campaignId
+          ? d.campaigns.find((c: SocialCampaign) => c.id === campaignId) ?? null
+          : null;
+
+        if (campaignId && !foundById) {
+          setCampaignNotFound(true);
+          setSocialLoading(false);
+          return;
+        }
+
+        const active: SocialCampaign = foundById
           ?? d.campaigns.find((c: SocialCampaign) => c.status === "active")
           ?? d.campaigns[0];
+
         setActiveCampaignId(active.id);
+
         // Fetch clients and find the one matching artist_name
         fetch("/api/clients")
           .then(r => r.json())
@@ -965,6 +986,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
             setArtistClient(found);
           })
           .catch(() => {});
+
         Promise.all([
           fetch(`/api/social/files?campaignId=${active.id}`)
             .then(r => r.json())
@@ -972,13 +994,16 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
               if (Array.isArray(d.files) && d.files.length > 0)
                 setFiles(d.files.slice(0, 6).map((f: SocialContentFile, i: number) => mapApiFileToCard(f, i)));
               else
-                setFiles(MOCK_FILES);
+                setFiles(useMock ? MOCK_FILES : []);
             })
-            .catch(() => setFiles(MOCK_FILES)),
+            .catch(() => setFiles(useMock ? MOCK_FILES : [])),
           fetch(`/api/social/content?campaignId=${active.id}`)
             .then(r => r.json())
             .then(d => {
-              if (!Array.isArray(d.items) || d.items.length === 0) { setRows(MOCK_ROWS); return; }
+              if (!Array.isArray(d.items) || d.items.length === 0) {
+                setRows(useMock ? MOCK_ROWS : []);
+                return;
+              }
               setRows(
                 d.items.slice(0, 8).map((item: SocialContentItem, idx: number) => ({
                   id: item.id,
@@ -986,13 +1011,13 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                   title: item.title,
                   content_type: item.content_type,
                   platforms: item.platform ? [(item.platform as SocialPlatform)] : [],
-                  campaign: campaigns.find(c => c.id === item.campaign_id)?.title ?? "—",
+                  campaign: d.campaigns?.find((c: SocialCampaign) => c.id === item.campaign_id)?.title ?? "—",
                   status: item.status as SocialContentStatus,
                   publish_date: item.publish_date
                     ? new Date(item.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
                     : "—",
                   publish_time: item.publish_time
-                    ? item.publish_time.slice(0, 5)  // HH:MM from "HH:MM:SS"
+                    ? item.publish_time.slice(0, 5)
                     : undefined,
                   assets: item.asset_link ? 1 : 0,
                   notes: (item as unknown as { notes?: string }).notes ?? "",
@@ -1001,12 +1026,12 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                 }))
               );
             })
-            .catch(() => setRows(MOCK_ROWS)),
+            .catch(() => setRows(useMock ? MOCK_ROWS : [])),
         ]).finally(() => setSocialLoading(false));
       })
       .catch(() => {
-        setRows(MOCK_ROWS);
-        setFiles(MOCK_FILES);
+        setRows(useMock ? MOCK_ROWS : []);
+        setFiles(useMock ? MOCK_FILES : []);
         setSocialLoading(false);
       });
   }, []);
@@ -1060,8 +1085,8 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
     rows.length === 0 ? "0%" :
     `${Math.round(rows.filter(r => PUB_STATUSES.has(r.status)).length / rows.length * 100)}%`;
 
-  // Campaigns — always show MOCK_CAMPAIGNS as structural stages (progress % not tracked in DB)
-  const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : MOCK_CAMPAIGNS;
+  // Campaigns — show mock stages only for /social-preview (no campaignId); real page shows empty
+  const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : (campaignId ? [] : MOCK_CAMPAIGNS);
 
   const KPI_CARDS: { label: string; sub: string; icon: string; value: number | string | null; color: string }[] = [
     { label:"התקדמות קמפיין",   sub:"לפי שלבי הקמפיין",   icon:"🎯", value:campaignProgress, color:BRAND     },
@@ -1229,6 +1254,20 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
     background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
     cursor: "pointer", outline: "none", direction: "rtl",
   };
+
+  if (campaignNotFound) {
+    return (
+      <div style={{
+        minHeight: "60vh", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", gap: 12,
+        background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      }}>
+        <div style={{ fontSize: 40 }}>🔍</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: TEXT }}>הקמפיין לא נמצא</div>
+        <div style={{ fontSize: 13, color: MUTED }}>הקמפיין המבוקש אינו קיים או שאין לך גישה אליו</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
