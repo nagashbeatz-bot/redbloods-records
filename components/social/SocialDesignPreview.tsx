@@ -252,7 +252,15 @@ export default function SocialDesignPreview() {
                   publish_date: item.publish_date
                     ? new Date(item.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
                     : "—",
-                  publish_time: undefined,
+                  publish_time: (() => {
+                    if (!item.publish_date) return undefined;
+                    try {
+                      const d = new Date(item.publish_date);
+                      const h = d.getHours(), m = d.getMinutes();
+                      if (h === 0 && m === 0) return undefined;
+                      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+                    } catch { return undefined; }
+                  })(),
                   assets: item.asset_link ? 1 : 0,
                   notes: (item as unknown as { notes?: string }).notes ?? "",
                 }))
@@ -567,8 +575,8 @@ export default function SocialDesignPreview() {
                       </div>
                     </td>
                     <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
-                      <div>{row.publish_date}</div>
-                      {row.publish_time && <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{row.publish_time}</div>}
+                      <div>{row.publish_date === "—" ? "לא נקבע" : row.publish_date}</div>
+                      <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{row.publish_time ?? "—"}</div>
                     </td>
                     <td style={{ padding: "15px 16px" }}>
                       {(() => {
