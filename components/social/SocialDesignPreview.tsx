@@ -886,7 +886,7 @@ function UploadAssetModal({
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export default function SocialDesignPreview() {
+export default function SocialDesignPreview({ campaignId }: { campaignId?: string } = {}) {
   const [campaigns, setCampaigns] = useState<SocialCampaign[]>([]);
   const [rows, setRows] = useState<MockRow[]>([]);
   const [files, setFiles] = useState<FileCard[]>([]);
@@ -950,7 +950,9 @@ export default function SocialDesignPreview() {
         }
         setCampaigns(d.campaigns);
         const active: SocialCampaign =
-          d.campaigns.find((c: SocialCampaign) => c.status === "active") ?? d.campaigns[0];
+          (campaignId ? d.campaigns.find((c: SocialCampaign) => c.id === campaignId) : null)
+          ?? d.campaigns.find((c: SocialCampaign) => c.status === "active")
+          ?? d.campaigns[0];
         setActiveCampaignId(active.id);
         // Fetch clients and find the one matching artist_name
         fetch("/api/clients")
@@ -1008,6 +1010,14 @@ export default function SocialDesignPreview() {
         setSocialLoading(false);
       });
   }, []);
+
+  // Dynamic campaign/artist values derived from fetched data
+  const activeCampaign = campaigns.find(c => c.id === activeCampaignId);
+  const dynCampaignName = activeCampaign?.title ?? CAMPAIGN_NAME;
+  const dynArtistName   = artistClient?.name ?? activeCampaign?.artist_name ?? ARTIST_NAME;
+  const dynCampaignDate = activeCampaign?.release_date
+    ? new Date(activeCampaign.release_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" }).replace(/\//g, ".")
+    : CAMPAIGN_DATE;
 
   // KPI — gated by socialLoading so numbers never flash from fallback→real
   // ── Activity helpers ─────────────────────────────────────────────────────────
@@ -1236,12 +1246,12 @@ export default function SocialDesignPreview() {
               background: `linear-gradient(130deg, ${TEXT} 55%, ${BRAND} 100%)`,
               WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
             }}>
-              קמפיין — {CAMPAIGN_NAME}
+              קמפיין — {dynCampaignName}
             </h1>
             <span style={{ fontSize: 17 }}>🎯</span>
           </div>
           <p style={{ margin: 0, fontSize: 12, color: TEXT2 }}>
-            {ARTIST_NAME} · {CAMPAIGN_TYPE} · תאריך יציאה {CAMPAIGN_DATE}
+            {dynArtistName} · {CAMPAIGN_TYPE} · תאריך יציאה {dynCampaignDate}
           </p>
         </div>
 
@@ -1264,7 +1274,7 @@ export default function SocialDesignPreview() {
                 fontSize: 30,
               }}>🎤</div>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 2 }}>{ARTIST_NAME}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 2 }}>{dynArtistName}</div>
                 <div style={{ fontSize: 11, color: TEXT2 }}>{ARTIST_ROLE}</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{ARTIST_GENRE}</div>
               </div>
@@ -1363,7 +1373,7 @@ export default function SocialDesignPreview() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>
-                  לוח תוכן — {CAMPAIGN_NAME}
+                  לוח תוכן — {dynCampaignName}
                 </span>
                 <span style={{
                   background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
@@ -1642,7 +1652,7 @@ export default function SocialDesignPreview() {
               <div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-                  {socialLoading ? "טוען..." : `${files.length} קבצים · קמפיין ${CAMPAIGN_NAME}`}
+                  {socialLoading ? "טוען..." : `${files.length} קבצים · קמפיין ${dynCampaignName}`}
                 </div>
               </div>
             </div>
@@ -1883,7 +1893,7 @@ export default function SocialDesignPreview() {
                       <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
                         {camp.title}
                       </div>
-                      <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>פרויקט: {ARTIST_NAME} · יעד: {camp.deadline}</div>
+                      <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>פרויקט: {dynArtistName} · יעד: {camp.deadline}</div>
                     </div>
                   </div>
                   {/* Progress bar */}

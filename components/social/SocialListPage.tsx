@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { SocialCampaign } from "@/lib/types";
 import { SOCIAL_CAMPAIGN_STATUS_LABELS, SOCIAL_PLATFORM_ICONS } from "@/lib/types";
 import { useSocialCampaigns } from "./useSocialCampaign";
@@ -25,7 +26,7 @@ function CampaignCard({ campaign }: { campaign: SocialCampaign }) {
     : false;
 
   return (
-    <Link href={`/social/${campaign.id}`} style={{ textDecoration: "none" }}>
+    <Link href={`/social/campaigns/${campaign.id}`} style={{ textDecoration: "none" }}>
       <div
         style={{
           background: "#1A1A1A",
@@ -76,6 +77,7 @@ function CampaignCard({ campaign }: { campaign: SocialCampaign }) {
 export default function SocialListPage() {
   const { campaigns, loading, error, createCampaign } = useSocialCampaigns();
   const [showCreate, setShowCreate] = useState(false);
+  const router = useRouter();
 
   const active = campaigns.filter((c) => c.status === "active" || c.status === "draft");
   const past = campaigns.filter((c) => c.status === "completed" || c.status === "paused");
@@ -156,7 +158,13 @@ export default function SocialListPage() {
       )}
 
       {showCreate && (
-        <CreateCampaignModal onCreate={createCampaign} onClose={() => setShowCreate(false)} />
+        <CreateCampaignModal
+          onCreate={async (input) => {
+            const newCamp = await createCampaign(input);
+            router.push(`/social/campaigns/${newCamp.id}`);
+          }}
+          onClose={() => setShowCreate(false)}
+        />
       )}
     </div>
   );
