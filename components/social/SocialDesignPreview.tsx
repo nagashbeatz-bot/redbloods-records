@@ -226,6 +226,49 @@ const MINPUT: React.CSSProperties = {
   fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
 };
 
+// ── TrashIcon SVG ──────────────────────────────────────────────────────────────
+function TrashIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: "block", flexShrink: 0 }}>
+      <path d="M2.5 4h11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+      <path d="M5.5 4V2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5V4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+      <path d="M3.5 4l.75 8.5a.5.5 0 0 0 .5.5h6.5a.5.5 0 0 0 .5-.5L12.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M6.5 7v4M9.5 7v4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ── TrashButton (shared — table + gallery) ─────────────────────────────────────
+function TrashButton({ onClick, small = false }: { onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; small?: boolean }) {
+  const size = small ? 26 : 28;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: size, height: size, borderRadius: 7, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.28)",
+        cursor: "pointer", color: "rgba(220,38,38,0.55)", transition: "none",
+        padding: 0,
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLButtonElement;
+        el.style.background = "rgba(220,38,38,0.18)";
+        el.style.borderColor = "rgba(220,38,38,0.70)";
+        el.style.color = "#DC2626";
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLButtonElement;
+        el.style.background = "rgba(220,38,38,0.07)";
+        el.style.borderColor = "rgba(220,38,38,0.28)";
+        el.style.color = "rgba(220,38,38,0.55)";
+      }}
+    >
+      <TrashIcon size={small ? 13 : 14} />
+    </button>
+  );
+}
+
 // ── CustomSelect (dark dropdown — replaces native select in modals) ───────────
 function CustomSelect({
   value, onChange, options,
@@ -1129,12 +1172,7 @@ export default function SocialDesignPreview() {
                                     : deleteError === rf.id
                                     ? <span style={{ fontSize: 10, color: "#EF4444" }}>שגיאה</span>
                                     : (
-                                      <button
-                                        onClick={e => { e.stopPropagation(); handleDeleteFile(rf.id); }}
-                                        style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 13, padding: "1px 4px", borderRadius: 4, transition: "none", flexShrink: 0 }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#DC2626"}
-                                        onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = MUTED}
-                                      >🗑</button>
+                                      <TrashButton small onClick={e => { e.stopPropagation(); handleDeleteFile(rf.id); }} />
                                     )
                                   }
                                 </div>
@@ -1147,12 +1185,7 @@ export default function SocialDesignPreview() {
                           );
                         }
                         return (
-                          <button
-                            onClick={e => { e.stopPropagation(); setDeletingFileId(rowDelKey); setDeleteError(null); }}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14, padding: "2px 6px", borderRadius: 6, transition: "none" }}
-                            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#DC2626"}
-                            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = MUTED}
-                          >🗑</button>
+                          <TrashButton small onClick={e => { e.stopPropagation(); setDeletingFileId(rowDelKey); setDeleteError(null); }} />
                         );
                       })()}
                     </td>
@@ -1302,18 +1335,9 @@ export default function SocialDesignPreview() {
                   )}
 
                   {/* Trash button — top left */}
-                  <button
-                    onClick={e => { e.stopPropagation(); setDeletingFileId(f.id); setDeleteError(null); }}
-                    style={{
-                      position: "absolute", top: 8, left: 8, zIndex: 3,
-                      background: "rgba(0,0,0,0.60)", border: "1px solid rgba(255,255,255,0.14)",
-                      borderRadius: 7, width: 28, height: 28,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      cursor: "pointer", color: "#A0A0B0", fontSize: 13, transition: "none",
-                    }}
-                    onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#DC2626"}
-                    onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "#A0A0B0"}
-                  >🗑</button>
+                  <div style={{ position: "absolute", top: 8, left: 8, zIndex: 3 }}>
+                    <TrashButton onClick={e => { e.stopPropagation(); setDeletingFileId(f.id); setDeleteError(null); }} />
+                  </div>
                 </div>
 
                 {/* Confirm overlay — covers whole card */}
