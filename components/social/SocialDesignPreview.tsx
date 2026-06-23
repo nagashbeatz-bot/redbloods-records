@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import type { SocialCampaign, SocialContentItem, SocialContentFile, SocialContentStatus, SocialPlatform } from "@/lib/types";
+import type { Client } from "@/lib/clients-store";
+import ClientDrawer from "@/components/clients/ClientDrawer";
 import {
   SOCIAL_CONTENT_STATUS_LABELS,
   SOCIAL_CONTENT_STATUS_COLORS,
@@ -667,6 +669,8 @@ export default function SocialDesignPreview() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [statusUpdating,   setStatusUpdating]   = useState<string | null>(null);
+  const [artistClient,     setArtistClient]     = useState<Client | null>(null);
+  const [showClientDrawer, setShowClientDrawer] = useState(false);
 
   const ALLOWED_STATUSES: SocialContentStatus[] = ["draft", "in_progress", "ready_to_post", "published"];
 
@@ -711,6 +715,17 @@ export default function SocialDesignPreview() {
         const active: SocialCampaign =
           d.campaigns.find((c: SocialCampaign) => c.status === "active") ?? d.campaigns[0];
         setActiveCampaignId(active.id);
+        // Fetch clients and find the one matching artist_name
+        fetch("/api/clients")
+          .then(r => r.json())
+          .then(cd => {
+            const artistName = (active.artist_name ?? "").trim().toLowerCase();
+            const found = (cd.clients ?? []).find((c: Client) =>
+              c.name.trim().toLowerCase() === artistName
+            ) ?? null;
+            setArtistClient(found);
+          })
+          .catch(() => {});
         Promise.all([
           fetch(`/api/social/files?campaignId=${active.id}`)
             .then(r => r.json())
@@ -1035,15 +1050,26 @@ export default function SocialDesignPreview() {
               ))}
             </div>
 
-            <button style={{
-              padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-              background: "rgba(220,38,38,0.13)", border: "1px solid rgba(220,38,38,0.38)",
-              color: BRAND, cursor: "pointer", outline: "none", width: "100%",
-              boxShadow: "0 2px 10px rgba(220,38,38,0.12)",
-              transition: "none",
-            }}>
-              הצג פרופיל אמן ↗
-            </button>
+            {artistClient ? (
+              <button onClick={() => setShowClientDrawer(true)} style={{
+                padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                background: "rgba(220,38,38,0.13)", border: "1px solid rgba(220,38,38,0.38)",
+                color: BRAND, cursor: "pointer", outline: "none", width: "100%",
+                boxShadow: "0 2px 10px rgba(220,38,38,0.12)",
+                transition: "none",
+              }}>
+                הצג פרופיל אמן ↗
+              </button>
+            ) : (
+              <div style={{
+                padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 600,
+                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+                color: "#52526A", width: "100%", textAlign: "center",
+                userSelect: "none",
+              }}>
+                לא נמצא תיק לקוח
+              </div>
+            )}
           </SCard>
 
           {/* KPI Cards */}
@@ -1894,6 +1920,13 @@ export default function SocialDesignPreview() {
           </div>
         </div>
       )}
+
+      {/* Client Drawer — artist profile */}
+      <ClientDrawer
+        client={showClientDrawer ? artistClient : null}
+        onClose={() => setShowClientDrawer(false)}
+        onEdit={() => {}}
+      />
     </div>
   );
 }
