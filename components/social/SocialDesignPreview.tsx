@@ -358,6 +358,7 @@ function AddContentItemModal({
   const [contentType, setContentType] = useState("טיזר");
   const [platform, setPlatform] = useState("");
   const [publishDate, setPublishDate] = useState("");
+  const [publishTime, setPublishTime] = useState("");
   const [status, setStatus] = useState<SocialContentStatus>("draft");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -376,6 +377,7 @@ function AddContentItemModal({
           content_type: contentType,
           platform: platform || null,
           publish_date: publishDate || null,
+          publish_time: publishTime || null,
           status,
           notes,
         }),
@@ -452,10 +454,14 @@ function AddContentItemModal({
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>תאריך פרסום</div>
               <input type="date" value={publishDate} onChange={e => setPublishDate(e.target.value)} style={{ ...MINPUT, colorScheme: "dark" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>שעת פרסום</div>
+              <input type="time" value={publishTime} onChange={e => setPublishTime(e.target.value)} style={{ ...MINPUT, colorScheme: "dark" }} />
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סטטוס</div>
@@ -752,15 +758,9 @@ export default function SocialDesignPreview() {
                   publish_date: item.publish_date
                     ? new Date(item.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
                     : "—",
-                  publish_time: (() => {
-                    if (!item.publish_date) return undefined;
-                    try {
-                      const d = new Date(item.publish_date);
-                      const h = d.getHours(), m = d.getMinutes();
-                      if (h === 0 && m === 0) return undefined;
-                      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-                    } catch { return undefined; }
-                  })(),
+                  publish_time: item.publish_time
+                    ? item.publish_time.slice(0, 5)  // HH:MM from "HH:MM:SS"
+                    : undefined,
                   assets: item.asset_link ? 1 : 0,
                   notes: (item as unknown as { notes?: string }).notes ?? "",
                   created_at: item.created_at ?? undefined,
@@ -892,7 +892,13 @@ export default function SocialDesignPreview() {
         c:    PUB_STATUSES.has(r.status) ? GREEN : AMBER,
         time: r.publish_time || undefined,
         icon: PUB_STATUSES.has(r.status) ? "✅" : "📅",
-      }));
+      }))
+      .sort((a, b) => {
+        if (!a.time && !b.time) return 0;
+        if (!a.time) return 1;
+        if (!b.time) return -1;
+        return a.time.localeCompare(b.time);
+      });
 
     return { label, date: dateLabel, today: isToday, items: dayItems };
   });

@@ -103,6 +103,8 @@ export async function createContentItem(input: {
   status?: SocialContentStatus;
   platform?: SocialPlatform | null;
   due_date?: string | null;
+  publish_date?: string | null;
+  publish_time?: string | null;
   owner_name?: string;
   notes?: string;
   hook?: string;
@@ -118,6 +120,8 @@ export async function createContentItem(input: {
       status:       input.status ?? "idea",
       platform:     input.platform ?? null,
       due_date:     input.due_date ?? null,
+      publish_date: input.publish_date ?? null,
+      publish_time: input.publish_time ?? null,
       owner_name:   input.owner_name ?? "",
       notes:        input.notes ?? "",
       hook:         input.hook ?? "",
@@ -180,6 +184,7 @@ function normalizeItem(row: Record<string, unknown>): SocialContentItem {
     platform:         ((row.platform as SocialPlatform) ?? null),
     due_date:         (row.due_date as string) ?? null,
     publish_date:     (row.publish_date as string) ?? null,
+    publish_time:     (row.publish_time as string) ?? null,
     owner_name:       (row.owner_name as string) ?? "",
     asset_link:       (row.asset_link as string) ?? "",
     dropbox_link:     (row.dropbox_link as string) ?? "",

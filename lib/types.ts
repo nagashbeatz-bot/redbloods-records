@@ -498,6 +498,7 @@ export interface SocialContentItem {
   platform: SocialPlatform | null;
   due_date: string | null;       // YYYY-MM-DD
   publish_date: string | null;
+  publish_time: string | null;   // HH:MM
   owner_name: string;
   asset_link: string;
   dropbox_link: string;
