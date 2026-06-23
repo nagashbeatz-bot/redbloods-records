@@ -765,11 +765,13 @@ export default function SocialDesignPreview() {
   const READY_STATUSES   = new Set(["ready_to_post", "ready", "scheduled"]);
   const PUB_STATUSES     = new Set(["published", "posted"]);
 
-  const countDraft       = socialLoading ? null : (rows.filter(r => DRAFT_STATUSES.has(r.status)).length  || 1);
-  const countWork        = socialLoading ? null : (rows.filter(r => WORK_STATUSES.has(r.status)).length   || 2);
-  const countReady       = socialLoading ? null : (rows.filter(r => READY_STATUSES.has(r.status)).length  || 1);
-  const countPublished   = socialLoading ? null : (rows.filter(r => PUB_STATUSES.has(r.status)).length    || 0);
-  const campaignProgress = socialLoading ? null : `${MOCK_CAMPAIGNS[0]?.progress ?? 68}%`;
+  const countDraft     = socialLoading ? null : rows.filter(r => DRAFT_STATUSES.has(r.status)).length;
+  const countWork      = socialLoading ? null : rows.filter(r => WORK_STATUSES.has(r.status)).length;
+  const countReady     = socialLoading ? null : rows.filter(r => READY_STATUSES.has(r.status)).length;
+  const countPublished = socialLoading ? null : rows.filter(r => PUB_STATUSES.has(r.status)).length;
+  const campaignProgress = socialLoading ? null :
+    rows.length === 0 ? "0%" :
+    `${Math.round(rows.filter(r => PUB_STATUSES.has(r.status)).length / rows.length * 100)}%`;
 
   // Campaigns — always show MOCK_CAMPAIGNS as structural stages (progress % not tracked in DB)
   const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : MOCK_CAMPAIGNS;
@@ -781,6 +783,73 @@ export default function SocialDesignPreview() {
     { label:"מוכן להעלאה",       sub:"ממתין לפרסום",        icon:"📅", value:countReady,       color:AMBER     },
     { label:"פורסם",             sub:"מתוך הקמפיין",        icon:"📊", value:countPublished,   color:GREEN     },
   ];
+
+  // ── Weekly board derived data ──────────────────────────────────────────────
+  const HEB_MONTHS    = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+  const HEB_DAY_LABELS = ["שבת","ראשון","שני","שלישי","רביעי","חמישי","שישי"];
+
+  function parseRowDate(s: string): Date | null {
+    const p = s.split(".");
+    if (p.length !== 3) return null;
+    try { return new Date(`20${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`); }
+    catch { return null; }
+  }
+
+  const weekSatStart = (() => {
+    const now = new Date();
+    const daysFromSat = (now.getDay() + 1) % 7;
+    const sat = new Date(now);
+    sat.setDate(now.getDate() - daysFromSat + weekOffset * 7);
+    sat.setHours(0, 0, 0, 0);
+    return sat;
+  })();
+
+  const weekFriEnd = new Date(weekSatStart);
+  weekFriEnd.setDate(weekSatStart.getDate() + 6);
+
+  const weekRangeLabel = (() => {
+    const s = weekSatStart.getDate();
+    const e = weekFriEnd.getDate();
+    const sm = weekSatStart.getMonth();
+    const em = weekFriEnd.getMonth();
+    return sm === em
+      ? `${s}–${e} ב${HEB_MONTHS[sm]}`
+      : `${s} ${HEB_MONTHS[sm]} – ${e} ${HEB_MONTHS[em]}`;
+  })();
+
+  const SHOW_IN_WEEK: Set<string> = new Set(["ready_to_post","ready","scheduled","published","posted"]);
+
+  type WeekItem     = { t: string; c: string; time?: string; icon: string };
+  type WeekDayEntry = { label: string; date: string; today: boolean; items: WeekItem[] };
+
+  const derivedWeekDays: WeekDayEntry[] = HEB_DAY_LABELS.map((label, idx) => {
+    const dayDate = new Date(weekSatStart);
+    dayDate.setDate(weekSatStart.getDate() + idx);
+
+    const todayD = new Date(); todayD.setHours(0,0,0,0);
+    const isToday = dayDate.getTime() === todayD.getTime();
+
+    const dateLabel = `${String(dayDate.getDate()).padStart(2,"0")}.${String(dayDate.getMonth()+1).padStart(2,"0")}`;
+
+    const dayItems: WeekItem[] = rows
+      .filter(r => {
+        if (!r.publish_date || r.publish_date === "—") return false;
+        if (!SHOW_IN_WEEK.has(r.status)) return false;
+        const d = parseRowDate(r.publish_date);
+        if (!d) return false;
+        return d.getFullYear() === dayDate.getFullYear() &&
+               d.getMonth()    === dayDate.getMonth()    &&
+               d.getDate()     === dayDate.getDate();
+      })
+      .map(r => ({
+        t:    r.title,
+        c:    PUB_STATUSES.has(r.status) ? GREEN : AMBER,
+        time: r.publish_time || undefined,
+        icon: PUB_STATUSES.has(r.status) ? "✅" : "📅",
+      }));
+
+    return { label, date: dateLabel, today: isToday, items: dayItems };
+  });
 
   function refreshContent() {
     if (!activeCampaignId) return;
@@ -920,14 +989,13 @@ export default function SocialDesignPreview() {
 
             {/* Stats row */}
             <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4,
+              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4,
               padding: "10px 0",
               borderTop: `1px solid ${BDR}`, borderBottom: `1px solid ${BDR}`,
             }}>
               {[
-                { val: "48", lbl: "פוסטים"   },
-                { val: "12", lbl: "קמפיינים"},
-                { val: "3",  lbl: "שלבים"   },
+                { val: socialLoading ? "—" : String(countPublished ?? 0), lbl: "פוסטים"    },
+                { val: socialLoading ? "—" : String(campaigns.length),    lbl: "קמפיינים" },
               ].map(s => (
                 <div key={s.lbl} style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</div>
@@ -1525,15 +1593,13 @@ export default function SocialDesignPreview() {
                   <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>לוח שבועי</span>
                   <span style={{ fontSize: 13 }}>📅</span>
                 </div>
-                <span style={{ fontSize: 10, color: MUTED }}>
-                  {weekOffset === 0 ? "21–27 ביוני" : weekOffset === 1 ? "28 יוני – 4 יולי" : weekOffset === -1 ? "14–20 ביוני" : "21–27 ביוני"}
-                </span>
+                <span style={{ fontSize: 10, color: MUTED }}>{weekRangeLabel}</span>
               </div>
             </div>
 
             {/* Day columns grid */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, flex: 1 }}>
-              {WEEK_DAYS.map(day => (
+              {derivedWeekDays.map(day => (
                 <div key={day.label} style={{
                   display: "flex", flexDirection: "column", gap: 6,
                   background: day.today ? "rgba(220,38,38,0.07)" : "rgba(255,255,255,0.025)",
@@ -1558,19 +1624,19 @@ export default function SocialDesignPreview() {
                   </div>
 
                   {/* Items */}
-                  {(weekOffset === 0 ? day.items : []).map((item, idx) => (
+                  {day.items.map((item, idx) => (
                     <div key={idx} style={{
                       background: item.c + "22", border: `1px solid ${item.c}50`,
                       borderRadius: 8, padding: "8px 8px 7px",
                       overflow: "hidden",
                     }}>
                       {/* Name + icon */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginBottom: 5 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginBottom: item.time ? 5 : 0 }}>
                         <span style={{ fontSize: 10, fontWeight: 800, color: item.c, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.t}</span>
                         <span style={{ fontSize: 12, flexShrink: 0 }}>{item.icon}</span>
                       </div>
-                      {/* Time */}
-                      <div style={{ fontSize: 11, fontWeight: 700, color: item.c, opacity: 0.9 }}>{item.time}</div>
+                      {/* Time — only if present */}
+                      {item.time && <div style={{ fontSize: 11, fontWeight: 700, color: item.c, opacity: 0.9 }}>{item.time}</div>}
                     </div>
                   ))}
                 </div>
