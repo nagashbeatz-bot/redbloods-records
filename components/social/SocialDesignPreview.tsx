@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import type { SocialCampaign, SocialContentItem, SocialContentFile, SocialContentStatus, SocialPlatform } from "@/lib/types";
 import type { Client } from "@/lib/clients-store";
 import ClientDrawer from "@/components/clients/ClientDrawer";
@@ -1330,6 +1331,33 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
 
         {/* ── Block 1: Page Header ─────────────────────────────────────────── */}
         <div style={{ marginBottom: 18 }}>
+          {campaignId && (
+            <div style={{ marginBottom: 10 }}>
+              <Link href="/social" style={{ textDecoration: "none" }}>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 5,
+                  fontSize: 12, fontWeight: 600, color: "#70709A",
+                  padding: "5px 12px", borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.03)",
+                  cursor: "pointer", transition: "none",
+                }}
+                onMouseEnter={e => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.color = "#DC2626";
+                  el.style.borderColor = "rgba(220,38,38,0.35)";
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.color = "#70709A";
+                  el.style.borderColor = "rgba(255,255,255,0.10)";
+                }}
+                >
+                  חזרה למרכז סושיאל ←
+                </span>
+              </Link>
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
             <h1 style={{
               margin: 0, fontSize: 27, fontWeight: 900, letterSpacing: "-0.02em",
