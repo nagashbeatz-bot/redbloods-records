@@ -38,6 +38,12 @@ const CAMPAIGN_NAME = "פרנציפ";
 const CAMPAIGN_TYPE = "סינגל";
 const CAMPAIGN_DATE = "30.06.26";
 
+const TYPE_COLORS: Record<string, string> = {
+  "סינגל": "#DC2626",
+  "BTS":    "#3B82F6",
+  "תדמית": "#10B981",
+};
+
 type MockRow = {
   id: string; num: string; title: string; content_type: string;
   platforms: SocialPlatform[]; campaign: string;
@@ -166,9 +172,9 @@ function PlatformBadge({ platform }: { platform: SocialPlatform }) {
   const color = PLT_COLORS[platform] ?? MUTED;
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      padding: "3px 9px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-      background: color + "22", border: `1px solid ${color}60`, color,
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: 28, height: 28, borderRadius: 7, fontSize: 15, flexShrink: 0,
+      background: color + "22", border: `1px solid ${color}60`,
     }}>{icon}</span>
   );
 }
@@ -269,22 +275,8 @@ export default function SocialDesignPreview() {
   const scheduledWeek   = socialLoading ? null : (rows.filter(r => r.status === "scheduled").length || 9);
   const missingAssets   = socialLoading ? null : (rows.filter(r => r.assets === 0).length           || 2);
 
-  // Campaigns — gated by socialLoading to avoid MOCK→real flash mid-load
-  const CAMP_COLORS = [BRAND, BLUE, GREEN, AMBER, PURPLE, CYAN];
-  const activeCamps = campaigns.filter(c => c.status === "active");
-  const displayCampaigns: DisplayCampaign[] | null = socialLoading
-    ? null
-    : activeCamps.length > 0
-      ? activeCamps.slice(0, 3).map((c, i) => ({
-          id: c.id,
-          title: c.title,
-          progress: 0,
-          deadline: c.release_date
-            ? new Date(c.release_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })
-            : "—",
-          color: CAMP_COLORS[i % CAMP_COLORS.length],
-        }))
-      : MOCK_CAMPAIGNS;
+  // Campaigns — always show MOCK_CAMPAIGNS as structural stages (progress % not tracked in DB)
+  const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : MOCK_CAMPAIGNS;
 
   const KPI_CARDS = [
     { label:"חסרים נכסים",    sub:"דרוש טיפול",  icon:"⚠️", value:missingAssets,   color:"#EF4444" },
@@ -549,10 +541,19 @@ export default function SocialDesignPreview() {
                         {row.title}
                       </div>
                     </td>
-                    <td style={{ padding: "15px 16px", maxWidth: 170 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", maxWidth: 160, display: "inline-block", textOverflow: "ellipsis" }}>
-                        {row.campaign || "—"}
-                      </span>
+                    <td style={{ padding: "15px 16px", maxWidth: 180 }}>
+                      {(() => {
+                        const tc = TYPE_COLORS[row.content_type] ?? CYAN;
+                        return (
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, padding: "3px 9px", borderRadius: 8,
+                            background: tc + "1C", border: `1px solid ${tc}50`, color: tc,
+                            whiteSpace: "nowrap", overflow: "hidden", maxWidth: 168, display: "inline-block", textOverflow: "ellipsis",
+                          }}>
+                            {row.campaign || "—"}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
                       {row.content_type}
@@ -576,9 +577,9 @@ export default function SocialDesignPreview() {
                           return (
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <div style={{
-                                width: 32, height: 32, borderRadius: 6, flexShrink: 0,
+                                width: 44, height: 44, borderRadius: 8, flexShrink: 0,
                                 overflow: "hidden", background: rowThumb.thumb,
-                                border: `1px solid ${rowThumb.accent}44`,
+                                border: `1px solid ${rowThumb.accent}55`,
                               }} title={rowThumb.name}>
                                 {rowThumb.type === "image" && rowThumb.link && (
                                   <img
@@ -645,7 +646,7 @@ export default function SocialDesignPreview() {
               <div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
-                  {socialLoading ? "טוען..." : `${files.length} קבצים · עדכון אחרון לפני שעה`}
+                  {socialLoading ? "טוען..." : `${files.length} קבצים · קמפיין ${CAMPAIGN_NAME}`}
                 </div>
               </div>
             </div>
@@ -657,7 +658,7 @@ export default function SocialDesignPreview() {
           </div>
 
           {/* Full-width grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
             {socialLoading
               ? Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} style={{ borderRadius: 12, border: `1px solid ${BDR}`, background: CARD2, overflow: "hidden" }}>
