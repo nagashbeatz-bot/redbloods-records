@@ -6,6 +6,7 @@ import {
   SOCIAL_CONTENT_STATUS_LABELS,
   SOCIAL_CONTENT_STATUS_COLORS,
   SOCIAL_PLATFORM_ICONS,
+  SOCIAL_PLATFORM_LABELS,
 } from "@/lib/types";
 
 // ── Design Tokens ──────────────────────────────────────────────────────────────
@@ -26,8 +27,8 @@ const MUTED  = "#52526A";
 const LABEL  = "#70709A";
 
 const PLT_COLORS: Record<string, string> = {
-  tiktok: "#EE1D52", instagram: "#E1306C", youtube: "#FF0000",
-  spotify: "#1DB954", other: MUTED,
+  tiktok: "#69C9D0", instagram: "#E1306C", youtube: "#FF0000",
+  spotify: "#1DB954", facebook: "#1877F2", other: MUTED,
 };
 
 // ── Mock Data ──────────────────────────────────────────────────────────────────
@@ -50,6 +51,8 @@ type MockRow = {
   status: SocialContentStatus;
   publish_date: string; publish_time?: string;
   assets: number; notes: string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 const MOCK_ROWS: MockRow[] = [
@@ -116,6 +119,8 @@ type FileCard = {
   label: string; accent: string; thumb: string;
   link: string | null;
   contentItemId: string | null;
+  created_at?: string;
+  uploaded_by?: string;
 };
 
 function toDirectLink(link: string): string {
@@ -155,6 +160,8 @@ function mapApiFileToCard(f: SocialContentFile, idx: number): FileCard {
     thumb: style.thumb,
     link: f.dropbox_share_link ?? null,
     contentItemId: f.content_item_id ?? null,
+    created_at: f.created_at ?? undefined,
+    uploaded_by: f.uploaded_by ?? undefined,
   };
 }
 
@@ -185,14 +192,17 @@ function StatusBadge({ status }: { status: SocialContentStatus }) {
 }
 
 function PlatformBadge({ platform }: { platform: SocialPlatform }) {
-  const icon  = SOCIAL_PLATFORM_ICONS[platform] ?? "🌐";
+  const label = SOCIAL_PLATFORM_LABELS[platform] ?? platform;
   const color = PLT_COLORS[platform] ?? MUTED;
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: 28, height: 28, borderRadius: 7, fontSize: 15, flexShrink: 0,
-      background: color + "22", border: `1px solid ${color}60`,
-    }}>{icon}</span>
+      display: "inline-block",
+      fontSize: 9, fontWeight: 800,
+      padding: "2px 7px", borderRadius: 6,
+      background: color + "18", border: `1px solid ${color}55`,
+      color, whiteSpace: "nowrap", letterSpacing: "0.03em",
+      lineHeight: "16px", flexShrink: 0,
+    }}>{label}</span>
   );
 }
 
@@ -707,6 +717,8 @@ export default function SocialDesignPreview() {
                   })(),
                   assets: item.asset_link ? 1 : 0,
                   notes: (item as unknown as { notes?: string }).notes ?? "",
+                  created_at: item.created_at ?? undefined,
+                  updated_at: item.updated_at ?? undefined,
                 }))
               );
             })
@@ -721,6 +733,33 @@ export default function SocialDesignPreview() {
   }, []);
 
   // KPI — gated by socialLoading so numbers never flash from fallback→real
+  // ── Activity helpers ─────────────────────────────────────────────────────────
+  function fmtActivityTs(iso: string): string {
+    try {
+      const d = new Date(iso);
+      const date = d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" });
+      const time = d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+      return `${date} · ${time}`;
+    } catch { return ""; }
+  }
+
+  type ActivityItem = { icon: string; text: string; ts: string };
+
+  const activityItems: ActivityItem[] = (() => {
+    if (socialLoading) return [];
+    const items: ActivityItem[] = [];
+    for (const f of files) {
+      if (f.created_at) items.push({ icon: "📁", text: `הועלה קובץ: ${f.name}`, ts: f.created_at });
+    }
+    for (const r of rows) {
+      if (r.created_at) items.push({ icon: "✏️", text: `נוצר פריט: ${r.title}`, ts: r.created_at });
+      if (r.updated_at && r.created_at && new Date(r.updated_at).getTime() > new Date(r.created_at).getTime() + 60000) {
+        items.push({ icon: "🔄", text: `עודכן פריט: ${r.title}`, ts: r.updated_at });
+      }
+    }
+    return items.sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 3);
+  })();
+
   const DRAFT_STATUSES   = new Set(["draft", "idea", "needs_shoot", "shot"]);
   const WORK_STATUSES    = new Set(["in_progress", "in_edit", "needs_review"]);
   const READY_STATUSES   = new Set(["ready_to_post", "ready", "scheduled"]);
@@ -1022,7 +1061,7 @@ export default function SocialDesignPreview() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.04)" }}>
-                  {["#", "פריט תוכן", "קמפיין / פרויקט", "סוג", "פלטפורמות", "תאריך פרסום", "נכס מצורף", "סטטוס", "הערות", ""].map(h => (
+                  {["#", "פריט תוכן", "פלטפורמות", "תאריך פרסום", "קבצי מדיה", "סטטוס", "הערות", ""].map(h => (
                     <th key={h} style={{
                       padding: "11px 16px", textAlign: "right", fontSize: 10,
                       fontWeight: 800, color: TEXT2,
@@ -1036,7 +1075,7 @@ export default function SocialDesignPreview() {
                 {socialLoading
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i} style={{ borderBottom: `1px solid ${BDR}` }}>
-                        {Array.from({ length: 10 }).map((_, j) => (
+                        {Array.from({ length: 8 }).map((_, j) => (
                           <td key={j} style={{ padding: "15px 16px" }}>
                             <div style={{ height: 10, borderRadius: 4, background: "rgba(255,255,255,0.06)", width: j === 1 ? "80%" : j === 0 ? "40%" : "60%" }} />
                           </td>
@@ -1060,23 +1099,6 @@ export default function SocialDesignPreview() {
                       <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.title}
                       </div>
-                    </td>
-                    <td style={{ padding: "15px 16px", maxWidth: 180 }}>
-                      {(() => {
-                        const tc = TYPE_COLORS[row.content_type] ?? CYAN;
-                        return (
-                          <span style={{
-                            fontSize: 10, fontWeight: 800, padding: "3px 9px", borderRadius: 8,
-                            background: tc + "1C", border: `1px solid ${tc}50`, color: tc,
-                            whiteSpace: "nowrap", overflow: "hidden", maxWidth: 168, display: "inline-block", textOverflow: "ellipsis",
-                          }}>
-                            {row.campaign || "—"}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
-                      {row.content_type}
                     </td>
                     <td style={{ padding: "15px 16px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "nowrap" }}>
@@ -1571,27 +1593,29 @@ export default function SocialDesignPreview() {
             </div>
 
             <div style={{ flex: 1 }}>
-              {MOCK_ACTIVITY.map((act, idx) => (
-                <div key={act.id} style={{
+              {activityItems.length === 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 0", opacity: 0.5 }}>
+                  <span style={{ fontSize: 28 }}>📋</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>אין פעילות אחרונה</span>
+                </div>
+              ) : activityItems.map((act, idx) => (
+                <div key={idx} style={{
                   display: "flex", gap: 12, alignItems: "flex-start",
                   padding: "13px 0",
-                  borderBottom: idx < MOCK_ACTIVITY.length - 1 ? `1px solid ${BDR}` : "none",
+                  borderBottom: idx < activityItems.length - 1 ? `1px solid ${BDR}` : "none",
                 }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-                    background: `linear-gradient(135deg, ${act.color}28, ${act.color}10)`,
-                    border: `1.5px solid ${act.color}55`,
+                    background: "rgba(255,255,255,0.05)",
+                    border: `1.5px solid ${BDR2}`,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 13, fontWeight: 800, color: act.color,
-                    boxShadow: `0 2px 10px ${act.color}18`,
-                  }}>{act.init}</div>
+                    fontSize: 16,
+                  }}>{act.icon}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.45, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, color: TEXT }}>{act.user}</span>
-                      {" — "}
+                    <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.45, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {act.text}
                     </div>
-                    <div style={{ fontSize: 10, color: MUTED }}>{act.time}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{fmtActivityTs(act.ts)}</div>
                   </div>
                 </div>
               ))}
