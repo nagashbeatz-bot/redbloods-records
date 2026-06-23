@@ -243,7 +243,9 @@ export default function SocialHubPreview() {
       fontFamily: "'Heebo', Arial, sans-serif",
       direction: "rtl",
       padding: "28px 28px 60px",
-      maxWidth: 1600,
+      maxWidth: 1360,
+      margin: "0 auto",
+      width: "100%",
     }}>
 
       {/* ── Header ── */}
