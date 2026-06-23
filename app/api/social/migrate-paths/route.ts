@@ -6,6 +6,19 @@ import { createDropboxFolder } from "@/lib/dropbox-folder";
 
 const ADMIN_SECRET = process.env.MIGRATE_SECRET ?? "";
 
+function requireSecret(provided: string): NextResponse | null {
+  if (!ADMIN_SECRET) {
+    return NextResponse.json(
+      { error: "Migration endpoint is disabled. Set MIGRATE_SECRET env var to enable." },
+      { status: 503 }
+    );
+  }
+  if (provided !== ADMIN_SECRET) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  return null;
+}
+
 function campaignFolderName(title: string, campaignId: string): string {
   return (
     title
@@ -28,9 +41,8 @@ function isAlreadyCorrect(currentPath: string, campaignFolder: string): boolean 
 // GET — dry run: ?secret=xxx
 export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get("secret") ?? "";
-  if (ADMIN_SECRET && secret !== ADMIN_SECRET) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 403 });
-  }
+  const authErr = requireSecret(secret);
+  if (authErr) return authErr;
 
   // שלוף את כל campaign IDs הייחודיים
   const { supabase } = await import("@/lib/supabase");
@@ -81,9 +93,8 @@ export async function POST(req: NextRequest) {
   let body: { secret?: string } = {};
   try { body = await req.json(); } catch {}
   const secret = body.secret ?? "";
-  if (ADMIN_SECRET && secret !== ADMIN_SECRET) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 403 });
-  }
+  const authErr = requireSecret(secret);
+  if (authErr) return authErr;
 
   const { getDropboxToken } = await import("@/lib/dropbox-token");
   const token = await getDropboxToken();
