@@ -665,6 +665,37 @@ export default function SocialDesignPreview() {
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
+  const [statusUpdating,   setStatusUpdating]   = useState<string | null>(null);
+
+  const ALLOWED_STATUSES: SocialContentStatus[] = ["draft", "in_progress", "ready_to_post", "published"];
+
+  async function handleStatusChange(rowId: string, newStatus: SocialContentStatus) {
+    const oldStatus = rows.find(r => r.id === rowId)?.status;
+    if (!oldStatus || oldStatus === newStatus) { setStatusDropdownId(null); return; }
+    setRows(prev => prev.map(r => r.id === rowId ? { ...r, status: newStatus, updated_at: new Date().toISOString() } : r));
+    setStatusDropdownId(null);
+    setStatusUpdating(rowId);
+    try {
+      const res = await fetch(`/api/social/content/${rowId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setRows(prev => prev.map(r => r.id === rowId ? { ...r, status: oldStatus } : r));
+    } finally {
+      setStatusUpdating(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!statusDropdownId) return;
+    const handler = () => setStatusDropdownId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [statusDropdownId]);
 
   useEffect(() => {
     fetch("/api/social/campaigns")
@@ -1248,7 +1279,53 @@ export default function SocialDesignPreview() {
                       })()}
                     </td>
                     <td style={{ padding: "15px 16px" }}>
-                      <StatusBadge status={row.status} />
+                      <div style={{ position: "relative", display: "inline-block" }} onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setStatusDropdownId(statusDropdownId === row.id ? null : row.id)}
+                          disabled={statusUpdating === row.id}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                            background: (SOCIAL_CONTENT_STATUS_COLORS[row.status] ?? MUTED) + "2C",
+                            border: `1px solid ${(SOCIAL_CONTENT_STATUS_COLORS[row.status] ?? MUTED)}70`,
+                            color: SOCIAL_CONTENT_STATUS_COLORS[row.status] ?? MUTED,
+                            cursor: statusUpdating === row.id ? "default" : "pointer",
+                            outline: "none", transition: "none", whiteSpace: "nowrap",
+                            opacity: statusUpdating === row.id ? 0.5 : 1,
+                          }}
+                        >
+                          {SOCIAL_CONTENT_STATUS_LABELS[row.status] ?? row.status}
+                          <span style={{ fontSize: 8, opacity: 0.7 }}>▾</span>
+                        </button>
+                        {statusDropdownId === row.id && (
+                          <div style={{
+                            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 999,
+                            background: "#141418", border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 12, padding: "6px 0",
+                            boxShadow: "0 8px 32px rgba(0,0,0,0.7)", minWidth: 160,
+                          }}>
+                            {ALLOWED_STATUSES.map(s => {
+                              const c = SOCIAL_CONTENT_STATUS_COLORS[s] ?? MUTED;
+                              const lbl = SOCIAL_CONTENT_STATUS_LABELS[s] ?? s;
+                              const isActive = row.status === s;
+                              return (
+                                <button key={s} onClick={() => handleStatusChange(row.id, s)} style={{
+                                  display: "flex", alignItems: "center", gap: 8, width: "100%",
+                                  padding: "9px 14px", textAlign: "right", direction: "rtl",
+                                  background: isActive ? c + "18" : "none", border: "none",
+                                  color: isActive ? c : TEXT2, fontSize: 12,
+                                  fontWeight: isActive ? 700 : 500, cursor: "pointer",
+                                  outline: "none", transition: "none",
+                                }}>
+                                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: c, flexShrink: 0 }} />
+                                  <span style={{ flex: 1 }}>{lbl}</span>
+                                  {isActive && <span style={{ fontSize: 10, color: c }}>✓</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: "15px 16px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap", maxWidth: 140 }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
