@@ -537,9 +537,19 @@ export default function SocialDesignPreview() {
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <div style={{
                                 width: 32, height: 32, borderRadius: 6, flexShrink: 0,
-                                background: rowThumb.thumb,
+                                overflow: "hidden", background: rowThumb.thumb,
                                 border: `1px solid ${rowThumb.accent}44`,
-                              }} title={rowThumb.name} />
+                              }} title={rowThumb.name}>
+                                {rowThumb.type === "image" && rowThumb.link && (
+                                  <img
+                                    src={toDirectLink(rowThumb.link)}
+                                    alt={rowThumb.name}
+                                    loading="lazy"
+                                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                )}
+                              </div>
                               <span style={{ fontSize: 10, color: TEXT2, fontWeight: 700 }}>{rowThumb.ext}</span>
                             </div>
                           );
@@ -642,6 +652,16 @@ export default function SocialDesignPreview() {
                   width: "100%", height: 148, background: f.thumb,
                   position: "relative", overflow: "hidden",
                 }}>
+                  {/* Real image preview for image files with a dropbox link */}
+                  {f.type === "image" && f.link && (
+                    <img
+                      src={toDirectLink(f.link)}
+                      alt={f.name}
+                      loading="lazy"
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 }}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                  )}
                   {/* Bottom fade overlay */}
                   <div style={{
                     position: "absolute", inset: 0,
