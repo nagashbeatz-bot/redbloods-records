@@ -508,6 +508,160 @@ function AddContentItemModal({
   );
 }
 
+// ── helper: "DD.MM.YY" → "YYYY-MM-DD" (for date input value) ─────────────────
+function rowDateToInput(d: string): string {
+  if (!d || d === "—") return "";
+  const p = d.split(".");
+  if (p.length !== 3) return "";
+  return `20${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`;
+}
+
+// ── EditContentItemModal ───────────────────────────────────────────────────────
+function EditContentItemModal({
+  row, onClose, onSaved,
+}: {
+  row: { id: string; title: string; platforms: string[]; publish_date: string; publish_time?: string; status: SocialContentStatus; notes: string };
+  onClose: () => void;
+  onSaved: (patch: { title: string; platform: string | null; publish_date: string | null; publish_time: string | null; status: SocialContentStatus; notes: string }) => void;
+}) {
+  const [title,       setTitle]       = useState(row.title);
+  const [platform,    setPlatform]    = useState(row.platforms[0] ?? "");
+  const [publishDate, setPublishDate] = useState(rowDateToInput(row.publish_date));
+  const [publishTime, setPublishTime] = useState(row.publish_time ?? "");
+  const [status,      setStatus]      = useState<SocialContentStatus>(row.status);
+  const [notes,       setNotes]       = useState(row.notes);
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState("");
+
+  async function handleSave() {
+    if (!title.trim() || saving) return;
+    setSaving(true); setError("");
+    const patch = {
+      title: title.trim(),
+      platform: platform || null,
+      publish_date: publishDate || null,
+      publish_time: publishTime || null,
+      status,
+      notes,
+    };
+    try {
+      const res = await fetch(`/api/social/content/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error();
+      onSaved(patch);
+      onClose();
+    } catch {
+      setError("שגיאה בשמירה — נסה שוב");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const canSave = title.trim().length > 0 && !saving;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div style={{
+        background: "#0D0D16", border: "1px solid rgba(255,255,255,0.18)",
+        borderRadius: 18, padding: "28px 28px 24px",
+        width: 480, maxWidth: "92vw",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.85), 0 0 60px rgba(220,38,38,0.07)",
+        direction: "rtl",
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#F2F2F2" }}>פרטי התוכן</div>
+            <div style={{ fontSize: 11, color: "#52526A", marginTop: 2 }}>עריכת פריט תוכן</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#52526A", fontSize: 20, cursor: "pointer", padding: "0 4px", transition: "none" }}>✕</button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>שם הפריט *</div>
+            <input
+              value={title} onChange={e => setTitle(e.target.value)}
+              autoFocus
+              style={MINPUT}
+            />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>פלטפורמה</div>
+            <CustomSelect
+              value={platform}
+              onChange={setPlatform}
+              options={[
+                { value: "", label: "— ללא —" },
+                { value: "instagram", label: "Instagram" },
+                { value: "tiktok", label: "TikTok" },
+                { value: "youtube", label: "YouTube" },
+                { value: "spotify", label: "Spotify" },
+                { value: "other", label: "אחר" },
+              ]}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>תאריך פרסום</div>
+              <input type="date" value={publishDate} onChange={e => setPublishDate(e.target.value)} style={{ ...MINPUT, colorScheme: "dark" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>שעת פרסום</div>
+              <input type="time" value={publishTime} onChange={e => setPublishTime(e.target.value)} style={{ ...MINPUT, colorScheme: "dark" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>סטטוס</div>
+              <CustomSelect
+                value={status}
+                onChange={v => setStatus(v as SocialContentStatus)}
+                options={(["draft","in_progress","ready_to_post","published"] as SocialContentStatus[]).map(s => ({
+                  value: s,
+                  label: SOCIAL_CONTENT_STATUS_LABELS[s],
+                }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#70709A", marginBottom: 6 }}>הערות</div>
+            <textarea
+              value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="הערות נוספות..." rows={2}
+              style={{ ...MINPUT, resize: "none" } as React.CSSProperties}
+            />
+          </div>
+        </div>
+
+        {error && <div style={{ fontSize: 12, color: "#EF4444", marginTop: 10 }}>{error}</div>}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
+          <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: "none", border: "1px solid rgba(255,255,255,0.18)", color: "#A0A0B0", cursor: "pointer", transition: "none" }}>
+            ביטול
+          </button>
+          <button onClick={handleSave} disabled={!canSave} style={{
+            padding: "9px 24px", borderRadius: 8, fontSize: 12, fontWeight: 800,
+            background: canSave ? "#DC2626" : "#52526A", border: "none", color: "#fff",
+            cursor: canSave ? "pointer" : "default",
+            boxShadow: canSave ? "0 2px 12px rgba(220,38,38,0.4)" : "none",
+            transition: "none",
+          }}>
+            {saving ? "שומר..." : "שמור שינויים"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── UploadAssetModal ───────────────────────────────────────────────────────────
 function UploadAssetModal({
   campaignId, rows, onClose, onSuccess,
@@ -677,6 +831,7 @@ export default function SocialDesignPreview() {
   const [statusUpdating,   setStatusUpdating]   = useState<string | null>(null);
   const [artistClient,     setArtistClient]     = useState<Client | null>(null);
   const [showClientDrawer, setShowClientDrawer] = useState(false);
+  const [editingRow,       setEditingRow]       = useState<MockRow | null>(null);
 
   const ALLOWED_STATUSES: SocialContentStatus[] = ["draft", "in_progress", "ready_to_post", "published"];
 
@@ -1171,12 +1326,6 @@ export default function SocialDesignPreview() {
                 <option value="youtube">YouTube</option>
                 <option value="spotify">Spotify</option>
               </select>
-              <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} style={selStyle}>
-                <option value="all">כל הקמפיינים</option>
-                {Array.from(new Set(rows.map(r => r.campaign).filter(Boolean))).map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selStyle}>
                 <option value="all">כל הסטטוסים</option>
                 <option value="draft">רעיון</option>
@@ -1217,6 +1366,7 @@ export default function SocialDesignPreview() {
                   <tr
                     key={row.id}
                     style={{ borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}
+                    onClick={() => setEditingRow(row)}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = CARD2; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
@@ -1243,7 +1393,7 @@ export default function SocialDesignPreview() {
                       <div>{row.publish_date === "—" ? "לא נקבע" : row.publish_date}</div>
                       <div style={{ fontSize: 10, color: "#A0A0B0", marginTop: 1 }}>{row.publish_time ?? "—"}</div>
                     </td>
-                    <td style={{ padding: "15px 16px" }}>
+                    <td style={{ padding: "15px 16px" }} onClick={e => e.stopPropagation()}>
                       {(() => {
                         const thumbs = filesByContentItem[row.id] ?? [];
                         if (thumbs.length > 0) {
@@ -1364,7 +1514,7 @@ export default function SocialDesignPreview() {
                         {row.notes || <span style={{ color: MUTED }}>—</span>}
                       </div>
                     </td>
-                    <td style={{ padding: "15px 10px", position: "relative" }}>
+                    <td style={{ padding: "15px 10px", position: "relative" }} onClick={e => e.stopPropagation()}>
                       {(() => {
                         const rowFiles = filesByContentItem[row.id] ?? [];
                         if (rowFiles.length === 0) return <span style={{ color: MUTED, fontSize: 12 }}>—</span>;
@@ -1933,6 +2083,32 @@ export default function SocialDesignPreview() {
         onClose={() => setShowClientDrawer(false)}
         onEdit={() => {}}
       />
+
+      {/* Edit Content Item Modal */}
+      {editingRow && (
+        <EditContentItemModal
+          row={editingRow}
+          onClose={() => setEditingRow(null)}
+          onSaved={patch => {
+            setRows(prev => prev.map(r => {
+              if (r.id !== editingRow.id) return r;
+              const newPublishDate = patch.publish_date
+                ? new Date(patch.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" }).replace(/\//g, ".")
+                : "—";
+              const newPlatforms = patch.platform ? [patch.platform as SocialPlatform] : [] as SocialPlatform[];
+              return {
+                ...r,
+                title: patch.title,
+                platforms: newPlatforms,
+                publish_date: newPublishDate,
+                publish_time: patch.publish_time ? patch.publish_time.slice(0, 5) : undefined,
+                status: patch.status,
+                notes: patch.notes,
+              };
+            }));
+          }}
+        />
+      )}
     </div>
   );
 }
