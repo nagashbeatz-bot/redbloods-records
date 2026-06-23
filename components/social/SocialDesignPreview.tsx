@@ -2299,7 +2299,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
               const newPublishDate = patch.publish_date
                 ? new Date(patch.publish_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" }).replace(/\//g, ".")
                 : "—";
-              const newPlatforms = patch.platform ? [patch.platform as SocialPlatform] : [] as SocialPlatform[];
+              const newPlatforms = patch.platform ? patch.platform.split(",").filter(Boolean) as SocialPlatform[] : [] as SocialPlatform[];
               return {
                 ...r,
                 title: patch.title,
