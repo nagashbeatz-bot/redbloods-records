@@ -276,10 +276,10 @@ export default function SocialHubPreview() {
       {/* ── KPI cards ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
         {[
-          { label: "קמפיינים פעילים", value: activeCampaigns, sub: "פעילים כעת",         icon: "🎯", color: GREEN,  glow: "rgba(16,185,129,0.15)" },
-          { label: "תכנים לפרסום",   value: scheduledCount,   sub: "מוכנים / מתוזמנים", icon: "📅", color: PURPLE, glow: "rgba(139,92,246,0.15)" },
-          { label: "פוסטים שפורסמו", value: publishedCount,    sub: "סה״כ פורסמו",       icon: "📤", color: AMBER,  glow: "rgba(245,158,11,0.15)" },
-          { label: "נכסי מדיה",      value: assetsCount,       sub: "קבצים שהועלו",       icon: "📁", color: BRAND,  glow: "rgba(220,38,38,0.15)"  },
+          { label: "קמפיינים פעילים", value: activeCampaigns, sub: "פעילים כעת",       icon: "🎯", color: GREEN,  glow: "rgba(16,185,129,0.15)" },
+          { label: "מוכנים לפרסום", value: scheduledCount,   sub: "ממתינים להעלאה",   icon: "📅", color: PURPLE, glow: "rgba(139,92,246,0.15)" },
+          { label: "פורסמו",         value: publishedCount,   sub: "סה״כ פורסמו",       icon: "📤", color: AMBER,  glow: "rgba(245,158,11,0.15)" },
+          { label: "קבצי מדיה",      value: assetsCount,      sub: "קבצים שהועלו",       icon: "📁", color: BRAND,  glow: "rgba(220,38,38,0.15)"  },
         ].map(kpi => (
           <div key={kpi.label} style={{
             background: `linear-gradient(145deg, ${CARD} 0%, ${kpi.glow} 100%)`,
@@ -562,16 +562,27 @@ export default function SocialHubPreview() {
                       {/* Day items */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 5, minHeight: 110 }}>
                         {dayItems.slice(0, 3).map(item => {
-                          const plts   = item.platform ? item.platform.split(",") : [];
-                          const pColor = PLT_COLOR[plts[0]] ?? CONTENT_STATUS_COLOR[item.status] ?? BRAND;
+                          const plts      = item.platform ? item.platform.split(",") : [];
+                          const pColor    = PLT_COLOR[plts[0]] ?? CONTENT_STATUS_COLOR[item.status] ?? BRAND;
+                          const campName  = campaigns.find(c => c.id === item.campaign_id)?.title ?? "קמפיין ללא שם";
+                          const timeStr   = item.publish_time ? item.publish_time.slice(0, 5) : null;
                           return (
                             <div key={item.id} style={{
-                              padding: "4px 6px", borderRadius: 6, fontSize: 9, fontWeight: 700,
-                              background: `${pColor}18`, border: `1px solid ${pColor}40`, color: pColor,
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              lineHeight: 1.4,
-                            }} title={item.title}>
-                              {item.publish_time ? <span style={{ opacity: 0.7 }}>{item.publish_time.slice(0,5)} </span> : ""}{item.title}
+                              padding: "5px 7px", borderRadius: 6,
+                              background: `${pColor}18`, border: `1px solid ${pColor}40`,
+                              lineHeight: 1.3,
+                            }} title={`${item.title} · ${campName}`}>
+                              <div style={{
+                                fontSize: 9, fontWeight: 700, color: pColor,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              }}>{item.title}</div>
+                              <div style={{
+                                fontSize: 8, color: `${pColor}BB`,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                marginTop: 1,
+                              }}>
+                                {campName}{timeStr ? ` · ${timeStr}` : ""}
+                              </div>
                             </div>
                           );
                         })}
