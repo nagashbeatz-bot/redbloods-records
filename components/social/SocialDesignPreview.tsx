@@ -69,13 +69,30 @@ const MOCK_FILES: FileCard[] = [
 ];
 
 const WEEK_DAYS = [
-  { label:"שבת",   date:"21.06", today:false, items:[{ t:"טיזר ראשון",  c:BRAND  }] },
-  { label:"ראשון", date:"22.06", today:false, items:[{ t:"טיזר ראשון",  c:BRAND  }, { t:"סטורי הכרזה", c:PURPLE }] },
-  { label:"שני",   date:"23.06", today:true,  items:[{ t:"קאבר סינגל",  c:BLUE   }] },
-  { label:"שלישי", date:"24.06", today:false, items:[{ t:"BTS מהקליפ",  c:GREEN  }, { t:"קאבר סינגל",  c:BLUE   }] },
+  { label:"שבת",   date:"21.06", today:false, items:[
+    { t:"סינגל ראשון",  c:BRAND,  time:"20:00", icon:"📢" },
+    { t:"סטורי הכרזה", c:PURPLE, time:"12:00", icon:"✏️" },
+  ]},
+  { label:"ראשון", date:"22.06", today:false, items:[
+    { t:"טיזר ראשון",  c:BRAND,  time:"18:00", icon:"🎬" },
+    { t:"סטורי הכרזה", c:PURPLE, time:"12:00", icon:"✏️" },
+  ]},
+  { label:"שני",   date:"23.06", today:true,  items:[
+    { t:"קאבר סינגל",  c:BLUE,   time:"19:00", icon:"🎵" },
+    { t:"סטורי הכרזה", c:PURPLE, time:"12:00", icon:"✏️" },
+  ]},
+  { label:"שלישי", date:"24.06", today:false, items:[
+    { t:"BTS מהקליפ",  c:GREEN,  time:"18:00", icon:"🎬" },
+    { t:"קאבר סינגל",  c:BLUE,   time:"19:00", icon:"🎵" },
+  ]},
   { label:"רביעי", date:"25.06", today:false, items:[] },
-  { label:"חמישי", date:"26.06", today:false, items:[{ t:"סטורי הכרזה", c:PURPLE }] },
-  { label:"שישי",  date:"27.06", today:false, items:[] },
+  { label:"חמישי", date:"26.06", today:false, items:[
+    { t:"סטורי הכרזה", c:PURPLE, time:"12:00", icon:"✏️" },
+    { t:"טיזר שני",    c:BRAND,  time:"18:00", icon:"🎬" },
+  ]},
+  { label:"שישי",  date:"27.06", today:false, items:[
+    { t:"סטורי הכרזה", c:PURPLE, time:"12:00", icon:"✏️" },
+  ]},
 ];
 
 type DisplayCampaign = { id: string; title: string; type?: string; progress: number; deadline: string; color: string; };
@@ -212,6 +229,7 @@ export default function SocialDesignPreview() {
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterCampaign, setFilterCampaign] = useState("all");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   useEffect(() => {
     fetch("/api/social/campaigns")
@@ -896,49 +914,84 @@ export default function SocialDesignPreview() {
           </SCard>
 
           {/* Col 2: Weekly Board */}
-          <SCard style={{ padding: "20px 18px" }}>
+          <SCard style={{ padding: "20px 18px", display: "flex", flexDirection: "column" }}>
+            {/* Header row: nav buttons left, title+range right */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>📅</span>
-                <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>לוח שבועי</span>
+              {/* Nav buttons — left side in RTL */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => setWeekOffset(o => o - 1)}
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", color: TEXT2, fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none", transition: "none" }}
+                >
+                  <span style={{ fontSize: 10 }}>›</span> שבוע קודם
+                </button>
+                <button
+                  onClick={() => setWeekOffset(o => o + 1)}
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)", color: TEXT2, fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none", transition: "none" }}
+                >
+                  שבוע הבא <span style={{ fontSize: 10 }}>‹</span>
+                </button>
               </div>
-              <span style={{ fontSize: 10, color: MUTED }}>21–27 ביוני</span>
+              {/* Title + range — right side */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: TEXT }}>לוח שבועי</span>
+                  <span style={{ fontSize: 13 }}>📅</span>
+                </div>
+                <span style={{ fontSize: 10, color: MUTED }}>
+                  {weekOffset === 0 ? "21–27 ביוני" : weekOffset === 1 ? "28 יוני – 4 יולי" : weekOffset === -1 ? "14–20 ביוני" : "21–27 ביוני"}
+                </span>
+              </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 7 }}>
+
+            {/* Day columns grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, flex: 1 }}>
               {WEEK_DAYS.map(day => (
                 <div key={day.label} style={{
-                  display: "flex", flexDirection: "column", gap: 4,
-                  background: day.today ? "rgba(220,38,38,0.08)" : "transparent",
-                  border: day.today ? "1px solid rgba(220,38,38,0.28)" : "1px solid transparent",
-                  borderRadius: 8, padding: "6px 3px",
+                  display: "flex", flexDirection: "column", gap: 6,
+                  background: day.today ? "rgba(220,38,38,0.07)" : "rgba(255,255,255,0.025)",
+                  border: day.today ? `1px solid ${BRAND}60` : "1px solid rgba(255,255,255,0.07)",
+                  borderRadius: 10, padding: "10px 6px 8px",
+                  boxShadow: day.today ? `0 0 16px rgba(220,38,38,0.12)` : "none",
+                  minHeight: 180,
                 }}>
-                  <div style={{ textAlign: "center", marginBottom: 2 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: day.today ? BRAND : MUTED, marginBottom: 3 }}>
+                  {/* Day label */}
+                  <div style={{ textAlign: "center", marginBottom: 4 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: day.today ? BRAND : MUTED, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       {day.label}
                     </div>
                     <div style={{
-                      fontSize: 11, fontWeight: 800,
+                      fontSize: 12, fontWeight: 900,
                       color: day.today ? "#fff" : TEXT2,
                       background: day.today ? BRAND : "transparent",
-                      borderRadius: 4, padding: day.today ? "2px 5px" : "0",
+                      borderRadius: 6, padding: day.today ? "3px 6px" : "0",
                       display: "inline-block",
-                      boxShadow: day.today ? "0 2px 8px rgba(220,38,38,0.45)" : "none",
+                      boxShadow: day.today ? "0 2px 10px rgba(220,38,38,0.5)" : "none",
                     }}>{day.date}</div>
                   </div>
-                  {day.items.map((item, idx) => (
+
+                  {/* Items */}
+                  {(weekOffset === 0 ? day.items : []).map((item, idx) => (
                     <div key={idx} style={{
-                      background: item.c + "25", border: `1px solid ${item.c}45`,
-                      borderRadius: 4, padding: "4px 4px",
-                      fontSize: 10, fontWeight: 700, color: item.c,
-                      textAlign: "center", overflow: "hidden",
-                      textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4,
-                    }}>{item.t}</div>
+                      background: item.c + "22", border: `1px solid ${item.c}50`,
+                      borderRadius: 7, padding: "7px 6px 6px",
+                      overflow: "hidden",
+                    }}>
+                      {/* Name + icon */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 3, marginBottom: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: item.c, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.t}</span>
+                        <span style={{ fontSize: 11, flexShrink: 0 }}>{item.icon}</span>
+                      </div>
+                      {/* Time */}
+                      <div style={{ fontSize: 10, fontWeight: 700, color: item.c, opacity: 0.85 }}>{item.time}</div>
+                    </div>
                   ))}
                 </div>
               ))}
             </div>
-            <button style={{ marginTop: 14, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, display: "block" }}>
-              הצג לוח מלא →
+
+            <button style={{ marginTop: 14, background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, display: "block", textAlign: "center", width: "100%" }}>
+              הצג לוח מלא ←
             </button>
           </SCard>
 
