@@ -277,21 +277,21 @@ export default function SocialDesignPreview() {
   }, []);
 
   // KPI — gated by socialLoading so numbers never flash from fallback→real
-  const activeCampaigns = socialLoading ? null : (campaigns.filter(c => c.status === "active").length || MOCK_CAMPAIGNS.length);
-  const postsThisMonth  = socialLoading ? null : (rows.filter(r => r.status === "posted").length    || 18);
-  const pendingReview   = socialLoading ? null : (rows.filter(r => r.status === "needs_review").length || 4);
-  const scheduledWeek   = socialLoading ? null : (rows.filter(r => r.status === "scheduled").length || 9);
-  const missingAssets   = socialLoading ? null : (rows.filter(r => r.assets === 0).length           || 2);
+  const missingAssets      = socialLoading ? null : (rows.filter(r => r.assets === 0).length             || 2);
+  const pendingReview      = socialLoading ? null : (rows.filter(r => r.status === "needs_review").length || 4);
+  const scheduledWeek      = socialLoading ? null : (rows.filter(r => r.status === "scheduled").length   || 9);
+  const published          = socialLoading ? null : (rows.filter(r => r.status === "posted").length      || 18);
+  const campaignProgress   = socialLoading ? null : `${MOCK_CAMPAIGNS[0]?.progress ?? 68}%`;
 
   // Campaigns — always show MOCK_CAMPAIGNS as structural stages (progress % not tracked in DB)
   const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : MOCK_CAMPAIGNS;
 
-  const KPI_CARDS = [
-    { label:"חסרים נכסים",    sub:"דרוש טיפול",  icon:"⚠️", value:missingAssets,   color:"#EF4444" },
-    { label:"מתוזמנים",       sub:"בשבוע הקרוב", icon:"📅", value:scheduledWeek,   color:CYAN      },
-    { label:"ממתינים לאישור", sub:"ממתין לאישור", icon:"⏳", value:pendingReview,   color:AMBER     },
-    { label:"פוסטים בקמפיין", sub:"בקמפיין הזה",  icon:"📊", value:postsThisMonth,  color:GREEN     },
-    { label:"שלבים פעילים",   sub:"פעילים כעת",  icon:"🚀", value:activeCampaigns, color:BRAND     },
+  const KPI_CARDS: { label: string; sub: string; icon: string; value: number | string | null; color: string }[] = [
+    { label:"חסרים להשלמה",     sub:"דרוש טיפול",          icon:"⚠️", value:missingAssets,    color:"#EF4444" },
+    { label:"ממתין לאישור",      sub:"אישור אמן / צוות",   icon:"⏳", value:pendingReview,    color:AMBER     },
+    { label:"מתוזמנים",          sub:"השבוע הקרוב",         icon:"📅", value:scheduledWeek,    color:CYAN      },
+    { label:"פורסמו",            sub:"מתוך הקמפיין",        icon:"📊", value:published,        color:GREEN     },
+    { label:"התקדמות קמפיין",   sub:"לפי שלבי הקמפיין",   icon:"🎯", value:campaignProgress, color:BRAND     },
   ];
 
   const filteredRows = rows.filter(r => {
