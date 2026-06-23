@@ -1359,7 +1359,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                   el.style.borderColor = "rgba(255,255,255,0.10)";
                 }}
                 >
-                  חזרה למרכז סושיאל ←
+                  → חזרה למרכז סושיאל
                 </span>
               </Link>
             </div>
