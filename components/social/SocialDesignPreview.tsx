@@ -369,7 +369,7 @@ function TimePickerField({ value, onChange }: { value: string; onChange: (v: str
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6, direction: "ltr" }}>
       {/* Hour */}
       <div style={{ position: "relative", flex: 1 }}>
         <div style={trigStyle} onClick={() => { setOpenH(o => !o); setOpenM(false); }}>
