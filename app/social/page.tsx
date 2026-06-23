@@ -1,12 +1,10 @@
 import AppShell from "@/components/AppShell";
-import SocialListPage from "@/components/social/SocialListPage";
+import SocialHubPreview from "@/components/social/SocialHubPreview";
 
-export default function Page() {
+export default function SocialPage() {
   return (
     <AppShell>
-      <div className="px-3 py-4 md:px-6 md:py-6" style={{ overflowX: "hidden" }}>
-        <SocialListPage />
-      </div>
+      <SocialHubPreview />
     </AppShell>
   );
 }
