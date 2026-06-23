@@ -736,10 +736,13 @@ export default function SocialDesignPreview() {
     return matchQ && matchP && matchS && matchC;
   });
 
-  // Map contentItemId → FileCard for thumbnail lookup in table
-  const fileByContentItem: Record<string, FileCard> = Object.fromEntries(
-    files.filter(f => f.contentItemId).map(f => [f.contentItemId!, f])
-  );
+  // Map contentItemId → FileCard[] for thumbnail lookup in table (supports multiple files per item)
+  const filesByContentItem: Record<string, FileCard[]> = {};
+  for (const f of files) {
+    if (!f.contentItemId) continue;
+    if (!filesByContentItem[f.contentItemId]) filesByContentItem[f.contentItemId] = [];
+    filesByContentItem[f.contentItemId].push(f);
+  }
   const rowByContentItemId: Record<string, MockRow> = Object.fromEntries(
     rows.map(r => [r.id, r])
   );
@@ -1017,39 +1020,47 @@ export default function SocialDesignPreview() {
                     </td>
                     <td style={{ padding: "15px 16px" }}>
                       {(() => {
-                        const rowThumb = fileByContentItem[row.id];
-                        if (rowThumb) {
+                        const thumbs = filesByContentItem[row.id] ?? [];
+                        if (thumbs.length > 0) {
+                          const visible = thumbs.slice(0, 3);
+                          const overflow = thumbs.length - 3;
                           return (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <div style={{
-                                width: 44, height: 44, borderRadius: 8, flexShrink: 0,
-                                overflow: "hidden", background: rowThumb.thumb,
-                                border: `1px solid ${rowThumb.accent}55`,
-                              }} title={rowThumb.name}>
-                                {rowThumb.type === "image" && rowThumb.link && (
-                                  <img
-                                    src={toDirectLink(rowThumb.link)}
-                                    alt={rowThumb.name}
-                                    loading="lazy"
-                                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                                  />
-                                )}
-                                {rowThumb.type === "video" && rowThumb.link && (
-                                  <video
-                                    src={toDirectLink(rowThumb.link)}
-                                    muted
-                                    preload="metadata"
-                                    playsInline
-                                    onLoadedMetadata={e => {
-                                      try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch {}
-                                    }}
-                                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                    onError={e => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
-                                  />
-                                )}
-                              </div>
-                              <span style={{ fontSize: 10, color: TEXT2, fontWeight: 700 }}>{rowThumb.ext}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              {visible.map(f => (
+                                <div key={f.id} style={{
+                                  width: 36, height: 36, borderRadius: 7, flexShrink: 0,
+                                  overflow: "hidden", background: f.thumb,
+                                  border: `1px solid ${f.accent}55`,
+                                }} title={f.name}>
+                                  {f.type === "image" && f.link && (
+                                    <img
+                                      src={toDirectLink(f.link)}
+                                      alt={f.name}
+                                      loading="lazy"
+                                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                    />
+                                  )}
+                                  {f.type === "video" && f.link && (
+                                    <video
+                                      src={toDirectLink(f.link)}
+                                      muted preload="metadata" playsInline
+                                      onLoadedMetadata={e => {
+                                        try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch {}
+                                      }}
+                                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                                      onError={e => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
+                                    />
+                                  )}
+                                </div>
+                              ))}
+                              {overflow > 0 && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 800, color: TEXT2,
+                                  background: CARD2, border: `1px solid ${BDR2}`,
+                                  borderRadius: 6, padding: "2px 5px", flexShrink: 0,
+                                }}>+{overflow}</span>
+                              )}
                             </div>
                           );
                         }
