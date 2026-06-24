@@ -1058,20 +1058,30 @@ export default function ShowsHubPreview() {
     }
   }
 
-  async function deleteShow(id: string) {
-    setDeletingId(id);
+  async function deleteShow(show: Show) {
+    setDeletingId(show.id);
     try {
-      const res = await fetch(`/api/shows/${id}`, { method: "DELETE" });
+      if (show.calendar_event_id) {
+        const calRes = await fetch(`/api/shows/${show.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ removeFromCalendar: true }),
+        });
+        const calData = await calRes.json().catch(() => ({}));
+        if (!calRes.ok) throw new Error(calData.error ?? "שגיאה בהסרה מהיומן");
+      }
+      const res = await fetch(`/api/shows/${show.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "שגיאה");
       }
-      setShows(prev => prev.filter(s => s.id !== id));
-      if (selected?.id === id) setSelected(null);
+      setShows(prev => prev.filter(s => s.id !== show.id));
+      if (selected?.id === show.id) setSelected(null);
       setDeleteConfirm(null);
       setToast({ message: "ההופעה נמחקה", type: "success" });
-    } catch {
-      setToast({ message: "לא הצלחנו למחוק את ההופעה", type: "error" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "לא הצלחנו למחוק את ההופעה";
+      setToast({ message: msg, type: "error" });
     } finally {
       setDeletingId(null);
     }
@@ -1332,32 +1342,18 @@ export default function ShowsHubPreview() {
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
                               </td>
-                              {/* Delete cell — fixed width, popover confirm */}
+                              {/* Delete cell — fixed 44px, popover confirm, no native tooltip */}
                               <td style={{ padding: "10px 12px", width: 44, position: "relative" }} onClick={e => e.stopPropagation()}>
-                                {s.calendar_event_id ? (
-                                  <button
-                                    title="להופעה שמחוברת ליומן לא מבצעים מחיקה ישירה. השתמש בביטול הופעה מתוך המודאל."
-                                    disabled
-                                    style={{
-                                      width: 28, height: 28, borderRadius: 8, border: `1px solid ${BDR}`,
-                                      background: "rgba(255,255,255,0.03)", color: MUTED,
-                                      cursor: "not-allowed", display: "flex", alignItems: "center", justifyContent: "center",
-                                      fontSize: 13,
-                                    }}
-                                  >🗑</button>
-                                ) : (
-                                  <button
-                                    onClick={() => setDeleteConfirm(deleteConfirm === s.id ? null : s.id)}
-                                    title="מחק הופעה"
-                                    style={{
-                                      width: 28, height: 28, borderRadius: 8,
-                                      border: `1px solid rgba(220,38,38,0.3)`,
-                                      background: "rgba(220,38,38,0.08)", color: "#FCA5A5",
-                                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                                      fontSize: 13, outline: "none", transition: "none",
-                                    }}
-                                  >🗑</button>
-                                )}
+                                <button
+                                  onClick={() => setDeleteConfirm(deleteConfirm === s.id ? null : s.id)}
+                                  style={{
+                                    width: 28, height: 28, borderRadius: 8,
+                                    border: `1px solid rgba(220,38,38,0.3)`,
+                                    background: "rgba(220,38,38,0.08)", color: "#FCA5A5",
+                                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: 13, outline: "none", transition: "none",
+                                  }}
+                                >🗑</button>
                                 {deleteConfirm === s.id && (
                                   <div style={{
                                     position: "absolute",
@@ -1370,13 +1366,16 @@ export default function ShowsHubPreview() {
                                     borderRadius: 10,
                                     padding: "10px 12px",
                                     boxShadow: "0 8px 24px rgba(0,0,0,0.8), 0 0 0 1px rgba(220,38,38,0.08)",
-                                    display: "flex", flexDirection: "column", gap: 8,
-                                    minWidth: 100, whiteSpace: "nowrap",
+                                    display: "flex", flexDirection: "column", gap: 6,
+                                    minWidth: 140, whiteSpace: "nowrap",
                                   }}>
-                                    <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 700, textAlign: "center" }}>למחוק?</span>
-                                    <div style={{ display: "flex", gap: 6 }}>
+                                    <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 700, textAlign: "center" }}>למחוק את ההופעה?</span>
+                                    {s.calendar_event_id && (
+                                      <span style={{ fontSize: 10, color: MUTED, textAlign: "center" }}>תוסר מהיומן אוטומטית</span>
+                                    )}
+                                    <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
                                       <button
-                                        onClick={() => deleteShow(s.id)}
+                                        onClick={() => deleteShow(s)}
                                         disabled={deletingId === s.id}
                                         style={{
                                           flex: 1, padding: "4px 0", borderRadius: 7, fontSize: 11, fontWeight: 800,
@@ -1384,7 +1383,7 @@ export default function ShowsHubPreview() {
                                           border: "none", color: "#fff",
                                           cursor: deletingId === s.id ? "default" : "pointer",
                                         }}
-                                      >{deletingId === s.id ? "…" : "אישור"}</button>
+                                      >{deletingId === s.id ? "…" : "מחק"}</button>
                                       <button
                                         onClick={() => setDeleteConfirm(null)}
                                         disabled={deletingId === s.id}
