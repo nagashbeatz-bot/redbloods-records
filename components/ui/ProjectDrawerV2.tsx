@@ -498,7 +498,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   }
 
   const project = projects.find(p => p.id === projectId);
-  if (!mounted || !project || isMobile) return null;
+  if (!mounted || !project) return null;
 
   const isUploading    = uploadTitle.startsWith("מעלה");
   const uploadDone     = uploadTitle === "הועלה בהצלחה ✓";
@@ -540,7 +540,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   }
 
   return createPortal(
-    <div dir="rtl" style={{ position: "fixed", top: 60, bottom: 0, left: 0, right: 248, zIndex: 99999 }}>
+    <div dir="rtl" style={{ position: "fixed", top: 60, bottom: 0, left: 0, right: isMobile ? 0 : 248, zIndex: 99999 }}>
 
       <div onClick={onClose} style={{
         position: "absolute", inset: 0,

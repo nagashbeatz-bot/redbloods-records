@@ -46,10 +46,10 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   )).sort((a, b) => a.localeCompare(b, "he"));
 
   const openProject = useCallback((id: string) => {
-    // Check for preview mode param
+    // V2 is the default; use legacy drawer only when ?drawerLegacy=1
     setUseV2(
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("drawerPreview") === "1"
+      typeof window === "undefined" ||
+      new URLSearchParams(window.location.search).get("drawerLegacy") !== "1"
     );
     // Look up the project — may not be in context yet if just created
     const found = projects.find((p) => p.id === id);
