@@ -188,6 +188,7 @@ interface FormState {
   contact_person: string; phone: string; status: ShowStatus; payment_status: PaymentStatus;
   show_price: string; dj_fee: string; advance_payment: string; notes: string;
   booker_client_id: string | null;
+  dj_client_id: string | null; dj_name: string;
 }
 
 const FORM_DEFAULTS: FormState = {
@@ -195,6 +196,7 @@ const FORM_DEFAULTS: FormState = {
   contact_person: "", phone: "", status: "ממתין לתשובה", payment_status: "לא שולם",
   show_price: "", dj_fee: "500", advance_payment: "0", notes: "",
   booker_client_id: null,
+  dj_client_id: null, dj_name: "",
 };
 
 function showToForm(s: Show): FormState {
@@ -214,6 +216,8 @@ function showToForm(s: Show): FormState {
     advance_payment:  String(s.advance_payment),
     notes:            s.notes,
     booker_client_id: s.booker_client_id ?? null,
+    dj_client_id:     s.dj_client_id    ?? null,
+    dj_name:          s.dj_name         ?? "",
   };
 }
 
@@ -255,9 +259,10 @@ function ShowFormModal({
       .finally(() => setCliLoad(false));
   }, []);
 
-  // VIP clients → artist dropdown; type "לקוח" → booker dropdown
+  // VIP clients → artist dropdown; type "לקוח" → booker dropdown; type "איש צוות" → DJ dropdown
   const vipClients    = clients.filter(c => c.status === "VIP");
   const bookerClients = clients.filter(c => c.type === "לקוח");
+  const crewClients   = clients.filter(c => c.type === "איש צוות");
 
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm(prev => ({ ...prev, [k]: v }));
@@ -278,6 +283,13 @@ function ShowFormModal({
       phone:            c.phone || prev.phone,
       booker_client_id: c.id,
     }));
+  }
+
+  function selectDj(id: string) {
+    if (!id) { setForm(prev => ({ ...prev, dj_client_id: null, dj_name: "" })); return; }
+    const c = clients.find(x => x.id === id);
+    if (!c) return;
+    setForm(prev => ({ ...prev, dj_client_id: c.id, dj_name: c.name }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -301,6 +313,8 @@ function ShowFormModal({
         dj_fee:           Number(form.dj_fee) || 0,
         advance_payment:  Number(form.advance_payment) || 0,
         notes:            form.notes.trim(),
+        dj_client_id:     form.dj_client_id ?? null,
+        dj_name:          form.dj_name.trim(),
         // never send addToCalendar / removeFromCalendar / calendar_event_id
       };
       // Include booker_client_id + booker_name when a client was selected
@@ -469,6 +483,21 @@ function ShowFormModal({
             </div>
           </div>
 
+          {/* DJ dropdown */}
+          <div>
+            <label style={labelStyle}>דיג׳יי</label>
+            {cliLoad ? (
+              <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
+            ) : crewClients.length === 0 ? (
+              <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אנשי צוות להצגה</div>
+            ) : (
+              <select value={form.dj_client_id ?? ""} onChange={e => selectDj(e.target.value)} style={inputStyle}>
+                <option value="">ללא דיג׳יי</option>
+                {crewClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+          </div>
+
           {/* Row: prices — no spin buttons */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <div>
@@ -588,6 +617,7 @@ function ShowPanel({ show, onClose, onEdit }: {
               show.contact_person ? { label: "איש קשר", value: show.contact_person } : null,
               show.phone          ? { label: "טלפון",   value: show.phone }          : null,
               show.booker_name    ? { label: "מזמין",   value: show.booker_name }    : null,
+              show.dj_name        ? { label: "דיג׳יי",  value: show.dj_name }         : null,
               show.calendar_event_id ? { label: "מזהה יומן", value: show.calendar_event_id } : null,
             ] as ({ label: string; value: string } | null)[]).filter(Boolean).map(r => (
               <div key={r!.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, gap: 12 }}>

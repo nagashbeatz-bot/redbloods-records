@@ -23,6 +23,8 @@ export interface Show {
   payment_status: PaymentStatus;
   show_price: number;
   dj_fee: number;
+  dj_client_id: string | null;
+  dj_name: string;
   advance_payment: number;
   notes: string;
   calendar_event_id: string | null;

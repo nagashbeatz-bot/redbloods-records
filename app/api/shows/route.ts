@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
       payment_status:   body.payment_status            ?? "לא שולם",
       show_price:       Number(body.show_price)        || 0,
       dj_fee:           body.dj_fee !== undefined ? Number(body.dj_fee) : 500,
+      dj_client_id:     body.dj_client_id          ?? null,
+      dj_name:          body.dj_name?.trim()        ?? "",
       advance_payment:  Number(body.advance_payment)   || 0,
       notes:            body.notes?.trim()             ?? "",
     });

@@ -48,6 +48,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (body.payment_status   !== undefined) patch.payment_status   = body.payment_status as PaymentStatus;
     if (body.show_price       !== undefined) patch.show_price       = Number(body.show_price)      || 0;
     if (body.dj_fee           !== undefined) patch.dj_fee           = Number(body.dj_fee);
+    if (body.dj_client_id    !== undefined) patch.dj_client_id     = body.dj_client_id    ?? null;
+    if (body.dj_name         !== undefined) patch.dj_name          = body.dj_name?.trim() ?? "";
     if (body.advance_payment  !== undefined) patch.advance_payment  = Number(body.advance_payment) || 0;
     if (body.notes            !== undefined) patch.notes            = body.notes                   ?? "";
     if (body.calendar_event_id !== undefined) patch.calendar_event_id = body.calendar_event_id    ?? null;
