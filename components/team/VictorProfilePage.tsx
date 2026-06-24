@@ -87,6 +87,313 @@ function SalaryChip({ status }: { status: string }) {
   );
 }
 
+function daysFromNow(d: string | null): number | null {
+  if (!d) return null;
+  try {
+    const diff = new Date(d).getTime() - Date.now();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  } catch { return null; }
+}
+
+function isAudioFile(name: string): boolean {
+  return /\.(wav|mp3|m4a|aiff|flac|ogg|aac|opus)$/i.test(name);
+}
+
+function toDirectUrl(url: string): string {
+  return url
+    .replace("www.dropbox.com", "dl.dropboxusercontent.com")
+    .replace("?dl=0", "").replace("&dl=0", "");
+}
+
+function fileExt(name: string): string {
+  return (name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
+}
+
+function AudioPlayer({ name, url }: { name: string; url: string }) {
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useState<HTMLAudioElement | null>(null);
+  const ref = audioRef;
+
+  function getOrCreateAudio(): HTMLAudioElement {
+    if (!ref[0]) {
+      const a = new Audio(toDirectUrl(url));
+      a.preload = "metadata";
+      a.onended = () => setPlaying(false);
+      a.ontimeupdate = () => {
+        if (a.duration) setProgress((a.currentTime / a.duration) * 100);
+      };
+      a.ondurationchange = () => setDuration(a.duration || 0);
+      ref[0] = a;
+    }
+    return ref[0];
+  }
+
+  function togglePlay() {
+    const a = getOrCreateAudio();
+    if (playing) { a.pause(); setPlaying(false); }
+    else { a.play().catch(() => {}); setPlaying(true); }
+  }
+
+  function fmtTime(s: number) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
+      <button onClick={togglePlay} style={{
+        width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+        background: playing ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`,
+        color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 12, fontFamily: "inherit", outline: "none",
+      }}>
+        {playing ? "⏸" : "▶"}
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
+          {name}
+        </div>
+        <div
+          style={{ height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, cursor: "pointer", position: "relative" }}
+          onClick={e => {
+            const a = getOrCreateAudio();
+            if (!a.duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            a.currentTime = ((e.clientX - rect.left) / rect.width) * a.duration;
+          }}
+        >
+          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${progress}%`, background: PURPLE, borderRadius: 2 }} />
+        </div>
+      </div>
+      <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>
+        {duration > 0 ? fmtTime(duration) : "—"}
+      </span>
+    </div>
+  );
+}
+
+function FileRow({ name, url }: { name: string; url: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+        <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fileExt(name)}</div>
+      </div>
+      {url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: MUTED, fontSize: 12, textDecoration: "none", flexShrink: 0 }}>⬇</a>
+      )}
+    </div>
+  );
+}
+
+function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () => void }) {
+  const files = [
+    ...(work.filesReceived ?? []).map(f => ({ ...f, dir: "in" as const })),
+    ...(work.filesSent ?? []).map(f => ({ ...f, dir: "out" as const })),
+  ];
+
+  const days = daysFromNow(work.internalDeadline);
+
+  const tasks = [
+    { label: "נשלח לויקטור", done: !!work.sentDate, date: work.sentDate },
+    { label: "חזר מויקטור", done: !!work.returnedDate, date: work.returnedDate },
+    { label: "בדיקה ואישור", done: work.outcome === "אושר" || work.outcome === "נכנס לפרויקט בפועל", date: null },
+    { label: "פרויקט הושלם", done: work.status === "הושלם", date: null },
+  ];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", top: 60, bottom: 0, left: 0, right: 248,
+          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)",
+          zIndex: 1000,
+        }}
+      />
+
+      {/* Panel */}
+      <div style={{
+        position: "fixed", top: 60, bottom: 0, left: 0,
+        width: 460, zIndex: 1001,
+        background: "#0B0B0F",
+        borderRight: `1px solid ${BDR2}`,
+        boxShadow: "4px 0 40px rgba(0,0,0,0.7)",
+        display: "flex", flexDirection: "column",
+        overflow: "hidden",
+      }}>
+
+        {/* Header */}
+        <div style={{
+          padding: "16px 20px 14px",
+          borderBottom: `1px solid ${BDR}`,
+          background: CARD2,
+          flexShrink: 0,
+        }}>
+          {/* Top row: close + open-in-projects */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <button onClick={onClose} style={{
+              background: "none", border: "none", cursor: "pointer", padding: 0,
+              color: MUTED, fontSize: 20, lineHeight: 1, fontFamily: "inherit",
+            }}>✕</button>
+            <button style={{
+              background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`,
+              color: PURPLE, fontSize: 11, fontWeight: 700,
+              padding: "5px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+            }}>
+              פתח בפרויקטים ↗
+            </button>
+          </div>
+
+          {/* Project name */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 16 }}>🎵</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {work.projectName}
+            </span>
+          </div>
+
+          {/* Meta row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ fontSize: 11, color: TEXT2 }}>{work.artist || "—"}</span>
+            <span style={{ color: MUTED, fontSize: 11 }}>·</span>
+            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}18`, color: PURPLE, fontWeight: 700 }}>Victor</span>
+            <StatusChip status={work.status} />
+            {work.workState && <StatusChip status={work.workState} />}
+          </div>
+
+          {/* Deadline row */}
+          {work.internalDeadline && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 11, color: MUTED }}>דד-ליין: {fmtDate(work.internalDeadline)}</span>
+              {days !== null && (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                  background: days < 0 ? "rgba(239,68,68,0.12)" : days <= 3 ? "rgba(245,158,11,0.12)" : "rgba(16,185,129,0.12)",
+                  color: days < 0 ? RED : days <= 3 ? AMBER : GREEN,
+                }}>
+                  {days < 0 ? `${Math.abs(days)} ימים באיחור` : days === 0 ? "היום!" : `${days} ימים`}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+          {/* Files card */}
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
+              <span style={{ fontSize: 11, color: MUTED }}>{files.length} קבצים</span>
+            </div>
+            {files.length === 0 ? (
+              <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "10px 0" }}>אין קבצים לפרויקט זה</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {files.map((f, i) => {
+                  const url = f.dropboxShareUrl || f.url || "";
+                  return isAudioFile(f.name) ? (
+                    <AudioPlayer key={i} name={f.name} url={url} />
+                  ) : (
+                    <FileRow key={i} name={f.name} url={url} />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Tasks card */}
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 12 }}>משימות והתקדמות</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {tasks.map((t, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    border: `2px solid ${t.done ? GREEN : BDR2}`,
+                    background: t.done ? `${GREEN}22` : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, color: GREEN,
+                  }}>
+                    {t.done ? "✓" : ""}
+                  </div>
+                  <span style={{ flex: 1, fontSize: 12, color: t.done ? TEXT : TEXT2, fontWeight: t.done ? 600 : 400 }}>
+                    {t.label}
+                  </span>
+                  {t.date && <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>{fmtDate(t.date)}</span>}
+                </div>
+              ))}
+            </div>
+
+            {/* Notes / outcome */}
+            {(work.notes || work.outcome) && (
+              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}` }}>
+                {work.outcome && <div style={{ fontSize: 11, color: PURPLE, fontWeight: 700, marginBottom: 3 }}>תוצאה: {work.outcome}</div>}
+                {work.notes && <div style={{ fontSize: 11, color: TEXT2 }}>{work.notes}</div>}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom 2 cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+
+            {/* Deadline card */}
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "12px 14px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>דד-ליין</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: days !== null && days < 0 ? RED : AMBER, letterSpacing: "-0.02em" }}>
+                {fmtDate(work.internalDeadline)}
+              </div>
+              {days !== null && (
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+                  {days < 0 ? `${Math.abs(days)} ימים אחרי` : `${days} ימים נותרו`}
+                </div>
+              )}
+            </div>
+
+            {/* Monthly card */}
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "12px 14px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>חודש עבודה</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: PURPLE }}>
+                {work.sentDate ? fmtDate(work.sentDate).replace(/\.\d{2}$/, "") : "—"}
+              </div>
+              <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
+                {work.status}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Sent/returned dates */}
+          {(work.sentDate || work.returnedDate) && (
+            <div style={{ display: "flex", gap: 10 }}>
+              {work.sentDate && (
+                <div style={{ flex: 1, padding: "8px 12px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
+                  <div style={{ fontSize: 10, color: MUTED, marginBottom: 3 }}>📤 נשלח לויקטור</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.sentDate)}</div>
+                </div>
+              )}
+              {work.returnedDate && (
+                <div style={{ flex: 1, padding: "8px 12px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
+                  <div style={{ fontSize: 10, color: MUTED, marginBottom: 3 }}>📥 חזר מויקטור</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.returnedDate)}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function VictorProfilePage() {
   const router = useRouter();
   const [month, setMonth] = useState(currentMonth);
@@ -95,6 +402,7 @@ export default function VictorProfilePage() {
   const [salaryMonths, setSalaryMonths] = useState<VictorSalaryMonth[]>([]);
   const [loading, setLoading] = useState(true);
   const [salaryLoading, setSalaryLoading] = useState(true);
+  const [selectedWork, setSelectedWork] = useState<VendorWork | null>(null);
 
   const fetchMonth = useCallback(async (m: string) => {
     setLoading(true);
@@ -149,6 +457,7 @@ export default function VictorProfilePage() {
   };
 
   return (
+    <>
     <div style={{
       minHeight: "100%", background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
@@ -329,11 +638,14 @@ export default function VictorProfilePage() {
                           <StatusChip status={w.status} />
                         </td>
                         <td style={{ padding: "11px 14px" }}>
-                          <button style={{
-                            ...btnStyle, fontSize: 11, fontWeight: 700, color: MUTED,
-                            padding: "4px 10px", borderRadius: 7,
-                            border: `1px solid ${BDR}`, background: CARD2,
-                          }}>
+                          <button
+                            onClick={() => setSelectedWork(w)}
+                            style={{
+                              ...btnStyle, fontSize: 11, fontWeight: 700, color: MUTED,
+                              padding: "4px 10px", borderRadius: 7,
+                              border: `1px solid ${BDR}`, background: CARD2,
+                              cursor: "pointer",
+                            }}>
                             פתח פרויקט
                           </button>
                         </td>
@@ -538,5 +850,13 @@ export default function VictorProfilePage() {
         </div>
       </div>
     </div>
+
+    {selectedWork && (
+      <VictorProjectDrawer
+        work={selectedWork}
+        onClose={() => setSelectedWork(null)}
+      />
+    )}
+    </>
   );
 }
