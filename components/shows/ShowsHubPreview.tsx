@@ -493,12 +493,58 @@ function ShowFormModal({
 
       if (mode === "edit") {
         onSaved("ההופעה עודכנה בהצלחה ✓");
-      } else if (addToCalendar && !data.calendarWarning) {
-        onSaved("ההופעה נוצרה ונוספה ליומן ✓");
-      } else if (addToCalendar && data.calendarWarning) {
-        onSaved("ההופעה נוצרה, אבל לא נוספה ליומן");
       } else {
-        onSaved("ההופעה נוצרה ✓");
+        // Auto-create task if no DJ selected
+        let taskCreated = false;
+        let taskFailed  = false;
+        const noDj = !form.dj_client_id && !form.dj_name.trim();
+        if (noDj) {
+          try {
+            const noteLines = [
+              `הופעה: ${form.name.trim()}`,
+              form.date        ? `תאריך: ${form.date}`        : null,
+              form.artist.trim() ? `אמן: ${form.artist.trim()}` : null,
+              form.location.trim() ? `מיקום: ${form.location.trim()}` : null,
+              "עדיין לא נבחר דיג׳יי — יש לסגור ולעדכן בהופעה.",
+            ].filter(Boolean).join("\n");
+
+            const taskRes = await fetch("/api/tasks", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title:        `לסגור דיג׳יי להופעה: ${form.name.trim()}`,
+                notes:        noteLines,
+                status:       "פתוח",
+                related_type: "general",
+              }),
+            });
+            if (taskRes.ok) taskCreated = true;
+            else taskFailed = true;
+          } catch {
+            taskFailed = true;
+          }
+        }
+
+        const calOk  = addToCalendar && !data.calendarWarning;
+        const calWarn = addToCalendar && data.calendarWarning;
+
+        if (calOk && taskCreated) {
+          onSaved("ההופעה נוצרה ונוספה ליומן ✓ · נוצרה משימה לסגירת דיג׳יי");
+        } else if (calOk && taskFailed) {
+          onSaved("ההופעה נוצרה ונוספה ליומן ✓ · שגיאה ביצירת משימה");
+        } else if (calOk) {
+          onSaved("ההופעה נוצרה ונוספה ליומן ✓");
+        } else if (calWarn && taskCreated) {
+          onSaved("ההופעה נוצרה, אבל לא נוספה ליומן · נוצרה משימה לסגירת דיג׳יי");
+        } else if (calWarn) {
+          onSaved("ההופעה נוצרה, אבל לא נוספה ליומן");
+        } else if (taskCreated) {
+          onSaved("ההופעה נוצרה ✓ · נוצרה משימה לסגירת דיג׳יי");
+        } else if (taskFailed) {
+          onSaved("ההופעה נוצרה ✓ · שגיאה ביצירת משימה");
+        } else {
+          onSaved("ההופעה נוצרה ✓");
+        }
       }
     } catch {
       setErr("שגיאת רשת — נסה שוב");
