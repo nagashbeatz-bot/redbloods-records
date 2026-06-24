@@ -58,6 +58,19 @@ function calcLabelShare(s: Show)    { return calcDistributable(s) / 2; }
 function calcArtistShare(s: Show)   { return calcDistributable(s) / 2; }
 function calcRemaining(s: Show)     { return Math.max(0, s.show_price - s.advance_payment); }
 
+// ─── Tab definitions ─────────────────────────────────────────────────────────
+type TabKey = "all" | "upcoming" | "unpaid" | "followup" | "done" | "cancelled";
+type SortKey = "date" | "price" | "remaining" | "label";
+
+const TABS: { key: TabKey; label: string; color: string }[] = [
+  { key: "all",       label: "כל ההופעות", color: BRAND  },
+  { key: "upcoming",  label: "קרובות",     color: BLUE   },
+  { key: "unpaid",    label: "לא שולמו",   color: AMBER  },
+  { key: "followup",  label: "צריך פולואפ",color: "#EF4444" },
+  { key: "done",      label: "בוצעו",      color: PURPLE },
+  { key: "cancelled", label: "בוטלו",      color: MUTED  },
+];
+
 // ─── Badge ──────────────────────────────────────────────────────────────────
 function Badge({ bg, text, children }: { bg: string; text: string; children: React.ReactNode }) {
   return (
@@ -99,49 +112,46 @@ function ShowCard({ show, accent, grad, onClick, selected }: {
       display: "flex", flexDirection: "column",
     }}>
       {/* Cover */}
-      <div style={{ height: 140, position: "relative", overflow: "hidden" }}>
+      <div style={{ height: 120, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 65%, ${accent}30 0%, transparent 68%)` }} />
-        {/* Crowd silhouette */}
         <svg viewBox="0 0 420 70" style={{ position: "absolute", bottom: 0, width: "100%", opacity: 0.12 }} preserveAspectRatio="none">
           {Array.from({ length: 20 }).map((_, i) => (
             <ellipse key={i} cx={i * 22 + 11} cy={70} rx={7 + (i % 3) * 2} ry={12 + (i % 5) * 6} fill={accent} />
           ))}
         </svg>
-        {/* Date badge */}
-        <div style={{ position: "absolute", top: 12, right: 12, background: accent, borderRadius: 12, padding: "5px 12px", textAlign: "center", minWidth: 46 }}>
+        <div style={{ position: "absolute", top: 10, right: 10, background: accent, borderRadius: 10, padding: "4px 10px", textAlign: "center", minWidth: 40 }}>
           {show.date ? (
             <>
-              <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{parseInt(show.date.split("-")[2], 10)}</div>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.85)", letterSpacing: "0.04em" }}>{MONTHS[parseInt(show.date.split("-")[1], 10)]}</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{parseInt(show.date.split("-")[2], 10)}</div>
+              <div style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.85)", letterSpacing: "0.04em" }}>{MONTHS[parseInt(show.date.split("-")[1], 10)]}</div>
             </>
-          ) : <div style={{ fontSize: 11, color: "#fff" }}>—</div>}
+          ) : <div style={{ fontSize: 10, color: "#fff" }}>—</div>}
         </div>
         {show.date && (
-          <div style={{ position: "absolute", bottom: 10, right: 14, fontSize: 11, color: `${accent}CC`, fontWeight: 700 }}>
+          <div style={{ position: "absolute", bottom: 8, right: 12, fontSize: 10, color: `${accent}CC`, fontWeight: 700 }}>
             {fmtDay(show.date)}{show.start_time ? ` · ${show.start_time}` : ""}
           </div>
         )}
       </div>
 
       {/* Body */}
-      <div style={{ padding: "14px 16px 16px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, lineHeight: 1.2 }}>{show.name}</div>
-        <div style={{ fontSize: 12, color: TEXT2, fontWeight: 600 }}>{show.artist || "—"}</div>
-        <div style={{ fontSize: 11, color: MUTED }}>{show.location || "—"}</div>
-        <div style={{ display: "flex", gap: 5, marginTop: 6, flexWrap: "wrap" }}>
+      <div style={{ padding: "12px 14px 14px", flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, lineHeight: 1.2 }}>{show.name}</div>
+        <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600 }}>{show.artist || "—"}</div>
+        <div style={{ fontSize: 10, color: MUTED }}>{show.location || "—"}</div>
+        <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
           <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
           <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
         </div>
-        {/* Finance strip */}
-        <div style={{ display: "flex", marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BDR}` }}>
+        <div style={{ display: "flex", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BDR}` }}>
           {[
             { label: "מחיר",  val: fmtIls(show.show_price), color: TEXT },
             { label: "אמן",   val: fmtIls(artistShare),     color: AMBER },
             { label: "לייבל", val: fmtIls(labelShare),      color: GREEN },
           ].map((item, idx) => (
             <div key={idx} style={{ flex: 1, textAlign: "center", borderRight: idx < 2 ? `1px solid ${BDR}` : undefined }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: item.color }}>{item.val}</div>
-              <div style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>{item.label}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: item.color }}>{item.val}</div>
+              <div style={{ fontSize: 9, color: MUTED, marginTop: 1 }}>{item.label}</div>
             </div>
           ))}
         </div>
@@ -162,34 +172,18 @@ function KpiCard({ label, value, sub, color, icon }: {
       borderRadius: 16,
       padding: "18px 20px",
       position: "relative", overflow: "hidden",
-      minHeight: 110,
+      minHeight: 115,
       display: "flex", flexDirection: "column", justifyContent: "space-between",
     }}>
-      {/* Ghost icon */}
       <div style={{ position: "absolute", bottom: -10, left: -6, fontSize: 64, opacity: 0.05, userSelect: "none", lineHeight: 1 }}>{icon}</div>
-      {/* Top */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: TEXT2, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: 1.3 }}>{label}</div>
         <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}15`, border: `1px solid ${color}28`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>{icon}</div>
       </div>
-      {/* Value */}
       <div>
-        <div style={{ fontSize: 34, fontWeight: 900, color, lineHeight: 1, marginBottom: 4 }}>{value}</div>
+        <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, marginBottom: 4 }}>{value}</div>
         <div style={{ fontSize: 11, color: `${color}70` }}>{sub}</div>
       </div>
-    </div>
-  );
-}
-
-// ─── Section header ──────────────────────────────────────────────────────────
-function SectionHeader({ title, count, color = BLUE }: { title: string; count?: number; color?: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-      <div style={{ width: 4, height: 18, borderRadius: 2, background: color, flexShrink: 0 }} />
-      <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>{title}</div>
-      {count !== undefined && (
-        <div style={{ padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${color}15`, border: `1px solid ${color}28`, color }}>{count}</div>
-      )}
     </div>
   );
 }
@@ -206,7 +200,7 @@ function ShowPanel({ show, onClose }: { show: Show; onClose: () => void }) {
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.5)" }} />
       <div style={{
         position: "fixed", top: 60, bottom: 0, left: 0, zIndex: 201,
-        width: 400, maxWidth: "92vw",
+        width: 420, maxWidth: "94vw",
         background: "#0E0E0E",
         borderRight: `1px solid ${BDR2}`,
         borderTop: `1px solid ${BDR2}`,
@@ -235,16 +229,17 @@ function ShowPanel({ show, onClose }: { show: Show; onClose: () => void }) {
           {/* Info */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
             {([
-              { label: "תאריך",   value: show.date ? `${fmtDate(show.date)} · ${fmtDay(show.date)}` : "—" },
-              { label: "שעה",     value: show.start_time || "—" },
-              { label: "מיקום",  value: show.location || "—" },
+              { label: "תאריך",    value: show.date ? `${fmtDate(show.date)} · ${fmtDay(show.date)}` : "—" },
+              { label: "שעה",      value: show.start_time || "—" },
+              { label: "מיקום",    value: show.location || "—" },
               show.contact_person ? { label: "איש קשר", value: show.contact_person } : null,
               show.phone          ? { label: "טלפון",   value: show.phone }          : null,
               show.booker_name    ? { label: "מזמין",   value: show.booker_name }    : null,
+              show.calendar_event_id ? { label: "אירוע ביומן", value: show.calendar_event_id } : null,
             ] as ({ label: string; value: string } | null)[]).filter(Boolean).map(r => (
-              <div key={r!.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <span style={{ color: MUTED }}>{r!.label}</span>
-                <span style={{ color: TEXT, fontWeight: 600 }}>{r!.value}</span>
+              <div key={r!.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, gap: 12 }}>
+                <span style={{ color: MUTED, flexShrink: 0 }}>{r!.label}</span>
+                <span style={{ color: r!.label === "אירוע ביומן" ? MUTED : TEXT, fontWeight: 600, fontSize: r!.label === "אירוע ביומן" ? 10 : 13, wordBreak: "break-all", textAlign: "left" }}>{r!.value}</span>
               </div>
             ))}
           </div>
@@ -256,8 +251,8 @@ function ShowPanel({ show, onClose }: { show: Show; onClose: () => void }) {
               { label: "מחיר הופעה",      value: fmtIls(show.show_price),    color: TEXT },
               { label: "DJ fee",           value: `−${fmtIls(show.dj_fee)}`,  color: MUTED },
               { label: "יתרה לחלוקה",     value: fmtIls(distributable),       color: AMBER, bold: true },
-              { label: "חלק אמן (50%)",   value: fmtIls(artist),             color: BLUE },
-              { label: "חלק לייבל (50%)", value: fmtIls(label),              color: GREEN },
+              { label: "חלק אמן (50%)",   value: fmtIls(artist),              color: BLUE },
+              { label: "חלק לייבל (50%)", value: fmtIls(label),               color: GREEN },
               { label: "מקדמה ששולמה",    value: fmtIls(show.advance_payment),color: TEXT2 },
               { label: "יתרה לגבייה",     value: fmtIls(remaining),           color: remaining > 0 ? BRAND : GREEN, bold: true },
             ].map(r => (
@@ -295,9 +290,11 @@ export default function ShowsHubPreview() {
   const [shows,     setShows]     = useState<Show[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
+  const [tab,       setTab]       = useState<TabKey>("all");
   const [search,    setSearch]    = useState("");
   const [filterSt,  setFilterSt]  = useState<ShowStatus | "">("");
   const [filterPay, setFilterPay] = useState<PaymentStatus | "">("");
+  const [sort,      setSort]      = useState<SortKey>("date");
   const [selected,  setSelected]  = useState<Show | null>(null);
 
   useEffect(() => {
@@ -311,19 +308,53 @@ export default function ShowsHubPreview() {
     [...shows]
       .filter(s => isUpcoming(s.date) && s.status !== "בוטל")
       .sort((a, b) => (a.date ?? "9").localeCompare(b.date ?? "9"))
-      .slice(0, 4),
+      .slice(0, 5),
     [shows]
   );
 
+  // Tab counts
+  const tabCounts = useMemo(() => ({
+    all:       shows.length,
+    upcoming:  shows.filter(s => isUpcoming(s.date) && s.status !== "בוטל").length,
+    unpaid:    shows.filter(s => s.payment_status === "לא שולם").length,
+    followup:  shows.filter(s => s.status === "צריך פולואפ").length,
+    done:      shows.filter(s => s.status === "בוצע").length,
+    cancelled: shows.filter(s => s.status === "בוטל").length,
+  }), [shows]);
+
+  // Tab filter
+  function tabFilter(s: Show): boolean {
+    switch (tab) {
+      case "upcoming":  return isUpcoming(s.date) && s.status !== "בוטל";
+      case "unpaid":    return s.payment_status === "לא שולם";
+      case "followup":  return s.status === "צריך פולואפ";
+      case "done":      return s.status === "בוצע";
+      case "cancelled": return s.status === "בוטל";
+      default:          return true;
+    }
+  }
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return shows.filter(s => {
+    const base = shows.filter(s => {
+      if (!tabFilter(s)) return false;
       if (filterSt  && s.status         !== filterSt)  return false;
       if (filterPay && s.payment_status !== filterPay) return false;
-      if (q && !`${s.name} ${s.artist} ${s.location} ${s.booker_name ?? ""}`.toLowerCase().includes(q)) return false;
+      if (q && !`${s.name} ${s.artist} ${s.location} ${s.contact_person ?? ""} ${s.booker_name ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [shows, search, filterSt, filterPay]);
+
+    return [...base].sort((a, b) => {
+      switch (sort) {
+        case "date":      return (a.date ?? "9").localeCompare(b.date ?? "9");
+        case "price":     return b.show_price - a.show_price;
+        case "remaining": return calcRemaining(b) - calcRemaining(a);
+        case "label":     return calcLabelShare(b) - calcLabelShare(a);
+        default:          return 0;
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shows, tab, search, filterSt, filterPay, sort]);
 
   const kpis = useMemo(() => {
     const active = shows.filter(s => s.status !== "בוטל");
@@ -342,6 +373,8 @@ export default function ShowsHubPreview() {
     outline: "none", direction: "rtl",
   };
 
+  const activeTabColor = TABS.find(t => t.key === tab)?.color ?? BRAND;
+
   return (
     <div style={{ minHeight: "100vh", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl" }}>
 
@@ -351,9 +384,7 @@ export default function ShowsHubPreview() {
         background: "linear-gradient(180deg,#1a0505 0%,#0f0404 50%,#080808 100%)",
         borderBottom: `1px solid rgba(220,38,38,0.20)`,
       }}>
-        {/* Glow orbs */}
         <div style={{ position: "absolute", top: -40, right: "20%", width: 360, height: 220, background: "radial-gradient(ellipse,rgba(220,38,38,0.12) 0%,transparent 70%)", pointerEvents: "none" }} />
-        {/* Crowd silhouette */}
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 44, opacity: 0.055, pointerEvents: "none" }}>
           <svg viewBox="0 0 1400 44" style={{ width: "100%", height: "100%" }} preserveAspectRatio="none">
             {Array.from({ length: 64 }).map((_, i) => (
@@ -361,11 +392,8 @@ export default function ShowsHubPreview() {
             ))}
           </svg>
         </div>
-
-        {/* Content aligned to same container as body */}
-        <div style={{ maxWidth: 1680, marginInline: "auto", padding: "22px 28px 20px", position: "relative" }}>
+        <div style={{ padding: "22px 28px 20px", position: "relative" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
-            {/* Title block */}
             <div>
               <div style={{
                 display: "inline-flex", alignItems: "center", gap: 5,
@@ -384,7 +412,6 @@ export default function ShowsHubPreview() {
                 ניהול כל ההופעות — תאריכים, סטטוסים, הזמנות ותשלומים.
               </div>
             </div>
-            {/* Button */}
             <button style={{
               display: "flex", alignItems: "center", gap: 7,
               background: BRAND, border: "none", borderRadius: 12,
@@ -399,8 +426,8 @@ export default function ShowsHubPreview() {
         </div>
       </div>
 
-      {/* ── Page body — constrained container ──────────────────────────────── */}
-      <div style={{ maxWidth: 1680, marginInline: "auto", padding: "24px 28px 64px" }}>
+      {/* ── Page body ──────────────────────────────────────────────────────── */}
+      <div style={{ padding: "24px 28px 64px" }}>
 
         {loading && (
           <div style={{ textAlign: "center", padding: "100px 0", color: TEXT2 }}>
@@ -417,29 +444,38 @@ export default function ShowsHubPreview() {
 
         {!loading && !error && (
           <>
-            {/* ── KPI grid — auto-fill keeps cards proportional ───────────── */}
+            {/* ── KPI grid ─────────────────────────────────────────────────── */}
             <div style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+              gridTemplateColumns: "repeat(5, 1fr)",
               gap: 14,
               marginBottom: 28,
             }}>
               <KpiCard label="סה״כ הופעות"    value={kpis.total}               sub="הופעות רשומות"      color={BRAND}  icon="🎤" />
-              <KpiCard label="הופעות קרובות"   value={kpis.upCount}             sub="ב-30 הימים הקרובים" color={BLUE}   icon="📅" />
+              <KpiCard label="הופעות קרובות"   value={kpis.upCount}             sub="לא בוטלו"           color={BLUE}   icon="📅" />
               <KpiCard label="הכנסות צפויות"   value={fmtIls(kpis.expIncome)}   sub="מהופעות פעילות"     color={GREEN}  icon="💰" />
               <KpiCard label="יתרה לגבייה"     value={fmtIls(kpis.remaining)}   sub="טרם שולם"           color={AMBER}  icon="⏳" />
               <KpiCard label="רווח לייבל צפוי" value={fmtIls(kpis.labelProfit)} sub="50% מיתרה לחלוקה"  color={PURPLE} icon="🏷️" />
             </div>
 
-            {/* ── Two-column main area ────────────────────────────────────── */}
-            {/* RTL flex: first item = right side (upcoming), second = left (table) */}
-            <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+            {/* ── Two-column CSS Grid ───────────────────────────────────────── */}
+            {/* RTL: column 1 = right (upcoming), column 2 = left (table) */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: upcoming.length > 0 ? "clamp(280px, 26%, 360px) 1fr" : "1fr",
+              gap: 20,
+              alignItems: "flex-start",
+            }}>
 
-              {/* ── RIGHT COLUMN: Upcoming shows (fixed width) ─────────────── */}
+              {/* ── RIGHT: Upcoming shows ──────────────────────────────────── */}
               {upcoming.length > 0 && (
-                <div style={{ flex: "0 0 380px", maxWidth: 420, minWidth: 300 }}>
-                  <SectionHeader title="הופעות קרובות" count={upcoming.length} color={BLUE} />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                    <div style={{ width: 4, height: 18, borderRadius: 2, background: BLUE, flexShrink: 0 }} />
+                    <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>הופעות קרובות</div>
+                    <div style={{ padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${BLUE}15`, border: `1px solid ${BLUE}28`, color: BLUE }}>{upcoming.length}</div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {upcoming.map((s, i) => (
                       <ShowCard
                         key={s.id}
@@ -454,132 +490,160 @@ export default function ShowsHubPreview() {
                 </div>
               )}
 
-              {/* ── LEFT COLUMN: All shows table ───────────────────────────── */}
-              <div style={{ flex: "1 1 500px", minWidth: 0 }}>
-                <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, overflow: "hidden" }}>
-                  {/* Table toolbar */}
-                  <div style={{
-                    padding: "18px 20px 16px", borderBottom: `1px solid ${BDR}`,
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    flexWrap: "wrap", gap: 12,
-                  }}>
-                    <SectionHeader title="כל ההופעות" count={filtered.length} color={BRAND} />
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      {/* Search */}
-                      <div style={{ position: "relative" }}>
-                        <input
-                          value={search}
-                          onChange={e => setSearch(e.target.value)}
-                          placeholder="חיפוש..."
-                          style={{
-                            ...selectStyle,
-                            paddingRight: 30, width: 180,
-                            background: BG2, border: `1px solid ${BDR2}`, color: TEXT,
-                          }}
-                        />
-                        <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 12, pointerEvents: "none" }}>🔍</span>
-                      </div>
-                      <select value={filterSt}  onChange={e => setFilterSt(e.target.value as ShowStatus | "")}    style={selectStyle}>
-                        <option value="">כל הסטטוסים</option>
-                        {SHOW_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <select value={filterPay} onChange={e => setFilterPay(e.target.value as PaymentStatus | "")} style={selectStyle}>
-                        <option value="">כל התשלומים</option>
-                        {PAYMENT_STATUSES.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </div>
-                  </div>
+              {/* ── LEFT: Shows table ──────────────────────────────────────── */}
+              <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, overflow: "hidden" }}>
 
-                  {/* Table */}
-                  {filtered.length === 0 ? (
-                    <div style={{ padding: "56px 0", textAlign: "center", color: MUTED }}>
-                      <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.2 }}>🎤</div>
-                      <div style={{ fontSize: 13 }}>אין הופעות להצגה</div>
-                    </div>
-                  ) : (
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                        <thead>
-                          <tr style={{ borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.016)" }}>
-                            {["הופעה","תאריך","מיקום","סטטוס","תשלום","מחיר","מקדמה","יתרה","לייבל",""].map(h => (
-                              <th key={h} style={{
-                                padding: "12px 16px", textAlign: "right",
-                                fontSize: 10, fontWeight: 700, color: MUTED,
-                                textTransform: "uppercase", letterSpacing: "0.08em",
-                                whiteSpace: "nowrap",
-                              }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filtered.map((s, i) => {
-                            const sel = selected?.id === s.id;
-                            return (
-                              <tr
-                                key={s.id}
-                                onClick={() => setSelected(prev => prev?.id === s.id ? null : s)}
-                                style={{
-                                  borderBottom: `1px solid ${BDR}`,
-                                  background: sel
-                                    ? "rgba(220,38,38,0.06)"
-                                    : i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.014)",
-                                  cursor: "pointer",
-                                  outline: sel ? `1px solid rgba(220,38,38,0.24)` : "none",
-                                  outlineOffset: -1,
-                                }}
-                              >
-                                <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                                  <div style={{ fontWeight: 700, color: TEXT }}>{s.name}</div>
-                                  {s.artist && <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{s.artist}</div>}
-                                </td>
-                                <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                                  {s.date ? (
-                                    <>
-                                      <div style={{ fontWeight: 600, color: TEXT }}>{fmtDate(s.date)}</div>
-                                      <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fmtDay(s.date)}{s.start_time ? ` · ${s.start_time}` : ""}</div>
-                                    </>
-                                  ) : <span style={{ color: MUTED }}>—</span>}
-                                </td>
-                                <td style={{ padding: "14px 16px", color: TEXT2, whiteSpace: "nowrap", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>
-                                  {s.location || <span style={{ color: MUTED }}>—</span>}
-                                </td>
-                                <td style={{ padding: "14px 16px" }}>
-                                  <Badge bg={STATUS_COLOR[s.status].bg} text={STATUS_COLOR[s.status].text}>{s.status}</Badge>
-                                </td>
-                                <td style={{ padding: "14px 16px" }}>
-                                  <Badge bg={PAY_COLOR[s.payment_status].bg} text={PAY_COLOR[s.payment_status].text}>{s.payment_status}</Badge>
-                                </td>
-                                <td style={{ padding: "14px 16px", color: TEXT, fontWeight: 700, whiteSpace: "nowrap" }}>{fmtIls(s.show_price)}</td>
-                                <td style={{ padding: "14px 16px", color: TEXT2, whiteSpace: "nowrap" }}>{fmtIls(s.advance_payment)}</td>
-                                <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                                  <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
-                                </td>
-                                <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                                  <span style={{ color: GREEN, fontWeight: 700 }}>{fmtIls(calcLabelShare(s))}</span>
-                                </td>
-                                <td style={{ padding: "14px 16px" }}>
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setSelected(prev => prev?.id === s.id ? null : s); }}
-                                    style={{
-                                      background: sel ? `${BRAND}15` : CARD2,
-                                      border: `1px solid ${sel ? BRAND + "38" : BDR2}`,
-                                      borderRadius: 8, padding: "5px 12px", fontSize: 11,
-                                      color: sel ? "#F87171" : TEXT2, cursor: "pointer",
-                                      whiteSpace: "nowrap", fontWeight: 600,
-                                    }}
-                                  >{sel ? "סגור" : "פרטים"}</button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                {/* Tabs */}
+                <div style={{ display: "flex", borderBottom: `1px solid ${BDR}`, overflowX: "auto" }}>
+                  {TABS.map(t => (
+                    <button
+                      key={t.key}
+                      onClick={() => setTab(t.key)}
+                      style={{
+                        padding: "14px 16px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+                        background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                        color: tab === t.key ? t.color : MUTED,
+                        borderBottom: tab === t.key ? `2px solid ${t.color}` : "2px solid transparent",
+                        transition: "none",
+                        display: "flex", alignItems: "center", gap: 6,
+                      }}
+                    >
+                      {t.label}
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                        background: tab === t.key ? `${t.color}20` : "rgba(255,255,255,0.06)",
+                        color: tab === t.key ? t.color : MUTED,
+                      }}>{tabCounts[t.key]}</span>
+                    </button>
+                  ))}
                 </div>
+
+                {/* Toolbar */}
+                <div style={{
+                  padding: "14px 20px", borderBottom: `1px solid ${BDR}`,
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                }}>
+                  <div style={{ position: "relative", flex: "1 1 160px", minWidth: 140 }}>
+                    <input
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="חיפוש שם, אמן, מיקום…"
+                      style={{
+                        ...selectStyle,
+                        paddingRight: 30, width: "100%", boxSizing: "border-box",
+                        background: BG2, border: `1px solid ${BDR2}`, color: TEXT,
+                      }}
+                    />
+                    <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 12, pointerEvents: "none" }}>🔍</span>
+                  </div>
+                  <select value={filterSt}  onChange={e => setFilterSt(e.target.value as ShowStatus | "")}    style={selectStyle}>
+                    <option value="">כל הסטטוסים</option>
+                    {SHOW_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <select value={filterPay} onChange={e => setFilterPay(e.target.value as PaymentStatus | "")} style={selectStyle}>
+                    <option value="">כל התשלומים</option>
+                    {PAYMENT_STATUSES.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <select value={sort} onChange={e => setSort(e.target.value as SortKey)} style={selectStyle}>
+                    <option value="date">תאריך קרוב</option>
+                    <option value="price">מחיר גבוה</option>
+                    <option value="remaining">יתרה לגבייה</option>
+                    <option value="label">רווח לייבל</option>
+                  </select>
+                  <div style={{ marginRight: "auto", fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>
+                    {filtered.length} הופעות
+                  </div>
+                </div>
+
+                {/* Table */}
+                {filtered.length === 0 ? (
+                  <div style={{ padding: "56px 0", textAlign: "center", color: MUTED }}>
+                    <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.2 }}>🎤</div>
+                    <div style={{ fontSize: 13 }}>אין הופעות להצגה</div>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.016)" }}>
+                          {["הופעה","תאריך","מיקום","סטטוס","תשלום","מחיר","מקדמה","יתרה","לייבל",""].map(h => (
+                            <th key={h} style={{
+                              padding: "12px 16px", textAlign: "right",
+                              fontSize: 10, fontWeight: 700, color: MUTED,
+                              textTransform: "uppercase", letterSpacing: "0.08em",
+                              whiteSpace: "nowrap",
+                            }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((s, i) => {
+                          const sel = selected?.id === s.id;
+                          return (
+                            <tr
+                              key={s.id}
+                              onClick={() => setSelected(prev => prev?.id === s.id ? null : s)}
+                              style={{
+                                borderBottom: `1px solid ${BDR}`,
+                                background: sel
+                                  ? "rgba(220,38,38,0.06)"
+                                  : i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.014)",
+                                cursor: "pointer",
+                                outline: sel ? `1px solid rgba(220,38,38,0.24)` : "none",
+                                outlineOffset: -1,
+                              }}
+                            >
+                              <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                                <div style={{ fontWeight: 700, color: TEXT }}>{s.name}</div>
+                                {s.artist && <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{s.artist}</div>}
+                              </td>
+                              <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                                {s.date ? (
+                                  <>
+                                    <div style={{ fontWeight: 600, color: TEXT }}>{fmtDate(s.date)}</div>
+                                    <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fmtDay(s.date)}{s.start_time ? ` · ${s.start_time}` : ""}</div>
+                                  </>
+                                ) : <span style={{ color: MUTED }}>—</span>}
+                              </td>
+                              <td style={{ padding: "14px 16px", color: TEXT2, whiteSpace: "nowrap", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {s.location || <span style={{ color: MUTED }}>—</span>}
+                              </td>
+                              <td style={{ padding: "14px 16px" }}>
+                                <Badge bg={STATUS_COLOR[s.status].bg} text={STATUS_COLOR[s.status].text}>{s.status}</Badge>
+                              </td>
+                              <td style={{ padding: "14px 16px" }}>
+                                <Badge bg={PAY_COLOR[s.payment_status].bg} text={PAY_COLOR[s.payment_status].text}>{s.payment_status}</Badge>
+                              </td>
+                              <td style={{ padding: "14px 16px", color: TEXT, fontWeight: 700, whiteSpace: "nowrap" }}>{fmtIls(s.show_price)}</td>
+                              <td style={{ padding: "14px 16px", color: TEXT2, whiteSpace: "nowrap" }}>{fmtIls(s.advance_payment)}</td>
+                              <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                                <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
+                              </td>
+                              <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                                <span style={{ color: GREEN, fontWeight: 700 }}>{fmtIls(calcLabelShare(s))}</span>
+                              </td>
+                              <td style={{ padding: "14px 16px" }}>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setSelected(prev => prev?.id === s.id ? null : s); }}
+                                  style={{
+                                    background: sel ? `${BRAND}15` : CARD2,
+                                    border: `1px solid ${sel ? BRAND + "38" : BDR2}`,
+                                    borderRadius: 8, padding: "5px 12px", fontSize: 11,
+                                    color: sel ? "#F87171" : TEXT2, cursor: "pointer",
+                                    whiteSpace: "nowrap", fontWeight: 600,
+                                  }}
+                                >{sel ? "סגור" : "פרטים"}</button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
-            </div>{/* end two-column */}
+            </div>{/* end CSS Grid */}
           </>
         )}
       </div>
