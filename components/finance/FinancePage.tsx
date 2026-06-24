@@ -880,7 +880,7 @@ export default function FinancePage() {
   };
 
   return (
-    <div dir="rtl" style={{ padding: "24px 32px" }}>
+    <div dir="rtl" style={{ padding: "24px 32px", maxWidth: 1720, marginInline: "auto" }}>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
@@ -1182,7 +1182,7 @@ export default function FinancePage() {
                       onClick={() => toggleExpand(tx.id)}
                       style={{
                         display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
-                        gap: 8, padding: "12px 16px", alignItems: "center",
+                        gap: 8, padding: "14px 16px", alignItems: "center",
                         borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.04)`,
                         background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2,
                         cursor: "pointer",
@@ -1190,7 +1190,7 @@ export default function FinancePage() {
                       onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
                       onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2; }}
                     >
-                      <div style={{ fontSize: 11, color: undated ? AMBER : TEXT2 }}>
+                      <div style={{ fontSize: 12, color: undated ? AMBER : TEXT2 }}>
                         {undated ? "ללא תאריך" : fmtDate(tx.date)}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1219,10 +1219,10 @@ export default function FinancePage() {
                           ? <span style={{ color: PURPLE }}>🏢 כללי</span>
                           : (proj?.name ?? "—")}
                       </div>
-                      <div style={{ fontSize: 11, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {tx.artist || proj?.artist || "—"}
                       </div>
-                      <div style={{ fontSize: 11, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {tx.description || tx.category || "—"}
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER }}>
