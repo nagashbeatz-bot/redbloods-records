@@ -103,20 +103,21 @@ function VendorCard({
       background: CARD,
       border: `1px solid ${BDR2}`,
       borderRadius: 20,
-      padding: "28px 28px 22px",
+      padding: "32px 32px 26px",
       display: "flex",
       flexDirection: "column",
-      gap: 20,
+      gap: 22,
     }}>
       {/* Top: avatar + name/role + status */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
         {/* Avatar */}
         <div style={{
-          width: 68, height: 68, borderRadius: "50%", flexShrink: 0,
+          width: 78, height: 78, borderRadius: "50%", flexShrink: 0,
           background: `linear-gradient(135deg, ${vendor.color}22, ${vendor.color}55)`,
-          border: `2px solid ${vendor.color}44`,
+          border: `2px solid ${vendor.color}55`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 26, fontWeight: 900, color: vendor.color,
+          fontSize: 30, fontWeight: 900, color: vendor.color,
+          boxShadow: `0 0 20px ${vendor.color}18`,
         }}>
           {vendor.initial}
         </div>
@@ -124,7 +125,7 @@ function VendorCard({
         {/* Info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 20, fontWeight: 800, color: TEXT }}>{vendor.name}</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: TEXT }}>{vendor.name}</span>
             <span style={{
               fontSize: 11, fontWeight: 700,
               padding: "3px 10px", borderRadius: 8,
@@ -174,18 +175,19 @@ function VendorCard({
       ) : (
         <button
           disabled
-          title="בקרוב"
+          title="הפרופיל יהיה זמין בקרוב"
           style={{
             width: "100%", padding: "12px 0", borderRadius: 12,
-            background: "rgba(255,255,255,0.03)",
-            border: `1px solid ${BDR}`,
-            color: MUTED,
+            background: "rgba(255,255,255,0.05)",
+            border: `1px solid rgba(255,255,255,0.12)`,
+            color: "#8A8AA0",
             fontSize: 14, fontWeight: 700,
             cursor: "not-allowed",
             fontFamily: "inherit",
+            letterSpacing: "0.01em",
           }}
         >
-          פתח פרופיל · בקרוב
+          פרופיל בקרוב
         </button>
       )}
     </div>
@@ -262,7 +264,8 @@ export default function TeamPage() {
               fontFamily: "inherit",
               boxShadow: "0 2px 16px rgba(220,38,38,0.35)",
               whiteSpace: "nowrap",
-              alignSelf: "center",
+              alignSelf: "flex-start",
+              marginTop: 2,
             }}
           >
             + הוסף ספק חדש
@@ -279,7 +282,7 @@ export default function TeamPage() {
 
         {/* Search + filter bar */}
         <div style={{
-          display: "flex", gap: 10, marginBottom: 28,
+          display: "flex", gap: 10, marginBottom: 16,
           alignItems: "center", flexWrap: "wrap",
         }}>
           <input
