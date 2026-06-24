@@ -20,6 +20,7 @@ export interface Task {
   status:            TaskStatus;
   related_type:      TaskRelatedType;
   related_id:        string | null;
+  show_id:           string | null;
   due_date:          string | null;   // "YYYY-MM-DD"
   start_time:        string | null;   // "HH:MM:SS"
   end_time:          string | null;   // "HH:MM:SS"
@@ -34,6 +35,7 @@ export interface CreateTaskInput {
   status?:      TaskStatus;
   related_type: TaskRelatedType;
   related_id?:  string | null;
+  show_id?:     string | null;
   due_date?:    string | null;
   start_time?:  string | null;
   end_time?:    string | null;
@@ -72,6 +74,7 @@ export async function listTasks(opts: {
   status?:       TaskStatus | TaskStatus[];
   related_type?: TaskRelatedType;
   related_id?:   string;
+  show_id?:      string;
   due_date?:     string;          // exact date "YYYY-MM-DD"
   due_before?:   string;          // inclusive "YYYY-MM-DD"
   due_today?:    boolean;
@@ -89,6 +92,7 @@ export async function listTasks(opts: {
   }
   if (opts.related_type) q = q.eq("related_type", opts.related_type);
   if (opts.related_id)   q = q.eq("related_id",   opts.related_id);
+  if (opts.show_id)      q = q.eq("show_id",       opts.show_id);
   if (opts.due_date)     q = q.eq("due_date",      opts.due_date);
   if (opts.due_before)   q = q.lte("due_date",     opts.due_before);
   if (opts.due_today) {
@@ -111,6 +115,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       status:       input.status       ?? "פתוח",
       related_type: input.related_type,
       related_id:   input.related_id   ?? null,
+      show_id:      input.show_id      ?? null,
       due_date:     input.due_date     ?? null,
       start_time:   input.start_time   ?? null,
       end_time:     input.end_time     ?? null,

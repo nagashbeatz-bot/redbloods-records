@@ -8,6 +8,7 @@
  *   related_id    — uuid
  *   due_date      — YYYY-MM-DD  (exact)
  *   due_before    — YYYY-MM-DD  (inclusive)
+ *   show_id       — uuid
  *   due_today     — "1"
  *   limit         — number
  */
@@ -48,6 +49,7 @@ export async function GET(req: NextRequest) {
       status:       statuses,
       related_type: related_type ?? undefined,
       related_id:   p.get("related_id")  ?? undefined,
+      show_id:      p.get("show_id")     ?? undefined,
       due_date:     p.get("due_date")    ?? undefined,
       due_before:   p.get("due_before")  ?? undefined,
       due_today:    p.get("due_today")   === "1",
@@ -64,7 +66,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, notes, status, related_type, related_id, due_date, start_time, end_time } = body;
+    const { title, notes, status, related_type, related_id, show_id, due_date, start_time, end_time } = body;
 
     // Required
     if (!title || typeof title !== "string" || !title.trim()) {
@@ -91,10 +93,11 @@ export async function POST(req: NextRequest) {
 
     const task = await createTask({
       title:        title.trim(),
-      notes:        notes   ?? null,
+      notes:        notes     ?? null,
       status:       resolvedStatus,
       related_type: resolvedType,
       related_id:   related_id ?? null,
+      show_id:      (typeof show_id === "string" && show_id.trim()) ? show_id.trim() : null,
       due_date:     due_date   ?? null,
       start_time:   start_time ?? null,
       end_time:     end_time   ?? null,

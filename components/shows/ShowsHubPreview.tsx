@@ -522,6 +522,7 @@ function ShowFormModal({
                 notes:        noteLines,
                 status:       "פתוח",
                 related_type: "general",
+                show_id:      data.show?.id ?? null,
                 due_date:     tomorrowStr,
               }),
             });
@@ -1333,6 +1334,21 @@ export default function ShowsHubPreview() {
         const calData = await calRes.json().catch(() => ({}));
         if (!calRes.ok) throw new Error(calData.error ?? "שגיאה בהסרה מהיומן");
       }
+
+      // Delete linked tasks (only those with show_id matching this show)
+      try {
+        const linkedTasksRes = await fetch(`/api/tasks?show_id=${show.id}`);
+        if (linkedTasksRes.ok) {
+          const linkedTasksData = await linkedTasksRes.json();
+          const linkedTasks: { id: string }[] = linkedTasksData.tasks ?? [];
+          await Promise.allSettled(
+            linkedTasks.map(t => fetch(`/api/tasks/${t.id}`, { method: "DELETE" }))
+          );
+        }
+      } catch {
+        // Task cleanup failed — non-fatal, continue with show deletion
+      }
+
       const res = await fetch(`/api/shows/${show.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
