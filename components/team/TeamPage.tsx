@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import VictorCard from "./VictorCard";
+import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 
 const BRAND  = "#DC2626";
@@ -195,9 +195,9 @@ function VendorCard({
 }
 
 export default function TeamPage() {
+  const router = useRouter();
   const [search, setSearch]   = useState("");
   const [typeFilter, setTypeFilter] = useState("הכל");
-  const [showVictorDetail, setShowVictorDetail] = useState(false);
 
   const { projects } = useProjects();
 
@@ -336,48 +336,15 @@ export default function TeamPage() {
                 key={vendor.id}
                 vendor={vendor}
                 onOpenProfile={() => {
-                  if (vendor.id === "victor") setShowVictorDetail(true);
+                  if (vendor.id === "victor") router.push("/team/victor");
                 }}
               />
             ))}
           </div>
         )}
 
-        {/* Victor detail section */}
-        {showVictorDetail && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{
-              display: "flex", alignItems: "center",
-              justifyContent: "space-between", marginBottom: 20,
-              padding: "14px 20px",
-              background: CARD2,
-              border: `1px solid ${BDR}`,
-              borderRadius: 14,
-            }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>
-                פרופיל — Victor
-              </span>
-              <button
-                onClick={() => setShowVictorDetail(false)}
-                style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: `1px solid ${BDR}`,
-                  borderRadius: 8,
-                  color: TEXT2,
-                  fontSize: 12, fontWeight: 700,
-                  padding: "6px 14px",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                סגור פרופיל ↑
-              </button>
-            </div>
-            <VictorCard />
-          </div>
-        )}
 
-      </div>{/* /container */}
+</div>{/* /container */}
     </div>
   );
 }
