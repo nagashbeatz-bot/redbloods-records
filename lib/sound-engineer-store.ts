@@ -5,7 +5,7 @@
  * Transaction sync rules:
  *   amountPaid === 0                   → payment_status = "צפוי"
  *   0 < amountPaid < agreedPrice       → payment_status = "חלקי"
- *   amountPaid >= agreedPrice > 0      → payment_status = "התקבל"
+ *   amountPaid >= agreedPrice > 0      → payment_status = "שולם"
  *
  * When agreedPrice > 0:
  *   - First time: creates an expense transaction, saves ID in linked_transaction_id

@@ -516,7 +516,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     .filter(t => t.type === "income" && ["התקבל","שולם"].includes(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
   const totalExp    = transactions
-    .filter(t => t.type === "expense")
+    .filter(t => t.type === "expense" && t.payment_status === "שולם")
     .reduce((s, t) => s + t.amount, 0);
   const balance     = agreedPrice - received;
   const latestFile  = project.files ? getLatestAudioFile(project.files) : null;
