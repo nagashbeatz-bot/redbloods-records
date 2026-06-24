@@ -205,6 +205,8 @@ function VictorProjectDrawer({
   const [notesDirty, setNotesDirty] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function patchWork(fields: Partial<VendorWork>) {
@@ -248,6 +250,34 @@ function VictorProjectDrawer({
       setUploading(false);
       setUploadProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleCreateFolder() {
+    setCreatingFolder(true);
+    setFolderError(null);
+    try {
+      const res = await fetch("/api/dropbox/vendor-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorName: "Victor",
+          artistName: work.artist || "Unknown",
+          projectName: work.projectName || "Unknown",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "שגיאה ביצירת התיקייה");
+      await fetch(`/api/vendor/victor/work/${work.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dropboxFolder: data.folderPath, dropboxShareLink: data.shareLink }),
+      });
+      onRefresh?.();
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : "שגיאה ביצירת התיקייה");
+    } finally {
+      setCreatingFolder(false);
     }
   }
 
@@ -440,21 +470,43 @@ function VictorProjectDrawer({
                   style={{ display: "none" }}
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!work.dropboxFolder || uploading}
-                  title={!work.dropboxFolder ? "אין תיקיה ב-Dropbox" : "העלאת קובץ"}
-                  style={{
-                    fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
-                    background: uploading ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.12)",
-                    border: "1px solid rgba(16,185,129,0.3)",
-                    color: !work.dropboxFolder || uploading ? "#52526A" : "#10B981",
-                    cursor: !work.dropboxFolder || uploading ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {uploading ? `${uploadProgress}%` : "↑ העלאה"}
-                </button>
+                {!work.dropboxFolder ? (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                    <button
+                      onClick={handleCreateFolder}
+                      disabled={creatingFolder}
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
+                        background: creatingFolder ? "rgba(255,255,255,0.05)" : "rgba(0,98,238,0.12)",
+                        border: "1px solid rgba(0,98,238,0.3)",
+                        color: creatingFolder ? "#52526A" : "#4A9EFF",
+                        cursor: creatingFolder ? "not-allowed" : "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {creatingFolder ? "יוצר..." : "צור תיקיית Dropbox"}
+                    </button>
+                    {folderError && (
+                      <span style={{ fontSize: 10, color: "#EF4444" }}>{folderError}</span>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    title="העלאת קובץ"
+                    style={{
+                      fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
+                      background: uploading ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.12)",
+                      border: "1px solid rgba(16,185,129,0.3)",
+                      color: uploading ? "#52526A" : "#10B981",
+                      cursor: uploading ? "not-allowed" : "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {uploading ? `${uploadProgress}%` : "↑ העלאה"}
+                  </button>
+                )}
                 {work.dropboxShareLink && (
                   <a
                     href={work.dropboxShareLink}
