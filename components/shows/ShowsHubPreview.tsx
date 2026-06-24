@@ -345,6 +345,15 @@ function ShowFormModal({
   const [clients, setClients]   = useState<ClientRow[]>([]);
   const [cliLoad, setCliLoad]   = useState(false);
 
+  // New-client inline form state
+  const [showNewClient,   setShowNewClient]   = useState(false);
+  const [ncName,          setNcName]          = useState("");
+  const [ncPhone,         setNcPhone]         = useState("");
+  const [ncEmail,         setNcEmail]         = useState("");
+  const [ncNotes,         setNcNotes]         = useState("");
+  const [ncSaving,        setNcSaving]        = useState(false);
+  const [ncMsg,           setNcMsg]           = useState<string | null>(null);
+
   // Fetch all clients once on mount
   useEffect(() => {
     setCliLoad(true);
@@ -379,6 +388,52 @@ function ShowFormModal({
       phone:            c.phone || prev.phone,
       booker_client_id: c.id,
     }));
+  }
+
+  async function createNewClient() {
+    const trimName = ncName.trim();
+    if (!trimName) { setNcMsg("שם לקוח חובה"); return; }
+
+    // Duplicate check — case-insensitive
+    const existing = clients.find(c => c.name.trim().toLowerCase() === trimName.toLowerCase());
+    if (existing) {
+      selectBooker(existing.id);
+      setShowNewClient(false);
+      setNcName(""); setNcPhone(""); setNcEmail(""); setNcNotes("");
+      setNcMsg("לקוח כבר קיים ונבחר בטופס");
+      setTimeout(() => setNcMsg(null), 3000);
+      return;
+    }
+
+    setNcSaving(true);
+    setNcMsg(null);
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name:   trimName,
+          phone:  ncPhone.trim(),
+          email:  ncEmail.trim(),
+          notes:  ncNotes.trim(),
+          type:   "לקוח",
+          status: "חדש",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "שגיאה");
+      const newC: ClientRow = data.client;
+      setClients(prev => [...prev, newC]);
+      selectBooker(newC.id);
+      setShowNewClient(false);
+      setNcName(""); setNcPhone(""); setNcEmail(""); setNcNotes("");
+      setNcMsg("הלקוח נוצר ונבחר");
+      setTimeout(() => setNcMsg(null), 3000);
+    } catch (e: unknown) {
+      setNcMsg(e instanceof Error ? e.message : "לא הצלחנו ליצור לקוח");
+    } finally {
+      setNcSaving(false);
+    }
   }
 
   function selectDj(id: string) {
@@ -580,8 +635,6 @@ function ShowFormModal({
               <label style={labelStyle}>לקוח</label>
               {cliLoad ? (
                 <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
-              ) : bookerClients.length === 0 ? (
-                <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין לקוחות מסוג לקוח</div>
               ) : (
                 <select
                   value={form.booker_client_id ?? ""}
@@ -593,6 +646,94 @@ function ShowFormModal({
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
+              )}
+
+              {/* + לקוח חדש button */}
+              {!showNewClient && (
+                <button
+                  type="button"
+                  onClick={() => { setShowNewClient(true); setNcMsg(null); }}
+                  style={{
+                    marginTop: 6, display: "flex", alignItems: "center", gap: 5,
+                    background: "none", border: "none", cursor: "pointer",
+                    color: BLUE, fontSize: 12, fontWeight: 700, fontFamily: "inherit",
+                    padding: 0, transition: "none",
+                  }}
+                >
+                  ＋ לקוח חדש
+                </button>
+              )}
+
+              {/* Inline new-client form */}
+              {showNewClient && (
+                <div style={{
+                  marginTop: 8, padding: "12px 14px", borderRadius: 10,
+                  background: "rgba(59,130,246,0.06)",
+                  border: `1px solid rgba(59,130,246,0.2)`,
+                  display: "flex", flexDirection: "column", gap: 8,
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 2 }}>לקוח חדש</div>
+                  <input
+                    value={ncName}
+                    onChange={e => setNcName(e.target.value)}
+                    placeholder="שם לקוח *"
+                    style={{ ...inputStyle, fontSize: 12 }}
+                  />
+                  <input
+                    value={ncPhone}
+                    onChange={e => setNcPhone(e.target.value)}
+                    placeholder="טלפון"
+                    style={{ ...inputStyle, fontSize: 12 }}
+                  />
+                  <input
+                    value={ncEmail}
+                    onChange={e => setNcEmail(e.target.value)}
+                    placeholder="אימייל"
+                    style={{ ...inputStyle, fontSize: 12 }}
+                  />
+                  <input
+                    value={ncNotes}
+                    onChange={e => setNcNotes(e.target.value)}
+                    placeholder="הערות"
+                    style={{ ...inputStyle, fontSize: 12 }}
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+                    <button
+                      type="button"
+                      onClick={createNewClient}
+                      disabled={ncSaving}
+                      style={{
+                        flex: 1, padding: "7px 0", borderRadius: 8, border: "none",
+                        background: ncSaving ? MUTED : BLUE, color: "#fff",
+                        fontSize: 12, fontWeight: 800, cursor: ncSaving ? "default" : "pointer",
+                        fontFamily: "inherit", transition: "none",
+                      }}
+                    >
+                      {ncSaving ? "שומר…" : "צור לקוח"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewClient(false); setNcMsg(null); setNcName(""); setNcPhone(""); setNcEmail(""); setNcNotes(""); }}
+                      style={{
+                        padding: "7px 14px", borderRadius: 8, border: `1px solid ${BDR2}`,
+                        background: "none", color: TEXT2, fontSize: 12, fontWeight: 700,
+                        cursor: "pointer", fontFamily: "inherit", transition: "none",
+                      }}
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Status message */}
+              {ncMsg && (
+                <div style={{
+                  marginTop: 6, fontSize: 11, fontWeight: 700,
+                  color: ncMsg.includes("שגיאה") || ncMsg.includes("לא הצלחנו") || ncMsg.includes("חובה") ? "#EF4444" : GREEN,
+                }}>
+                  {ncMsg}
+                </div>
               )}
             </div>
             <div>
