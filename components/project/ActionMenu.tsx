@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ACTIONS, type ActionDef } from "@/lib/action-types";
 import ScheduleModal from "./ScheduleModal";
 import QuickTxModal from "@/components/finance/QuickTxModal";
+import { useProjects } from "@/components/ProjectsProvider";
 
 interface Props {
   projectId:   string;
@@ -14,14 +15,19 @@ interface Props {
 }
 
 export default function ActionMenu({ projectId, projectName, artist, onSessionCreated }: Props) {
-  const [open,        setOpen]        = useState(false);
-  const [active,      setActive]      = useState<ActionDef | null>(null);
-  const [financeType, setFinanceType] = useState<"income" | "expense" | null>(null);
-  const [pos,         setPos]         = useState({ top: 0, left: 0, openUp: false });
+  const [open,          setOpen]          = useState(false);
+  const [active,        setActive]        = useState<ActionDef | null>(null);
+  const [financeType,   setFinanceType]   = useState<"income" | "expense" | null>(null);
+  const [pos,           setPos]           = useState({ top: 0, left: 0, openUp: false });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+  const [deleteError,   setDeleteError]   = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
-  // Finance section adds separator + label + 2 items ≈ 130px extra
-  const MENU_H_ESTIMATE = ACTIONS.length * 41 + 48 + 130;
+  const { deleteProject } = useProjects();
+
+  // Finance section + delete section adds ≈ 130 + 50 extra
+  const MENU_H_ESTIMATE = ACTIONS.length * 41 + 48 + 130 + 50;
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -167,6 +173,21 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
               💸 הוסף הוצאה
             </button>
           </div>
+
+          {/* ── Separator ── */}
+          <div style={{ height: 1, background: "#212121", margin: "4px 0" }} />
+
+          {/* ── מחיקה ── */}
+          <div style={{ padding: "0 0 4px" }}>
+            <button
+              onClick={() => { setOpen(false); setDeleteError(null); setConfirmDelete(true); }}
+              style={{ ...menuItemStyle, color: "#F87171" }}
+              onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(220,38,38,0.12)", color: "#FCA5A5" })}
+              onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#F87171" })}
+            >
+              🗑 מחק פרויקט
+            </button>
+          </div>
         </div>,
         document.body
       )}
@@ -192,6 +213,86 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
           initialType={financeType}
           onClose={() => setFinanceType(null)}
         />
+      )}
+
+      {/* Delete confirm modal */}
+      {confirmDelete && typeof document !== "undefined" && createPortal(
+        <div
+          onClick={() => { if (!deleting) { setConfirmDelete(false); setDeleteError(null); } }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 999999,
+            background: "rgba(0,0,0,0.6)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#161616", border: "1px solid #2A2A2A",
+              borderRadius: 16, padding: "24px 28px 22px",
+              width: 340, direction: "rtl",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 28, marginBottom: 10 }}>🗑</div>
+            <p style={{ color: "#E8E8E8", fontWeight: 700, fontSize: 15, margin: "0 0 8px" }}>
+              מחיקת פרויקט
+            </p>
+            <p style={{ color: "#999", fontSize: 13, margin: "0 0 6px", lineHeight: 1.5 }}>
+              למחוק את <strong style={{ color: "#CCC" }}>{projectName}</strong>?
+            </p>
+            <p style={{ color: "#666", fontSize: 12, margin: "0 0 6px", lineHeight: 1.55 }}>
+              פעולה זו תמחק את הפרויקט מהמערכת ואינה ניתנת לביטול.
+            </p>
+            <p style={{ color: "#555", fontSize: 11, margin: "0 0 22px", lineHeight: 1.5 }}>
+              קבצי Dropbox של הפרויקט לא יימחקו בשלב זה.
+            </p>
+            {deleteError && (
+              <p style={{ color: "#F87171", fontSize: 12, margin: "0 0 14px" }}>{deleteError}</p>
+            )}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => { setConfirmDelete(false); setDeleteError(null); }}
+                disabled={deleting}
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10,
+                  border: "1px solid #2A2A2A", background: "transparent",
+                  color: "#777", cursor: deleting ? "default" : "pointer",
+                  fontSize: 13, fontFamily: "inherit",
+                }}
+              >
+                ביטול
+              </button>
+              <button
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError(null);
+                  try {
+                    await deleteProject(projectId);
+                    setConfirmDelete(false);
+                  } catch {
+                    setDeleteError("שגיאה במחיקה — נסה שוב");
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting}
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10,
+                  border: "1px solid rgba(239,68,68,0.4)",
+                  background: deleting ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.12)",
+                  color: deleting ? "#888" : "#EF4444",
+                  cursor: deleting ? "default" : "pointer",
+                  fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+                }}
+              >
+                {deleting ? "מוחק..." : "מחק פרויקט"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </>
   );
