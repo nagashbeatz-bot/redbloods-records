@@ -212,7 +212,7 @@ function ShowCard({ show, accent, grad, onClick, selected, index }: {
               <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{parseInt(show.date.split("-")[2], 10)}</div>
               <div style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.85)", letterSpacing: "0.04em" }}>{MONTHS[parseInt(show.date.split("-")[1], 10)]}</div>
             </>
-          ) : <div style={{ fontSize: 10, color: "#fff" }}>—</div>}
+          ) : <div style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", fontWeight: 700, whiteSpace: "nowrap" }}>ללא תאריך</div>}
         </div>
         {show.date && (
           <div style={{ position: "absolute", bottom: 8, right: 12, fontSize: 10, color: `${accent}CC`, fontWeight: 700 }}>
@@ -978,7 +978,7 @@ export default function ShowsHubPreview() {
 
   const upcoming = useMemo(() =>
     [...shows]
-      .filter(s => isUpcoming(s.date) && s.status !== "בוטל")
+      .filter(s => (s.date === null || isUpcoming(s.date)) && s.status !== "בוטל")
       .sort((a, b) => (a.date ?? "9").localeCompare(b.date ?? "9"))
       .slice(0, 5),
     [shows]
