@@ -32,7 +32,7 @@ export function showCalendarSummary(show: Pick<Show, "name" | "artist">): string
 /** Google Calendar event description for a show. */
 export function showCalendarDescription(show: Pick<Show,
   "name" | "artist" | "booker_name" | "contact_person" | "phone" |
-  "location" | "show_price" | "dj_name" | "status" | "payment_status" | "notes"
+  "location" | "show_price" | "dj_name" | "notes"
 >): string {
   const fmt = (n: number) => `₪${n.toLocaleString("he-IL")}`;
   const lines = [
@@ -45,9 +45,6 @@ export function showCalendarDescription(show: Pick<Show,
     show.dj_name        ? `דיג׳יי: ${show.dj_name}`          : null,
     "",
     `מחיר הופעה: ${fmt(show.show_price || 0)}`,
-    "",
-    `סטטוס הופעה: ${show.status}`,
-    `סטטוס תשלום: ${show.payment_status}`,
     show.notes          ? `הערות: ${show.notes}`              : null,
   ];
   return lines.filter(l => l !== null).join("\n");
