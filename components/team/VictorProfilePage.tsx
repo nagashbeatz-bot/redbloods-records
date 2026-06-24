@@ -152,9 +152,9 @@ export default function VictorProfilePage() {
     <div style={{
       minHeight: "100%", background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
-      padding: "32px 32px 80px",
+      padding: "32px 28px 80px",
     }}>
-      <div style={{ maxWidth: 1520, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1380, margin: "0 auto" }}>
 
         {/* ── Top bar: breadcrumb + month switcher ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
@@ -266,7 +266,7 @@ export default function VictorProfilePage() {
         </div>
 
         {/* ── Main 3-Column Layout ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 310px 310px", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 16, alignItems: "start" }}>
 
           {/* ── Col 1: Projects Table ── */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, overflow: "hidden" }}>
