@@ -4,6 +4,21 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 
+// ── Design Tokens ─────────────────────────────────────────────────────────────
+const BRAND  = "#DC2626";
+const GREEN  = "#10B981";
+const AMBER  = "#F59E0B";
+const RED    = "#EF4444";
+const BLUE   = "#3B82F6";
+const PURPLE = "#A855F7";
+const CARD   = "#111318";
+const CARD2  = "#0D0D12";
+const BDR    = "rgba(255,255,255,0.07)";
+const BDR2   = "rgba(255,255,255,0.11)";
+const TEXT   = "#F2F2F2";
+const TEXT2  = "#A0A0B0";
+const MUTED  = "#52526A";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 type PaymentStatus = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "התקבל" | "לבדיקה";
 type Period        = "prev-month" | "month" | "next-month" | "3months" | "custom";
@@ -69,13 +84,13 @@ const PERIOD_OPTIONS: { key: Period; label: string }[] = [
 ];
 
 const STATUS_COLOR: Record<string, string> = {
-  "שולם":    "#10B981",
-  "התקבל":   "#10B981",
-  "צפוי":    "#3B82F6",
-  "לא שולם": "#EF4444",
-  "חלקי":    "#F59E0B",
+  "שולם":    GREEN,
+  "התקבל":   GREEN,
+  "צפוי":    BLUE,
+  "לא שולם": RED,
+  "חלקי":    AMBER,
   "בוטל":    "#6B7280",
-  "לבדיקה":  "#A855F7",
+  "לבדיקה":  PURPLE,
 };
 
 // ── Period helpers ─────────────────────────────────────────────────────────────
@@ -207,20 +222,26 @@ function calcStats(txList: Transaction[]) {
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
 const INPUT_S: React.CSSProperties = {
-  background: "#1A1A1A", border: "1px solid #2E2E2E", borderRadius: 8,
-  color: "#E8E8E8", fontSize: 13, padding: "8px 12px", outline: "none",
+  background: CARD, border: `1px solid ${BDR2}`, borderRadius: 8,
+  color: TEXT, fontSize: 13, padding: "8px 12px", outline: "none",
   fontFamily: "inherit", width: "100%", boxSizing: "border-box",
 };
 
 const LABEL_S: React.CSSProperties = {
-  fontSize: 10, fontWeight: 700, color: "#555", letterSpacing: "0.06em",
+  fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
   textTransform: "uppercase", marginBottom: 6, display: "block", textAlign: "right",
 };
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 10, fontWeight: 700, color: "#4A4A4A", letterSpacing: "0.08em",
+  fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.08em",
   textTransform: "uppercase", marginBottom: 10, paddingBottom: 6,
-  borderBottom: "1px solid #282828",
+  borderBottom: `1px solid ${BDR}`,
+};
+
+const selectStyle: React.CSSProperties = {
+  background: CARD, border: `1px solid ${BDR}`, borderRadius: 10,
+  color: TEXT2, fontSize: 12, padding: "7px 12px", outline: "none",
+  fontFamily: "inherit", cursor: "pointer",
 };
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
@@ -248,29 +269,86 @@ function SummaryCard({
 }) {
   const showDelta = delta !== undefined && compLabel;
   const deltaColor = !showDelta || delta === 0
-    ? "#555"
-    : (delta > 0) === deltaPositiveIsGood ? "#10B981" : "#EF4444";
+    ? MUTED
+    : (delta > 0) === deltaPositiveIsGood ? GREEN : RED;
   const deltaSign = delta !== undefined && delta > 0 ? "+" : "";
 
   return (
     <div style={{
-      background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14,
-      padding: "16px 18px", flex: "1 1 0", minWidth: 0,
+      background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
+      padding: "16px 18px", flex: "1 1 0", minWidth: 0, position: "relative", overflow: "hidden",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-        {icon && <span style={{ fontSize: 14 }}>{icon}</span>}
-        <div style={{ fontSize: 11, color: "#555" }}>{label}</div>
+      {icon && (
+        <div style={{ position: "absolute", bottom: -6, left: -4, fontSize: 52, opacity: 0.04, userSelect: "none", pointerEvents: "none", lineHeight: 1 }}>
+          {icon}
+        </div>
+      )}
+      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+        {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color, letterSpacing: "-0.5px" }}>{value}</div>
+      <div style={{ fontSize: 26, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
       {showDelta && (
-        <div style={{ fontSize: 10, color: deltaColor, marginTop: 5, display: "flex", alignItems: "center", gap: 3 }}>
+        <div style={{ fontSize: 10, color: deltaColor, marginTop: 6, display: "flex", alignItems: "center", gap: 3 }}>
           <span>{deltaSign}{Math.abs(delta!).toLocaleString()}{deltaCurrency}</span>
-          <span style={{ color: "#444" }}>{compLabel}</span>
+          <span style={{ color: MUTED }}>{compLabel}</span>
         </div>
       )}
       {!showDelta && sub && (
-        <div style={{ fontSize: 10, color: "#444", marginTop: 5 }}>{sub}</div>
+        <div style={{ fontSize: 11, color: TEXT2, marginTop: 6 }}>{sub}</div>
       )}
+    </div>
+  );
+}
+
+// ── Monthly Donut ─────────────────────────────────────────────────────────────
+function MonthlyDonut({ income, expenses }: { income: number; expenses: number }) {
+  const total = income + expenses;
+  const pct   = total > 0 ? income / total : 0.5;
+  const net   = income - expenses;
+
+  const R = 52, CX = 65, stroke = 10;
+  const circumference = 2 * Math.PI * R;
+  const incomeArc = circumference * pct;
+  const expArc    = circumference * (1 - pct);
+
+  return (
+    <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "18px 16px" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: TEXT, marginBottom: 14 }}>סקירה חודשית</div>
+      <svg viewBox="0 0 130 130" width={116} style={{ display: "block", margin: "0 auto", direction: "ltr" }}>
+        <circle cx={CX} cy={CX} r={R} fill="none" stroke={BDR2} strokeWidth={stroke} />
+        <circle cx={CX} cy={CX} r={R} fill="none" stroke={AMBER} strokeWidth={stroke}
+          strokeDasharray={`${expArc} ${circumference}`}
+          strokeDashoffset={0}
+          transform={`rotate(-90 ${CX} ${CX})`}
+          strokeLinecap="round"
+        />
+        <circle cx={CX} cy={CX} r={R} fill="none" stroke={GREEN} strokeWidth={stroke}
+          strokeDasharray={`${incomeArc} ${circumference}`}
+          strokeDashoffset={-expArc}
+          transform={`rotate(-90 ${CX} ${CX})`}
+          strokeLinecap="round"
+        />
+        <text x={CX} y={CX - 4} textAnchor="middle" fill={TEXT} fontSize={13} fontWeight={900}>
+          {net >= 0 ? "+" : ""}{Math.abs(net).toLocaleString()}₪
+        </text>
+        <text x={CX} y={CX + 14} textAnchor="middle" fill={MUTED} fontSize={9}>נטו</text>
+      </svg>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: TEXT2, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: GREEN, display: "inline-block", flexShrink: 0 }} />
+            הכנסות
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: GREEN }}>₪{income.toLocaleString()}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: TEXT2, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: AMBER, display: "inline-block", flexShrink: 0 }} />
+            הוצאות
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: AMBER }}>₪{expenses.toLocaleString()}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -320,7 +398,7 @@ function ProjectSelect({
       id="project-select-portal"
       style={{
         position: "fixed", top: pos.top, left: pos.left, width: Math.max(pos.width, 280),
-        zIndex: 999999, background: "#1A1A1A", border: "1px solid #333",
+        zIndex: 999999, background: CARD, border: `1px solid ${BDR2}`,
         borderRadius: 12, padding: 6, boxShadow: "0 12px 40px rgba(0,0,0,0.8)",
         maxHeight: 280, display: "flex", flexDirection: "column",
       }}
@@ -332,21 +410,21 @@ function ProjectSelect({
       />
       <div style={{ overflowY: "auto", flex: 1 }}>
         {filtered.length === 0
-          ? <div style={{ fontSize: 12, color: "#444", padding: "8px 10px", textAlign: "center" }}>אין תוצאות</div>
+          ? <div style={{ fontSize: 12, color: MUTED, padding: "8px 10px", textAlign: "center" }}>אין תוצאות</div>
           : filtered.map((p) => (
             <button key={p.id}
               onClick={() => { onChange(p.id, p.artist); setOpen(false); }}
               style={{
                 display: "block", width: "100%", textAlign: "right",
                 padding: "8px 10px", borderRadius: 8, border: "none",
-                background: p.id === value ? "rgba(59,130,246,0.12)" : "transparent",
+                background: p.id === value ? `${BRAND}15` : "transparent",
                 cursor: "pointer", fontFamily: "inherit",
               }}
-              onMouseEnter={(e) => { if (p.id !== value) (e.currentTarget as HTMLButtonElement).style.background = "#252525"; }}
+              onMouseEnter={(e) => { if (p.id !== value) (e.currentTarget as HTMLButtonElement).style.background = `rgba(255,255,255,0.04)`; }}
               onMouseLeave={(e) => { if (p.id !== value) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
             >
-              <div style={{ fontSize: 13, color: p.id === value ? "#3B82F6" : "#DDD", fontWeight: p.id === value ? 600 : 400 }}>{p.name}</div>
-              <div style={{ fontSize: 10, color: "#555", marginTop: 1 }}>{p.artist}</div>
+              <div style={{ fontSize: 13, color: p.id === value ? BRAND : TEXT, fontWeight: p.id === value ? 600 : 400 }}>{p.name}</div>
+              <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{p.artist}</div>
             </button>
           ))}
       </div>
@@ -358,9 +436,9 @@ function ProjectSelect({
       <button ref={btnRef} type="button" onClick={handleOpen} style={{
         ...INPUT_S, textAlign: "right", cursor: "pointer",
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        color: selected ? "#E8E8E8" : "#555",
+        color: selected ? TEXT : MUTED,
       }}>
-        <span style={{ fontSize: 12, color: "#555" }}>▾</span>
+        <span style={{ fontSize: 12, color: MUTED }}>▾</span>
         <span>{selected ? selected.name : "בחר פרויקט..."}</span>
       </button>
       {open && typeof document !== "undefined" && createPortal(dropdown, document.body)}
@@ -398,20 +476,20 @@ function TxModal({
   const modal = (
     <div onClick={onCancel} style={{
       position: "fixed", inset: 0, zIndex: 99999,
-      background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+      background: "rgba(0,0,0,0.75)", backdropFilter: "blur(3px)",
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        background: "#141414", border: "1px solid #2A2A2A",
-        borderRadius: 18, padding: "22px 22px 18px",
+        background: CARD2, border: `1px solid rgba(220,38,38,0.25)`,
+        borderRadius: 20, padding: "22px 22px 18px",
         width: 460, maxWidth: "95vw", direction: "rtl",
-        boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.9)",
         maxHeight: "92vh", overflowY: "auto",
       }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <button onClick={onCancel} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>{title}</h2>
+          <button onClick={onCancel} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: TEXT, margin: 0 }}>{title}</h2>
         </div>
 
         {/* Type toggle */}
@@ -422,9 +500,9 @@ function TxModal({
               style={{
                 flex: 1, padding: "9px", borderRadius: 10, border: "none", cursor: "pointer",
                 fontSize: 13, fontFamily: "inherit", fontWeight: 600,
-                background: draft.type === t ? (t === "income" ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.14)") : "#1C1C1C",
-                color: draft.type === t ? (t === "income" ? "#10B981" : "#EF4444") : "#555",
-                outline: draft.type === t ? `1px solid ${t === "income" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.3)"}` : "1px solid #252525",
+                background: draft.type === t ? (t === "income" ? `${GREEN}18` : `${RED}14`) : CARD,
+                color: draft.type === t ? (t === "income" ? GREEN : RED) : MUTED,
+                outline: draft.type === t ? `1px solid ${t === "income" ? `${GREEN}40` : `${RED}30`}` : `1px solid ${BDR}`,
               }}
             >
               {t === "income" ? "💰 הכנסה" : "💸 הוצאה"}
@@ -440,9 +518,9 @@ function TxModal({
               style={{
                 flex: 1, padding: "7px", borderRadius: 8, border: "none", cursor: "pointer",
                 fontSize: 12, fontFamily: "inherit", fontWeight: 600,
-                background: draft.scope === s ? "rgba(59,130,246,0.14)" : "#1A1A1A",
-                color: draft.scope === s ? "#3B82F6" : "#444",
-                outline: draft.scope === s ? "1px solid rgba(59,130,246,0.35)" : "1px solid #252525",
+                background: draft.scope === s ? `${BRAND}14` : CARD,
+                color: draft.scope === s ? BRAND : MUTED,
+                outline: draft.scope === s ? `1px solid ${BRAND}35` : `1px solid ${BDR}`,
               }}
             >
               {s === "project" ? "📁 פרויקט" : "🏢 כללי"}
@@ -470,7 +548,7 @@ function TxModal({
                   {categoryList.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 {isOther && (
-                  <div style={{ fontSize: 10, color: "#F59E0B", marginTop: 4 }}>⚠ נא למלא תיאור מפורט</div>
+                  <div style={{ fontSize: 10, color: AMBER, marginTop: 4 }}>⚠ נא למלא תיאור מפורט</div>
                 )}
               </div>
             </div>
@@ -486,12 +564,12 @@ function TxModal({
                   placeholder={isIncome ? "שם הלקוח / האמן..." : "שם הספק..."} style={INPUT_S} />
               </div>
               <div>
-                <label style={{ ...LABEL_S, ...(isOther ? { color: "#F59E0B" } : {}) }}>
+                <label style={{ ...LABEL_S, ...(isOther ? { color: AMBER } : {}) }}>
                   תיאור{isOther ? " *" : ""}
                 </label>
                 <input type="text" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                   placeholder={isIncome ? "למשל: מקדמה לפרויקט..." : "למשל: חשמל ינואר, מנוי Adobe..."}
-                  style={{ ...INPUT_S, ...(isOther && !draft.description ? { borderColor: "rgba(245,158,11,0.5)" } : {}) }} />
+                  style={{ ...INPUT_S, ...(isOther && !draft.description ? { borderColor: `${AMBER}50` } : {}) }} />
               </div>
             </div>
           </div>
@@ -560,14 +638,14 @@ function TxModal({
           <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
             <button type="button" onClick={onCancel} style={{
               flex: 1, padding: "11px", borderRadius: 10,
-              border: "1px solid #2A2A2A", background: "transparent",
-              color: "#777", cursor: "pointer", fontSize: 13, fontFamily: "inherit",
+              border: `1px solid ${BDR2}`, background: "transparent",
+              color: TEXT2, cursor: "pointer", fontSize: 13, fontFamily: "inherit",
             }}>ביטול</button>
             <button type="button" onClick={onSave} disabled={!canSave}
               style={{
                 flex: 2, padding: "11px", borderRadius: 10, border: "none",
-                background: canSave ? (isIncome ? "#065F46" : isGeneral ? "#4C1D95" : "#7C2D12") : "#1A2A3A",
-                color: canSave ? "#fff" : "#445",
+                background: canSave ? (isIncome ? "#065F46" : isGeneral ? "#4C1D95" : "#7C2D12") : CARD,
+                color: canSave ? "#fff" : MUTED,
                 cursor: canSave ? "pointer" : "not-allowed",
                 fontSize: 13, fontWeight: 700, fontFamily: "inherit",
               }}
@@ -790,9 +868,19 @@ export default function FinancePage() {
     await fetch(`/api/transactions/${id}`, { method: "DELETE" });
   }
 
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const expensesPaid = stats.projExpPaid + stats.genExpPaid;
+
   // ── Render ────────────────────────────────────────────────────────────────
+  const navBtnStyle: React.CSSProperties = {
+    background: CARD, border: `1px solid ${BDR2}`, borderRadius: 10,
+    color: TEXT2, fontSize: 18, width: 36, height: 36,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer", fontFamily: "inherit", outline: "none",
+  };
+
   return (
-    <div dir="rtl" style={{ padding: "28px 32px", maxWidth: 1200, margin: "0 auto" }}>
+    <div dir="rtl" style={{ padding: "24px 28px", maxWidth: 1300, margin: "0 auto" }}>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
@@ -803,25 +891,28 @@ export default function FinancePage() {
       )}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#E8E8E8", margin: 0 }}>
-            כספים
-            {periodTitle && (
-              <span style={{ fontSize: 15, fontWeight: 400, color: "#555", marginRight: 10 }}>— {periodTitle}</span>
-            )}
-          </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+        {/* Right: title */}
+        <h1 style={{ fontSize: 30, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.03em" }}>כספים</h1>
+
+        {/* Center: month navigator */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => setPeriod("prev-month")} style={navBtnStyle}>‹</button>
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, minWidth: 140, textAlign: "center" }}>
+            📅 {periodTitle}
+          </div>
+          <button onClick={() => setPeriod("next-month")} style={navBtnStyle}>›</button>
         </div>
+
+        {/* Left: add button */}
         <button onClick={openAdd} style={{
-          display: "flex", alignItems: "center", gap: 7,
-          padding: "10px 20px", borderRadius: 12,
-          border: "1px solid rgba(59,130,246,0.4)", background: "rgba(59,130,246,0.1)",
-          color: "#3B82F6", fontSize: 14, fontWeight: 700, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "10px 22px", borderRadius: 12,
+          background: BRAND, border: "none", color: "#fff",
+          fontSize: 14, fontWeight: 800, cursor: "pointer",
+          boxShadow: "0 2px 16px rgba(220,38,38,0.45)",
           fontFamily: "inherit",
-        }}>
-          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-          הוסף תנועה
-        </button>
+        }}>+ הוסף תנועה</button>
       </div>
 
       {/* ── Period selector ─────────────────────────────────────────────── */}
@@ -832,11 +923,11 @@ export default function FinancePage() {
             return (
               <button key={key} onClick={() => setPeriod(key)} style={{
                 padding: "7px 16px", borderRadius: 10, border: "none", cursor: "pointer",
-                background: active ? "rgba(59,130,246,0.14)" : "#1C1C1C",
-                color: active ? "#3B82F6" : "#555",
+                background: active ? `${BRAND}15` : CARD,
+                color: active ? BRAND : MUTED,
                 fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: "inherit",
-                outline: active ? "1px solid rgba(59,130,246,0.35)" : "1px solid #252525",
-                transition: "all 0.15s",
+                outline: active ? `1px solid ${BRAND}35` : `1px solid ${BDR}`,
+                transition: "none",
               }}>
                 {label}
               </button>
@@ -847,13 +938,13 @@ export default function FinancePage() {
         {period === "custom" && (
           <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <label style={{ fontSize: 11, color: "#555" }}>מ</label>
+              <label style={{ fontSize: 11, color: MUTED }}>מ</label>
               <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
                 style={{ ...INPUT_S, width: 150, colorScheme: "dark", fontSize: 12 }} />
             </div>
-            <span style={{ color: "#333", fontSize: 14 }}>—</span>
+            <span style={{ color: MUTED, fontSize: 14 }}>—</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <label style={{ fontSize: 11, color: "#555" }}>עד</label>
+              <label style={{ fontSize: 11, color: MUTED }}>עד</label>
               <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
                 style={{ ...INPUT_S, width: 150, colorScheme: "dark", fontSize: 12 }} />
             </div>
@@ -861,366 +952,354 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* ── Summary cards (2×3) ─────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 10 }}>
-        <SummaryCard
-          icon="✅" label="הכנסות שהתקבלו"
-          value={fmtAmount(stats.incomeReceived)} color="#10B981"
+      {/* ── KPI cards (6 in a row) ───────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 20 }}>
+        <SummaryCard icon="💎" label='סה"כ נטו'
+          value={fmtAmount(stats.profitReal)}
+          color={stats.profitReal >= 0 ? GREEN : RED}
+          sub={stats.profitReal >= 0 ? "רווח בפועל" : "גירעון"}
+          delta={compStats ? stats.profitReal - compStats.profitReal : undefined}
+          compLabel={compLabel} deltaPositiveIsGood={true}
+        />
+        <SummaryCard icon="💰" label='סה"כ הכנסות'
+          value={fmtAmount(stats.incomeReceived)}
+          color={GREEN}
           sub={`${periodTx.filter((t) => t.type === "income" && t.payment_status === "התקבל").length} תשלומים`}
           delta={compStats ? stats.incomeReceived - compStats.incomeReceived : undefined}
           compLabel={compLabel} deltaPositiveIsGood={true}
         />
-        <SummaryCard
-          icon="⏳" label="הכנסות צפויות"
+        <SummaryCard icon="💸" label='סה"כ הוצאות'
+          value={fmtAmount(expensesPaid)}
+          color={expensesPaid > 0 ? AMBER : MUTED}
+          sub={`${periodTx.filter((t) => t.type === "expense" && t.payment_status === "שולם").length} הוצאות`}
+          delta={compStats ? expensesPaid - (compStats.projExpPaid + compStats.genExpPaid) : undefined}
+          compLabel={compLabel} deltaPositiveIsGood={false}
+        />
+        <SummaryCard icon="✅" label="הכנסות מוכרות"
+          value={fmtAmount(stats.incomeReceived)}
+          color={GREEN}
+          sub={stats.incomeReceived > 0 && (stats.incomeReceived + stats.incomeExpected) > 0
+            ? `${Math.round(stats.incomeReceived / (stats.incomeReceived + stats.incomeExpected) * 100)}% מהסה"כ`
+            : "—"}
+        />
+        <SummaryCard icon="⏳" label="הכנסות עתידיות"
           value={fmtAmount(stats.incomeExpected)}
-          color={stats.incomeExpected > 0 ? "#3B82F6" : "#555"}
+          color={stats.incomeExpected > 0 ? BLUE : MUTED}
           sub={`${periodTx.filter((t) => t.type === "income" && ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחות`}
           delta={compStats ? stats.incomeExpected - compStats.incomeExpected : undefined}
           compLabel={compLabel} deltaPositiveIsGood={true}
         />
-        <SummaryCard
-          icon="📊" label="רווח בפועל"
-          value={fmtAmount(stats.profitReal)}
-          color={stats.profitReal >= 0 ? "#10B981" : "#EF4444"}
-          sub="הכנסות שהתקבלו פחות הוצאות ששולמו"
-          delta={compStats ? stats.profitReal - compStats.profitReal : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={true}
-        />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 28 }}>
-        <SummaryCard
-          icon="🎵" label="הוצאות פרויקטים"
-          value={fmtAmount(stats.projExpPaid)}
-          color={stats.projExpPaid > 0 ? "#F59E0B" : "#555"}
-          sub={`${periodTx.filter((t) => t.type === "expense" && (t.scope ?? "project") === "project" && t.payment_status === "שולם").length} הוצאות`}
-          delta={compStats ? stats.projExpPaid - compStats.projExpPaid : undefined}
+        <SummaryCard icon="🔮" label="הוצאות עתידיות"
+          value={fmtAmount(stats.expensesExpected)}
+          color={stats.expensesExpected > 0 ? PURPLE : MUTED}
+          sub={`${periodTx.filter((t) => t.type === "expense" && ["צפוי","לא שולם","חלקי"].includes(t.payment_status)).length} פתוחות`}
+          delta={compStats ? stats.expensesExpected - compStats.expensesExpected : undefined}
           compLabel={compLabel} deltaPositiveIsGood={false}
         />
-        <SummaryCard
-          icon="🏢" label="הוצאות כלליות"
-          value={fmtAmount(stats.genExpPaid)}
-          color={stats.genExpPaid > 0 ? "#A855F7" : "#555"}
-          sub={`${periodTx.filter((t) => t.type === "expense" && t.scope === "general" && t.payment_status === "שולם").length} הוצאות`}
-          delta={compStats ? stats.genExpPaid - compStats.genExpPaid : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={false}
-        />
-        <SummaryCard
-          icon="🔮" label="רווח משוער"
-          value={fmtAmount(stats.profitEst)}
-          color={stats.profitEst >= 0 ? "#10B981" : "#EF4444"}
-          sub="כולל הכנסות והוצאות צפויות"
-          delta={compStats ? stats.profitEst - compStats.profitEst : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={true}
-        />
       </div>
 
-      {/* ── Needs attention ─────────────────────────────────────────────── */}
-      {hasAttention && (
-        <div style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#444", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>
-            דורש תשומת לב
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {noDateTx.length > 0 && (
-              <button onClick={() => setShowUndated((v) => !v)} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "7px 14px", borderRadius: 10,
-                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.22)",
-                cursor: "pointer", fontFamily: "inherit",
-              }}>
-                <span style={{ color: "#F59E0B", fontSize: 13 }}>⚠</span>
-                <span style={{ fontSize: 12, color: "#CCC" }}>
-                  <strong style={{ color: "#F59E0B" }}>{noDateTx.length}</strong> תנועות ללא תאריך
-                </span>
-                <span style={{ fontSize: 10, color: showUndated ? "#F59E0B" : "#555", marginRight: 4 }}>
-                  {showUndated ? "הסתר ▲" : "הצג ▼"}
-                </span>
-              </button>
-            )}
-            {attentionUnpaidIncome.length > 0 && (
-              <button onClick={() => { setTypeFilter("income"); setStatusFilter("לא שולם"); }} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "7px 14px", borderRadius: 10,
-                background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.22)",
-                cursor: "pointer", fontFamily: "inherit",
-              }}>
-                <span style={{ color: "#EF4444", fontSize: 13 }}>⚡</span>
-                <span style={{ fontSize: 12, color: "#CCC" }}>
-                  <strong style={{ color: "#EF4444" }}>{attentionUnpaidIncome.length}</strong> הכנסות לא שולמו
-                </span>
-                <span style={{ fontSize: 10, color: "#555", marginRight: 4 }}>סנן ←</span>
-              </button>
-            )}
-            {attentionOpenExpenses.length > 0 && (
-              <button onClick={() => { setTypeFilter("expense"); setStatusFilter(""); }} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "7px 14px", borderRadius: 10,
-                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.22)",
-                cursor: "pointer", fontFamily: "inherit",
-              }}>
-                <span style={{ color: "#F59E0B", fontSize: 13 }}>📋</span>
-                <span style={{ fontSize: 12, color: "#CCC" }}>
-                  <strong style={{ color: "#F59E0B" }}>{attentionOpenExpenses.length}</strong> הוצאות פתוחות
-                </span>
-                <span style={{ fontSize: 10, color: "#555", marginRight: 4 }}>סנן ←</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ── Two-column layout ────────────────────────────────────────────── */}
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
 
-      {/* ── Table filters ────────────────────────────────────────────────── */}
-      <div style={{
-        display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14,
-        alignItems: "center", padding: "12px 16px",
-        background: "#1A1A1A", border: "1px solid #252525", borderRadius: 12,
-      }}>
-        {/* Type filter */}
-        {(["all", "income", "expense"] as const).map((f) => (
-          <button key={f} onClick={() => setTypeFilter(f)} style={{
-            padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-            background: typeFilter === f ? (f === "income" ? "rgba(16,185,129,0.15)" : f === "expense" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)") : "transparent",
-            color: typeFilter === f ? (f === "income" ? "#10B981" : f === "expense" ? "#EF4444" : "#3B82F6") : "#555",
-            fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-            outline: typeFilter === f ? `1px solid ${f === "income" ? "rgba(16,185,129,0.35)" : f === "expense" ? "rgba(239,68,68,0.3)" : "rgba(59,130,246,0.35)"}` : "none",
-          }}>
-            {f === "all" ? "הכל" : f === "income" ? "הכנסות" : "הוצאות"}
-          </button>
-        ))}
+        {/* Left: monthly summary */}
+        <div style={{ flexShrink: 0, width: 266 }}>
+          <MonthlyDonut income={stats.incomeReceived} expenses={expensesPaid} />
 
-        <div style={{ width: 1, height: 20, background: "#2A2A2A", margin: "0 2px" }} />
-
-        {/* Source filter */}
-        {(["all", "project", "general"] as SourceFilter[]).map((f) => (
-          <button key={f} onClick={() => setSourceFilter(f)} style={{
-            padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-            background: sourceFilter === f ? (f === "general" ? "rgba(168,85,247,0.12)" : "rgba(59,130,246,0.10)") : "transparent",
-            color: sourceFilter === f ? (f === "general" ? "#A855F7" : "#3B82F6") : "#555",
-            fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-            outline: sourceFilter === f ? `1px solid ${f === "general" ? "rgba(168,85,247,0.3)" : "rgba(59,130,246,0.3)"}` : "none",
-          }}>
-            {f === "all" ? "כל המקורות" : f === "project" ? "📁 פרויקטים" : "🏢 כללי"}
-          </button>
-        ))}
-
-        <div style={{ width: 1, height: 20, background: "#2A2A2A", margin: "0 2px" }} />
-
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
-          background: "transparent", border: `1px solid ${statusFilter ? "#3B82F6" : "#2A2A2A"}`,
-          borderRadius: 8, color: statusFilter ? "#3B82F6" : "#555",
-          fontSize: 12, padding: "5px 10px", outline: "none", fontFamily: "inherit",
-        }}>
-          <option value="">כל הסטטוסים</option>
-          {allStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-
-        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={{
-          background: "transparent", border: `1px solid ${projectFilter ? "#3B82F6" : "#2A2A2A"}`,
-          borderRadius: 8, color: projectFilter ? "#3B82F6" : "#555",
-          fontSize: 12, padding: "5px 10px", outline: "none", fontFamily: "inherit",
-        }}>
-          <option value="">כל הפרויקטים</option>
-          {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-
-        <div style={{ width: 1, height: 20, background: "#2A2A2A", margin: "0 2px" }} />
-
-        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={{
-          background: "transparent", border: `1px solid ${sortMode !== "date-desc" ? "#A855F7" : "#2A2A2A"}`,
-          borderRadius: 8, color: sortMode !== "date-desc" ? "#A855F7" : "#555",
-          fontSize: 12, padding: "5px 10px", outline: "none", fontFamily: "inherit",
-        }}>
-          <option value="date-desc">מהחדש לישן</option>
-          <option value="date-asc">מהישן לחדש</option>
-          <option value="amount-desc">לפי סכום</option>
-          <option value="project">לפי פרויקט</option>
-          <option value="status">לפי סטטוס</option>
-          <option value="type">לפי סוג</option>
-        </select>
-
-        <button onClick={() => setGroupByMonth((v) => !v)} style={{
-          padding: "5px 10px", borderRadius: 8, border: "none", cursor: "pointer",
-          background: groupByMonth ? "rgba(168,85,247,0.12)" : "transparent",
-          color: groupByMonth ? "#A855F7" : "#555",
-          fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-          outline: groupByMonth ? "1px solid rgba(168,85,247,0.3)" : "none",
-        }}>
-          קיבוץ חודשי
-        </button>
-
-        <span style={{ fontSize: 11, color: "#444", marginRight: "auto" }}>{filtered.length} תנועות</span>
-      </div>
-
-      {/* ── Transactions table ───────────────────────────────────────────── */}
-      {!loaded ? (
-        <div style={{ color: "#444", fontSize: 13, padding: "48px", textAlign: "center" }}>טוען...</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, padding: "60px", textAlign: "center", color: "#444", fontSize: 13 }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
-          {transactions.length === 0 ? "אין תנועות כספיות עדיין" : `אין תנועות — ${periodTitle}`}
-          <div style={{ marginTop: 14 }}>
-            <button onClick={openAdd} style={{ padding: "8px 18px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.35)", background: "rgba(59,130,246,0.08)", color: "#3B82F6", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-              + הוסף תנועה
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, overflow: "hidden" }}>
-          {/* Table header */}
-          <div style={{
-            display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
-            gap: 8, padding: "10px 16px",
-            background: "#141414", borderBottom: "1px solid #252525",
-            fontSize: 10, fontWeight: 700, color: "#444", letterSpacing: "0.06em",
-          }}>
-            <div>תאריך</div><div>סוג</div><div>פרויקט / מקור</div>
-            <div>אמן / ספק</div><div>תיאור / קטגוריה</div>
-            <div>סכום</div><div>סטטוס</div><div />
-          </div>
-
-          {displayItems.map((item) => {
-            if (item.kind === "header") {
-              return (
-                <div key={`hdr-${item.key}`} style={{
-                  padding: "8px 16px 6px", background: "#111",
-                  borderBottom: "1px solid #252525",
-                  fontSize: 11, fontWeight: 700, color: "#555", letterSpacing: "0.06em",
-                }}>
-                  {item.label}
-                </div>
-              );
-            }
-
-            const { tx, rowIndex: i } = item;
-            const proj     = projects.find((p) => p.id === tx.project_id);
-            const isIncome = tx.type === "income";
-            const isGen    = (tx.scope ?? "project") === "general";
-            const undated  = !tx.date;
-            const expanded = expandedIds.has(tx.id);
-
-            return (
-              <div key={tx.id}>
-                {/* Main row */}
-                <div
-                  onClick={() => toggleExpand(tx.id)}
-                  style={{
-                    display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
-                    gap: 8, padding: "10px 16px", alignItems: "center",
-                    borderBottom: expanded ? "none" : "1px solid #202020",
-                    background: undated ? "#1D1810" : expanded ? "#1E1E24" : i % 2 === 0 ? "#1A1A1A" : "#181818",
-                    cursor: "pointer", transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#231E12" : "#1E1E1E"; }}
-                  onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : i % 2 === 0 ? "#1A1A1A" : "#181818"; }}
-                >
-                  <div style={{ fontSize: 11, color: undated ? "#F59E0B" : "#666" }}>
-                    {undated ? "ללא תאריך" : fmtDate(tx.date)}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <span style={{
-                      fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                      background: isIncome ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
-                      color: isIncome ? "#10B981" : "#F59E0B",
-                      border: `1px solid ${isIncome ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}`,
-                      display: "inline-block", width: "fit-content",
-                    }}>
-                      {isIncome ? "הכנסה" : "הוצאה"}
-                    </span>
-                    {isGen && (
-                      <span style={{
-                        fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                        background: "rgba(168,85,247,0.12)", color: "#A855F7",
-                        border: "1px solid rgba(168,85,247,0.25)",
-                        display: "inline-block", width: "fit-content",
-                      }}>
-                        כללי
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#DDD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {isGen
-                      ? <span style={{ color: "#A855F7" }}>🏢 כללי</span>
-                      : (proj?.name ?? "—")}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {tx.artist || proj?.artist || "—"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#777", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {tx.description || tx.category || "—"}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: isIncome ? "#10B981" : isGen ? "#A855F7" : "#F59E0B" }}>
-                    {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
-                  </div>
-                  <div><StatusBadge status={tx.payment_status} /></div>
-                  <div style={{ textAlign: "center", color: expanded ? "#A855F7" : "#444", fontSize: 11 }}>
-                    {expanded ? "▲" : "▼"}
-                  </div>
-                </div>
-
-                {/* Expanded details */}
-                {expanded && (
-                  <div style={{
-                    padding: "10px 16px 12px 16px", borderBottom: "1px solid #202020",
-                    background: "#1B1B22",
-                    display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
-                  }}>
-                    {tx.payment_method && (
-                      <div style={{ fontSize: 11, color: "#666" }}>
-                        <span style={{ color: "#444", marginLeft: 4 }}>אמצעי תשלום:</span>
-                        {tx.payment_method}
-                      </div>
-                    )}
-                    {tx.receipt_ref && (
-                      <div style={{ fontSize: 11, color: "#666" }}>
-                        <span style={{ color: "#444", marginLeft: 4 }}>אסמכתא:</span>
-                        {tx.receipt_ref}
-                      </div>
-                    )}
-                    {tx.category && (
-                      <div style={{ fontSize: 11, color: "#666" }}>
-                        <span style={{ color: "#444", marginLeft: 4 }}>קטגוריה:</span>
-                        {tx.category}
-                      </div>
-                    )}
-                    {tx.notes && (
-                      <div style={{ fontSize: 11, color: "#666" }}>
-                        <span style={{ color: "#444", marginLeft: 4 }}>הערות:</span>
-                        {tx.notes}
-                      </div>
-                    )}
-                    {!tx.payment_method && !tx.receipt_ref && !tx.category && !tx.notes && (
-                      <div style={{ fontSize: 11, color: "#444" }}>אין פרטים נוספים</div>
-                    )}
-                    <div style={{ display: "flex", gap: 8, marginRight: "auto" }}>
-                      <button onClick={(e) => { e.stopPropagation(); openEdit(tx); }} style={{
-                        padding: "5px 14px", borderRadius: 8, border: "1px solid #333",
-                        background: "transparent", color: "#AAA", cursor: "pointer",
-                        fontSize: 12, fontFamily: "inherit",
-                      }}>
-                        ✏ ערוך
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDelete(tx.id); }} style={{
-                        padding: "5px 14px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.25)",
-                        background: "rgba(239,68,68,0.06)", color: "#EF4444", cursor: "pointer",
-                        fontSize: 12, fontFamily: "inherit",
-                      }}>
-                        × מחק
-                      </button>
-                    </div>
-                  </div>
-                )}
+          {/* Needs attention */}
+          {hasAttention && (
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 2 }}>
+                דורש תשומת לב
               </div>
-            );
-          })}
-
-          {/* Footer totals */}
-          <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: "1px solid #252525", background: "#141414", fontSize: 11, color: "#555" }}>
-            <span>הכנסות: <strong style={{ color: "#10B981" }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
-            <span>הוצאות: <strong style={{ color: "#F59E0B" }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
-            <span style={{ marginRight: "auto" }}>{filtered.length} תנועות מסוננות</span>
-          </div>
+              {noDateTx.length > 0 && (
+                <button onClick={() => setShowUndated((v) => !v)} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "7px 12px", borderRadius: 10, width: "100%",
+                  background: `${AMBER}08`, border: `1px solid ${AMBER}22`,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}>
+                  <span style={{ color: AMBER, fontSize: 12 }}>⚠</span>
+                  <span style={{ fontSize: 11, color: TEXT2, flex: 1, textAlign: "right" }}>
+                    <strong style={{ color: AMBER }}>{noDateTx.length}</strong> ללא תאריך
+                  </span>
+                  <span style={{ fontSize: 9, color: showUndated ? AMBER : MUTED }}>
+                    {showUndated ? "▲" : "▼"}
+                  </span>
+                </button>
+              )}
+              {attentionUnpaidIncome.length > 0 && (
+                <button onClick={() => { setTypeFilter("income"); setStatusFilter("לא שולם"); }} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "7px 12px", borderRadius: 10, width: "100%",
+                  background: `${RED}08`, border: `1px solid ${RED}22`,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}>
+                  <span style={{ color: RED, fontSize: 12 }}>⚡</span>
+                  <span style={{ fontSize: 11, color: TEXT2, flex: 1, textAlign: "right" }}>
+                    <strong style={{ color: RED }}>{attentionUnpaidIncome.length}</strong> לא שולמו
+                  </span>
+                </button>
+              )}
+              {attentionOpenExpenses.length > 0 && (
+                <button onClick={() => { setTypeFilter("expense"); setStatusFilter(""); }} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "7px 12px", borderRadius: 10, width: "100%",
+                  background: `${AMBER}08`, border: `1px solid ${AMBER}22`,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}>
+                  <span style={{ color: AMBER, fontSize: 12 }}>📋</span>
+                  <span style={{ fontSize: 11, color: TEXT2, flex: 1, textAlign: "right" }}>
+                    <strong style={{ color: AMBER }}>{attentionOpenExpenses.length}</strong> הוצאות פתוחות
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Right: filters + tabs + table */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+
+          {/* ── Filter strip ──────────────────────────────────────────── */}
+          <div style={{
+            display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10,
+            alignItems: "center", padding: "10px 14px",
+            background: CARD, border: `1px solid ${BDR}`, borderRadius: 12,
+          }}>
+            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as SourceFilter)} style={selectStyle}>
+              <option value="all">כל המקורות</option>
+              <option value="project">📁 פרויקטים</option>
+              <option value="general">🏢 כללי</option>
+            </select>
+
+            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={selectStyle}>
+              <option value="">כל הפרויקטים</option>
+              {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
+              ...selectStyle,
+              color: statusFilter ? BRAND : TEXT2,
+              borderColor: statusFilter ? `${BRAND}40` : BDR,
+            }}>
+              <option value="">כל הסטטוסים</option>
+              {allStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+
+            <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={selectStyle}>
+              <option value="date-desc">מהחדש לישן</option>
+              <option value="date-asc">מהישן לחדש</option>
+              <option value="amount-desc">לפי סכום</option>
+              <option value="project">לפי פרויקט</option>
+              <option value="status">לפי סטטוס</option>
+              <option value="type">לפי סוג</option>
+            </select>
+
+            <button onClick={() => setGroupByMonth((v) => !v)} style={{
+              ...selectStyle,
+              background: groupByMonth ? `${PURPLE}15` : CARD,
+              color: groupByMonth ? PURPLE : TEXT2,
+              borderColor: groupByMonth ? `${PURPLE}40` : BDR,
+            }}>
+              קיבוץ חודשי
+            </button>
+
+            <span style={{ fontSize: 11, color: MUTED, marginRight: "auto" }}>{filtered.length} תנועות</span>
+          </div>
+
+          {/* ── Segmented tabs ────────────────────────────────────────── */}
+          <div style={{
+            display: "flex", gap: 4, marginBottom: 12,
+            background: CARD, border: `1px solid ${BDR}`, borderRadius: 12, padding: 4,
+          }}>
+            {([["all","הכל",TEXT2],[" income","הכנסות",GREEN],["expense","הוצאות",AMBER]] as const).map(([key, label, color]) => {
+              const k = key.trim() as "all" | "income" | "expense";
+              const active = typeFilter === k;
+              return (
+                <button key={k} onClick={() => setTypeFilter(k)} style={{
+                  flex: 1, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer",
+                  background: active ? `${color}18` : "transparent",
+                  color: active ? color : MUTED,
+                  fontSize: 13, fontWeight: active ? 700 : 500,
+                  outline: active ? `1px solid ${color}35` : "none",
+                  fontFamily: "inherit",
+                }}>{label}</button>
+              );
+            })}
+          </div>
+
+          {/* ── Transactions table ────────────────────────────────────── */}
+          {!loaded ? (
+            <div style={{ color: MUTED, fontSize: 13, padding: "48px", textAlign: "center" }}>טוען...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "60px", textAlign: "center", color: MUTED, fontSize: 13 }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+              {transactions.length === 0 ? "אין תנועות כספיות עדיין" : `אין תנועות — ${periodTitle}`}
+              <div style={{ marginTop: 14 }}>
+                <button onClick={openAdd} style={{ padding: "8px 18px", borderRadius: 10, border: `1px solid ${BRAND}35`, background: `${BRAND}10`, color: BRAND, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  + הוסף תנועה
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+              {/* Table header */}
+              <div style={{
+                display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
+                gap: 8, padding: "10px 16px",
+                background: CARD2, borderBottom: `1px solid ${BDR}`,
+                fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
+              }}>
+                <div>תאריך</div><div>סוג</div><div>פרויקט / מקור</div>
+                <div>אמן / ספק</div><div>תיאור / קטגוריה</div>
+                <div>סכום</div><div>סטטוס</div><div />
+              </div>
+
+              {displayItems.map((item) => {
+                if (item.kind === "header") {
+                  return (
+                    <div key={`hdr-${item.key}`} style={{
+                      padding: "8px 16px 6px", background: CARD2,
+                      borderBottom: `1px solid ${BDR}`,
+                      fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
+                    }}>
+                      {item.label}
+                    </div>
+                  );
+                }
+
+                const { tx, rowIndex: i } = item;
+                const proj     = projects.find((p) => p.id === tx.project_id);
+                const isIncome = tx.type === "income";
+                const isGen    = (tx.scope ?? "project") === "general";
+                const undated  = !tx.date;
+                const expanded = expandedIds.has(tx.id);
+
+                return (
+                  <div key={tx.id}>
+                    {/* Main row */}
+                    <div
+                      onClick={() => toggleExpand(tx.id)}
+                      style={{
+                        display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
+                        gap: 8, padding: "12px 16px", alignItems: "center",
+                        borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.04)`,
+                        background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2,
+                        cursor: "pointer",
+                      }}
+                      onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
+                      onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2; }}
+                    >
+                      <div style={{ fontSize: 11, color: undated ? AMBER : TEXT2 }}>
+                        {undated ? "ללא תאריך" : fmtDate(tx.date)}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                          background: isIncome ? `${GREEN}12` : `${AMBER}12`,
+                          color: isIncome ? GREEN : AMBER,
+                          border: `1px solid ${isIncome ? `${GREEN}25` : `${AMBER}25`}`,
+                          display: "inline-block", width: "fit-content",
+                        }}>
+                          {isIncome ? "הכנסה" : "הוצאה"}
+                        </span>
+                        {isGen && (
+                          <span style={{
+                            fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                            background: `${PURPLE}12`, color: PURPLE,
+                            border: `1px solid ${PURPLE}25`,
+                            display: "inline-block", width: "fit-content",
+                          }}>
+                            כללי
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {isGen
+                          ? <span style={{ color: PURPLE }}>🏢 כללי</span>
+                          : (proj?.name ?? "—")}
+                      </div>
+                      <div style={{ fontSize: 11, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {tx.artist || proj?.artist || "—"}
+                      </div>
+                      <div style={{ fontSize: 11, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {tx.description || tx.category || "—"}
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER }}>
+                        {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
+                      </div>
+                      <div><StatusBadge status={tx.payment_status} /></div>
+                      <div style={{ textAlign: "center", color: expanded ? BRAND : MUTED, fontSize: 11 }}>
+                        {expanded ? "▲" : "▼"}
+                      </div>
+                    </div>
+
+                    {/* Expanded details */}
+                    {expanded && (
+                      <div style={{
+                        padding: "10px 16px 12px 16px", borderBottom: `1px solid rgba(255,255,255,0.04)`,
+                        background: `rgba(255,255,255,0.02)`,
+                        display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
+                      }}>
+                        {tx.payment_method && (
+                          <div style={{ fontSize: 11, color: TEXT2 }}>
+                            <span style={{ color: MUTED, marginLeft: 4 }}>אמצעי תשלום:</span>
+                            {tx.payment_method}
+                          </div>
+                        )}
+                        {tx.receipt_ref && (
+                          <div style={{ fontSize: 11, color: TEXT2 }}>
+                            <span style={{ color: MUTED, marginLeft: 4 }}>אסמכתא:</span>
+                            {tx.receipt_ref}
+                          </div>
+                        )}
+                        {tx.category && (
+                          <div style={{ fontSize: 11, color: TEXT2 }}>
+                            <span style={{ color: MUTED, marginLeft: 4 }}>קטגוריה:</span>
+                            {tx.category}
+                          </div>
+                        )}
+                        {tx.notes && (
+                          <div style={{ fontSize: 11, color: TEXT2 }}>
+                            <span style={{ color: MUTED, marginLeft: 4 }}>הערות:</span>
+                            {tx.notes}
+                          </div>
+                        )}
+                        {!tx.payment_method && !tx.receipt_ref && !tx.category && !tx.notes && (
+                          <div style={{ fontSize: 11, color: MUTED }}>אין פרטים נוספים</div>
+                        )}
+                        <div style={{ display: "flex", gap: 8, marginRight: "auto" }}>
+                          <button onClick={(e) => { e.stopPropagation(); openEdit(tx); }} style={{
+                            padding: "5px 14px", borderRadius: 8, border: `1px solid ${BDR2}`,
+                            background: "transparent", color: TEXT2, cursor: "pointer",
+                            fontSize: 12, fontFamily: "inherit",
+                          }}>
+                            ✏ ערוך
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(tx.id); }} style={{
+                            padding: "5px 14px", borderRadius: 8, border: `1px solid ${RED}25`,
+                            background: `${RED}06`, color: RED, cursor: "pointer",
+                            fontSize: 12, fontFamily: "inherit",
+                          }}>
+                            × מחק
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Footer totals */}
+              <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: `1px solid ${BDR}`, background: CARD2, fontSize: 11, color: MUTED }}>
+                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span style={{ marginRight: "auto" }}>{filtered.length} תנועות מסוננות</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
