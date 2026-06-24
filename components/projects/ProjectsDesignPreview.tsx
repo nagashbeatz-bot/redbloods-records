@@ -324,7 +324,7 @@ export default function ProjectsDesignPreview() {
   const player = usePlayerSafe();
 
   const [search,          setSearch]          = useState("");
-  const [statusFilter,    setStatusFilter]    = useState<"כל הסטטוסים" | ProjectStatus>("כל הסטטוסים");
+  const [statusFilter,    setStatusFilter]    = useState<"הכל הפעיל" | "הושלמו" | ProjectStatus>("הכל הפעיל");
   const [typeFilter,      setTypeFilter]      = useState<ProjectType | "">("");
   const [isMobile,        setIsMobile]        = useState(false);
   const [showNewProject,  setShowNewProject]  = useState(false);
@@ -373,7 +373,7 @@ export default function ProjectsDesignPreview() {
     const q = search.trim().toLowerCase();
     return projects
       .filter(p => !p.isHidden)
-      .filter(p => statusFilter === "כל הסטטוסים" || p.status === statusFilter)
+      .filter(p => statusFilter === "הכל הפעיל" ? p.status !== "הושלם" : statusFilter === "הושלמו" ? p.status === "הושלם" : p.status === statusFilter)
       .filter(p => !typeFilter || p.projectType === typeFilter)
       .filter(p => !q || p.name.toLowerCase().includes(q) || p.artist.toLowerCase().includes(q));
   }, [projects, search, statusFilter, typeFilter]);
@@ -562,10 +562,11 @@ export default function ProjectsDesignPreview() {
             paddingBottom: isMobile ? 4 : 0,
             scrollbarWidth: "none",
           }}>
-            <FilterChip label="הכל" active={statusFilter === "כל הסטטוסים"} onClick={() => setStatusFilter("כל הסטטוסים")} />
-            {ALL_STATUSES.map(s => (
-              <FilterChip key={s} label={s} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
+            <FilterChip label="הכל הפעיל" active={statusFilter === "הכל הפעיל"} onClick={() => setStatusFilter("הכל הפעיל")} />
+            {ALL_STATUSES.filter(s => s !== "הושלם").map(s => (
+              <FilterChip key={s} label={s} active={statusFilter === s} onClick={() => setStatusFilter(s as ProjectStatus)} />
             ))}
+            <FilterChip label="הושלמו" active={statusFilter === "הושלמו"} onClick={() => setStatusFilter("הושלמו")} />
           </div>
 
           {/* Type filter */}
