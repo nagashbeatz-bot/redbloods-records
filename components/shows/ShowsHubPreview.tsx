@@ -497,29 +497,63 @@ function ShowFormModal({
         // Auto-create task if no DJ selected
         let taskCreated = false;
         let taskFailed  = false;
+        let gtaskLinked = false;  // Google Task also linked
         const noDj = !form.dj_client_id && !form.dj_name.trim();
         if (noDj) {
-          try {
-            const noteLines = [
-              `הופעה: ${form.name.trim()}`,
-              form.date        ? `תאריך: ${form.date}`        : null,
-              form.artist.trim() ? `אמן: ${form.artist.trim()}` : null,
-              form.location.trim() ? `מיקום: ${form.location.trim()}` : null,
-              "עדיין לא נבחר דיג׳יי — יש לסגור ולעדכן בהופעה.",
-            ].filter(Boolean).join("\n");
+          // due_date = tomorrow (not show.date)
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const tomorrowStr = tomorrow.toISOString().split("T")[0]; // YYYY-MM-DD
 
+          const taskTitle = `לסגור דיג׳יי להופעה: ${form.name.trim()}`;
+          const noteLines = [
+            `להופעה "${form.name.trim()}" עדיין לא נבחר דיג׳יי. צריך לסגור דיג׳יי ולעדכן את ההופעה.`,
+            form.date          ? `תאריך הופעה: ${form.date}`        : null,
+            form.artist.trim() ? `אמן: ${form.artist.trim()}`        : null,
+            form.location.trim() ? `מיקום: ${form.location.trim()}` : null,
+          ].filter(Boolean).join("\n");
+
+          try {
             const taskRes = await fetch("/api/tasks", {
               method:  "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                title:        `לסגור דיג׳יי להופעה: ${form.name.trim()}`,
+                title:        taskTitle,
                 notes:        noteLines,
                 status:       "פתוח",
                 related_type: "general",
+                due_date:     tomorrowStr,
               }),
             });
-            if (taskRes.ok) taskCreated = true;
-            else taskFailed = true;
+            if (taskRes.ok) {
+              taskCreated = true;
+              const taskData = await taskRes.json();
+              const createdTaskId: string | undefined = taskData.task?.id;
+
+              // Link to Google Tasks (best-effort, non-fatal)
+              if (createdTaskId) {
+                try {
+                  const gtRes = await fetch("/api/calendar/create-task", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title: taskTitle, due: tomorrowStr, notes: noteLines }),
+                  });
+                  const gtData = await gtRes.json();
+                  if (gtRes.ok && gtData.task?.id) {
+                    await fetch(`/api/tasks/${createdTaskId}`, {
+                      method:  "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ calendar_event_id: gtData.task.id }),
+                    });
+                    gtaskLinked = true;
+                  }
+                } catch {
+                  // Google Task failed — local task stays, warning shown in toast
+                }
+              }
+            } else {
+              taskFailed = true;
+            }
           } catch {
             taskFailed = true;
           }
@@ -527,21 +561,24 @@ function ShowFormModal({
 
         const calOk  = addToCalendar && !data.calendarWarning;
         const calWarn = addToCalendar && data.calendarWarning;
+        const taskMsg = taskCreated
+          ? gtaskLinked
+            ? "נוצרה משימה לסגירת דיג׳יי למחר ✓"
+            : "נוצרה משימה לסגירת דיג׳יי למחר (לא נוספה ל-Google Tasks)"
+          : taskFailed
+            ? "שגיאה ביצירת משימה"
+            : null;
 
-        if (calOk && taskCreated) {
-          onSaved("ההופעה נוצרה ונוספה ליומן ✓ · נוצרה משימה לסגירת דיג׳יי");
-        } else if (calOk && taskFailed) {
-          onSaved("ההופעה נוצרה ונוספה ליומן ✓ · שגיאה ביצירת משימה");
+        if (calOk && taskMsg) {
+          onSaved(`ההופעה נוצרה ונוספה ליומן ✓ · ${taskMsg}`);
         } else if (calOk) {
           onSaved("ההופעה נוצרה ונוספה ליומן ✓");
-        } else if (calWarn && taskCreated) {
-          onSaved("ההופעה נוצרה, אבל לא נוספה ליומן · נוצרה משימה לסגירת דיג׳יי");
+        } else if (calWarn && taskMsg) {
+          onSaved(`ההופעה נוצרה, אבל לא נוספה ליומן · ${taskMsg}`);
         } else if (calWarn) {
           onSaved("ההופעה נוצרה, אבל לא נוספה ליומן");
-        } else if (taskCreated) {
-          onSaved("ההופעה נוצרה ✓ · נוצרה משימה לסגירת דיג׳יי");
-        } else if (taskFailed) {
-          onSaved("ההופעה נוצרה ✓ · שגיאה ביצירת משימה");
+        } else if (taskMsg) {
+          onSaved(`ההופעה נוצרה ✓ · ${taskMsg}`);
         } else {
           onSaved("ההופעה נוצרה ✓");
         }
