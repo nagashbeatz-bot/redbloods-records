@@ -2,6 +2,23 @@
 
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 
+// ── Module-scope singleton — survives any React component remount ──────────────
+let _audio:   HTMLAudioElement | null = null;
+let _track:   AudioTrack | null = null;
+let _playing: boolean = false;
+let _volume:  number = 80;
+
+function getAudio(): HTMLAudioElement | null {
+  if (typeof window === "undefined") return null;
+  if (!_audio) {
+    _audio = new Audio();
+    _audio.preload = "metadata";
+    _audio.volume  = _volume / 100;
+  }
+  return _audio;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface AudioTrack {
   projectId: string;
   projectName: string;
@@ -40,27 +57,37 @@ export function usePlayerSafe(): PlayerContextValue | null {
 export default function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [track, setTrack] = useState<AudioTrack | null>(null);
-  const [playing, setPlaying] = useState(false);
+  // Initialize from module-scope globals so state survives remount
+  const [track,   setTrack]      = useState<AudioTrack | null>(() => _track);
+  const [playing, setPlaying]    = useState(() => _playing);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration,    setDuration]    = useState(0);
   const [volume, setVolumeState] = useState<number>(() => {
     if (typeof window === "undefined") return 80;
-    return Number(localStorage.getItem("player_volume") ?? 80);
+    const saved = Number(localStorage.getItem("player_volume") ?? 80);
+    _volume = saved;
+    return saved;
   });
 
-  // ── Create audio element once ─────────────────────────────────────────────
+  // ── Attach listeners to the singleton audio element ──────────────────────
   useEffect(() => {
-    const audio = new Audio();
-    audio.preload = "metadata";
-    audio.volume = Number(localStorage.getItem("player_volume") ?? 80) / 100;
+    const audio = getAudio();
+    if (!audio) return;
     audioRef.current = audio;
 
-    const onTimeUpdate    = () => setCurrentTime(audio.currentTime);
+    // Sync volume from localStorage on each mount
+    const savedVol = Number(localStorage.getItem("player_volume") ?? 80);
+    audio.volume = savedVol / 100;
+
+    // Sync time display if audio is already playing after a remount
+    setCurrentTime(audio.currentTime);
+    setDuration(audio.duration || 0);
+
+    const onTimeUpdate     = () => setCurrentTime(audio.currentTime);
     const onDurationChange = () => setDuration(audio.duration || 0);
-    const onEnded  = () => setPlaying(false);
-    const onPlay   = () => setPlaying(true);
-    const onPause  = () => setPlaying(false);
+    const onEnded  = () => { setPlaying(false); _playing = false; };
+    const onPlay   = () => { setPlaying(true);  _playing = true;  };
+    const onPause  = () => { setPlaying(false); _playing = false; };
 
     audio.addEventListener("timeupdate",     onTimeUpdate);
     audio.addEventListener("durationchange", onDurationChange);
@@ -68,14 +95,8 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     audio.addEventListener("play",   onPlay);
     audio.addEventListener("pause",  onPause);
 
-    // ── Cross-provider: when radio starts, silently pause project audio ──────
-    // We call audio.pause() directly — NOT through the pause() callback —
-    // so we don't dispatch rb:project-ended (that would cause radio to try
-    // to resume itself, creating a loop).
-    const onRadioStarted = () => {
-      audio.pause();
-      // Don't dispatch rb:project-ended here — radio is taking over intentionally
-    };
+    // Cross-provider: when radio starts, silently pause project audio
+    const onRadioStarted = () => { audio.pause(); };
     window.addEventListener("rb:radio-started", onRadioStarted);
 
     return () => {
@@ -85,7 +106,7 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
       audio.removeEventListener("play",   onPlay);
       audio.removeEventListener("pause",  onPause);
       window.removeEventListener("rb:radio-started", onRadioStarted);
-      audio.pause();
+      // ← NO audio.pause() — audio continues playing through navigation
     };
   }, []);
 
@@ -101,7 +122,7 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     audio.src = (newTrack.url && newTrack.url !== "#") ? newTrack.url : "";
     audio.load();
     audio.play().catch(() => setPlaying(false));
-    setTrack(newTrack);
+    setTrack(newTrack); _track = newTrack;
     setCurrentTime(0);
     setDuration(0);
     if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
@@ -146,8 +167,8 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
     if (!audio) return;
     audio.pause();
     audio.currentTime = 0;
-    setTrack(null);
-    setPlaying(false);
+    setTrack(null);   _track   = null;
+    setPlaying(false); _playing = false;
     if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = "none";
@@ -171,6 +192,7 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
   const setVolume = useCallback((v: number) => {
     const clamped = Math.max(0, Math.min(100, v));
     setVolumeState(clamped);
+    _volume = clamped;
     if (audioRef.current) audioRef.current.volume = clamped / 100;
     localStorage.setItem("player_volume", String(clamped));
   }, []);
