@@ -261,7 +261,7 @@ export default function HealthAlert() {
               if (t.date && t.date < today) s.overduePayment = true;
             }
           } else if (t.type === "expense") {
-            s.totalExpenses += t.amount;
+            if (t.payment_status === "שולם") s.totalExpenses += t.amount;
           }
         }
         for (const setting of settings) {

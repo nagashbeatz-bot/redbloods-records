@@ -700,7 +700,7 @@ export default function DashboardDesignPreview() {
       .then(d => {
         const txs = Array.isArray(d.transactions) ? d.transactions : [];
         const n = txs.filter((t: { payment_status?: string; type?: string }) =>
-          t.type === "income" && t.payment_status !== "שולם"
+          t.type === "income" && t.payment_status === "צפוי"
         ).length;
         updateStatCache({ pendingPayments: n });
         setPendingPayments(n);
