@@ -122,12 +122,15 @@ interface ContentFile {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function SocialHubPreview() {
   const router = useRouter();
-  const { campaigns, loading: camLoading, createCampaign } = useSocialCampaigns();
+  const { campaigns, loading: camLoading, createCampaign, deleteCampaign } = useSocialCampaigns();
   const [allItems, setAllItems]       = useState<SocialContentItem[]>([]);
   const [allFiles, setAllFiles]       = useState<ContentFile[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [showCreate, setShowCreate]   = useState(false);
   const [weekOffset, setWeekOffset]   = useState(0);
+  const [confirmDeleteCamp, setConfirmDeleteCamp] = useState<SocialCampaign | null>(null);
+  const [deletingCampId, setDeletingCampId]       = useState<string | null>(null);
+  const [toast, setToast]                         = useState<{ msg: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     if (camLoading) return;
@@ -234,6 +237,26 @@ export default function SocialHubPreview() {
   })();
 
   const weekHasContent = Object.values(weekItemsMap).flat().length > 0;
+
+  // ── Toast auto-clear ──────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function handleDeleteCampaign(id: string) {
+    setDeletingCampId(id);
+    try {
+      await deleteCampaign(id);
+      setConfirmDeleteCamp(null);
+      setToast({ msg: "הקמפיין נמחק", ok: true });
+    } catch {
+      setToast({ msg: "לא הצלחנו למחוק את הקמפיין", ok: false });
+    } finally {
+      setDeletingCampId(null);
+    }
+  }
 
   return (
     <div style={{
@@ -392,6 +415,29 @@ export default function SocialHubPreview() {
                       padding: "3px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700,
                       background: `${st.color}20`, border: `1px solid ${st.color}50`, color: st.color,
                     }}>{st.label}</div>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={e => { e.stopPropagation(); e.preventDefault(); setConfirmDeleteCamp(camp); }}
+                      style={{
+                        position: "absolute", top: 8, left: 8,
+                        width: 26, height: 26, borderRadius: 7,
+                        background: "rgba(0,0,0,0.55)", border: "1px solid rgba(220,38,38,0.25)",
+                        color: "rgba(252,165,165,0.7)", fontSize: 12, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "none", outline: "none", zIndex: 2,
+                      }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.35)";
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(220,38,38,0.6)";
+                        (e.currentTarget as HTMLButtonElement).style.color = "#fff";
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.55)";
+                        (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(220,38,38,0.25)";
+                        (e.currentTarget as HTMLButtonElement).style.color = "rgba(252,165,165,0.7)";
+                      }}
+                    >🗑</button>
 
                     {/* Platform icons */}
                     {visPlts.length > 0 && (
@@ -668,6 +714,93 @@ export default function SocialHubPreview() {
           }}
           onClose={() => setShowCreate(false)}
         />
+      )}
+
+      {/* ── Delete confirm modal ── */}
+      {confirmDeleteCamp && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => { if (!deletingCampId) setConfirmDeleteCamp(null); }}
+            style={{
+              position: "fixed", inset: 0, zIndex: 300,
+              background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)",
+            }}
+          />
+          {/* Modal */}
+          <div style={{
+            position: "fixed", top: "50%", left: "50%",
+            transform: "translate(-50%,-50%)",
+            zIndex: 301, width: 360, maxWidth: "90vw",
+            background: "#0E0E14",
+            border: "1px solid rgba(220,38,38,0.35)",
+            borderRadius: 16,
+            boxShadow: "0 24px 80px rgba(0,0,0,0.85)",
+            padding: "28px 28px 24px",
+            direction: "rtl",
+          }}>
+            {/* Title */}
+            <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 10 }}>
+              למחוק קמפיין?
+            </div>
+            {/* Campaign name */}
+            <div style={{
+              fontSize: 13, fontWeight: 700, color: BRAND,
+              background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)",
+              borderRadius: 8, padding: "6px 12px", marginBottom: 12,
+            }}>
+              {confirmDeleteCamp.title}
+            </div>
+            {/* Body */}
+            <div style={{ fontSize: 13, color: TEXT2, marginBottom: 24, lineHeight: 1.6 }}>
+              הקמפיין יימחק מהמערכת. פעולה זו לא תמחק קבצים מ-Dropbox.
+            </div>
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => handleDeleteCampaign(confirmDeleteCamp.id)}
+                disabled={deletingCampId === confirmDeleteCamp.id}
+                style={{
+                  flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 800,
+                  background: deletingCampId ? MUTED : BRAND,
+                  border: "none", color: "#fff", cursor: deletingCampId ? "default" : "pointer",
+                  boxShadow: deletingCampId ? "none" : "0 2px 12px rgba(220,38,38,0.4)",
+                  transition: "none",
+                }}
+              >
+                {deletingCampId === confirmDeleteCamp.id ? "מוחק..." : "מחק קמפיין"}
+              </button>
+              <button
+                onClick={() => setConfirmDeleteCamp(null)}
+                disabled={!!deletingCampId}
+                style={{
+                  flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+                  color: TEXT2, cursor: deletingCampId ? "default" : "pointer", transition: "none",
+                }}
+              >
+                בטל
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          zIndex: 400,
+          background: toast.ok ? "#0D2318" : "#1A0808",
+          border: `1px solid ${toast.ok ? "#10B981" : BRAND}44`,
+          borderRadius: 10, padding: "10px 20px",
+          fontSize: 13, fontWeight: 700,
+          color: toast.ok ? GREEN : "#FCA5A5",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+          whiteSpace: "nowrap",
+        }}>
+          {toast.msg}
+        </div>
       )}
     </div>
   );

@@ -50,7 +50,8 @@ export function useSocialCampaigns() {
   }
 
   async function deleteCampaign(id: string) {
-    await fetch(`/api/social/campaigns/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/social/campaigns/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("failed");
     setCampaigns((prev) => prev.filter((c) => c.id !== id));
   }
 
