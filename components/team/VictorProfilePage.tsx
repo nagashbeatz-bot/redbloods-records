@@ -207,6 +207,8 @@ function VictorProjectDrawer({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [effectiveFolder, setEffectiveFolder] = useState<string | null>(work.dropboxFolder ?? null);
+  const [effectiveShareLink, setEffectiveShareLink] = useState<string | null>(work.dropboxShareLink ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function patchWork(fields: Partial<VendorWork>) {
@@ -224,14 +226,14 @@ function VictorProjectDrawer({
   }
 
   async function handleUpload(file: File) {
-    if (!work.dropboxFolder) return;
+    if (!effectiveFolder) return;
     setUploading(true);
     setUploadProgress(0);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("workId", work.id);
-      fd.append("dropboxFolder", work.dropboxFolder);
+      fd.append("dropboxFolder", effectiveFolder);
       fd.append("subFolder", "01_From_Redbloods");
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -268,11 +270,14 @@ function VictorProjectDrawer({
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "שגיאה ביצירת התיקייה");
-      await fetch(`/api/vendor/victor/work/${work.id}`, {
+      const res2 = await fetch(`/api/vendor/victor/work/${work.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dropboxFolder: data.folderPath, dropboxShareLink: data.shareLink }),
       });
+      if (!res2.ok) throw new Error("שגיאה בשמירת הנתונים");
+      setEffectiveFolder(data.folderPath);
+      setEffectiveShareLink(data.shareLink);
       onRefresh?.();
     } catch (err) {
       setFolderError(err instanceof Error ? err.message : "שגיאה ביצירת התיקייה");
@@ -470,7 +475,7 @@ function VictorProjectDrawer({
                   style={{ display: "none" }}
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
                 />
-                {!work.dropboxFolder ? (
+                {!effectiveFolder ? (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                     <button
                       onClick={handleCreateFolder}
@@ -507,9 +512,9 @@ function VictorProjectDrawer({
                     {uploading ? `${uploadProgress}%` : "↑ העלאה"}
                   </button>
                 )}
-                {work.dropboxShareLink && (
+                {effectiveShareLink && (
                   <a
-                    href={work.dropboxShareLink}
+                    href={effectiveShareLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
