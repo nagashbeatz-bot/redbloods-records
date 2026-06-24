@@ -152,90 +152,91 @@ export default function VictorProfilePage() {
     <div style={{
       minHeight: "100%", background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
-      padding: "28px 24px 80px",
+      padding: "32px 32px 80px",
     }}>
-      <div style={{ maxWidth: 1220, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1520, margin: "0 auto" }}>
 
         {/* ── Top bar: breadcrumb + month switcher ── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
           {/* Back */}
           <button
             onClick={() => router.push("/team")}
-            style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 13, fontWeight: 700 }}
+            style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 14, fontWeight: 700 }}
           >
             ← חזרה לרשימה
           </button>
 
           {/* Title */}
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 11, color: MUTED, letterSpacing: "0.06em", marginBottom: 2 }}>צוות / ספקים</div>
-            <h1 style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>
+            <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>צוות / ספקים</div>
+            <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>
               פרופיל ספק — <span style={{ color: PURPLE }}>Victor</span>
             </h1>
           </div>
 
           {/* Month switcher */}
           <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            background: CARD, border: `1px solid ${BDR2}`, borderRadius: 12,
-            padding: "7px 14px",
+            display: "flex", alignItems: "center", gap: 12,
+            background: CARD, border: `1px solid ${BDR2}`, borderRadius: 14,
+            padding: "9px 18px",
           }}>
-            <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, fontSize: 18, color: TEXT2, lineHeight: 1 }}>‹</button>
-            <div style={{ minWidth: 130, textAlign: "center" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{monthLabel(month)}</div>
+            <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>‹</button>
+            <div style={{ minWidth: 150, textAlign: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{monthLabel(month)}</div>
               {loading && <div style={{ fontSize: 9, color: MUTED }}>טוען...</div>}
             </div>
-            <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, fontSize: 18, color: TEXT2, lineHeight: 1 }}>›</button>
+            <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>›</button>
           </div>
         </div>
 
         {/* ── Victor Info Card ── */}
         <div style={{
-          background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
-          padding: "18px 24px", display: "flex", alignItems: "center",
-          gap: 20, marginBottom: 16,
+          background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
+          padding: "22px 28px", display: "flex", alignItems: "center",
+          gap: 24, marginBottom: 18,
         }}>
           {/* Avatar */}
           <div style={{
-            width: 64, height: 64, borderRadius: "50%", flexShrink: 0,
+            width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
             background: `linear-gradient(135deg, ${PURPLE}44 0%, #1a1035 100%)`,
-            border: `2px solid ${PURPLE}44`,
+            border: `2px solid ${PURPLE}55`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24, fontWeight: 900, color: PURPLE,
+            fontSize: 28, fontWeight: 900, color: PURPLE,
+            boxShadow: `0 0 24px ${PURPLE}22`,
           }}>V</div>
 
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 18, fontWeight: 900, color: TEXT }}>Victor</span>
-              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`, color: PURPLE, fontWeight: 700 }}>מפיק ביטים</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>Victor</span>
+              <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`, color: PURPLE, fontWeight: 700 }}>מפיק ביטים</span>
             </div>
-            <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>הפקה · סאונד עיצוב · ביטים</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: GREEN, fontWeight: 700 }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: GREEN, display: "inline-block" }} />
+            <div style={{ fontSize: 13, color: TEXT2, marginTop: 5 }}>הפקה · סאונד עיצוב · ביטים</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: GREEN, fontWeight: 700 }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, display: "inline-block", boxShadow: `0 0 6px ${GREEN}88` }} />
                 פעיל
               </span>
-              <span style={{ fontSize: 11, color: MUTED }}>·</span>
-              <span style={{ fontSize: 11, color: MUTED }}>תאריך התחלה: 12.03.2024</span>
-              <span style={{ fontSize: 11, color: MUTED }}>·</span>
-              <span style={{ fontSize: 11, color: MUTED }}>תחום עיסוק: הפקה · ביטים</span>
+              <span style={{ fontSize: 12, color: MUTED }}>·</span>
+              <span style={{ fontSize: 12, color: MUTED }}>תאריך התחלה: 12.03.2024</span>
+              <span style={{ fontSize: 12, color: MUTED }}>·</span>
+              <span style={{ fontSize: 12, color: MUTED }}>תחום עיסוק: הפקה · ביטים</span>
             </div>
           </div>
 
           {/* Action */}
           <button style={{
-            padding: "8px 18px", borderRadius: 10, flexShrink: 0,
+            padding: "10px 22px", borderRadius: 12, flexShrink: 0,
             background: `${PURPLE}14`, border: `1px solid ${PURPLE}33`,
-            color: PURPLE, fontSize: 12, fontWeight: 700,
-            cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
+            color: PURPLE, fontSize: 13, fontWeight: 700,
+            cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7,
           }}>
             ✉ שלח הודעה
           </button>
         </div>
 
         {/* ── KPI Row ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 18 }}>
           {[
             { label: "יעד חודשי כולל", value: goal > 0 ? goal : "—", sub: "פרויקטים", color: TEXT,   icon: "🎯" },
             { label: "הושלמו",          value: completed,              sub: `מתוך ${goal}`,   color: PURPLE, icon: "✅" },
@@ -250,34 +251,34 @@ export default function VictorProfilePage() {
             },
           ].map(({ label, value, sub, color, icon }) => (
             <div key={label} style={{
-              background: CARD, border: `1px solid ${BDR2}`, borderRadius: 14,
-              padding: "14px 16px", position: "relative", overflow: "hidden",
+              background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
+              padding: "18px 20px", position: "relative", overflow: "hidden",
             }}>
               <div style={{
-                position: "absolute", bottom: -6, left: -4,
-                fontSize: 48, opacity: 0.05, userSelect: "none", pointerEvents: "none", lineHeight: 1,
+                position: "absolute", bottom: -8, left: -4,
+                fontSize: 56, opacity: 0.05, userSelect: "none", pointerEvents: "none", lineHeight: 1,
               }}>{icon}</div>
-              <div style={{ fontSize: 9, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>{label}</div>
-              <div style={{ fontSize: 26, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
-              {sub && <div style={{ fontSize: 10, color: TEXT2, marginTop: 6 }}>{sub}</div>}
+              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
+              <div style={{ fontSize: 30, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
+              {sub && <div style={{ fontSize: 11, color: TEXT2, marginTop: 8 }}>{sub}</div>}
             </div>
           ))}
         </div>
 
         {/* ── Main 3-Column Layout ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 268px 268px", gap: 14, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 310px 310px", gap: 16, alignItems: "start" }}>
 
           {/* ── Col 1: Projects Table ── */}
-          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, overflow: "hidden" }}>
             <div style={{
-              padding: "12px 16px", borderBottom: `1px solid ${BDR}`,
+              padding: "14px 20px", borderBottom: `1px solid ${BDR}`,
               display: "flex", alignItems: "center", justifyContent: "space-between",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>פרויקטים</span>
-                <span style={{ fontSize: 10, padding: "1px 8px", borderRadius: 6, background: `${PURPLE}18`, color: PURPLE, fontWeight: 700 }}>{work.length}</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>פרויקטים</span>
+                <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 7, background: `${PURPLE}18`, color: PURPLE, fontWeight: 700 }}>{work.length}</span>
               </div>
-              <span style={{ fontSize: 11, color: MUTED }}>ב{monthLabel(month)}</span>
+              <span style={{ fontSize: 12, color: MUTED }}>ב{monthLabel(month)}</span>
             </div>
 
             {loading ? (
@@ -298,8 +299,8 @@ export default function VictorProfilePage() {
                     <tr style={{ background: CARD2 }}>
                       {["שם פרויקט", "אמן / לקוח", "דד ליין", "סטטוס", "פעולה"].map(h => (
                         <th key={h} style={{
-                          padding: "8px 12px", textAlign: "right",
-                          fontSize: 9, fontWeight: 700, color: MUTED,
+                          padding: "10px 14px", textAlign: "right",
+                          fontSize: 10, fontWeight: 700, color: MUTED,
                           letterSpacing: "0.06em", textTransform: "uppercase",
                           whiteSpace: "nowrap",
                         }}>{h}</th>
@@ -313,24 +314,24 @@ export default function VictorProfilePage() {
                         background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
                       }}>
                         <td style={{
-                          padding: "9px 12px", fontSize: 12, fontWeight: 600, color: TEXT,
-                          maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          padding: "11px 14px", fontSize: 13, fontWeight: 600, color: TEXT,
+                          maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           <span style={{ marginLeft: 4 }}>🎵</span>{w.projectName}
                         </td>
-                        <td style={{ padding: "9px 12px", fontSize: 11, color: TEXT2, whiteSpace: "nowrap" }}>
+                        <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>
                           {w.artist || "—"}
                         </td>
-                        <td style={{ padding: "9px 12px", fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>
+                        <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
                           {fmtDate(w.internalDeadline)}
                         </td>
-                        <td style={{ padding: "9px 12px" }}>
+                        <td style={{ padding: "11px 14px" }}>
                           <StatusChip status={w.status} />
                         </td>
-                        <td style={{ padding: "9px 12px" }}>
+                        <td style={{ padding: "11px 14px" }}>
                           <button style={{
-                            ...btnStyle, fontSize: 10, fontWeight: 700, color: MUTED,
-                            padding: "3px 8px", borderRadius: 6,
+                            ...btnStyle, fontSize: 11, fontWeight: 700, color: MUTED,
+                            padding: "4px 10px", borderRadius: 7,
                             border: `1px solid ${BDR}`, background: CARD2,
                           }}>
                             פתח פרויקט
@@ -353,26 +354,26 @@ export default function VictorProfilePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
             {/* Capacity Card */}
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 18px" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: TEXT, marginBottom: 14 }}>קיבולת חודשית</div>
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>קיבולת חודשית</div>
 
               {/* Big counter */}
               <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
-                <span style={{ fontSize: 36, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{completed}</span>
-                <span style={{ fontSize: 18, fontWeight: 700, color: MUTED }}>/ {goal}</span>
+                <span style={{ fontSize: 40, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{completed}</span>
+                <span style={{ fontSize: 20, fontWeight: 700, color: MUTED }}>/ {goal}</span>
               </div>
-              <div style={{ fontSize: 11, color: TEXT2, marginBottom: 12 }}>פרויקטים הושלמו</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginBottom: 14 }}>פרויקטים הושלמו</div>
 
               {/* Progress bar */}
-              <div style={{ height: 10, background: CARD2, borderRadius: 5, overflow: "hidden", marginBottom: 6 }}>
+              <div style={{ height: 11, background: CARD2, borderRadius: 6, overflow: "hidden", marginBottom: 7 }}>
                 <div style={{
-                  height: "100%", borderRadius: 5,
+                  height: "100%", borderRadius: 6,
                   width: `${pct}%`,
                   background: `linear-gradient(90deg, ${PURPLE} 0%, #A855F7 100%)`,
                   transition: "width 0.4s ease",
                 }} />
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: MUTED, marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 16 }}>
                 <span>{pct}% מהיעד החודשי</span>
                 {pct >= 60
                   ? <span style={{ color: GREEN, fontWeight: 700 }}>במסלול ✓</span>
@@ -384,7 +385,7 @@ export default function VictorProfilePage() {
 
               {/* Stats */}
               {stats && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 7, borderTop: `1px solid ${BDR}`, paddingTop: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
                   {[
                     { label: "בתהליך",        value: active,             color: AMBER  },
                     { label: "דורשים בדיקה",   value: stats.needsReview,  color: AMBER  },
@@ -393,7 +394,7 @@ export default function VictorProfilePage() {
                     { label: "קצב נוכחי",      value: stats.paceValue,    color: TEXT2  },
                     { label: "יעד לעכשיו",     value: stats.expectedByNow,color: TEXT2  },
                   ].filter(r => r.value !== 0 && r.value !== null && r.value !== undefined).map(r => (
-                    <div key={r.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <div key={r.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                       <span style={{ color: MUTED }}>{r.label}</span>
                       <span style={{ fontWeight: 800, color: r.color }}>{r.value}</span>
                     </div>
@@ -403,12 +404,12 @@ export default function VictorProfilePage() {
             </div>
 
             {/* Files Card */}
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 18px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: TEXT }}>קבצים</span>
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
                 <button style={{
-                  ...btnStyle, fontSize: 10, fontWeight: 700, color: PURPLE,
-                  padding: "3px 10px", borderRadius: 7,
+                  ...btnStyle, fontSize: 11, fontWeight: 700, color: PURPLE,
+                  padding: "4px 12px", borderRadius: 8,
                   border: `1px solid ${PURPLE}33`, background: `${PURPLE}10`,
                 }}>
                   + העלאה
@@ -416,21 +417,21 @@ export default function VictorProfilePage() {
               </div>
 
               {allFiles.length === 0 ? (
-                <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "12px 0" }}>
+                <div style={{ fontSize: 13, color: MUTED, textAlign: "center", padding: "14px 0" }}>
                   אין קבצים לחודש זה
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 240, overflowY: "auto" }}>
                   {allFiles.slice(0, 14).map((f, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 8, background: CARD2 }}>
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderRadius: 9, background: CARD2 }}>
                       <span style={{ fontSize: 13, flexShrink: 0 }}>{f.dir === "in" ? "📥" : "📤"}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {f.dropboxShareUrl ? (
                             <a href={f.dropboxShareUrl} target="_blank" rel="noopener noreferrer" style={{ color: TEXT, textDecoration: "none" }}>{f.name}</a>
                           ) : f.name}
                         </div>
-                        <div style={{ fontSize: 9, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.project}</div>
+                        <div style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.project}</div>
                       </div>
                       {f.versionLabel && <span style={{ fontSize: 9, color: MUTED, flexShrink: 0 }}>{f.versionLabel}</span>}
                     </div>
@@ -449,14 +450,14 @@ export default function VictorProfilePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
             {/* Current month salary */}
-            <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "16px 18px" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: TEXT, marginBottom: 14 }}>
+            <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18, padding: "18px 22px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>
                 משכורות — {monthLabel(month)}
               </div>
 
               {/* Salary amount */}
               <div style={{
-                fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em",
+                fontSize: 36, fontWeight: 900, letterSpacing: "-0.04em",
                 color: currentSalaryRec ? GREEN : (salary > 0 ? GREEN : MUTED),
                 marginBottom: 4,
               }}>
@@ -464,59 +465,59 @@ export default function VictorProfilePage() {
                   ? fmt(currentSalaryRec.amount, currentSalaryRec.currency)
                   : salary > 0 ? fmt(salary, currency) : "—"}
               </div>
-              <div style={{ fontSize: 10, color: MUTED, marginBottom: 14 }}>סה"כ שכר חודשי</div>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 16 }}>סה"כ שכר חודשי</div>
 
               {/* Salary details */}
               {currentSalaryRec ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${BDR}`, paddingTop: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 9, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: MUTED }}>סטטוס תשלום</span>
+                    <span style={{ fontSize: 12, color: MUTED }}>סטטוס תשלום</span>
                     <SalaryChip status={currentSalaryRec.status} />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 11, color: MUTED }}>תאריך תשלום</span>
-                    <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700 }}>{fmtDate(currentSalaryRec.dueDate)}</span>
+                    <span style={{ fontSize: 12, color: MUTED }}>תאריך תשלום</span>
+                    <span style={{ fontSize: 12, color: TEXT2, fontWeight: 700 }}>{fmtDate(currentSalaryRec.dueDate)}</span>
                   </div>
                   {currentSalaryRec.transactionId && (
-                    <div style={{ fontSize: 10, color: MUTED }}>TX: {currentSalaryRec.transactionId.slice(0, 8)}...</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>TX: {currentSalaryRec.transactionId.slice(0, 8)}...</div>
                   )}
                 </div>
               ) : (
-                <div style={{ fontSize: 11, color: MUTED, borderTop: `1px solid ${BDR}`, paddingTop: 12 }}>
+                <div style={{ fontSize: 12, color: MUTED, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
                   אין רשומת שכר לחודש זה
                 </div>
               )}
             </div>
 
             {/* Salary history */}
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 18px" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: TEXT, marginBottom: 12 }}>היסטוריית תשלומים</div>
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 14 }}>היסטוריית תשלומים</div>
 
               {salaryLoading ? (
                 <div>
-                  {[1,2,3].map(i => <div key={i} style={{ height: 12, background: "rgba(255,255,255,0.05)", borderRadius: 4, marginBottom: 8 }} />)}
+                  {[1,2,3].map(i => <div key={i} style={{ height: 13, background: "rgba(255,255,255,0.05)", borderRadius: 4, marginBottom: 9 }} />)}
                 </div>
               ) : historyMonths.length === 0 ? (
-                <div style={{ fontSize: 12, color: MUTED }}>אין היסטוריה</div>
+                <div style={{ fontSize: 13, color: MUTED }}>אין היסטוריה</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 280, overflowY: "auto" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
                   {historyMonths.map((s, i) => {
                     const sc = SALARY_STATUS_COLORS[s.status] ?? { color: MUTED };
                     return (
                       <div key={i} style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "9px 11px", borderRadius: 10,
+                        padding: "10px 13px", borderRadius: 11,
                         background: CARD2, border: `1px solid ${BDR}`,
                         cursor: "pointer",
                       }}
                         onClick={() => setMonth(s.workMonth)}
                       >
                         <div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: TEXT }}>{monthLabel(s.workMonth)}</div>
-                          <div style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>{fmtDate(s.dueDate)}</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{monthLabel(s.workMonth)}</div>
+                          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fmtDate(s.dueDate)}</div>
                         </div>
                         <div style={{ textAlign: "left" }}>
-                          <div style={{ fontSize: 12, fontWeight: 800, color: GREEN, marginBottom: 3 }}>{fmt(s.amount, s.currency)}</div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: GREEN, marginBottom: 3 }}>{fmt(s.amount, s.currency)}</div>
                           <SalaryChip status={s.status} />
                         </div>
                       </div>
