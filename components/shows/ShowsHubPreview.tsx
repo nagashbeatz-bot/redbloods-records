@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
@@ -79,6 +79,95 @@ function Badge({ bg, text, children }: { bg: string; text: string; children: Rea
       padding: "3px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
       border: `1px solid ${text}28`,
     }}>{children}</span>
+  );
+}
+
+// ─── StatusPicker ────────────────────────────────────────────────────────────
+function StatusPicker({
+  value, options, colorMap, onChange, disabled, legacyValue,
+}: {
+  value: string;
+  options: readonly string[];
+  colorMap: Record<string, { bg: string; text: string }>;
+  onChange: (val: string) => void;
+  disabled?: boolean;
+  legacyValue?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const colors = colorMap[value] ?? { bg: "rgba(255,255,255,0.08)", text: TEXT2 };
+  const allOptions = legacyValue && !options.includes(value) ? [value, ...options] : options;
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={e => { e.stopPropagation(); if (!disabled) setOpen(o => !o); }}
+        disabled={disabled}
+        style={{
+          background: disabled ? "rgba(255,255,255,0.05)" : colors.bg,
+          color: disabled ? MUTED : colors.text,
+          border: `1px solid ${disabled ? BDR : colors.text + "33"}`,
+          borderRadius: 100, padding: "4px 11px", fontSize: 11, fontWeight: 700,
+          cursor: disabled ? "default" : "pointer",
+          outline: "none", fontFamily: "inherit", whiteSpace: "nowrap",
+          opacity: disabled ? 0.55 : 1, transition: "none",
+        }}
+      >{value}{disabled ? "" : " ▾"}</button>
+
+      {open && (
+        <div style={{
+          position: "fixed", zIndex: 99999,
+        }} ref={node => {
+          // reposition after render
+          if (!node || !ref.current) return;
+          const btn = ref.current.getBoundingClientRect();
+          node.style.top  = `${btn.bottom + 6}px`;
+          node.style.left = `${btn.left + btn.width / 2 - node.offsetWidth / 2}px`;
+        }}>
+          <div style={{
+            background: "#111318", border: "1px solid rgba(255,255,255,0.13)",
+            borderRadius: 12, padding: 6,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.85), 0 0 0 1px rgba(220,38,38,0.1)",
+            display: "flex", flexDirection: "column", gap: 3, minWidth: 130,
+          }}>
+            {allOptions.map(opt => {
+              const c = colorMap[opt] ?? { bg: "rgba(255,255,255,0.08)", text: TEXT2 };
+              const cur = opt === value;
+              return (
+                <button
+                  key={opt}
+                  onClick={e => { e.stopPropagation(); onChange(opt); setOpen(false); }}
+                  style={{
+                    background: cur ? c.bg : "transparent",
+                    color: c.text,
+                    border: cur ? `1px solid ${c.text}33` : "1px solid transparent",
+                    borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", outline: "none", fontFamily: "inherit",
+                    textAlign: "right", direction: "rtl", transition: "none",
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}
+                  onMouseEnter={e => { if (!cur) (e.currentTarget as HTMLElement).style.background = c.bg + "80"; }}
+                  onMouseLeave={e => { if (!cur) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  {cur && <span style={{ fontSize: 10, opacity: 0.9 }}>✓</span>}
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -708,42 +797,24 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סטטוס הופעה</span>
-                <select
+                <StatusPicker
                   value={show.status}
-                  onChange={e => handlePatch("status", e.target.value)}
+                  options={FORM_STATUSES}
+                  colorMap={STATUS_COLOR}
+                  onChange={val => handlePatch("status", val)}
                   disabled={savingField === "status"}
-                  style={{
-                    background: STATUS_COLOR[show.status]?.bg ?? "rgba(255,255,255,0.1)",
-                    color: STATUS_COLOR[show.status]?.text ?? TEXT2,
-                    border: `1px solid ${STATUS_COLOR[show.status]?.text ?? BDR}40`,
-                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
-                    cursor: savingField === "status" ? "default" : "pointer",
-                    outline: "none", fontFamily: "inherit",
-                  }}
-                >
-                  {!FORM_STATUSES.includes(show.status as ShowStatus) && (
-                    <option value={show.status}>{show.status}</option>
-                  )}
-                  {FORM_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
+                  legacyValue
+                />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סטטוס תשלום</span>
-                <select
+                <StatusPicker
                   value={show.payment_status}
-                  onChange={e => handlePatch("payment_status", e.target.value)}
+                  options={PAYMENT_STATUSES}
+                  colorMap={PAY_COLOR}
+                  onChange={val => handlePatch("payment_status", val)}
                   disabled={savingField === "payment_status"}
-                  style={{
-                    background: PAY_COLOR[show.payment_status].bg,
-                    color: PAY_COLOR[show.payment_status].text,
-                    border: `1px solid ${PAY_COLOR[show.payment_status].text}40`,
-                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
-                    cursor: savingField === "payment_status" ? "default" : "pointer",
-                    outline: "none", fontFamily: "inherit",
-                  }}
-                >
-                  {PAYMENT_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
+                />
               </div>
               {show.calendar_event_id && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1232,39 +1303,23 @@ export default function ShowsHubPreview() {
                                 ) : <span style={{ color: MUTED }}>—</span>}
                               </td>
                               <td style={{ padding: "10px 16px" }} onClick={e => e.stopPropagation()}>
-                                <select
+                                <StatusPicker
                                   value={s.status}
-                                  onChange={e => patchStatus(s.id, "status", e.target.value)}
+                                  options={FORM_STATUSES}
+                                  colorMap={STATUS_COLOR}
+                                  onChange={val => patchStatus(s.id, "status", val)}
                                   disabled={patching?.id === s.id && patching.field === "status"}
-                                  style={{
-                                    background: STATUS_COLOR[s.status]?.bg ?? "rgba(255,255,255,0.1)",
-                                    color: STATUS_COLOR[s.status]?.text ?? TEXT2,
-                                    border: `1px solid ${STATUS_COLOR[s.status]?.text ?? BDR}40`,
-                                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
-                                    cursor: "pointer", outline: "none", fontFamily: "inherit",
-                                  }}
-                                >
-                                  {!FORM_STATUSES.includes(s.status as ShowStatus) && (
-                                    <option value={s.status}>{s.status}</option>
-                                  )}
-                                  {FORM_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
+                                  legacyValue
+                                />
                               </td>
                               <td style={{ padding: "10px 16px" }} onClick={e => e.stopPropagation()}>
-                                <select
+                                <StatusPicker
                                   value={s.payment_status}
-                                  onChange={e => patchStatus(s.id, "payment_status", e.target.value)}
+                                  options={PAYMENT_STATUSES}
+                                  colorMap={PAY_COLOR}
+                                  onChange={val => patchStatus(s.id, "payment_status", val)}
                                   disabled={patching?.id === s.id && patching.field === "payment_status"}
-                                  style={{
-                                    background: PAY_COLOR[s.payment_status].bg,
-                                    color: PAY_COLOR[s.payment_status].text,
-                                    border: `1px solid ${PAY_COLOR[s.payment_status].text}40`,
-                                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
-                                    cursor: "pointer", outline: "none", fontFamily: "inherit",
-                                  }}
-                                >
-                                  {PAYMENT_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
+                                />
                               </td>
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
