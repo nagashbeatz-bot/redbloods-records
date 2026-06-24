@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-types";
+import DatePickerInput from "@/components/ui/DatePickerInput";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
 const BG    = "#080808";
@@ -175,35 +176,46 @@ function KpiCard({ label, value, sub, color, icon }: {
 }
 
 // ─── Show Form (create / edit) ───────────────────────────────────────────────
+
+// Statuses available in the form (subset of canonical SHOW_STATUSES — no DB change needed)
+// NOTE: "בהמתנה" is NOT included because it does not exist in SHOW_STATUSES enum → would
+// require a DB migration. To add it: extend SHOW_STATUSES in lib/shows-types.ts + Supabase enum.
+const FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "בוצע", "בוטל"];
+
 interface FormState {
   name: string; artist: string; date: string; start_time: string; location: string;
   contact_person: string; phone: string; status: ShowStatus; payment_status: PaymentStatus;
   show_price: string; dj_fee: string; advance_payment: string; notes: string;
+  booker_client_id: string | null;
 }
 
 const FORM_DEFAULTS: FormState = {
   name: "", artist: "", date: "", start_time: "", location: "",
-  contact_person: "", phone: "", status: "ליד חדש", payment_status: "לא שולם",
+  contact_person: "", phone: "", status: "ממתין לתשובה", payment_status: "לא שולם",
   show_price: "", dj_fee: "500", advance_payment: "0", notes: "",
+  booker_client_id: null,
 };
 
 function showToForm(s: Show): FormState {
   return {
-    name:           s.name,
-    artist:         s.artist,
-    date:           s.date ?? "",
-    start_time:     s.start_time ?? "",
-    location:       s.location,
-    contact_person: s.contact_person,
-    phone:          s.phone,
-    status:         s.status,
-    payment_status: s.payment_status,
-    show_price:     String(s.show_price),
-    dj_fee:         String(s.dj_fee),
-    advance_payment:String(s.advance_payment),
-    notes:          s.notes,
+    name:             s.name,
+    artist:           s.artist,
+    date:             s.date ?? "",
+    start_time:       s.start_time ?? "",
+    location:         s.location,
+    contact_person:   s.contact_person,
+    phone:            s.phone,
+    status:           s.status,
+    payment_status:   s.payment_status,
+    show_price:       String(s.show_price),
+    dj_fee:           String(s.dj_fee),
+    advance_payment:  String(s.advance_payment),
+    notes:            s.notes,
+    booker_client_id: s.booker_client_id ?? null,
   };
 }
+
+interface ClientRow { id: string; name: string; phone: string; }
 
 function ShowFormModal({
   mode, editShow, onClose, onSaved,
@@ -213,14 +225,52 @@ function ShowFormModal({
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
-  const [form, setForm] = useState<FormState>(
-    mode === "edit" && editShow ? showToForm(editShow) : FORM_DEFAULTS
-  );
+  const initForm = mode === "edit" && editShow ? showToForm(editShow) : FORM_DEFAULTS;
+  const [form, setForm] = useState<FormState>(initForm);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Inject spin-button removal CSS once (avoids <style> tag in JSX)
+  useEffect(() => {
+    const id = "rb-shows-no-spin-style";
+    if (document.getElementById(id)) return;
+    const s = document.createElement("style");
+    s.id = id;
+    s.textContent = `.rb-shows-no-spin::-webkit-outer-spin-button,.rb-shows-no-spin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}`;
+    document.head.appendChild(s);
+  }, []);
+
+  // Contact type toggle
+  const [contactType, setContactType] = useState<"manual" | "client">(
+    initForm.booker_client_id ? "client" : "manual"
+  );
+  const [clients, setClients]   = useState<ClientRow[]>([]);
+  const [cliLoad, setCliLoad]   = useState(false);
+
+  // Fetch clients when switching to client mode
+  useEffect(() => {
+    if (contactType !== "client" || clients.length > 0) return;
+    setCliLoad(true);
+    fetch("/api/clients")
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d.clients)) setClients(d.clients); })
+      .catch(() => {})
+      .finally(() => setCliLoad(false));
+  }, [contactType, clients.length]);
+
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm(prev => ({ ...prev, [k]: v }));
+  }
+
+  function selectClient(id: string) {
+    const c = clients.find(x => x.id === id);
+    if (!c) return;
+    setForm(prev => ({
+      ...prev,
+      contact_person:   c.name,
+      phone:            c.phone || prev.phone,
+      booker_client_id: c.id,
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -229,22 +279,27 @@ function ShowFormModal({
     setSaving(true);
     setErr(null);
     try {
-      const payload = {
-        name:           form.name.trim(),
-        artist:         form.artist.trim(),
-        date:           form.date || null,
-        start_time:     form.start_time || null,
-        location:       form.location.trim(),
-        contact_person: form.contact_person.trim(),
-        phone:          form.phone.trim(),
-        status:         form.status,
-        payment_status: form.payment_status,
-        show_price:     Number(form.show_price) || 0,
-        dj_fee:         Number(form.dj_fee) || 0,
-        advance_payment:Number(form.advance_payment) || 0,
-        notes:          form.notes.trim(),
+      const payload: Record<string, unknown> = {
+        name:             form.name.trim(),
+        artist:           form.artist.trim(),
+        date:             form.date || null,
+        start_time:       form.start_time || null,
+        location:         form.location.trim(),
+        contact_person:   form.contact_person.trim(),
+        phone:            form.phone.trim(),
+        status:           form.status,
+        payment_status:   form.payment_status,
+        show_price:       Number(form.show_price) || 0,
+        dj_fee:           Number(form.dj_fee) || 0,
+        advance_payment:  Number(form.advance_payment) || 0,
+        notes:            form.notes.trim(),
         // never send addToCalendar / removeFromCalendar / calendar_event_id
       };
+      // Include booker_client_id only when a client was selected
+      if (contactType === "client" && form.booker_client_id) {
+        payload.booker_client_id = form.booker_client_id;
+        payload.booker_name      = form.contact_person.trim();
+      }
 
       const url    = mode === "edit" ? `/api/shows/${editShow!.id}` : "/api/shows";
       const method = mode === "edit" ? "PATCH" : "POST";
@@ -269,10 +324,21 @@ function ShowFormModal({
     padding: "9px 12px", fontSize: 13, fontFamily: "inherit", outline: "none",
     width: "100%", boxSizing: "border-box", direction: "rtl",
   };
+  const numInputStyle: React.CSSProperties = {
+    ...inputStyle,
+    // appearance: textfield removes spin arrows in Firefox; Chrome needs the CSS class below
+    MozAppearance: "textfield" as React.CSSProperties["MozAppearance"],
+  };
   const labelStyle: React.CSSProperties = {
     fontSize: 11, fontWeight: 700, color: MUTED,
     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5, display: "block",
   };
+
+  // Build status options: always include current value (in case it's outside FORM_STATUSES)
+  const statusOptions: ShowStatus[] = [
+    ...FORM_STATUSES,
+    ...(FORM_STATUSES.includes(form.status) ? [] : [form.status]),
+  ];
 
   return (
     <>
@@ -296,6 +362,7 @@ function ShowFormModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: "20px 24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+
           {/* Row: name + artist */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
@@ -312,11 +379,21 @@ function ShowFormModal({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={labelStyle}>תאריך</label>
-              <input type="date" value={form.date} onChange={e => set("date", e.target.value)} style={inputStyle} />
+              <DatePickerInput
+                value={form.date}
+                onChange={v => set("date", v)}
+                placeholder="בחר תאריך"
+                style={inputStyle}
+              />
             </div>
             <div>
               <label style={labelStyle}>שעה</label>
-              <input type="time" value={form.start_time} onChange={e => set("start_time", e.target.value)} style={inputStyle} />
+              <input
+                type="time"
+                value={form.start_time}
+                onChange={e => set("start_time", e.target.value)}
+                style={{ ...inputStyle, colorScheme: "dark" }}
+              />
             </div>
           </div>
 
@@ -326,15 +403,58 @@ function ShowFormModal({
             <input value={form.location} onChange={e => set("location", e.target.value)} style={inputStyle} placeholder="עיר / מקום" />
           </div>
 
-          {/* Row: contact + phone */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={labelStyle}>איש קשר</label>
-              <input value={form.contact_person} onChange={e => set("contact_person", e.target.value)} style={inputStyle} placeholder="שם" />
+          {/* Contact type toggle */}
+          <div>
+            <label style={labelStyle}>סוג איש קשר</label>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {(["manual", "client"] as const).map(ct => (
+                <button
+                  key={ct}
+                  type="button"
+                  onClick={() => {
+                    setContactType(ct);
+                    if (ct === "manual") set("booker_client_id", null);
+                  }}
+                  style={{
+                    padding: "7px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", transition: "none",
+                    background: contactType === ct ? `${BLUE}18` : "none",
+                    border: `1px solid ${contactType === ct ? BLUE + "55" : BDR2}`,
+                    color: contactType === ct ? BLUE : TEXT2,
+                  }}
+                >
+                  {ct === "client" ? "לקוח" : "ידני / אחר"}
+                </button>
+              ))}
             </div>
-            <div>
-              <label style={labelStyle}>טלפון</label>
-              <input value={form.phone} onChange={e => set("phone", e.target.value)} style={inputStyle} placeholder="050-0000000" />
+
+            {/* Row: contact + phone */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={labelStyle}>איש קשר</label>
+                {contactType === "client" ? (
+                  cliLoad ? (
+                    <div style={{ ...inputStyle, color: MUTED }}>טוען לקוחות…</div>
+                  ) : (
+                    <select
+                      value={form.booker_client_id ?? ""}
+                      onChange={e => selectClient(e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="">בחר לקוח…</option>
+                      {clients.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )
+                ) : (
+                  <input value={form.contact_person} onChange={e => set("contact_person", e.target.value)} style={inputStyle} placeholder="שם" />
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>טלפון</label>
+                <input value={form.phone} onChange={e => set("phone", e.target.value)} style={inputStyle} placeholder="050-0000000" />
+              </div>
             </div>
           </div>
 
@@ -343,7 +463,7 @@ function ShowFormModal({
             <div>
               <label style={labelStyle}>סטטוס</label>
               <select value={form.status} onChange={e => set("status", e.target.value as ShowStatus)} style={inputStyle}>
-                {SHOW_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
@@ -354,19 +474,19 @@ function ShowFormModal({
             </div>
           </div>
 
-          {/* Row: prices */}
+          {/* Row: prices — no spin buttons */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <div>
               <label style={labelStyle}>מחיר הופעה ₪</label>
-              <input type="number" min="0" value={form.show_price} onChange={e => set("show_price", e.target.value)} style={inputStyle} placeholder="0" />
+              <input type="number" min="0" value={form.show_price} onChange={e => set("show_price", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
             </div>
             <div>
               <label style={labelStyle}>DJ fee ₪</label>
-              <input type="number" min="0" value={form.dj_fee} onChange={e => set("dj_fee", e.target.value)} style={inputStyle} placeholder="500" />
+              <input type="number" min="0" value={form.dj_fee} onChange={e => set("dj_fee", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="500" />
             </div>
             <div>
               <label style={labelStyle}>מקדמה ₪</label>
-              <input type="number" min="0" value={form.advance_payment} onChange={e => set("advance_payment", e.target.value)} style={inputStyle} placeholder="0" />
+              <input type="number" min="0" value={form.advance_payment} onChange={e => set("advance_payment", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
             </div>
           </div>
 
