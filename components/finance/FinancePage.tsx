@@ -276,17 +276,17 @@ function SummaryCard({
   return (
     <div style={{
       background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
-      padding: "16px 18px", flex: "1 1 0", minWidth: 0, position: "relative", overflow: "hidden",
+      padding: "20px 20px", flex: "1 1 0", minWidth: 0, position: "relative", overflow: "hidden",
     }}>
       {icon && (
         <div style={{ position: "absolute", bottom: -6, left: -4, fontSize: 52, opacity: 0.04, userSelect: "none", pointerEvents: "none", lineHeight: 1 }}>
           {icon}
         </div>
       )}
-      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
         {label}
       </div>
-      <div style={{ fontSize: 26, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 28, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
       {showDelta && (
         <div style={{ fontSize: 10, color: deltaColor, marginTop: 6, display: "flex", alignItems: "center", gap: 3 }}>
           <span>{deltaSign}{Math.abs(delta!).toLocaleString()}{deltaCurrency}</span>
@@ -312,9 +312,9 @@ function MonthlyDonut({ income, expenses }: { income: number; expenses: number }
   const expArc    = circumference * (1 - pct);
 
   return (
-    <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "18px 16px" }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: TEXT, marginBottom: 14 }}>סקירה חודשית</div>
-      <svg viewBox="0 0 130 130" width={116} style={{ display: "block", margin: "0 auto", direction: "ltr" }}>
+    <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 20px" }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>סקירה חודשית</div>
+      <svg viewBox="0 0 130 130" width={130} style={{ display: "block", margin: "0 auto", direction: "ltr" }}>
         <circle cx={CX} cy={CX} r={R} fill="none" stroke={BDR2} strokeWidth={stroke} />
         <circle cx={CX} cy={CX} r={R} fill="none" stroke={AMBER} strokeWidth={stroke}
           strokeDasharray={`${expArc} ${circumference}`}
@@ -880,7 +880,7 @@ export default function FinancePage() {
   };
 
   return (
-    <div dir="rtl" style={{ padding: "24px 28px", maxWidth: 1300, margin: "0 auto" }}>
+    <div dir="rtl" style={{ padding: "24px 32px" }}>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
@@ -953,7 +953,7 @@ export default function FinancePage() {
       </div>
 
       {/* ── KPI cards (6 in a row) ───────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
         <SummaryCard icon="💎" label='סה"כ נטו'
           value={fmtAmount(stats.profitReal)}
           color={stats.profitReal >= 0 ? GREEN : RED}
@@ -999,10 +999,10 @@ export default function FinancePage() {
       </div>
 
       {/* ── Two-column layout ────────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
 
         {/* Left: monthly summary */}
-        <div style={{ flexShrink: 0, width: 266 }}>
+        <div style={{ flexShrink: 0, width: 300 }}>
           <MonthlyDonut income={stats.incomeReceived} expenses={expensesPaid} />
 
           {/* Needs attention */}
