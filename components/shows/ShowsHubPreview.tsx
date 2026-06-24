@@ -476,7 +476,7 @@ function ShowFormModal({
               <input type="number" min="0" value={form.show_price} onChange={e => set("show_price", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
             </div>
             <div>
-              <label style={labelStyle}>DJ fee ₪</label>
+              <label style={labelStyle}>שכר דיג׳יי ₪</label>
               <input type="number" min="0" value={form.dj_fee} onChange={e => set("dj_fee", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="500" />
             </div>
             <div>
@@ -607,7 +607,7 @@ function ShowPanel({ show, onClose, onEdit }: {
             <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>כספים</div>
             {[
               { label: "מחיר הופעה",      value: fmtIls(show.show_price),    color: TEXT },
-              { label: "DJ fee",           value: `−${fmtIls(show.dj_fee)}`,  color: MUTED },
+              { label: "שכר דיג׳יי",        value: `−${fmtIls(show.dj_fee)}`,  color: MUTED },
               { label: "יתרה לחלוקה",     value: fmtIls(distributable),       color: AMBER, bold: true },
               { label: "חלק אמן (50%)",   value: fmtIls(artist),              color: BLUE },
               { label: "חלק לייבל (50%)", value: fmtIls(label),               color: GREEN },
