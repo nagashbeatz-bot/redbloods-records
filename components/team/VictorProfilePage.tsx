@@ -358,7 +358,7 @@ export default function VictorProfilePage() {
               <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>קיבולת חודשית</div>
 
               {/* Big counter */}
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4, direction: "ltr" }}>
                 <span style={{ fontSize: 40, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{completed}</span>
                 <span style={{ fontSize: 20, fontWeight: 700, color: MUTED }}>/ {goal}</span>
               </div>
