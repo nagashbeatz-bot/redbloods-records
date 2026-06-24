@@ -205,6 +205,11 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
     { label: "פרויקט הושלם", done: work.status === "הושלם", date: null },
   ];
 
+  const doneCount = tasks.filter(t => t.done).length;
+
+  const timingColor = days === null ? MUTED : days < 0 ? RED : days <= 3 ? AMBER : GREEN;
+  const timingLabel = days === null ? null : days < 0 ? `${Math.abs(days)} ימים באיחור` : days === 0 ? "היום!" : `${days} ימים נותרו`;
+
   return (
     <>
       {/* Backdrop */}
@@ -212,7 +217,7 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
         onClick={onClose}
         style={{
           position: "fixed", top: 60, bottom: 0, left: 0, right: 248,
-          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)",
+          background: "rgba(0,0,0,0.60)", backdropFilter: "blur(2px)",
           zIndex: 1000,
         }}
       />
@@ -220,83 +225,125 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
       {/* Panel */}
       <div style={{
         position: "fixed", top: 60, bottom: 0, left: 0,
-        width: 460, zIndex: 1001,
-        background: "#0B0B0F",
+        width: 490, zIndex: 1001,
+        background: "#090910",
         borderRight: `1px solid ${BDR2}`,
-        boxShadow: "4px 0 40px rgba(0,0,0,0.7)",
+        boxShadow: "6px 0 48px rgba(0,0,0,0.75)",
         display: "flex", flexDirection: "column",
         overflow: "hidden",
+        direction: "rtl",
       }}>
 
-        {/* Header */}
+        {/* ── Header ── */}
         <div style={{
-          padding: "16px 20px 14px",
+          padding: "18px 22px 16px",
           borderBottom: `1px solid ${BDR}`,
-          background: CARD2,
+          background: "linear-gradient(160deg, #0F0F18 0%, #0B0B12 100%)",
           flexShrink: 0,
         }}>
-          {/* Top row: close + open-in-projects */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+
+          {/* Row 1: close + open-in-projects */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <button onClick={onClose} style={{
-              background: "none", border: "none", cursor: "pointer", padding: 0,
-              color: MUTED, fontSize: 20, lineHeight: 1, fontFamily: "inherit",
+              background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`,
+              borderRadius: 8, cursor: "pointer", padding: "4px 10px",
+              color: TEXT2, fontSize: 13, lineHeight: 1, fontFamily: "inherit",
+              fontWeight: 700,
             }}>✕</button>
             <button style={{
-              background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`,
-              color: PURPLE, fontSize: 11, fontWeight: 700,
-              padding: "5px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+              background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`,
+              color: PURPLE, fontSize: 11, fontWeight: 800,
+              padding: "6px 14px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
+              letterSpacing: "0.03em",
             }}>
               פתח בפרויקטים ↗
             </button>
           </div>
 
-          {/* Project name */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: 16 }}>🎵</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {work.projectName}
-            </span>
-          </div>
-
-          {/* Meta row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <span style={{ fontSize: 11, color: TEXT2 }}>{work.artist || "—"}</span>
-            <span style={{ color: MUTED, fontSize: 11 }}>·</span>
-            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}18`, color: PURPLE, fontWeight: 700 }}>Victor</span>
-            <StatusChip status={work.status} />
-            {work.workState && <StatusChip status={work.workState} />}
-          </div>
-
-          {/* Deadline row */}
-          {work.internalDeadline && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 11, color: MUTED }}>דד-ליין: {fmtDate(work.internalDeadline)}</span>
-              {days !== null && (
+          {/* Row 2: music icon + project name */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 12, flexShrink: 0,
+              background: `linear-gradient(135deg, ${PURPLE}30, ${PURPLE}10)`,
+              border: `1px solid ${PURPLE}44`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 20,
+            }}>🎵</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 20, fontWeight: 900, color: TEXT,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                letterSpacing: "-0.02em", lineHeight: 1.15, marginBottom: 4,
+              }}>
+                {work.projectName}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: TEXT2, fontWeight: 500 }}>{work.artist || "—"}</span>
+                <span style={{ color: BDR2, fontSize: 10 }}>·</span>
                 <span style={{
-                  fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
-                  background: days < 0 ? "rgba(239,68,68,0.12)" : days <= 3 ? "rgba(245,158,11,0.12)" : "rgba(16,185,129,0.12)",
-                  color: days < 0 ? RED : days <= 3 ? AMBER : GREEN,
-                }}>
-                  {days < 0 ? `${Math.abs(days)} ימים באיחור` : days === 0 ? "היום!" : `${days} ימים`}
-                </span>
-              )}
+                  fontSize: 10, padding: "2px 8px", borderRadius: 6,
+                  background: `${PURPLE}20`, color: PURPLE, fontWeight: 800, letterSpacing: "0.04em",
+                }}>VICTOR</span>
+                <StatusChip status={work.status} />
+                {work.workState && <StatusChip status={work.workState} />}
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* Row 3: deadline + timing chip */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {work.internalDeadline ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 12, color: MUTED }}>📅 דד-ליין:</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.internalDeadline)}</span>
+                </div>
+                {timingLabel && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 8,
+                    background: `${timingColor}18`,
+                    border: `1px solid ${timingColor}44`,
+                    color: timingColor,
+                  }}>
+                    {timingLabel}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span style={{ fontSize: 12, color: MUTED }}>אין דד-ליין מוגדר</span>
+            )}
+          </div>
         </div>
 
-        {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* ── Scrollable body ── */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
 
           {/* Files card */}
-          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
-              <span style={{ fontSize: 11, color: MUTED }}>{files.length} קבצים</span>
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "12px 16px",
+              borderBottom: files.length > 0 ? `1px solid ${BDR}` : "none",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14 }}>📁</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                background: files.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
+                color: files.length > 0 ? GREEN : MUTED,
+              }}>{files.length} קבצים</span>
             </div>
+
             {files.length === 0 ? (
-              <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "10px 0" }}>אין קבצים לפרויקט זה</div>
+              <div style={{ padding: "28px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 32, marginBottom: 10, opacity: 0.25 }}>📂</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, marginBottom: 4 }}>אין קבצים לפרויקט זה</div>
+                <div style={{ fontSize: 11, color: MUTED }}>קבצים שייושלחו ויתקבלו יופיעו כאן</div>
+              </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
                 {files.map((f, i) => {
                   const url = f.dropboxShareUrl || f.url || "";
                   return isAudioFile(f.name) ? (
@@ -310,83 +357,123 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
           </div>
 
           {/* Tasks card */}
-          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 12 }}>משימות והתקדמות</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "12px 16px",
+              borderBottom: `1px solid ${BDR}`,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14 }}>✅</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>התקדמות</span>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                background: doneCount === tasks.length ? "rgba(16,185,129,0.12)" : "rgba(139,92,246,0.12)",
+                color: doneCount === tasks.length ? GREEN : PURPLE,
+              }}>{doneCount} / {tasks.length}</span>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ height: 3, background: BDR, margin: "0" }}>
+              <div style={{
+                height: "100%",
+                width: `${(doneCount / tasks.length) * 100}%`,
+                background: `linear-gradient(90deg, ${PURPLE}, ${GREEN})`,
+                transition: "width 0.4s ease",
+              }} />
+            </div>
+
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               {tasks.map((t, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div key={i} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 12px", borderRadius: 10,
+                  background: t.done ? `${GREEN}08` : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${t.done ? GREEN + "28" : BDR}`,
+                }}>
                   <div style={{
-                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    width: 22, height: 22, borderRadius: 7, flexShrink: 0,
                     border: `2px solid ${t.done ? GREEN : BDR2}`,
-                    background: t.done ? `${GREEN}22` : "transparent",
+                    background: t.done ? `${GREEN}25` : "transparent",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 10, color: GREEN,
+                    fontSize: 11, color: GREEN, fontWeight: 900,
                   }}>
                     {t.done ? "✓" : ""}
                   </div>
-                  <span style={{ flex: 1, fontSize: 12, color: t.done ? TEXT : TEXT2, fontWeight: t.done ? 600 : 400 }}>
+                  <span style={{
+                    flex: 1, fontSize: 13, fontWeight: t.done ? 700 : 500,
+                    color: t.done ? TEXT : TEXT2,
+                  }}>
                     {t.label}
                   </span>
-                  {t.date && <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>{fmtDate(t.date)}</span>}
+                  {t.date && (
+                    <span style={{
+                      fontSize: 10, color: MUTED, flexShrink: 0,
+                      background: "rgba(255,255,255,0.04)", padding: "2px 7px", borderRadius: 5,
+                    }}>{fmtDate(t.date)}</span>
+                  )}
                 </div>
               ))}
             </div>
 
             {/* Notes / outcome */}
             {(work.notes || work.outcome) && (
-              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}` }}>
-                {work.outcome && <div style={{ fontSize: 11, color: PURPLE, fontWeight: 700, marginBottom: 3 }}>תוצאה: {work.outcome}</div>}
-                {work.notes && <div style={{ fontSize: 11, color: TEXT2 }}>{work.notes}</div>}
+              <div style={{ margin: "0 16px 14px", padding: "10px 12px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
+                {work.outcome && (
+                  <div style={{ fontSize: 11, color: PURPLE, fontWeight: 800, marginBottom: work.notes ? 4 : 0 }}>
+                    תוצאה: {work.outcome}
+                  </div>
+                )}
+                {work.notes && <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>{work.notes}</div>}
               </div>
             )}
           </div>
 
           {/* Bottom 2 cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
 
             {/* Deadline card */}
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "12px 14px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>דד-ליין</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: days !== null && days < 0 ? RED : AMBER, letterSpacing: "-0.02em" }}>
-                {fmtDate(work.internalDeadline)}
+            <div style={{
+              background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px",
+              borderTop: `3px solid ${work.internalDeadline ? (days !== null && days < 0 ? RED : AMBER) : BDR}`,
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>📅 דד-ליין</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: days !== null && days < 0 ? RED : TEXT, letterSpacing: "-0.02em", marginBottom: 4 }}>
+                {work.internalDeadline ? fmtDate(work.internalDeadline) : "—"}
               </div>
               {days !== null && (
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
-                  {days < 0 ? `${Math.abs(days)} ימים אחרי` : `${days} ימים נותרו`}
+                <div style={{ fontSize: 11, color: timingColor, fontWeight: 700 }}>
+                  {days < 0 ? `${Math.abs(days)} ימים אחרי` : days === 0 ? "היום!" : `${days} ימים נותרו`}
                 </div>
               )}
             </div>
 
-            {/* Monthly card */}
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "12px 14px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>חודש עבודה</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: PURPLE }}>
-                {work.sentDate ? fmtDate(work.sentDate).replace(/\.\d{2}$/, "") : "—"}
-              </div>
-              <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
-                {work.status}
+            {/* Sent/returned dates card */}
+            <div style={{
+              background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px",
+              borderTop: `3px solid ${PURPLE}`,
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>🔄 מעקב</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {work.sentDate ? (
+                  <div>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>📤 נשלח</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.sentDate)}</div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: MUTED }}>טרם נשלח</div>
+                )}
+                {work.returnedDate && (
+                  <div>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>📥 חזר</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: GREEN }}>{fmtDate(work.returnedDate)}</div>
+                  </div>
+                )}
               </div>
             </div>
 
           </div>
-
-          {/* Sent/returned dates */}
-          {(work.sentDate || work.returnedDate) && (
-            <div style={{ display: "flex", gap: 10 }}>
-              {work.sentDate && (
-                <div style={{ flex: 1, padding: "8px 12px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
-                  <div style={{ fontSize: 10, color: MUTED, marginBottom: 3 }}>📤 נשלח לויקטור</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.sentDate)}</div>
-                </div>
-              )}
-              {work.returnedDate && (
-                <div style={{ flex: 1, padding: "8px 12px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
-                  <div style={{ fontSize: 10, color: MUTED, marginBottom: 3 }}>📥 חזר מויקטור</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.returnedDate)}</div>
-                </div>
-              )}
-            </div>
-          )}
 
         </div>
       </div>
