@@ -330,6 +330,7 @@ function ShowFormModal({
   const [form, setForm] = useState<FormState>(initForm);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [addToCalendar, setAddToCalendar] = useState(mode === "create");
 
   // Inject spin-button removal CSS once (avoids <style> tag in JSX)
   useEffect(() => {
@@ -390,6 +391,10 @@ function ShowFormModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) { setErr("שם ההופעה חובה"); return; }
+    if (mode === "create" && addToCalendar && !form.date) {
+      setErr("כדי להוסיף ליומן צריך לבחור תאריך");
+      return;
+    }
     setSaving(true);
     setErr(null);
     try {
@@ -410,12 +415,15 @@ function ShowFormModal({
         notes:            form.notes.trim(),
         dj_client_id:     form.dj_client_id ?? null,
         dj_name:          form.dj_name.trim(),
-        // never send addToCalendar / removeFromCalendar / calendar_event_id
       };
       // Include booker_client_id + booker_name when a client was selected
       if (form.booker_client_id) {
         payload.booker_client_id = form.booker_client_id;
         payload.booker_name      = form.contact_person.trim();
+      }
+      // Send addToCalendar only on create, only when toggled on
+      if (mode === "create" && addToCalendar) {
+        payload.addToCalendar = true;
       }
 
       const url    = mode === "edit" ? `/api/shows/${editShow!.id}` : "/api/shows";
@@ -428,7 +436,15 @@ function ShowFormModal({
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? "שגיאה בשמירה"); return; }
 
-      onSaved(mode === "edit" ? "ההופעה עודכנה בהצלחה ✓" : "ההופעה נוצרה בהצלחה ✓");
+      if (mode === "edit") {
+        onSaved("ההופעה עודכנה בהצלחה ✓");
+      } else if (addToCalendar && !data.calendarWarning) {
+        onSaved("ההופעה נוצרה ונוספה ליומן ✓");
+      } else if (addToCalendar && data.calendarWarning) {
+        onSaved("ההופעה נוצרה, אבל לא נוספה ליומן");
+      } else {
+        onSaved("ההופעה נוצרה ✓");
+      }
     } catch {
       setErr("שגיאת רשת — נסה שוב");
     } finally {
@@ -528,6 +544,29 @@ function ShowFormModal({
               />
             </div>
           </div>
+
+          {/* Add to Calendar — create mode only */}
+          {mode === "create" && (
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
+              <div
+                onClick={() => setAddToCalendar(v => !v)}
+                style={{
+                  width: 40, height: 22, borderRadius: 11, position: "relative", flexShrink: 0,
+                  background: addToCalendar ? "#10B981" : "rgba(255,255,255,0.1)",
+                  border: `1px solid ${addToCalendar ? "#10B981" : "rgba(255,255,255,0.2)"}`,
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{
+                  position: "absolute", top: 2, width: 16, height: 16, borderRadius: "50%",
+                  background: "#fff",
+                  right: addToCalendar ? 2 : "unset",
+                  left: addToCalendar ? "unset" : 2,
+                }} />
+              </div>
+              <span style={{ fontSize: 13, color: addToCalendar ? TEXT : TEXT2 }}>הוסף ליומן Google</span>
+            </label>
+          )}
 
           {/* Location */}
           <div>
