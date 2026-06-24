@@ -880,7 +880,7 @@ export default function FinancePage() {
   };
 
   return (
-    <div dir="rtl" style={{ padding: "24px 40px" }}>
+    <div dir="rtl" style={{ padding: "16px 40px" }}>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
@@ -891,7 +891,7 @@ export default function FinancePage() {
       )}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         {/* Right: title */}
         <h1 style={{ fontSize: 30, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.03em" }}>כספים</h1>
 
@@ -953,7 +953,7 @@ export default function FinancePage() {
       </div>
 
       {/* ── KPI cards (6 in a row) ───────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 14 }}>
         <SummaryCard icon="💎" label='סה"כ נטו'
           value={fmtAmount(stats.profitReal)}
           color={stats.profitReal >= 0 ? GREEN : RED}
@@ -1182,9 +1182,9 @@ export default function FinancePage() {
                       onClick={() => toggleExpand(tx.id)}
                       style={{
                         display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
-                        gap: 8, padding: "14px 16px", alignItems: "center",
-                        borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.04)`,
-                        background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2,
+                        gap: 8, padding: "17px 16px", alignItems: "center",
+                        borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.06)`,
+                        background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)",
                         cursor: "pointer",
                       }}
                       onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
