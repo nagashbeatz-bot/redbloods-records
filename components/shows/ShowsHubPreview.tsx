@@ -1324,31 +1324,9 @@ export default function ShowsHubPreview() {
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
                               </td>
-                              {/* Delete cell */}
-                              <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
-                                {deleteConfirm === s.id ? (
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 700 }}>למחוק?</span>
-                                    <button
-                                      onClick={() => deleteShow(s.id)}
-                                      disabled={deletingId === s.id}
-                                      style={{
-                                        padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 800,
-                                        background: deletingId === s.id ? MUTED : BRAND,
-                                        border: "none", color: "#fff", cursor: deletingId === s.id ? "default" : "pointer",
-                                      }}
-                                    >{deletingId === s.id ? "…" : "אישור"}</button>
-                                    <button
-                                      onClick={() => setDeleteConfirm(null)}
-                                      disabled={deletingId === s.id}
-                                      style={{
-                                        padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700,
-                                        background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
-                                        cursor: deletingId === s.id ? "default" : "pointer",
-                                      }}
-                                    >בטל</button>
-                                  </div>
-                                ) : s.calendar_event_id ? (
+                              {/* Delete cell — fixed width, popover confirm */}
+                              <td style={{ padding: "10px 12px", width: 44, position: "relative" }} onClick={e => e.stopPropagation()}>
+                                {s.calendar_event_id ? (
                                   <button
                                     title="להופעה שמחוברת ליומן לא מבצעים מחיקה ישירה. השתמש בביטול הופעה מתוך המודאל."
                                     disabled
@@ -1361,7 +1339,7 @@ export default function ShowsHubPreview() {
                                   >🗑</button>
                                 ) : (
                                   <button
-                                    onClick={() => setDeleteConfirm(s.id)}
+                                    onClick={() => setDeleteConfirm(deleteConfirm === s.id ? null : s.id)}
                                     title="מחק הופעה"
                                     style={{
                                       width: 28, height: 28, borderRadius: 8,
@@ -1371,6 +1349,45 @@ export default function ShowsHubPreview() {
                                       fontSize: 13, outline: "none", transition: "none",
                                     }}
                                   >🗑</button>
+                                )}
+                                {deleteConfirm === s.id && (
+                                  <div style={{
+                                    position: "absolute",
+                                    bottom: "calc(100% + 4px)",
+                                    left: "50%",
+                                    transform: "translateX(-50%)",
+                                    zIndex: 9999,
+                                    background: "#111318",
+                                    border: "1px solid rgba(220,38,38,0.3)",
+                                    borderRadius: 10,
+                                    padding: "10px 12px",
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.8), 0 0 0 1px rgba(220,38,38,0.08)",
+                                    display: "flex", flexDirection: "column", gap: 8,
+                                    minWidth: 100, whiteSpace: "nowrap",
+                                  }}>
+                                    <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 700, textAlign: "center" }}>למחוק?</span>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      <button
+                                        onClick={() => deleteShow(s.id)}
+                                        disabled={deletingId === s.id}
+                                        style={{
+                                          flex: 1, padding: "4px 0", borderRadius: 7, fontSize: 11, fontWeight: 800,
+                                          background: deletingId === s.id ? MUTED : BRAND,
+                                          border: "none", color: "#fff",
+                                          cursor: deletingId === s.id ? "default" : "pointer",
+                                        }}
+                                      >{deletingId === s.id ? "…" : "אישור"}</button>
+                                      <button
+                                        onClick={() => setDeleteConfirm(null)}
+                                        disabled={deletingId === s.id}
+                                        style={{
+                                          flex: 1, padding: "4px 0", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                                          background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+                                          cursor: deletingId === s.id ? "default" : "pointer",
+                                        }}
+                                      >בטל</button>
+                                    </div>
+                                  </div>
                                 )}
                               </td>
                             </tr>
