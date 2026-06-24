@@ -880,7 +880,7 @@ export default function FinancePage() {
   };
 
   return (
-    <div dir="rtl" style={{ padding: "24px 32px", maxWidth: 1720, marginInline: "auto" }}>
+    <div dir="rtl" style={{ padding: "24px 40px" }}>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
