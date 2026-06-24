@@ -10,6 +10,7 @@ import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
 import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 import MobileNav from "@/components/MobileNav";
+import MiniPlayer from "@/components/ui/MiniPlayer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import { useRadioSafe } from "@/components/radio/RadioProvider";
@@ -1173,6 +1174,32 @@ export default function DashboardDesignPreview() {
       </div>
       </div>{/* ── end inner row ── */}
       <MobileNav />
+
+      {/* Desktop global player — same as AppShell, respects dashboard sidebar */}
+      <div
+        className="fixed bottom-0 z-50 hidden md:block"
+        style={{
+          left: 0,
+          right: SIDEBAR_W,
+          transform: player?.track ? "translateY(0)" : "translateY(100%)",
+          transition: "transform 0.25s",
+        }}
+      >
+        <MiniPlayer />
+      </div>
+
+      {/* Mobile global player — above MobileNav */}
+      <div
+        className="fixed left-0 right-0 z-50 md:hidden"
+        style={{
+          bottom: `calc(56px + env(safe-area-inset-bottom))`,
+          transform: player?.track ? "translateY(0)" : "translateY(100%)",
+          transition: "transform 0.25s",
+          pointerEvents: player?.track ? "auto" : "none",
+        }}
+      >
+        <MiniPlayer mobile />
+      </div>
     </div>
   );
 }
