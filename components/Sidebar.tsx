@@ -55,7 +55,7 @@ function NavLink({ href, label, icon, iconColor, pathname, badge }: {
   const color15 = iconColor ? `${iconColor}15` : "rgba(255,255,255,0.06)";
 
   return (
-    <a
+    <Link
       href={href}
       style={{
         position: "relative", borderRadius: 10, overflow: "hidden",
@@ -95,7 +95,7 @@ function NavLink({ href, label, icon, iconColor, pathname, badge }: {
           }}>{badge}</span>
         )}
       </div>
-    </a>
+    </Link>
   );
 }
 
@@ -187,7 +187,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
           }}>כלים</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {NAV_TOOLS.map(({ href, label, icon }) => (
-              <a key={href} href={href} style={{
+              <Link key={href} href={href} style={{
                 display: "flex", alignItems: "center", gap: 11,
                 padding: "9px 12px 9px 14px", borderRadius: 10,
                 color: MUTED, fontSize: 13.5, fontWeight: 500, cursor: "pointer",
@@ -195,7 +195,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
               }}>
                 <span style={{ fontSize: 14, width: 27, textAlign: "center" }}>{icon}</span>
                 <span style={{ flex: 1 }}>{label}</span>
-              </a>
+              </Link>
             ))}
           </div>
         </div>
