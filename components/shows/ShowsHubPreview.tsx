@@ -182,8 +182,8 @@ const CARD_GRADS = [
 const CARD_ACCENTS = [BRAND, BLUE, GREEN, "#E879F9", AMBER];
 
 // ─── Show Card ───────────────────────────────────────────────────────────────
-function ShowCard({ show, accent, grad, onClick, selected }: {
-  show: Show; accent: string; grad: string; onClick: () => void; selected: boolean;
+function ShowCard({ show, accent, grad, onClick, selected, index }: {
+  show: Show; accent: string; grad: string; onClick: () => void; selected: boolean; index: number;
 }) {
   return (
     <div onClick={onClick} style={{
@@ -194,6 +194,13 @@ function ShowCard({ show, accent, grad, onClick, selected }: {
     }}>
       <div style={{ height: 120, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 50% 65%, ${accent}30 0%, transparent 68%)` }} />
+        <div style={{
+          position: "absolute", top: 10, left: 10,
+          background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.15)",
+          borderRadius: 8, minWidth: 22, height: 22,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.75)",
+        }}>{index + 1}</div>
         <svg viewBox="0 0 420 70" style={{ position: "absolute", bottom: 0, width: "100%", opacity: 0.12 }} preserveAspectRatio="none">
           {Array.from({ length: 20 }).map((_, i) => (
             <ellipse key={i} cx={i * 22 + 11} cy={70} rx={7 + (i % 3) * 2} ry={12 + (i % 5) * 6} fill={accent} />
@@ -1200,6 +1207,7 @@ export default function ShowsHubPreview() {
                     {upcoming.map((s, i) => (
                       <ShowCard
                         key={s.id} show={s}
+                        index={i}
                         accent={CARD_ACCENTS[i % CARD_ACCENTS.length]}
                         grad={CARD_GRADS[i % CARD_GRADS.length]}
                         selected={selected?.id === s.id}
