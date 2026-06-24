@@ -183,14 +183,15 @@ function KpiCard({ label, value, sub, color, icon }: {
 const FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "בוצע", "בוטל"];
 
 interface FormState {
-  name: string; artist: string; date: string; start_time: string; location: string;
+  name: string; artist: string; artist_client_id: string | null;
+  date: string; start_time: string; location: string;
   contact_person: string; phone: string; status: ShowStatus; payment_status: PaymentStatus;
   show_price: string; dj_fee: string; advance_payment: string; notes: string;
   booker_client_id: string | null;
 }
 
 const FORM_DEFAULTS: FormState = {
-  name: "", artist: "", date: "", start_time: "", location: "",
+  name: "", artist: "", artist_client_id: null, date: "", start_time: "", location: "",
   contact_person: "", phone: "", status: "ממתין לתשובה", payment_status: "לא שולם",
   show_price: "", dj_fee: "500", advance_payment: "0", notes: "",
   booker_client_id: null,
@@ -200,6 +201,7 @@ function showToForm(s: Show): FormState {
   return {
     name:             s.name,
     artist:           s.artist,
+    artist_client_id: s.artist_client_id ?? null,
     date:             s.date ?? "",
     start_time:       s.start_time ?? "",
     location:         s.location,
@@ -215,7 +217,7 @@ function showToForm(s: Show): FormState {
   };
 }
 
-interface ClientRow { id: string; name: string; phone: string; }
+interface ClientRow { id: string; name: string; phone: string; type: string; status: string; }
 
 function ShowFormModal({
   mode, editShow, onClose, onSaved,
@@ -240,29 +242,34 @@ function ShowFormModal({
     document.head.appendChild(s);
   }, []);
 
-  // Contact type toggle
-  const [contactType, setContactType] = useState<"manual" | "client">(
-    initForm.booker_client_id ? "client" : "manual"
-  );
   const [clients, setClients]   = useState<ClientRow[]>([]);
   const [cliLoad, setCliLoad]   = useState(false);
 
-  // Fetch clients when switching to client mode
+  // Fetch all clients once on mount
   useEffect(() => {
-    if (contactType !== "client" || clients.length > 0) return;
     setCliLoad(true);
     fetch("/api/clients")
       .then(r => r.json())
       .then(d => { if (Array.isArray(d.clients)) setClients(d.clients); })
       .catch(() => {})
       .finally(() => setCliLoad(false));
-  }, [contactType, clients.length]);
+  }, []);
+
+  // VIP clients → artist dropdown; type "לקוח" → booker dropdown
+  const vipClients    = clients.filter(c => c.status === "VIP");
+  const bookerClients = clients.filter(c => c.type === "לקוח");
 
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm(prev => ({ ...prev, [k]: v }));
   }
 
-  function selectClient(id: string) {
+  function selectArtist(id: string) {
+    const c = clients.find(x => x.id === id);
+    if (!c) return;
+    setForm(prev => ({ ...prev, artist: c.name, artist_client_id: c.id }));
+  }
+
+  function selectBooker(id: string) {
     const c = clients.find(x => x.id === id);
     if (!c) return;
     setForm(prev => ({
@@ -282,6 +289,7 @@ function ShowFormModal({
       const payload: Record<string, unknown> = {
         name:             form.name.trim(),
         artist:           form.artist.trim(),
+        artist_client_id: form.artist_client_id ?? null,
         date:             form.date || null,
         start_time:       form.start_time || null,
         location:         form.location.trim(),
@@ -295,8 +303,8 @@ function ShowFormModal({
         notes:            form.notes.trim(),
         // never send addToCalendar / removeFromCalendar / calendar_event_id
       };
-      // Include booker_client_id only when a client was selected
-      if (contactType === "client" && form.booker_client_id) {
+      // Include booker_client_id + booker_name when a client was selected
+      if (form.booker_client_id) {
         payload.booker_client_id = form.booker_client_id;
         payload.booker_name      = form.contact_person.trim();
       }
@@ -371,7 +379,22 @@ function ShowFormModal({
             </div>
             <div>
               <label style={labelStyle}>אמן</label>
-              <input value={form.artist} onChange={e => set("artist", e.target.value)} style={inputStyle} placeholder="שם האמן" />
+              {cliLoad ? (
+                <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
+              ) : vipClients.length === 0 ? (
+                <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אמנים מסוג VIP</div>
+              ) : (
+                <select
+                  value={form.artist_client_id ?? ""}
+                  onChange={e => selectArtist(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">בחר אמן…</option>
+                  {vipClients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -403,58 +426,30 @@ function ShowFormModal({
             <input value={form.location} onChange={e => set("location", e.target.value)} style={inputStyle} placeholder="עיר / מקום" />
           </div>
 
-          {/* Contact type toggle */}
-          <div>
-            <label style={labelStyle}>סוג איש קשר</label>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              {(["manual", "client"] as const).map(ct => (
-                <button
-                  key={ct}
-                  type="button"
-                  onClick={() => {
-                    setContactType(ct);
-                    if (ct === "manual") set("booker_client_id", null);
-                  }}
-                  style={{
-                    padding: "7px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700,
-                    cursor: "pointer", transition: "none",
-                    background: contactType === ct ? `${BLUE}18` : "none",
-                    border: `1px solid ${contactType === ct ? BLUE + "55" : BDR2}`,
-                    color: contactType === ct ? BLUE : TEXT2,
-                  }}
+          {/* Row: client (booker) + phone */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={labelStyle}>לקוח</label>
+              {cliLoad ? (
+                <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
+              ) : bookerClients.length === 0 ? (
+                <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין לקוחות מסוג לקוח</div>
+              ) : (
+                <select
+                  value={form.booker_client_id ?? ""}
+                  onChange={e => selectBooker(e.target.value)}
+                  style={inputStyle}
                 >
-                  {ct === "client" ? "לקוח" : "ידני / אחר"}
-                </button>
-              ))}
+                  <option value="">בחר לקוח…</option>
+                  {bookerClients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
-
-            {/* Row: contact + phone */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={labelStyle}>איש קשר</label>
-                {contactType === "client" ? (
-                  cliLoad ? (
-                    <div style={{ ...inputStyle, color: MUTED }}>טוען לקוחות…</div>
-                  ) : (
-                    <select
-                      value={form.booker_client_id ?? ""}
-                      onChange={e => selectClient(e.target.value)}
-                      style={inputStyle}
-                    >
-                      <option value="">בחר לקוח…</option>
-                      {clients.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  )
-                ) : (
-                  <input value={form.contact_person} onChange={e => set("contact_person", e.target.value)} style={inputStyle} placeholder="שם" />
-                )}
-              </div>
-              <div>
-                <label style={labelStyle}>טלפון</label>
-                <input value={form.phone} onChange={e => set("phone", e.target.value)} style={inputStyle} placeholder="050-0000000" />
-              </div>
+            <div>
+              <label style={labelStyle}>טלפון</label>
+              <input value={form.phone} onChange={e => set("phone", e.target.value)} style={inputStyle} placeholder="050-0000000" />
             </div>
           </div>
 
