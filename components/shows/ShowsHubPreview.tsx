@@ -1342,10 +1342,10 @@ export default function ShowsHubPreview() {
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
                               </td>
-                              {/* Delete cell — fixed 44px, popover confirm, no native tooltip */}
-                              <td style={{ padding: "10px 12px", width: 44, position: "relative" }} onClick={e => e.stopPropagation()}>
+                              {/* Delete cell — fixed 44px, trash button only, confirm handled by central modal */}
+                              <td style={{ padding: "10px 12px", width: 44 }} onClick={e => e.stopPropagation()}>
                                 <button
-                                  onClick={() => setDeleteConfirm(deleteConfirm === s.id ? null : s.id)}
+                                  onClick={() => setDeleteConfirm(s.id)}
                                   style={{
                                     width: 28, height: 28, borderRadius: 8,
                                     border: `1px solid rgba(220,38,38,0.3)`,
@@ -1354,48 +1354,6 @@ export default function ShowsHubPreview() {
                                     fontSize: 13, outline: "none", transition: "none",
                                   }}
                                 >🗑</button>
-                                {deleteConfirm === s.id && (
-                                  <div style={{
-                                    position: "absolute",
-                                    bottom: "calc(100% + 4px)",
-                                    left: "50%",
-                                    transform: "translateX(-50%)",
-                                    zIndex: 9999,
-                                    background: "#111318",
-                                    border: "1px solid rgba(220,38,38,0.3)",
-                                    borderRadius: 10,
-                                    padding: "10px 12px",
-                                    boxShadow: "0 8px 24px rgba(0,0,0,0.8), 0 0 0 1px rgba(220,38,38,0.08)",
-                                    display: "flex", flexDirection: "column", gap: 6,
-                                    minWidth: 140, whiteSpace: "nowrap",
-                                  }}>
-                                    <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 700, textAlign: "center" }}>למחוק את ההופעה?</span>
-                                    {s.calendar_event_id && (
-                                      <span style={{ fontSize: 10, color: MUTED, textAlign: "center" }}>תוסר מהיומן אוטומטית</span>
-                                    )}
-                                    <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-                                      <button
-                                        onClick={() => deleteShow(s)}
-                                        disabled={deletingId === s.id}
-                                        style={{
-                                          flex: 1, padding: "4px 0", borderRadius: 7, fontSize: 11, fontWeight: 800,
-                                          background: deletingId === s.id ? MUTED : BRAND,
-                                          border: "none", color: "#fff",
-                                          cursor: deletingId === s.id ? "default" : "pointer",
-                                        }}
-                                      >{deletingId === s.id ? "…" : "מחק"}</button>
-                                      <button
-                                        onClick={() => setDeleteConfirm(null)}
-                                        disabled={deletingId === s.id}
-                                        style={{
-                                          flex: 1, padding: "4px 0", borderRadius: 7, fontSize: 11, fontWeight: 700,
-                                          background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
-                                          cursor: deletingId === s.id ? "default" : "pointer",
-                                        }}
-                                      >בטל</button>
-                                    </div>
-                                  </div>
-                                )}
                               </td>
                             </tr>
                           );
@@ -1434,6 +1392,72 @@ export default function ShowsHubPreview() {
           onSaved={handleSaved}
         />
       )}
+
+      {/* ── Delete Confirm Modal ─────────────────────────────────────────── */}
+      {deleteConfirm && (() => {
+        const showToDelete = shows.find(s => s.id === deleteConfirm);
+        if (!showToDelete) return null;
+        const isDeleting = deletingId === showToDelete.id;
+        return (
+          <div
+            onClick={() => { if (!isDeleting) setDeleteConfirm(null); }}
+            style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "rgba(0,0,0,0.72)", backdropFilter: "blur(2px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: "#111318",
+                border: "1px solid rgba(220,38,38,0.35)",
+                borderRadius: 16,
+                padding: "24px 28px",
+                width: 320, maxWidth: "90vw",
+                boxShadow: "0 24px 80px rgba(0,0,0,0.85)",
+                display: "flex", flexDirection: "column", gap: 12,
+                direction: "rtl",
+              }}
+            >
+              <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>למחוק הופעה?</div>
+              <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.5 }}>
+                ההופעה תימחק לצמיתות. {showToDelete.calendar_event_id ? "היא קיימת ביומן ותוסר גם משם." : ""}
+              </div>
+              <div style={{
+                fontSize: 13, fontWeight: 700, color: "#FCA5A5",
+                background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)",
+                borderRadius: 8, padding: "8px 12px",
+              }}>
+                {showToDelete.name}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button
+                  onClick={() => deleteShow(showToDelete)}
+                  disabled={isDeleting}
+                  style={{
+                    flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 800,
+                    background: isDeleting ? MUTED : BRAND,
+                    border: "none", color: "#fff",
+                    cursor: isDeleting ? "default" : "pointer",
+                    outline: "none", transition: "none",
+                  }}
+                >{isDeleting ? "מוחק…" : "מחק"}</button>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={isDeleting}
+                  style={{
+                    flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                    background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+                    cursor: isDeleting ? "default" : "pointer",
+                    outline: "none", transition: "none",
+                  }}
+                >בטל</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Toast ──────────────────────────────────────────────────────────── */}
       {toast && (
