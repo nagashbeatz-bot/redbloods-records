@@ -882,7 +882,9 @@ export default function ShowsHubPreview() {
   const [selected,  setSelected]  = useState<Show | null>(null);
   const [modal,     setModal]     = useState<{ mode: "create" | "edit"; show?: Show } | null>(null);
   const [toast,     setToast]     = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [patching,  setPatching]  = useState<{ id: string; field: "status" | "payment_status" } | null>(null);
+  const [patching,      setPatching]      = useState<{ id: string; field: "status" | "payment_status" } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deletingId,    setDeletingId]    = useState<string | null>(null);
 
   const loadShows = useCallback(() => {
     return fetch("/api/shows")
@@ -975,6 +977,25 @@ export default function ShowsHubPreview() {
     } catch {
       setToast({ message: "לא הצלחנו לבטל את ההופעה", type: "error" });
       throw new Error("cancel failed");
+    }
+  }
+
+  async function deleteShow(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/shows/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "שגיאה");
+      }
+      setShows(prev => prev.filter(s => s.id !== id));
+      if (selected?.id === id) setSelected(null);
+      setDeleteConfirm(null);
+      setToast({ message: "ההופעה נמחקה", type: "success" });
+    } catch {
+      setToast({ message: "לא הצלחנו למחוק את ההופעה", type: "error" });
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -1181,7 +1202,7 @@ export default function ShowsHubPreview() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr style={{ borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.016)" }}>
-                          {["אמן","הופעה","תאריך","סטטוס","תשלום","יתרה"].map(h => (
+                          {["אמן","הופעה","תאריך","סטטוס","תשלום","יתרה",""].map(h => (
                             <th key={h} style={{ padding: "12px 16px", textAlign: "right", fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
@@ -1247,6 +1268,55 @@ export default function ShowsHubPreview() {
                               </td>
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
+                              </td>
+                              {/* Delete cell */}
+                              <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
+                                {deleteConfirm === s.id ? (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    <span style={{ fontSize: 11, color: "#FCA5A5", fontWeight: 700 }}>למחוק?</span>
+                                    <button
+                                      onClick={() => deleteShow(s.id)}
+                                      disabled={deletingId === s.id}
+                                      style={{
+                                        padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 800,
+                                        background: deletingId === s.id ? MUTED : BRAND,
+                                        border: "none", color: "#fff", cursor: deletingId === s.id ? "default" : "pointer",
+                                      }}
+                                    >{deletingId === s.id ? "…" : "אישור"}</button>
+                                    <button
+                                      onClick={() => setDeleteConfirm(null)}
+                                      disabled={deletingId === s.id}
+                                      style={{
+                                        padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                                        background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+                                        cursor: deletingId === s.id ? "default" : "pointer",
+                                      }}
+                                    >בטל</button>
+                                  </div>
+                                ) : s.calendar_event_id ? (
+                                  <button
+                                    title="להופעה שמחוברת ליומן לא מבצעים מחיקה ישירה. השתמש בביטול הופעה מתוך המודאל."
+                                    disabled
+                                    style={{
+                                      width: 28, height: 28, borderRadius: 8, border: `1px solid ${BDR}`,
+                                      background: "rgba(255,255,255,0.03)", color: MUTED,
+                                      cursor: "not-allowed", display: "flex", alignItems: "center", justifyContent: "center",
+                                      fontSize: 13,
+                                    }}
+                                  >🗑</button>
+                                ) : (
+                                  <button
+                                    onClick={() => setDeleteConfirm(s.id)}
+                                    title="מחק הופעה"
+                                    style={{
+                                      width: 28, height: 28, borderRadius: 8,
+                                      border: `1px solid rgba(220,38,38,0.3)`,
+                                      background: "rgba(220,38,38,0.08)", color: "#FCA5A5",
+                                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                                      fontSize: 13, outline: "none", transition: "none",
+                                    }}
+                                  >🗑</button>
+                                )}
                               </td>
                             </tr>
                           );
