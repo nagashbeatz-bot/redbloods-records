@@ -32,24 +32,23 @@ export function showCalendarSummary(show: Pick<Show, "name" | "artist">): string
 /** Google Calendar event description for a show. */
 export function showCalendarDescription(show: Pick<Show,
   "name" | "artist" | "booker_name" | "contact_person" | "phone" |
-  "location" | "show_price" | "dj_fee"
+  "location" | "show_price" | "dj_name" | "status" | "payment_status" | "notes"
 >): string {
-  const dist  = Math.max(0, (show.show_price || 0) - (show.dj_fee || 0));
-  const share = dist / 2;
-  const fmt   = (n: number) => `₪${n.toLocaleString("he-IL")}`;
+  const fmt = (n: number) => `₪${n.toLocaleString("he-IL")}`;
   const lines = [
     `שם ההופעה: ${show.name}`,
-    show.artist     ? `אמן מופיע: ${show.artist}`     : null,
-    show.booker_name ? `מזמין: ${show.booker_name}`   : null,
-    show.contact_person ? `איש קשר: ${show.contact_person}` : null,
-    show.phone      ? `טלפון: ${show.phone}`           : null,
-    show.location   ? `מקום: ${show.location}`         : null,
+    show.artist         ? `אמן מופיע: ${show.artist}`        : null,
+    show.booker_name    ? `מזמין: ${show.booker_name}`        : null,
+    show.contact_person ? `איש קשר: ${show.contact_person}`  : null,
+    show.phone          ? `טלפון: ${show.phone}`              : null,
+    show.location       ? `מקום: ${show.location}`            : null,
+    show.dj_name        ? `דיג׳יי: ${show.dj_name}`          : null,
     "",
     `מחיר הופעה: ${fmt(show.show_price || 0)}`,
-    `דיג׳יי: ${fmt(show.dj_fee || 0)}`,
-    `יתרה לחלוקה: ${fmt(dist)}`,
-    `חלק אמן (50%): ${fmt(share)}`,
-    `חלק לייבל (50%): ${fmt(share)}`,
+    "",
+    `סטטוס הופעה: ${show.status}`,
+    `סטטוס תשלום: ${show.payment_status}`,
+    show.notes          ? `הערות: ${show.notes}`              : null,
   ];
   return lines.filter(l => l !== null).join("\n");
 }
