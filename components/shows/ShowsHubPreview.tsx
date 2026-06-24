@@ -662,54 +662,58 @@ function ShowPanel({ show, onClose, onEdit }: {
 
           {/* פרטי הופעה */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
-            {sectionLabel("פרטי הופעה", "📅")}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-              {/* עמודה ימין — location / contact / booker / phone */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, borderLeft: `1px solid ${BDR}`, paddingLeft: 14 }}>
-                {[
-                  { icon: "📍", label: "מיקום",    val: show.location      || "—" },
-                  { icon: "👤", label: "איש קשר",  val: show.contact_person || "לא נבחר" },
-                  ...(show.booker_name ? [{ icon: "👤", label: "מזמין", val: show.booker_name }] : []),
-                  { icon: "📞", label: "טלפון",    val: show.phone          || "—" },
-                ].map(r => (
-                  <div key={r.label} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <span style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }}>{r.icon}</span>
-                    <div>
-                      <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: "0.05em", marginBottom: 1 }}>{r.label}</div>
-                      <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{r.val}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {sectionLabel("פרטי הופעה", "🎤")}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {([
+                { label: "אמן",        val: show.artist           || "—" },
+                { label: "שם הופעה",   val: show.name                    },
+                { label: "לקוח",       val: show.contact_person   || show.booker_name || "—" },
+                { label: "טלפון",      val: show.phone            || "—" },
+                { label: "תאריך",      val: show.date ? `${fmtDate(show.date)} · ${fmtDay(show.date)}` : "—" },
+                { label: "שעה",        val: show.start_time       || "—" },
+                { label: "מיקום",      val: show.location         || "—" },
+                { label: "דיג׳יי",     val: show.dj_name          || "—" },
+              ] as { label: string; val: string }[]).map(r => (
+                <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: MUTED, fontWeight: 600, flexShrink: 0 }}>{r.label}</span>
+                  <span style={{ fontSize: 13, color: TEXT, fontWeight: 600, textAlign: "left" }}>{r.val}</span>
+                </div>
+              ))}
+            </div>
+          </div>
 
-              {/* עמודה שמאל — date / day / time / dj */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingRight: 14 }}>
-                {[
-                  { label: "תאריך", val: show.date ? fmtDate(show.date)    : "—" },
-                  { label: "יום",   val: show.date ? fmtDay(show.date)     : "—" },
-                  { label: "שעה",   val: show.start_time                   || "—" },
-                  { label: "דיג׳יי", val: show.dj_name                     || "—" },
-                ].map(r => (
-                  <div key={r.label}>
-                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: "0.05em", marginBottom: 1 }}>{r.label}</div>
-                    <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{r.val}</div>
-                  </div>
-                ))}
+          {/* סטטוס */}
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
+            {sectionLabel("סטטוס", "📋")}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סטטוס הופעה</span>
+                <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
               </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סטטוס תשלום</span>
+                <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
+              </div>
+              {show.calendar_event_id && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>יומן Google</span>
+                  <Badge bg="rgba(59,130,246,0.18)" text={BLUE}>📅 מסונכרן</Badge>
+                </div>
+              )}
             </div>
           </div>
 
           {/* סיכום כספי */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
             {sectionLabel("סיכום כספי", "💰")}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              {finCard("מחיר הופעה",      fmtIls(show.show_price),   TEXT2)}
-              {finCard("שכר דיג׳יי",        fmtIls(show.dj_fee),       MUTED)}
-              {finCard("יתרה לחלוקה",     fmtIls(distributable),     AMBER, true)}
-              {finCard("חלק אמן (50%)",   fmtIls(artistShare),       BLUE)}
-              {finCard("חלק לייבל (50%)", fmtIls(labelShare),        GREEN)}
-              {finCard("יתרה לגבייה",     fmtIls(remaining),         remaining > 0 ? BRAND : GREEN, true)}
-              {finCard("מקדמה ששולמה",    fmtIls(show.advance_payment), TEXT2, false, true)}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {finCard("מחיר הופעה",      fmtIls(show.show_price),            TEXT2)}
+              {finCard("שכר דיג׳יי",       fmtIls(show.dj_fee),                MUTED)}
+              {finCard("מקדמה",            fmtIls(show.advance_payment),       TEXT2)}
+              {finCard("יתרה לגבייה",      fmtIls(remaining),                  remaining > 0 ? BRAND : GREEN, true)}
+              {finCard("יתרה לחלוקה",      fmtIls(distributable),              AMBER, true)}
+              {finCard("חלק אמן (50%)",    fmtIls(artistShare),                BLUE)}
+              {finCard("חלק לייבל (50%)",  fmtIls(labelShare),                 GREEN)}
             </div>
           </div>
 
