@@ -190,7 +190,44 @@ function FileRow({ name, url }: { name: string; url: string }) {
   );
 }
 
-function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () => void }) {
+function VictorProjectDrawer({
+  work,
+  onClose,
+  onRefresh,
+}: {
+  work: VendorWork;
+  onClose: () => void;
+  onRefresh?: () => void;
+}) {
+  const router = useRouter();
+  const [updating, setUpdating] = useState(false);
+  const [notes, setNotes] = useState(work.notes ?? "");
+  const [notesDirty, setNotesDirty] = useState(false);
+
+  async function patchWork(fields: Partial<VendorWork>) {
+    setUpdating(true);
+    try {
+      await fetch(`/api/vendor/victor/work/${work.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      onRefresh?.();
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function saveNotes() {
+    if (!notesDirty) return;
+    setNotesDirty(false);
+    await patchWork({ notes });
+  }
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
   const files = [
     ...(work.filesReceived ?? []).map(f => ({ ...f, dir: "in" as const })),
     ...(work.filesSent ?? []).map(f => ({ ...f, dir: "out" as const })),
@@ -198,11 +235,38 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
 
   const days = daysFromNow(work.internalDeadline);
 
-  const tasks = [
-    { label: "נשלח לויקטור", done: !!work.sentDate, date: work.sentDate },
-    { label: "חזר מויקטור", done: !!work.returnedDate, date: work.returnedDate },
-    { label: "בדיקה ואישור", done: work.outcome === "אושר" || work.outcome === "נכנס לפרויקט בפועל", date: null },
-    { label: "פרויקט הושלם", done: work.status === "הושלם", date: null },
+  const tasks: {
+    label: string;
+    done: boolean;
+    date: string | null;
+    action?: () => void;
+  }[] = [
+    {
+      label: "נשלח לויקטור",
+      done: !!work.sentDate,
+      date: work.sentDate,
+      action: !work.sentDate ? () => patchWork({ sentDate: todayISO(), workState: "נשלח לויקטור" }) : undefined,
+    },
+    {
+      label: "חזר מויקטור",
+      done: !!work.returnedDate,
+      date: work.returnedDate,
+      action: !work.returnedDate ? () => patchWork({ returnedDate: todayISO(), workState: "חזר מויקטור" }) : undefined,
+    },
+    {
+      label: "בדיקה ואישור",
+      done: work.outcome === "אושר" || work.outcome === "נכנס לפרויקט בפועל",
+      date: null,
+      action: work.outcome !== "אושר" && work.outcome !== "נכנס לפרויקט בפועל"
+        ? () => patchWork({ outcome: "אושר" })
+        : undefined,
+    },
+    {
+      label: "פרויקט הושלם",
+      done: work.status === "הושלם",
+      date: null,
+      action: work.status !== "הושלם" ? () => patchWork({ status: "הושלם" }) : undefined,
+    },
   ];
 
   const doneCount = tasks.filter(t => t.done).length;
@@ -250,14 +314,21 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
               color: TEXT2, fontSize: 13, lineHeight: 1, fontFamily: "inherit",
               fontWeight: 700,
             }}>✕</button>
-            <button style={{
-              background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`,
-              color: PURPLE, fontSize: 11, fontWeight: 800,
-              padding: "6px 14px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
-              letterSpacing: "0.03em",
-            }}>
-              פתח בפרויקטים ↗
-            </button>
+            {work.projectId ? (
+              <button
+                onClick={() => router.push(`/projects/${work.projectId}`)}
+                style={{
+                  background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`,
+                  color: PURPLE, fontSize: 11, fontWeight: 800,
+                  padding: "6px 14px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
+                  letterSpacing: "0.03em",
+                }}
+              >
+                פתח בפרויקטים ↗
+              </button>
+            ) : (
+              <span style={{ fontSize: 11, color: MUTED }}>אין פרויקט מקושר</span>
+            )}
           </div>
 
           {/* Row 2: music icon + project name */}
@@ -329,11 +400,27 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
                 <span style={{ fontSize: 14 }}>📁</span>
                 <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
               </div>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
-                background: files.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
-                color: files.length > 0 ? GREEN : MUTED,
-              }}>{files.length} קבצים</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {work.dropboxShareLink && (
+                  <a
+                    href={work.dropboxShareLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
+                      background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)",
+                      color: "#4A9EFF", textDecoration: "none",
+                    }}
+                  >
+                    פתח ב-Dropbox ↗
+                  </a>
+                )}
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                  background: files.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
+                  color: files.length > 0 ? GREEN : MUTED,
+                }}>{files.length} קבצים</span>
+              </div>
             </div>
 
             {files.length === 0 ? (
@@ -386,12 +473,18 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
 
             <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               {tasks.map((t, i) => (
-                <div key={i} style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  padding: "10px 12px", borderRadius: 10,
-                  background: t.done ? `${GREEN}08` : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${t.done ? GREEN + "28" : BDR}`,
-                }}>
+                <div
+                  key={i}
+                  onClick={t.action && !updating ? t.action : undefined}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 12px", borderRadius: 10,
+                    background: t.done ? `${GREEN}08` : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${t.done ? GREEN + "28" : BDR}`,
+                    cursor: t.action && !updating ? "pointer" : "default",
+                    opacity: updating ? 0.6 : 1,
+                  }}
+                >
                   <div style={{
                     width: 22, height: 22, borderRadius: 7, flexShrink: 0,
                     border: `2px solid ${t.done ? GREEN : BDR2}`,
@@ -407,27 +500,40 @@ function VictorProjectDrawer({ work, onClose }: { work: VendorWork; onClose: () 
                   }}>
                     {t.label}
                   </span>
-                  {t.date && (
+                  {t.date ? (
                     <span style={{
                       fontSize: 10, color: MUTED, flexShrink: 0,
                       background: "rgba(255,255,255,0.04)", padding: "2px 7px", borderRadius: 5,
                     }}>{fmtDate(t.date)}</span>
-                  )}
+                  ) : t.action && !t.done ? (
+                    <span style={{ fontSize: 10, color: PURPLE, fontWeight: 700 }}>סמן ✓</span>
+                  ) : null}
                 </div>
               ))}
             </div>
 
-            {/* Notes / outcome */}
-            {(work.notes || work.outcome) && (
-              <div style={{ margin: "0 16px 14px", padding: "10px 12px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
-                {work.outcome && (
-                  <div style={{ fontSize: 11, color: PURPLE, fontWeight: 800, marginBottom: work.notes ? 4 : 0 }}>
-                    תוצאה: {work.outcome}
-                  </div>
-                )}
-                {work.notes && <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>{work.notes}</div>}
-              </div>
-            )}
+            {/* Notes */}
+            <div style={{ margin: "0 16px 14px" }}>
+              {work.outcome && (
+                <div style={{ fontSize: 11, color: PURPLE, fontWeight: 800, marginBottom: 6 }}>
+                  תוצאה: {work.outcome}
+                </div>
+              )}
+              <textarea
+                value={notes}
+                onChange={e => { setNotes(e.target.value); setNotesDirty(true); }}
+                onBlur={saveNotes}
+                placeholder="הוסף הערות..."
+                rows={2}
+                style={{
+                  width: "100%", padding: "9px 12px", borderRadius: 10, fontSize: 12,
+                  background: CARD2, border: `1px solid ${BDR}`,
+                  color: TEXT2, outline: "none", fontFamily: "inherit",
+                  resize: "vertical", lineHeight: 1.5, boxSizing: "border-box",
+                  direction: "rtl",
+                }}
+              />
+            </div>
           </div>
 
           {/* Bottom 2 cards */}
@@ -942,6 +1048,7 @@ export default function VictorProfilePage() {
       <VictorProjectDrawer
         work={selectedWork}
         onClose={() => setSelectedWork(null)}
+        onRefresh={() => fetchMonth(month)}
       />
     )}
     </>
