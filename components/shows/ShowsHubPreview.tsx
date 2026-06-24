@@ -67,7 +67,6 @@ const TABS: { key: TabKey; label: string; color: string }[] = [
   { key: "all",       label: "כל ההופעות",  color: BRAND  },
   { key: "upcoming",  label: "קרובות",       color: BLUE   },
   { key: "unpaid",    label: "לא שולמו",     color: AMBER  },
-  { key: "followup",  label: "צריך פולואפ",  color: "#EF4444" },
   { key: "done",      label: "בוצעו",        color: PURPLE },
   { key: "cancelled", label: "בוטלו",        color: MUTED  },
 ];
@@ -571,9 +570,17 @@ function Toast({ message, type, onDone }: { message: string; type: "success" | "
 }
 
 // ─── Show Panel (centered modal) ─────────────────────────────────────────────
-function ShowPanel({ show, onClose, onEdit }: {
+function ShowPanel({ show, onClose, onEdit, onPatch }: {
   show: Show; onClose: () => void; onEdit: () => void;
+  onPatch: (field: "status" | "payment_status", value: string) => Promise<void>;
 }) {
+  const [savingField, setSavingField] = useState<"status" | "payment_status" | null>(null);
+
+  async function handlePatch(field: "status" | "payment_status", value: string) {
+    setSavingField(field);
+    try { await onPatch(field, value); } finally { setSavingField(null); }
+  }
+
   const distributable = calcDistributable(show);
   const artistShare   = calcArtistShare(show);
   const labelShare    = calcLabelShare(show);
@@ -650,7 +657,7 @@ function ShowPanel({ show, onClose, onEdit }: {
           <div style={{ textAlign: "center", paddingTop: 2 }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: TEXT, marginBottom: 10 }}>{show.name}</div>
             <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
-              <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
+              <Badge bg={STATUS_COLOR[show.status]?.bg ?? "rgba(255,255,255,0.1)"} text={STATUS_COLOR[show.status]?.text ?? TEXT2}>{show.status}</Badge>
               <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
               {show.calendar_event_id && <Badge bg="rgba(59,130,246,0.18)" text={BLUE}>📅 ביומן</Badge>}
             </div>
@@ -688,11 +695,42 @@ function ShowPanel({ show, onClose, onEdit }: {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סטטוס הופעה</span>
-                <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
+                <select
+                  value={show.status}
+                  onChange={e => handlePatch("status", e.target.value)}
+                  disabled={savingField === "status"}
+                  style={{
+                    background: STATUS_COLOR[show.status]?.bg ?? "rgba(255,255,255,0.1)",
+                    color: STATUS_COLOR[show.status]?.text ?? TEXT2,
+                    border: `1px solid ${STATUS_COLOR[show.status]?.text ?? BDR}40`,
+                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
+                    cursor: savingField === "status" ? "default" : "pointer",
+                    outline: "none", fontFamily: "inherit",
+                  }}
+                >
+                  {!FORM_STATUSES.includes(show.status as ShowStatus) && (
+                    <option value={show.status}>{show.status}</option>
+                  )}
+                  {FORM_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>סטטוס תשלום</span>
-                <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
+                <select
+                  value={show.payment_status}
+                  onChange={e => handlePatch("payment_status", e.target.value)}
+                  disabled={savingField === "payment_status"}
+                  style={{
+                    background: PAY_COLOR[show.payment_status].bg,
+                    color: PAY_COLOR[show.payment_status].text,
+                    border: `1px solid ${PAY_COLOR[show.payment_status].text}40`,
+                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
+                    cursor: savingField === "payment_status" ? "default" : "pointer",
+                    outline: "none", fontFamily: "inherit",
+                  }}
+                >
+                  {PAYMENT_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
               </div>
               {show.calendar_event_id && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -788,6 +826,7 @@ export default function ShowsHubPreview() {
   const [selected,  setSelected]  = useState<Show | null>(null);
   const [modal,     setModal]     = useState<{ mode: "create" | "edit"; show?: Show } | null>(null);
   const [toast,     setToast]     = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [patching,  setPatching]  = useState<{ id: string; field: "status" | "payment_status" } | null>(null);
 
   const loadShows = useCallback(() => {
     return fetch("/api/shows")
@@ -860,6 +899,27 @@ export default function ShowsHubPreview() {
       labelProfit: active.reduce((a, s) => a + calcLabelShare(s), 0),
     };
   }, [shows, upcoming]);
+
+  async function patchStatus(id: string, field: "status" | "payment_status", value: string) {
+    setPatching({ id, field });
+    try {
+      const res = await fetch(`/api/shows/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      const updatedShow: Show = data.show;
+      setShows(prev => prev.map(s => s.id === id ? updatedShow : s));
+      if (selected?.id === id) setSelected(updatedShow);
+      setToast({ message: "הסטטוס עודכן", type: "success" });
+    } catch {
+      setToast({ message: "לא הצלחנו לעדכן סטטוס", type: "error" });
+    } finally {
+      setPatching(null);
+    }
+  }
 
   function handleSaved(msg: string) {
     setModal(null);
@@ -1017,7 +1077,7 @@ export default function ShowsHubPreview() {
                   </div>
                   <select value={filterSt}  onChange={e => setFilterSt(e.target.value as ShowStatus | "")}    style={selectStyle}>
                     <option value="">כל הסטטוסים</option>
-                    {SHOW_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {FORM_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   <select value={filterPay} onChange={e => setFilterPay(e.target.value as PaymentStatus | "")} style={selectStyle}>
                     <option value="">כל התשלומים</option>
@@ -1072,11 +1132,40 @@ export default function ShowsHubPreview() {
                                   </>
                                 ) : <span style={{ color: MUTED }}>—</span>}
                               </td>
-                              <td style={{ padding: "14px 16px" }}>
-                                <Badge bg={STATUS_COLOR[s.status].bg} text={STATUS_COLOR[s.status].text}>{s.status}</Badge>
+                              <td style={{ padding: "10px 16px" }} onClick={e => e.stopPropagation()}>
+                                <select
+                                  value={s.status}
+                                  onChange={e => patchStatus(s.id, "status", e.target.value)}
+                                  disabled={patching?.id === s.id && patching.field === "status"}
+                                  style={{
+                                    background: STATUS_COLOR[s.status]?.bg ?? "rgba(255,255,255,0.1)",
+                                    color: STATUS_COLOR[s.status]?.text ?? TEXT2,
+                                    border: `1px solid ${STATUS_COLOR[s.status]?.text ?? BDR}40`,
+                                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
+                                    cursor: "pointer", outline: "none", fontFamily: "inherit",
+                                  }}
+                                >
+                                  {!FORM_STATUSES.includes(s.status as ShowStatus) && (
+                                    <option value={s.status}>{s.status}</option>
+                                  )}
+                                  {FORM_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
                               </td>
-                              <td style={{ padding: "14px 16px" }}>
-                                <Badge bg={PAY_COLOR[s.payment_status].bg} text={PAY_COLOR[s.payment_status].text}>{s.payment_status}</Badge>
+                              <td style={{ padding: "10px 16px" }} onClick={e => e.stopPropagation()}>
+                                <select
+                                  value={s.payment_status}
+                                  onChange={e => patchStatus(s.id, "payment_status", e.target.value)}
+                                  disabled={patching?.id === s.id && patching.field === "payment_status"}
+                                  style={{
+                                    background: PAY_COLOR[s.payment_status].bg,
+                                    color: PAY_COLOR[s.payment_status].text,
+                                    border: `1px solid ${PAY_COLOR[s.payment_status].text}40`,
+                                    borderRadius: 100, padding: "3px 10px", fontSize: 11, fontWeight: 700,
+                                    cursor: "pointer", outline: "none", fontFamily: "inherit",
+                                  }}
+                                >
+                                  {PAYMENT_STATUSES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
                               </td>
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
@@ -1104,6 +1193,7 @@ export default function ShowsHubPreview() {
             setModal({ mode: "edit", show: selected });
             setSelected(null);
           }}
+          onPatch={(field, value) => patchStatus(selected.id, field, value)}
         />
       )}
 
