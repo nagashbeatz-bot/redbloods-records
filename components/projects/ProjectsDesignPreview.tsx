@@ -125,19 +125,27 @@ function ProjectPlayBtn({ p, player, size = 28 }: {
 }
 
 // ── KPI card — matches dashboard KPI language ────────────────────────────────
-function KpiCard({ label, value, sub, color, icon }: {
+function KpiCard({ label, value, sub, color, icon, onMouseEnter, onMouseLeave }: {
   label: string; value: string; sub?: string; color: string; icon: string;
+  onMouseEnter?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onMouseLeave?: () => void;
 }) {
   return (
-    <div style={{
-      background: CARD,
-      border: `1px solid ${BORDER}`,
-      borderRadius: 14,
-      padding: "14px 16px",
-      boxShadow: CARD_SHADOW,
-      display: "flex", flexDirection: "column", gap: 6,
-      minHeight: 82,
-    }}>
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
+        background: CARD,
+        border: `1px solid ${BORDER}`,
+        borderRadius: 14,
+        padding: "14px 16px",
+        boxShadow: CARD_SHADOW,
+        display: "flex", flexDirection: "column", gap: 6,
+        minHeight: 82,
+        cursor: onMouseEnter ? "default" : undefined,
+        position: "relative",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase" }}>
           {label}
@@ -147,6 +155,85 @@ function KpiCard({ label, value, sub, color, icon }: {
       <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.02em" }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{sub}</div>}
     </div>
+  );
+}
+
+// ── KPI Popover types ────────────────────────────────────────────────────────
+type KpiPopoverItem = {
+  id: string; name: string; artist: string;
+  remaining: number; agreed: number; paid: number;
+  deadline?: string | null;
+};
+
+// ── KPI Popover component ────────────────────────────────────────────────────
+function KpiPopover({
+  popover, onClose,
+}: {
+  popover: { rect: DOMRect; items: KpiPopoverItem[] };
+  onClose: () => void;
+}) {
+  const MAX_ITEMS = 5;
+  const shown = popover.items.slice(0, MAX_ITEMS);
+  const overflow = popover.items.length - MAX_ITEMS;
+
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: popover.rect.bottom + 8,
+    left: popover.rect.left + popover.rect.width / 2,
+    transform: "translateX(-50%)",
+    zIndex: 9999,
+    background: "#141414",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+    padding: "14px 16px",
+    minWidth: 280,
+    maxWidth: 360,
+    direction: "rtl",
+  };
+
+  return createPortal(
+    <div style={style} onMouseLeave={onClose}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#F59E0B", letterSpacing: "0.07em", marginBottom: 10 }}>
+        💰 הכנסה צפויה — פירוט
+      </div>
+      {popover.items.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#555" }}>אין פריטים להצגה</div>
+      ) : (
+        <>
+          {shown.map(item => (
+            <div key={item.id} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.05)",
+              gap: 12,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {item.name}
+                </div>
+                <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>
+                  {item.artist}{item.deadline ? ` · ${item.deadline}` : ""}
+                </div>
+              </div>
+              <div style={{ flexShrink: 0, textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#F59E0B" }}>
+                  ₪{item.remaining.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 10, color: "#555" }}>
+                  מתוך ₪{item.agreed.toLocaleString()}
+                </div>
+              </div>
+            </div>
+          ))}
+          {overflow > 0 && (
+            <div style={{ fontSize: 11, color: "#555", marginTop: 8, textAlign: "center" }}>
+              ועוד {overflow} פרויקטים נוספים
+            </div>
+          )}
+        </>
+      )}
+    </div>,
+    document.body
   );
 }
 
@@ -244,6 +331,8 @@ export default function ProjectsDesignPreview() {
   const [clientNames,     setClientNames]     = useState<string[]>([]);
 
   const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number }>>({});
+  const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; items: KpiPopoverItem[] } | null>(null);
+  const kpiHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch("/api/transactions?all=1")
@@ -309,6 +398,29 @@ export default function ProjectsDesignPreview() {
     };
   }, [projects, financeSummary]);
 
+  const expectedBreakdown = useMemo((): KpiPopoverItem[] => {
+    return projects
+      .filter(p => !p.isHidden)
+      .map(p => ({
+        id: p.id, name: p.name, artist: p.artist ?? "",
+        agreed: financeSummary[p.id]?.agreed ?? 0,
+        paid:   financeSummary[p.id]?.paid   ?? 0,
+        remaining: Math.max(0, (financeSummary[p.id]?.agreed ?? 0) - (financeSummary[p.id]?.paid ?? 0)),
+        deadline: p.deadline ? new Date(p.deadline).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }) : null,
+      }))
+      .filter(p => p.remaining > 0)
+      .sort((a, b) => b.remaining - a.remaining);
+  }, [projects, financeSummary]);
+
+  function handleKpiEnter(items: KpiPopoverItem[], e: React.MouseEvent<HTMLDivElement>) {
+    if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    kpiHoverTimer.current = setTimeout(() => setKpiPopover({ rect, items }), 700);
+  }
+  function handleKpiLeave() {
+    if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
+  }
+
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     if (a.isOverdue && !b.isOverdue) return -1;
     if (!a.isOverdue && b.isOverdue) return 1;
@@ -339,6 +451,9 @@ export default function ProjectsDesignPreview() {
       <Suspense fallback={null}>
         <OpenProjectFromURL openProject={openProject} />
       </Suspense>
+      {kpiPopover && (
+        <KpiPopover popover={kpiPopover} onClose={() => setKpiPopover(null)} />
+      )}
 
       {/* ── Page content ─────────────────────────────────────────────────── */}
       <div style={{ padding: isMobile ? "16px 14px" : "24px 28px", maxWidth: 1400, margin: "0 auto" }}>
@@ -381,7 +496,10 @@ export default function ProjectsDesignPreview() {
             <KpiCard label="בתהליך"         value={String(kpi.inProgress)}     color="#60A5FA" icon="🎵" sub="פרויקטים פעילים" />
             <KpiCard label="הושלמו החודש"   value={String(kpi.completedMonth)} color="#10B981" icon="✅" sub="הצלחה בהצלחה" />
             <KpiCard label="באיחור"          value={String(kpi.overdue)}        color={kpi.overdue > 0 ? "#EF4444" : MUTED} icon="⚠️" sub="דורש טיפול" />
-            <KpiCard label="הכנסה צפויה"    value={kpi.expected > 0 ? `₪${kpi.expected.toLocaleString()}` : "—"} color="#F59E0B" icon="💰" sub="לגבייה" />
+            <KpiCard label="הכנסה צפויה"    value={kpi.expected > 0 ? `₪${kpi.expected.toLocaleString()}` : "—"} color="#F59E0B" icon="💰" sub="לגבייה"
+              onMouseEnter={(e) => handleKpiEnter(expectedBreakdown, e)}
+              onMouseLeave={handleKpiLeave}
+            />
           </div>
         )}
 
