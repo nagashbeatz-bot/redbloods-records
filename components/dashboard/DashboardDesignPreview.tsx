@@ -8,13 +8,9 @@ import { useState, useEffect, useLayoutEffect } from "react";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
-import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
-import MobileNav from "@/components/MobileNav";
-import MiniPlayer from "@/components/ui/MiniPlayer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import Link from "next/link";
-import { useRadioSafe } from "@/components/radio/RadioProvider";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -30,7 +26,6 @@ const CLOSED_PROPOSAL = new Set(["נסגר", "לא נסגר"]);
 
 const BRAND   = "#DC2626";
 const BG      = "#0D0D0D";
-const SURFACE = "#141414";
 const CARD    = "#181818";
 const CARD2   = "#1E1E1E";
 const BORDER  = "rgba(255,255,255,0.07)";
@@ -39,7 +34,6 @@ const TEXT    = "#F2F2F2";
 const SUB     = "#A0A0A0";
 const MUTED   = "#606060";
 const DIM     = "#404040";
-const SIDEBAR_W = 248;
 
 const STATUS_COLORS: Record<string, string> = {
   "בעבודה":      "#3B82F6",
@@ -58,27 +52,6 @@ function formatDl(iso: string | null): string {
   return d.toLocaleDateString("he-IL", { day: "numeric", month: "long" });
 }
 
-// ── Nav ───────────────────────────────────────────────────────────────────
-
-const NAV = [
-  { label: "דשבורד",    icon: "⊞",  color: "#38BDF8", active: true,  href: "/dashboard"  },
-  { label: "פרויקטים",  icon: "♫",  color: "#60A5FA", active: false, href: "/projects"   },
-  { label: "סושיאל",    icon: "📱", color: "#EC4899", active: false, href: "/social"     },
-  { label: "לקוחות",    icon: "☆",  color: "#C084FC", active: false, href: "/clients"    },
-  { label: "משימות",    icon: "✓",  color: "#F59E0B", active: false, href: "/tasks"      },
-  { label: "צוות",      icon: "👥", color: "#A855F7", active: false, href: "/team"       },
-  { label: "הופעות",    icon: "🎤", color: "#F472B6", active: false, href: "/shows"      },
-  { label: "Red Films", icon: "🎬", color: "#EF4444", active: false, href: "/red-films"  },
-  { label: "כספים",     icon: "₪",  color: "#34D399", active: false, href: "/finance"    },
-  { label: "תובנות",    icon: "◎",  color: "#2DD4BF", active: false, href: "/insights"   },
-];
-
-const NAV2 = [
-  { label: "יומן",    icon: "📅", badge: undefined as number | undefined, href: "/setup/calendar" },
-  { label: "Dropbox", icon: "📦", badge: undefined as number | undefined, href: "/setup/dropbox"  },
-  { label: "דוחות",   icon: "📊", badge: undefined as number | undefined, href: "/setup/reports"  },
-  { label: "תובנות",  icon: "◎",  badge: undefined as number | undefined, href: "/insights"       },
-];
 
 // ── Dummy Calendar / Focus / Alerts (Phase Live-2 will connect these) ─────
 
@@ -283,89 +256,6 @@ function WaveformBars({ playing }: { playing: boolean }) {
         ))}
       </div>
     </>
-  );
-}
-
-// ── (Sidebar removed — AppShell provides it) ─────────────────────────────
-// function Sidebar() was here; deleted in Commit 3.
-
-function _neverCalled_() {
-  return (
-    <aside className="hidden md:flex" style={{
-      width: SIDEBAR_W, flexShrink: 0,
-      background: SURFACE, borderLeft: `1px solid ${BORDER}`,
-      flexDirection: "column", overflowY: "auto",
-    }}>
-      <div style={{
-        padding: "24px 20px 22px", borderBottom: `1px solid rgba(255,255,255,0.08)`,
-        background: "linear-gradient(180deg, rgba(220,38,38,0.07) 0%, rgba(220,38,38,0.01) 100%)",
-      }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-          <RRMark size={64} />
-        </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 19, fontWeight: 900, color: "#FFFFFF", letterSpacing: "-0.01em", lineHeight: 1.15, textShadow: "0 1px 8px rgba(0,0,0,0.5)" }}>Redbloods</div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: BRAND, letterSpacing: "0.26em", textTransform: "uppercase", marginTop: 3, textShadow: `0 0 12px rgba(220,38,38,0.5)` }}>Records</div>
-        </div>
-      </div>
-      <div style={{ padding: "16px 12px 6px", flex: 1 }}>
-        <div style={{ fontSize: 9, fontWeight: 800, color: DIM, letterSpacing: "0.1em", textTransform: "uppercase", padding: "0 8px 10px" }}>ראשי</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV.map((n) => (
-            <Link key={n.label} href={n.href} style={{ position: "relative", borderRadius: 10, overflow: "hidden", display: "block", textDecoration: "none" }}>
-              {n.active && (
-                <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 3, background: BRAND, borderRadius: "0 2px 2px 0" }} />
-              )}
-              <div style={{
-                display: "flex", alignItems: "center", gap: 11,
-                padding: "10px 12px 10px 14px",
-                background: n.active ? "linear-gradient(90deg,rgba(220,38,38,0.13),rgba(220,38,38,0.03))" : "transparent",
-                border: `1px solid ${n.active ? "rgba(220,38,38,0.2)" : "transparent"}`,
-                borderRadius: 10, cursor: "pointer",
-                color: n.active ? BRAND : SUB,
-                fontSize: 13.5, fontWeight: n.active ? 700 : 500,
-              }}>
-                <span style={{
-                  width: 27, height: 27, borderRadius: 8, flexShrink: 0,
-                  background: n.active ? "rgba(220,38,38,0.18)" : `${n.color}15`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, color: n.active ? BRAND : n.color,
-                }}>{n.icon}</span>
-                <span style={{ flex: 1 }}>{n.label}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <div style={{ height: 1, background: BORDER2, margin: "0 4px 12px" }} />
-          <div style={{ fontSize: 9, fontWeight: 800, color: DIM, letterSpacing: "0.1em", textTransform: "uppercase", padding: "0 8px 10px" }}>כלים</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {NAV2.map((n) => (
-              <Link key={n.label} href={n.href} style={{
-                display: "flex", alignItems: "center", gap: 11,
-                padding: "9px 12px 9px 14px", borderRadius: 10,
-                color: MUTED, fontSize: 13.5, fontWeight: 500, cursor: "pointer",
-                textDecoration: "none",
-              }}>
-                <span style={{ fontSize: 14, width: 27, textAlign: "center" }}>{n.icon}</span>
-                <span style={{ flex: 1 }}>{n.label}</span>
-                {n.badge && (
-                  <span style={{ fontSize: 9, fontWeight: 800, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 7px", boxShadow: "0 0 6px rgba(220,38,38,0.5)" }}>{n.badge}</span>
-                )}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div style={{ padding: "14px 16px 18px", borderTop: `1px solid ${BORDER2}`, display: "flex", alignItems: "center", gap: 10 }}>
-        <Av t="RB" size={36} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Redbloods Admin</div>
-          <div style={{ fontSize: 10, color: MUTED }}>מנהל מערכת</div>
-        </div>
-        <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 6, background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)", color: BRAND, fontWeight: 900, letterSpacing: "0.04em" }}>PRO</span>
-      </div>
-    </aside>
   );
 }
 
@@ -583,7 +473,6 @@ export default function DashboardDesignPreview() {
 
   const { openProject } = useGlobalProjectDrawer();
   const player = usePlayerSafe();
-  const radio  = useRadioSafe();
 
   const [isMobile, setIsMobile] = useState(false);
   useLayoutEffect(() => {
