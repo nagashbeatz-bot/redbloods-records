@@ -268,6 +268,8 @@ type StatCacheData = {
   pendingPayments: number;
   openProposals: number;
   upcomingSessions: number;
+  upcomingShows: number;
+  activeCampaigns: number;
   ts: number;
 };
 
@@ -276,6 +278,8 @@ let _statCache = {
   pendingPayments:  null as number | null,
   openProposals:    null as number | null,
   upcomingSessions: null as number | null,
+  upcomingShows:    null as number | null,
+  activeCampaigns:  null as number | null,
 };
 
 function loadStatCacheFromStorage(): void {
@@ -288,6 +292,8 @@ function loadStatCacheFromStorage(): void {
     if (parsed.pendingPayments  != null) _statCache.pendingPayments  = parsed.pendingPayments;
     if (parsed.openProposals    != null) _statCache.openProposals    = parsed.openProposals;
     if (parsed.upcomingSessions != null) _statCache.upcomingSessions = parsed.upcomingSessions;
+    if (parsed.upcomingShows    != null) _statCache.upcomingShows    = parsed.upcomingShows;
+    if (parsed.activeCampaigns  != null) _statCache.activeCampaigns  = parsed.activeCampaigns;
   } catch {}
 }
 
@@ -299,6 +305,8 @@ function updateStatCache(partial: Partial<Omit<StatCacheData, "ts">>): void {
       pendingPayments:  _statCache.pendingPayments  ?? 0,
       openProposals:    _statCache.openProposals    ?? 0,
       upcomingSessions: _statCache.upcomingSessions ?? 0,
+      upcomingShows:    _statCache.upcomingShows    ?? 0,
+      activeCampaigns:  _statCache.activeCampaigns  ?? 0,
       ts: Date.now(),
     }));
   } catch {}
@@ -341,6 +349,8 @@ export default function DashboardDesignPreview() {
   const [pendingPayments, setPendingPayments] = useState<number | null>(_statCache.pendingPayments);
   const [upcomingSessions, setUpcomingSessions] = useState<number | null>(_statCache.upcomingSessions);
   const [openTasks, setOpenTasks] = useState<number | null>(_statCache.openTasks);
+  const [upcomingShows, setUpcomingShows] = useState<number | null>(_statCache.upcomingShows);
+  const [activeCampaigns, setActiveCampaigns] = useState<number | null>(_statCache.activeCampaigns);
   const [hasMounted, setHasMounted] = useState(false);
   const [cachedKpi,   setCachedKpi]   = useState<KpiItem[] | null>(null);
   const [cachedPills, setCachedPills] = useState<{ active: number; overdue: number } | null>(null);
@@ -352,6 +362,8 @@ export default function DashboardDesignPreview() {
     if (_statCache.pendingPayments  != null) setPendingPayments(_statCache.pendingPayments);
     if (_statCache.openProposals    != null) setOpenProposals(_statCache.openProposals);
     if (_statCache.upcomingSessions != null) setUpcomingSessions(_statCache.upcomingSessions);
+    if (_statCache.upcomingShows    != null) setUpcomingShows(_statCache.upcomingShows);
+    if (_statCache.activeCampaigns  != null) setActiveCampaigns(_statCache.activeCampaigns);
     const snap = loadSnap();
     if (snap) { setCachedKpi(snap.kpi); setCachedPills(snap.pills); }
     setHasMounted(true);
@@ -424,6 +436,33 @@ export default function DashboardDesignPreview() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch("/api/shows")
+      .then(r => r.json())
+      .then(d => {
+        const shows = Array.isArray(d.shows) ? d.shows : [];
+        const today = new Date().toISOString().slice(0, 10);
+        const n = shows.filter((s: { date?: string | null; status?: string }) =>
+          s.date && s.date >= today && s.status !== "בוטל"
+        ).length;
+        updateStatCache({ upcomingShows: n });
+        setUpcomingShows(n);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/social/campaigns")
+      .then(r => r.json())
+      .then(d => {
+        const campaigns = Array.isArray(d.campaigns) ? d.campaigns : [];
+        const n = campaigns.filter((c: { status?: string }) => c.status === "active").length;
+        updateStatCache({ activeCampaigns: n });
+        setActiveCampaigns(n);
+      })
+      .catch(() => {});
+  }, []);
+
   // ── Real KPI filters ──────────────────────────────────────────────────
   const overdueProjects = projects.filter(p => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה");
   const activeProjects  = projects.filter(p => ["בעבודה", "מחכה למיקס", "במיקס"].includes(p.status));
@@ -431,24 +470,23 @@ export default function DashboardDesignPreview() {
   const onHoldProjects  = projects.filter(p => p.status === "בהשהייה");
   const doneProjects    = projects.filter(p => p.status === "הושלם");
 
-  // ── KPI cards (real counts for projects; dummy for tasks/payments/proposals/sessions) ──
+  // ── KPI cards — 7 cards: תמונת מצב מהירה ──────────────────────────────
   const KPI = [
-    { label: "פרויקטים",    count: loading ? 0 : projects.length,          sub: `${activeProjects.length} פעילים`,         color: "#3B82F6", iconBg: "rgba(59,130,246,0.15)",  icon: "▶"  },
-    { label: "הושלמו",      count: loading ? 0 : doneProjects.length,       sub: "הושלמו",                                   color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "✓"  },
-    { label: "בהשהייה",     count: loading ? 0 : onHoldProjects.length,     sub: "צריך מעקב",                               color: "#6B7280", iconBg: "rgba(107,114,128,0.15)", icon: "⏸" },
-    { label: "משימות",      count: openTasks ?? 0,                           sub: openTasks !== null ? "פתוחות" : "...",     color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "☑"  },
-    { label: "תשלומים",     count: pendingPayments ?? 0,                     sub: pendingPayments !== null ? "ממתינים" : "...", color: "#10B981", iconBg: "rgba(16,185,129,0.15)", icon: "$"  },
-    { label: "הצעות",       count: openProposals ?? 0,                       sub: openProposals !== null ? "פתוחות" : "...", color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "📋" },
-    { label: "עברו דדליין", count: loading ? 0 : overdueProjects.length,    sub: "דורש טיפול",                             color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "⚠"  },
-    { label: "פעילים",      count: loading ? 0 : activeProjects.length,     sub: projects.length > 0 ? `${Math.round(activeProjects.length / projects.length * 100)}% מהפרויקטים` : "", color: "#3B82F6", iconBg: "rgba(59,130,246,0.15)", icon: "⚡" },
-    { label: "סשנים",       count: upcomingSessions ?? 0,                   sub: upcomingSessions !== null ? "מתוכננים" : "...", color: "#EC4899", iconBg: "rgba(236,72,153,0.15)", icon: "🎙" },
+    { label: "פרויקטים פעילים", count: loading ? 0 : activeProjects.length,   sub: loading ? "..." : `מתוך ${projects.length} פרויקטים`,        color: "#3B82F6", iconBg: "rgba(59,130,246,0.15)",  icon: "▶"  },
+    { label: "דחופים",          count: loading ? 0 : overdueProjects.length,   sub: "דורש טיפול",                                                  color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "⚠"  },
+    { label: "סשנים קרובים",    count: upcomingSessions ?? 0,                   sub: upcomingSessions !== null ? "מתוכננים" : "...",                color: "#8B5CF6", iconBg: "rgba(139,92,246,0.15)",  icon: "🎙" },
+    { label: "הופעות קרובות",   count: upcomingShows ?? 0,                      sub: upcomingShows !== null ? "עתידיות" : "...",                    color: "#06B6D4", iconBg: "rgba(6,182,212,0.15)",   icon: "🎤" },
+    { label: "תשלומים צפויים",  count: pendingPayments ?? 0,                    sub: pendingPayments !== null ? "הכנסות ממתינות" : "...",          color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
+    { label: "הצעות פתוחות",    count: openProposals ?? 0,                      sub: openProposals !== null ? "ממתינות לאישור" : "...",             color: "#F97316", iconBg: "rgba(249,115,22,0.15)",  icon: "📋" },
+    { label: "קמפיינים פעילים", count: activeCampaigns ?? 0,                    sub: activeCampaigns !== null ? "בהרצה" : "...",                    color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "🎯" },
   ];
 
   const allStatsReady =
-    openTasks !== null &&
     pendingPayments !== null &&
     openProposals !== null &&
-    upcomingSessions !== null;
+    upcomingSessions !== null &&
+    upcomingShows !== null &&
+    activeCampaigns !== null;
 
   const liveReady = !loading && allStatsReady;
 
@@ -530,8 +568,8 @@ export default function DashboardDesignPreview() {
             <div style={{ marginBottom: 26, minHeight: 140 }} />
           ) : displayKpi == null ? (
             // mounted + אין snapshot בכלל: skeleton כרגיל
-            <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
-              {Array.from({ length: 9 }).map((_, i) => (
+            <div className="grid grid-cols-4 md:grid-cols-7" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
+              {Array.from({ length: 7 }).map((_, i) => (
                 <div key={i} style={{
                   background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.05)",
                   borderRadius: 16, minHeight: 140, opacity: 0.4,
@@ -540,7 +578,7 @@ export default function DashboardDesignPreview() {
             </div>
           ) : (
             // mounted + snapshot (cache או live): KPI מלא
-            <div className="grid grid-cols-3 md:grid-cols-9" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
+            <div className="grid grid-cols-4 md:grid-cols-7" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
               {displayKpi.map((k) => <KpiCard key={k.label} {...k} />)}
             </div>
           )}
