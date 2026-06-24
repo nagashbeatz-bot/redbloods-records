@@ -13,6 +13,7 @@ import MobileNav from "@/components/MobileNav";
 import MiniPlayer from "@/components/ui/MiniPlayer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
+import Link from "next/link";
 import { useRadioSafe } from "@/components/radio/RadioProvider";
 
 // Minimal calendar event shape (only what preview needs)
@@ -311,7 +312,7 @@ function Sidebar() {
         <div style={{ fontSize: 9, fontWeight: 800, color: DIM, letterSpacing: "0.1em", textTransform: "uppercase", padding: "0 8px 10px" }}>ראשי</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV.map((n) => (
-            <a key={n.label} href={n.href} style={{ position: "relative", borderRadius: 10, overflow: "hidden", display: "block", textDecoration: "none" }}>
+            <Link key={n.label} href={n.href} style={{ position: "relative", borderRadius: 10, overflow: "hidden", display: "block", textDecoration: "none" }}>
               {n.active && (
                 <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 3, background: BRAND, borderRadius: "0 2px 2px 0" }} />
               )}
@@ -332,7 +333,7 @@ function Sidebar() {
                 }}>{n.icon}</span>
                 <span style={{ flex: 1 }}>{n.label}</span>
               </div>
-            </a>
+            </Link>
           ))}
         </div>
         <div style={{ marginTop: 12 }}>
@@ -340,7 +341,7 @@ function Sidebar() {
           <div style={{ fontSize: 9, fontWeight: 800, color: DIM, letterSpacing: "0.1em", textTransform: "uppercase", padding: "0 8px 10px" }}>כלים</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {NAV2.map((n) => (
-              <a key={n.label} href={n.href} style={{
+              <Link key={n.label} href={n.href} style={{
                 display: "flex", alignItems: "center", gap: 11,
                 padding: "9px 12px 9px 14px", borderRadius: 10,
                 color: MUTED, fontSize: 13.5, fontWeight: 500, cursor: "pointer",
@@ -351,7 +352,7 @@ function Sidebar() {
                 {n.badge && (
                   <span style={{ fontSize: 9, fontWeight: 800, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 7px", boxShadow: "0 0 6px rgba(220,38,38,0.5)" }}>{n.badge}</span>
                 )}
-              </a>
+              </Link>
             ))}
           </div>
         </div>
