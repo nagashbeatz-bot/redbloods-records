@@ -1,12 +1,12 @@
 import AppShell from "@/components/AppShell";
-import ShowsPage from "@/components/shows/ShowsPage";
+import ShowsHubPreview from "@/components/shows/ShowsHubPreview";
 
 export const metadata = { title: "הופעות — Redbloods OS" };
 
 export default function ShowsRoute() {
   return (
     <AppShell>
-      <ShowsPage />
+      <ShowsHubPreview />
     </AppShell>
   );
 }
