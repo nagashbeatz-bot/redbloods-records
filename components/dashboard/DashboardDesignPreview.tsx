@@ -77,8 +77,7 @@ const NAV2 = [
   { label: "יומן",    icon: "📅", badge: undefined as number | undefined, href: "/setup/calendar" },
   { label: "Dropbox", icon: "📦", badge: undefined as number | undefined, href: "/setup/dropbox"  },
   { label: "דוחות",   icon: "📊", badge: undefined as number | undefined, href: "/setup/reports"  },
-  { label: "התראות",  icon: "🔔", badge: 3 as number | undefined,         href: "/insights"       },
-  { label: "ספקים",   icon: "🤝", badge: undefined as number | undefined, href: "/clients"        },
+  { label: "תובנות",  icon: "◎",  badge: undefined as number | undefined, href: "/insights"       },
 ];
 
 // ── Dummy Calendar / Focus / Alerts (Phase Live-2 will connect these) ─────
