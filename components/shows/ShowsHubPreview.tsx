@@ -570,122 +570,201 @@ function Toast({ message, type, onDone }: { message: string; type: "success" | "
   );
 }
 
-// ─── Show Panel (fixed overlay) ──────────────────────────────────────────────
+// ─── Show Panel (centered modal) ─────────────────────────────────────────────
 function ShowPanel({ show, onClose, onEdit }: {
   show: Show; onClose: () => void; onEdit: () => void;
 }) {
   const distributable = calcDistributable(show);
-  const artist        = calcArtistShare(show);
-  const label         = calcLabelShare(show);
+  const artistShare   = calcArtistShare(show);
+  const labelShare    = calcLabelShare(show);
   const remaining     = calcRemaining(show);
   const canEdit       = !show.calendar_event_id;
 
+  const sectionLabel = (text: string, icon: string) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+      <span style={{ fontSize: 13 }}>{icon}</span>
+      <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.1em" }}>{text}</span>
+    </div>
+  );
+
+  const finCard = (label: string, value: string, color: string, bold = false, fullWidth = false) => (
+    <div style={{
+      background: `${color}0D`, border: `1px solid ${color}28`,
+      borderRadius: 12, padding: "12px 14px",
+      ...(fullWidth ? { gridColumn: "1 / -1" } : {}),
+      display: "flex", flexDirection: "column", gap: 5,
+    }}>
+      <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
+      <div style={{ fontSize: bold ? 22 : 18, fontWeight: 900, color }}>{value}</div>
+    </div>
+  );
+
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.5)" }} />
+      {/* Backdrop */}
+      <div onClick={onClose} style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(0,0,0,0.78)",
+        backdropFilter: "blur(3px)",
+      }} />
+
+      {/* Modal */}
       <div style={{
-        position: "fixed", top: 60, bottom: 0, left: 0, zIndex: 201,
-        width: 420, maxWidth: "94vw", background: "#0E0E0E",
-        borderRight: `1px solid ${BDR2}`, borderTop: `1px solid ${BDR2}`,
-        display: "flex", flexDirection: "column",
-        boxShadow: "4px 0 40px rgba(0,0,0,0.8)", overflowY: "auto",
+        position: "fixed", top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 201, width: 560, maxWidth: "95vw", maxHeight: "90vh",
+        background: "#0D0D0D",
+        borderRadius: 20,
+        border: "1px solid rgba(220,38,38,0.35)",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.9), 0 0 0 1px rgba(220,38,38,0.06)",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        direction: "rtl",
       }}>
-        {/* Header */}
-        <div style={{ padding: "20px 22px 16px", borderBottom: `1px solid ${BDR}`, position: "sticky", top: 0, background: "#0E0E0E", zIndex: 1 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, marginBottom: 3 }}>{show.name}</div>
-              <div style={{ fontSize: 12, color: TEXT2 }}>{show.artist || "—"}</div>
+
+        {/* ── Header ── */}
+        <div style={{
+          padding: "18px 20px 14px",
+          borderBottom: `1px solid ${BDR}`,
+          background: "#0D0D0D",
+          position: "relative",
+        }}>
+          {/* X close */}
+          <button onClick={onClose} style={{
+            position: "absolute", top: 14, right: 16,
+            background: CARD2, border: `1px solid ${BDR}`,
+            borderRadius: 8, width: 30, height: 30,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", color: TEXT2, fontSize: 14, lineHeight: 1,
+          }}>✕</button>
+
+          {/* Bookmark icon top-left */}
+          <button disabled style={{
+            position: "absolute", top: 14, left: 16,
+            background: BRAND, border: "none",
+            borderRadius: 8, width: 36, height: 36,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "not-allowed", fontSize: 16,
+          }}>🎫</button>
+
+          {/* Title */}
+          <div style={{ textAlign: "center", paddingTop: 2 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: TEXT, marginBottom: 10 }}>{show.name}</div>
+            <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+              <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
+              <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
+              {show.calendar_event_id && <Badge bg="rgba(59,130,246,0.18)" text={BLUE}>📅 ביומן</Badge>}
             </div>
-            <button onClick={onClose} style={{ background: CARD2, border: `1px solid ${BDR}`, cursor: "pointer", color: TEXT2, fontSize: 14, padding: "6px 10px", borderRadius: 8, lineHeight: 1 }}>✕</button>
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-            <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
-            <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
-            {show.calendar_event_id && <Badge bg="rgba(59,130,246,0.18)" text={BLUE}>📅 ביומן</Badge>}
           </div>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: "18px 22px", flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Info */}
-          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-            {([
-              { label: "תאריך",    value: show.date ? `${fmtDate(show.date)} · ${fmtDay(show.date)}` : "—" },
-              { label: "שעה",      value: show.start_time || "—" },
-              { label: "מיקום",    value: show.location || "—" },
-              show.contact_person ? { label: "איש קשר", value: show.contact_person } : null,
-              show.phone          ? { label: "טלפון",   value: show.phone }          : null,
-              show.booker_name    ? { label: "מזמין",   value: show.booker_name }    : null,
-              show.dj_name        ? { label: "דיג׳יי",  value: show.dj_name }         : null,
-              show.calendar_event_id ? { label: "מזהה יומן", value: show.calendar_event_id } : null,
-            ] as ({ label: string; value: string } | null)[]).filter(Boolean).map(r => (
-              <div key={r!.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, gap: 12 }}>
-                <span style={{ color: MUTED, flexShrink: 0 }}>{r!.label}</span>
-                <span style={{
-                  color: r!.label === "מזהה יומן" ? MUTED : TEXT,
-                  fontWeight: r!.label === "מזהה יומן" ? 400 : 600,
-                  fontSize: r!.label === "מזהה יומן" ? 10 : 13,
-                  wordBreak: "break-all", textAlign: "left",
-                }}>{r!.value}</span>
-              </div>
-            ))}
-          </div>
+        {/* ── Body (scrollable) ── */}
+        <div style={{ overflowY: "auto", flex: 1, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
 
-          {/* Finance */}
+          {/* פרטי הופעה */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>כספים</div>
-            {[
-              { label: "מחיר הופעה",      value: fmtIls(show.show_price),    color: TEXT },
-              { label: "שכר דיג׳יי",        value: `−${fmtIls(show.dj_fee)}`,  color: MUTED },
-              { label: "יתרה לחלוקה",     value: fmtIls(distributable),       color: AMBER, bold: true },
-              { label: "חלק אמן (50%)",   value: fmtIls(artist),              color: BLUE },
-              { label: "חלק לייבל (50%)", value: fmtIls(label),               color: GREEN },
-              { label: "מקדמה ששולמה",    value: fmtIls(show.advance_payment),color: TEXT2 },
-              { label: "יתרה לגבייה",     value: fmtIls(remaining),           color: remaining > 0 ? BRAND : GREEN, bold: true },
-            ].map(r => (
-              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 9 }}>
-                <span style={{ color: MUTED }}>{r.label}</span>
-                <span style={{ color: r.color, fontWeight: r.bold ? 800 : 600 }}>{r.value}</span>
+            {sectionLabel("פרטי הופעה", "📅")}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+              {/* עמודה ימין — location / contact / booker / phone */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, borderLeft: `1px solid ${BDR}`, paddingLeft: 14 }}>
+                {[
+                  { icon: "📍", label: "מיקום",    val: show.location      || "—" },
+                  { icon: "👤", label: "איש קשר",  val: show.contact_person || "לא נבחר" },
+                  ...(show.booker_name ? [{ icon: "👤", label: "מזמין", val: show.booker_name }] : []),
+                  { icon: "📞", label: "טלפון",    val: show.phone          || "—" },
+                ].map(r => (
+                  <div key={r.label} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <span style={{ fontSize: 13, marginTop: 1, flexShrink: 0 }}>{r.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: "0.05em", marginBottom: 1 }}>{r.label}</div>
+                      <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{r.val}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {show.notes && (
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>הערות</div>
-              <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{show.notes}</div>
+              {/* עמודה שמאל — date / day / time / dj */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingRight: 14 }}>
+                {[
+                  { label: "תאריך", val: show.date ? fmtDate(show.date)    : "—" },
+                  { label: "יום",   val: show.date ? fmtDay(show.date)     : "—" },
+                  { label: "שעה",   val: show.start_time                   || "—" },
+                  { label: "דיג׳יי", val: show.dj_name                     || "—" },
+                ].map(r => (
+                  <div key={r.label}>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 700, letterSpacing: "0.05em", marginBottom: 1 }}>{r.label}</div>
+                    <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{r.val}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
-            {/* Edit */}
-            <button
-              onClick={canEdit ? onEdit : undefined}
-              disabled={!canEdit}
-              title={canEdit ? "ערוך הופעה" : "הופעה זו מסונכרנת עם Google Calendar — עריכה זמינה מהעמוד הראשי בלבד"}
-              style={{
-                flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
-                background: canEdit ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
-                border: `1px solid ${canEdit ? BLUE + "40" : BDR}`,
-                color: canEdit ? BLUE : MUTED,
-                cursor: canEdit ? "pointer" : "not-allowed",
-              }}
-            >✏️ עריכה{!canEdit ? " 🔒" : ""}</button>
-            {/* Calendar — always disabled */}
-            <button disabled style={{
-              flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
-              background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`,
-              color: MUTED, cursor: "not-allowed",
-            }}>📅 הוסף ליומן</button>
           </div>
 
+          {/* סיכום כספי */}
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
+            {sectionLabel("סיכום כספי", "💰")}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              {finCard("מחיר הופעה",      fmtIls(show.show_price),   TEXT2)}
+              {finCard("שכר דיג׳יי",        fmtIls(show.dj_fee),       MUTED)}
+              {finCard("יתרה לחלוקה",     fmtIls(distributable),     AMBER, true)}
+              {finCard("חלק אמן (50%)",   fmtIls(artistShare),       BLUE)}
+              {finCard("חלק לייבל (50%)", fmtIls(labelShare),        GREEN)}
+              {finCard("יתרה לגבייה",     fmtIls(remaining),         remaining > 0 ? BRAND : GREEN, true)}
+              {finCard("מקדמה ששולמה",    fmtIls(show.advance_payment), TEXT2, false, true)}
+            </div>
+          </div>
+
+          {/* הערות */}
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
+            {sectionLabel("הערות", "📝")}
+            {show.notes
+              ? <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{show.notes}</div>
+              : <div style={{ fontSize: 13, color: MUTED, textAlign: "center", padding: "8px 0" }}>אין הערות להצגה.</div>
+            }
+          </div>
+
+          {/* Lock notice */}
           {!canEdit && (
-            <div style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.5 }}>
+            <div style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.6 }}>
               🔒 הופעה זו מסונכרנת עם Google Calendar.<br/>עריכה זמינה מהעמוד הראשי בלבד.
             </div>
           )}
+        </div>
+
+        {/* ── Footer ── */}
+        <div style={{
+          padding: "14px 20px",
+          borderTop: `1px solid ${BDR}`,
+          background: "#0D0D0D",
+          display: "flex", gap: 10,
+        }}>
+          {/* Calendar — always disabled */}
+          <button disabled style={{
+            flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`,
+            color: MUTED, cursor: "not-allowed",
+          }}>📅 הוסף ליומן</button>
+
+          {/* Close */}
+          <button onClick={onClose} style={{
+            flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: CARD2, border: `1px solid ${BDR2}`,
+            color: TEXT2, cursor: "pointer",
+          }}>סגור</button>
+
+          {/* Edit */}
+          <button
+            onClick={canEdit ? onEdit : undefined}
+            disabled={!canEdit}
+            title={canEdit ? "ערוך הופעה" : "הופעה זו מסונכרנת עם Google Calendar — עריכה זמינה מהעמוד הראשי בלבד"}
+            style={{
+              flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+              background: canEdit ? BRAND : "rgba(255,255,255,0.04)",
+              border: `1px solid ${canEdit ? "rgba(220,38,38,0.5)" : BDR}`,
+              color: canEdit ? "#fff" : MUTED,
+              cursor: canEdit ? "pointer" : "not-allowed",
+              boxShadow: canEdit ? "0 4px 16px rgba(220,38,38,0.35)" : "none",
+            }}
+          >✏️ עריכה{!canEdit ? " 🔒" : ""}</button>
         </div>
       </div>
     </>
