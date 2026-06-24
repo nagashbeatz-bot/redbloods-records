@@ -960,7 +960,7 @@ export default function ShowsHubPreview() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr style={{ borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.016)" }}>
-                          {["הופעה","תאריך","מיקום","סטטוס","תשלום","מחיר","מקדמה","יתרה","לייבל",""].map(h => (
+                          {["אמן","הופעה","תאריך","סטטוס","תשלום","יתרה"].map(h => (
                             <th key={h} style={{ padding: "12px 16px", textAlign: "right", fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
@@ -976,8 +976,10 @@ export default function ShowsHubPreview() {
                               outline: sel ? `1px solid rgba(220,38,38,0.24)` : "none", outlineOffset: -1,
                             }}>
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                                <div style={{ fontWeight: 600, color: TEXT2 }}>{s.artist || <span style={{ color: MUTED }}>—</span>}</div>
+                              </td>
+                              <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <div style={{ fontWeight: 700, color: TEXT }}>{s.name}</div>
-                                {s.artist && <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{s.artist}</div>}
                               </td>
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 {s.date ? (
@@ -987,31 +989,14 @@ export default function ShowsHubPreview() {
                                   </>
                                 ) : <span style={{ color: MUTED }}>—</span>}
                               </td>
-                              <td style={{ padding: "14px 16px", color: TEXT2, whiteSpace: "nowrap", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {s.location || <span style={{ color: MUTED }}>—</span>}
-                              </td>
                               <td style={{ padding: "14px 16px" }}>
                                 <Badge bg={STATUS_COLOR[s.status].bg} text={STATUS_COLOR[s.status].text}>{s.status}</Badge>
                               </td>
                               <td style={{ padding: "14px 16px" }}>
                                 <Badge bg={PAY_COLOR[s.payment_status].bg} text={PAY_COLOR[s.payment_status].text}>{s.payment_status}</Badge>
                               </td>
-                              <td style={{ padding: "14px 16px", color: TEXT, fontWeight: 700, whiteSpace: "nowrap" }}>{fmtIls(s.show_price)}</td>
-                              <td style={{ padding: "14px 16px", color: TEXT2, whiteSpace: "nowrap" }}>{fmtIls(s.advance_payment)}</td>
                               <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                                 <span style={{ color: calcRemaining(s) > 0 ? BRAND : GREEN, fontWeight: 700 }}>{fmtIls(calcRemaining(s))}</span>
-                              </td>
-                              <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                                <span style={{ color: GREEN, fontWeight: 700 }}>{fmtIls(calcLabelShare(s))}</span>
-                              </td>
-                              <td style={{ padding: "14px 16px" }}>
-                                <button onClick={e => { e.stopPropagation(); setSelected(prev => prev?.id === s.id ? null : s); }} style={{
-                                  background: sel ? `${BRAND}15` : CARD2,
-                                  border: `1px solid ${sel ? BRAND + "38" : BDR2}`,
-                                  borderRadius: 8, padding: "5px 12px", fontSize: 11,
-                                  color: sel ? "#F87171" : TEXT2, cursor: "pointer",
-                                  whiteSpace: "nowrap", fontWeight: 600,
-                                }}>{sel ? "סגור" : "פרטים"}</button>
                               </td>
                             </tr>
                           );
