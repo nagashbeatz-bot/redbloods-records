@@ -286,9 +286,10 @@ function WaveformBars({ playing }: { playing: boolean }) {
   );
 }
 
-// ── Sidebar ───────────────────────────────────────────────────────────────
+// ── (Sidebar removed — AppShell provides it) ─────────────────────────────
+// function Sidebar() was here; deleted in Commit 3.
 
-function Sidebar() {
+function _neverCalled_() {
   return (
     <aside className="hidden md:flex" style={{
       width: SIDEBAR_W, flexShrink: 0,
@@ -594,90 +595,11 @@ export default function DashboardDesignPreview() {
 
   return (
     <div style={{
-      position: "fixed", inset: 0, background: BG, color: TEXT,
+      background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
-      display: "flex", flexDirection: "column",
-      transition: "none",
+      transition: "none", minHeight: "100%",
+      padding: isMobile ? "16px 14px" : "28px 32px",
     }}>
-      {/* ── Inner row: sidebar + main ── */}
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-      {!isMobile && <Sidebar />}
-
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-
-        {/* ── Top bar ── */}
-        <header style={{
-          height: 60, flexShrink: 0,
-          background: SURFACE, borderBottom: `1px solid ${BORDER}`,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 14px", position: "sticky", top: 0, zIndex: 40,
-        }}>
-          {/* Mobile — CSS hidden on desktop (no JS flash) */}
-          <div className="flex md:hidden" style={{ width: "100%", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
-            <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
-            <div style={{
-              position: "absolute",
-              left: "50%",
-              transform: "translateX(-50%)",
-              textAlign: "center",
-              lineHeight: 1.15,
-              pointerEvents: "none",
-            }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
-              <div style={{ fontSize: 8, fontWeight: 800, color: BRAND, letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
-            </div>
-            <button style={{
-              display: "flex", alignItems: "center", gap: 5,
-              padding: "5px 10px 5px 12px", borderRadius: 100,
-              fontSize: 11, fontWeight: 700,
-              background: BRAND,
-              border: "1px solid rgba(220,38,38,0.5)",
-              color: "#fff", cursor: "pointer",
-              outline: "none",
-              WebkitTapHighlightColor: "transparent",
-              transition: "none",
-              boxShadow: "none",
-              letterSpacing: "0.06em",
-              whiteSpace: "nowrap",
-            }}>
-              <span style={{ fontSize: 11 }}>⚡</span>
-              פעולות
-              <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
-            </button>
-          </div>
-
-          {/* Desktop — CSS hidden on mobile (no JS flash) */}
-          <div className="hidden md:flex" style={{ width: "100%", alignItems: "center", justifyContent: "space-between" }}>
-            <JahknoRadioPlayer playerOffset={0} sidebarWidth={224} />
-            <button style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 20px", borderRadius: 10,
-              fontSize: 13, fontWeight: 700,
-              background: BRAND,
-              border: "none",
-              color: "#fff", cursor: "pointer",
-              outline: "none",
-              WebkitTapHighlightColor: "transparent",
-              transition: "none",
-              boxShadow: "0 2px 14px rgba(220,38,38,0.45)",
-              letterSpacing: "0.01em",
-              whiteSpace: "nowrap",
-            }}>
-              <span style={{ fontSize: 13 }}>⚡</span>
-              פעולות מהירות
-              <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
-            </button>
-          </div>
-        </header>
-
-        {/* ── Page content ── */}
-        <div style={{
-          flex: 1, overflowY: "auto",
-          padding: isMobile ? "16px 14px" : "28px 32px",
-          paddingBottom: isMobile
-            ? ((player?.track || radio?.playing || radio?.loading) ? "calc(56px + env(safe-area-inset-bottom) + 74px)" : "calc(56px + env(safe-area-inset-bottom))")
-            : (player?.track ? 112 : 32),
-        }}>
 
           {/* ── Hero header ── */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
@@ -1170,36 +1092,6 @@ export default function DashboardDesignPreview() {
             👁 /dashboard-preview — Live read-only · פרויקטים אמיתיים · Calendar / Alerts / מוקד = dummy עד Phase Live-2
           </div>
 
-        </div>
-      </div>
-      </div>{/* ── end inner row ── */}
-      <MobileNav />
-
-      {/* Desktop global player — same as AppShell, respects dashboard sidebar */}
-      <div
-        className="fixed bottom-0 z-50 hidden md:block"
-        style={{
-          left: 0,
-          right: SIDEBAR_W,
-          transform: player?.track ? "translateY(0)" : "translateY(100%)",
-          transition: "transform 0.25s",
-        }}
-      >
-        <MiniPlayer />
-      </div>
-
-      {/* Mobile global player — above MobileNav */}
-      <div
-        className="fixed left-0 right-0 z-50 md:hidden"
-        style={{
-          bottom: `calc(56px + env(safe-area-inset-bottom))`,
-          transform: player?.track ? "translateY(0)" : "translateY(100%)",
-          transition: "transform 0.25s",
-          pointerEvents: player?.track ? "auto" : "none",
-        }}
-      >
-        <MiniPlayer mobile />
-      </div>
     </div>
   );
 }
