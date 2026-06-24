@@ -47,11 +47,15 @@ function RRMark({ size = 64 }: { size?: number }) {
   );
 }
 
-function NavLink({ href, label, icon, iconColor, pathname, badge }: {
+function NavLink({ href, label, icon, iconColor, pathname, badge, hoveredHref, onMouseEnter, onMouseLeave }: {
   href: string; label: string; icon: string; iconColor?: string;
   pathname: string; badge?: number;
+  hoveredHref: string | null;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
 }) {
   const active = pathname === href || pathname.startsWith(href + "/");
+  const visualActive = hoveredHref === href || (!hoveredHref && active);
   const color15 = iconColor ? `${iconColor}15` : "rgba(255,255,255,0.06)";
 
   return (
@@ -61,6 +65,8 @@ function NavLink({ href, label, icon, iconColor, pathname, badge }: {
         position: "relative", borderRadius: 10, overflow: "hidden",
         display: "block", textDecoration: "none",
       }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       {active && (
         <div style={{
@@ -71,20 +77,21 @@ function NavLink({ href, label, icon, iconColor, pathname, badge }: {
       <div style={{
         display: "flex", alignItems: "center", gap: 11,
         padding: "10px 12px 10px 14px",
-        background: active
+        background: visualActive
           ? "linear-gradient(90deg,rgba(220,38,38,0.13),rgba(220,38,38,0.03))"
           : "transparent",
-        border: `1px solid ${active ? "rgba(220,38,38,0.2)" : "transparent"}`,
+        border: `1px solid ${visualActive ? "rgba(220,38,38,0.2)" : "transparent"}`,
         borderRadius: 10, cursor: "pointer",
-        color: active ? BRAND : SUB,
-        fontSize: 13.5, fontWeight: active ? 700 : 500,
-        transition: "background 0.13s",
+        color: visualActive ? BRAND : SUB,
+        fontSize: 13.5, fontWeight: visualActive ? 700 : 500,
+        transition: "background 0.15s, border-color 0.15s, color 0.15s",
       }}>
         <span style={{
           width: 27, height: 27, borderRadius: 8, flexShrink: 0,
-          background: active ? "rgba(220,38,38,0.18)" : color15,
+          background: visualActive ? "rgba(220,38,38,0.18)" : color15,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 13, color: active ? BRAND : (iconColor ?? SUB),
+          fontSize: 13, color: visualActive ? BRAND : (iconColor ?? SUB),
+          transition: "background 0.15s, color 0.15s",
         }}>{icon}</span>
         <span style={{ flex: 1 }}>{label}</span>
         {badge != null && badge > 0 && (
@@ -103,6 +110,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
   const pathname = usePathname();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [premium, setPremium] = useState(false);
+  const [hoveredHref, setHoveredHref] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("rb_skin");
@@ -173,6 +181,9 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
               iconColor={iconColor}
               pathname={pathname}
               badge={href === "/insights" ? unreadAlerts : undefined}
+              hoveredHref={hoveredHref}
+              onMouseEnter={() => setHoveredHref(href)}
+              onMouseLeave={() => setHoveredHref(null)}
             />
           ))}
         </div>
