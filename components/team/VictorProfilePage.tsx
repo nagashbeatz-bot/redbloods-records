@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth } from "@/lib/types";
 
@@ -203,6 +203,9 @@ function VictorProjectDrawer({
   const [updating, setUpdating] = useState(false);
   const [notes, setNotes] = useState(work.notes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -215,6 +218,36 @@ function VictorProjectDrawer({
       onRefresh?.();
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleUpload(file: File) {
+    if (!work.dropboxFolder) return;
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("workId", work.id);
+      fd.append("dropboxFolder", work.dropboxFolder);
+      fd.append("subFolder", "01_From_Redbloods");
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/dropbox/vendor-upload");
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100));
+        };
+        xhr.onload = () => xhr.status === 200 ? resolve() : reject(new Error(xhr.responseText));
+        xhr.onerror = () => reject(new Error("network error"));
+        xhr.send(fd);
+      });
+      onRefresh?.();
+    } catch (err) {
+      console.error("upload failed", err);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -401,6 +434,27 @@ function VictorProjectDrawer({
                 <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  style={{ display: "none" }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!work.dropboxFolder || uploading}
+                  title={!work.dropboxFolder ? "אין תיקיה ב-Dropbox" : "העלאת קובץ"}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
+                    background: uploading ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.12)",
+                    border: "1px solid rgba(16,185,129,0.3)",
+                    color: !work.dropboxFolder || uploading ? "#52526A" : "#10B981",
+                    cursor: !work.dropboxFolder || uploading ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {uploading ? `${uploadProgress}%` : "↑ העלאה"}
+                </button>
                 {work.dropboxShareLink && (
                   <a
                     href={work.dropboxShareLink}
