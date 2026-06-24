@@ -570,15 +570,28 @@ function Toast({ message, type, onDone }: { message: string; type: "success" | "
 }
 
 // ─── Show Panel (centered modal) ─────────────────────────────────────────────
-function ShowPanel({ show, onClose, onEdit, onPatch }: {
+function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
   show: Show; onClose: () => void; onEdit: () => void;
   onPatch: (field: "status" | "payment_status", value: string) => Promise<void>;
+  onCancelShow: () => Promise<void>;
 }) {
-  const [savingField, setSavingField] = useState<"status" | "payment_status" | null>(null);
+  const [savingField,    setSavingField]    = useState<"status" | "payment_status" | null>(null);
+  const [cancelConfirm,  setCancelConfirm]  = useState(false);
+  const [cancelling,     setCancelling]     = useState(false);
 
   async function handlePatch(field: "status" | "payment_status", value: string) {
     setSavingField(field);
     try { await onPatch(field, value); } finally { setSavingField(null); }
+  }
+
+  async function handleCancel() {
+    setCancelling(true);
+    try {
+      await onCancelShow();
+      setCancelConfirm(false);
+    } finally {
+      setCancelling(false);
+    }
   }
 
   const distributable = calcDistributable(show);
@@ -777,36 +790,79 @@ function ShowPanel({ show, onClose, onEdit, onPatch }: {
           padding: "14px 20px",
           borderTop: `1px solid ${BDR}`,
           background: "#0D0D0D",
-          display: "flex", gap: 10,
+          display: "flex", flexDirection: "column", gap: 10,
         }}>
-          {/* Calendar — always disabled */}
-          <button disabled style={{
-            flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
-            background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`,
-            color: MUTED, cursor: "not-allowed",
-          }}>📅 הוסף ליומן</button>
+          {/* Cancel confirm panel */}
+          {cancelConfirm && (
+            <div style={{
+              background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.3)",
+              borderRadius: 12, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#FCA5A5" }}>לבטל את ההופעה?</div>
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+                ההופעה תסומן כמבוטלת.{show.calendar_event_id ? " היא תוסר גם מ-Google Calendar." : ""}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 9, fontSize: 12, fontWeight: 800,
+                    background: cancelling ? MUTED : BRAND,
+                    border: "none", color: "#fff",
+                    cursor: cancelling ? "default" : "pointer",
+                  }}
+                >{cancelling ? "מבטל…" : "כן, בטל הופעה"}</button>
+                <button
+                  onClick={() => setCancelConfirm(false)}
+                  disabled={cancelling}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 9, fontSize: 12, fontWeight: 700,
+                    background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+                    cursor: cancelling ? "default" : "pointer",
+                  }}
+                >חזור</button>
+              </div>
+            </div>
+          )}
 
-          {/* Close */}
-          <button onClick={onClose} style={{
-            flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
-            background: CARD2, border: `1px solid ${BDR2}`,
-            color: TEXT2, cursor: "pointer",
-          }}>סגור</button>
+          {/* Button row */}
+          <div style={{ display: "flex", gap: 10 }}>
+            {/* Cancel show */}
+            <button
+              onClick={() => setCancelConfirm(c => !c)}
+              disabled={show.status === "בוטל"}
+              style={{
+                flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                background: show.status === "בוטל" ? "rgba(255,255,255,0.04)" : "rgba(220,38,38,0.12)",
+                border: `1px solid ${show.status === "בוטל" ? BDR : "rgba(220,38,38,0.4)"}`,
+                color: show.status === "בוטל" ? MUTED : "#FCA5A5",
+                cursor: show.status === "בוטל" ? "not-allowed" : "pointer",
+              }}
+            >{show.status === "בוטל" ? "⛔ מבוטל" : "⛔ בטל הופעה"}</button>
 
-          {/* Edit */}
-          <button
-            onClick={canEdit ? onEdit : undefined}
-            disabled={!canEdit}
-            title={canEdit ? "ערוך הופעה" : "הופעה זו מסונכרנת עם Google Calendar — עריכה זמינה מהעמוד הראשי בלבד"}
-            style={{
+            {/* Close */}
+            <button onClick={onClose} style={{
               flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
-              background: canEdit ? BRAND : "rgba(255,255,255,0.04)",
-              border: `1px solid ${canEdit ? "rgba(220,38,38,0.5)" : BDR}`,
-              color: canEdit ? "#fff" : MUTED,
-              cursor: canEdit ? "pointer" : "not-allowed",
-              boxShadow: canEdit ? "0 4px 16px rgba(220,38,38,0.35)" : "none",
-            }}
-          >✏️ עריכה{!canEdit ? " 🔒" : ""}</button>
+              background: CARD2, border: `1px solid ${BDR2}`,
+              color: TEXT2, cursor: "pointer",
+            }}>סגור</button>
+
+            {/* Edit */}
+            <button
+              onClick={canEdit ? onEdit : undefined}
+              disabled={!canEdit}
+              title={canEdit ? "ערוך הופעה" : "הופעה זו מסונכרנת עם Google Calendar — עריכה זמינה מהעמוד הראשי בלבד"}
+              style={{
+                flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                background: canEdit ? BRAND : "rgba(255,255,255,0.04)",
+                border: `1px solid ${canEdit ? "rgba(220,38,38,0.5)" : BDR}`,
+                color: canEdit ? "#fff" : MUTED,
+                cursor: canEdit ? "pointer" : "not-allowed",
+                boxShadow: canEdit ? "0 4px 16px rgba(220,38,38,0.35)" : "none",
+              }}
+            >✏️ עריכה{!canEdit ? " 🔒" : ""}</button>
+          </div>
         </div>
       </div>
     </>
@@ -899,6 +955,28 @@ export default function ShowsHubPreview() {
       labelProfit: active.reduce((a, s) => a + calcLabelShare(s), 0),
     };
   }, [shows, upcoming]);
+
+  async function cancelShow(id: string, hasCalendar: boolean) {
+    const body: Record<string, unknown> = { status: "בוטל" };
+    if (hasCalendar) body.removeFromCalendar = true;
+    try {
+      const res = await fetch(`/api/shows/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      const updatedShow: Show = data.show;
+      setShows(prev => prev.map(s => s.id === id ? updatedShow : s));
+      setSelected(null);
+      setToast({ message: "ההופעה בוטלה", type: "success" });
+      fetch("/api/shows").then(r => r.json()).then(d => { if (Array.isArray(d.shows)) setShows(d.shows); }).catch(() => {});
+    } catch {
+      setToast({ message: "לא הצלחנו לבטל את ההופעה", type: "error" });
+      throw new Error("cancel failed");
+    }
+  }
 
   async function patchStatus(id: string, field: "status" | "payment_status", value: string) {
     setPatching({ id, field });
@@ -1194,6 +1272,7 @@ export default function ShowsHubPreview() {
             setSelected(null);
           }}
           onPatch={(field, value) => patchStatus(selected.id, field, value)}
+          onCancelShow={() => cancelShow(selected.id, !!selected.calendar_event_id)}
         />
       )}
 
