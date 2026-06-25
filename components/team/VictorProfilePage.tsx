@@ -789,7 +789,7 @@ function VictorProjectDrawer({
             }}>✕</button>
             {work.projectId ? (
               <button
-                onClick={() => router.push(`/projects/${work.projectId}`)}
+                onClick={() => router.push(`/projects?open=${work.projectId}`)}
                 style={{
                   background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`,
                   color: PURPLE, fontSize: 11, fontWeight: 800,
