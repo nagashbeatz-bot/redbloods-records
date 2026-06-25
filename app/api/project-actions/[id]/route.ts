@@ -21,6 +21,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (body.followupDate    !== undefined) patch.followup_date       = body.followupDate    || null;
     if (body.notes           !== undefined) patch.notes               = body.notes           || null;
     if (body.linkedTaskId    !== undefined) patch.linked_task_id      = body.linkedTaskId    || null;
+    if (body.linkedWorkId    !== undefined) patch.linked_work_id      = body.linkedWorkId    || null;
 
     const { data, error } = await supabase
       .from("project_actions")

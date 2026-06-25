@@ -56,6 +56,7 @@ interface ProjectAction {
   created_at?:    string;
   status?:        string;
   notes?:         string;
+  linked_work_id?: string | null;
 }
 
 
@@ -247,28 +248,15 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/project-actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildPayload()),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as { error?: string }).error ?? "שגיאה בשמירה");
-      }
-      const resData = await res.json().catch(() => ({}));
-      if (onActionSent && resData.action) onActionSent(resData.action as ProjectAction);
-
-      // Sync vendor work + Task when sending to Victor with a deadline
-      if (dest === "הפקה" && selection === "ויקטור" && deadline) {
+      // For Victor sends: find/create work FIRST so we can link it to the action
+      let linkedWorkId: string | null = null;
+      if (dest === "הפקה" && selection === "ויקטור") {
         try {
-          // Find existing work for this project, or create one
           const workGet = await fetch(`/api/vendor/victor/work?projectId=${projectId}`);
           const workData = await workGet.json() as { ok: boolean; work: { id: string } | null };
-          let workId: string;
 
           if (workData.ok && workData.work) {
-            workId = workData.work.id;
+            linkedWorkId = workData.work.id;
           } else {
             const workPost = await fetch("/api/vendor/victor/work", {
               method: "POST",
@@ -281,24 +269,39 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
               }),
             });
             const workPostData = await workPost.json() as { ok: boolean; work: { id: string } };
-            if (!workPostData.ok || !workPostData.work) throw new Error("יצירת work נכשלה");
-            workId = workPostData.work.id;
+            if (workPostData.ok && workPostData.work) linkedWorkId = workPostData.work.id;
           }
 
-          // PATCH internalDeadline → triggers Task + Google Task sync
-          await fetch(`/api/vendor/victor/work/${workId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              internalDeadline: deadline,
-              workState: "נשלח לויקטור",
-              status: "פעיל",
-            }),
-          });
+          // If deadline provided, PATCH work to trigger Task + Google Task sync
+          if (linkedWorkId && deadline) {
+            await fetch(`/api/vendor/victor/work/${linkedWorkId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                internalDeadline: deadline,
+                workState: "נשלח לויקטור",
+                status: "פעיל",
+              }),
+            });
+          }
         } catch {
-          // Sync failure is non-fatal — action was already saved
+          // Work sync failure is non-fatal — continue to save the action
         }
       }
+
+      // Create the action, linking to the work record if available
+      const payload = { ...buildPayload(), ...(linkedWorkId ? { linkedWorkId } : {}) };
+      const res = await fetch("/api/project-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as { error?: string }).error ?? "שגיאה בשמירה");
+      }
+      const resData = await res.json().catch(() => ({}));
+      if (onActionSent && resData.action) onActionSent(resData.action as ProjectAction);
 
       onClose();
     } catch (e) {
@@ -557,6 +560,36 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   }, [projectId, mounted]);
 
   async function handleDeleteAction(actionId: string): Promise<void> {
+    const action = projectActions.find(a => a.id === actionId);
+    const linkedWorkId = action?.linked_work_id;
+
+    if (linkedWorkId) {
+      // Cascade: Google Task → tasks row → vendor_project_work → project_action
+
+      // 1. Fetch work to get linkedTaskId
+      const workRes = await fetch(`/api/vendor/victor/work/${linkedWorkId}`);
+      if (!workRes.ok && workRes.status !== 404) throw new Error("שגיאה בטעינת work");
+
+      if (workRes.ok) {
+        const workData = await workRes.json() as { ok: boolean; work: { linkedTaskId?: string | null } | null };
+        const linkedTaskId = workData.work?.linkedTaskId;
+
+        // 2. Delete Google Task + tasks row if linked
+        if (linkedTaskId) {
+          const taskRes = await fetch(`/api/tasks/${linkedTaskId}`, { method: "DELETE" });
+          if (!taskRes.ok) throw new Error("מחיקת משימה נכשלה");
+        }
+      }
+
+      // 3. Delete vendor_project_work
+      const workDel = await fetch(`/api/vendor/victor/work/${linkedWorkId}`, { method: "DELETE" });
+      if (!workDel.ok) throw new Error("מחיקת work נכשלה");
+    } else if (action?.action_type === "נשלח לויקטור" || action?.recipient_name === "ויקטור") {
+      // Victor action without linkedWorkId — delete action only, no guessing by projectId/title/date
+      console.warn("[handleDeleteAction] Victor action missing linked_work_id — deleting action only");
+    }
+
+    // 4. Delete project_action
     const res = await fetch(`/api/project-actions/${actionId}`, { method: "DELETE" });
     if (!res.ok) throw new Error("מחיקה נכשלה");
     setProjectActions(prev => prev.filter(a => a.id !== actionId));

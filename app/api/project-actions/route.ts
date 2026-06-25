@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     const {
       projectId, actionType, contentType, versionLabel,
       recipientRole, recipientName, recipientClientId, recipientPhone,
-      dropboxUrl, status, actionDate, followupDate, notes,
+      dropboxUrl, status, actionDate, followupDate, notes, linkedWorkId,
     } = body;
 
     if (!projectId)  return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         action_date:         actionDate         || new Date().toISOString().slice(0, 10),
         followup_date:       followupDate       || null,
         notes:               notes              || null,
+        linked_work_id:      linkedWorkId       || null,
       })
       .select()
       .single();

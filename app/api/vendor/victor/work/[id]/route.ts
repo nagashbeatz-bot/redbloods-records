@@ -1,9 +1,26 @@
 import { NextResponse } from "next/server";
 
 /**
- * PATCH /api/vendor/victor/work/[id]  — update a work record
- * DELETE /api/vendor/victor/work/[id] — delete a work record
+ * GET    /api/vendor/victor/work/[id]  — fetch a single work record
+ * PATCH  /api/vendor/victor/work/[id]  — update a work record
+ * DELETE /api/vendor/victor/work/[id]  — delete a work record
  */
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const { getVictorWorkById } = await import("@/lib/vendor-store");
+    const work = await getVictorWorkById(id);
+    if (!work) return NextResponse.json({ ok: false, work: null }, { status: 404 });
+    return NextResponse.json({ ok: true, work });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
 
 export async function PATCH(
   req: Request,
