@@ -26,6 +26,7 @@ const STATUS_COLOR: Record<ShowStatus, { bg: string; text: string }> = {
   "ממתין לתשובה": { bg: "rgba(245,158,11,0.18)",  text: "#F59E0B" },
   "צריך פולואפ":  { bg: "rgba(239,68,68,0.18)",   text: "#EF4444" },
   "נסגר":         { bg: "rgba(16,185,129,0.18)",  text: "#10B981" },
+  "אושרה":        { bg: "rgba(99,102,241,0.18)",  text: "#818CF8" },
   "בוצע":         { bg: "rgba(167,139,250,0.18)", text: "#A78BFA" },
   "בוטל":         { bg: "rgba(107,114,128,0.18)", text: "#6B7280" },
 };
@@ -275,7 +276,7 @@ function KpiCard({ label, value, sub, color, icon }: {
 // Statuses available in the form (subset of canonical SHOW_STATUSES — no DB change needed)
 // NOTE: "בהמתנה" is NOT included because it does not exist in SHOW_STATUSES enum → would
 // require a DB migration. To add it: extend SHOW_STATUSES in lib/shows-types.ts + Supabase enum.
-const FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "בוצע", "בוטל"];
+const FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "אושרה", "בוצע", "בוטל"];
 
 interface FormState {
   name: string; artist: string; artist_client_id: string | null;

@@ -1,7 +1,7 @@
 // Shared types and constants for shows — safe to import from Client Components
 // (no supabase / server-only imports here)
 
-export const SHOW_STATUSES = ["ליד חדש","ממתין לתשובה","צריך פולואפ","נסגר","בוצע","בוטל"] as const;
+export const SHOW_STATUSES = ["ליד חדש","ממתין לתשובה","צריך פולואפ","נסגר","אושרה","בוצע","בוטל"] as const;
 export const PAYMENT_STATUSES = ["לא שולם","חלקי","שולם"] as const;
 
 export type ShowStatus    = typeof SHOW_STATUSES[number];

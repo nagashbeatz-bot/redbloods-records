@@ -16,6 +16,7 @@ const STATUS_COLOR: Record<ShowStatus, { bg: string; text: string }> = {
   "ממתין לתשובה":  { bg: "rgba(245,158,11,0.15)",  text: "#F59E0B" },
   "צריך פולואפ":   { bg: "rgba(239,68,68,0.15)",   text: "#EF4444" },
   "נסגר":          { bg: "rgba(16,185,129,0.15)",  text: "#10B981" },
+  "אושרה":         { bg: "rgba(99,102,241,0.15)",  text: "#818CF8" },
   "בוצע":          { bg: "rgba(167,139,250,0.15)", text: "#A78BFA" },
   "בוטל":          { bg: "rgba(107,114,128,0.15)", text: "#6B7280" },
 };
