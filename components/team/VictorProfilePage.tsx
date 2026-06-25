@@ -365,6 +365,8 @@ function VictorProjectDrawer({
   const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
   const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -904,6 +906,71 @@ function VictorProjectDrawer({
             </div>
 
           </div>
+
+          {/* ── Remove from Victor board ── */}
+          {!confirmRemove ? (
+            <button
+              onClick={() => setConfirmRemove(true)}
+              style={{
+                width: "100%", padding: "11px 0", borderRadius: 12,
+                background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)",
+                color: "#FCA5A5", fontSize: 13, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              מחק פרויקט 🗑
+            </button>
+          ) : (
+            <div style={{
+              borderRadius: 12, background: "rgba(239,68,68,0.08)",
+              border: "1px solid rgba(239,68,68,0.3)",
+              padding: "12px 16px",
+            }}>
+              <div style={{ fontSize: 12, color: "#FCA5A5", fontWeight: 700, marginBottom: 10, textAlign: "center" }}>
+                למחוק מעמוד ויקטור?
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={async () => {
+                    setRemoving(true);
+                    try {
+                      await fetch(`/api/vendor/victor/work/${work.id}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ status: "בוטל", workState: "לא רלוונטי" }),
+                      });
+                      onRefresh?.();
+                      onClose();
+                    } catch {
+                      setRemoving(false);
+                      setConfirmRemove(false);
+                    }
+                  }}
+                  disabled={removing}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 9, border: "none",
+                    background: removing ? "#52526A" : "#EF4444",
+                    color: "#fff", fontSize: 13, fontWeight: 800,
+                    cursor: removing ? "default" : "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {removing ? "מוחק..." : "אישור"}
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  disabled={removing}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 9,
+                    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)",
+                    color: "#A0A0B0", fontSize: 13, fontWeight: 700,
+                    cursor: removing ? "default" : "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  בטל
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
