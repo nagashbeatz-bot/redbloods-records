@@ -5,10 +5,11 @@ import { supabase } from "@/lib/supabase";
  * GET /api/sessions/sync?projectId=xxx
  *
  * For every session that has a calendar_event_id, checks whether the Google
- * Calendar event still exists. Sessions whose event was deleted from the
- * calendar are automatically removed from Supabase so the drawer stays in sync.
+ * Calendar event still exists. NON-DESTRUCTIVE: sessions whose event can't be
+ * found are NOT deleted — they are reported back in `missing` / `wouldDelete`
+ * so a future, confirmed flow can decide what to do. Nothing is mutated here.
  *
- * Returns { deleted: number, checked: number }
+ * Returns { deleted: 0, checked: number, missing: string[], wouldDelete: string[] }
  */
 export async function GET(req: NextRequest) {
   try {
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Check each session's event — in parallel (max 5 at a time)
-    const toDelete: string[] = [];
+    const missing: string[] = [];
     const chunk = 5;
 
     for (let i = 0; i < rows.length; i += chunk) {
@@ -60,16 +61,18 @@ export async function GET(req: NextRequest) {
         })
       );
       for (const r of results) {
-        if (!r.exists) toDelete.push(r.id);
+        if (!r.exists) missing.push(r.id);
       }
     }
 
-    // Delete orphaned sessions from Supabase
-    if (toDelete.length > 0) {
-      await supabase.from("sessions").delete().in("id", toDelete);
-    }
-
-    return NextResponse.json({ deleted: toDelete.length, checked: rows.length });
+    // NON-DESTRUCTIVE: never delete sessions. Report missing events only so a
+    // future, explicitly-confirmed flow can decide what to do with them.
+    return NextResponse.json({
+      deleted: 0,
+      checked: rows.length,
+      missing,
+      wouldDelete: missing,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[sessions/sync]", msg);

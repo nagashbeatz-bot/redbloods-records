@@ -704,6 +704,71 @@ export async function calendarEventExists(
   }
 }
 
+// ─── Read a single event (normalized to Israel local date/time) ───────────────
+
+export interface FetchedCalendarEvent {
+  status:    string;          // "confirmed" | "tentative" | "cancelled" | ...
+  date:      string | null;   // YYYY-MM-DD in Asia/Jerusalem
+  startTime: string | null;   // HH:MM in Asia/Jerusalem — null for all-day events
+  endTime:   string | null;   // HH:MM in Asia/Jerusalem — null for all-day events
+}
+
+/**
+ * READ-ONLY. Fetches a single calendar event and normalizes its start/end to
+ * Israel local date + time. Used by the automatic session calendar-pull sync.
+ *
+ * Returns null if the event does not exist (404) or any error occurs.
+ * Returns an object with status "cancelled" if the event was deleted but still
+ * resolvable — callers should treat that as missing.
+ *
+ * Does NOT create/update/delete anything on Google Calendar.
+ */
+export async function getCalendarEvent(
+  eventId: string,
+  calendarId: string = CALENDAR_ID
+): Promise<FetchedCalendarEvent | null> {
+  try {
+    const auth     = await getAuthenticatedClient();
+    const calendar = google.calendar({ version: "v3", auth });
+    const res      = await calendar.events.get({ calendarId, eventId });
+    const data     = res.data;
+
+    if (!data) return null;
+    if (data.status === "cancelled") {
+      return { status: "cancelled", date: null, startTime: null, endTime: null };
+    }
+
+    const startDateTime = data.start?.dateTime ?? null; // "2026-07-12T14:00:00+03:00"
+    const startDateOnly = data.start?.date     ?? null; // "2026-07-12" (all-day)
+    const endDateTime   = data.end?.dateTime   ?? null;
+
+    // All-day event: only a date, no times.
+    if (!startDateTime && startDateOnly) {
+      return {
+        status:    data.status ?? "confirmed",
+        date:      startDateOnly, // already YYYY-MM-DD
+        startTime: null,
+        endTime:   null,
+      };
+    }
+
+    // No usable start — nothing to sync.
+    if (!startDateTime) {
+      return { status: data.status ?? "confirmed", date: null, startTime: null, endTime: null };
+    }
+
+    const start = new Date(startDateTime);
+    return {
+      status:    data.status ?? "confirmed",
+      date:      ilDateStr(start),                                   // YYYY-MM-DD (IL)
+      startTime: ilTimeStr(start),                                   // HH:MM (IL)
+      endTime:   endDateTime ? ilTimeStr(new Date(endDateTime)) : null, // HH:MM (IL)
+    };
+  } catch {
+    return null; // 404 / not found / any error → treat as missing
+  }
+}
+
 // ─── Event deletion ───────────────────────────────────────────────────────────
 
 export async function deleteCalendarEvent(
