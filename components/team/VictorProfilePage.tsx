@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
-import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
-import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, ProjectStatus, ProjectType } from "@/lib/types";
+import { ALL_STATUSES } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, ProjectStatus } from "@/lib/types";
 
 const BRAND   = "#DC2626";
 const CARD    = "#111318";
@@ -1238,11 +1238,9 @@ export default function VictorProfilePage() {
   const router = useRouter();
   const { createProject } = useProjects();
 
-  // ── New-project modal (creates a regular project — no Victor link / no tasks) ──
+  // ── New-project modal (simplified: Victor beat/idea — no artist/type fields) ──
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [npName,     setNpName]     = useState("");
-  const [npArtist,   setNpArtist]   = useState("");
-  const [npType,     setNpType]     = useState<ProjectType>("שיר");
   const [npStatus,   setNpStatus]   = useState<ProjectStatus>("לא התחיל");
   const [npDeadline, setNpDeadline] = useState("");
   const [npNotes,    setNpNotes]    = useState("");
@@ -1251,19 +1249,19 @@ export default function VictorProfilePage() {
   const [toast,      setToast]      = useState<string | null>(null);
 
   function openNewProject() {
-    setNpName(""); setNpArtist(""); setNpType("שיר"); setNpStatus("לא התחיל");
+    setNpName(""); setNpStatus("לא התחיל");
     setNpDeadline(""); setNpNotes(""); setNpError("");
     setNewProjectOpen(true);
   }
 
   async function saveNewProject() {
-    if (!npName.trim()) { setNpError("שם הפרויקט חובה"); return; }
+    if (!npName.trim()) { setNpError("שם הביט / פרויקט חובה"); return; }
     setNpSaving(true); setNpError("");
     try {
       const newId = await createProject({
         name:        npName.trim(),
-        artist:      npArtist.trim(),
-        projectType: npType,
+        artist:      "",
+        projectType: "רידים",
         status:      npStatus,
         deadline:    npDeadline,
         notes:       npNotes,
@@ -1891,8 +1889,8 @@ export default function VictorProfilePage() {
           background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
           boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
         }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>פתיחת פרויקט חדש</div>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>נוצר כפרויקט רגיל ב-Projects</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>פתיחת ביט / פרויקט חדש</div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>נוצר כפרויקט רגיל ומשויך ל-Victor</div>
 
           {npError && (
             <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12, fontWeight: 600 }}>{npError}</div>
@@ -1900,33 +1898,19 @@ export default function VictorProfilePage() {
 
           {/* Name */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>שם פרויקט *</div>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>שם ביט / פרויקט *</div>
             <input
               value={npName} onChange={e => setNpName(e.target.value)} autoFocus
               style={npInputStyle}
             />
           </div>
 
-          {/* Artist */}
+          {/* Status */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>אמן / לקוח</div>
-            <input value={npArtist} onChange={e => setNpArtist(e.target.value)} style={npInputStyle} />
-          </div>
-
-          {/* Type + Status */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סוג פרויקט</div>
-              <select value={npType} onChange={e => setNpType(e.target.value as ProjectType)} style={{ ...npInputStyle, cursor: "pointer" }}>
-                {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס</div>
-              <select value={npStatus} onChange={e => setNpStatus(e.target.value as ProjectStatus)} style={{ ...npInputStyle, cursor: "pointer" }}>
-                {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס</div>
+            <select value={npStatus} onChange={e => setNpStatus(e.target.value as ProjectStatus)} style={{ ...npInputStyle, cursor: "pointer" }}>
+              {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
 
           {/* Deadline */}
@@ -1964,7 +1948,7 @@ export default function VictorProfilePage() {
                 background: npSaving ? MUTED : PURPLE, border: "none", color: "#fff",
                 cursor: npSaving ? "default" : "pointer", fontFamily: "inherit",
               }}
-            >{npSaving ? "יוצר…" : "צור פרויקט"}</button>
+            >{npSaving ? "יוצר…" : "צור ושייך ל-Victor"}</button>
           </div>
         </div>
       </>
