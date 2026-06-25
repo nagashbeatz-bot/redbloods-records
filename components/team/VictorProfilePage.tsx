@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
-import { ALL_STATUSES } from "@/lib/types";
-import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, ProjectStatus } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink } from "@/lib/types";
 
 const BRAND   = "#DC2626";
 const CARD    = "#111318";
@@ -1241,7 +1240,8 @@ export default function VictorProfilePage() {
   // ── New-project modal (simplified: Victor beat/idea — no artist/type fields) ──
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [npName,     setNpName]     = useState("");
-  const [npStatus,   setNpStatus]   = useState<ProjectStatus>("לא התחיל");
+  // Victor work status (not the general project status) — defaults to "פעיל".
+  const [npStatus,   setNpStatus]   = useState<string>("פעיל");
   const [npDeadline, setNpDeadline] = useState("");
   const [npNotes,    setNpNotes]    = useState("");
   const [npSaving,   setNpSaving]   = useState(false);
@@ -1249,7 +1249,7 @@ export default function VictorProfilePage() {
   const [toast,      setToast]      = useState<string | null>(null);
 
   function openNewProject() {
-    setNpName(""); setNpStatus("לא התחיל");
+    setNpName(""); setNpStatus("פעיל");
     setNpDeadline(""); setNpNotes(""); setNpError("");
     setNewProjectOpen(true);
   }
@@ -1262,18 +1262,18 @@ export default function VictorProfilePage() {
         name:        npName.trim(),
         artist:      "",
         projectType: "רידים",
-        status:      npStatus,
+        status:      "בעבודה",   // general project status — never the Victor work status
         deadline:    npDeadline,
         notes:       npNotes,
       });
       if (newId) {
         // Link the new project to Victor — quiet insert only (no Tasks / no
-        // Google Tasks / no finance). Stay on /team/victor.
+        // Google Tasks / no finance). Pass the chosen Victor work status.
         try {
           await fetch("/api/vendor/victor/work", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId: newId }),
+            body: JSON.stringify({ projectId: newId, status: npStatus }),
           });
         } catch { /* link is best-effort — project was still created */ }
         await fetchMonth(month);
@@ -1905,11 +1905,11 @@ export default function VictorProfilePage() {
             />
           </div>
 
-          {/* Status */}
+          {/* Victor work status */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס</div>
-            <select value={npStatus} onChange={e => setNpStatus(e.target.value as ProjectStatus)} style={{ ...npInputStyle, cursor: "pointer" }}>
-              {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס אצל Victor</div>
+            <select value={npStatus} onChange={e => setNpStatus(e.target.value)} style={{ ...npInputStyle, cursor: "pointer" }}>
+              {VICTOR_WORK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 
