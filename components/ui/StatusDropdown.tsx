@@ -93,9 +93,29 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     if (errorTimer.current) clearTimeout(errorTimer.current);
     try {
       await updateProjectField(projectId, "status", next);
-      // After marking complete, offer to create delivery folder
+      // After marking complete, offer to create delivery folder + sync Victor work
       if (next === "הושלם") {
         setShowDeliveryPrompt(true);
+        // Sync Victor work to "הושלם" if one exists for this project
+        try {
+          const workRes = await fetch(`/api/vendor/victor/work?projectId=${projectId}`);
+          if (workRes.ok) {
+            const workData = await workRes.json() as { work?: { id: string } | null };
+            const workId = workData.work?.id;
+            if (workId) {
+              const patchRes = await fetch(`/api/vendor/victor/work/${workId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "הושלם" }),
+              });
+              if (!patchRes.ok) {
+                console.warn("[StatusDropdown] Victor work PATCH נכשל:", workId, patchRes.status);
+              }
+            }
+          }
+        } catch (victorErr) {
+          console.warn("[StatusDropdown] שגיאה בסנכרון Victor work:", victorErr);
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "שגיאה";
@@ -111,43 +131,6 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     e.preventDefault();
     setOpen(false);
     if (next === status || saving) return;
-
-    // Revert from "במיקס" — show MixRevertModal before updating
-    if (status === "במיקס" && next !== "במיקס") {
-      setMixRevertTarget(next);
-      return;
-    }
-
-    // Pre-mix payment check (only "במיקס" and "מחכה למיקס")
-    if (MIX_STATUSES.includes(next)) {
-      try {
-        const res = await fetch(`/api/transactions?projectId=${projectId}`);
-        if (res.ok) {
-          const data = await res.json();
-          const agreed = data.agreedPrice ?? 0;
-          // Count both "שולם" and "התקבל" as received
-          const paid = (data.transactions ?? [])
-            .filter((t: { type: string; payment_status: string }) =>
-              t.type === "income" && (t.payment_status === "שולם" || t.payment_status === "התקבל")
-            )
-            .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
-          if (agreed > 0 && paid < agreed) {
-            setWarnStep("warn");
-            setExceptionReason("");
-            setPaymentWarning({ next, balance: agreed - paid, currency: data.currency ?? "₪" });
-            return;
-          }
-        }
-      } catch {
-        // Non-fatal — proceed with update even if check fails
-      }
-    }
-
-    // Mix setup flow — intercept "במיקס" before direct update
-    if (next === "במיקס") {
-      setShowMixSetup(true);
-      return;
-    }
 
     await doUpdate(next);
   };
@@ -483,11 +466,6 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
                         }),
                       });
                     } catch { /* non-fatal */ }
-                    // Mix setup flow — open modal instead of direct update
-                    if (next === "במיקס") {
-                      setShowMixSetup(true);
-                      return;
-                    }
                     await doUpdate(next);
                   }}
                   style={{
