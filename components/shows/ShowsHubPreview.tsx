@@ -958,7 +958,7 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
   const artistShare   = calcArtistShare(show);
   const labelShare    = calcLabelShare(show);
   const remaining     = calcRemaining(show);
-  const canEdit       = !show.calendar_event_id;
+  const canEdit       = true;
 
   const sectionLabel = (text: string, icon: string) => (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
@@ -1119,10 +1119,10 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
             }
           </div>
 
-          {/* Lock notice */}
-          {!canEdit && (
+          {/* Calendar-sync info (non-blocking) */}
+          {show.calendar_event_id && (
             <div style={{ fontSize: 11, color: MUTED, textAlign: "center", lineHeight: 1.6 }}>
-              🔒 הופעה זו מסונכרנת עם Google Calendar.<br/>עריכה זמינה מהעמוד הראשי בלבד.
+              📅 ההופעה מסונכרנת ליומן Google — שינויים רלוונטיים יתעדכנו גם שם.
             </div>
           )}
         </div>
