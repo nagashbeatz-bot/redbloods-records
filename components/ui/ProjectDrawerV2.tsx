@@ -208,8 +208,9 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
   const [selection,  setSelection] = useState<string | null>(null);
   const [saving,     setSaving]    = useState(false);
   const [error,      setError]     = useState<string | null>(null);
+  const [deadline,   setDeadline]  = useState<string>("");
 
-  function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); }
+  function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); setDeadline(""); }
 
   function buildPayload() {
     const base = { projectId, actionType: "sent", actionDate: new Date().toISOString().slice(0, 10) };
@@ -220,6 +221,7 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
       contentType:   "הפקה",
       notes:         "נשלח להפקה",
       status:        "pending_version",
+      ...(deadline ? { followupDate: deadline } : {}),
     };
     if (dest === "מיקס / מאסטר") return {
       ...base,
@@ -256,6 +258,48 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
       }
       const resData = await res.json().catch(() => ({}));
       if (onActionSent && resData.action) onActionSent(resData.action as ProjectAction);
+
+      // Sync vendor work + Task when sending to Victor with a deadline
+      if (dest === "הפקה" && selection === "ויקטור" && deadline) {
+        try {
+          // Find existing work for this project, or create one
+          const workGet = await fetch(`/api/vendor/victor/work?projectId=${projectId}`);
+          const workData = await workGet.json() as { ok: boolean; work: { id: string } | null };
+          let workId: string;
+
+          if (workData.ok && workData.work) {
+            workId = workData.work.id;
+          } else {
+            const workPost = await fetch("/api/vendor/victor/work", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                projectId,
+                workState: "נשלח לויקטור",
+                sentDate: new Date().toISOString().split("T")[0],
+                status: "פעיל",
+              }),
+            });
+            const workPostData = await workPost.json() as { ok: boolean; work: { id: string } };
+            if (!workPostData.ok || !workPostData.work) throw new Error("יצירת work נכשלה");
+            workId = workPostData.work.id;
+          }
+
+          // PATCH internalDeadline → triggers Task + Google Task sync
+          await fetch(`/api/vendor/victor/work/${workId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              internalDeadline: deadline,
+              workState: "נשלח לויקטור",
+              status: "פעיל",
+            }),
+          });
+        } catch {
+          // Sync failure is non-fatal — action was already saved
+        }
+      }
+
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
@@ -366,6 +410,26 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
         {step === 2 && dest === "הפקה" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
             <ChoiceCard label="ויקטור" selected={selection === "ויקטור"} onClick={() => setSelection("ויקטור")} />
+            {selection === "ויקטור" && (
+              <div style={{ marginTop: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                  דדליין פנימי (אופציונלי)
+                </label>
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={e => setDeadline(e.target.value)}
+                  style={{
+                    width: "100%", padding: "9px 12px", borderRadius: 10,
+                    background: "#0D0D10", border: `1px solid ${deadline ? PURPLE : "#2A2A35"}`,
+                    color: deadline ? "#C4B5FD" : MUTED,
+                    fontSize: 13, fontFamily: "inherit", outline: "none",
+                    boxSizing: "border-box" as const,
+                    colorScheme: "dark",
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 
