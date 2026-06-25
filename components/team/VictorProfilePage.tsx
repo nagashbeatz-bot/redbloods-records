@@ -1233,6 +1233,7 @@ export default function VictorProfilePage() {
   const [npNotes,    setNpNotes]    = useState("");
   const [npSaving,   setNpSaving]   = useState(false);
   const [npError,    setNpError]    = useState("");
+  const [toast,      setToast]      = useState<string | null>(null);
 
   function openNewProject() {
     setNpName(""); setNpArtist(""); setNpType("שיר"); setNpStatus("לא התחיל");
@@ -1252,8 +1253,21 @@ export default function VictorProfilePage() {
         deadline:    npDeadline,
         notes:       npNotes,
       });
+      if (newId) {
+        // Link the new project to Victor — quiet insert only (no Tasks / no
+        // Google Tasks / no finance). Stay on /team/victor.
+        try {
+          await fetch("/api/vendor/victor/work", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId: newId }),
+          });
+        } catch { /* link is best-effort — project was still created */ }
+        await fetchMonth(month);
+      }
       setNewProjectOpen(false);
-      if (newId) router.push(`/projects?open=${newId}`);
+      setToast("הפרויקט נוצר ושויך ל-Victor ✓");
+      setTimeout(() => setToast(null), 3000);
     } catch {
       setNpError("שגיאה ביצירת הפרויקט");
     } finally {
@@ -1939,6 +1953,18 @@ export default function VictorProfilePage() {
           </div>
         </div>
       </>
+    )}
+
+    {/* ── Success toast ── */}
+    {toast && (
+      <div style={{
+        position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+        zIndex: 1000, background: CARD, border: `1px solid ${PURPLE}55`,
+        color: TEXT, fontSize: 13, fontWeight: 700, padding: "11px 20px",
+        borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", direction: "rtl",
+      }}>
+        {toast}
+      </div>
     )}
     </>
   );
