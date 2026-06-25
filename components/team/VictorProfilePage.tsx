@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import type { VictorMonthStats, VendorWork, VictorSalaryMonth } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink } from "@/lib/types";
 
 const BRAND   = "#DC2626";
 const CARD    = "#111318";
@@ -209,6 +209,8 @@ function VictorProjectDrawer({
   const [folderError, setFolderError] = useState<string | null>(null);
   const [effectiveFolder, setEffectiveFolder] = useState<string | null>(work.dropboxFolder ?? null);
   const [effectiveShareLink, setEffectiveShareLink] = useState<string | null>(work.dropboxShareLink ?? null);
+  const [effectiveFiles, setEffectiveFiles] = useState<FileLink[]>(work.filesSent ?? []);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function patchWork(fields: Partial<VendorWork>) {
@@ -229,24 +231,33 @@ function VictorProjectDrawer({
     if (!effectiveFolder) return;
     setUploading(true);
     setUploadProgress(0);
+    setUploadError(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("workId", work.id);
       fd.append("dropboxFolder", effectiveFolder);
-      fd.append("subFolder", "01_From_Redbloods");
-      await new Promise<void>((resolve, reject) => {
+      fd.append("subFolder", "Production");
+      const responseText = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/dropbox/vendor-upload");
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100));
         };
-        xhr.onload = () => xhr.status === 200 ? resolve() : reject(new Error(xhr.responseText));
-        xhr.onerror = () => reject(new Error("network error"));
+        xhr.onload = () => xhr.status === 200 ? resolve(xhr.responseText) : reject(new Error(xhr.responseText));
+        xhr.onerror = () => reject(new Error("שגיאת רשת"));
         xhr.send(fd);
       });
+      try {
+        const data = JSON.parse(responseText) as { ok: boolean; file?: FileLink };
+        if (data.ok && data.file) {
+          setEffectiveFiles(prev => [...prev, data.file!]);
+        }
+      } catch {}
       onRefresh?.();
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "שגיאה בהעלאת הקובץ";
+      setUploadError(msg);
       console.error("upload failed", err);
     } finally {
       setUploading(false);
@@ -298,7 +309,7 @@ function VictorProjectDrawer({
 
   const files = [
     ...(work.filesReceived ?? []).map(f => ({ ...f, dir: "in" as const })),
-    ...(work.filesSent ?? []).map(f => ({ ...f, dir: "out" as const })),
+    ...(effectiveFiles).map(f => ({ ...f, dir: "out" as const })),
   ];
 
   const days = daysFromNow(work.internalDeadline);
@@ -533,6 +544,10 @@ function VictorProjectDrawer({
                 }}>{files.length} קבצים</span>
               </div>
             </div>
+
+            {uploadError && (
+              <div style={{ fontSize: 11, color: "#EF4444", padding: "4px 16px 2px", fontWeight: 600 }}>{uploadError}</div>
+            )}
 
             {files.length === 0 ? (
               <div style={{ padding: "28px 16px", textAlign: "center" }}>

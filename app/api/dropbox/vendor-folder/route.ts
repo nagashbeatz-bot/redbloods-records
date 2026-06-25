@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getDropboxToken } from "@/lib/dropbox-token";
 
 /**
@@ -38,7 +38,7 @@ async function createFolder(token: string, path: string): Promise<void> {
     if (typeof body.error_summary === "string" && body.error_summary.startsWith("path/conflict/folder")) return;
     // Ignore "path/conflict" (already exists)
     if (typeof body.error_summary === "string" && body.error_summary.includes("conflict")) return;
-    throw new Error(`יצירת תיקייה נכשלה: ${JSON.stringify(body)}`);
+    throw new Error(`׳™׳¦׳™׳¨׳× ׳×׳™׳§׳™׳™׳” ׳ ׳›׳©׳׳”: ${JSON.stringify(body)}`);
   }
 }
 
@@ -79,7 +79,7 @@ async function getOrCreateShareLink(token: string, path: string): Promise<string
     if (listData.links?.length) return listData.links[0].url;
   }
 
-  throw new Error("לא ניתן ליצור או לקבל לינק שיתוף לתיקיית הספק");
+  throw new Error("׳׳ ׳ ׳™׳×׳ ׳׳™׳¦׳•׳¨ ׳׳• ׳׳§׳‘׳ ׳׳™׳ ׳§ ׳©׳™׳×׳•׳£ ׳׳×׳™׳§׳™׳™׳× ׳”׳¡׳₪׳§");
 }
 
 export async function POST(req: Request) {
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
 
     const { vendorName, artistName, projectName } = body;
     if (!vendorName || !artistName || !projectName) {
-      return NextResponse.json({ ok: false, error: "חסרים שדות: vendorName, artistName, projectName" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "׳—׳¡׳¨׳™׳ ׳©׳“׳•׳×: vendorName, artistName, projectName" }, { status: 400 });
     }
 
     const token    = await getDropboxToken();
@@ -107,12 +107,13 @@ export async function POST(req: Request) {
     await createFolder(token, `${basePath}/01_From_Redbloods`);
     await createFolder(token, `${basePath}/${fromThem}`);
     await createFolder(token, `${basePath}/03_Approved`);
+    await createFolder(token, `${basePath}/Production`);
 
     const shareLink = await getOrCreateShareLink(token, basePath);
 
     return NextResponse.json({ ok: true, folderPath: basePath, shareLink });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    const msg = err instanceof Error ? err.message : "׳©׳’׳™׳׳× ׳©׳¨׳×";
     console.error("[dropbox/vendor-folder]", msg);
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }

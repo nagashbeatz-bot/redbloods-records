@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300;
 
@@ -8,9 +8,9 @@ export const maxDuration = 300;
  * Saves the file reference to vendor_project_work.files_sent.
  *
  * FormData: { file, workId, dropboxFolder, subFolder }
- *   workId        — vendor_project_work.id
- *   dropboxFolder — e.g. "Victor/Shalev - HaMida"
- *   subFolder     — "01_From_Redbloods" | "03_Approved"
+ *   workId        ג€” vendor_project_work.id
+ *   dropboxFolder ג€” e.g. "Victor/Shalev - HaMida"
+ *   subFolder     ג€” "01_From_Redbloods" | "03_Approved"
  */
 
 function dropboxArg(obj: Record<string, unknown>): string {
@@ -31,11 +31,15 @@ export async function POST(req: NextRequest) {
     const subFolder   = (formData.get("subFolder") as string | null) ?? "01_From_Redbloods";
 
     if (!file || !workId || !dropboxFolder) {
-      return NextResponse.json({ error: "חסרים פרמטרים: file, workId, dropboxFolder" }, { status: 400 });
+      return NextResponse.json({ error: "׳—׳¡׳¨׳™׳ ׳₪׳¨׳׳˜׳¨׳™׳: file, workId, dropboxFolder" }, { status: 400 });
     }
 
     const sanitizedName = file.name.replace(/[<>:"/\\|?*]/g, "_");
-    const dropboxPath   = `/${dropboxFolder}/${subFolder}/${sanitizedName}`;
+    const cleanFolder    = dropboxFolder.startsWith("/") ? dropboxFolder.slice(1) : dropboxFolder;
+    const cleanSubFolder = subFolder ? subFolder.replace(/^\/+|\/+$/g, "") : "";
+    const dropboxPath    = cleanSubFolder
+      ? `/${cleanFolder}/${cleanSubFolder}/${sanitizedName}`
+      : `/${cleanFolder}/${sanitizedName}`;
 
     // Upload to Dropbox
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -94,7 +98,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, file: newFile });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "שגיאת שרת";
+    const msg = err instanceof Error ? err.message : "׳©׳’׳™׳׳× ׳©׳¨׳×";
     console.error("[dropbox/vendor-upload]", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
