@@ -539,6 +539,25 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
       .catch(() => {});
   }, [projectId]);
 
+  // Inline session status change (סשנים tab) — optimistic update + PATCH,
+  // revert to server truth on failure. Status flow only; no other session logic.
+  async function updateSessionStatus(id: string, status: string) {
+    setSessions(prev => prev.map(s => (s.id === id ? { ...s, status } : s)));
+    try {
+      const res = await fetch(`/api/sessions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("status update failed");
+    } catch {
+      fetch(`/api/sessions?projectId=${projectId}`)
+        .then(r => r.json())
+        .then(d => setSessions(d.sessions ?? []))
+        .catch(() => {});
+    }
+  }
+
   useEffect(() => {
     setProjectActions([]);
     fetch(`/api/project-actions?projectId=${projectId}`)
@@ -1171,7 +1190,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               onPriceUpdate={(newPrice: number) => setAgreedPrice(newPrice)}
             />
           ) : activeTab === "סשנים" ? (
-            <SessionsContent sessions={sessions} sessDone={sessDone} />
+            <SessionsContent sessions={sessions} sessDone={sessDone} onStatusChange={updateSessionStatus} />
           ) : activeTab === "קבצים" ? (
             <FilesContent project={project} onFileDeleted={refresh} />
           ) : (
@@ -2411,13 +2430,80 @@ function FinanceContent({
 
 // ─── Tab: סשנים ───────────────────────────────────────────────────────────────
 
-function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone: number }) {
-  const sessionColor: Record<string, string> = {
-    "התקיים": "#10B981",
-    "מתוכנן": "#3B82F6",
-    "בוטל":   "#555568",
-  };
+// The only three statuses a session can be set to from the drawer.
+const SESSION_STATUSES = ["מתוכנן", "התקיים", "בוטל"] as const;
+const SESSION_STATUS_COLOR: Record<string, string> = {
+  "מתוכנן": "#3B82F6",
+  "התקיים": "#10B981",
+  "בוטל":   "#555568",
+};
 
+// Lightweight inline status control — a small colored pill that opens a compact
+// dark dropdown of the three statuses. No modal/popup. Matches the badge style.
+function SessionStatusControl({ status, onChange }: { status: string; onChange: (s: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const col = SESSION_STATUS_COLOR[status] ?? "#555568";
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          fontSize: 11, fontWeight: 700, color: col,
+          background: `${col}18`, border: `1px solid ${col}30`,
+          borderRadius: 8, padding: "3px 8px", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit",
+        }}
+      >
+        {status}
+        <span style={{ fontSize: 8, opacity: 0.7 }}>▾</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 30,
+            background: "#16161B", border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: 10, padding: 4, minWidth: 116,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+            display: "flex", flexDirection: "column", gap: 2,
+          }}
+        >
+          {SESSION_STATUSES.map(opt => {
+            const oc = SESSION_STATUS_COLOR[opt];
+            const active = opt === status;
+            return (
+              <button
+                key={opt}
+                onClick={() => { setOpen(false); if (opt !== status) onChange(opt); }}
+                style={{
+                  fontSize: 12, fontWeight: 700, color: oc, textAlign: "right",
+                  background: active ? `${oc}1A` : "transparent",
+                  border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer",
+                  fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8,
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: oc, display: "inline-block", flexShrink: 0 }} />
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SessionsContent({ sessions, sessDone, onStatusChange }: { sessions: Session[]; sessDone: number; onStatusChange: (id: string, status: string) => void }) {
   const upcoming = [...sessions]
     .filter(s => s.date && s.status !== "בוטל" && new Date(s.date) >= new Date())
     .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
@@ -2457,7 +2543,6 @@ function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone
       {sessions.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {sorted.map(s => {
-            const col = sessionColor[s.status] ?? "#555568";
             return (
               <div key={s.id} style={{
                 display: "flex", alignItems: "center", gap: 12,
@@ -2471,13 +2556,7 @@ function SessionsContent({ sessions, sessDone }: { sessions: Session[]; sessDone
                       : "ללא תאריך"}
                   </div>
                 </div>
-                <div style={{
-                  fontSize: 11, fontWeight: 700, color: col,
-                  background: `${col}18`, border: `1px solid ${col}30`,
-                  borderRadius: 8, padding: "3px 8px",
-                }}>
-                  {s.status}
-                </div>
+                <SessionStatusControl status={s.status} onChange={(ns) => onStatusChange(s.id, ns)} />
               </div>
             );
           })}
