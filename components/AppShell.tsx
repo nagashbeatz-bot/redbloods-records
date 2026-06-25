@@ -133,7 +133,7 @@ export default function AppShell({ children, topRight }: { children: React.React
           >
             {/* Mobile header — CSS hidden on desktop (no JS flash) */}
             <div className="flex md:hidden" style={{ width: "100%", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
-              <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} />
+              <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} variant="mobile" />
               <div style={{
                 position: "absolute",
                 left: "50%",
@@ -153,6 +153,7 @@ export default function AppShell({ children, topRight }: { children: React.React
               <JahknoRadioPlayer
                 playerOffset={playerVisible ? PLAYER_H : 0}
                 sidebarWidth={SIDEBAR_WIDTH}
+                variant="desktop"
               />
               {topRight ?? (
                 <button

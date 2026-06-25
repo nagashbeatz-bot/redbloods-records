@@ -266,10 +266,11 @@ function RPauseIcon({ size = 10, color = "#fff" }: { size?: number; color?: stri
 interface Props {
   playerOffset: number;
   sidebarWidth: number;
+  variant: "mobile" | "desktop";
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props) {
+export default function JahknoRadioPlayer({ playerOffset, sidebarWidth, variant }: Props) {
   const {
     playing, loading, channel, volume, panelOpen,
     play, pause, setChannel, setVolume, setPanelOpen,
@@ -284,6 +285,10 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
+
+  // Only one instance (matching the active viewport) may render the body portals,
+  // since createPortal escapes the responsive display:none of the other header.
+  const showPortals = variant === "mobile" ? isMobile : !isMobile;
 
   const handlePlayPause = () => (playing ? pause() : play());
 
@@ -595,8 +600,8 @@ export default function JahknoRadioPlayer({ playerOffset, sidebarWidth }: Props)
         </button>
       </div>
 
-      {mounted && panelOpen && createPortal(panel, document.body)}
-      {mounted && isMobile && (playing || loading) && createPortal(mobileMiniPlayer, document.body)}
+      {mounted && panelOpen && showPortals && createPortal(panel, document.body)}
+      {mounted && variant === "mobile" && isMobile && (playing || loading) && createPortal(mobileMiniPlayer, document.body)}
     </>
   );
 }
