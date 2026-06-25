@@ -87,6 +87,109 @@ function SalaryChip({ status }: { status: string }) {
   );
 }
 
+const VICTOR_WORK_STATUSES = ["פעיל", "הושלם", "בוטל"] as const;
+
+function WorkStatusDropdown({
+  workId,
+  status,
+  onUpdated,
+}: {
+  workId: string;
+  status: string;
+  onUpdated?: (newStatus: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [localStatus, setLocalStatus] = useState(status);
+  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const col = STATUS_COLORS[localStatus] ?? { bg: "rgba(255,255,255,0.06)", color: TEXT2 };
+
+  async function handleSelect(next: string) {
+    if (next === localStatus || saving) return;
+    setOpen(false);
+    const prev = localStatus;
+    setLocalStatus(next);
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/vendor/victor/work/${workId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) throw new Error(`PATCH ${res.status}`);
+      onUpdated?.(next);
+    } catch (err) {
+      console.warn("[WorkStatusDropdown] שגיאה בעדכון סטטוס:", err);
+      setLocalStatus(prev);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={e => { e.stopPropagation(); if (!saving) setOpen(o => !o); }}
+        style={{
+          padding: "2px 9px", borderRadius: 7,
+          background: col.bg, color: col.color,
+          fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+          border: `1px solid ${col.color}44`,
+          cursor: saving ? "default" : "pointer",
+          opacity: saving ? 0.6 : 1,
+          outline: "none", fontFamily: "inherit",
+          display: "inline-flex", alignItems: "center", gap: 4,
+        }}
+      >
+        {localStatus}
+        <span style={{ fontSize: 8, opacity: 0.5 }}>{saving ? "…" : "▾"}</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 9999,
+          background: "#141414", border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.8)",
+          padding: "4px 0", minWidth: 90,
+        }}>
+          {VICTOR_WORK_STATUSES.map(opt => {
+            const oc = STATUS_COLORS[opt] ?? { bg: "rgba(255,255,255,0.06)", color: TEXT2 };
+            const isActive = localStatus === opt;
+            return (
+              <button
+                key={opt}
+                onClick={() => handleSelect(opt)}
+                style={{
+                  display: "block", width: "100%", textAlign: "right",
+                  padding: "7px 12px",
+                  background: isActive ? oc.bg : "transparent",
+                  border: "none", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 12, fontWeight: isActive ? 700 : 500,
+                  color: oc.color, direction: "rtl",
+                }}
+                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function daysFromNow(d: string | null): number | null {
   if (!d) return null;
   try {
@@ -620,7 +723,11 @@ function VictorProjectDrawer({
                   fontSize: 10, padding: "2px 8px", borderRadius: 6,
                   background: `${PURPLE}20`, color: PURPLE, fontWeight: 800, letterSpacing: "0.04em",
                 }}>VICTOR</span>
-                <StatusChip status={work.status} />
+                <WorkStatusDropdown
+                  workId={work.id}
+                  status={work.status}
+                  onUpdated={() => { onRefresh?.(); }}
+                />
                 {work.workState && <StatusChip status={work.workState} />}
               </div>
             </div>
@@ -1238,7 +1345,11 @@ export default function VictorProfilePage() {
                           {fmtDate(w.internalDeadline)}
                         </td>
                         <td style={{ padding: "11px 14px" }}>
-                          <StatusChip status={w.status} />
+                          <WorkStatusDropdown
+                            workId={w.id}
+                            status={w.status}
+                            onUpdated={newStatus => setWork(prev => prev.map(item => item.id === w.id ? { ...item, status: newStatus as import("@/lib/types").VictorStatus } : item))}
+                          />
                         </td>
                         <td style={{ padding: "11px 14px" }}>
                           <button
