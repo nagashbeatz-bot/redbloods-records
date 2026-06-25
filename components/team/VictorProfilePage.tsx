@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
@@ -115,13 +116,20 @@ function WorkStatusDropdown({
   const [saving, setSaving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
 
   const hasLinkedProject = !!(workProjectId && workProjectName && workProjectName !== "פרויקט לא ידוע");
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // Menu is portaled outside `ref`, so check both the button wrapper and the menu.
+      const inBtn  = ref.current?.contains(t);
+      const inMenu = menuRef.current?.contains(t);
+      if (!inBtn && !inMenu) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -193,7 +201,13 @@ function WorkStatusDropdown({
   return (
     <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
       <button
-        onClick={e => { e.stopPropagation(); if (!saving) setOpen(o => !o); }}
+        ref={btnRef}
+        onClick={e => {
+          e.stopPropagation();
+          if (saving) return;
+          if (!open) setMenuRect(btnRef.current?.getBoundingClientRect() ?? null);
+          setOpen(o => !o);
+        }}
         style={{
           padding: "2px 9px", borderRadius: 7,
           background: col.bg, color: col.color,
@@ -209,12 +223,12 @@ function WorkStatusDropdown({
         <span style={{ fontSize: 8, opacity: 0.5 }}>{saving ? "…" : "▾"}</span>
       </button>
 
-      {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 9999,
+      {open && menuRect && createPortal(
+        <div ref={menuRef} style={{
+          position: "fixed", top: menuRect.bottom + 4, left: menuRect.left, zIndex: 9999,
           background: "#141414", border: "1px solid rgba(255,255,255,0.12)",
           borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.8)",
-          padding: "4px 0", minWidth: 90,
+          padding: "4px 0", minWidth: 90, direction: "rtl",
         }}>
           {VICTOR_WORK_STATUSES.map(opt => {
             const oc = STATUS_COLORS[opt] ?? { bg: "rgba(255,255,255,0.06)", color: TEXT2 };
@@ -238,7 +252,8 @@ function WorkStatusDropdown({
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
 
       {showConfirm && (
