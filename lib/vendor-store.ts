@@ -256,6 +256,8 @@ export async function setVictorPaymentStatus(month: string, status: string, paid
 // ── Salary months ─────────────────────────────────────────────────────────────
 
 const SALARY_OVERRIDES_KEY = "vendor_victor_salary_overrides";
+// Internal, finance-independent salary status overrides (month → "צפוי" | "שולם" | …)
+const SALARY_STATUS_OVERRIDES_KEY = "vendor_victor_salary_status_overrides";
 
 const HE_MONTHS_SALARY = [
   "ינואר","פברואר","מרץ","אפריל","מאי","יוני",
@@ -289,6 +291,14 @@ export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryM
     .maybeSingle();
   const overrides = (overridesRow?.value ?? {}) as Record<string, number>;
 
+  // Internal status overrides per month (finance-independent — wins when present)
+  const { data: statusOverridesRow } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", SALARY_STATUS_OVERRIDES_KEY)
+    .maybeSingle();
+  const statusOverrides = (statusOverridesRow?.value ?? {}) as Record<string, string>;
+
   // All Victor salary transactions (filter in JS to avoid SQL LIKE wildcard issues)
   const { data: txsRaw } = await supabase
     .from("transactions")
@@ -318,7 +328,11 @@ export async function getVictorSalaryMonths(year: number): Promise<VictorSalaryM
     const tx        = txMap.get(workMonth);
 
     let status: SalaryStatus;
-    if (!tx) {
+    const statusOverride = statusOverrides[workMonth];
+    if (statusOverride) {
+      // Internal override wins — fully finance-independent.
+      status = statusOverride as SalaryStatus;
+    } else if (!tx) {
       const due = new Date(dueDate);
       status = due <= today ? "לא שולם" : "צפוי";
     } else {
@@ -358,6 +372,22 @@ export async function setSalaryAmountOverride(workMonth: string, amount: number)
     .from("settings")
     .upsert(
       { key: SALARY_OVERRIDES_KEY, value: { ...current, [workMonth]: amount } },
+      { onConflict: "key" }
+    );
+}
+
+// Internal salary status override — settings only, never touches Finance/transactions.
+export async function setSalaryStatusOverride(workMonth: string, status: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", SALARY_STATUS_OVERRIDES_KEY)
+    .maybeSingle();
+  const current = (existing?.value ?? {}) as Record<string, string>;
+  await supabase
+    .from("settings")
+    .upsert(
+      { key: SALARY_STATUS_OVERRIDES_KEY, value: { ...current, [workMonth]: status } },
       { onConflict: "key" }
     );
 }

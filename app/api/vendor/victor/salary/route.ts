@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * GET  /api/vendor/victor/salary?year=YYYY  — list salary months for a year
  * POST /api/vendor/victor/salary             — send a month to finance (creates transaction)
- * PATCH /api/vendor/victor/salary            — update amount override for a month
+ * PATCH /api/vendor/victor/salary            — update amount and/or status override for a
+ *                                              month (settings only — never touches Finance)
  */
 
 export async function GET(req: NextRequest) {
@@ -98,12 +99,18 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { workMonth, amount } = (await req.json()) as {
+    const { workMonth, amount, status } = (await req.json()) as {
       workMonth: string;
-      amount: number;
+      amount?: number;
+      status?: string;
     };
-    const { setSalaryAmountOverride } = await import("@/lib/vendor-store");
-    await setSalaryAmountOverride(workMonth, amount);
+    if (!workMonth) {
+      return NextResponse.json({ ok: false, error: "workMonth חסר" }, { status: 400 });
+    }
+    const { setSalaryAmountOverride, setSalaryStatusOverride } = await import("@/lib/vendor-store");
+    // Settings-only overrides — no transactions created or updated.
+    if (amount !== undefined) await setSalaryAmountOverride(workMonth, Number(amount) || 0);
+    if (status !== undefined) await setSalaryStatusOverride(workMonth, status);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });

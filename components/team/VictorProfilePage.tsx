@@ -1266,7 +1266,40 @@ export default function VictorProfilePage() {
   ]);
 
   const currentSalaryRec = salaryMonths.find(s => s.workMonth === month);
-  const historyMonths    = [...salaryMonths].reverse().filter(s => s.workMonth !== month);
+  // History = view-only, past months only (exclude current and any future month).
+  const historyMonths    = [...salaryMonths].reverse().filter(s => s.workMonth < month);
+
+  // ── Salary edit modal (internal — never touches Finance) ──
+  const [salaryModalOpen,   setSalaryModalOpen]   = useState(false);
+  const [salaryDraftAmount, setSalaryDraftAmount] = useState("");
+  const [salaryDraftStatus, setSalaryDraftStatus] = useState<"צפוי" | "שולם">("צפוי");
+  const [salarySaving,      setSalarySaving]      = useState(false);
+
+  function openSalaryModal() {
+    const amt = currentSalaryRec ? currentSalaryRec.amount : (salary || 0);
+    setSalaryDraftAmount(String(amt));
+    setSalaryDraftStatus(currentSalaryRec?.status === "שולם" ? "שולם" : "צפוי");
+    setSalaryModalOpen(true);
+  }
+
+  async function saveSalary() {
+    setSalarySaving(true);
+    try {
+      await fetch("/api/vendor/victor/salary", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workMonth: month,
+          amount: Number(salaryDraftAmount) || 0,
+          status: salaryDraftStatus,
+        }),
+      });
+      await fetchSalary(Number(month.split("-")[0]));
+      setSalaryModalOpen(false);
+    } finally {
+      setSalarySaving(false);
+    }
+  }
 
   const btnStyle: React.CSSProperties = {
     background: "none", border: "none", outline: "none",
@@ -1584,10 +1617,17 @@ export default function VictorProfilePage() {
           {/* ── Col 3: Salary ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-            {/* Current month salary */}
-            <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18, padding: "18px 22px" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>
-                משכורות — {monthLabel(month)}
+            {/* Current month salary — click anywhere to edit (internal, no Finance) */}
+            <div
+              onClick={openSalaryModal}
+              title="לחץ לעריכת המשכורת"
+              style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18, padding: "18px 22px", cursor: "pointer" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>
+                  משכורות — {monthLabel(month)}
+                </div>
+                <span style={{ fontSize: 12, color: MUTED }}>✎</span>
               </div>
 
               {/* Salary amount */}
@@ -1643,10 +1683,7 @@ export default function VictorProfilePage() {
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         padding: "10px 13px", borderRadius: 11,
                         background: CARD2, border: `1px solid ${BDR}`,
-                        cursor: "pointer",
-                      }}
-                        onClick={() => setMonth(s.workMonth)}
-                      >
+                      }}>
                         <div>
                           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{monthLabel(s.workMonth)}</div>
                           <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fmtDate(s.dueDate)}</div>
@@ -1680,6 +1717,86 @@ export default function VictorProfilePage() {
         onClose={() => setSelectedWork(null)}
         onRefresh={() => fetchMonth(month)}
       />
+    )}
+
+    {/* ── Salary edit modal (centered, dark, Redbloods style) ── */}
+    {salaryModalOpen && (
+      <>
+        <div
+          onClick={() => { if (!salarySaving) setSalaryModalOpen(false); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 998 }}
+        />
+        <div style={{
+          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+          zIndex: 999, width: 380, maxWidth: "92vw",
+          background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
+        }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>עריכת משכורת</div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{monthLabel(month)}</div>
+
+          {/* Amount */}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סכום</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 15, color: TEXT2, fontWeight: 700 }}>{currency}</span>
+              <input
+                type="number" min={0} value={salaryDraftAmount}
+                onChange={e => setSalaryDraftAmount(e.target.value)}
+                style={{
+                  flex: 1, padding: "9px 12px", borderRadius: 10, border: `1px solid ${BDR2}`,
+                  background: CARD2, color: TEXT, fontSize: 14, fontFamily: "inherit",
+                  outline: "none", boxSizing: "border-box",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Status */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס תשלום</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["צפוי", "שולם"] as const).map(opt => {
+                const sc = SALARY_STATUS_COLORS[opt];
+                const isActive = salaryDraftStatus === opt;
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => setSalaryDraftStatus(opt)}
+                    style={{
+                      flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 13, fontWeight: 800,
+                      background: isActive ? sc.bg : "transparent",
+                      border: `1px solid ${isActive ? sc.color + "66" : BDR2}`,
+                      color: isActive ? sc.color : MUTED,
+                      cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >{opt}</button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setSalaryModalOpen(false)} disabled={salarySaving}
+              style={{
+                flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+                background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+                cursor: salarySaving ? "default" : "pointer", fontFamily: "inherit",
+              }}
+            >ביטול</button>
+            <button
+              onClick={saveSalary} disabled={salarySaving}
+              style={{
+                flex: 2, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 800,
+                background: salarySaving ? MUTED : BRAND, border: "none", color: "#fff",
+                cursor: salarySaving ? "default" : "pointer", fontFamily: "inherit",
+              }}
+            >{salarySaving ? "שומר…" : "שמור"}</button>
+          </div>
+        </div>
+      </>
     )}
     </>
   );
