@@ -169,7 +169,7 @@ function VendorCard({
             transition: "none",
           }}
         >
-          פתח פרופיל ↓
+          פתח פרופיל
         </button>
       ) : (
         <button

@@ -1397,7 +1397,7 @@ export default function VictorProfilePage() {
             onClick={() => router.push("/team")}
             style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 14, fontWeight: 700 }}
           >
-            ← חזרה לרשימה
+            חזרה לרשימה →
           </button>
 
           {/* Title */}
