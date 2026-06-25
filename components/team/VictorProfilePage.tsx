@@ -109,7 +109,45 @@ function fileExt(name: string): string {
   return (name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
 }
 
-function AudioPlayer({ name, url }: { name: string; url: string }) {
+function downloadFile(file: FileLink) {
+  const rawUrl = file.dropboxShareUrl || file.url || "";
+  if (!rawUrl) return;
+  // Force direct download via ?dl=1
+  const dlUrl = rawUrl
+    .replace("www.dropbox.com", "www.dropbox.com")
+    .replace(/[?&]dl=\d/, "")
+    .replace(/\?$/, "") + (rawUrl.includes("dropbox.com") ? (rawUrl.includes("?") ? "&dl=1" : "?dl=1") : "");
+  const a = document.createElement("a");
+  a.href = dlUrl;
+  a.download = file.name;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function AudioPlayer({
+  file,
+  onDownload,
+  onDelete,
+  deleteConfirm,
+  onDeleteConfirm,
+  onDeleteCancel,
+  deleting,
+  deleteError,
+}: {
+  file: FileLink;
+  onDownload: () => void;
+  onDelete: () => void;
+  deleteConfirm: boolean;
+  onDeleteConfirm: () => void;
+  onDeleteCancel: () => void;
+  deleting: boolean;
+  deleteError: boolean;
+}) {
+  const { name } = file;
+  const url = file.dropboxShareUrl || file.url || "";
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -130,7 +168,8 @@ function AudioPlayer({ name, url }: { name: string; url: string }) {
     return ref[0];
   }
 
-  function togglePlay() {
+  function togglePlay(e: React.MouseEvent) {
+    e.stopPropagation();
     const a = getOrCreateAudio();
     if (playing) { a.pause(); setPlaying(false); }
     else { a.play().catch(() => {}); setPlaying(true); }
@@ -142,49 +181,160 @@ function AudioPlayer({ name, url }: { name: string; url: string }) {
     return `${m}:${sec.toString().padStart(2, "0")}`;
   }
 
+  const hasUrl = !!url;
+  const hasPath = !!file.dropboxPath;
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
-      <button onClick={togglePlay} style={{
-        width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-        background: playing ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`,
-        color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12, fontFamily: "inherit", outline: "none",
-      }}>
-        {playing ? "⏸" : "▶"}
-      </button>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
-          {name}
+    <div style={{ borderRadius: 10, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px" }}>
+        <button onClick={togglePlay} style={{
+          width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+          background: playing ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`,
+          color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 12, fontFamily: "inherit", outline: "none",
+        }}>
+          {playing ? "⏸" : "▶"}
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
+            {name}
+          </div>
+          {/* Progress bar with padding for larger hit area */}
+          <div
+            style={{ padding: "3px 0", cursor: "pointer", position: "relative" }}
+            onClick={e => {
+              e.stopPropagation();
+              const a = getOrCreateAudio();
+              if (!a.duration) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              a.currentTime = ((e.clientX - rect.left) / rect.width) * a.duration;
+            }}
+          >
+            <div style={{ height: 8, background: "rgba(255,255,255,0.1)", borderRadius: 4, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${progress}%`, background: PURPLE, borderRadius: 4 }} />
+            </div>
+          </div>
         </div>
-        <div
-          style={{ height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, cursor: "pointer", position: "relative" }}
-          onClick={e => {
-            const a = getOrCreateAudio();
-            if (!a.duration) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            a.currentTime = ((e.clientX - rect.left) / rect.width) * a.duration;
+        <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>
+          {duration > 0 ? fmtTime(duration) : "—"}
+        </span>
+        {/* Download button */}
+        <button
+          onClick={e => { e.stopPropagation(); onDownload(); }}
+          disabled={!hasUrl}
+          title={hasUrl ? "הורדה" : "אין קישור להורדה"}
+          style={{
+            background: "none", border: "none", cursor: hasUrl ? "pointer" : "not-allowed",
+            color: hasUrl ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
+            flexShrink: 0, outline: "none",
           }}
-        >
-          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${progress}%`, background: PURPLE, borderRadius: 2 }} />
-        </div>
+        >⬇</button>
+        {/* Delete button */}
+        <button
+          onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
+          disabled={!hasPath}
+          title={hasPath ? "מחק קובץ" : "אין מסלול Dropbox"}
+          style={{
+            background: "none", border: "none", cursor: hasPath ? "pointer" : "not-allowed",
+            color: hasPath ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
+            flexShrink: 0, outline: "none",
+          }}
+        >🗑</button>
       </div>
-      <span style={{ fontSize: 10, color: MUTED, flexShrink: 0 }}>
-        {duration > 0 ? fmtTime(duration) : "—"}
-      </span>
+      {/* Inline delete confirm */}
+      {deleteConfirm && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
+          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק?</span>
+          {deleteError && <span style={{ fontSize: 10, color: RED }}>שגיאה — נסה שוב</span>}
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            disabled={deleting}
+            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleting ? MUTED : RED, border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
+          >{deleting ? "…" : "אישור"}</button>
+          <button
+            onClick={e => { e.stopPropagation(); onDeleteCancel(); }}
+            disabled={deleting}
+            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
+          >בטל</button>
+        </div>
+      )}
     </div>
   );
 }
 
-function FileRow({ name, url }: { name: string; url: string }) {
+function FileRow({
+  file,
+  onDownload,
+  onDelete,
+  deleteConfirm,
+  onDeleteConfirm,
+  onDeleteCancel,
+  deleting,
+  deleteError,
+}: {
+  file: FileLink;
+  onDownload: () => void;
+  onDelete: () => void;
+  deleteConfirm: boolean;
+  onDeleteConfirm: () => void;
+  onDeleteCancel: () => void;
+  deleting: boolean;
+  deleteError: boolean;
+}) {
+  const { name } = file;
+  const hasUrl = !!(file.dropboxShareUrl || file.url);
+  const hasPath = !!file.dropboxPath;
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
-      <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
-        <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fileExt(name)}</div>
+    <div style={{ borderRadius: 10, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
+      <div
+        onClick={() => { if (hasUrl) onDownload(); }}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: hasUrl ? "pointer" : "default" }}
+      >
+        <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fileExt(name)}</div>
+        </div>
+        {/* Download button */}
+        <button
+          onClick={e => { e.stopPropagation(); onDownload(); }}
+          disabled={!hasUrl}
+          title={hasUrl ? "הורדה" : "אין קישור להורדה"}
+          style={{
+            background: "none", border: "none", cursor: hasUrl ? "pointer" : "not-allowed",
+            color: hasUrl ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
+            flexShrink: 0, outline: "none",
+          }}
+        >⬇</button>
+        {/* Delete button */}
+        <button
+          onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
+          disabled={!hasPath}
+          title={hasPath ? "מחק קובץ" : "אין מסלול Dropbox"}
+          style={{
+            background: "none", border: "none", cursor: hasPath ? "pointer" : "not-allowed",
+            color: hasPath ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
+            flexShrink: 0, outline: "none",
+          }}
+        >🗑</button>
       </div>
-      {url && (
-        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: MUTED, fontSize: 12, textDecoration: "none", flexShrink: 0 }}>⬇</a>
+      {/* Inline delete confirm */}
+      {deleteConfirm && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
+          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק?</span>
+          {deleteError && <span style={{ fontSize: 10, color: RED }}>שגיאה — נסה שוב</span>}
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            disabled={deleting}
+            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleting ? MUTED : RED, border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
+          >{deleting ? "…" : "אישור"}</button>
+          <button
+            onClick={e => { e.stopPropagation(); onDeleteCancel(); }}
+            disabled={deleting}
+            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
+          >בטל</button>
+        </div>
       )}
     </div>
   );
@@ -212,6 +362,9 @@ function VictorProjectDrawer({
   const [effectiveFiles, setEffectiveFiles] = useState<FileLink[]>(work.filesSent ?? []);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
+  const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState(false);
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -224,6 +377,36 @@ function VictorProjectDrawer({
       onRefresh?.();
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleDeleteFile(file: FileLink, idx: number) {
+    setDeleteConfirmIdx(null);
+    setDeletingIdx(idx);
+    setDeleteError(false);
+    try {
+      const delRes = await fetch("/api/dropbox/vendor-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dropboxPath: file.dropboxPath }),
+      });
+      if (!delRes.ok) {
+        setDeleteError(true);
+        setDeletingIdx(null);
+        return;
+      }
+      const filtered = effectiveFiles.filter((_, i) => i !== idx);
+      await fetch(`/api/vendor/victor/work/${work.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filesSent: filtered }),
+      });
+      setEffectiveFiles(filtered);
+      onRefresh?.();
+    } catch {
+      setDeleteError(true);
+    } finally {
+      setDeletingIdx(null);
     }
   }
 
@@ -557,14 +740,29 @@ function VictorProjectDrawer({
               </div>
             ) : (
               <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
-                {files.map((f, i) => {
-                  const url = f.dropboxShareUrl || f.url || "";
-                  return isAudioFile(f.name) ? (
-                    <AudioPlayer key={i} name={f.name} url={url} />
-                  ) : (
-                    <FileRow key={i} name={f.name} url={url} />
-                  );
-                })}
+                {(() => {
+                  let outIdx = -1;
+                  return files.map((f, i) => {
+                    const isSent = f.dir === "out";
+                    if (isSent) outIdx++;
+                    const idx = outIdx;
+                    const props = {
+                      file: f,
+                      onDownload: () => downloadFile(f),
+                      deleteConfirm: isSent && deleteConfirmIdx === idx,
+                      onDeleteConfirm: isSent ? () => { setDeleteConfirmIdx(idx); setDeleteError(false); } : () => {},
+                      onDeleteCancel: () => { setDeleteConfirmIdx(null); setDeleteError(false); },
+                      onDelete: isSent ? () => handleDeleteFile(f, idx) : () => {},
+                      deleting: isSent && deletingIdx === idx,
+                      deleteError: deleteError && deletingIdx === idx,
+                    };
+                    return isAudioFile(f.name) ? (
+                      <AudioPlayer key={i} {...props} />
+                    ) : (
+                      <FileRow key={i} {...props} />
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>
