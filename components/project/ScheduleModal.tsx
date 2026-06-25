@@ -219,7 +219,9 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
     ? new Date(manualStart.getTime() + minutes * 60_000)
     : null;
 
-  const manualReady = manualDayOk && manualHoursOk && !!manualStart;
+  // Out-of-work-day no longer blocks here — the day-override confirm lives in
+  // ManualPicker. Readiness now depends only on a valid time within hours.
+  const manualReady = manualHoursOk && !!manualStart;
 
   // ── Recommended: find slots ───────────────────────────────────────────────
   async function findSlots(opts?: { offset?: number; days?: number; maxDays?: number }) {
@@ -756,6 +758,14 @@ function ManualPicker({
   onHMChange: (hm: { h: number; m: number }) => void;
   onConfirm: () => void;
 }) {
+  // Allow scheduling on a non-working day after an explicit confirm (not a hard
+  // block). Reset whenever the chosen date changes so a new out-of-days date
+  // re-prompts.
+  const [overridden, setOverridden] = useState(false);
+  useEffect(() => { setOverridden(false); }, [manualDate]);
+
+  const dayAllowed = manualDayOk || overridden;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Date */}
@@ -773,13 +783,28 @@ function ManualPicker({
             fontFamily: "inherit", outline: "none", boxSizing: "border-box",
           }}
         />
-        {!manualDayOk && (
-          <Warning>זה מחוץ לימי הפעילות (ראשון–חמישי). בחר יום אחר.</Warning>
+        {!manualDayOk && !overridden && (
+          <div style={{ marginTop: 8 }}>
+            <Warning>התאריך מחוץ לימי הפעילות שהוגדרו. להמשיך בכל זאת?</Warning>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <Btn primary onClick={() => setOverridden(true)} style={{ flex: 1, padding: "8px 10px", fontSize: 12 }}>
+                כן, קבע בכל זאת
+              </Btn>
+              <Btn onClick={() => { setOverridden(false); onDateChange(todayStr); }} style={{ flex: 1, padding: "8px 10px", fontSize: 12 }}>
+                בטל
+              </Btn>
+            </div>
+          </div>
+        )}
+        {!manualDayOk && overridden && (
+          <div style={{ fontSize: 11, color: "#A855F7", marginTop: 6, fontWeight: 600 }}>
+            ✓ נקבע מחוץ לימי הפעילות שהוגדרו
+          </div>
         )}
       </div>
 
       {/* Start time */}
-      {manualDayOk && (
+      {dayAllowed && (
         <div>
           <Label>שעת התחלה</Label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
