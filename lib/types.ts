@@ -217,6 +217,7 @@ export interface VendorWork {
   filesReceived: FileLink[];
   isStuck: boolean;                  // computed: פעיל + daysSinceSent > stuckAfterDays
   daysSinceSent: number | null;      // computed
+  linkedTaskId: string | null;       // FK → tasks(id), set when internalDeadline synced
   createdAt: string;
   updatedAt: string;
 }

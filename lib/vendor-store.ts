@@ -69,6 +69,7 @@ function mapRow(
     filesReceived:    (row.files_received    as VendorWork["filesReceived"]) ?? [],
     isStuck,
     daysSinceSent,
+    linkedTaskId:     (row.linked_task_id as string | null) ?? null,
     createdAt:        (row.created_at as string) ?? "",
     updatedAt:        (row.updated_at as string) ?? "",
   };
@@ -102,6 +103,20 @@ export async function getVictorWork(_month?: string): Promise<VendorWork[]> {
   return (data ?? []).map((r) =>
     mapRow(r as Record<string, unknown>, projectMap, settings.stuckAfterDays)
   );
+}
+
+export async function getVictorWorkById(id: string): Promise<VendorWork | null> {
+  const settings   = await getVictorSettings();
+  const projectMap = await buildProjectMap();
+
+  const { data } = await supabase
+    .from("vendor_project_work")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!data) return null;
+  return mapRow(data as Record<string, unknown>, projectMap, settings.stuckAfterDays);
 }
 
 export async function getVictorWorkForProject(projectId: string): Promise<VendorWork | null> {
@@ -164,6 +179,7 @@ export async function updateVictorWork(
     notes:            string;
     filesSent:        VendorWork["filesSent"];
     filesReceived:    VendorWork["filesReceived"];
+    linkedTaskId:     string | null;
   }>
 ): Promise<void> {
   const dbFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -178,6 +194,7 @@ export async function updateVictorWork(
   if ("notes"            in fields) dbFields.notes              = fields.notes;
   if ("filesSent"        in fields) dbFields.files_sent         = fields.filesSent;
   if ("filesReceived"    in fields) dbFields.files_received     = fields.filesReceived;
+  if ("linkedTaskId"     in fields) dbFields.linked_task_id     = fields.linkedTaskId;
 
   await supabase.from("vendor_project_work").update(dbFields).eq("id", id);
 }
