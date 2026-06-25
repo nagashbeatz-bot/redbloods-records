@@ -92,16 +92,23 @@ const VICTOR_WORK_STATUSES = ["פעיל", "הושלם", "בוטל"] as const;
 function WorkStatusDropdown({
   workId,
   status,
+  workProjectId,
+  workProjectName,
   onUpdated,
 }: {
   workId: string;
   status: string;
+  workProjectId?: string;
+  workProjectName?: string;
   onUpdated?: (newStatus: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [localStatus, setLocalStatus] = useState(status);
   const [saving, setSaving] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const hasLinkedProject = !!(workProjectId && workProjectName && workProjectName !== "פרויקט לא ידוע");
 
   useEffect(() => {
     if (!open) return;
@@ -114,9 +121,48 @@ function WorkStatusDropdown({
 
   const col = STATUS_COLORS[localStatus] ?? { bg: "rgba(255,255,255,0.06)", color: TEXT2 };
 
+  async function doUpdateWork(projectToo: boolean) {
+    setShowConfirm(false);
+    const prev = localStatus;
+    setLocalStatus("הושלם");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/vendor/victor/work/${workId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "הושלם" }),
+      });
+      if (!res.ok) throw new Error(`PATCH work ${res.status}`);
+
+      if (projectToo && workProjectId) {
+        const projRes = await fetch(`/api/projects/${workProjectId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ field: "status", value: "הושלם" }),
+        });
+        if (!projRes.ok) {
+          console.warn(`[WorkStatusDropdown] עדכון פרויקט נכשל: PATCH /api/projects/${workProjectId} → ${projRes.status}`);
+        }
+      }
+
+      onUpdated?.("הושלם");
+    } catch (err) {
+      console.warn("[WorkStatusDropdown] שגיאה בעדכון סטטוס:", err);
+      setLocalStatus(prev);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSelect(next: string) {
     if (next === localStatus || saving) return;
     setOpen(false);
+
+    if (next === "הושלם" && hasLinkedProject) {
+      setShowConfirm(true);
+      return;
+    }
+
     const prev = localStatus;
     setLocalStatus(next);
     setSaving(true);
@@ -184,6 +230,65 @@ function WorkStatusDropdown({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {showConfirm && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99998,
+            background: "rgba(0,0,0,0.65)", display: "flex",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div style={{
+            background: "#111318",
+            border: "1px solid rgba(220,38,38,0.3)",
+            borderRadius: 16,
+            padding: "24px 28px",
+            maxWidth: 380,
+            width: "90%",
+            direction: "rtl",
+            boxShadow: "0 16px 48px rgba(0,0,0,0.8)",
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#F2F2F2", marginBottom: 8 }}>
+              סמן פרויקט כהושלם?
+            </div>
+            <div style={{ fontSize: 13, color: "#A0A0B0", marginBottom: 22, lineHeight: 1.5 }}>
+              העבודה מקושרת לפרויקט{workProjectName ? ` "${workProjectName}"` : ""}.
+              לסמן גם את הפרויקט כהושלם?
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+              <button
+                onClick={() => doUpdateWork(true)}
+                disabled={saving}
+                style={{
+                  padding: "9px 18px", borderRadius: 10, border: "none",
+                  background: saving ? "#52526A" : "#10B981",
+                  color: "#fff", fontSize: 13, fontWeight: 800,
+                  cursor: saving ? "default" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {saving ? "…" : "כן, סמן הכול כהושלם"}
+              </button>
+              <button
+                onClick={() => setShowConfirm(false)}
+                disabled={saving}
+                style={{
+                  padding: "9px 16px", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "transparent",
+                  color: "#A0A0B0", fontSize: 13, fontWeight: 700,
+                  cursor: saving ? "default" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                בטל
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -726,6 +831,8 @@ function VictorProjectDrawer({
                 <WorkStatusDropdown
                   workId={work.id}
                   status={work.status}
+                  workProjectId={work.projectId}
+                  workProjectName={work.projectName}
                   onUpdated={() => { onRefresh?.(); }}
                 />
                 {work.workState && <StatusChip status={work.workState} />}
@@ -1348,6 +1455,8 @@ export default function VictorProfilePage() {
                           <WorkStatusDropdown
                             workId={w.id}
                             status={w.status}
+                            workProjectId={w.projectId}
+                            workProjectName={w.projectName}
                             onUpdated={newStatus => setWork(prev => prev.map(item => item.id === w.id ? { ...item, status: newStatus as import("@/lib/types").VictorStatus } : item))}
                           />
                         </td>
