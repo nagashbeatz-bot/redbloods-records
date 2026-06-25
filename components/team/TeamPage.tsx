@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useProjects } from "@/components/ProjectsProvider";
 
 const BRAND  = "#DC2626";
 const CARD   = "#111318";
@@ -199,12 +198,26 @@ export default function TeamPage() {
   const [search, setSearch]   = useState("");
   const [typeFilter, setTypeFilter] = useState("הכל");
 
-  const { projects } = useProjects();
-
-  const openProjectsCount = useMemo(
-    () => projects.filter(p => !p.isHidden && p.status !== "הושלם").length,
-    [projects],
-  );
+  // Open supplier work — currently only Victor has a real work module (Steven is
+  // a static card). Counts Victor work whose status is neither הושלם nor בוטל.
+  // Uses the `work` array (all-time) so the count is not month-dependent.
+  const [openProjectsCount, setOpenProjectsCount] = useState(0);
+  useEffect(() => {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    fetch(`/api/vendor/victor?month=${month}`)
+      .then(r => r.json())
+      .then(d => {
+        const work = Array.isArray(d.work) ? d.work : [];
+        setOpenProjectsCount(
+          work.filter((w: { status?: string }) => w.status !== "הושלם" && w.status !== "בוטל").length
+        );
+      })
+      .catch((e) => {
+        console.warn("[TeamPage] victor work fetch failed:", e);
+        setOpenProjectsCount(0);
+      });
+  }, []);
 
   const filteredVendors = useMemo(() => {
     return VENDORS.filter(v => {
@@ -274,10 +287,10 @@ export default function TeamPage() {
 
         {/* KPI row */}
         <div style={{ display: "flex", gap: 14, marginBottom: 32 }}>
-          <KpiCard label="ספקים פעילים"   value={2}                 icon="👥" color={PURPLE} />
-          <KpiCard label="מהנדסי סאונד"    value={1}                 icon="🎧" color={BRAND}  />
-          <KpiCard label="מפיקי ביטים"     value={1}                 icon="🎵" color={PURPLE} />
-          <KpiCard label="פרויקטים פתוחים" value={openProjectsCount} icon="📁" color={TEXT2}  />
+          <KpiCard label="ספקים פעילים"   value={VENDORS.filter(v => v.status === "פעיל").length}        icon="👥" color={PURPLE} />
+          <KpiCard label="מהנדסי סאונד"    value={VENDORS.filter(v => v.type === "sound-engineer").length} icon="🎧" color={BRAND}  />
+          <KpiCard label="מפיקי ביטים"     value={VENDORS.filter(v => v.type === "beatmaker").length}      icon="🎵" color={PURPLE} />
+          <KpiCard label="פרויקטים פתוחים" value={openProjectsCount}                                       icon="📁" color={TEXT2}  />
         </div>
 
         {/* Search + filter bar */}
