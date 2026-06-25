@@ -4,7 +4,8 @@
 // Real data: projects (KPI + rows). Calendar / Alerts / Focus = dummy.
 // No writes, no drawer, no dispatch.
 
-import { useState, useEffect, useLayoutEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
@@ -120,15 +121,21 @@ function RRMark({ size = 60 }: { size?: number }) {
 
 // ── KPI Card ──────────────────────────────────────────────────────────────
 
-function KpiCard({ label, count, sub, color, icon, iconBg }: {
+function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouseLeave }: {
   label: string; count: number; sub: string; color: string; icon: string; iconBg: string;
+  onMouseEnter?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onMouseLeave?: () => void;
 }) {
   return (
-    <div style={{
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
       background: "#1C1C1C", border: `1px solid rgba(255,255,255,0.09)`, borderRadius: 16,
       padding: "18px 15px 14px", minHeight: 140,
       display: "flex", flexDirection: "column", justifyContent: "space-between",
       boxShadow: `0 2px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px ${color}11`,
+      position: "relative", cursor: onMouseEnter ? "default" : undefined,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{
@@ -148,6 +155,74 @@ function KpiCard({ label, count, sub, color, icon, iconBg }: {
         <span style={{ fontSize: 10, color: sub ? "#707070" : "transparent" }}>{sub || "—"}</span>
       </div>
     </div>
+  );
+}
+
+// ── KPI hover preview — same pattern as the Projects page ─────────────────
+type KpiPopoverItem = { id: string; primary: string; secondary?: string; value?: string };
+
+function KpiPopover({ popover, onClose }: {
+  popover: { rect: DOMRect; title: string; color: string; items: KpiPopoverItem[] };
+  onClose: () => void;
+}) {
+  const MAX_ITEMS = 5;
+  const shown = popover.items.slice(0, MAX_ITEMS);
+  const overflow = popover.items.length - MAX_ITEMS;
+
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: popover.rect.bottom + 8,
+    left: popover.rect.left + popover.rect.width / 2,
+    transform: "translateX(-50%)",
+    zIndex: 9999,
+    background: "#141414",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+    padding: "14px 16px",
+    minWidth: 280,
+    maxWidth: 360,
+    direction: "rtl",
+  };
+
+  return createPortal(
+    <div style={style} onMouseLeave={onClose}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: popover.color, letterSpacing: "0.07em", marginBottom: 10 }}>
+        {popover.title}
+      </div>
+      {popover.items.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#555" }}>אין פריטים להצגה</div>
+      ) : (
+        <>
+          {shown.map(item => (
+            <div key={item.id} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", gap: 12,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {item.primary}
+                </div>
+                {item.secondary && (
+                  <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{item.secondary}</div>
+                )}
+              </div>
+              {item.value && (
+                <div style={{ flexShrink: 0, textAlign: "left", fontSize: 13, fontWeight: 800, color: popover.color }}>
+                  {item.value}
+                </div>
+              )}
+            </div>
+          ))}
+          {overflow > 0 && (
+            <div style={{ fontSize: 11, color: "#555", marginTop: 8, textAlign: "center" }}>
+              ועוד {overflow} פריטים נוספים
+            </div>
+          )}
+        </>
+      )}
+    </div>,
+    document.body
   );
 }
 
@@ -351,6 +426,18 @@ export default function DashboardDesignPreview() {
   const [openTasks, setOpenTasks] = useState<number | null>(_statCache.openTasks);
   const [upcomingShows, setUpcomingShows] = useState<number | null>(_statCache.upcomingShows);
   const [activeCampaigns, setActiveCampaigns] = useState<number | null>(_statCache.activeCampaigns);
+
+  // ── Underlying lists behind the counts — used only for KPI hover previews ──
+  const [pendingPaymentsList, setPendingPaymentsList] = useState<{ project_id: string; amount: number; currency?: string }[]>([]);
+  const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string; date?: string | null; start_time?: string | null }[]>([]);
+  const [showsList,           setShowsList]           = useState<{ id: string; name: string; artist?: string; date?: string | null }[]>([]);
+  const [proposalsList,       setProposalsList]       = useState<{ id: string; title: string; client_name?: string; amount?: number; currency?: string }[]>([]);
+  const [campaignsList,       setCampaignsList]       = useState<{ id: string; title: string; artist_name?: string }[]>([]);
+
+  // ── KPI hover popover (same state machine as the Projects page) ──
+  const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; title: string; color: string; items: KpiPopoverItem[] } | null>(null);
+  const kpiHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [hasMounted, setHasMounted] = useState(false);
   const [cachedKpi,   setCachedKpi]   = useState<KpiItem[] | null>(null);
   const [cachedPills, setCachedPills] = useState<{ active: number; overdue: number } | null>(null);
@@ -392,9 +479,12 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const all = Array.isArray(d.proposals) ? d.proposals : [];
-        const n = all.filter((p: { status: string }) => !CLOSED_PROPOSAL.has(p.status)).length;
-        updateStatCache({ openProposals: n });
-        setOpenProposals(n);
+        const open = all.filter((p: { status: string }) => !CLOSED_PROPOSAL.has(p.status));
+        updateStatCache({ openProposals: open.length });
+        setOpenProposals(open.length);
+        setProposalsList(open.map((p: { id: string; title?: string; client_name?: string; amount?: number; currency?: string }) => ({
+          id: p.id, title: p.title ?? "הצעה", client_name: p.client_name, amount: p.amount, currency: p.currency,
+        })));
       })
       .catch(() => {});
   }, []);
@@ -404,11 +494,14 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const txs = Array.isArray(d.transactions) ? d.transactions : [];
-        const n = txs.filter((t: { payment_status?: string; type?: string }) =>
+        const pending = txs.filter((t: { payment_status?: string; type?: string }) =>
           t.type === "income" && t.payment_status === "צפוי"
-        ).length;
-        updateStatCache({ pendingPayments: n });
-        setPendingPayments(n);
+        );
+        updateStatCache({ pendingPayments: pending.length });
+        setPendingPayments(pending.length);
+        setPendingPaymentsList(pending.map((t: { project_id: string; amount?: number; currency?: string }) => ({
+          project_id: t.project_id, amount: t.amount ?? 0, currency: t.currency,
+        })));
       })
       .catch(() => {});
   }, []);
@@ -418,9 +511,12 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const sessions = Array.isArray(d.sessions) ? d.sessions : [];
-        const n = sessions.filter((s: { status?: string }) => s.status === "מתוכנן").length;
-        updateStatCache({ upcomingSessions: n });
-        setUpcomingSessions(n);
+        const planned = sessions.filter((s: { status?: string }) => s.status === "מתוכנן");
+        updateStatCache({ upcomingSessions: planned.length });
+        setUpcomingSessions(planned.length);
+        setSessionsList(planned.map((s: { id: string; project_id: string; date?: string | null; start_time?: string | null }) => ({
+          id: s.id, project_id: s.project_id, date: s.date, start_time: s.start_time,
+        })));
       })
       .catch(() => {});
   }, []);
@@ -442,11 +538,14 @@ export default function DashboardDesignPreview() {
       .then(d => {
         const shows = Array.isArray(d.shows) ? d.shows : [];
         const today = new Date().toISOString().slice(0, 10);
-        const n = shows.filter((s: { date?: string | null; status?: string }) =>
+        const upcoming = shows.filter((s: { date?: string | null; status?: string }) =>
           s.date && s.date >= today && s.status !== "בוטל"
-        ).length;
-        updateStatCache({ upcomingShows: n });
-        setUpcomingShows(n);
+        );
+        updateStatCache({ upcomingShows: upcoming.length });
+        setUpcomingShows(upcoming.length);
+        setShowsList(upcoming.map((s: { id: string; name?: string; artist?: string; date?: string | null }) => ({
+          id: s.id, name: s.name ?? "הופעה", artist: s.artist, date: s.date,
+        })));
       })
       .catch(() => {});
   }, []);
@@ -456,7 +555,11 @@ export default function DashboardDesignPreview() {
       .then(r => r.json())
       .then(d => {
         const campaigns = Array.isArray(d.campaigns) ? d.campaigns : [];
-        const n = campaigns.filter((c: { status?: string }) => c.status === "active").length;
+        const active = campaigns.filter((c: { status?: string }) => c.status === "active");
+        const n = active.length;
+        setCampaignsList(active.map((c: { id: string; title?: string; artist_name?: string }) => ({
+          id: c.id, title: c.title ?? "קמפיין", artist_name: c.artist_name,
+        })));
         updateStatCache({ activeCampaigns: n });
         setActiveCampaigns(n);
       })
@@ -480,6 +583,69 @@ export default function DashboardDesignPreview() {
     { label: "הצעות פתוחות",    count: openProposals ?? 0,                      sub: openProposals !== null ? "ממתינות לאישור" : "...",             color: "#F97316", iconBg: "rgba(249,115,22,0.15)",  icon: "📋" },
     { label: "קמפיינים פעילים", count: activeCampaigns ?? 0,                    sub: activeCampaigns !== null ? "בהרצה" : "...",                    color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "🎯" },
   ];
+
+  // ── KPI hover previews: per-card breakdown of what each number is based on ──
+  const projName  = (id: string) => projects.find(p => p.id === id)?.name ?? "—";
+  const shortDate = (d?: string | null) =>
+    d ? new Date(d).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }) : "";
+  const money = (amount?: number, currency?: string) =>
+    amount ? `${currency ?? "₪"}${amount.toLocaleString()}` : undefined;
+
+  const kpiBreakdowns = useMemo<Record<string, { title: string; items: KpiPopoverItem[] }>>(() => ({
+    "פרויקטים פעילים": {
+      title: "▶ פרויקטים פעילים — פירוט",
+      items: activeProjects.map(p => ({ id: p.id, primary: p.name, secondary: p.artist || undefined })),
+    },
+    "דחופים": {
+      title: "⚠ דחופים — פירוט",
+      items: overdueProjects.map(p => ({
+        id: p.id, primary: p.name,
+        secondary: [p.artist, shortDate(p.deadline)].filter(Boolean).join(" · ") || undefined,
+      })),
+    },
+    "סשנים קרובים": {
+      title: "🎙 סשנים מתוכננים — פירוט",
+      items: sessionsList.map(s => ({
+        id: s.id, primary: projName(s.project_id),
+        secondary: [shortDate(s.date), s.start_time ? s.start_time.slice(0, 5) : ""].filter(Boolean).join(" · ") || undefined,
+      })),
+    },
+    "הופעות קרובות": {
+      title: "🎤 הופעות קרובות — פירוט",
+      items: showsList.map(s => ({
+        id: s.id, primary: s.name,
+        secondary: [s.artist, shortDate(s.date)].filter(Boolean).join(" · ") || undefined,
+      })),
+    },
+    "תשלומים צפויים": {
+      title: "$ תשלומים צפויים — פירוט",
+      items: pendingPaymentsList.map((t, i) => ({
+        id: `${t.project_id}-${i}`, primary: projName(t.project_id),
+        value: money(t.amount, t.currency),
+      })),
+    },
+    "הצעות פתוחות": {
+      title: "📋 הצעות פתוחות — פירוט",
+      items: proposalsList.map(p => ({
+        id: p.id, primary: p.title, secondary: p.client_name || undefined,
+        value: money(p.amount, p.currency),
+      })),
+    },
+    "קמפיינים פעילים": {
+      title: "🎯 קמפיינים פעילים — פירוט",
+      items: campaignsList.map(c => ({ id: c.id, primary: c.title, secondary: c.artist_name || undefined })),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [activeProjects, overdueProjects, sessionsList, showsList, pendingPaymentsList, proposalsList, campaignsList, projects]);
+
+  function handleKpiEnter(title: string, color: string, items: KpiPopoverItem[], e: React.MouseEvent<HTMLDivElement>) {
+    if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    kpiHoverTimer.current = setTimeout(() => setKpiPopover({ rect, title, color, items }), 700);
+  }
+  function handleKpiLeave() {
+    if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
+  }
 
   const allStatsReady =
     pendingPayments !== null &&
@@ -527,6 +693,10 @@ export default function DashboardDesignPreview() {
       transition: "none", minHeight: "100%",
       padding: isMobile ? "16px 14px" : "28px 32px",
     }}>
+
+          {kpiPopover && (
+            <KpiPopover popover={kpiPopover} onClose={() => setKpiPopover(null)} />
+          )}
 
           {/* ── Hero header ── */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
@@ -579,7 +749,17 @@ export default function DashboardDesignPreview() {
           ) : (
             // mounted + snapshot (cache או live): KPI מלא
             <div className="grid grid-cols-4 md:grid-cols-7" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
-              {displayKpi.map((k) => <KpiCard key={k.label} {...k} />)}
+              {displayKpi.map((k) => {
+                const bd = kpiBreakdowns[k.label];
+                return (
+                  <KpiCard
+                    key={k.label}
+                    {...k}
+                    onMouseEnter={bd ? (e) => handleKpiEnter(bd.title, k.color, bd.items, e) : undefined}
+                    onMouseLeave={bd ? handleKpiLeave : undefined}
+                  />
+                );
+              })}
             </div>
           )}
 
