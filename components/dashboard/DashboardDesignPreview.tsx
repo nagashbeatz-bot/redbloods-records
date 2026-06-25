@@ -159,7 +159,21 @@ function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouse
 }
 
 // ── KPI hover preview — same pattern as the Projects page ─────────────────
-type KpiPopoverItem = { id: string; primary: string; secondary?: string; value?: string };
+type KpiPopoverItem = { id: string; primary: string; secondary?: string; value?: string; sortDate?: string | null };
+
+// Sort popover items by date ascending (nearest / oldest first). Past/overdue
+// dates naturally precede future ones; items without a date go last. Order only —
+// never changes which items or how many are shown.
+function sortByDate(items: KpiPopoverItem[]): KpiPopoverItem[] {
+  return [...items].sort((a, b) => {
+    const da = a.sortDate || "";
+    const db = b.sortDate || "";
+    if (!da && !db) return 0;
+    if (!da) return 1;   // a has no date → after b
+    if (!db) return -1;  // b has no date → after a
+    return da < db ? -1 : da > db ? 1 : 0;
+  });
+}
 
 function KpiPopover({ popover, onClose }: {
   popover: { rect: DOMRect; title: string; color: string; items: KpiPopoverItem[] };
@@ -428,7 +442,7 @@ export default function DashboardDesignPreview() {
   const [activeCampaigns, setActiveCampaigns] = useState<number | null>(_statCache.activeCampaigns);
 
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
-  const [pendingPaymentsList, setPendingPaymentsList] = useState<{ project_id: string; amount: number; currency?: string }[]>([]);
+  const [pendingPaymentsList, setPendingPaymentsList] = useState<{ project_id: string; amount: number; currency?: string; date?: string | null }[]>([]);
   const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string; date?: string | null; start_time?: string | null }[]>([]);
   const [showsList,           setShowsList]           = useState<{ id: string; name: string; artist?: string; date?: string | null }[]>([]);
   const [proposalsList,       setProposalsList]       = useState<{ id: string; title: string; client_name?: string; amount?: number; currency?: string }[]>([]);
@@ -499,8 +513,8 @@ export default function DashboardDesignPreview() {
         );
         updateStatCache({ pendingPayments: pending.length });
         setPendingPayments(pending.length);
-        setPendingPaymentsList(pending.map((t: { project_id: string; amount?: number; currency?: string }) => ({
-          project_id: t.project_id, amount: t.amount ?? 0, currency: t.currency,
+        setPendingPaymentsList(pending.map((t: { project_id: string; amount?: number; currency?: string; date?: string | null }) => ({
+          project_id: t.project_id, amount: t.amount ?? 0, currency: t.currency, date: t.date,
         })));
       })
       .catch(() => {});
@@ -594,35 +608,39 @@ export default function DashboardDesignPreview() {
   const kpiBreakdowns = useMemo<Record<string, { title: string; items: KpiPopoverItem[] }>>(() => ({
     "פרויקטים פעילים": {
       title: "▶ פרויקטים פעילים — פירוט",
-      items: activeProjects.map(p => ({ id: p.id, primary: p.name, secondary: p.artist || undefined })),
+      items: sortByDate(activeProjects.map(p => ({ id: p.id, primary: p.name, secondary: p.artist || undefined, sortDate: p.deadline }))),
     },
     "דחופים": {
       title: "⚠ דחופים — פירוט",
-      items: overdueProjects.map(p => ({
+      items: sortByDate(overdueProjects.map(p => ({
         id: p.id, primary: p.name,
         secondary: [p.artist, shortDate(p.deadline)].filter(Boolean).join(" · ") || undefined,
-      })),
+        sortDate: p.deadline,
+      }))),
     },
     "סשנים קרובים": {
       title: "🎙 סשנים מתוכננים — פירוט",
-      items: sessionsList.map(s => ({
+      items: sortByDate(sessionsList.map(s => ({
         id: s.id, primary: projName(s.project_id),
         secondary: [shortDate(s.date), s.start_time ? s.start_time.slice(0, 5) : ""].filter(Boolean).join(" · ") || undefined,
-      })),
+        sortDate: s.date,
+      }))),
     },
     "הופעות קרובות": {
       title: "🎤 הופעות קרובות — פירוט",
-      items: showsList.map(s => ({
+      items: sortByDate(showsList.map(s => ({
         id: s.id, primary: s.name,
         secondary: [s.artist, shortDate(s.date)].filter(Boolean).join(" · ") || undefined,
-      })),
+        sortDate: s.date,
+      }))),
     },
     "תשלומים צפויים": {
       title: "$ תשלומים צפויים — פירוט",
-      items: pendingPaymentsList.map((t, i) => ({
+      items: sortByDate(pendingPaymentsList.map((t, i) => ({
         id: `${t.project_id}-${i}`, primary: projName(t.project_id),
         value: money(t.amount, t.currency),
-      })),
+        sortDate: t.date,
+      }))),
     },
     "הצעות פתוחות": {
       title: "📋 הצעות פתוחות — פירוט",
