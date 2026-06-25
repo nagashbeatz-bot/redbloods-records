@@ -122,7 +122,7 @@ function RRMark({ size = 60 }: { size?: number }) {
 // ── KPI Card ──────────────────────────────────────────────────────────────
 
 function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouseLeave }: {
-  label: string; count: number; sub: string; color: string; icon: string; iconBg: string;
+  label: string; count: number | string; sub: string; color: string; icon: string; iconBg: string;
   onMouseEnter?: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave?: () => void;
 }) {
@@ -404,7 +404,7 @@ function updateStatCache(partial: Partial<Omit<StatCacheData, "ts">>): void {
 // ── Dashboard snapshot — full KPI array + pills for cold-start display ──
 const SNAP_KEY = "rb_dash_snap";
 
-type KpiItem = { label: string; count: number; sub: string; color: string; iconBg: string; icon: string };
+type KpiItem = { label: string; count: number | string; sub: string; color: string; iconBg: string; icon: string };
 type DashSnap = { kpi: KpiItem[]; pills: { active: number; overdue: number }; ts: number };
 
 function loadSnap(): DashSnap | null {
@@ -441,8 +441,12 @@ export default function DashboardDesignPreview() {
   const [upcomingShows, setUpcomingShows] = useState<number | null>(_statCache.upcomingShows);
   const [activeCampaigns, setActiveCampaigns] = useState<number | null>(_statCache.activeCampaigns);
 
+  // Per-project finance summary (agreed price + actually-paid) — same source as
+  // the Projects page "הכנסה צפויה". Drives the "תשלומים צפויים" card + popover.
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number }>>({});
+  const [financeLoaded,  setFinanceLoaded]  = useState(false);
+
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
-  const [pendingPaymentsList, setPendingPaymentsList] = useState<{ project_id: string; amount: number; currency?: string; date?: string | null }[]>([]);
   const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string; date?: string | null; start_time?: string | null }[]>([]);
   const [showsList,           setShowsList]           = useState<{ id: string; name: string; artist?: string; date?: string | null }[]>([]);
   const [proposalsList,       setProposalsList]       = useState<{ id: string; title: string; client_name?: string; amount?: number; currency?: string }[]>([]);
@@ -507,15 +511,20 @@ export default function DashboardDesignPreview() {
     fetch("/api/transactions?all=1")
       .then(r => r.json())
       .then(d => {
-        const txs = Array.isArray(d.transactions) ? d.transactions : [];
-        const pending = txs.filter((t: { payment_status?: string; type?: string }) =>
-          t.type === "income" && t.payment_status === "צפוי"
-        );
-        updateStatCache({ pendingPayments: pending.length });
-        setPendingPayments(pending.length);
-        setPendingPaymentsList(pending.map((t: { project_id: string; amount?: number; currency?: string; date?: string | null }) => ({
-          project_id: t.project_id, amount: t.amount ?? 0, currency: t.currency, date: t.date,
-        })));
+        // Same logic as the Projects page: agreed from settings, paid from
+        // actually-received income (שולם / התקבל). NOT based on "צפוי" rows.
+        const map: Record<string, { paid: number; agreed: number }> = {};
+        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice?: number }) => {
+          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0 };
+          map[s.project_id].agreed = s.agreedPrice ?? 0;
+        });
+        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
+          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0 };
+          if (t.type === "income" && ["התקבל", "שולם"].includes(t.payment_status))
+            map[t.project_id].paid += t.amount;
+        });
+        setFinanceSummary(map);
+        setFinanceLoaded(true);
       })
       .catch(() => {});
   }, []);
@@ -587,13 +596,35 @@ export default function DashboardDesignPreview() {
   const onHoldProjects  = projects.filter(p => p.status === "בהשהייה");
   const doneProjects    = projects.filter(p => p.status === "הושלם");
 
+  // ── Expected income = outstanding balance (agreed − paid), same as Projects ──
+  const expectedIncome = useMemo(() => {
+    const items = projects
+      .filter(p => !p.isHidden)
+      .map(p => {
+        const agreed = financeSummary[p.id]?.agreed ?? 0;
+        const paid   = financeSummary[p.id]?.paid   ?? 0;
+        return { id: p.id, name: p.name, artist: p.artist ?? "", agreed, remaining: Math.max(0, agreed - paid) };
+      })
+      .filter(p => p.remaining > 0)
+      .sort((a, b) => b.remaining - a.remaining);
+    const total = items.reduce((s, p) => s + p.remaining, 0);
+    return { total, items };
+  }, [projects, financeSummary]);
+
+  // Drive the cached "תשלומים צפויים" signal from the total remaining (₪ amount).
+  useEffect(() => {
+    if (!financeLoaded) return;
+    updateStatCache({ pendingPayments: expectedIncome.total });
+    setPendingPayments(expectedIncome.total);
+  }, [financeLoaded, expectedIncome.total]);
+
   // ── KPI cards — 7 cards: תמונת מצב מהירה ──────────────────────────────
   const KPI = [
     { label: "פרויקטים פעילים", count: loading ? 0 : activeProjects.length,   sub: loading ? "..." : `מתוך ${projects.length} פרויקטים`,        color: "#3B82F6", iconBg: "rgba(59,130,246,0.15)",  icon: "▶"  },
     { label: "דחופים",          count: loading ? 0 : overdueProjects.length,   sub: "דורש טיפול",                                                  color: "#EF4444", iconBg: "rgba(239,68,68,0.15)",   icon: "⚠"  },
     { label: "סשנים קרובים",    count: upcomingSessions ?? 0,                   sub: upcomingSessions !== null ? "מתוכננים" : "...",                color: "#8B5CF6", iconBg: "rgba(139,92,246,0.15)",  icon: "🎙" },
     { label: "הופעות קרובות",   count: upcomingShows ?? 0,                      sub: upcomingShows !== null ? "עתידיות" : "...",                    color: "#06B6D4", iconBg: "rgba(6,182,212,0.15)",   icon: "🎤" },
-    { label: "תשלומים צפויים",  count: pendingPayments ?? 0,                    sub: pendingPayments !== null ? "הכנסות ממתינות" : "...",          color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
+    { label: "תשלומים צפויים",  count: pendingPayments !== null ? `₪${pendingPayments.toLocaleString()}` : "…", sub: pendingPayments !== null ? "יתרה לגבייה" : "...",     color: "#10B981", iconBg: "rgba(16,185,129,0.15)",  icon: "$"  },
     { label: "הצעות פתוחות",    count: openProposals ?? 0,                      sub: openProposals !== null ? "ממתינות לאישור" : "...",             color: "#F97316", iconBg: "rgba(249,115,22,0.15)",  icon: "📋" },
     { label: "קמפיינים פעילים", count: activeCampaigns ?? 0,                    sub: activeCampaigns !== null ? "בהרצה" : "...",                    color: "#A855F7", iconBg: "rgba(168,85,247,0.15)",  icon: "🎯" },
   ];
@@ -636,11 +667,12 @@ export default function DashboardDesignPreview() {
     },
     "תשלומים צפויים": {
       title: "$ תשלומים צפויים — פירוט",
-      items: sortByDate(pendingPaymentsList.map((t, i) => ({
-        id: `${t.project_id}-${i}`, primary: projName(t.project_id),
-        value: money(t.amount, t.currency),
-        sortDate: t.date,
-      }))),
+      items: expectedIncome.items.map(p => ({
+        id: p.id,
+        primary: p.name,
+        secondary: p.artist || undefined,
+        value: `₪${p.remaining.toLocaleString()} מתוך ₪${p.agreed.toLocaleString()}`,
+      })),
     },
     "הצעות פתוחות": {
       title: "📋 הצעות פתוחות — פירוט",
@@ -654,7 +686,7 @@ export default function DashboardDesignPreview() {
       items: campaignsList.map(c => ({ id: c.id, primary: c.title, secondary: c.artist_name || undefined })),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [activeProjects, overdueProjects, sessionsList, showsList, pendingPaymentsList, proposalsList, campaignsList, projects]);
+  }), [activeProjects, overdueProjects, sessionsList, showsList, expectedIncome, proposalsList, campaignsList, projects]);
 
   function handleKpiEnter(title: string, color: string, items: KpiPopoverItem[], e: React.MouseEvent<HTMLDivElement>) {
     if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
