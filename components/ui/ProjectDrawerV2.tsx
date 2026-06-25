@@ -52,6 +52,7 @@ interface ProjectAction {
   recipient_role?: string;
   recipient_name?: string;
   action_date?:   string;
+  followup_date?: string;
   created_at?:    string;
   status?:        string;
   notes?:         string;
@@ -1283,6 +1284,9 @@ function OverviewContent({
     const name = a.recipient_name ?? "";
     const role = a.recipient_role ?? "";
     const ct   = a.content_type  ?? "";
+    // Victor — ספציפי (לפני external_producer הכללי)
+    if (name.toLowerCase() === "victor" || name === "ויקטור")
+      return `נשלח לויקטור${ct ? `: ${ct}` : ""}`;
     // הפקה (עברית או אנגלית)
     if (role === "external_producer" || role === "הפקה" || ct === "הפקה")
       return `נשלח להפקה${name ? `: ${name}` : ""}`;
@@ -1299,9 +1303,12 @@ function OverviewContent({
   };
 
   projectActions.forEach(a => {
+    const name = a.recipient_name ?? "";
+    const isVictor = name.toLowerCase() === "victor" || name === "ויקטור";
     allFeedItems.push({
       icon: "📤",
       title: actionFeedTitle(a),
+      sub: isVictor && a.followup_date ? `דדליין: ${fmtDisplayDate(a.followup_date)}` : undefined,
       sortKey: a.created_at ?? a.action_date ?? "",
       displayDate: fmtDisplayDate(a.action_date ?? a.created_at) ?? "ללא תאריך",
       displayTime: fmtTime(a.created_at),
