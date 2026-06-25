@@ -367,6 +367,7 @@ function VictorProjectDrawer({
   const [deleteError, setDeleteError] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -910,7 +911,7 @@ function VictorProjectDrawer({
           {/* ── Remove from Victor board ── */}
           {!confirmRemove ? (
             <button
-              onClick={() => setConfirmRemove(true)}
+              onClick={() => { setConfirmRemove(true); setRemoveError(null); }}
               style={{
                 width: "100%", padding: "11px 0", borderRadius: 12,
                 background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)",
@@ -929,21 +930,39 @@ function VictorProjectDrawer({
               <div style={{ fontSize: 12, color: "#FCA5A5", fontWeight: 700, marginBottom: 10, textAlign: "center" }}>
                 למחוק מעמוד ויקטור?
               </div>
+              {removeError && (
+                <div style={{ fontSize: 11, color: "#FCA5A5", marginBottom: 8, textAlign: "center" }}>
+                  {removeError}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={async () => {
                     setRemoving(true);
+                    setRemoveError(null);
                     try {
-                      await fetch(`/api/vendor/victor/work/${work.id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ status: "בוטל", workState: "לא רלוונטי" }),
-                      });
+                      // Step 1: delete linked task (if exists)
+                      if (work.linkedTaskId) {
+                        const taskRes = await fetch(`/api/tasks/${work.linkedTaskId}`, { method: "DELETE" });
+                        if (!taskRes.ok) {
+                          const taskData = await taskRes.json().catch(() => ({}));
+                          setRemoveError(taskData.error ?? "מחיקת משימת המעקב נכשלה");
+                          setRemoving(false);
+                          return;
+                        }
+                      }
+                      // Step 2: delete vendor_project_work record
+                      const workRes = await fetch(`/api/vendor/victor/work/${work.id}`, { method: "DELETE" });
+                      if (!workRes.ok) {
+                        setRemoveError("מחיקת הפרויקט מויקטור נכשלה");
+                        setRemoving(false);
+                        return;
+                      }
                       onRefresh?.();
                       onClose();
                     } catch {
+                      setRemoveError("שגיאת רשת — נסה שוב");
                       setRemoving(false);
-                      setConfirmRemove(false);
                     }
                   }}
                   disabled={removing}
@@ -957,7 +976,7 @@ function VictorProjectDrawer({
                   {removing ? "מוחק..." : "אישור"}
                 </button>
                 <button
-                  onClick={() => setConfirmRemove(false)}
+                  onClick={() => { setConfirmRemove(false); setRemoveError(null); }}
                   disabled={removing}
                   style={{
                     flex: 1, padding: "9px 0", borderRadius: 9,

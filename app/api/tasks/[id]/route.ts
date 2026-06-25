@@ -117,16 +117,16 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    // אם יש Google Task מקושר — מוחקים אותו תחילה
     const task = await getTask(id);
-    if (task?.calendar_event_id) {
-      try {
-        const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
-        if (await isConnected()) {
-          await deleteGoogleTask(task.calendar_event_id);
-        }
-      } catch (gErr) {
-        console.warn(`[DELETE /api/tasks/${id}] Google Task deletion failed (ignored):`, gErr);
+    if (!task) {
+      return NextResponse.json({ ok: false, error: "משימה לא נמצאה" }, { status: 404 });
+    }
+
+    // If a Google Task is linked, delete it first — failure aborts the whole operation
+    if (task.calendar_event_id) {
+      const { isConnected, deleteGoogleTask } = await import("@/lib/google-calendar");
+      if (await isConnected()) {
+        await deleteGoogleTask(task.calendar_event_id);
       }
     }
 
@@ -134,6 +134,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(`[DELETE /api/tasks/${id}]`, e);
-    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
+    const msg = e instanceof Error ? e.message : "שגיאת שרת";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
