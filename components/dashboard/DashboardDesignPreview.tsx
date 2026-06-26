@@ -597,6 +597,32 @@ export default function DashboardDesignPreview() {
   const onHoldProjects  = projects.filter(p => p.status === "בהשהייה");
   const doneProjects    = projects.filter(p => p.status === "הושלם");
 
+  // "מה קורה היום" — time-based items only (calendar + today-relevant deadline).
+  // Agent alerts are intentionally excluded here; they live in the "דורש טיפול" panel.
+  const todayFocusItems = useMemo(() => {
+    type FocusItem = { icon: string; iconBg: string; iconColor: string; title: string; sub: string };
+    const items: FocusItem[] = [];
+    // 1. Most overdue project (today-relevant deadline)
+    const mostOverdue = [...overdueProjects].sort((a, b) => {
+      const da = daysUntilDeadline(a.deadline) ?? 0;
+      const db = daysUntilDeadline(b.deadline) ?? 0;
+      return da - db;
+    })[0];
+    if (mostOverdue) items.push({
+      icon: "📅", iconBg: "rgba(239,68,68,0.15)", iconColor: "#EF4444",
+      title: `דדליין עבר — ${mostOverdue.name}`,
+      sub: mostOverdue.artist || "ללא אמן",
+    });
+    // 2. Next calendar event today
+    const nextEvent = calToday[0];
+    if (nextEvent) items.push({
+      icon: "🎙", iconBg: "rgba(168,85,247,0.15)", iconColor: "#A855F7",
+      title: nextEvent.title,
+      sub: nextEvent.isAllDay ? "כל היום" : (nextEvent.startTime ? new Date(nextEvent.startTime).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }) : ""),
+    });
+    return items;
+  }, [overdueProjects, calToday]);
+
   // ── Expected income = outstanding balance (agreed − paid), same as Projects ──
   const expectedIncome = useMemo(() => {
     const items = projects
@@ -819,7 +845,7 @@ export default function DashboardDesignPreview() {
           {/* ── Middle 3 cards ── */}
           <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: isMobile ? 12 : 18, marginBottom: 26 }}>
 
-            {/* Agent alerts (dummy) */}
+            {/* "דורש טיפול" — agent alerts */}
             <div style={{
               background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
               overflow: "hidden",
@@ -841,7 +867,7 @@ export default function DashboardDesignPreview() {
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 16 }}>🔔</span>
-                        <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>התראות סוכן</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>דורש טיפול</span>
                       </div>
                       {alerts.length > 0 ? (
                         <span style={{ fontSize: 10, fontWeight: 900, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 8px", boxShadow: "0 0 8px rgba(220,38,38,0.4)" }}>
@@ -879,7 +905,7 @@ export default function DashboardDesignPreview() {
               })()}
             </div>
 
-            {/* Daily focus (dummy) */}
+            {/* "מה קורה היום" — time-based / schedule items */}
             <div style={{
               background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18,
               overflow: "hidden",
@@ -893,46 +919,18 @@ export default function DashboardDesignPreview() {
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>⚙</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>מוקד יומי</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>מה קורה היום</span>
                 </div>
-                <span style={{
-                  fontSize: 10, padding: "3px 10px", borderRadius: 99,
-                  background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)",
-                  color: "#EF4444", fontWeight: 800,
-                }}>3 דחופים</span>
+                {todayFocusItems.length > 0 && (
+                  <span style={{
+                    fontSize: 10, padding: "3px 10px", borderRadius: 99,
+                    background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)",
+                    color: "#EF4444", fontWeight: 800,
+                  }}>{todayFocusItems.length} {todayFocusItems.length === 1 ? "פריט" : "פריטים"}</span>
+                )}
               </div>
               {(() => {
-                // Build focus items from real data — read-only, no AI
-                type FocusItem = { icon: string; iconBg: string; iconColor: string; title: string; sub: string; };
-                const focusItems: FocusItem[] = [];
-                // 1. Most overdue project
-                const mostOverdue = overdueProjects.sort((a, b) => {
-                  const da = daysUntilDeadline(a.deadline) ?? 0;
-                  const db = daysUntilDeadline(b.deadline) ?? 0;
-                  return da - db;
-                })[0];
-                if (mostOverdue) focusItems.push({
-                  icon: "📅", iconBg: "rgba(239,68,68,0.15)", iconColor: "#EF4444",
-                  title: `דדליין עבר — ${mostOverdue.name}`,
-                  sub: mostOverdue.artist || "ללא אמן",
-                });
-                // 2. Next calendar event today
-                const nextEvent = calToday[0];
-                if (nextEvent) focusItems.push({
-                  icon: "🎙", iconBg: "rgba(168,85,247,0.15)", iconColor: "#A855F7",
-                  title: nextEvent.title,
-                  sub: nextEvent.isAllDay ? "כל היום" : (nextEvent.startTime ? new Date(nextEvent.startTime).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }) : ""),
-                });
-                // 3. Top urgent alert
-                const topAlert = [...alerts].sort((a, b) => {
-                  const w: Record<string, number> = { urgent: 4, important: 3, warning: 2, info: 1 };
-                  return (w[b.severity] ?? 0) - (w[a.severity] ?? 0);
-                })[0];
-                if (topAlert) focusItems.push({
-                  icon: "🔔", iconBg: "rgba(59,130,246,0.15)", iconColor: "#3B82F6",
-                  title: topAlert.title,
-                  sub: topAlert.message?.slice(0, 60) || "",
-                });
+                const focusItems = todayFocusItems;
                 return (
                   <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
                     {focusItems.length > 0 ? focusItems.map((f, i) => (
@@ -946,13 +944,13 @@ export default function DashboardDesignPreview() {
                         </div>
                       </div>
                     )) : (
-                      <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 20 }}>✅ אין פריטים דחופים</div>
+                      <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 20 }}>✅ אין אירועים להיום</div>
                     )}
                   </div>
                 );
               })()}
               <div style={{ padding: "10px 22px 14px", borderTop: `1px solid ${BORDER2}` }}>
-                <span style={{ fontSize: 10, color: DIM }}>מוקד יומי — נתונים אמיתיים</span>
+                <span style={{ fontSize: 10, color: DIM }}>מה קורה היום — נתונים אמיתיים</span>
               </div>
             </div>
 
