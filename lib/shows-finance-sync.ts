@@ -91,6 +91,10 @@ export async function syncShowFinance(show: Show): Promise<void> {
     const isConfirmed = CONFIRMED_STATUSES.has(show.status);
     const date        = show.date || new Date().toISOString().slice(0, 10);
     const hasDj       = (show.dj_fee ?? 0) > 0;
+    // Related-party name per transaction type: income is on the booking client
+    // (booker), the dj expense is on the dj.
+    const incomeParty = show.booker_name || show.artist || "לקוח";
+    const djParty     = show.dj_name || "";
 
     // ── Income (show revenue) ──
     // Create for any confirmed booking with a price; "שולם" → התקבל, else צפוי.
@@ -101,7 +105,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
       await patchTransaction(show.linked_income_transaction_id, {
         amount:         show.show_price,
         date,
-        artist:         show.artist,
+        artist:         incomeParty,
         description:    `הכנסה מהופעה — ${displayName(show)}`,
         payment_status: incomeStatus,
       });
@@ -111,7 +115,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
         payment_status: isPaid ? "התקבל" : "צפוי",
         amount:      show.show_price,
         date,
-        artist:      show.artist,
+        artist:      incomeParty,
         description: `הכנסה מהופעה — ${displayName(show)}`,
         category:    "הופעה",
         notes:       `show_id:${show.id}`,
@@ -131,6 +135,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
       await patchTransaction(show.linked_dj_expense_transaction_id, {
         amount:         show.dj_fee,
         date,
+        artist:         djParty,
         description:    djDescription(show),
         payment_status: expenseStatus,
       });
@@ -140,6 +145,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
         payment_status: isPaid ? "שולם" : "לא שולם",
         amount:        show.dj_fee,
         date,
+        artist:        djParty,
         description:   djDescription(show),
         category:      "שכר דיג'יי",
         expense_scope: "הופעה",
