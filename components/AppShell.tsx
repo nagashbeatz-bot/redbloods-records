@@ -312,7 +312,8 @@ export default function AppShell({ children, topRight }: { children: React.React
         <MiniPlayer mobile />
       </div>
 
-      <MobileFAB playerVisible={playerVisible} />
+      {/* MobileFAB (floating + quick-actions sheet) removed — the red
+          "פעולות מהירות" button is now the single entry point. */}
       <PushManager />
 
       {quickActions.open && (
