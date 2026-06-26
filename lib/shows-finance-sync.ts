@@ -2,6 +2,10 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
 
+// Confirmed bookings only — leads (ליד חדש / ממתין לתשובה / צריך פולואפ) are
+// pipeline and must NOT create Finance transactions.
+const CONFIRMED_STATUSES = new Set(["נסגר", "אושרה", "בוצע"]);
+
 /**
  * Phase 1: keep a show's canonical Finance transactions in sync with its state.
  *
@@ -84,11 +88,14 @@ export async function syncShowFinance(show: Show): Promise<void> {
   try {
     const isCancelled = show.status === "בוטל";
     const isPaid      = show.payment_status === "שולם";
+    const isConfirmed = CONFIRMED_STATUSES.has(show.status);
     const date        = show.date || new Date().toISOString().slice(0, 10);
     const hasDj       = (show.dj_fee ?? 0) > 0;
 
     // ── Income (show revenue) ──
-    const incomeStatus = isCancelled ? "בוטל" : (isPaid ? "התקבל" : "צפוי");
+    // Create for any confirmed booking with a price; "שולם" → התקבל, else צפוי.
+    const incomeStatus  = isCancelled ? "בוטל" : (isPaid ? "התקבל" : "צפוי");
+    const shouldHaveIncome = !isCancelled && isConfirmed && show.show_price > 0;
     if (show.linked_income_transaction_id) {
       // Update existing — never delete.
       await patchTransaction(show.linked_income_transaction_id, {
@@ -98,10 +105,10 @@ export async function syncShowFinance(show: Show): Promise<void> {
         description:    `הכנסה מהופעה — ${displayName(show)}`,
         payment_status: incomeStatus,
       });
-    } else if (isPaid && !isCancelled) {
+    } else if (shouldHaveIncome) {
       const id = await createTransaction({
         type:        "income",
-        payment_status: "התקבל",
+        payment_status: isPaid ? "התקבל" : "צפוי",
         amount:      show.show_price,
         date,
         artist:      show.artist,
@@ -117,7 +124,9 @@ export async function syncShowFinance(show: Show): Promise<void> {
     }
 
     // ── DJ expense ──
+    // Create for any confirmed booking with a dj_fee; "שולם" → שולם, else לא שולם.
     const expenseStatus = (isCancelled || !hasDj) ? "בוטל" : (isPaid ? "שולם" : "לא שולם");
+    const shouldHaveExpense = !isCancelled && isConfirmed && hasDj;
     if (show.linked_dj_expense_transaction_id) {
       await patchTransaction(show.linked_dj_expense_transaction_id, {
         amount:         show.dj_fee,
@@ -125,10 +134,10 @@ export async function syncShowFinance(show: Show): Promise<void> {
         description:    djDescription(show),
         payment_status: expenseStatus,
       });
-    } else if (isPaid && !isCancelled && hasDj) {
+    } else if (shouldHaveExpense) {
       const id = await createTransaction({
         type:          "expense",
-        payment_status: "שולם",
+        payment_status: isPaid ? "שולם" : "לא שולם",
         amount:        show.dj_fee,
         date,
         description:   djDescription(show),

@@ -572,6 +572,9 @@ export default function DashboardDesignPreview() {
   // ── "מה קורה היום" sources: open tasks + today's expected income ──
   const [tasksList,      setTasksList]      = useState<{ id: string; title: string; due_date?: string | null; start_time?: string | null }[]>([]);
   const [incomeDueToday, setIncomeDueToday] = useState<{ id: string; project_id: string | null; amount: number; currency?: string }[]>([]);
+  // Expected income from shows — income transactions tagged category="הופעה" + "צפוי".
+  // Counted separately from project balances so the two never double-count.
+  const [showsExpected, setShowsExpected] = useState(0);
 
   // ── KPI hover popover (same state machine as the Projects page) ──
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; title: string; color: string; items: KpiPopoverItem[] } | null>(null);
@@ -657,6 +660,14 @@ export default function DashboardDesignPreview() {
             id: t.id, project_id: t.project_id, amount: t.amount, currency: t.currency,
           }));
         setIncomeDueToday(dueToday);
+
+        // Expected income from shows: income "צפוי" tagged category="הופעה".
+        // Filtered by category so project balances aren't double-counted.
+        const showsExp = (d.transactions ?? [])
+          .filter((t: { type: string; payment_status: string; category?: string }) =>
+            t.type === "income" && t.payment_status === "צפוי" && t.category === "הופעה")
+          .reduce((sum: number, t: { amount?: number }) => sum + (t.amount ?? 0), 0);
+        setShowsExpected(showsExp);
       })
       .catch(() => {});
   }, []);
@@ -801,12 +812,13 @@ export default function DashboardDesignPreview() {
     return { total, items };
   }, [projects, financeSummary]);
 
-  // Drive the cached "תשלומים צפויים" signal from the total remaining (₪ amount).
+  // Drive the cached "תשלומים צפויים" signal: project balances + shows' expected income.
   useEffect(() => {
     if (!financeLoaded) return;
-    updateStatCache({ pendingPayments: expectedIncome.total });
-    setPendingPayments(expectedIncome.total);
-  }, [financeLoaded, expectedIncome.total]);
+    const total = expectedIncome.total + showsExpected;
+    updateStatCache({ pendingPayments: total });
+    setPendingPayments(total);
+  }, [financeLoaded, expectedIncome.total, showsExpected]);
 
   // ── KPI cards — 7 cards: תמונת מצב מהירה ──────────────────────────────
   const KPI = [
