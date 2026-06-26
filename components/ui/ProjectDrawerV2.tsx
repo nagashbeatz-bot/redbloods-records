@@ -2293,7 +2293,7 @@ function ArtistPickerModal({
   const exactMatch = !!q && clients.some(c => c.name.trim().toLowerCase() === q.toLowerCase());
 
   async function handleSave() {
-    const name = (selected ?? "").trim();
+    const name = (selected ?? query).trim();
     if (!name || saving) return;
     setSaving(true);
     setSaveErr("");
@@ -2320,13 +2320,17 @@ function ArtistPickerModal({
           <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER2}`, color: TEXT2, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
         </div>
 
-        <input
-          autoFocus
-          value={query}
-          onChange={e => { setQuery(e.target.value); setSelected(e.target.value.trim() || null); }}
-          placeholder="חפש אמן/לקוח קיים או הקלד שם חדש…"
-          style={{ width: "100%", boxSizing: "border-box", background: CARD_BG, border: `1px solid ${BORDER2}`, borderRadius: 11, color: TEXT, fontSize: 14, padding: "11px 13px", outline: "none", fontFamily: "inherit" }}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input
+            autoFocus
+            value={query}
+            onChange={e => { setQuery(e.target.value); setSelected(null); }}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleSave(); } }}
+            placeholder="חפש אמן/לקוח קיים או הקלד שם חדש…"
+            style={{ width: "100%", boxSizing: "border-box", background: CARD_BG, border: `1px solid ${BORDER2}`, borderRadius: 11, color: TEXT, fontSize: 14, padding: "11px 13px", outline: "none", fontFamily: "inherit" }}
+          />
+          <div style={{ fontSize: 11, color: MUTED }}>אפשר לבחור אמן קיים או להקליד שם חדש</div>
+        </div>
 
         <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, minHeight: 80, maxHeight: "42vh" }}>
           {loading ? (
@@ -2335,23 +2339,26 @@ function ArtistPickerModal({
             <div style={{ fontSize: 13, color: RED_WARN, textAlign: "center", padding: "24px 0" }}>{loadErr}</div>
           ) : (
             <>
-              {q && !exactMatch && (
-                <button
-                  onClick={() => setSelected(q)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", borderRadius: 11,
-                    background: selected === q ? `${GREEN}1A` : "rgba(255,255,255,0.03)",
-                    border: `1px solid ${selected === q ? GREEN + "55" : BORDER}`,
-                    color: GREEN, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textAlign: "right",
-                  }}
-                >＋ צור אמן חדש: &quot;{q}&quot;</button>
-              )}
+              {q && !exactMatch && (() => {
+                const createActive = selected === q || selected === null;
+                return (
+                  <button
+                    onClick={() => setSelected(q)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", borderRadius: 11,
+                      background: createActive ? `${GREEN}1A` : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${createActive ? GREEN + "55" : BORDER}`,
+                      color: GREEN, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textAlign: "right",
+                    }}
+                  >＋ צור אמן חדש: &quot;{q}&quot;</button>
+                );
+              })()}
               {filtered.map(c => {
                 const sel = selected === c.name;
                 return (
                   <button
                     key={c.id}
-                    onClick={() => setSelected(c.name)}
+                    onClick={() => { setSelected(c.name); setQuery(c.name); }}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9,
                       padding: "10px 12px", borderRadius: 11,
@@ -2375,7 +2382,12 @@ function ArtistPickerModal({
         {saveErr && <div style={{ color: RED_WARN, fontSize: 12.5 }}>{saveErr}</div>}
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
-          <button onClick={handleSave} disabled={!selected || saving} style={{ padding: "10px 22px", borderRadius: 11, border: "none", background: BRAND, color: "#fff", fontSize: 14, fontWeight: 800, fontFamily: "inherit", cursor: !selected || saving ? "default" : "pointer", opacity: !selected || saving ? 0.6 : 1 }}>{saving ? "שומר…" : "שמור"}</button>
+          {(() => {
+            const canSave = !!(selected ?? query).trim() && !saving;
+            return (
+              <button onClick={handleSave} disabled={!canSave} style={{ padding: "10px 22px", borderRadius: 11, border: "none", background: BRAND, color: "#fff", fontSize: 14, fontWeight: 800, fontFamily: "inherit", cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.6 }}>{saving ? "שומר…" : "שמור"}</button>
+            );
+          })()}
           <button onClick={onClose} disabled={saving} style={{ padding: "10px 20px", borderRadius: 11, background: CARD_BG, border: `1px solid ${BORDER2}`, color: TEXT, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>ביטול</button>
         </div>
       </div>
