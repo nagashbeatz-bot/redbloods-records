@@ -41,6 +41,8 @@ interface Props {
   acceptAnyFile?: boolean;
   /** Keep the original file name instead of generating a versioned name. */
   preserveOriginalName?: boolean;
+  /** Keep the button label during drag (md only) so its width does not change. */
+  stableLabelOnDrag?: boolean;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -82,6 +84,7 @@ export default function UploadButton({
   label,
   acceptAnyFile,
   preserveOriginalName,
+  stableLabelOnDrag,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -477,7 +480,7 @@ export default function UploadButton({
         ) : state === "error" ? (
           <><span>✕</span><span>{errorMsg ? errorMsg.slice(0, 20) : "שגיאה"}</span></>
         ) : dragging ? (
-          <><span style={{ fontSize: 15, lineHeight: 1 }}>↓</span><span>שחרר להעלאה</span></>
+          <><span style={{ fontSize: 15, lineHeight: 1 }}>↓</span><span>{stableLabelOnDrag ? (label ?? "העלה גרסה") : "שחרר להעלאה"}</span></>
         ) : (
           <><span style={{ fontSize: 15, lineHeight: 1 }}>↑</span><span>{label ?? "העלה גרסה"}</span></>
         )}

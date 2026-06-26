@@ -2911,6 +2911,7 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
                   label={t.label}
                   acceptAnyFile
                   preserveOriginalName={t.preserveOriginalName}
+                  stableLabelOnDrag
                 />
               ))}
             </div>
