@@ -2874,26 +2874,42 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
               >פתח תיקיית מסירה ↗</a>
             )}
           </div>
-          <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>
-            בחר סוג קובץ מסירה — הקובץ ייקרא לפי הסוג והגרסה ויישמר בתיקיית <span style={{ color: TEXT }}>Delivery</span> בדרופבוקס.
+          {/* Dropzone — large work area with the type chips centered inside */}
+          <div style={{
+            minHeight: 200,
+            border: `1.5px dashed ${BRAND}55`, borderRadius: 14,
+            background: "rgba(255,255,255,0.02)",
+            padding: "26px 18px",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            gap: 16, textAlign: "center",
+          }}>
+            <div style={{ fontSize: 42, lineHeight: 1, opacity: 0.85 }}>☁️</div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>גרור קבצי מסירה לכאן</div>
+              <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5 }}>או בחר סוג קובץ להעלאה</div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: 580 }}>
+              {DELIVERY_TYPES.map((t) => (
+                <UploadButton
+                  key={t.typeLabel}
+                  projectId={project.id}
+                  projectName={project.name}
+                  artist={project.artist ?? ""}
+                  existingFiles={deliveryFiles}
+                  size="md"
+                  subfolder="Delivery"
+                  deliveryTypeLabel={t.typeLabel}
+                  label={t.label}
+                  acceptAnyFile
+                />
+              ))}
+            </div>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {DELIVERY_TYPES.map((t) => (
-              <UploadButton
-                key={t.typeLabel}
-                projectId={project.id}
-                projectName={project.name}
-                artist={project.artist ?? ""}
-                existingFiles={deliveryFiles}
-                size="md"
-                subfolder="Delivery"
-                deliveryTypeLabel={t.typeLabel}
-                label={t.label}
-                acceptAnyFile
-              />
-            ))}
+
+          {/* Delivery files list */}
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, letterSpacing: "0.04em" }}>
+            קבצי מסירה {deliveryFiles.length > 0 ? `(${deliveryFiles.length})` : ""}
           </div>
-          <div style={{ height: 1, background: BORDER, margin: "2px 0" }} />
           {deliveryFiles.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {deliveryFiles.map((f, i) => {
