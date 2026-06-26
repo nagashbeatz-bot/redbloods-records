@@ -272,6 +272,40 @@ export function checkProjectsNoPricing(
   );
 }
 
+// ── 5b. Proposal follow-up due ────────────────────────────────────────────────
+
+// Closed proposal statuses (same set used across dashboard/insights/context).
+const CLOSED_PROPOSAL_STATUSES = new Set(["נסגר", "לא נסגר"]);
+
+export function checkProposalFollowupDue(
+  proposals: Array<{ id: string; clientId: string | null; clientName: string; amount: number; currency: string; status: string; followupDate: string | null }>
+): AlertInput[] {
+  const today = new Date().toISOString().split("T")[0];
+  const alerts: AlertInput[] = [];
+  for (const p of proposals) {
+    if (!p.followupDate) continue;                       // (2) has a follow-up date
+    if (p.followupDate > today) continue;                // (3) due today or past
+    if (CLOSED_PROPOSAL_STATUSES.has(p.status)) continue; // (4)(5) still open only
+
+    const name = p.clientName || "לקוח";
+    const amountPart = p.amount > 0 ? ` על סך ${p.amount.toLocaleString("he-IL")}${p.currency || "₪"}` : "";
+    alerts.push({
+      type: "proposal_followup_due",
+      severity: "warning",
+      title: "צריך פולואפ להצעת מחיר",
+      message: `צריך לחזור ל-${name} לגבי הצעה${amountPart}.`,
+      relatedClientId: p.clientId ?? null,
+      metadata: {
+        proposalId: p.id, clientId: p.clientId, clientName: name,
+        amount: p.amount, followupDate: p.followupDate, status: p.status,
+      },
+      entityKey: `proposal_followup_due:${p.id}`,
+      suggestedActions: ["חזור ללקוח", "עדכן סטטוס", "עדכן תאריך מעקב"],
+    });
+  }
+  return alerts;
+}
+
 // ── 6. Victor stuck ───────────────────────────────────────────────────────────
 
 export function checkVictorStuck(

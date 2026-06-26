@@ -18,7 +18,7 @@ interface CalEvent { title: string; startTime: string; endTime: string; isAllDay
 
 const ALERT_CATEGORIES = [
   { key: "deadline", label: "דדליינים",    icon: "📅", types: ["overdue_deadline", "deadline_approaching"], color: "#EF4444", bg: "rgba(239,68,68,0.07)"  },
-  { key: "finance",  label: "כספים",       icon: "₪",  types: ["payment_overdue", "project_no_pricing", "balance_missing_due_date"],   color: "#F59E0B", bg: "rgba(245,158,11,0.07)" },
+  { key: "finance",  label: "כספים",       icon: "₪",  types: ["payment_overdue", "project_no_pricing", "balance_missing_due_date", "proposal_followup_due"],   color: "#F59E0B", bg: "rgba(245,158,11,0.07)" },
   { key: "sessions", label: "סשנים",       icon: "🎵", types: ["session_needs_update", "stale_session"],   color: "#3B82F6", bg: "rgba(59,130,246,0.07)"  },
   { key: "victor",   label: "ויקטור",      icon: "👤", types: ["victor_stuck", "victor_below_pace"],       color: "#A855F7", bg: "rgba(168,85,247,0.07)"  },
 ] as const;

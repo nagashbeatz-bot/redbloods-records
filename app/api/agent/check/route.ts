@@ -17,6 +17,7 @@ import {
   checkSessionsNeedingUpdate,
   checkOverduePayments,
   checkBalanceMissingDueDate,
+  checkProposalFollowupDue,
   checkProjectsNoPricing,
   checkVictorStuck,
   checkVictorBelowPace,
@@ -178,6 +179,24 @@ export async function GET(req: NextRequest) {
       goalsProgress = await getGoalsProgress(today.slice(0, 7));
     } catch { /* ignore */ }
 
+    // Proposals (with client name joined) — for follow-up-due checks
+    const { data: rawProposals } = await supabase
+      .from("proposals")
+      .select("id, client_id, amount, currency, status, followup_date, clients(name)");
+    const proposalsList = (rawProposals ?? []).map((p) => {
+      const c = p.clients as unknown as { name?: string } | { name?: string }[] | null;
+      const clientName = (Array.isArray(c) ? c[0]?.name : c?.name) ?? "";
+      return {
+        id:           p.id as string,
+        clientId:     (p.client_id as string | null) ?? null,
+        clientName,
+        amount:       (p.amount as number) ?? 0,
+        currency:     (p.currency as string) ?? "₪",
+        status:       p.status as string,
+        followupDate: (p.followup_date as string | null) ?? null,
+      };
+    });
+
     // ── Run all rule checks ──────────────────────────────────────────────────
 
     const allInputs: AlertInput[] = [
@@ -188,6 +207,7 @@ export async function GET(req: NextRequest) {
       // All visible projects (incl. completed) — catch a finished project that
       // still has an open balance with no scheduled payment date.
       ...checkBalanceMissingDueDate(projects, txns, financeMap),
+      ...checkProposalFollowupDue(proposalsList),
       ...checkProjectsNoPricing(activeProjects, financeMap),
       ...checkVictorStuck(vendorWork, stuckAfterDays),
       ...checkVictorBelowPace(victorStats, victorStats?.goal ?? 0),
