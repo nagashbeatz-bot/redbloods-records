@@ -36,3 +36,24 @@ export interface Show {
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Effective artist fee, bridging the legacy 50/50 model to the explicit
+ * `artist_fee` field introduced in Phase B.
+ *
+ *  • artist_fee > 0            → explicit override, use as-is.
+ *  • artist_fee 0/null/undefined → "not set": fall back to the old model where
+ *    the artist took half of what remained after the dj — max(0, (price-dj)/2).
+ *  • price - dj <= 0           → nothing to distribute, fee is 0.
+ *
+ * So existing shows (artist_fee = 0) keep their original 50/50 behaviour with
+ * no manual backfill, while any explicit artist_fee replaces the split.
+ * NOTE: until a separate "artist truly gets 0" flag exists, 0 means "not set".
+ */
+export function getEffectiveArtistFee(
+  s: Pick<Show, "artist_fee" | "show_price" | "dj_fee">,
+): number {
+  if ((s.artist_fee ?? 0) > 0) return s.artist_fee;
+  const distributable = (s.show_price ?? 0) - (s.dj_fee ?? 0);
+  return distributable > 0 ? distributable / 2 : 0;
+}

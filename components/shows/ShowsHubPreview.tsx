@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
-import { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-types";
+import { SHOW_STATUSES, PAYMENT_STATUSES, getEffectiveArtistFee } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -56,8 +56,8 @@ function isUpcoming(d: string | null): boolean {
   return new Date(d) >= new Date(new Date().toDateString());
 }
 function calcDistributable(s: Show) { return Math.max(0, s.show_price - s.dj_fee); }
-function calcArtistShare(s: Show)   { return s.artist_fee ?? 0; }
-function calcLabelShare(s: Show)    { return Math.max(0, s.show_price - s.dj_fee - (s.artist_fee ?? 0)); }
+function calcArtistShare(s: Show)   { return getEffectiveArtistFee(s); }
+function calcLabelShare(s: Show)    { return Math.max(0, s.show_price - s.dj_fee - getEffectiveArtistFee(s)); }
 function calcRemaining(s: Show)     { return Math.max(0, s.show_price - s.advance_payment); }
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────

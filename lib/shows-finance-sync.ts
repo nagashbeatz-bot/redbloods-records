@@ -1,6 +1,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
+import { getEffectiveArtistFee } from "@/lib/shows-types";
 
 // Confirmed bookings only — leads (ליד חדש / ממתין לתשובה / צריך פולואפ) are
 // pipeline and must NOT create Finance transactions.
@@ -163,13 +164,16 @@ export async function syncShowFinance(show: Show): Promise<void> {
     }
 
     // ── Artist expense ──
-    // Create for any confirmed booking with an artist_fee; "שולם" → שולם, else לא שולם.
-    const hasArtistFee     = (show.artist_fee ?? 0) > 0;
+    // Use the effective artist fee: explicit artist_fee, or the legacy 50/50
+    // fallback ((price-dj)/2) when artist_fee is unset (0/null). So existing
+    // shows keep modelling the artist's cut with no manual backfill.
+    const effectiveArtistFee = getEffectiveArtistFee(show);
+    const hasArtistFee     = effectiveArtistFee > 0;
     const artistStatus     = (isCancelled || !hasArtistFee) ? "בוטל" : (isPaid ? "שולם" : "לא שולם");
     const shouldHaveArtist = !isCancelled && isConfirmed && hasArtistFee;
     if (show.linked_artist_expense_transaction_id) {
       await patchTransaction(show.linked_artist_expense_transaction_id, {
-        amount:         show.artist_fee,
+        amount:         effectiveArtistFee,
         date,
         artist:         show.artist,
         description:    artistDescription(show),
@@ -179,7 +183,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
       const id = await createTransaction({
         type:          "expense",
         payment_status: isPaid ? "שולם" : "לא שולם",
-        amount:        show.artist_fee,
+        amount:        effectiveArtistFee,
         date,
         artist:        show.artist,
         description:   artistDescription(show),
