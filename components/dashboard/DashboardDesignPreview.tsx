@@ -449,8 +449,12 @@ export default function DashboardDesignPreview() {
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
   const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string; date?: string | null; start_time?: string | null }[]>([]);
   const [showsList,           setShowsList]           = useState<{ id: string; name: string; artist?: string; date?: string | null }[]>([]);
-  const [proposalsList,       setProposalsList]       = useState<{ id: string; title: string; client_name?: string; amount?: number; currency?: string }[]>([]);
+  const [proposalsList,       setProposalsList]       = useState<{ id: string; title: string; client_name?: string; amount?: number; currency?: string; followup_date?: string | null }[]>([]);
   const [campaignsList,       setCampaignsList]       = useState<{ id: string; title: string; artist_name?: string }[]>([]);
+
+  // ── "מה קורה היום" sources: open tasks + today's expected income ──
+  const [tasksList,      setTasksList]      = useState<{ id: string; title: string; due_date?: string | null; start_time?: string | null }[]>([]);
+  const [incomeDueToday, setIncomeDueToday] = useState<{ id: string; project_id: string | null; amount: number; currency?: string }[]>([]);
 
   // ── KPI hover popover (same state machine as the Projects page) ──
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; title: string; color: string; items: KpiPopoverItem[] } | null>(null);
@@ -500,8 +504,8 @@ export default function DashboardDesignPreview() {
         const open = all.filter((p: { status: string }) => !CLOSED_PROPOSAL.has(p.status));
         updateStatCache({ openProposals: open.length });
         setOpenProposals(open.length);
-        setProposalsList(open.map((p: { id: string; title?: string; client_name?: string; amount?: number; currency?: string }) => ({
-          id: p.id, title: p.title ?? "הצעה", client_name: p.client_name, amount: p.amount, currency: p.currency,
+        setProposalsList(open.map((p: { id: string; title?: string; client_name?: string; amount?: number; currency?: string; followup_date?: string | null }) => ({
+          id: p.id, title: p.title ?? "הצעה", client_name: p.client_name, amount: p.amount, currency: p.currency, followup_date: p.followup_date,
         })));
       })
       .catch(() => {});
@@ -526,6 +530,16 @@ export default function DashboardDesignPreview() {
         });
         setFinanceSummary(map);
         setFinanceLoaded(true);
+
+        // Expected income whose due date is today (for "מה קורה היום").
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const dueToday = (d.transactions ?? [])
+          .filter((t: { type: string; payment_status: string; date?: string | null }) =>
+            t.type === "income" && t.payment_status === "צפוי" && t.date === todayStr)
+          .map((t: { id: string; project_id: string | null; amount: number; currency?: string }) => ({
+            id: t.id, project_id: t.project_id, amount: t.amount, currency: t.currency,
+          }));
+        setIncomeDueToday(dueToday);
       })
       .catch(() => {});
   }, []);
@@ -552,6 +566,9 @@ export default function DashboardDesignPreview() {
         const tasks = Array.isArray(d.tasks) ? d.tasks : [];
         updateStatCache({ openTasks: tasks.length });
         setOpenTasks(tasks.length);
+        setTasksList(tasks.map((t: { id: string; title?: string; due_date?: string | null; start_time?: string | null }) => ({
+          id: t.id, title: t.title ?? "משימה", due_date: t.due_date, start_time: t.start_time,
+        })));
       })
       .catch(() => {});
   }, []);
@@ -597,12 +614,45 @@ export default function DashboardDesignPreview() {
   const onHoldProjects  = projects.filter(p => p.status === "בהשהייה");
   const doneProjects    = projects.filter(p => p.status === "הושלם");
 
-  // "מה קורה היום" — time-based items only (calendar + today-relevant deadline).
+  // "מה קורה היום" — time-based / schedule items only (today & deadlines).
   // Agent alerts are intentionally excluded here; they live in the "דורש טיפול" panel.
   const todayFocusItems = useMemo(() => {
     type FocusItem = { icon: string; iconBg: string; iconColor: string; title: string; sub: string };
     const items: FocusItem[] = [];
-    // 1. Most overdue project (today-relevant deadline)
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 1. Calendar events today (timed first)
+    calToday.slice(0, 2).forEach((ev) => items.push({
+      icon: "🎙", iconBg: "rgba(168,85,247,0.15)", iconColor: "#A855F7",
+      title: ev.title,
+      sub: ev.isAllDay ? "כל היום" : (ev.startTime ? new Date(ev.startTime).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }) : ""),
+    }));
+
+    // 2. Open tasks due today
+    tasksList.filter((t) => t.due_date === today).forEach((t) => items.push({
+      icon: "✓", iconBg: "rgba(59,130,246,0.15)", iconColor: "#3B82F6",
+      title: t.title,
+      sub: t.start_time ? t.start_time.slice(0, 5) : "משימה להיום",
+    }));
+
+    // 3. Expected payments due today
+    incomeDueToday.forEach((t) => {
+      const name = t.project_id ? (projects.find((p) => p.id === t.project_id)?.name ?? "פרויקט") : "כללי";
+      items.push({
+        icon: "$", iconBg: "rgba(16,185,129,0.15)", iconColor: "#10B981",
+        title: `תשלום צפוי היום: ${t.currency ?? "₪"}${t.amount.toLocaleString()}`,
+        sub: name,
+      });
+    });
+
+    // 4. Proposal follow-ups due today
+    proposalsList.filter((p) => p.followup_date === today).forEach((p) => items.push({
+      icon: "📋", iconBg: "rgba(249,115,22,0.15)", iconColor: "#F97316",
+      title: `פולואפ הצעה: ${p.client_name || p.title}`,
+      sub: p.amount ? `${p.currency ?? "₪"}${p.amount.toLocaleString()}` : p.title,
+    }));
+
+    // 5. Most overdue project (today-relevant deadline)
     const mostOverdue = [...overdueProjects].sort((a, b) => {
       const da = daysUntilDeadline(a.deadline) ?? 0;
       const db = daysUntilDeadline(b.deadline) ?? 0;
@@ -613,15 +663,9 @@ export default function DashboardDesignPreview() {
       title: `דדליין עבר — ${mostOverdue.name}`,
       sub: mostOverdue.artist || "ללא אמן",
     });
-    // 2. Next calendar event today
-    const nextEvent = calToday[0];
-    if (nextEvent) items.push({
-      icon: "🎙", iconBg: "rgba(168,85,247,0.15)", iconColor: "#A855F7",
-      title: nextEvent.title,
-      sub: nextEvent.isAllDay ? "כל היום" : (nextEvent.startTime ? new Date(nextEvent.startTime).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" }) : ""),
-    });
-    return items;
-  }, [overdueProjects, calToday]);
+
+    return items.slice(0, 7);
+  }, [overdueProjects, calToday, tasksList, incomeDueToday, proposalsList, projects]);
 
   // ── Expected income = outstanding balance (agreed − paid), same as Projects ──
   const expectedIncome = useMemo(() => {
