@@ -125,9 +125,24 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#A855F7", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
-              ⚡ פעולות מהירות
-            </div>
+            {phase === "picker" ? (
+              <button
+                onClick={() => setPhase("grid")}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 5,
+                  background: "none", border: "none", padding: 0, marginBottom: 6,
+                  color: "#A855F7", fontSize: 11, fontWeight: 700,
+                  letterSpacing: "0.07em", textTransform: "uppercase",
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                ← חזרה לפעולות מהירות
+              </button>
+            ) : (
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#A855F7", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
+                ⚡ פעולות מהירות
+              </div>
+            )}
             <div style={{ fontSize: 20, fontWeight: 800, color: "#F5F5F5", lineHeight: 1.2 }}>
               {phase === "picker" ? "קבע סשן / פגישה" : "מה תרצה לעשות?"}
             </div>
