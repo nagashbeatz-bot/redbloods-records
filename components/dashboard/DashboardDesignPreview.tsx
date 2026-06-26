@@ -575,6 +575,7 @@ export default function DashboardDesignPreview() {
   // Expected income from shows — income transactions tagged category="הופעה" + "צפוי".
   // Counted separately from project balances so the two never double-count.
   const [showsExpected, setShowsExpected] = useState(0);
+  const [showsExpectedItems, setShowsExpectedItems] = useState<{ id: string; description: string; artist: string; amount: number; date?: string | null }[]>([]);
 
   // ── KPI hover popover (same state machine as the Projects page) ──
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; title: string; color: string; items: KpiPopoverItem[] } | null>(null);
@@ -663,11 +664,14 @@ export default function DashboardDesignPreview() {
 
         // Expected income from shows: income "צפוי" tagged category="הופעה".
         // Filtered by category so project balances aren't double-counted.
-        const showsExp = (d.transactions ?? [])
+        const showItems = (d.transactions ?? [])
           .filter((t: { type: string; payment_status: string; category?: string }) =>
             t.type === "income" && t.payment_status === "צפוי" && t.category === "הופעה")
-          .reduce((sum: number, t: { amount?: number }) => sum + (t.amount ?? 0), 0);
-        setShowsExpected(showsExp);
+          .map((t: { id: string; description?: string; artist?: string; amount?: number; date?: string | null }) => ({
+            id: t.id, description: t.description ?? "הופעה", artist: t.artist ?? "", amount: t.amount ?? 0, date: t.date,
+          }));
+        setShowsExpectedItems(showItems);
+        setShowsExpected(showItems.reduce((sum: number, t: { amount: number }) => sum + t.amount, 0));
       })
       .catch(() => {});
   }, []);
@@ -869,12 +873,20 @@ export default function DashboardDesignPreview() {
     },
     "תשלומים צפויים": {
       title: "$ תשלומים צפויים — פירוט",
-      items: expectedIncome.items.map(p => ({
-        id: p.id,
-        primary: p.name,
-        secondary: p.artist || undefined,
-        value: `₪${p.remaining.toLocaleString()} מתוך ₪${p.agreed.toLocaleString()}`,
-      })),
+      items: [
+        ...expectedIncome.items.map(p => ({
+          id: p.id,
+          primary: p.name,
+          secondary: p.artist || undefined,
+          value: `₪${p.remaining.toLocaleString()} מתוך ₪${p.agreed.toLocaleString()}`,
+        })),
+        ...showsExpectedItems.map(s => ({
+          id: s.id,
+          primary: s.description,
+          secondary: `🎤 הופעה צפויה${s.artist ? ` · ${s.artist}` : ""}${s.date ? ` · ${shortDate(s.date)}` : ""}`,
+          value: `₪${s.amount.toLocaleString()}`,
+        })),
+      ],
     },
     "הצעות פתוחות": {
       title: "📋 הצעות פתוחות — פירוט",
@@ -888,7 +900,7 @@ export default function DashboardDesignPreview() {
       items: campaignsList.map(c => ({ id: c.id, primary: c.title, secondary: c.artist_name || undefined })),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [activeProjects, overdueProjects, sessionsList, showsList, expectedIncome, proposalsList, campaignsList, projects]);
+  }), [activeProjects, overdueProjects, sessionsList, showsList, expectedIncome, showsExpectedItems, proposalsList, campaignsList, projects]);
 
   function handleKpiEnter(title: string, color: string, items: KpiPopoverItem[], e: React.MouseEvent<HTMLDivElement>) {
     if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
