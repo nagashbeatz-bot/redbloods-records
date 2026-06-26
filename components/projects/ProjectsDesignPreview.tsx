@@ -330,7 +330,7 @@ export default function ProjectsDesignPreview() {
   const [showNewProject,  setShowNewProject]  = useState(false);
   const [clientNames,     setClientNames]     = useState<string[]>([]);
 
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; financeException?: boolean }>>({});
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; items: KpiPopoverItem[] } | null>(null);
   const kpiHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -338,10 +338,11 @@ export default function ProjectsDesignPreview() {
     fetch("/api/transactions?all=1")
       .then(r => r.json())
       .then(d => {
-        const map: Record<string, { paid: number; agreed: number }> = {};
-        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number }) => {
+        const map: Record<string, { paid: number; agreed: number; financeException?: boolean }> = {};
+        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; financeException?: boolean }) => {
           if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0 };
           map[s.project_id].agreed = s.agreedPrice ?? 0;
+          map[s.project_id].financeException = s.financeException ?? false;
         });
         (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
           if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0 };
@@ -382,7 +383,7 @@ export default function ProjectsDesignPreview() {
     const active = projects.filter(p => !p.isHidden);
     const knownIds = new Set(active.map(p => p.id));
     const totalExpected = Object.entries(financeSummary)
-      .filter(([id]) => knownIds.has(id))
+      .filter(([id, f]) => knownIds.has(id) && !f.financeException)
       .reduce((s, [, f]) => s + Math.max(0, f.agreed - f.paid), 0);
     const now = new Date();
     return {
@@ -401,6 +402,7 @@ export default function ProjectsDesignPreview() {
   const expectedBreakdown = useMemo((): KpiPopoverItem[] => {
     return projects
       .filter(p => !p.isHidden)
+      .filter(p => !financeSummary[p.id]?.financeException)
       .map(p => ({
         id: p.id, name: p.name, artist: p.artist ?? "",
         agreed: financeSummary[p.id]?.agreed ?? 0,

@@ -19,10 +19,11 @@ export async function GET(req: NextRequest) {
 
     // Parse settings into { projectId, agreedPrice, currency, financialNotes }
     const settings = (settingsRes.data ?? []).map((row) => ({
-      project_id:     row.key.replace("finance_", ""),
-      agreedPrice:    (row.value as { agreedPrice?: number })?.agreedPrice    ?? 0,
-      currency:       (row.value as { currency?: string })?.currency          ?? "₪",
-      financialNotes: (row.value as { financialNotes?: string })?.financialNotes ?? "",
+      project_id:       row.key.replace("finance_", ""),
+      agreedPrice:      (row.value as { agreedPrice?: number })?.agreedPrice    ?? 0,
+      currency:         (row.value as { currency?: string })?.currency          ?? "₪",
+      financialNotes:   (row.value as { financialNotes?: string })?.financialNotes ?? "",
+      financeException: (row.value as { financeException?: boolean })?.financeException ?? false,
     }));
 
     return NextResponse.json({ transactions: txRes.data, settings });

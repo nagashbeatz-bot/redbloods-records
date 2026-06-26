@@ -50,7 +50,8 @@ interface WeeklyData {
   openIssues: string[];
 }
 
-const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"]);
+// "חלקי" is intentionally NOT here — partial is treated as not-yet-received.
+const PAID_STATUSES = new Set(["שולם", "התקבל"]);
 
 export async function fetchWeeklyData(): Promise<WeeklyData> {
   const now      = new Date();
@@ -130,7 +131,7 @@ export async function fetchWeeklyData(): Promise<WeeklyData> {
     .from("transactions")
     .select("amount")
     .neq("type", "הוצאה")
-    .not("payment_status", "in", '("שולם","התקבל","שולם חלקית")');
+    .not("payment_status", "in", '("שולם","התקבל")');
   const pendingTotal = (pendingTxns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
 
   // Victor

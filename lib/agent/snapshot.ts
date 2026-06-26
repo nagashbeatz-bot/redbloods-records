@@ -8,7 +8,8 @@ import { listProjects } from "@/lib/projects-store";
 import { getAlerts } from "./alerts-store";
 import { getGoalsProgress } from "./goals";
 
-const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"]);
+// "חלקי" is intentionally NOT here — partial is treated as not-yet-received.
+const PAID_STATUSES = new Set(["שולם", "התקבל"]);
 
 export async function buildSnapshot() {
   const now   = new Date();

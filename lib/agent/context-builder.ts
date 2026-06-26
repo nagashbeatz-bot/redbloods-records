@@ -14,7 +14,9 @@ import type { AlertSeverity } from "@/lib/types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"]);
+// Money actually received/paid. "חלקי" (partial) is intentionally NOT here — it
+// is treated as not-yet-received, consistent with the rest of the system.
+const PAID_STATUSES = new Set(["שולם", "התקבל"]);
 
 const SEV_WEIGHT: Record<AlertSeverity, number> = {
   urgent: 4, important: 3, warning: 2, info: 1,
@@ -176,7 +178,7 @@ async function buildFinanceContext(month: string): Promise<string> {
         .from("transactions")
         .select("project_id, amount, currency, type, payment_status, date, description")
         .lt("date", monthStart)
-        .not("payment_status", "in", '("שולם","התקבל","שולם חלקית")')
+        .not("payment_status", "in", '("שולם","התקבל")')
         .neq("type", "הוצאה")
         .order("date", { ascending: true })
         .limit(30),
@@ -326,7 +328,7 @@ async function buildProjectsEnrichment(today: string): Promise<string> {
       .from("transactions")
       .select("project_id, amount")
       .neq("type", "הוצאה")
-      .not("payment_status", "in", '("שולם","התקבל","שולם חלקית")')
+      .not("payment_status", "in", '("שולם","התקבל")')
       .not("project_id", "is", null)
       .limit(200);
     const pendingByProject = new Map<string, number>();
@@ -458,7 +460,7 @@ async function buildClientDetailContext(clientId: string): Promise<string> {
         .select("amount, currency, payment_status, date, type")
         .in("project_id", projIds)
         .neq("type", "הוצאה")
-        .not("payment_status", "in", '("שולם","התקבל","שולם חלקית")');
+        .not("payment_status", "in", '("שולם","התקבל")');
 
       const pending = (txns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
       if (pending > 0) lines.push(`יתרה פתוחה: ${fmt(pending)}₪`);
@@ -570,7 +572,7 @@ async function buildCalendarPageContext(today: string, month: string): Promise<s
         .select("project_id, amount")
         .in("project_id", monthProjIds)
         .neq("type", "הוצאה")
-        .not("payment_status", "in", '("שולם","התקבל","שולם חלקית")');
+        .not("payment_status", "in", '("שולם","התקבל")');
       const pendingProjIds = new Set((pendingTxns ?? []).map((t) => t.project_id));
       const sessWithOpenMoney = (sessWithPayment ?? []).filter((s) => pendingProjIds.has(s.project_id));
       if (sessWithOpenMoney.length > 0) {

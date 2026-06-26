@@ -104,10 +104,10 @@ export async function GET(req: NextRequest) {
       .from("settings")
       .select("key, value")
       .like("key", "finance_%");
-    const financeMap = new Map<string, { agreedPrice?: number | null }>();
+    const financeMap = new Map<string, { agreedPrice?: number | null; financeException?: boolean }>();
     for (const row of financeRows ?? []) {
       const projectId = row.key.replace("finance_", "");
-      financeMap.set(projectId, (row.value as Record<string, unknown>) as { agreedPrice?: number });
+      financeMap.set(projectId, (row.value as Record<string, unknown>) as { agreedPrice?: number; financeException?: boolean });
     }
 
     // Victor vendor work

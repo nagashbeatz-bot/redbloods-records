@@ -498,6 +498,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [agreedPrice,  setAgreedPrice]  = useState(0);
   const [currency,     setCurrency]     = useState("₪");
+  const [financeException, setFinanceException] = useState(false);
   const [finLoaded,    setFinLoaded]    = useState(false);
   const [sessions,        setSessions]        = useState<Session[]>([]);
   const [projectActions,  setProjectActions]  = useState<ProjectAction[]>([]);
@@ -519,6 +520,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
 
   useEffect(() => {
     setTransactions([]);
+    setFinanceException(false);
     setFinLoaded(false);
     fetch(`/api/transactions?projectId=${projectId}`)
       .then(r => r.json())
@@ -526,6 +528,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
         setTransactions(d.transactions ?? []);
         setAgreedPrice(d.agreedPrice ?? 0);
         setCurrency(d.currency ?? "₪");
+        setFinanceException(d.financeException ?? false);
         setFinLoaded(true);
       })
       .catch(() => setFinLoaded(true));
@@ -635,7 +638,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const totalExp    = transactions
     .filter(t => t.type === "expense" && t.payment_status === "שולם")
     .reduce((s, t) => s + t.amount, 0);
-  const balance     = agreedPrice - received;
+  // Finance-exception projects (no charge / favor) carry no receivable balance.
+  const balance     = financeException ? 0 : agreedPrice - received;
   const latestFile  = project.files ? getLatestAudioFile(project.files) : null;
   const isPlaying   = player?.track?.projectId === projectId && (player?.playing ?? false);
   const pct         = progressForStatus(project.status);

@@ -140,7 +140,7 @@ const FULLY_PAID_STATUSES = new Set(["שולם", "התקבל"]);
 
 export function checkOverduePayments(
   transactions: Array<{ id: string; projectId: string | null; projectName: string; amount: number; currency: string; date: string | null; type: string; paymentStatus: string }>,
-  financeMap: Map<string, { agreedPrice?: number | null }>
+  financeMap: Map<string, { agreedPrice?: number | null; financeException?: boolean }>
 ): AlertInput[] {
   const today = new Date().toISOString().split("T")[0];
 
@@ -154,8 +154,10 @@ export function checkOverduePayments(
 
   const overdue = transactions.filter((t) => {
     if (t.type === "הוצאה" || !t.date || t.date >= today || PAID_STATUSES.has(t.paymentStatus)) return false;
-    // Skip if project is already fully paid or overpaid
     if (t.projectId) {
+      // Skip projects flagged as a finance exception (no charge / favor).
+      if (financeMap.get(t.projectId)?.financeException) return false;
+      // Skip if project is already fully paid or overpaid
       const agreedPrice = financeMap.get(t.projectId)?.agreedPrice ?? null;
       const paidIncome  = paidByProject.get(t.projectId) ?? 0;
       if (agreedPrice != null && paidIncome >= agreedPrice) return false;

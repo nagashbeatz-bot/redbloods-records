@@ -30,7 +30,7 @@ interface Transaction {
   id: string; project_id: string; type: "income" | "expense";
   date: string | null; amount: number; currency: string; payment_status: string;
 }
-interface FinanceSetting { project_id: string; agreedPrice: number; currency: string; }
+interface FinanceSetting { project_id: string; agreedPrice: number; currency: string; financeException?: boolean; }
 interface Client { id: string; name: string; email: string; phone: string; type: string; status: string; }
 interface Alert { level: "danger" | "warning" | "info"; text: string; modal: ModalKey | null; }
 
@@ -737,6 +737,9 @@ export default function InsightsPage() {
 
   const projectsWithOpenBalance = projects.filter((p) => {
     const setting = finSettings.find((s) => s.project_id === p.id);
+    // Skip projects flagged as a finance exception (no charge / favor) — they
+    // must not be counted as debt/balance anywhere downstream.
+    if (setting?.financeException) return false;
     const agreed  = setting?.agreedPrice ?? 0;
     const paid    = paidByProject[p.id] ?? 0;
     return agreed > 0 && paid < agreed;

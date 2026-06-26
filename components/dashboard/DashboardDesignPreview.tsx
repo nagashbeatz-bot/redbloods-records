@@ -443,7 +443,7 @@ export default function DashboardDesignPreview() {
 
   // Per-project finance summary (agreed price + actually-paid) — same source as
   // the Projects page "הכנסה צפויה". Drives the "תשלומים צפויים" card + popover.
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; financeException?: boolean }>>({});
   const [financeLoaded,  setFinanceLoaded]  = useState(false);
 
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
@@ -513,10 +513,11 @@ export default function DashboardDesignPreview() {
       .then(d => {
         // Same logic as the Projects page: agreed from settings, paid from
         // actually-received income (שולם / התקבל). NOT based on "צפוי" rows.
-        const map: Record<string, { paid: number; agreed: number }> = {};
-        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice?: number }) => {
+        const map: Record<string, { paid: number; agreed: number; financeException?: boolean }> = {};
+        (d.settings ?? []).forEach((s: { project_id: string; agreedPrice?: number; financeException?: boolean }) => {
           if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0 };
           map[s.project_id].agreed = s.agreedPrice ?? 0;
+          map[s.project_id].financeException = s.financeException ?? false;
         });
         (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
           if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0 };
@@ -600,6 +601,8 @@ export default function DashboardDesignPreview() {
   const expectedIncome = useMemo(() => {
     const items = projects
       .filter(p => !p.isHidden)
+      // Exclude finance-exception projects (no charge / favor) from expected income.
+      .filter(p => !financeSummary[p.id]?.financeException)
       .map(p => {
         const agreed = financeSummary[p.id]?.agreed ?? 0;
         const paid   = financeSummary[p.id]?.paid   ?? 0;
