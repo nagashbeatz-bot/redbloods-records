@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
     const newName      = formData.get("newName")      as string | null;
     const trackId      = formData.get("trackId")      as string | null;
     const versionLabel = formData.get("versionLabel") as string | null;
+    const subfolder    = formData.get("subfolder")    as string | null;
 
     if (!file || !projectId || !newName) {
       return NextResponse.json({ error: "חסרים פרמטרים" }, { status: 400 });
@@ -74,6 +75,13 @@ export async function POST(req: NextRequest) {
       folderPath = `/Projects/ללא אמן/${projectFolder}`;
     } else {
       folderPath = `/Projects/ללא אמן/Untitled Project - ${projectId.slice(0, 8)}`;
+    }
+
+    // Optional subfolder (e.g. "Delivery") — new uploads only; existing files
+    // are untouched. When absent, behavior is exactly as before.
+    if (subfolder) {
+      const sub = sanitizeFolder(subfolder);
+      if (sub) folderPath = `${folderPath}/${sub}`;
     }
 
     // newName is already built/sanitized client-side — do NOT alter it.

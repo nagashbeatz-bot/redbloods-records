@@ -30,6 +30,8 @@ interface Props {
   onSuccess?: (file: FileLink) => void;
   /** Called before the file picker opens; return false to abort. Use to stop the player first. */
   confirmBeforeUpload?: () => Promise<boolean> | boolean;
+  /** If set, the upload is placed in a subfolder under the project folder, e.g. "Delivery". */
+  subfolder?: string;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -64,6 +66,7 @@ export default function UploadButton({
   status,
   onSuccess,
   confirmBeforeUpload,
+  subfolder,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -102,6 +105,7 @@ export default function UploadButton({
     body.append("newName", newName);
     if (trackId)      body.append("trackId",      trackId);
     if (versionLabel) body.append("versionLabel", versionLabel);
+    if (subfolder)    body.append("subfolder",    subfolder);
 
     // Warn for very large files (>150MB) — may take a minute
     if (file.size > 150 * 1024 * 1024) {

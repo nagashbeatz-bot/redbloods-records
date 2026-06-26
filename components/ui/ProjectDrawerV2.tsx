@@ -2797,9 +2797,30 @@ function SessionsContent({ sessions, sessDone, onStatusChange }: { sessions: Ses
 
 // ─── Tab: קבצים ───────────────────────────────────────────────────────────────
 
+// Basic delivery file type tag, inferred from the file name (Hebrew or English).
+function deliveryTag(name: string): { label: string; color: string } {
+  const n = name.toLowerCase();
+  if (n.includes("master") || name.includes("מאסטר"))                              return { label: "מאסטר", color: "#EF4444" };
+  if (n.includes("performance") || name.includes("הופעה"))                          return { label: "גרסת הופעה", color: "#F59E0B" };
+  if (n.includes("acapella") || n.includes("acappella") || name.includes("אקפלה")) return { label: "אקפלה", color: "#A855F7" };
+  if (n.includes("instrumental") || name.includes("אינסטרומנטל"))                   return { label: "אינסטרומנטל", color: "#3B82F6" };
+  if (n.includes("stems") || name.includes("גבעולים"))                              return { label: "Stems", color: "#10B981" };
+  return { label: "אחר", color: "#6B7280" };
+}
+
 function FilesContent({ project, onFileDeleted }: { project: Project; onFileDeleted: () => void }) {
   const files = project.files ?? [];
   const reversed = [...files].reverse();
+
+  // Delivery files = those already stored under a "/Delivery/" subfolder.
+  const deliveryFiles = files.filter(f => f.dropboxPath?.includes("/Delivery/"));
+  // Best-effort "open folder" link derived from an existing delivery file's path.
+  const deliveryFolderUrl = (() => {
+    const p = deliveryFiles[0]?.dropboxPath;
+    if (!p) return "";
+    const folder = p.slice(0, p.lastIndexOf("/"));
+    return `https://www.dropbox.com/home${folder}`;
+  })();
 
   const [deletingFilePath, setDeletingFilePath] = useState<string | null>(null);
   const [fileDelLoading,   setFileDelLoading]   = useState(false);
@@ -2828,6 +2849,67 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
 
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* ── מסירה ללקוח — delivery box (completed projects only) ── */}
+      {project.status === "הושלם" && (
+        <div style={{
+          border: `1px solid ${BRAND}40`, borderRadius: 16, padding: "16px 18px",
+          background: `${BRAND}08`, display: "flex", flexDirection: "column", gap: 12,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>📦 מסירה ללקוח</div>
+            {deliveryFolderUrl && (
+              <a
+                href={deliveryFolderUrl} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 11.5, fontWeight: 700, color: BLUE, textDecoration: "none", flexShrink: 0 }}
+              >פתח תיקיית מסירה ↗</a>
+            )}
+          </div>
+          <div style={{ fontSize: 11.5, color: TEXT2 }}>
+            קבצים שיועלו כאן יישמרו בתיקיית <span style={{ color: TEXT }}>Delivery</span> בדרופבוקס.
+          </div>
+          <UploadButton
+            projectId={project.id}
+            projectName={project.name}
+            artist={project.artist ?? ""}
+            existingFiles={project.files ?? []}
+            status={project.status}
+            size="md"
+            subfolder="Delivery"
+          />
+          {deliveryFiles.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {deliveryFiles.map((f, i) => {
+                const tag  = deliveryTag(f.name);
+                const href = f.dropboxShareUrl || f.url || "";
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                    background: CARD_BG, borderRadius: 10, border: `1px solid ${BORDER}`,
+                  }}>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>🎵</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {f.name}
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: tag.color,
+                      background: `${tag.color}1A`, border: `1px solid ${tag.color}33`,
+                      borderRadius: 6, padding: "2px 7px", flexShrink: 0,
+                    }}>{tag.label}</span>
+                    {href && (
+                      <a href={href} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: BLUE, flexShrink: 0, textDecoration: "none" }}>פתח ↗</a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11.5, color: MUTED }}>עדיין לא הועלו קבצי מסירה.</div>
+          )}
+        </div>
+      )}
+
       <div>
         <UploadButton
           projectId={project.id}
