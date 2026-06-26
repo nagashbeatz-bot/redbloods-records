@@ -141,6 +141,8 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
     const fallbackDesc =
       moneyMode === "received" ? "תשלום שהתקבל" :
       moneyMode === "expected" ? "תשלום צפוי"   : "גבייה פתוחה";
+    // "קיבלתי עכשיו" must always be dated today, even if a stale state lingered.
+    const finalDate = moneyMode === "received" ? todayIsrael : (moneyDate || null);
     try {
       const res = await fetch("/api/transactions", {
         method: "POST",
@@ -149,7 +151,7 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
           scope:         isProject ? "project" : "general",
           projectId:     isProject ? selectedProject!.id : null,
           type:          "income",
-          date:          moneyDate || null,
+          date:          finalDate,
           amount:        Number(amount) || 0,
           currency:      "₪",
           paymentStatus: moneyStatus,
@@ -487,11 +489,23 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
                 />
               </Field>
               <Field label={MONEY_MODES.find((m) => m.id === moneyMode)!.dateLabel}>
+                {/* "קיבלתי עכשיו" is locked to today — disabled, no picker, no manual edit. */}
                 <input
-                  type="date" value={moneyDate}
-                  onChange={(e) => setMoneyDate(e.target.value)}
-                  style={{ ...selectStyle, colorScheme: "dark" }}
+                  type="date"
+                  value={moneyMode === "received" ? todayIsrael : moneyDate}
+                  onChange={(e) => { if (moneyMode !== "received") setMoneyDate(e.target.value); }}
+                  disabled={moneyMode === "received"}
+                  readOnly={moneyMode === "received"}
+                  style={{
+                    ...selectStyle, colorScheme: "dark",
+                    ...(moneyMode === "received"
+                      ? { opacity: 0.75, cursor: "not-allowed", background: "#0C0C0C", borderColor: "#262626" }
+                      : {}),
+                  }}
                 />
+                {moneyMode === "received" && (
+                  <div style={{ fontSize: 10, color: "#666", marginTop: 4 }}>🔒 נקבע להיום</div>
+                )}
               </Field>
             </div>
 
