@@ -43,6 +43,9 @@ interface Props {
   preserveOriginalName?: boolean;
   /** Keep the button label during drag (md only) so its width does not change. */
   stableLabelOnDrag?: boolean;
+  /** Leading icon (md only). When set, replaces the ↑/↓ arrow and stays put on
+   *  drag, so drag feedback is color-only with no layout shift. */
+  icon?: string;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -85,6 +88,7 @@ export default function UploadButton({
   acceptAnyFile,
   preserveOriginalName,
   stableLabelOnDrag,
+  icon,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -479,6 +483,10 @@ export default function UploadButton({
           <><span>✓</span><span>הועלה</span></>
         ) : state === "error" ? (
           <><span>✕</span><span>{errorMsg ? errorMsg.slice(0, 20) : "שגיאה"}</span></>
+        ) : icon ? (
+          // Icon mode: identical idle/drag content → zero layout shift; drag
+          // feedback comes from the border/background color only.
+          <><span>{label ?? "העלה גרסה"}</span><span style={{ fontSize: 14, lineHeight: 1 }}>{icon}</span></>
         ) : dragging ? (
           <><span style={{ fontSize: 15, lineHeight: 1 }}>↓</span><span>{stableLabelOnDrag ? (label ?? "העלה גרסה") : "שחרר להעלאה"}</span></>
         ) : (
