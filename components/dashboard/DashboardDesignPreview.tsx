@@ -899,11 +899,21 @@ export default function DashboardDesignPreview() {
             }}>
               <div style={{ height: 3, background: `linear-gradient(90deg, ${BRAND}, #F97316)` }} />
               {(() => {
+                // Display-only dedupe: collapse time-accumulated duplicates — one
+                // per entityKey, and one per type for bulk/no-key alerts — so the
+                // counts reflect distinct active issues, not raw alert history.
+                const seen = new Set<string>();
+                const dedupedAlerts = alerts.filter(a => {
+                  const key = a.entityKey ? `k:${a.entityKey}` : `t:${a.type}`;
+                  if (seen.has(key)) return false;
+                  seen.add(key);
+                  return true;
+                });
                 const cats = ALERT_CATEGORIES.map(c => ({
                   ...c,
-                  count: alerts.filter(a => (c.types as readonly string[]).includes(a.type)).length,
+                  count: dedupedAlerts.filter(a => (c.types as readonly string[]).includes(a.type)).length,
                 })).filter(c => c.count > 0);
-                const urgentCount = alerts.filter(a => a.severity === "urgent" || a.severity === "important").length;
+                const urgentCount = dedupedAlerts.filter(a => a.severity === "urgent" || a.severity === "important").length;
                 return (
                   <>
                     <div style={{
@@ -914,9 +924,9 @@ export default function DashboardDesignPreview() {
                         <span style={{ fontSize: 16 }}>🔔</span>
                         <span style={{ fontSize: 13.5, fontWeight: 800, color: "#F0F0F0" }}>דורש טיפול</span>
                       </div>
-                      {alerts.length > 0 ? (
+                      {dedupedAlerts.length > 0 ? (
                         <span style={{ fontSize: 10, fontWeight: 900, background: BRAND, color: "#fff", borderRadius: 99, padding: "2px 8px", boxShadow: "0 0 8px rgba(220,38,38,0.4)" }}>
-                          {alerts.length}
+                          {dedupedAlerts.length}
                         </span>
                       ) : (
                         <span style={{ fontSize: 10, color: DIM }}>אין</span>
@@ -937,7 +947,7 @@ export default function DashboardDesignPreview() {
                         </div>
                       )) : (
                         <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 16 }}>
-                          {alerts.length === 0 ? "✅ אין התראות פתוחות" : "טוען..."}
+                          {dedupedAlerts.length === 0 ? "✅ אין התראות פתוחות" : "טוען..."}
                         </div>
                       )}
                     </div>
