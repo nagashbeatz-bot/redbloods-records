@@ -112,7 +112,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "projectId and type=settings required" }, { status: 400 });
   }
 
-  const { agreedPrice, currency, financialNotes } = await req.json();
+  const {
+    agreedPrice, currency, financialNotes,
+    financeException, financeExceptionReason, financeExceptionDate,
+  } = await req.json();
 
   // Read existing value first so we can merge
   const { data: existing } = await supabase
@@ -124,9 +127,12 @@ export async function PATCH(req: NextRequest) {
   const existing_val = (existing?.value ?? {}) as Record<string, unknown>;
   const merged = {
     ...existing_val,
-    ...(agreedPrice    !== undefined ? { agreedPrice:    Number(agreedPrice)    } : {}),
-    ...(currency       !== undefined ? { currency                               } : {}),
-    ...(financialNotes !== undefined ? { financialNotes                         } : {}),
+    ...(agreedPrice            !== undefined ? { agreedPrice:    Number(agreedPrice)    } : {}),
+    ...(currency               !== undefined ? { currency                               } : {}),
+    ...(financialNotes         !== undefined ? { financialNotes                         } : {}),
+    ...(financeException       !== undefined ? { financeException:       Boolean(financeException) } : {}),
+    ...(financeExceptionReason !== undefined ? { financeExceptionReason                 } : {}),
+    ...(financeExceptionDate   !== undefined ? { financeExceptionDate                   } : {}),
   };
 
   const { error } = await supabase
