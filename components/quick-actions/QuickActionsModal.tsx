@@ -18,7 +18,7 @@ interface Category {
 
 const CATEGORIES: Category[] = [
   { id: "session",        icon: "📅", title: "קבע סשן / פגישה",          desc: "תיאום מועד ביומן ושיוך לפרויקט", active: true  },
-  { id: "money-in",       icon: "₪",  title: "כסף נכנס",                 desc: "רישום תשלום שהתקבל",             active: false },
+  { id: "money-in",       icon: "₪",  title: "כסף נכנס",                 desc: "רישום תשלום, צפוי או גבייה",      active: true  },
   { id: "money-out",      icon: "💸", title: "כסף יצא",                  desc: "רישום הוצאה",                    active: false },
   { id: "project-update", icon: "✏️", title: "עדכון פרויקט",             desc: "שינוי סטטוס או פרטים",            active: false },
   { id: "followup",       icon: "📞", title: "פולואפ ללקוח",            desc: "תזכורת ליצירת קשר",              active: false },
@@ -33,7 +33,18 @@ interface Props {
   onClose: () => void;
 }
 
-type Phase = "grid" | "picker" | "schedule";
+type Phase = "grid" | "picker" | "schedule" | "money-in";
+
+// Money-in modes → existing payment_status values (no new statuses).
+type MoneyMode = "received" | "expected" | "collect";
+const MONEY_MODES: { id: MoneyMode; label: string; status: string; dateLabel: string }[] = [
+  { id: "received", label: "קיבלתי עכשיו", status: "התקבל",   dateLabel: "תאריך" },
+  { id: "expected", label: "צפוי להיכנס", status: "צפוי",     dateLabel: "תאריך צפוי" },
+  { id: "collect",  label: "צריך לגבות",  status: "לא שולם",  dateLabel: "תאריך גבייה" },
+];
+type MoneyAssoc = "project" | "general";
+const INCOME_CATEGORIES = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תשלום מלא", "תוספת / חריגה", "אחר"];
+const MONEY_PAYMENT_METHODS = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
 
 export default function QuickActionsModal({ initialProjectId, onClose }: Props) {
   const { projects } = useProjects();
@@ -41,6 +52,23 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
 
   // Placeholder feedback — id of the inactive card the user just tapped.
   const [placeholderId, setPlaceholderId] = useState<string | null>(null);
+
+  // ── Money-in state ──────────────────────────────────────────────────────────
+  const todayIsrael = useMemo(
+    () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date()),
+    [],
+  );
+  const [moneyMode,  setMoneyMode]  = useState<MoneyMode>("received");
+  const [moneyAssoc, setMoneyAssoc] = useState<MoneyAssoc>("project");
+  const [amount,     setAmount]     = useState("");
+  const [moneyDate,  setMoneyDate]  = useState(todayIsrael);
+  const [method,     setMethod]     = useState("");
+  const [category,   setCategory]   = useState("");
+  const [reason,     setReason]     = useState("");
+  const [showsHint,  setShowsHint]  = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [saveError,  setSaveError]  = useState("");
+  const [saved,      setSaved]      = useState(false);
 
   // ── Session-picker state ────────────────────────────────────────────────────
   const [clients, setClients]       = useState<{ name: string }[]>([]);
@@ -86,7 +114,60 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
 
   function handleCardClick(cat: Category) {
     if (!cat.active) { setPlaceholderId(cat.id); return; }
-    if (cat.id === "session") { setPlaceholderId(null); setPhase("picker"); }
+    setPlaceholderId(null);
+    if (cat.id === "session")  setPhase("picker");
+    if (cat.id === "money-in") setPhase("money-in");
+  }
+
+  // ── Money-in: derived validation + save ──────────────────────────────────────
+  const moneyStatus  = MONEY_MODES.find((m) => m.id === moneyMode)!.status;
+  const amountValid  = !!amount && Number(amount) > 0;
+  // project assoc needs a project; general assoc needs a client.
+  const assocValid   = moneyAssoc === "general" ? !!clientName : !!selectedProject;
+  const canSaveMoney = amountValid && assocValid && !saving;
+
+  function resetMoneyForm(full: boolean) {
+    setAmount(""); setReason(""); setCategory(""); setMethod("");
+    setMoneyDate(todayIsrael); setSaveError(""); setSaved(false);
+    if (full) { setMoneyMode("received"); setMoneyAssoc("project"); setShowsHint(false); }
+  }
+
+  async function saveMoney() {
+    if (!canSaveMoney) return;
+    setSaving(true);
+    setSaveError("");
+    const isProject  = moneyAssoc === "project";
+    const artistName = isProject ? (selectedProject?.artist ?? clientName) : clientName;
+    const fallbackDesc =
+      moneyMode === "received" ? "תשלום שהתקבל" :
+      moneyMode === "expected" ? "תשלום צפוי"   : "גבייה פתוחה";
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope:         isProject ? "project" : "general",
+          projectId:     isProject ? selectedProject!.id : null,
+          type:          "income",
+          date:          moneyDate || null,
+          amount:        Number(amount) || 0,
+          currency:      "₪",
+          paymentStatus: moneyStatus,
+          paymentMethod: method,
+          category,
+          description:   reason.trim() || category || fallbackDesc,
+          artist:        artistName,
+        }),
+      });
+      if (!res.ok) throw new Error("שגיאה בשמירה");
+      // Same refresh signal QuickTxModal uses.
+      document.dispatchEvent(new CustomEvent("rb-finance-updated"));
+      setSaved(true);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setSaving(false);
+    }
   }
 
   // ── Schedule hand-off: reuse the existing ScheduleModal as-is ────────────────
@@ -125,9 +206,9 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div>
-            {phase === "picker" ? (
+            {phase === "picker" || phase === "money-in" ? (
               <button
-                onClick={() => setPhase("grid")}
+                onClick={() => { resetMoneyForm(true); setPhase("grid"); }}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 5,
                   background: "none", border: "none", padding: 0, marginBottom: 6,
@@ -144,7 +225,7 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
               </div>
             )}
             <div style={{ fontSize: 20, fontWeight: 800, color: "#F5F5F5", lineHeight: 1.2 }}>
-              {phase === "picker" ? "קבע סשן / פגישה" : "מה תרצה לעשות?"}
+              {phase === "picker" ? "קבע סשן / פגישה" : phase === "money-in" ? "כסף נכנס" : "מה תרצה לעשות?"}
             </div>
           </div>
           <button
@@ -288,6 +369,177 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
             </div>
           </div>
         )}
+
+        {/* ── Money-in ── */}
+        {phase === "money-in" && (
+          saved ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center", padding: "10px 0" }}>
+              <div style={{ fontSize: 40, lineHeight: 1 }}>✅</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#10B981" }}>הכנסה נשמרה בהצלחה</div>
+              <div style={{ fontSize: 12, color: "#888", textAlign: "center", lineHeight: 1.6 }}>
+                {MONEY_MODES.find((m) => m.id === moneyMode)!.label} · {moneyAssoc === "project" ? (selectedProject?.name ?? "פרויקט") : `כללי · ${clientName}`}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button
+                  onClick={() => resetMoneyForm(false)}
+                  style={{
+                    padding: "10px 20px", borderRadius: 100, fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+                    border: "1.5px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.12)", color: "#10B981", cursor: "pointer",
+                  }}
+                >
+                  הוסף עוד
+                </button>
+                <button
+                  onClick={onClose}
+                  style={{
+                    padding: "10px 20px", borderRadius: 100, fontFamily: "inherit", fontSize: 13,
+                    border: "1.5px solid #383838", background: "#1E1E1E", color: "#999", cursor: "pointer",
+                  }}
+                >
+                  סגור
+                </button>
+              </div>
+            </div>
+          ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Money mode */}
+            <Field label="מצב הכסף">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {MONEY_MODES.map((m) => {
+                  const active = m.id === moneyMode;
+                  return (
+                    <button key={m.id} onClick={() => setMoneyMode(m.id)} style={pillStyle(active)}>
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
+            {/* Association */}
+            <Field label="שיוך">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button onClick={() => { setMoneyAssoc("project"); setShowsHint(false); }} style={pillStyle(moneyAssoc === "project")}>
+                  פרויקט
+                </button>
+                <button onClick={() => { setMoneyAssoc("general"); setShowsHint(false); }} style={pillStyle(moneyAssoc === "general")}>
+                  כללי / לקוח
+                </button>
+                <button
+                  onClick={() => setShowsHint(true)}
+                  style={{ ...pillStyle(false), opacity: 0.6, cursor: "help" }}
+                >
+                  הופעה
+                </button>
+              </div>
+              {showsHint && (
+                <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 8, lineHeight: 1.5 }}>
+                  הכנסות מהופעות יתעדכנו דרך מודול הופעות כדי למנוע כפילות בכספים.
+                </div>
+              )}
+            </Field>
+
+            {/* Client */}
+            <Field label={moneyAssoc === "general" ? "לקוח" : "לקוח (לא חובה — לסינון)"}>
+              <select value={clientName} onChange={(e) => setClientName(e.target.value)} style={selectStyle}>
+                <option value="">{moneyAssoc === "general" ? "בחר לקוח…" : "כל הלקוחות"}</option>
+                {clients.map((c) => (
+                  <option key={c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            </Field>
+
+            {/* Project (only when assoc=project) */}
+            {moneyAssoc === "project" && (
+              <Field label="פרויקט">
+                <select value={projectId} onChange={(e) => setProjectId(e.target.value)} style={selectStyle}>
+                  <option value="">בחר פרויקט…</option>
+                  {filteredProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.artist ? ` — ${p.artist}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {filteredProjects.length === 0 && (
+                  <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 6 }}>
+                    {clientName ? "אין פרויקטים ללקוח זה." : "אין פרויקטים זמינים."}
+                  </div>
+                )}
+              </Field>
+            )}
+
+            {/* Amount + date */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="סכום (₪)">
+                <input
+                  type="number" min="0" value={amount} placeholder="0"
+                  onChange={(e) => setAmount(e.target.value)}
+                  style={selectStyle}
+                />
+              </Field>
+              <Field label={MONEY_MODES.find((m) => m.id === moneyMode)!.dateLabel}>
+                <input
+                  type="date" value={moneyDate}
+                  onChange={(e) => setMoneyDate(e.target.value)}
+                  style={{ ...selectStyle, colorScheme: "dark" }}
+                />
+              </Field>
+            </div>
+
+            {/* Method + category */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="אמצעי תשלום">
+                <select value={method} onChange={(e) => setMethod(e.target.value)} style={selectStyle}>
+                  <option value="">בחר…</option>
+                  {MONEY_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+              <Field label="קטגוריה">
+                <select value={category} onChange={(e) => setCategory(e.target.value)} style={selectStyle}>
+                  <option value="">בחר…</option>
+                  {INCOME_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            {/* Reason / note */}
+            <Field label={moneyMode === "collect" ? "סיבת גבייה / הערה" : "הערה"}>
+              <input
+                type="text" value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={moneyMode === "collect" ? "למשל: לחזור אליו בתאריך, גבייה פתוחה…" : "הערה (אופציונלי)"}
+                style={selectStyle}
+              />
+            </Field>
+
+            {saveError && <div style={{ fontSize: 12, color: "#EF4444", textAlign: "center" }}>{saveError}</div>}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
+              <button
+                onClick={saveMoney}
+                disabled={!canSaveMoney}
+                style={{
+                  padding: "10px 20px", borderRadius: 100, fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+                  border: "1.5px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.14)", color: "#10B981",
+                  cursor: canSaveMoney ? "pointer" : "not-allowed", opacity: canSaveMoney ? 1 : 0.4,
+                }}
+              >
+                {saving ? "שומר…" : "שמור הכנסה"}
+              </button>
+              <button
+                onClick={() => { resetMoneyForm(true); setPhase("grid"); }}
+                style={{
+                  padding: "10px 20px", borderRadius: 100, fontFamily: "inherit",
+                  fontSize: 13, border: "1.5px solid #383838", background: "#1E1E1E", color: "#999", cursor: "pointer",
+                }}
+              >
+                חזור
+              </button>
+            </div>
+          </div>
+          )
+        )}
       </div>
     </div>
   );
@@ -313,3 +565,13 @@ const selectStyle: React.CSSProperties = {
   border: "1px solid #303030", background: "#111", color: "#E8E8E8",
   fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
 };
+
+function pillStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "8px 14px", borderRadius: 100, cursor: "pointer", fontFamily: "inherit",
+    fontSize: 13, fontWeight: active ? 700 : 400,
+    border: `1.5px solid ${active ? "rgba(168,85,247,0.55)" : "#252525"}`,
+    background: active ? "rgba(168,85,247,0.14)" : "#1C1C1C",
+    color: active ? "#C084FC" : "#B0B0B0",
+  };
+}
