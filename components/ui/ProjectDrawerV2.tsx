@@ -1249,6 +1249,22 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             setBalanceReminderDismissed(true);
             return true;
           }}
+          onMarkException={async () => {
+            const today = new Date().toISOString().slice(0, 10);
+            const res = await fetch(`/api/transactions?projectId=${projectId}&type=settings`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                financeException: true,
+                financeExceptionReason: "סומן כחריג דרך פופאפ יתרת תשלום",
+                financeExceptionDate: today,
+              }),
+            });
+            if (!res.ok) return false;
+            setFinanceException(true);
+            setBalanceReminderDismissed(true);
+            return true;
+          }}
           onDismiss={() => setBalanceReminderDismissed(true)}
         />
       )}
@@ -2044,11 +2060,12 @@ function QuickTransactionModal({
 // Prompts to set a due date for an open balance with no expected payment yet.
 // Creating the date posts a real "צפוי" income transaction so Finance can track it.
 function BalanceReminderModal({
-  balance, currency, onSetDate, onDismiss,
+  balance, currency, onSetDate, onMarkException, onDismiss,
 }: {
   balance:   number;
   currency:  string;
   onSetDate: (date: string) => Promise<boolean>;
+  onMarkException: () => Promise<boolean>;
   onDismiss: () => void;
 }) {
   const [date,   setDate]   = useState(() => new Date().toISOString().slice(0, 10));
@@ -2070,6 +2087,15 @@ function BalanceReminderModal({
     const ok = await onSetDate(date);
     if (!ok) { setErr("שגיאה בשמירה"); setSaving(false); }
     // On success the parent unmounts this modal — no need to reset state.
+  }
+
+  async function handleMarkException() {
+    if (saving) return;
+    setSaving(true);
+    setErr("");
+    const ok = await onMarkException();
+    if (!ok) { setErr("שגיאה בסימון כחריג"); setSaving(false); }
+    // On success the parent unmounts this modal (financeException → no reminder).
   }
 
   return createPortal(
@@ -2151,14 +2177,15 @@ function BalanceReminderModal({
 
         {/* Buttons */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          {/* סמן כחריג — inactive: persisting financeException is not supported yet. */}
+          {/* סמן כחריג — marks the project as a finance exception (no charge / favor). */}
           <button
-            disabled
-            title="לא זמין בשלב זה"
+            onClick={handleMarkException}
+            disabled={saving}
+            title="סמן פרויקט זה כחריג כספי (ללא חיוב)"
             style={{
-              background: "transparent", border: "none", color: MUTED,
+              background: "transparent", border: "none", color: TEXT2,
               fontSize: 13, fontWeight: 600, fontFamily: "inherit",
-              cursor: "not-allowed", opacity: 0.55, padding: "10px 4px",
+              cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1, padding: "10px 4px",
             }}
           >סמן כחריג</button>
 
