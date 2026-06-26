@@ -18,6 +18,12 @@ function sanitizeFolder(s: string): string {
   return s.replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, " ").trim();
 }
 
+/** First (primary) artist from a comma/semicolon-separated artist string.
+ *  The project's Dropbox folder is always based on the primary artist only. */
+function primaryArtist(raw: string): string {
+  return (raw || "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean)[0] ?? "";
+}
+
 async function createDropboxShareLink(token: string, path: string): Promise<string> {
   const res = await fetch(
     "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
@@ -65,7 +71,7 @@ export async function POST(req: NextRequest) {
     // existing files keep their stored dropboxPath. The file NAME is unchanged.
     const { getProject } = await import("@/lib/projects-store");
     const project       = await getProject(projectId);
-    const artistFolder  = sanitizeFolder(project?.artist ?? "");
+    const artistFolder  = sanitizeFolder(primaryArtist(project?.artist ?? ""));
     const projectFolder = sanitizeFolder(project?.name ?? "");
 
     let folderPath: string;
