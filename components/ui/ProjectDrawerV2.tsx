@@ -2261,8 +2261,8 @@ function ArtistPickerModal({
   const [clients,  setClients]  = useState<PickClient[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [loadErr,  setLoadErr]  = useState("");
-  const [query,    setQuery]    = useState(currentArtist);
-  const [selected, setSelected] = useState<string | null>(currentArtist.trim() || null);
+  const [query,    setQuery]    = useState("");
+  const [selected, setSelected] = useState<string | null>(null);
   const [saving,   setSaving]   = useState(false);
   const [saveErr,  setSaveErr]  = useState("");
 
@@ -2292,18 +2292,36 @@ function ArtistPickerModal({
     });
   const exactMatch = !!q && clients.some(c => c.name.trim().toLowerCase() === q.toLowerCase());
 
-  async function handleSave() {
-    const name = (selected ?? query).trim();
-    if (!name || saving) return;
+  const effective = (selected ?? query).trim();
+  const currentNames = (currentArtist || "").split(/[,،;]/).map(s => s.trim()).filter(Boolean);
+
+  async function commit(nextValue: string) {
+    if (saving) return;
     setSaving(true);
     setSaveErr("");
     try {
-      await onSave(name);
+      await onSave(nextValue);
       onClose();
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : "שמירה נכשלה");
       setSaving(false);
     }
+  }
+
+  function handleReplace() {
+    if (!effective) return;
+    commit(effective);
+  }
+
+  function handleAdd() {
+    if (!effective) return;
+    // Don't append a name the project already has (case-insensitive).
+    if (currentNames.some(n => n.toLowerCase() === effective.toLowerCase())) {
+      setSaveErr("האמן כבר משויך לפרויקט");
+      return;
+    }
+    const next = currentNames.length > 0 ? [...currentNames, effective].join(", ") : effective;
+    commit(next);
   }
 
   return createPortal(
@@ -2316,7 +2334,7 @@ function ArtistPickerModal({
         padding: "22px 22px 18px", display: "flex", flexDirection: "column", gap: 14,
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>שייך אמן לפרויקט</div>
+          <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>ניהול אמנים בפרויקט</div>
           <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER2}`, color: TEXT2, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
         </div>
 
@@ -2325,11 +2343,14 @@ function ArtistPickerModal({
             autoFocus
             value={query}
             onChange={e => { setQuery(e.target.value); setSelected(null); }}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleSave(); } }}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }}
             placeholder="חפש אמן/לקוח קיים או הקלד שם חדש…"
             style={{ width: "100%", boxSizing: "border-box", background: CARD_BG, border: `1px solid ${BORDER2}`, borderRadius: 11, color: TEXT, fontSize: 14, padding: "11px 13px", outline: "none", fontFamily: "inherit" }}
           />
           <div style={{ fontSize: 11, color: MUTED }}>אפשר לבחור אמן קיים או להקליד שם חדש</div>
+          <div style={{ fontSize: 11.5, color: TEXT2 }}>
+            אמנים נוכחיים: <span style={{ color: TEXT, fontWeight: 700 }}>{currentArtist || "ללא אמן"}</span>
+          </div>
         </div>
 
         <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, minHeight: 80, maxHeight: "42vh" }}>
@@ -2381,14 +2402,25 @@ function ArtistPickerModal({
 
         {saveErr && <div style={{ color: RED_WARN, fontSize: 12.5 }}>{saveErr}</div>}
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-start", flexWrap: "wrap" }}>
           {(() => {
-            const canSave = !!(selected ?? query).trim() && !saving;
+            const canSave = !!effective && !saving;
+            const btn = (active: boolean): React.CSSProperties => ({
+              padding: "10px 20px", borderRadius: 11, fontSize: 14, fontWeight: 800,
+              fontFamily: "inherit", cursor: active ? "pointer" : "default", opacity: active ? 1 : 0.6,
+            });
             return (
-              <button onClick={handleSave} disabled={!canSave} style={{ padding: "10px 22px", borderRadius: 11, border: "none", background: BRAND, color: "#fff", fontSize: 14, fontWeight: 800, fontFamily: "inherit", cursor: canSave ? "pointer" : "default", opacity: canSave ? 1 : 0.6 }}>{saving ? "שומר…" : "שמור"}</button>
+              <>
+                <button onClick={handleAdd} disabled={!canSave} style={{ ...btn(canSave), border: "none", background: BRAND, color: "#fff" }}>
+                  {saving ? "שומר…" : "הוסף אמן"}
+                </button>
+                <button onClick={handleReplace} disabled={!canSave} style={{ ...btn(canSave), background: CARD_BG, border: `1px solid ${BORDER2}`, color: TEXT }}>
+                  החלף אמן
+                </button>
+              </>
             );
           })()}
-          <button onClick={onClose} disabled={saving} style={{ padding: "10px 20px", borderRadius: 11, background: CARD_BG, border: `1px solid ${BORDER2}`, color: TEXT, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>ביטול</button>
+          <button onClick={onClose} disabled={saving} style={{ padding: "10px 20px", borderRadius: 11, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>ביטול</button>
         </div>
       </div>
     </div>,
