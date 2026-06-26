@@ -52,6 +52,7 @@ export function checkOverdueProjects(
       title: `⚠ ${items.length} פרויקטים עברו דדליין`,
       message: `יש ${items.length} פרויקטים שעברו את תאריך היעד שלהם: ${items.slice(0, 3).map((p) => p.name).join(", ")}${items.length > 3 ? ` ועוד ${items.length - 3}` : ""}. כדאי לעדכן עדיפויות.`,
       metadata: { projectIds: items.map((p) => p.id), count: items.length },
+      entityKey: "overdue_deadline:bulk",
       suggestedActions: ["פתח רשימת פרויקטים", "עדכן דדליינים"],
     }),
   );
@@ -90,6 +91,7 @@ export function checkDueSoonProjects(
       title: `⏳ ${items.length} דדליינים מתקרבים`,
       message: `יש ${items.length} פרויקטים עם דדליין ב-3 הימים הקרובים: ${items.map((p) => p.name).join(", ")}.`,
       metadata: { projectIds: items.map((p) => p.id), count: items.length },
+      entityKey: "deadline_approaching:bulk",
       suggestedActions: ["פתח דשבורד"],
     }),
   );
@@ -130,6 +132,7 @@ export function checkSessionsNeedingUpdate(
     title: `📅 ${stale.length} סשנים דורשים עדכון`,
     message: `יש ${stale.length} סשנים שעברו ועדיין מסומנים כ"נקבע". יש לעדכן סטטוס לכל אחד.`,
     metadata: { sessionIds: stale.map((s) => s.id), count: stale.length },
+    entityKey: "session_needs_update:bulk",
     suggestedActions: ["פתח יומן", "עדכן סשנים"],
   }];
 }
@@ -185,6 +188,7 @@ export function checkOverduePayments(
     title: `💸 ${overdue.length} תשלומים בפיגור`,
     message: `יש ${overdue.length} תשלומים שלא עודכנו כהתקבלו, סה״כ ${total.toLocaleString("he-IL")}${currency}. כדאי לבדוק מה הגיע.`,
     metadata: { transactionIds: overdue.map((t) => t.id), total, currency, count: overdue.length },
+    entityKey: "payment_overdue:bulk",
     suggestedActions: ["פתח עמוד כספים", "עדכן תשלומים"],
   }];
 }
@@ -267,6 +271,7 @@ export function checkProjectsNoPricing(
       title: `₪ ${items.length} פרויקטים ללא מחיר`,
       message: `יש ${items.length} פרויקטים פעילים בלי מחיר מוסכם: ${items.slice(0, 3).map((p) => p.name).join(", ")}${items.length > 3 ? ` ועוד ${items.length - 3}` : ""}. הדוחות הכספיים לא מדויקים.`,
       metadata: { projectIds: items.map((p) => p.id), count: items.length },
+      entityKey: "project_no_pricing:bulk",
       suggestedActions: ["פתח רשימת פרויקטים", "הגדר מחירים"],
     }),
   );
@@ -341,6 +346,7 @@ export function checkVictorStuck(
     title: `👥 ויקטור — ${stuck.length} פרויקטים תקועים`,
     message: `יש ${stuck.length} פרויקטים תקועים אצל ויקטור מעל ${stuckAfterDays} ימים: ${stuck.map((w) => w.projectName).join(", ")}.`,
     metadata: { vendorWorkIds: stuck.map((w) => w.id), count: stuck.length, stuckAfterDays },
+    entityKey: "victor_stuck:bulk",
     suggestedActions: ["פתח דף צוות", "שלח תזכורת"],
   }];
 }
@@ -361,6 +367,7 @@ export function checkVictorBelowPace(
     title: `👥 ויקטור מתחת לקצב`,
     message: `ויקטור בפועל: ${stats.paceValue} פרויקטים, צפוי עד עכשיו: ${stats.expectedByNow} (יעד חודשי: ${goal}). הקצב מתחת ל-60% מהצפוי.`,
     metadata: { paceValue: stats.paceValue, expectedByNow: stats.expectedByNow, goal, month: stats.month },
+    entityKey: "victor_below_pace:bulk",
     suggestedActions: ["שלח פרויקטים לויקטור", "עדכן יעד"],
   }];
 }
@@ -395,6 +402,7 @@ export function checkInactivity(
     title: `⚡ לא הייתה פעילות עסקית ${days} ימים`,
     message: `לא הייתה פעילות משמעותית במערכת ב-${days} הימים האחרונים. יש כרגע ${activeProjectCount} פרויקטים פעילים שדורשים קידום. האם זה שבוע שקט בכוונה?`,
     metadata: { daysSinceLastActivity: days, activeProjectCount, mostRecentActivity: mostRecent.toISOString() },
+    entityKey: "inactivity:bulk",
     suggestedActions: ["בדוק פרויקטים פעילים", "קבע סשן", "עדכן סטטוס"],
   }];
 }
@@ -422,6 +430,7 @@ export function checkGoalsProgress(progress: GoalsProgress | null): AlertInput[]
       title: `🎯 מתחת לקצב — ${label}`,
       message: `${label}: בפועל ${actual}${suffix}, צפוי עד עכשיו ${expectedByNow}${suffix} (יעד חודשי/שבועי: ${target}${suffix}). הקצב מתחת ל-60%.`,
       metadata: { goalKey: key, actual, expectedByNow, target },
+      entityKey: `goal_behind:${key}`,
       suggestedActions: ["עדכן יעד", "בדוק ביצועים"],
     });
   };
@@ -463,6 +472,7 @@ export function checkCompletedNoDelivery(
       title: `📦 ${items.length} פרויקטים הושלמו ללא תיקיית מסירה`,
       message: `יש ${items.length} פרויקטים שהושלמו ללא קבצי מסירה ב-Dropbox.`,
       metadata: { projectIds: items.map((p) => p.id), count: items.length },
+      entityKey: "completed_no_delivery:bulk",
       suggestedActions: ["פתח פרויקטים", "הוסף קבצי מסירה"],
     }),
   );
@@ -502,6 +512,7 @@ export function checkStaleSessions(
       title: `🎵 ${items.length} פרויקטים ללא סשן ב-${days} ימים`,
       message: `יש ${items.length} פרויקטים פעילים שלא היה להם סשן ב-${days}+ ימים. ${items.slice(0, 3).map((p) => p.name).join(", ")}${items.length > 3 ? ` ועוד` : ""}.`,
       metadata: { projectIds: items.map((p) => p.id), count: items.length, daysSinceSession: days },
+      entityKey: "stale_session:bulk",
       suggestedActions: ["פתח פרויקטים", "קבע סשנים"],
     }),
   );
