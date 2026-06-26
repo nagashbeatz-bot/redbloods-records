@@ -49,6 +49,10 @@ export async function POST(req: NextRequest) {
       notes:            body.notes?.trim()             ?? "",
     });
 
+    // Sync canonical Finance transactions (no-op unless created as "שולם").
+    const { syncShowFinance } = await import("@/lib/shows-finance-sync");
+    await syncShowFinance(show);
+
     // Google Calendar — only if explicitly requested and date exists
     let calendarWarning: string | undefined;
     if (body.addToCalendar === true && show.date) {

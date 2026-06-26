@@ -1,0 +1,162 @@
+import "server-only";
+import { supabase } from "@/lib/supabase";
+import type { Show } from "@/lib/shows-types";
+
+/**
+ * Phase 1: keep a show's canonical Finance transactions in sync with its state.
+ *
+ *  • payment_status "שולם"  → income "התקבל" (+ dj expense "שולם" if dj_fee > 0)
+ *  • reverted to "לא שולם"/"חלקי" → linked income "צפוי", linked dj "לא שולם"
+ *  • status "בוטל" (or delete) → linked transactions "בוטל"
+ *
+ * Exactly one income + one expense per show, keyed by the stored linked_* ids
+ * on the show row, so re-running can never create duplicates. Never deletes a
+ * transaction — only updates its payment_status. All errors are non-fatal so a
+ * sync failure never breaks the show save.
+ */
+
+function displayName(s: Show): string {
+  return s.artist ? `${s.name} (${s.artist})` : s.name;
+}
+
+function djDescription(s: Show): string {
+  return s.dj_name ? `שכר דיג'יי — ${s.dj_name} (${s.name})` : `שכר דיג'יי (${s.name})`;
+}
+
+async function createTransaction(fields: {
+  type: "income" | "expense";
+  payment_status: string;
+  amount: number;
+  date: string | null;
+  description: string;
+  category: string;
+  notes: string;
+  artist?: string;
+  expense_scope?: string;
+}): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .insert({
+      project_id:        null,
+      scope:             "general",
+      type:              fields.type,
+      date:              fields.date || null,
+      description:       fields.description,
+      artist:            fields.artist ?? "",
+      amount:            Number(fields.amount) || 0,
+      currency:          "₪",
+      payment_status:    fields.payment_status,
+      payment_method:    "",
+      receipt_ref:       "",
+      notes:             fields.notes,
+      category:          fields.category,
+      linked_session_id: "",
+      expense_scope:     fields.expense_scope ?? "כללי",
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("[shows-finance-sync] create transaction failed:", error.message);
+    return null;
+  }
+  return (data as { id: string }).id;
+}
+
+async function patchTransaction(id: string, patch: {
+  amount?: number;
+  date?: string | null;
+  description?: string;
+  artist?: string;
+  payment_status?: string;
+}): Promise<void> {
+  const upd: Record<string, unknown> = {};
+  if (patch.amount         !== undefined) upd.amount         = Number(patch.amount) || 0;
+  if (patch.date           !== undefined) upd.date           = patch.date || null;
+  if (patch.description    !== undefined) upd.description    = patch.description;
+  if (patch.artist         !== undefined) upd.artist         = patch.artist;
+  if (patch.payment_status !== undefined) upd.payment_status = patch.payment_status;
+  if (Object.keys(upd).length === 0) return;
+  const { error } = await supabase.from("transactions").update(upd).eq("id", id);
+  if (error) console.error("[shows-finance-sync] patch transaction failed:", error.message);
+}
+
+export async function syncShowFinance(show: Show): Promise<void> {
+  try {
+    const isCancelled = show.status === "בוטל";
+    const isPaid      = show.payment_status === "שולם";
+    const date        = show.date || new Date().toISOString().slice(0, 10);
+    const hasDj       = (show.dj_fee ?? 0) > 0;
+
+    // ── Income (show revenue) ──
+    const incomeStatus = isCancelled ? "בוטל" : (isPaid ? "התקבל" : "צפוי");
+    if (show.linked_income_transaction_id) {
+      // Update existing — never delete.
+      await patchTransaction(show.linked_income_transaction_id, {
+        amount:         show.show_price,
+        date,
+        artist:         show.artist,
+        description:    `הכנסה מהופעה — ${displayName(show)}`,
+        payment_status: incomeStatus,
+      });
+    } else if (isPaid && !isCancelled) {
+      const id = await createTransaction({
+        type:        "income",
+        payment_status: "התקבל",
+        amount:      show.show_price,
+        date,
+        artist:      show.artist,
+        description: `הכנסה מהופעה — ${displayName(show)}`,
+        category:    "הופעה",
+        notes:       `show_id:${show.id}`,
+      });
+      if (id) {
+        await supabase.from("shows")
+          .update({ linked_income_transaction_id: id, updated_at: new Date().toISOString() })
+          .eq("id", show.id);
+      }
+    }
+
+    // ── DJ expense ──
+    const expenseStatus = (isCancelled || !hasDj) ? "בוטל" : (isPaid ? "שולם" : "לא שולם");
+    if (show.linked_dj_expense_transaction_id) {
+      await patchTransaction(show.linked_dj_expense_transaction_id, {
+        amount:         show.dj_fee,
+        date,
+        description:    djDescription(show),
+        payment_status: expenseStatus,
+      });
+    } else if (isPaid && !isCancelled && hasDj) {
+      const id = await createTransaction({
+        type:          "expense",
+        payment_status: "שולם",
+        amount:        show.dj_fee,
+        date,
+        description:   djDescription(show),
+        category:      "שכר דיג'יי",
+        expense_scope: "הופעה",
+        notes:         `show_id:${show.id}`,
+      });
+      if (id) {
+        await supabase.from("shows")
+          .update({ linked_dj_expense_transaction_id: id, updated_at: new Date().toISOString() })
+          .eq("id", show.id);
+      }
+    }
+  } catch (e) {
+    console.error("[shows-finance-sync] syncShowFinance error:", e);
+  }
+}
+
+/** Mark a show's linked transactions as "בוטל" (used before deleting a show). Never deletes. */
+export async function cancelShowFinance(show: Show): Promise<void> {
+  try {
+    if (show.linked_income_transaction_id) {
+      await patchTransaction(show.linked_income_transaction_id, { payment_status: "בוטל" });
+    }
+    if (show.linked_dj_expense_transaction_id) {
+      await patchTransaction(show.linked_dj_expense_transaction_id, { payment_status: "בוטל" });
+    }
+  } catch (e) {
+    console.error("[shows-finance-sync] cancelShowFinance error:", e);
+  }
+}

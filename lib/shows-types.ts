@@ -28,6 +28,9 @@ export interface Show {
   advance_payment: number;
   notes: string;
   calendar_event_id: string | null;
+  // Canonical Finance links (Phase 1: created when payment_status = "שולם").
+  linked_income_transaction_id: string | null;
+  linked_dj_expense_transaction_id: string | null;
   created_at: string;
   updated_at: string;
 }

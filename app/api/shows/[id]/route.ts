@@ -61,6 +61,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     // ── Save to DB ──────────────────────────────────────────────────────────
     const show = await patchShow(id, patch);
 
+    // ── Sync canonical Finance transactions when a finance-relevant field changed ──
+    if (["payment_status", "show_price", "dj_fee", "dj_name", "status", "date"].some((k) => k in body)) {
+      const { syncShowFinance } = await import("@/lib/shows-finance-sync");
+      await syncShowFinance(show);
+    }
+
     // ── Google Calendar ─────────────────────────────────────────────────────
     let calendarWarning: string | undefined;
 
@@ -172,6 +178,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
+    // Cancel (not delete) any linked Finance transactions before removing the show.
+    const show = await getShow(id);
+    if (show) {
+      const { cancelShowFinance } = await import("@/lib/shows-finance-sync");
+      await cancelShowFinance(show);
+    }
     await deleteShow(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
