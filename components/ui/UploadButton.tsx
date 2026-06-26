@@ -32,6 +32,13 @@ interface Props {
   confirmBeforeUpload?: () => Promise<boolean> | boolean;
   /** If set, the upload is placed in a subfolder under the project folder, e.g. "Delivery". */
   subfolder?: string;
+  /** Explicit type label for the generated file name (e.g. "אקפלה"), overriding the
+   *  status-derived "מאסטר"/"סקיצה". Used for delivery uploads. */
+  deliveryTypeLabel?: string;
+  /** Custom button label (md size only). Defaults to "העלה גרסה". */
+  label?: string;
+  /** Allow any file type (e.g. Stems .zip). Default: audio only. */
+  acceptAnyFile?: boolean;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -41,14 +48,16 @@ function buildVersionName(
   projectName: string,
   existingFiles: { name: string }[],
   ext: string,
-  status?: string
+  status?: string,
+  typeOverride?: string
 ): string {
-  // Type is derived from the project status — no manual choice.
-  const type = (status === "במיקס" || status === "הושלם") ? "מאסטר" : "סקיצה";
-  // Version is per type: count existing audio files already labeled with this
-  // type, so "מאסטר V1" starts fresh even if several "סקיצה" files exist.
+  // Type is the explicit delivery type when given, else derived from status.
+  const type = typeOverride ?? ((status === "במיקס" || status === "הושלם") ? "מאסטר" : "סקיצה");
+  // Version is per type: count existing files already labeled with this type so
+  // "מאסטר V1" starts fresh even if several "סקיצה" files exist. For delivery
+  // types (typeOverride) any extension counts — e.g. Stems may be a .zip.
   const version = existingFiles.filter((f) =>
-    AUDIO_EXTS.some((x) => f.name.toLowerCase().endsWith(x)) &&
+    (typeOverride ? true : AUDIO_EXTS.some((x) => f.name.toLowerCase().endsWith(x))) &&
     f.name.includes(` - ${type} V`)
   ).length + 1;
   const sanitize = (s: string) => s.replace(/[/\\:*?"<>|]/g, "").trim();
@@ -67,6 +76,9 @@ export default function UploadButton({
   onSuccess,
   confirmBeforeUpload,
   subfolder,
+  deliveryTypeLabel,
+  label,
+  acceptAnyFile,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -87,7 +99,7 @@ export default function UploadButton({
   // ── Core upload logic (accepts a raw File) ──────────────────────────────────
   const processFile = async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!AUDIO_EXTS.includes(`.${ext}`)) {
+    if (!acceptAnyFile && !AUDIO_EXTS.includes(`.${ext}`)) {
       setState("error");
       setErrorMsg(`סוג קובץ לא נתמך: .${ext} — יש לבחור MP3, WAV, M4A, FLAC`);
       reset(15000);
@@ -95,7 +107,7 @@ export default function UploadButton({
       return;
     }
 
-    const newName = buildVersionName(artist, projectName, existingFiles, ext, status);
+    const newName = buildVersionName(artist, projectName, existingFiles, ext, status, deliveryTypeLabel);
     setState("uploading");
     setProgress(0);
 
@@ -253,7 +265,7 @@ export default function UploadButton({
         <input
           ref={inputRef}
           type="file"
-          accept=".mp3,.wav,.m4a,.ogg,.flac,.aiff,.aif"
+          accept={acceptAnyFile ? undefined : ".mp3,.wav,.m4a,.ogg,.flac,.aiff,.aif"}
           style={{ display: "none" }}
           onChange={handleInputChange}
         />
@@ -460,7 +472,7 @@ export default function UploadButton({
         ) : dragging ? (
           <><span style={{ fontSize: 15, lineHeight: 1 }}>↓</span><span>שחרר להעלאה</span></>
         ) : (
-          <><span style={{ fontSize: 15, lineHeight: 1 }}>↑</span><span>העלה גרסה</span></>
+          <><span style={{ fontSize: 15, lineHeight: 1 }}>↑</span><span>{label ?? "העלה גרסה"}</span></>
         )}
       </button>
     </div>

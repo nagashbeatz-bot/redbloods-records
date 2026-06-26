@@ -2797,6 +2797,16 @@ function SessionsContent({ sessions, sessDone, onStatusChange }: { sessions: Ses
 
 // ─── Tab: קבצים ───────────────────────────────────────────────────────────────
 
+// Delivery file types — chip label + the type label baked into the file name.
+const DELIVERY_TYPES: { label: string; typeLabel: string }[] = [
+  { label: "מאסטר",            typeLabel: "מאסטר" },
+  { label: "גרסת הופעה",       typeLabel: "גרסת הופעה" },
+  { label: "אקפלה",            typeLabel: "אקפלה" },
+  { label: "אינסטרומנטל",      typeLabel: "אינסטרומנטל" },
+  { label: "גבעולים ממוקססים", typeLabel: "גבעולים ממוקססים" },
+  { label: "אחר",              typeLabel: "מסירה אחרת" },
+];
+
 // Basic delivery file type tag, inferred from the file name (Hebrew or English).
 function deliveryTag(name: string): { label: string; color: string } {
   const n = name.toLowerCase();
@@ -2852,30 +2862,38 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
       {/* ── מסירה ללקוח — delivery box (completed projects only) ── */}
       {project.status === "הושלם" && (
         <div style={{
-          border: `1px solid ${BRAND}40`, borderRadius: 16, padding: "16px 18px",
-          background: `${BRAND}08`, display: "flex", flexDirection: "column", gap: 12,
+          border: `1px solid ${BRAND}40`, borderRadius: 16, padding: "20px 22px",
+          background: `${BRAND}08`, display: "flex", flexDirection: "column", gap: 14,
         }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>📦 מסירה ללקוח</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>📦 מסירה ללקוח</div>
             {deliveryFolderUrl && (
               <a
                 href={deliveryFolderUrl} target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: 11.5, fontWeight: 700, color: BLUE, textDecoration: "none", flexShrink: 0 }}
+                style={{ fontSize: 12, fontWeight: 700, color: BLUE, textDecoration: "none", flexShrink: 0 }}
               >פתח תיקיית מסירה ↗</a>
             )}
           </div>
-          <div style={{ fontSize: 11.5, color: TEXT2 }}>
-            קבצים שיועלו כאן יישמרו בתיקיית <span style={{ color: TEXT }}>Delivery</span> בדרופבוקס.
+          <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.5 }}>
+            בחר סוג קובץ מסירה — הקובץ ייקרא לפי הסוג והגרסה ויישמר בתיקיית <span style={{ color: TEXT }}>Delivery</span> בדרופבוקס.
           </div>
-          <UploadButton
-            projectId={project.id}
-            projectName={project.name}
-            artist={project.artist ?? ""}
-            existingFiles={project.files ?? []}
-            status={project.status}
-            size="md"
-            subfolder="Delivery"
-          />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {DELIVERY_TYPES.map((t) => (
+              <UploadButton
+                key={t.typeLabel}
+                projectId={project.id}
+                projectName={project.name}
+                artist={project.artist ?? ""}
+                existingFiles={deliveryFiles}
+                size="md"
+                subfolder="Delivery"
+                deliveryTypeLabel={t.typeLabel}
+                label={t.label}
+                acceptAnyFile
+              />
+            ))}
+          </div>
+          <div style={{ height: 1, background: BORDER, margin: "2px 0" }} />
           {deliveryFiles.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {deliveryFiles.map((f, i) => {
@@ -2905,7 +2923,7 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
               })}
             </div>
           ) : (
-            <div style={{ fontSize: 11.5, color: MUTED }}>עדיין לא הועלו קבצי מסירה.</div>
+            <div style={{ fontSize: 12, color: MUTED }}>עדיין לא הועלו קבצי מסירה</div>
           )}
         </div>
       )}
