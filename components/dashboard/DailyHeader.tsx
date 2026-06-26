@@ -41,10 +41,8 @@ export default function DailyHeader() {
   const greeting =
     hour < 5 ? "לילה טוב" : hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
 
-  function handleOrderDay() {
-    window.dispatchEvent(
-      new CustomEvent("rb:quicksend", { detail: "סדר לי את היום לפי עדיפויות ודדליינים. תציג רשימת משימות ממוקדת." })
-    );
+  function handleQuickActions() {
+    window.dispatchEvent(new CustomEvent("rb:quick-actions"));
   }
 
   const isRadioPlaying = radio?.playing ?? false;
@@ -88,7 +86,7 @@ export default function DailyHeader() {
 
         {/* "Order day" — desktop only */}
         <button
-          onClick={handleOrderDay}
+          onClick={handleQuickActions}
           className="hidden md:flex flex-shrink-0 items-center gap-2 rounded-[10px] text-sm font-bold transition-all mt-1"
           style={{
             background: "#DC2626",
@@ -129,7 +127,7 @@ export default function DailyHeader() {
 
       {/* ── Mobile "order day" button — full width ── */}
       <button
-        onClick={handleOrderDay}
+        onClick={handleQuickActions}
         className="md:hidden w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold"
         style={{
           background: "#DC2626",

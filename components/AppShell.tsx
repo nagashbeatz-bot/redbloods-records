@@ -15,6 +15,7 @@ import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 import GlobalProjectDrawerProvider from "@/components/GlobalProjectDrawer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import PushManager from "@/components/PushManager";
+import QuickActionsModal from "@/components/quick-actions/QuickActionsModal";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel
 const SIDEBAR_WIDTH = 248; // px — desktop sidebar
@@ -29,6 +30,7 @@ export default function AppShell({ children, topRight }: { children: React.React
   const [isMobile, setIsMobile] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [quickActions, setQuickActions] = useState<{ open: boolean; projectId: string | null }>({ open: false, projectId: null });
   const contentRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
@@ -81,6 +83,16 @@ export default function AppShell({ children, topRight }: { children: React.React
     };
     window.addEventListener("rb:project-selected", handler);
     return () => window.removeEventListener("rb:project-selected", handler);
+  }, []);
+
+  // Open the global quick-actions modal (e.g. from the "פעולות מהירות" button).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const projectId = (e as CustomEvent<{ projectId?: string } | undefined>).detail?.projectId ?? null;
+      setQuickActions({ open: true, projectId });
+    };
+    window.addEventListener("rb:quick-actions", handler);
+    return () => window.removeEventListener("rb:quick-actions", handler);
   }, []);
 
   return (
@@ -302,6 +314,13 @@ export default function AppShell({ children, topRight }: { children: React.React
 
       <MobileFAB playerVisible={playerVisible} />
       <PushManager />
+
+      {quickActions.open && (
+        <QuickActionsModal
+          initialProjectId={quickActions.projectId}
+          onClose={() => setQuickActions({ open: false, projectId: null })}
+        />
+      )}
 
       {/* Debug overlay — only active when ?debug=1 in URL */}
       <Suspense fallback={null}>
