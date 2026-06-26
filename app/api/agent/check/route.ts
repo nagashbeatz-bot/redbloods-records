@@ -16,6 +16,7 @@ import {
   checkDueSoonProjects,
   checkSessionsNeedingUpdate,
   checkOverduePayments,
+  checkBalanceMissingDueDate,
   checkProjectsNoPricing,
   checkVictorStuck,
   checkVictorBelowPace,
@@ -184,6 +185,9 @@ export async function GET(req: NextRequest) {
       ...checkDueSoonProjects(projects),
       ...checkSessionsNeedingUpdate(todaySessions),
       ...checkOverduePayments(txns, financeMap),
+      // All visible projects (incl. completed) — catch a finished project that
+      // still has an open balance with no scheduled payment date.
+      ...checkBalanceMissingDueDate(projects, txns, financeMap),
       ...checkProjectsNoPricing(activeProjects, financeMap),
       ...checkVictorStuck(vendorWork, stuckAfterDays),
       ...checkVictorBelowPace(victorStats, victorStats?.goal ?? 0),

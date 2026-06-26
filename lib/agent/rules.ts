@@ -189,6 +189,57 @@ export function checkOverduePayments(
   }];
 }
 
+// ── 4b. Open balance with no scheduled payment date ───────────────────────────
+
+// Income transaction types. The DB stores both Hebrew and English type values
+// depending on the code path that created the row (see lib/reports/data.ts).
+// We treat ONLY these explicit values as income — never "anything not expense".
+const INCOME_TYPES = new Set(["income", "הכנסה"]);
+
+export function checkBalanceMissingDueDate(
+  projects: Array<{ id: string; name: string; artist: string; status: string }>,
+  transactions: Array<{ projectId: string | null; amount: number; type: string; paymentStatus: string; date: string | null }>,
+  financeMap: Map<string, { agreedPrice?: number | null; financeException?: boolean }>
+): AlertInput[] {
+  // Paid income per project — same income predicate + statuses as the UI balance.
+  const paidByProject = new Map<string, number>();
+  // Projects that already have an expected ("צפוי") income carrying a date.
+  const hasDatedExpected = new Set<string>();
+  for (const t of transactions) {
+    if (!t.projectId || !INCOME_TYPES.has(t.type)) continue;
+    if (FULLY_PAID_STATUSES.has(t.paymentStatus)) {
+      paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
+    }
+    if (t.paymentStatus === "צפוי" && t.date) {
+      hasDatedExpected.add(t.projectId);
+    }
+  }
+
+  const alerts: AlertInput[] = [];
+  for (const p of projects) {
+    const setting = financeMap.get(p.id);
+    if (setting?.financeException) continue;                  // (5) finance exception
+    const agreed = setting?.agreedPrice ?? 0;
+    if (!agreed || agreed <= 0) continue;                     // (1) agreedPrice > 0
+    const paidIncome = paidByProject.get(p.id) ?? 0;
+    const balance = agreed - paidIncome;
+    if (balance <= 0) continue;                               // (2)(3)(6) open balance
+    if (hasDatedExpected.has(p.id)) continue;                 // (4) no dated expected income
+
+    alerts.push({
+      type: "balance_missing_due_date",
+      severity: "warning",
+      title: "חסר תאריך לתשלום יתרה",
+      message: `לפרויקט ${p.name} נשארה יתרה של ${balance.toLocaleString("he-IL")}₪ ללא תאריך תשלום.`,
+      relatedProjectId: p.id,
+      metadata: { projectId: p.id, balance, agreedPrice: agreed, paidIncome },
+      entityKey: `balance_missing_due_date:${p.id}`,
+      suggestedActions: ["קבע תאריך תשלום", "סמן כחריג", "עדכן תשלום"],
+    });
+  }
+  return alerts;
+}
+
 // ── 5. Projects with no pricing ───────────────────────────────────────────────
 
 export function checkProjectsNoPricing(
