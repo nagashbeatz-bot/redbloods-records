@@ -500,6 +500,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [currency,     setCurrency]     = useState("₪");
   const [financeException, setFinanceException] = useState(false);
   const [finLoaded,    setFinLoaded]    = useState(false);
+  // Dismisses the "missing balance due date" reminder for the current opening only.
+  const [balanceReminderDismissed, setBalanceReminderDismissed] = useState(false);
   const [sessions,        setSessions]        = useState<Session[]>([]);
   const [projectActions,  setProjectActions]  = useState<ProjectAction[]>([]);
   const [mounted,         setMounted]         = useState(false);
@@ -521,6 +523,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   useEffect(() => {
     setTransactions([]);
     setFinanceException(false);
+    setBalanceReminderDismissed(false);
     setFinLoaded(false);
     fetch(`/api/transactions?projectId=${projectId}`)
       .then(r => r.json())
@@ -640,6 +643,17 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     .reduce((s, t) => s + t.amount, 0);
   // Finance-exception projects (no charge / favor) carry no receivable balance.
   const balance     = financeException ? 0 : agreedPrice - received;
+
+  // Reminder to set a due date for an open balance that has no expected payment yet.
+  const hasExpectedIncome = transactions.some(t => t.type === "income" && t.payment_status === "צפוי");
+  const showBalanceReminder =
+    finLoaded &&
+    !financeException &&
+    !balanceReminderDismissed &&
+    agreedPrice > 0 &&
+    received < agreedPrice &&
+    balance > 0 &&
+    !hasExpectedIncome;
   const latestFile  = project.files ? getLatestAudioFile(project.files) : null;
   const isPlaying   = player?.track?.projectId === projectId && (player?.playing ?? false);
   const pct         = progressForStatus(project.status);
@@ -1210,6 +1224,34 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {/* ── Missing balance due-date reminder ── */}
+      {showBalanceReminder && (
+        <BalanceReminderModal
+          balance={balance}
+          currency={currency}
+          onSetDate={async (date) => {
+            const res = await fetch("/api/transactions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                projectId,
+                type: "income",
+                amount: balance,
+                paymentStatus: "צפוי",
+                date: date || null,
+                description: "יתרת תשלום לפרויקט",
+              }),
+            });
+            if (!res.ok) return false;
+            const d = await fetch(`/api/transactions?projectId=${projectId}`).then(r => r.json()).catch(() => null);
+            if (d) { setTransactions(d.transactions ?? []); setAgreedPrice(d.agreedPrice ?? 0); }
+            setBalanceReminderDismissed(true);
+            return true;
+          }}
+          onDismiss={() => setBalanceReminderDismissed(true)}
+        />
+      )}
 
       {/* ── Quick Transaction Modal ── */}
       {quickTxOpen && (
@@ -1992,6 +2034,159 @@ function QuickTransactionModal({
           currency={currency}
           onSaved={() => { onSaved(); onClose(); }}
         />
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── BalanceReminderModal ─────────────────────────────────────────────────────
+// Prompts to set a due date for an open balance with no expected payment yet.
+// Creating the date posts a real "צפוי" income transaction so Finance can track it.
+function BalanceReminderModal({
+  balance, currency, onSetDate, onDismiss,
+}: {
+  balance:   number;
+  currency:  string;
+  onSetDate: (date: string) => Promise<boolean>;
+  onDismiss: () => void;
+}) {
+  const [date,   setDate]   = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState("");
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onDismiss]);
+
+  const amountLabel = `${currency}${balance.toLocaleString()}`;
+
+  async function handleConfirm() {
+    if (!date || saving) return;
+    setSaving(true);
+    setErr("");
+    const ok = await onSetDate(date);
+    if (!ok) { setErr("שגיאה בשמירה"); setSaving(false); }
+    // On success the parent unmounts this modal — no need to reset state.
+  }
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 199999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* overlay */}
+      <div onClick={onDismiss} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(4px)" }} />
+      {/* card */}
+      <div dir="rtl" style={{
+        position: "relative", width: 560, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto",
+        borderRadius: 24,
+        background: "linear-gradient(160deg, #14110F 0%, #100C0C 100%)",
+        border: `1.5px solid ${RED_WARN}3A`,
+        boxShadow: `0 32px 80px rgba(0,0,0,0.85), 0 0 0 1px ${RED_WARN}18`,
+        padding: "34px 38px 30px",
+        textAlign: "center",
+      }}>
+        {/* X close */}
+        <button
+          onClick={onDismiss}
+          style={{
+            position: "absolute", top: 16, left: 16, zIndex: 1,
+            width: 36, height: 36, borderRadius: "50%",
+            background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER2}`,
+            color: TEXT2, fontSize: 17, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "inherit", transition: "none", outline: "none",
+          }}
+        >✕</button>
+
+        {/* Warning icon */}
+        <div style={{
+          width: 64, height: 64, borderRadius: "50%", margin: "4px auto 18px",
+          background: `${RED_WARN}1A`, border: `1.5px solid ${RED_WARN}55`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: RED_WARN, fontSize: 30, fontWeight: 900,
+        }}>!</div>
+
+        {/* Title */}
+        <div style={{ fontSize: 23, fontWeight: 900, color: TEXT, marginBottom: 12, letterSpacing: "-0.02em" }}>
+          חסר תאריך לתשלום היתרה
+        </div>
+
+        {/* Body text */}
+        <div style={{ fontSize: 14, lineHeight: 1.6, color: TEXT2, marginBottom: 22, maxWidth: 440, marginInline: "auto" }}>
+          בפרויקט הזה נשארה יתרה של {amountLabel}, כדי שהמערכת תוכל לעקוב ולהתריע, צריך לקבוע תאריך לתשלום הבא.
+        </div>
+
+        {/* Highlight: open balance */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+          padding: "16px 20px", borderRadius: 14, marginBottom: 22,
+          background: "rgba(239,68,68,0.12)", border: `1.5px solid ${RED_WARN}3A`,
+        }}>
+          <span style={{ fontSize: 20 }}>🗄️</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: RED_WARN }}>
+            יתרה פתוחה: {amountLabel}
+          </span>
+        </div>
+
+        {/* Date field */}
+        <div style={{ textAlign: "right", marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, marginBottom: 8, letterSpacing: "0.04em" }}>
+            תאריך יעד לתשלום היתרה
+          </div>
+          <DatePickerInput
+            value={date}
+            onChange={setDate}
+            style={{
+              width: "100%", boxSizing: "border-box",
+              background: CARD_BG, border: `1px solid ${BORDER2}`,
+              borderRadius: 12, color: TEXT, fontSize: 15,
+              padding: "13px 14px", outline: "none", fontFamily: "inherit",
+              colorScheme: "dark",
+            }}
+          />
+        </div>
+
+        {err && <div style={{ color: RED_WARN, fontSize: 13, marginBottom: 14 }}>{err}</div>}
+
+        {/* Buttons */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          {/* סמן כחריג — inactive: persisting financeException is not supported yet. */}
+          <button
+            disabled
+            title="לא זמין בשלב זה"
+            style={{
+              background: "transparent", border: "none", color: MUTED,
+              fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+              cursor: "not-allowed", opacity: 0.55, padding: "10px 4px",
+            }}
+          >סמן כחריג</button>
+
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={onDismiss}
+              disabled={saving}
+              style={{
+                padding: "12px 24px", borderRadius: 12,
+                background: CARD_BG, border: `1px solid ${BORDER2}`,
+                color: TEXT, fontSize: 14, fontWeight: 700, fontFamily: "inherit",
+                cursor: saving ? "default" : "pointer", outline: "none",
+              }}
+            >לא עכשיו</button>
+            <button
+              onClick={handleConfirm}
+              disabled={saving || !date}
+              style={{
+                padding: "12px 26px", borderRadius: 12, border: "none",
+                background: BRAND, color: "#fff",
+                fontSize: 14, fontWeight: 800, fontFamily: "inherit",
+                cursor: saving || !date ? "default" : "pointer",
+                opacity: saving || !date ? 0.7 : 1,
+                boxShadow: "0 2px 16px rgba(220,38,38,0.45)", outline: "none",
+              }}
+            >{saving ? "שומר…" : "קבע תאריך תשלום"}</button>
+          </div>
+        </div>
       </div>
     </div>,
     document.body
