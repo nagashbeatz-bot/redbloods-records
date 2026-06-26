@@ -21,7 +21,7 @@ const MUTED  = "#52526A";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type PaymentStatus = "שולם" | "צפוי" | "לא שולם" | "חלקי" | "בוטל" | "התקבל" | "לבדיקה";
-type Period        = "prev-month" | "month" | "next-month" | "3months" | "custom";
+type Period        = "month" | "3months" | "custom";
 type SortMode      = "date-desc" | "date-asc" | "amount-desc" | "project" | "status" | "type";
 type Scope         = "project" | "general";
 type SourceFilter  = "all" | "project" | "general";
@@ -75,12 +75,13 @@ const EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "צפוי", "לא שול�
 const PAYMENT_METHODS   = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
 const HEB_MONTHS        = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
 
-const PERIOD_OPTIONS: { key: Period; label: string }[] = [
-  { key: "prev-month",  label: "חודש קודם" },
-  { key: "month",       label: "חודש נוכחי" },
-  { key: "next-month",  label: "חודש הבא" },
-  { key: "3months",     label: "3 חודשים" },
-  { key: "custom",      label: "מותאם אישית" },
+// Single-month presets carry the offset they map to (0 = current month).
+const PERIOD_OPTIONS: { label: string; period: Period; offset?: number }[] = [
+  { label: "חודש קודם",    period: "month",   offset: -1 },
+  { label: "חודש נוכחי",   period: "month",   offset: 0 },
+  { label: "חודש הבא",     period: "month",   offset: 1 },
+  { label: "3 חודשים",     period: "3months" },
+  { label: "מותאם אישית",  period: "custom" },
 ];
 
 const STATUS_COLOR: Record<string, string> = {
@@ -94,19 +95,14 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 // ── Period helpers ─────────────────────────────────────────────────────────────
-function getRange(period: Period, customFrom = "", customTo = ""): { from: Date | null; to: Date | null } {
+// monthOffset is relative to the current system month (0 = current, 1 = next, -1 = prev).
+// Building dates via `new Date(y, m + monthOffset, 1)` handles year rollover both ways.
+function getRange(period: Period, monthOffset: number, customFrom = "", customTo = ""): { from: Date | null; to: Date | null } {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   switch (period) {
-    case "prev-month": {
-      const pm = m === 0 ? 11 : m - 1;
-      const py = m === 0 ? y - 1 : y;
-      return { from: new Date(py, pm, 1), to: new Date(py, pm + 1, 0, 23, 59, 59) };
-    }
     case "month":
-      return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59) };
-    case "next-month":
-      return { from: new Date(y, m + 1, 1), to: new Date(y, m + 2, 0, 23, 59, 59) };
+      return { from: new Date(y, m + monthOffset, 1), to: new Date(y, m + monthOffset + 1, 0, 23, 59, 59) };
     case "3months":
       // Current month + next 2 months
       return { from: new Date(y, m, 1), to: new Date(y, m + 3, 0, 23, 59, 59) };
@@ -117,26 +113,16 @@ function getRange(period: Period, customFrom = "", customTo = ""): { from: Date 
   }
 }
 
-function getCompRange(period: Period): { from: Date | null; to: Date | null } {
+function getCompRange(period: Period, monthOffset: number): { from: Date | null; to: Date | null } {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   switch (period) {
-    case "prev-month": {
-      // 2 months ago
-      return { from: new Date(y, m - 2, 1), to: new Date(y, m - 1, 0, 23, 59, 59) };
-    }
-    case "month": {
-      // Previous month
-      return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0, 23, 59, 59) };
-    }
-    case "next-month": {
-      // Current month (compare next month to current)
-      return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59) };
-    }
-    case "3months": {
+    case "month":
+      // Previous month relative to the displayed month
+      return { from: new Date(y, m + monthOffset - 1, 1), to: new Date(y, m + monthOffset, 0, 23, 59, 59) };
+    case "3months":
       // Previous 3 months
       return { from: new Date(y, m - 3, 1), to: new Date(y, m, 0, 23, 59, 59) };
-    }
     default:
       return { from: null, to: null };
   }
@@ -144,34 +130,24 @@ function getCompRange(period: Period): { from: Date | null; to: Date | null } {
 
 function getCompLabel(period: Period): string {
   switch (period) {
-    case "prev-month":  return "מול חודשיים קודמים";
     case "month":       return "מול חודש קודם";
-    case "next-month":  return "מול החודש הנוכחי";
     case "3months":     return "מול 3 חודשים קודמים";
     default:            return "";
   }
 }
 
-function getPeriodTitle(period: Period, customFrom = "", customTo = ""): string {
+function getPeriodTitle(period: Period, monthOffset: number, customFrom = "", customTo = ""): string {
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
   switch (period) {
-    case "prev-month": {
-      const pm = m === 0 ? 11 : m - 1;
-      const py = m === 0 ? y - 1 : y;
-      return `${HEB_MONTHS[pm]} ${py}`;
-    }
-    case "month":
-      return `${HEB_MONTHS[m]} ${y}`;
-    case "next-month": {
-      const nm = (m + 1) % 12;
-      const ny = m === 11 ? y + 1 : y;
-      return `${HEB_MONTHS[nm]} ${ny}`;
+    case "month": {
+      const d = new Date(y, m + monthOffset, 1);
+      return `${HEB_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
     }
     case "3months": {
-      const endMonth = (m + 2) % 12;
-      const endYear  = m + 2 > 11 ? y + 1 : y;
-      return `${HEB_MONTHS[m]} עד ${HEB_MONTHS[endMonth]} ${endYear}`;
+      const start = new Date(y, m, 1);
+      const end   = new Date(y, m + 2, 1);
+      return `${HEB_MONTHS[start.getMonth()]} עד ${HEB_MONTHS[end.getMonth()]} ${end.getFullYear()}`;
     }
     case "custom":
       return customFrom && customTo ? `${fmtDate(customFrom)} עד ${fmtDate(customTo)}` : "מותאם אישית";
@@ -670,6 +646,9 @@ export default function FinancePage() {
 
   // Period
   const [period,     setPeriod]     = useState<Period>("month");
+  // Displayed month relative to the current system month (0 = current). Drives
+  // the ‹ › navigator so it composes (next then prev returns to the same month).
+  const [monthOffset, setMonthOffset] = useState(0);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo,   setCustomTo]   = useState("");
   const [showUndated, setShowUndated] = useState(false);
@@ -712,10 +691,10 @@ export default function FinancePage() {
   };
 
   // ── Period computations ────────────────────────────────────────────────────
-  const range       = getRange(period, customFrom, customTo);
-  const compRange   = getCompRange(period);
+  const range       = getRange(period, monthOffset, customFrom, customTo);
+  const compRange   = getCompRange(period, monthOffset);
   const compLabel   = getCompLabel(period);
-  const periodTitle = getPeriodTitle(period, customFrom, customTo);
+  const periodTitle = getPeriodTitle(period, monthOffset, customFrom, customTo);
 
   const periodTx = transactions.filter((t) => inRange(t.date, range));
   const compTx   = transactions.filter((t) => inRange(t.date, compRange));
@@ -897,11 +876,11 @@ export default function FinancePage() {
 
         {/* Center: month navigator */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => setPeriod("prev-month")} style={navBtnStyle}>‹</button>
+          <button onClick={() => { setPeriod("month"); setMonthOffset((o) => o - 1); }} style={navBtnStyle}>‹</button>
           <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, minWidth: 140, textAlign: "center" }}>
             📅 {periodTitle}
           </div>
-          <button onClick={() => setPeriod("next-month")} style={navBtnStyle}>›</button>
+          <button onClick={() => { setPeriod("month"); setMonthOffset((o) => o + 1); }} style={navBtnStyle}>›</button>
         </div>
 
         {/* Left: add button */}
@@ -918,10 +897,15 @@ export default function FinancePage() {
       {/* ── Period selector ─────────────────────────────────────────────── */}
       <div style={{ marginBottom: 22 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {PERIOD_OPTIONS.map(({ key, label }) => {
-            const active = period === key;
+          {PERIOD_OPTIONS.map(({ label, period: optPeriod, offset }) => {
+            const active = optPeriod === "month"
+              ? period === "month" && monthOffset === offset
+              : period === optPeriod;
+            const onSelect = optPeriod === "month"
+              ? () => { setPeriod("month"); setMonthOffset(offset ?? 0); }
+              : () => setPeriod(optPeriod);
             return (
-              <button key={key} onClick={() => setPeriod(key)} style={{
+              <button key={label} onClick={onSelect} style={{
                 padding: "7px 16px", borderRadius: 10, border: "none", cursor: "pointer",
                 background: active ? `${BRAND}15` : CARD,
                 color: active ? BRAND : MUTED,
