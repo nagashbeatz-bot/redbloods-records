@@ -365,7 +365,8 @@ async function buildInsightsContext(): Promise<string> {
 
     const CATEGORIES: Array<{ key: string; label: string; types: string[] }> = [
       { key: "deadline", label: "דדליינים", types: ["overdue_deadline", "deadline_approaching"] },
-      { key: "finance",  label: "כספים",    types: ["payment_overdue", "project_no_pricing", "balance_missing_due_date", "proposal_followup_due"] },
+      { key: "finance",  label: "כספים",    types: ["payment_overdue", "project_no_pricing", "balance_missing_due_date"] },
+      { key: "proposals", label: "הצעות",   types: ["proposal_followup_due"] },
       { key: "sessions", label: "סשנים",    types: ["session_needs_update", "stale_session"] },
       { key: "victor",   label: "ויקטור",   types: ["victor_stuck", "victor_below_pace"] },
       { key: "activity", label: "חוסר פעילות", types: ["inactivity"] },
