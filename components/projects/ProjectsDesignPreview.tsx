@@ -320,8 +320,19 @@ function OpenProjectFromURL({ openProject }: { openProject: (id: string) => void
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ProjectsDesignPreview() {
   const { projects, loading, createProject } = useProjects();
-  const { openProject } = useGlobalProjectDrawer();
+  const { openProject, drawerProjectId } = useGlobalProjectDrawer();
   const player = usePlayerSafe();
+
+  // Deep-link guard: while ?open=ID is resolving into an open drawer, cover the
+  // list with an overlay so it doesn't flash. Give up after a short timeout so a
+  // missing/invalid project falls back to the normal list.
+  const [deepLinkGaveUp, setDeepLinkGaveUp] = useState(false);
+  useEffect(() => {
+    const hasOpen = typeof window !== "undefined" && !!new URLSearchParams(window.location.search).get("open");
+    if (!hasOpen) return;
+    const t = setTimeout(() => setDeepLinkGaveUp(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
 
   const [search,          setSearch]          = useState("");
   const [statusFilter,    setStatusFilter]    = useState<"הכל הפעיל" | "הושלמו" | ProjectStatus>("הכל הפעיל");
@@ -447,12 +458,23 @@ export default function ProjectsDesignPreview() {
 
   if (loading) return <div style={{ padding: 32, color: SUB }}>טוען פרויקטים...</div>;
 
+  // A ?open=ID deep link is still resolving into an open drawer — cover the list.
+  const openParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("open") : null;
+  const awaitingDeepLink = !!openParam && drawerProjectId !== openParam && !deepLinkGaveUp;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ background: BG, minHeight: "100vh", color: TEXT, fontFamily: "inherit", direction: "rtl" }}>
       <Suspense fallback={null}>
         <OpenProjectFromURL openProject={openProject} />
       </Suspense>
+      {awaitingDeepLink && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 500, background: BG,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: SUB, fontSize: 14, direction: "rtl",
+        }}>פותח פרויקט...</div>
+      )}
       {kpiPopover && (
         <KpiPopover popover={kpiPopover} onClose={() => setKpiPopover(null)} />
       )}
