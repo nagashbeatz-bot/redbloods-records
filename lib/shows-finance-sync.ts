@@ -27,6 +27,10 @@ function djDescription(s: Show): string {
   return s.dj_name ? `שכר דיג'יי — ${s.dj_name} (${s.name})` : `שכר דיג'יי (${s.name})`;
 }
 
+function artistDescription(s: Show): string {
+  return s.artist ? `שכר אמן — ${s.artist} (${s.name})` : `שכר אמן (${s.name})`;
+}
+
 async function createTransaction(fields: {
   type: "income" | "expense";
   payment_status: string;
@@ -157,6 +161,38 @@ export async function syncShowFinance(show: Show): Promise<void> {
           .eq("id", show.id);
       }
     }
+
+    // ── Artist expense ──
+    // Create for any confirmed booking with an artist_fee; "שולם" → שולם, else לא שולם.
+    const hasArtistFee     = (show.artist_fee ?? 0) > 0;
+    const artistStatus     = (isCancelled || !hasArtistFee) ? "בוטל" : (isPaid ? "שולם" : "לא שולם");
+    const shouldHaveArtist = !isCancelled && isConfirmed && hasArtistFee;
+    if (show.linked_artist_expense_transaction_id) {
+      await patchTransaction(show.linked_artist_expense_transaction_id, {
+        amount:         show.artist_fee,
+        date,
+        artist:         show.artist,
+        description:    artistDescription(show),
+        payment_status: artistStatus,
+      });
+    } else if (shouldHaveArtist) {
+      const id = await createTransaction({
+        type:          "expense",
+        payment_status: isPaid ? "שולם" : "לא שולם",
+        amount:        show.artist_fee,
+        date,
+        artist:        show.artist,
+        description:   artistDescription(show),
+        category:      "שכר אמן",
+        expense_scope: "הופעה",
+        notes:         `show_id:${show.id}`,
+      });
+      if (id) {
+        await supabase.from("shows")
+          .update({ linked_artist_expense_transaction_id: id, updated_at: new Date().toISOString() })
+          .eq("id", show.id);
+      }
+    }
   } catch (e) {
     console.error("[shows-finance-sync] syncShowFinance error:", e);
   }
@@ -170,6 +206,9 @@ export async function cancelShowFinance(show: Show): Promise<void> {
     }
     if (show.linked_dj_expense_transaction_id) {
       await patchTransaction(show.linked_dj_expense_transaction_id, { payment_status: "בוטל" });
+    }
+    if (show.linked_artist_expense_transaction_id) {
+      await patchTransaction(show.linked_artist_expense_transaction_id, { payment_status: "בוטל" });
     }
   } catch (e) {
     console.error("[shows-finance-sync] cancelShowFinance error:", e);

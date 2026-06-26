@@ -25,12 +25,14 @@ export interface Show {
   dj_fee: number;
   dj_client_id: string | null;
   dj_name: string;
+  artist_fee: number;
   advance_payment: number;
   notes: string;
   calendar_event_id: string | null;
   // Canonical Finance links (Phase 1: created when payment_status = "שולם").
   linked_income_transaction_id: string | null;
   linked_dj_expense_transaction_id: string | null;
+  linked_artist_expense_transaction_id: string | null;
   created_at: string;
   updated_at: string;
 }

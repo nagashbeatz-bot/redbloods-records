@@ -50,6 +50,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (body.dj_fee           !== undefined) patch.dj_fee           = Number(body.dj_fee);
     if (body.dj_client_id    !== undefined) patch.dj_client_id     = body.dj_client_id    ?? null;
     if (body.dj_name         !== undefined) patch.dj_name          = body.dj_name?.trim() ?? "";
+    if (body.artist_fee      !== undefined) patch.artist_fee       = Number(body.artist_fee) || 0;
     if (body.advance_payment  !== undefined) patch.advance_payment  = Number(body.advance_payment) || 0;
     if (body.notes            !== undefined) patch.notes            = body.notes                   ?? "";
     if (body.calendar_event_id !== undefined) patch.calendar_event_id = body.calendar_event_id    ?? null;
@@ -62,7 +63,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const show = await patchShow(id, patch);
 
     // ── Sync canonical Finance transactions when a finance-relevant field changed ──
-    if (["payment_status", "show_price", "dj_fee", "dj_name", "status", "date"].some((k) => k in body)) {
+    if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date"].some((k) => k in body)) {
       const { syncShowFinance } = await import("@/lib/shows-finance-sync");
       await syncShowFinance(show);
     }

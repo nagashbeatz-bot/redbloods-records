@@ -56,8 +56,8 @@ function isUpcoming(d: string | null): boolean {
   return new Date(d) >= new Date(new Date().toDateString());
 }
 function calcDistributable(s: Show) { return Math.max(0, s.show_price - s.dj_fee); }
-function calcLabelShare(s: Show)    { return calcDistributable(s) / 2; }
-function calcArtistShare(s: Show)   { return calcDistributable(s) / 2; }
+function calcArtistShare(s: Show)   { return s.artist_fee ?? 0; }
+function calcLabelShare(s: Show)    { return Math.max(0, s.show_price - s.dj_fee - (s.artist_fee ?? 0)); }
 function calcRemaining(s: Show)     { return Math.max(0, s.show_price - s.advance_payment); }
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ interface FormState {
   name: string; artist: string; artist_client_id: string | null;
   date: string; start_time: string; location: string;
   contact_person: string; phone: string; status: ShowStatus; payment_status: PaymentStatus;
-  show_price: string; dj_fee: string; advance_payment: string; notes: string;
+  show_price: string; dj_fee: string; artist_fee: string; advance_payment: string; notes: string;
   booker_client_id: string | null;
   dj_client_id: string | null; dj_name: string;
 }
@@ -290,7 +290,7 @@ interface FormState {
 const FORM_DEFAULTS: FormState = {
   name: "", artist: "", artist_client_id: null, date: "", start_time: "", location: "",
   contact_person: "", phone: "", status: "ממתין לתשובה", payment_status: "לא שולם",
-  show_price: "", dj_fee: "500", advance_payment: "0", notes: "",
+  show_price: "", dj_fee: "500", artist_fee: "0", advance_payment: "0", notes: "",
   booker_client_id: null,
   dj_client_id: null, dj_name: "",
 };
@@ -309,6 +309,7 @@ function showToForm(s: Show): FormState {
     payment_status:   s.payment_status,
     show_price:       String(s.show_price),
     dj_fee:           String(s.dj_fee),
+    artist_fee:       String(s.artist_fee),
     advance_payment:  String(s.advance_payment),
     notes:            s.notes,
     booker_client_id: s.booker_client_id ?? null,
@@ -467,6 +468,7 @@ function ShowFormModal({
         payment_status:   form.payment_status,
         show_price:       Number(form.show_price) || 0,
         dj_fee:           Number(form.dj_fee) || 0,
+        artist_fee:       Number(form.artist_fee) || 0,
         advance_payment:  Number(form.advance_payment) || 0,
         notes:            form.notes.trim(),
         dj_client_id:     form.dj_client_id ?? null,
@@ -859,7 +861,7 @@ function ShowFormModal({
           </div>
 
           {/* Row: prices — no spin buttons */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={labelStyle}>מחיר הופעה ₪</label>
               <input type="number" min="0" value={form.show_price} onChange={e => set("show_price", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
@@ -867,6 +869,10 @@ function ShowFormModal({
             <div>
               <label style={labelStyle}>שכר דיג׳יי ₪</label>
               <input type="number" min="0" value={form.dj_fee} onChange={e => set("dj_fee", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="500" />
+            </div>
+            <div>
+              <label style={labelStyle}>שכר אמן ₪</label>
+              <input type="number" min="0" value={form.artist_fee} onChange={e => set("artist_fee", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
             </div>
             <div>
               <label style={labelStyle}>מקדמה ₪</label>
@@ -1106,8 +1112,8 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
               {finCard("מקדמה",            fmtIls(show.advance_payment),       TEXT2)}
               {finCard("יתרה לגבייה",      fmtIls(remaining),                  remaining > 0 ? BRAND : GREEN, true)}
               {finCard("יתרה לחלוקה",      fmtIls(distributable),              AMBER, true)}
-              {finCard("חלק אמן (50%)",    fmtIls(artistShare),                BLUE)}
-              {finCard("חלק לייבל (50%)",  fmtIls(labelShare),                 GREEN)}
+              {finCard("שכר אמן",          fmtIls(artistShare),                BLUE)}
+              {finCard("רווח לייבל",       fmtIls(labelShare),                 GREEN, true)}
             </div>
           </div>
 
@@ -1475,7 +1481,7 @@ export default function ShowsHubPreview() {
               <KpiCard label="הופעות קרובות"   value={kpis.upCount}             sub="לא בוטלו"           color={BLUE}   icon="📅" />
               <KpiCard label="הכנסות צפויות"   value={fmtIls(kpis.expIncome)}   sub="מהופעות פעילות"     color={GREEN}  icon="💰" />
               <KpiCard label="יתרה לגבייה"     value={fmtIls(kpis.remaining)}   sub="טרם שולם"           color={AMBER}  icon="⏳" />
-              <KpiCard label="רווח לייבל צפוי" value={fmtIls(kpis.labelProfit)} sub="50% מיתרה לחלוקה"  color={PURPLE} icon="🏷️" />
+              <KpiCard label="רווח לייבל צפוי" value={fmtIls(kpis.labelProfit)} sub="אחרי דיג׳יי ואמן"  color={PURPLE} icon="🏷️" />
             </div>
 
             {/* ── Two-column CSS Grid ───────────────────────────────────────── */}
