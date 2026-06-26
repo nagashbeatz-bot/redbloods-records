@@ -13,6 +13,11 @@ function dropboxArg(obj: Record<string, unknown>): string {
   );
 }
 
+/** Sanitize a string for use as a Dropbox FOLDER name (not the file name). */
+function sanitizeFolder(s: string): string {
+  return s.replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, " ").trim();
+}
+
 async function createDropboxShareLink(token: string, path: string): Promise<string> {
   const res = await fetch(
     "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
@@ -55,8 +60,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "חסרים פרמטרים" }, { status: 400 });
     }
 
-    // Path inside the App Folder (relative to /Apps/<app-name>/)
-    const dropboxPath = `/${projectId}/${newName}`;
+    // Build an organized folder path from the project. New uploads only —
+    // existing files keep their stored dropboxPath. The file NAME is unchanged.
+    const { getProject } = await import("@/lib/projects-store");
+    const project       = await getProject(projectId);
+    const artistFolder  = sanitizeFolder(project?.artist ?? "");
+    const projectFolder = sanitizeFolder(project?.name ?? "");
+
+    let folderPath: string;
+    if (artistFolder && projectFolder) {
+      folderPath = `/Projects/${artistFolder}/${projectFolder}`;
+    } else if (projectFolder) {
+      folderPath = `/Projects/ללא אמן/${projectFolder}`;
+    } else {
+      folderPath = `/Projects/ללא אמן/Untitled Project - ${projectId.slice(0, 8)}`;
+    }
+
+    // newName is already built/sanitized client-side — do NOT alter it.
+    const dropboxPath = `${folderPath}/${newName}`;
 
     // ── 1. Upload to Dropbox ──────────────────────────────────────────────────
     const buffer = Buffer.from(await file.arrayBuffer());
