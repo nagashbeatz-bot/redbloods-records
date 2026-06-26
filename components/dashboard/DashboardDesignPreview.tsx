@@ -12,6 +12,7 @@ import type { Project, AgentAlert } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import Link from "next/link";
+import TasksAttentionModal from "@/components/dashboard/TasksAttentionModal";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -535,6 +536,7 @@ export default function DashboardDesignPreview() {
   // ── Live-2: real alerts, calendar, proposals ──────────────────────────
   const [alerts, setAlerts]             = useState<AgentAlert[]>([]);
   const [selectedAlertCategory, setSelectedAlertCategory] = useState<string | null>(null);
+  const [tasksAttentionOpen, setTasksAttentionOpen] = useState(false);
   // Display-only dedupe (shared by the panel counts and the detail modal):
   // one per entityKey, and one per type for bulk/no-key alerts.
   const dedupedAlerts = useMemo(() => {
@@ -742,6 +744,20 @@ export default function DashboardDesignPreview() {
   // ── Real KPI filters ──────────────────────────────────────────────────
   const overdueProjects = projects.filter(p => p.isOverdue && p.status !== "הושלם" && p.status !== "בהשהייה");
   const activeProjects  = projects.filter(p => ["בעבודה", "מחכה למיקס", "במיקס"].includes(p.status));
+
+  // Open tasks due today or overlate — surfaced as one consolidated "דורש טיפול"
+  // row + the "בדיקת משימות" modal. Derived from the already-loaded tasksList.
+  const attentionToday = new Date().toISOString().slice(0, 10);
+  const attentionTasks = tasksList.filter(t => !!t.due_date && (t.due_date as string) <= attentionToday);
+
+  // Local list updates after a modal action (no full reload).
+  const handleTaskDone = (id: string) => {
+    setTasksList(prev => prev.filter(t => t.id !== id));
+    setOpenTasks(c => (c == null ? c : Math.max(0, c - 1)));
+  };
+  const handleTaskDefer = (id: string, newDate: string) => {
+    setTasksList(prev => prev.map(t => t.id === id ? { ...t, due_date: newDate } : t));
+  };
   const dueSoonProjects = projects.filter(p => { const d = daysUntilDeadline(p.deadline); return d !== null && d >= 0 && d <= 7 && p.status !== "הושלם"; });
   const onHoldProjects  = projects.filter(p => p.status === "בהשהייה");
   const doneProjects    = projects.filter(p => p.status === "הושלם");
@@ -1054,6 +1070,15 @@ export default function DashboardDesignPreview() {
                         onClose={() => setSelectedAlertCategory(null)}
                       />
                     )}
+                    {tasksAttentionOpen && (
+                      <TasksAttentionModal
+                        tasks={attentionTasks.map(t => ({ id: t.id, title: t.title, due_date: t.due_date ?? null }))}
+                        today={attentionToday}
+                        onClose={() => setTasksAttentionOpen(false)}
+                        onDone={handleTaskDone}
+                        onDefer={handleTaskDefer}
+                      />
+                    )}
                     <div style={{
                       display: "flex", justifyContent: "space-between", alignItems: "center",
                       padding: "16px 20px 12px", borderBottom: `1px solid rgba(255,255,255,0.07)`,
@@ -1071,26 +1096,50 @@ export default function DashboardDesignPreview() {
                       )}
                     </div>
                     <div style={{ padding: "12px 16px", flex: 1 }}>
-                      {cats.length > 0 ? cats.map((a, i) => (
-                        <button key={i}
-                          onClick={() => setSelectedAlertCategory(a.key)}
-                          title="לחץ לפירוט"
-                          style={{
-                            width: "100%", textAlign: "right", fontFamily: "inherit", cursor: "pointer",
-                            display: "flex", justifyContent: "space-between", alignItems: "center",
-                            padding: "10px 12px", borderRadius: 11, marginBottom: 7,
-                            background: a.bg, border: `1px solid ${a.color}20`,
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.borderColor = `${a.color}55`)}
-                          onMouseLeave={e => (e.currentTarget.style.borderColor = `${a.color}20`)}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                            <span style={{ fontSize: 17 }}>{a.icon}</span>
-                            <span style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600 }}>{a.label}</span>
-                          </div>
-                          <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: a.color, lineHeight: 1 }}>{a.count}</span>
-                        </button>
-                      )) : (
+                      {(cats.length > 0 || attentionTasks.length > 0) ? (
+                        <>
+                          {cats.map((a, i) => (
+                            <button key={i}
+                              onClick={() => setSelectedAlertCategory(a.key)}
+                              title="לחץ לפירוט"
+                              style={{
+                                width: "100%", textAlign: "right", fontFamily: "inherit", cursor: "pointer",
+                                display: "flex", justifyContent: "space-between", alignItems: "center",
+                                padding: "10px 12px", borderRadius: 11, marginBottom: 7,
+                                background: a.bg, border: `1px solid ${a.color}20`,
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.borderColor = `${a.color}55`)}
+                              onMouseLeave={e => (e.currentTarget.style.borderColor = `${a.color}20`)}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                                <span style={{ fontSize: 17 }}>{a.icon}</span>
+                                <span style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600 }}>{a.label}</span>
+                              </div>
+                              <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: a.color, lineHeight: 1 }}>{a.count}</span>
+                            </button>
+                          ))}
+                          {attentionTasks.length > 0 && (
+                            <button
+                              onClick={() => setTasksAttentionOpen(true)}
+                              title="לחץ לפירוט"
+                              style={{
+                                width: "100%", textAlign: "right", fontFamily: "inherit", cursor: "pointer",
+                                display: "flex", justifyContent: "space-between", alignItems: "center",
+                                padding: "10px 12px", borderRadius: 11, marginBottom: 7,
+                                background: "rgba(245,158,11,0.07)", border: "1px solid #F59E0B20",
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.borderColor = "#F59E0B55")}
+                              onMouseLeave={e => (e.currentTarget.style.borderColor = "#F59E0B20")}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                                <span style={{ fontSize: 17 }}>📝</span>
+                                <span style={{ fontSize: 12.5, color: "#C8C8C8", fontWeight: 600 }}>משימות להיום / באיחור</span>
+                              </div>
+                              <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: "#F59E0B", lineHeight: 1 }}>{attentionTasks.length}</span>
+                            </button>
+                          )}
+                        </>
+                      ) : (
                         <div style={{ fontSize: 12, color: MUTED, textAlign: "center", paddingTop: 16 }}>
                           {dedupedAlerts.length === 0 ? "✅ אין התראות פתוחות" : "טוען..."}
                         </div>
