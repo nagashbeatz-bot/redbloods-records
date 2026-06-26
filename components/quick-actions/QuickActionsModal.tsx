@@ -38,7 +38,7 @@ type Phase = "grid" | "picker" | "schedule" | "money-in";
 // Money-in modes → existing payment_status values (no new statuses).
 type MoneyMode = "received" | "expected" | "collect";
 const MONEY_MODES: { id: MoneyMode; label: string; status: string; dateLabel: string }[] = [
-  { id: "received", label: "קיבלתי עכשיו", status: "התקבל",   dateLabel: "תאריך" },
+  { id: "received", label: "קיבלתי עכשיו", status: "התקבל",   dateLabel: "תאריך קבלה" },
   { id: "expected", label: "צפוי להיכנס", status: "צפוי",     dateLabel: "תאריך צפוי" },
   { id: "collect",  label: "צריך לגבות",  status: "לא שולם",  dateLabel: "תאריך גבייה" },
 ];
@@ -408,7 +408,16 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
                 {MONEY_MODES.map((m) => {
                   const active = m.id === moneyMode;
                   return (
-                    <button key={m.id} onClick={() => setMoneyMode(m.id)} style={pillStyle(active)}>
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        setMoneyMode(m.id);
+                        // "קיבלתי עכשיו" is money received now → default the date to today
+                        // (still editable, so a past date can be entered manually).
+                        if (m.id === "received") setMoneyDate(todayIsrael);
+                      }}
+                      style={pillStyle(active)}
+                    >
                       {m.label}
                     </button>
                   );
