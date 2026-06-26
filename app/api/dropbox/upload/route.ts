@@ -77,10 +77,12 @@ export async function POST(req: NextRequest) {
       folderPath = `/Projects/ללא אמן/Untitled Project - ${projectId.slice(0, 8)}`;
     }
 
-    // Optional subfolder (e.g. "Delivery") — new uploads only; existing files
-    // are untouched. When absent, behavior is exactly as before.
+    // Optional subfolder (e.g. "Delivery" or nested "Delivery/ערוצים") — new
+    // uploads only; existing files are untouched. Each path segment is sanitized
+    // separately so a "/" inside the subfolder is preserved as nesting (not
+    // stripped). When absent, behavior is exactly as before.
     if (subfolder) {
-      const sub = sanitizeFolder(subfolder);
+      const sub = subfolder.split("/").map(sanitizeFolder).filter(Boolean).join("/");
       if (sub) folderPath = `${folderPath}/${sub}`;
     }
 

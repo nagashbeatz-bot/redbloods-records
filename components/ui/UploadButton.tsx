@@ -39,6 +39,8 @@ interface Props {
   label?: string;
   /** Allow any file type (e.g. Stems .zip). Default: audio only. */
   acceptAnyFile?: boolean;
+  /** Keep the original file name instead of generating a versioned name. */
+  preserveOriginalName?: boolean;
 }
 
 type State = "idle" | "uploading" | "done" | "error";
@@ -79,6 +81,7 @@ export default function UploadButton({
   deliveryTypeLabel,
   label,
   acceptAnyFile,
+  preserveOriginalName,
 }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -107,7 +110,11 @@ export default function UploadButton({
       return;
     }
 
-    const newName = buildVersionName(artist, projectName, existingFiles, ext, status, deliveryTypeLabel);
+    // Channels/stems delivery keeps the original file name; everything else gets
+    // a generated versioned name.
+    const newName = preserveOriginalName
+      ? file.name.replace(/[/\\:*?"<>|]/g, "").trim()
+      : buildVersionName(artist, projectName, existingFiles, ext, status, deliveryTypeLabel);
     setState("uploading");
     setProgress(0);
 

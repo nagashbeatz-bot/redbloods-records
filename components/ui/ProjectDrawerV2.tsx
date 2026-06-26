@@ -2797,18 +2797,22 @@ function SessionsContent({ sessions, sessDone, onStatusChange }: { sessions: Ses
 
 // ─── Tab: קבצים ───────────────────────────────────────────────────────────────
 
-// Delivery file types — chip label + the type label baked into the file name.
-const DELIVERY_TYPES: { label: string; typeLabel: string }[] = [
-  { label: "מאסטר",            typeLabel: "מאסטר" },
-  { label: "גרסת הופעה",       typeLabel: "גרסת הופעה" },
-  { label: "אקפלה",            typeLabel: "אקפלה" },
-  { label: "אינסטרומנטל",      typeLabel: "אינסטרומנטל" },
-  { label: "גבעולים ממוקססים", typeLabel: "גבעולים ממוקססים" },
-  { label: "אחר",              typeLabel: "מסירה אחרת" },
+// Delivery file types — chip label, the type label baked into the generated
+// file name, the Dropbox subfolder, and whether to keep the original file name.
+// "ערוצים" (channels/stems) goes to a nested subfolder and keeps its real name.
+const DELIVERY_TYPES: { label: string; typeLabel?: string; subfolder: string; preserveOriginalName?: boolean }[] = [
+  { label: "מאסטר",       typeLabel: "מאסטר",       subfolder: "Delivery" },
+  { label: "גרסת הופעה",  typeLabel: "גרסת הופעה",  subfolder: "Delivery" },
+  { label: "אקפלה",       typeLabel: "אקפלה",       subfolder: "Delivery" },
+  { label: "אינסטרומנטל", typeLabel: "אינסטרומנטל", subfolder: "Delivery" },
+  { label: "ערוצים",      subfolder: "Delivery/ערוצים", preserveOriginalName: true },
+  { label: "אחר",         typeLabel: "מסירה אחרת",  subfolder: "Delivery" },
 ];
 
-// Basic delivery file type tag, inferred from the file name (Hebrew or English).
-function deliveryTag(name: string): { label: string; color: string } {
+// Basic delivery file type tag, inferred from the Dropbox path first (channels
+// live in a "/Delivery/ערוצים/" subfolder and keep original names), then the file name.
+function deliveryTag(name: string, dropboxPath?: string): { label: string; color: string } {
+  if (dropboxPath?.includes("/Delivery/ערוצים/")) return { label: "ערוצים", color: "#06B6D4" };
   const n = name.toLowerCase();
   if (n.includes("master") || name.includes("מאסטר"))                              return { label: "מאסטר", color: "#EF4444" };
   if (n.includes("performance") || name.includes("הופעה"))                          return { label: "גרסת הופעה", color: "#F59E0B" };
@@ -2891,16 +2895,17 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: 580 }}>
               {DELIVERY_TYPES.map((t) => (
                 <UploadButton
-                  key={t.typeLabel}
+                  key={t.label}
                   projectId={project.id}
                   projectName={project.name}
                   artist={project.artist ?? ""}
                   existingFiles={deliveryFiles}
                   size="md"
-                  subfolder="Delivery"
+                  subfolder={t.subfolder}
                   deliveryTypeLabel={t.typeLabel}
                   label={t.label}
                   acceptAnyFile
+                  preserveOriginalName={t.preserveOriginalName}
                 />
               ))}
             </div>
@@ -2913,7 +2918,7 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
           {deliveryFiles.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {deliveryFiles.map((f, i) => {
-                const tag  = deliveryTag(f.name);
+                const tag  = deliveryTag(f.name, f.dropboxPath);
                 const href = f.dropboxShareUrl || f.url || "";
                 return (
                   <div key={i} style={{
