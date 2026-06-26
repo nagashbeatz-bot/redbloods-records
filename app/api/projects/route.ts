@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listProjects, createProject } from "@/lib/projects-store";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
+import { requireAuth } from "@/lib/require-auth";
 
 // GET /api/projects           — visible projects only (default)
 // GET /api/projects?hidden=1  — hidden projects only
 // GET /api/projects?all=1     — all projects (visible + hidden)
 export async function GET(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   try {
     const hidden = req.nextUrl.searchParams.get("hidden");
     const all    = req.nextUrl.searchParams.get("all");
@@ -21,6 +23,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/projects — create a new project
 export async function POST(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   try {
     const body = await req.json();
     const { name, artist, status, deadline, notes, projectType, parentProject } = body;

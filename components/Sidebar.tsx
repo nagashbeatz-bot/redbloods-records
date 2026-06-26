@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { createSupabaseBrowser } from "@/lib/supabase-browser";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -242,6 +243,21 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
           }}
         >
           {premium ? "PRO" : "STD"}
+        </button>
+        <button
+          onClick={async () => {
+            try { await createSupabaseBrowser().auth.signOut(); } catch { /* ignore */ }
+            window.location.href = "/login";
+          }}
+          title="יציאה"
+          style={{
+            fontSize: 9, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            color: SUB, fontWeight: 700, flexShrink: 0,
+          }}
+        >
+          יציאה
         </button>
       </div>
     </aside>

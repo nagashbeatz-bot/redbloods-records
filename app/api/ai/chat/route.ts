@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chatWithAgent } from "@/lib/ai-router";
 import { buildAgentContext } from "@/lib/agent/context-builder";
+import { requireAuth } from "@/lib/require-auth";
 
 export async function POST(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   try {
     const { messages, projects, currentPage, selectedProjectId, selectedClientId } =
       await req.json();

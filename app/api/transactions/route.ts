@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { touchProject } from "@/lib/projects-store";
+import { requireAuth } from "@/lib/require-auth";
 
 // GET /api/transactions?projectId=xxx   → transactions + finance settings for one project
 // GET /api/transactions?all=1           → all transactions + all finance settings
 export async function GET(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   const projectId = req.nextUrl.searchParams.get("projectId");
   const all       = req.nextUrl.searchParams.get("all");
 
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/transactions  → create a new transaction
 export async function POST(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   const body = await req.json();
   const {
     projectId, scope, type, date, description, artist, amount,
@@ -105,6 +108,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/transactions?projectId=xxx&type=settings  → update finance settings
 export async function PATCH(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   const projectId = req.nextUrl.searchParams.get("projectId");
   const type      = req.nextUrl.searchParams.get("type");
 

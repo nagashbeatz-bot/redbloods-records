@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { createTask, patchTask } from "@/lib/tasks-store";
+import { requireAuth } from "@/lib/require-auth";
 
 // GET /api/proposals?clientId=xxx
 export async function GET(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   try {
     const clientId = req.nextUrl.searchParams.get("clientId");
     if (!clientId) return NextResponse.json({ error: "clientId חסר" }, { status: 400 });
@@ -24,6 +26,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/proposals — create proposal
 export async function POST(req: NextRequest) {
+  const unauth = await requireAuth(); if (unauth) return unauth;
   try {
     const body = await req.json();
     const { clientId, title, amount, currency, status, sentDate, followupDate, notes } = body;
