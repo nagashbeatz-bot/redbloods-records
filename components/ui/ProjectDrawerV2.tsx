@@ -485,7 +485,7 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
 
 // ─── Main component ────────────────────────────────────────────────────────────
 export default function ProjectDrawerV2({ projectId, onClose }: Props) {
-  const { projects, refresh } = useProjects();
+  const { projects, refresh, updateProjectField } = useProjects();
   const player = usePlayerSafe();
 
   const [isMobile,     setIsMobile]     = useState(false);
@@ -502,6 +502,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [finLoaded,    setFinLoaded]    = useState(false);
   // Dismisses the "missing balance due date" reminder for the current opening only.
   const [balanceReminderDismissed, setBalanceReminderDismissed] = useState(false);
+  const [showArtistPicker, setShowArtistPicker] = useState(false);
   const [sessions,        setSessions]        = useState<Session[]>([]);
   const [projectActions,  setProjectActions]  = useState<ProjectAction[]>([]);
   const [mounted,         setMounted]         = useState(false);
@@ -804,8 +805,20 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   {project.projectType || "שיר"}
                 </span>
                 <span style={{ fontSize: 14, color: TEXT2, fontWeight: 600 }}>
-                  🎤 {project.artist}
+                  🎤 {project.artist || "ללא אמן"}
                 </span>
+                <button
+                  onClick={() => setShowArtistPicker(true)}
+                  title="שייך / שנה אמן"
+                  style={{
+                    fontSize: 11, fontWeight: 700, color: TEXT2,
+                    background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER2}`,
+                    borderRadius: 8, padding: "3px 10px", cursor: "pointer", fontFamily: "inherit",
+                    display: "flex", alignItems: "center", gap: 4,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = TEXT; e.currentTarget.style.borderColor = BORDER; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = TEXT2; e.currentTarget.style.borderColor = BORDER2; }}
+                >✎ שייך אמן</button>
               </div>
 
               {/* Stats — 2×2 grid */}
@@ -1266,6 +1279,18 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             return true;
           }}
           onDismiss={() => setBalanceReminderDismissed(true)}
+        />
+      )}
+
+      {/* ── Artist picker ── */}
+      {showArtistPicker && (
+        <ArtistPickerModal
+          currentArtist={project.artist ?? ""}
+          onSave={async (name) => {
+            await updateProjectField(project.id, "artist", name);
+            await refresh();
+          }}
+          onClose={() => setShowArtistPicker(false)}
         />
       )}
 
@@ -2213,6 +2238,145 @@ function BalanceReminderModal({
               }}
             >{saving ? "שומר…" : "קבע תאריך תשלום"}</button>
           </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── ArtistPickerModal ────────────────────────────────────────────────────────
+// Pick an existing client (type "אמן" first) or create a new artist by name.
+// Saving only sets project.artist; the server-side upsert creates the client if
+// it's missing (deduped by name). No POST /api/clients, no client_id.
+interface PickClient { id: string; name: string; type?: string; status?: string }
+
+function ArtistPickerModal({
+  currentArtist, onSave, onClose,
+}: {
+  currentArtist: string;
+  onSave: (name: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [clients,  setClients]  = useState<PickClient[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [loadErr,  setLoadErr]  = useState("");
+  const [query,    setQuery]    = useState(currentArtist);
+  const [selected, setSelected] = useState<string | null>(currentArtist.trim() || null);
+  const [saving,   setSaving]   = useState(false);
+  const [saveErr,  setSaveErr]  = useState("");
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/clients")
+      .then(r => r.json())
+      .then(d => { if (alive) setClients(Array.isArray(d.clients) ? d.clients : []); })
+      .catch(() => { if (alive) setLoadErr("שגיאה בטעינת לקוחות"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  const q = query.trim();
+  const filtered = clients
+    .filter(c => !q || c.name.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => {
+      const aw = a.type === "אמן" ? 0 : 1;
+      const bw = b.type === "אמן" ? 0 : 1;
+      return aw !== bw ? aw - bw : a.name.localeCompare(b.name, "he");
+    });
+  const exactMatch = !!q && clients.some(c => c.name.trim().toLowerCase() === q.toLowerCase());
+
+  async function handleSave() {
+    const name = (selected ?? "").trim();
+    if (!name || saving) return;
+    setSaving(true);
+    setSaveErr("");
+    try {
+      await onSave(name);
+      onClose();
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "שמירה נכשלה");
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 199999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(4px)" }} />
+      <div dir="rtl" style={{
+        position: "relative", width: 460, maxWidth: "92vw", maxHeight: "82vh",
+        borderRadius: 20, background: "linear-gradient(160deg, #12121A 0%, #0E0E14 100%)",
+        border: `1.5px solid ${BORDER2}`, boxShadow: "0 32px 80px rgba(0,0,0,0.85)",
+        padding: "22px 22px 18px", display: "flex", flexDirection: "column", gap: 14,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>שייך אמן לפרויקט</div>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER2}`, color: TEXT2, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+        </div>
+
+        <input
+          autoFocus
+          value={query}
+          onChange={e => { setQuery(e.target.value); setSelected(e.target.value.trim() || null); }}
+          placeholder="חפש אמן/לקוח קיים או הקלד שם חדש…"
+          style={{ width: "100%", boxSizing: "border-box", background: CARD_BG, border: `1px solid ${BORDER2}`, borderRadius: 11, color: TEXT, fontSize: 14, padding: "11px 13px", outline: "none", fontFamily: "inherit" }}
+        />
+
+        <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, minHeight: 80, maxHeight: "42vh" }}>
+          {loading ? (
+            <div style={{ fontSize: 13, color: MUTED, textAlign: "center", padding: "24px 0" }}>טוען…</div>
+          ) : loadErr ? (
+            <div style={{ fontSize: 13, color: RED_WARN, textAlign: "center", padding: "24px 0" }}>{loadErr}</div>
+          ) : (
+            <>
+              {q && !exactMatch && (
+                <button
+                  onClick={() => setSelected(q)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", borderRadius: 11,
+                    background: selected === q ? `${GREEN}1A` : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${selected === q ? GREEN + "55" : BORDER}`,
+                    color: GREEN, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textAlign: "right",
+                  }}
+                >＋ צור אמן חדש: &quot;{q}&quot;</button>
+              )}
+              {filtered.map(c => {
+                const sel = selected === c.name;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelected(c.name)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9,
+                      padding: "10px 12px", borderRadius: 11,
+                      background: sel ? `${BLUE}1A` : CARD_BG,
+                      border: `1px solid ${sel ? BLUE + "55" : BORDER}`,
+                      cursor: "pointer", fontFamily: "inherit", textAlign: "right",
+                    }}
+                  >
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎤 {c.name}</span>
+                    <span style={{ fontSize: 10.5, color: MUTED, flexShrink: 0 }}>{c.type || "לקוח"}</span>
+                  </button>
+                );
+              })}
+              {filtered.length === 0 && !q && (
+                <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "20px 0" }}>אין לקוחות עדיין</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {saveErr && <div style={{ color: RED_WARN, fontSize: 12.5 }}>{saveErr}</div>}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
+          <button onClick={handleSave} disabled={!selected || saving} style={{ padding: "10px 22px", borderRadius: 11, border: "none", background: BRAND, color: "#fff", fontSize: 14, fontWeight: 800, fontFamily: "inherit", cursor: !selected || saving ? "default" : "pointer", opacity: !selected || saving ? 0.6 : 1 }}>{saving ? "שומר…" : "שמור"}</button>
+          <button onClick={onClose} disabled={saving} style={{ padding: "10px 20px", borderRadius: 11, background: CARD_BG, border: `1px solid ${BORDER2}`, color: TEXT, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>ביטול</button>
         </div>
       </div>
     </div>,
