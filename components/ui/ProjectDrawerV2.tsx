@@ -2828,12 +2828,17 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
 
   // Delivery files = those already stored under a "/Delivery/" subfolder.
   const deliveryFiles = files.filter(f => f.dropboxPath?.includes("/Delivery/"));
-  // Best-effort "open folder" link derived from an existing delivery file's path.
+  // "Open folder" link derived from an existing delivery file's path. Always
+  // points at the main Delivery folder, even for files nested in Delivery/ערוצים,
+  // and encodes each path segment so Hebrew / spaces / quotes don't break the URL.
   const deliveryFolderUrl = (() => {
     const p = deliveryFiles[0]?.dropboxPath;
     if (!p) return "";
-    const folder = p.slice(0, p.lastIndexOf("/"));
-    return `https://www.dropbox.com/home${folder}`;
+    const marker = "/Delivery/";
+    const i = p.indexOf(marker);
+    const folder = i >= 0 ? p.slice(0, i + marker.length - 1) : p.slice(0, p.lastIndexOf("/"));
+    const encoded = folder.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+    return `https://www.dropbox.com/home/${encoded}`;
   })();
 
   const [deletingFilePath, setDeletingFilePath] = useState<string | null>(null);
