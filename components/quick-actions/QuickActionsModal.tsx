@@ -19,6 +19,7 @@ interface Category {
 const CATEGORIES: Category[] = [
   { id: "session",        icon: "📅", title: "קבע סשן / פגישה",          desc: "תיאום מועד ביומן ושיוך לפרויקט", active: true  },
   { id: "money-in",       icon: "₪",  title: "כסף נכנס",                 desc: "רישום תשלום, צפוי או גבייה",      active: true  },
+  { id: "task",           icon: "📝", title: "משימה / תזכורת",           desc: "משימה כללית עם תאריך",            active: true  },
   { id: "money-out",      icon: "💸", title: "כסף יצא",                  desc: "רישום הוצאה",                    active: false },
   { id: "project-update", icon: "✏️", title: "עדכון פרויקט",             desc: "שינוי סטטוס או פרטים",            active: false },
   { id: "followup",       icon: "📞", title: "פולואפ ללקוח",            desc: "תזכורת ליצירת קשר",              active: false },
@@ -33,7 +34,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Phase = "grid" | "picker" | "schedule" | "money-in";
+type Phase = "grid" | "picker" | "schedule" | "money-in" | "task";
 
 // Money-in modes → existing payment_status values (no new statuses).
 type MoneyMode = "received" | "expected" | "collect";
@@ -69,6 +70,17 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
   const [saving,     setSaving]     = useState(false);
   const [saveError,  setSaveError]  = useState("");
   const [saved,      setSaved]      = useState(false);
+
+  // ── Task / reminder state ───────────────────────────────────────────────────
+  const [taskTitle,    setTaskTitle]    = useState("");
+  const [taskDate,     setTaskDate]     = useState(todayIsrael);
+  const [taskTime,     setTaskTime]     = useState("");
+  const [taskNote,     setTaskNote]     = useState("");
+  const [taskToGoogle, setTaskToGoogle] = useState(false);
+  const [taskSaving,   setTaskSaving]   = useState(false);
+  const [taskError,    setTaskError]    = useState("");
+  const [taskWarning,  setTaskWarning]  = useState("");
+  const [taskSaved,    setTaskSaved]    = useState(false);
 
   // ── Session-picker state ────────────────────────────────────────────────────
   const [clients, setClients]       = useState<{ name: string }[]>([]);
@@ -117,6 +129,69 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
     setPlaceholderId(null);
     if (cat.id === "session")  setPhase("picker");
     if (cat.id === "money-in") setPhase("money-in");
+    if (cat.id === "task")     setPhase("task");
+  }
+
+  // ── Task: validation + save ──────────────────────────────────────────────────
+  const canSaveTask = !!taskTitle.trim() && !!taskDate && !taskSaving;
+
+  function resetTaskForm() {
+    setTaskTitle(""); setTaskDate(todayIsrael); setTaskTime(""); setTaskNote("");
+    setTaskToGoogle(false); setTaskError(""); setTaskWarning(""); setTaskSaved(false);
+  }
+
+  async function saveTask() {
+    if (!canSaveTask) return;
+    setTaskSaving(true);
+    setTaskError("");
+    setTaskWarning("");
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title:        taskTitle.trim(),
+          related_type: "general",
+          related_id:   null,
+          status:       "פתוח",
+          due_date:     taskDate || null,
+          start_time:   taskTime ? `${taskTime}:00` : null,
+          notes:        taskNote.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
+      const task = data.task as { id: string; title: string };
+
+      // Optional Google Tasks link — reuses the existing Google Tasks flow
+      // (NOT the session calendar-event flow). Failure must not lose the task.
+      if (taskToGoogle && taskDate) {
+        try {
+          const gtRes = await fetch("/api/calendar/create-task", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: task.title, due: taskDate, notes: taskNote.trim() || undefined }),
+          });
+          const gtData = await gtRes.json().catch(() => ({}));
+          if (gtRes.ok && gtData.task?.id) {
+            await fetch(`/api/tasks/${task.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ calendar_event_id: gtData.task.id }),
+            });
+          } else {
+            setTaskWarning("המשימה נשמרה, אבל לא נוספה ל-Google");
+          }
+        } catch {
+          setTaskWarning("המשימה נשמרה, אבל לא נוספה ל-Google");
+        }
+      }
+      setTaskSaved(true);
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setTaskSaving(false);
+    }
   }
 
   // ── Money-in: derived validation + save ──────────────────────────────────────
@@ -208,9 +283,9 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div>
-            {phase === "picker" || phase === "money-in" ? (
+            {phase === "picker" || phase === "money-in" || phase === "task" ? (
               <button
-                onClick={() => { resetMoneyForm(true); setPhase("grid"); }}
+                onClick={() => { resetMoneyForm(true); resetTaskForm(); setPhase("grid"); }}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 5,
                   background: "none", border: "none", padding: 0, marginBottom: 6,
@@ -227,7 +302,7 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
               </div>
             )}
             <div style={{ fontSize: 20, fontWeight: 800, color: "#F5F5F5", lineHeight: 1.2 }}>
-              {phase === "picker" ? "קבע סשן / פגישה" : phase === "money-in" ? "כסף נכנס" : "מה תרצה לעשות?"}
+              {phase === "picker" ? "קבע סשן / פגישה" : phase === "money-in" ? "כסף נכנס" : phase === "task" ? "משימה / תזכורת" : "מה תרצה לעשות?"}
             </div>
           </div>
           <button
@@ -552,6 +627,124 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
               </button>
               <button
                 onClick={() => { resetMoneyForm(true); setPhase("grid"); }}
+                style={{
+                  padding: "10px 20px", borderRadius: 100, fontFamily: "inherit",
+                  fontSize: 13, border: "1.5px solid #383838", background: "#1E1E1E", color: "#999", cursor: "pointer",
+                }}
+              >
+                חזור
+              </button>
+            </div>
+          </div>
+          )
+        )}
+
+        {/* ── Task / reminder ── */}
+        {phase === "task" && (
+          taskSaved ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", padding: "10px 0" }}>
+              <div style={{ fontSize: 40, lineHeight: 1 }}>✅</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#10B981" }}>המשימה נשמרה בהצלחה</div>
+              {taskWarning && (
+                <div style={{ fontSize: 12, color: "#F59E0B", textAlign: "center", lineHeight: 1.5 }}>
+                  ⚠ {taskWarning}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button
+                  onClick={resetTaskForm}
+                  style={{
+                    padding: "10px 20px", borderRadius: 100, fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+                    border: "1.5px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.12)", color: "#10B981", cursor: "pointer",
+                  }}
+                >
+                  הוסף עוד
+                </button>
+                <button
+                  onClick={onClose}
+                  style={{
+                    padding: "10px 20px", borderRadius: 100, fontFamily: "inherit", fontSize: 13,
+                    border: "1.5px solid #383838", background: "#1E1E1E", color: "#999", cursor: "pointer",
+                  }}
+                >
+                  סגור
+                </button>
+              </div>
+            </div>
+          ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Title */}
+            <Field label="מה צריך לעשות?">
+              <input
+                type="text" value={taskTitle} autoFocus
+                onChange={(e) => setTaskTitle(e.target.value)}
+                placeholder="כותרת המשימה"
+                style={selectStyle}
+              />
+            </Field>
+
+            {/* Date + time */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="תאריך">
+                <input
+                  type="date" value={taskDate}
+                  onChange={(e) => setTaskDate(e.target.value)}
+                  style={{ ...selectStyle, colorScheme: "dark" }}
+                />
+              </Field>
+              <Field label="שעה (אופציונלי)">
+                <input
+                  type="time" value={taskTime}
+                  onChange={(e) => setTaskTime(e.target.value)}
+                  style={{ ...selectStyle, colorScheme: "dark" }}
+                />
+              </Field>
+            </div>
+
+            {/* Note */}
+            <Field label="הערה (אופציונלי)">
+              <input
+                type="text" value={taskNote}
+                onChange={(e) => setTaskNote(e.target.value)}
+                placeholder="הערה (אופציונלי)"
+                style={selectStyle}
+              />
+            </Field>
+
+            {/* Google Tasks checkbox — gated on having a date */}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: taskDate ? "pointer" : "not-allowed", opacity: taskDate ? 1 : 0.5 }}>
+              <input
+                type="checkbox"
+                checked={taskToGoogle && !!taskDate}
+                disabled={!taskDate}
+                onChange={(e) => setTaskToGoogle(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: "#A855F7", cursor: "inherit", marginTop: 1 }}
+              />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: taskToGoogle && taskDate ? "#C084FC" : "#B0B0B0" }}>
+                  הוסף ליומן Google
+                </div>
+                <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>תופיע כמשימה ב-Google</div>
+              </div>
+            </label>
+
+            {taskError && <div style={{ fontSize: 12, color: "#EF4444", textAlign: "center" }}>{taskError}</div>}
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
+              <button
+                onClick={saveTask}
+                disabled={!canSaveTask}
+                style={{
+                  padding: "10px 20px", borderRadius: 100, fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+                  border: "1.5px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.14)", color: "#10B981",
+                  cursor: canSaveTask ? "pointer" : "not-allowed", opacity: canSaveTask ? 1 : 0.4,
+                }}
+              >
+                {taskSaving ? "שומר…" : "שמור משימה"}
+              </button>
+              <button
+                onClick={() => { resetTaskForm(); setPhase("grid"); }}
                 style={{
                   padding: "10px 20px", borderRadius: 100, fontFamily: "inherit",
                   fontSize: 13, border: "1.5px solid #383838", background: "#1E1E1E", color: "#999", cursor: "pointer",
