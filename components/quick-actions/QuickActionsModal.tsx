@@ -76,7 +76,7 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
   const [taskDate,     setTaskDate]     = useState(todayIsrael);
   const [taskTime,     setTaskTime]     = useState("");
   const [taskNote,     setTaskNote]     = useState("");
-  const [taskToGoogle, setTaskToGoogle] = useState(false);
+  const [taskToGoogle, setTaskToGoogle] = useState(true);
   const [taskSaving,   setTaskSaving]   = useState(false);
   const [taskError,    setTaskError]    = useState("");
   const [taskWarning,  setTaskWarning]  = useState("");
@@ -137,7 +137,7 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
 
   function resetTaskForm() {
     setTaskTitle(""); setTaskDate(todayIsrael); setTaskTime(""); setTaskNote("");
-    setTaskToGoogle(false); setTaskError(""); setTaskWarning(""); setTaskSaved(false);
+    setTaskToGoogle(true); setTaskError(""); setTaskWarning(""); setTaskSaved(false);
   }
 
   async function saveTask() {
