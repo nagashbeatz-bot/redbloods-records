@@ -822,6 +822,7 @@ function ProjectRow({
             projectName={p.name}
             artist={p.artist ?? ""}
             existingFiles={p.files}
+            status={p.status}
             size="sm"
           />
         </div>
@@ -909,7 +910,7 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
           <ActionMenu projectId={p.id} projectName={p.name} artist={p.artist ?? ""} />
         </div>
         <div onClick={e => e.stopPropagation()}>
-          <UploadButton projectId={p.id} projectName={p.name} artist={p.artist ?? ""} existingFiles={p.files} size="sm" />
+          <UploadButton projectId={p.id} projectName={p.name} artist={p.artist ?? ""} existingFiles={p.files} status={p.status} size="sm" />
         </div>
         {remaining > 0 && (
           <span style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginRight: 4 }}>

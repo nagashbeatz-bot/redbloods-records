@@ -1426,6 +1426,7 @@ export default function ProjectsTable() {
                     projectName={p.name}
                     artist={p.artist}
                     existingFiles={p.files}
+                    status={p.status}
                     size="sm"
                   />
                 </div>

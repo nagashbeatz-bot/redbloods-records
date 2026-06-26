@@ -1092,6 +1092,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   projectName={project.name}
                   artist={project.artist}
                   existingFiles={project.files}
+                  status={project.status}
                   size="sm"
                 />
               </div>
@@ -2607,6 +2608,7 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
           projectName={project.name}
           artist={project.artist ?? ""}
           existingFiles={project.files ?? []}
+          status={project.status}
           size="sm"
         />
       </div>

@@ -1889,7 +1889,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
               onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.13)")}
               onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(245,158,11,0.06)")}
             >+ הוצאה</button>
-            <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
+            <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} status={project.status} size="sm" />
           </div>
 
           {/* Tabs */}
@@ -3181,7 +3181,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
           >
             {/* Upload button */}
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-              <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} size="sm" />
+              <UploadButton projectId={project.id} projectName={project.name} artist={project.artist} existingFiles={project.files} status={project.status} size="sm" />
             </div>
 
             {/* Delivery folder error */}

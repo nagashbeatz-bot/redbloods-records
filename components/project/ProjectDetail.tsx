@@ -365,6 +365,7 @@ export default function ProjectDetail({ project, onUpdate }: ProjectDetailProps)
               projectName={project.name}
               artist={project.artist}
               existingFiles={project.files}
+              status={project.status}
               size="md"
             />
           </div>

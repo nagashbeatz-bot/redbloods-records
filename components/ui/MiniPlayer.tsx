@@ -227,6 +227,7 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
               projectName={project.name}
               artist={project.artist}
               existingFiles={project.files}
+              status={project.status}
               size="sm"
             />
           )}

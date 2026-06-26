@@ -24,6 +24,8 @@ interface Props {
   versionLabel?: string;
   /** Track title — included in the auto-generated filename when uploading from a track row */
   trackName?: string;
+  /** Project status — drives the auto file type: "מאסטר" for במיקס/הושלם, else "סקיצה" */
+  status?: string;
   /** Called after a successful upload with the resulting FileLink (including trackId/versionLabel) */
   onSuccess?: (file: FileLink) => void;
   /** Called before the file picker opens; return false to abort. Use to stop the player first. */
@@ -37,16 +39,18 @@ function buildVersionName(
   projectName: string,
   existingFiles: { name: string }[],
   ext: string,
-  trackName?: string
+  status?: string
 ): string {
-  const audioCount = existingFiles.filter((f) =>
-    AUDIO_EXTS.some((x) => f.name.toLowerCase().endsWith(x))
-  ).length;
-  const version = audioCount + 1;
-  const date = new Date().toISOString().split("T")[0];
+  // Type is derived from the project status — no manual choice.
+  const type = (status === "במיקס" || status === "הושלם") ? "מאסטר" : "סקיצה";
+  // Version is per type: count existing audio files already labeled with this
+  // type, so "מאסטר V1" starts fresh even if several "סקיצה" files exist.
+  const version = existingFiles.filter((f) =>
+    AUDIO_EXTS.some((x) => f.name.toLowerCase().endsWith(x)) &&
+    f.name.includes(` - ${type} V`)
+  ).length + 1;
   const sanitize = (s: string) => s.replace(/[/\\:*?"<>|]/g, "").trim();
-  const trackPart = trackName ? ` - ${sanitize(trackName)}` : "";
-  return `${sanitize(artist)} - ${sanitize(projectName)}${trackPart} - ${date} - V${version}.${ext}`;
+  return `${sanitize(artist)} - ${sanitize(projectName)} - ${type} V${version}.${ext}`;
 }
 
 export default function UploadButton({
@@ -57,7 +61,7 @@ export default function UploadButton({
   size = "sm",
   trackId,
   versionLabel,
-  trackName,
+  status,
   onSuccess,
   confirmBeforeUpload,
 }: Props) {
@@ -88,7 +92,7 @@ export default function UploadButton({
       return;
     }
 
-    const newName = buildVersionName(artist, projectName, existingFiles, ext, trackName);
+    const newName = buildVersionName(artist, projectName, existingFiles, ext, status);
     setState("uploading");
     setProgress(0);
 

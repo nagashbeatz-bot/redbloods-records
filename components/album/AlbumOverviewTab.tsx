@@ -674,6 +674,7 @@ export default function AlbumOverviewTab({ project, accentColor, onAddTrack, onG
                         projectName={project.name}
                         artist={project.artist}
                         existingFiles={filesForTrack(track.id)}
+                        status={project.status}
                         trackId={track.id}
                         trackName={track.title}
                         confirmBeforeUpload={makeConfirm()}
