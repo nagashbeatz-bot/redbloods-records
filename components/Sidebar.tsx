@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
+
+// Run before paint on the client (avoids nav flicker); no-op shape on the server.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const ROLE_CACHE_KEY = "rb_role";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -114,12 +118,35 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
 
-  // Phase 2A: Victor (supplier) sees a minimal nav — only his page.
+  // Hydrate the last-known role from cache BEFORE paint. AppShell remounts on
+  // every navigation, so without this the owner's full nav would blink away to
+  // empty each time until /api/me resolves. Only a cached "owner"/"victor" is
+  // trusted to render nav while the request is in flight.
+  useIsoLayoutEffect(() => {
+    try {
+      const cached = localStorage.getItem(ROLE_CACHE_KEY);
+      if (cached === "owner" || cached === "victor") setMyRole(cached);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Confirm/refresh role from the server; cache it, or clear on unknown/denied
+  // (so a stale owner cache can never linger after switching users).
   useEffect(() => {
+    let alive = true;
     fetch("/api/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.role === "owner" || d?.role === "victor") setMyRole(d.role); })
+      .then((r) => (r.ok ? r.json() : { role: "denied" }))
+      .then((d) => {
+        if (!alive) return;
+        if (d?.role === "owner" || d?.role === "victor") {
+          setMyRole(d.role);
+          try { localStorage.setItem(ROLE_CACHE_KEY, d.role); } catch { /* ignore */ }
+        } else {
+          setMyRole(null);
+          try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }
+        }
+      })
       .catch(() => {});
+    return () => { alive = false; };
   }, []);
   // Full nav ONLY once we know the user is an owner. While role is loading (null)
   // or unknown, show no main nav — prevents a flash of the full Sidebar for Victor
@@ -266,6 +293,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
         </button>
         <button
           onClick={async () => {
+            try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }
             try { await createSupabaseBrowser().auth.signOut(); } catch { /* ignore */ }
             window.location.href = "/login";
           }}
