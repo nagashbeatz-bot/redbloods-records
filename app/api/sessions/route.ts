@@ -65,16 +65,20 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { projectId, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar, photographer, location } = body;
+    const { projectId, title, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar, photographer, location } = body;
+    const cleanTitle = typeof title === "string" ? title.trim() : "";
 
-    if (!projectId) {
-      return NextResponse.json({ error: "projectId חסר" }, { status: 400 });
+    // A session must be tied to a project OR carry a manual title (independent
+    // session). Never create a project here.
+    if (!projectId && !cleanTitle) {
+      return NextResponse.json({ error: "בחר פרויקט או הזן שם לסשן" }, { status: 400 });
     }
 
     const { data, error } = await supabase
       .from("sessions")
       .insert({
-        project_id:        projectId,
+        project_id:        projectId ?? null,
+        title:             cleanTitle || null,
         date:              date              || null,
         start_time:        startTime         || null,
         end_time:          endTime           || null,
@@ -108,13 +112,19 @@ export async function POST(req: NextRequest) {
             const eMm = String(endTotalMin % 60).padStart(2, "0");
             calEnd = `${date}T${eHh}:${eMm}:00`;
           }
-          const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
           const isFilming = sessionType === "צילום קליפ";
-          const summary = proj
-            ? isFilming
-              ? `צילום קליפ: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}${photographer ? ` (${photographer})` : ""}`
-              : `סשן: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}`
-            : isFilming ? "צילום קליפ" : "סשן";
+          let summary: string;
+          if (projectId) {
+            const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
+            summary = proj
+              ? isFilming
+                ? `צילום קליפ: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}${photographer ? ` (${photographer})` : ""}`
+                : `סשן: ${proj.name}${proj.artist ? ` — ${proj.artist}` : ""}`
+              : isFilming ? "צילום קליפ" : "סשן";
+          } else {
+            // Independent session — the manual title IS the calendar event name.
+            summary = cleanTitle || (isFilming ? "צילום קליפ" : "סשן");
+          }
           const event = await createCalendarEvent(summary, calStart, calEnd, notes ? { description: notes } : undefined);
           const calId  = (event as { id?: string }).id ?? null;
           if (calId) {
@@ -128,10 +138,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Bump project's updated_at so it rises to top of "עודכן לאחרונה" sort
-    touchProject(projectId).catch(() => {});
-    // Auto-fill start_date from earliest session if not yet set
-    ensureProjectStartDate(projectId).catch(() => {});
+    // Project-only side effects — skipped for independent (project-less) sessions.
+    if (projectId) {
+      // Bump project's updated_at so it rises to top of "עודכן לאחרונה" sort
+      touchProject(projectId).catch(() => {});
+      // Auto-fill start_date from earliest session if not yet set
+      ensureProjectStartDate(projectId).catch(() => {});
+    }
 
     return NextResponse.json({ session: data, calendarError });
   } catch (err) {

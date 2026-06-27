@@ -189,7 +189,9 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minutes]);
 
-  const title = buildEventTitle(action, artist, projectName);
+  // With a project: formatted title. Independent session (no projectId):
+  // projectName carries the manual name, which IS the calendar event title.
+  const title = projectId ? buildEventTitle(action, artist, projectName) : projectName;
 
   // ── Derived manual values ─────────────────────────────────────────────────
   // Anchor to noon-UTC so getDay() is unambiguously the Israel calendar day
@@ -306,7 +308,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            projectId,
+            projectId: projectId || null,
+            title:     projectId ? null : projectName,
             date,
             startTime,
             endTime,
@@ -320,8 +323,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         savedSessionId = sessData.session?.id ?? null;
         onSessionCreated?.();
 
-        // ── Save pending payment if one was staged ────────────────────────
-        if (pendingPayment) {
+        // ── Save pending payment if one was staged (project-scoped only) ──
+        if (projectId && pendingPayment) {
           await fetch("/api/transactions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -399,8 +402,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               <div style={{ fontSize: 20, fontWeight: 800, color: "#F5F5F5", lineHeight: 1.2 }}>{projectName}</div>
               <div style={{ fontSize: 14, color: "#999", marginTop: 4 }}>{artist}</div>
             </div>
-            {/* ₪ optional finance button — only on confirm screen */}
-            {isConfirm && !showFinance && (
+            {/* ₪ optional finance button — only on confirm screen, project-scoped */}
+            {isConfirm && !showFinance && projectId && (
               <button
                 onClick={handleOpenFinance}
                 title="הצג מצב כספי"

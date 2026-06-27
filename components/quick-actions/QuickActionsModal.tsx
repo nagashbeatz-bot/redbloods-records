@@ -86,6 +86,7 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
   const [clients, setClients]       = useState<{ name: string }[]>([]);
   const [clientName, setClientName] = useState<string>("");
   const [projectId, setProjectId]   = useState<string>(initialProjectId ?? "");
+  const [sessionTitle, setSessionTitle] = useState<string>(""); // manual name for an independent (project-less) session
   const [action, setAction]         = useState<ActionDef>(ACTIONS[0]);
 
   // Active (non-hidden) projects only, sorted by name for the dropdown.
@@ -247,14 +248,16 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
     }
   }
 
-  // ── Schedule hand-off: reuse the existing ScheduleModal as-is ────────────────
-  if (phase === "schedule" && selectedProject) {
+  // ── Schedule hand-off: reuse ScheduleModal. With a project → as before.
+  // Without a project (independent session) → projectName carries the manual
+  // title and projectId is empty; ScheduleModal handles both.
+  if (phase === "schedule" && (selectedProject || sessionTitle.trim())) {
     return (
       <ScheduleModal
         action={action}
-        projectId={selectedProject.id}
-        projectName={selectedProject.name}
-        artist={selectedProject.artist}
+        projectId={selectedProject?.id ?? ""}
+        projectName={selectedProject?.name ?? sessionTitle.trim()}
+        artist={selectedProject?.artist ?? clientName}
         onClose={onClose}
         onSessionCreated={onClose}
       />
@@ -368,14 +371,14 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
               </select>
             </Field>
 
-            {/* Project */}
-            <Field label="פרויקט">
+            {/* Project (optional — leave empty for an independent session) */}
+            <Field label="פרויקט (אופציונלי)">
               <select
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
                 style={selectStyle}
               >
-                <option value="">בחר פרויקט…</option>
+                <option value="">בחר פרויקט / סשן עצמאי…</option>
                 {filteredProjects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}{p.artist ? ` — ${p.artist}` : ""}
@@ -388,6 +391,18 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
                 </div>
               )}
             </Field>
+
+            {/* Independent session — manual name shown in-app + in Google Calendar */}
+            {!selectedProject && (
+              <Field label="שם הסשן / שם שיופיע ביומן *">
+                <input
+                  value={sessionTitle}
+                  onChange={(e) => setSessionTitle(e.target.value)}
+                  placeholder="למשל: כתיבה עם שליו"
+                  style={selectStyle}
+                />
+              </Field>
+            )}
 
             {/* Session type */}
             <Field label="סוג סשן / פגישה">
@@ -414,25 +429,30 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
             </Field>
 
             <div style={{ fontSize: 11, color: "#555", lineHeight: 1.5 }}>
-              בשלב הבא נבחר תאריך, שעה ומשך, והסשן יישמר ביומן ויקושר לפרויקט.
+              בשלב הבא נבחר תאריך, שעה ומשך, והסשן יישמר ביומן (ויקושר לפרויקט אם נבחר).
             </div>
 
             {/* Actions */}
             <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
+              {(() => {
+                const canProceed = !!selectedProject || sessionTitle.trim().length > 0;
+                return (
               <button
-                onClick={() => selectedProject && setPhase("schedule")}
-                disabled={!selectedProject}
+                onClick={() => canProceed && setPhase("schedule")}
+                disabled={!canProceed}
                 style={{
                   padding: "10px 20px", borderRadius: 100, fontFamily: "inherit",
                   fontSize: 13, fontWeight: 600,
                   border: "1.5px solid rgba(168,85,247,0.4)",
                   background: "rgba(168,85,247,0.14)", color: "#C084FC",
-                  cursor: selectedProject ? "pointer" : "not-allowed",
-                  opacity: selectedProject ? 1 : 0.4,
+                  cursor: canProceed ? "pointer" : "not-allowed",
+                  opacity: canProceed ? 1 : 0.4,
                 }}
               >
                 המשך לקביעת מועד ←
               </button>
+                );
+              })()}
               <button
                 onClick={() => setPhase("grid")}
                 style={{

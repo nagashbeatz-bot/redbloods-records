@@ -19,7 +19,7 @@ interface Transaction {
   payment_status: string; date: string | null; currency: string;
 }
 interface Session {
-  id: string; project_id: string; date: string | null;
+  id: string; project_id: string | null; title?: string | null; date: string | null;
   start_time: string | null; end_time: string | null;
   status: string; session_type: string; notes: string;
 }
@@ -165,7 +165,7 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
       setProjects(clientProjects);
       setFinances(Array.from(finMap.values()));
-      setSessions(allSessions.filter((s) => projectIds.has(s.project_id)));
+      setSessions(allSessions.filter((s) => s.project_id != null && projectIds.has(s.project_id)));
       setDeliveries((delivRes.deliveries ?? []).filter(
         (d: DeliveryRecord) => projectIds.has(d.projectId) && d.deliveryStatus !== "not_created" && d.deliveryLink
       ));
@@ -574,6 +574,7 @@ function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
 
   // Session-specific
   const [sessProjectId, setSessProjectId] = useState(projects[0]?.id ?? "");
+  const [sessTitle,     setSessTitle]     = useState(""); // manual name when no project (independent session)
   const [sessDuration,  setSessDuration]  = useState(120);
   const [sessLocation,  setSessLocation]  = useState("סטודיו");
 
@@ -606,14 +607,15 @@ function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
         onClose();
 
       } else {
-        // Session
-        if (!sessProjectId) { alert("יש לבחור פרויקט לסשן"); return; }
+        // Session — project OR a manual title (independent session). No project created.
+        if (!sessProjectId && !sessTitle.trim()) { alert("בחר פרויקט או הזן שם לסשן"); return; }
         const endTime = calcEndTime(time, sessDuration);
         const res = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            projectId: sessProjectId,
+            projectId: sessProjectId || null,
+            title: sessProjectId ? null : sessTitle.trim(),
             date, startTime: time, endTime,
             status: "מתוכנן", sessionType: sessLocation,
             notes, addToCalendar: addCal,
@@ -622,8 +624,8 @@ function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
         const d = await res.json();
         if (d.error) throw new Error(d.error);
 
-        // Optional linked payment
-        if (showPayment && paymentAmount && Number(paymentAmount) > 0) {
+        // Optional linked payment — project-scoped, so only when a project is set.
+        if (sessProjectId && showPayment && paymentAmount && Number(paymentAmount) > 0) {
           await fetch("/api/transactions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -720,13 +722,22 @@ function ActivityForm({ initialMode, client, projects, onClose, onSaved }: {
       {/* ── Session fields ── */}
       {mode === "session" && (
         <>
-          <FormField label="פרויקט *">
+          <FormField label="פרויקט (אופציונלי)">
             <select value={sessProjectId} onChange={(e) => setSessProjectId(e.target.value)}
-              style={{ ...inp, marginBottom: 10, borderColor: !sessProjectId ? "rgba(168,85,247,0.5)" : "#2A2A2A" }}>
-              <option value="">— בחר פרויקט —</option>
+              style={{ ...inp, marginBottom: 10 }}>
+              <option value="">— בחר פרויקט / סשן עצמאי —</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </FormField>
+
+          {/* Independent session — manual name shown in-app + in Google Calendar. */}
+          {!sessProjectId && (
+            <FormField label="שם הסשן / שם שיופיע ביומן *">
+              <input value={sessTitle} onChange={(e) => setSessTitle(e.target.value)}
+                placeholder="למשל: כתיבה עם שליו"
+                style={{ ...inp, marginBottom: 10, borderColor: !sessTitle.trim() ? "rgba(168,85,247,0.5)" : "#2A2A2A" }} />
+            </FormField>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <FormField label="תאריך">
@@ -854,7 +865,7 @@ function SessionRow({ session: s, projects, onUpdate, onDelete, dim }: {
             </span>
           </div>
           <div style={{ fontSize: 11, color: "#555" }}>
-            {proj?.name ?? "—"}
+            {proj?.name ?? s.title ?? "—"}
             {s.session_type && s.session_type !== "סשן" ? ` · ${s.session_type}` : ""}
             {s.start_time && s.end_time ? ` · ${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}` : ""}
           </div>

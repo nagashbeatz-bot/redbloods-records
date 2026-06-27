@@ -571,7 +571,7 @@ export default function DashboardDesignPreview() {
   const [financeLoaded,  setFinanceLoaded]  = useState(false);
 
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
-  const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string; date?: string | null; start_time?: string | null }[]>([]);
+  const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string | null; title?: string | null; date?: string | null; start_time?: string | null }[]>([]);
   const [showsList,           setShowsList]           = useState<{ id: string; name: string; artist?: string; date?: string | null }[]>([]);
   const [proposalsList,       setProposalsList]       = useState<{ id: string; title: string; client_name?: string; amount?: number; currency?: string; followup_date?: string | null }[]>([]);
   const [campaignsList,       setCampaignsList]       = useState<{ id: string; title: string; artist_name?: string }[]>([]);
@@ -691,8 +691,8 @@ export default function DashboardDesignPreview() {
         const planned = sessions.filter((s: { status?: string }) => s.status === "מתוכנן");
         updateStatCache({ upcomingSessions: planned.length });
         setUpcomingSessions(planned.length);
-        setSessionsList(planned.map((s: { id: string; project_id: string; date?: string | null; start_time?: string | null }) => ({
-          id: s.id, project_id: s.project_id, date: s.date, start_time: s.start_time,
+        setSessionsList(planned.map((s: { id: string; project_id: string | null; title?: string | null; date?: string | null; start_time?: string | null }) => ({
+          id: s.id, project_id: s.project_id, title: s.title, date: s.date, start_time: s.start_time,
         })));
       })
       .catch(() => {});
@@ -879,7 +879,7 @@ export default function DashboardDesignPreview() {
     "סשנים קרובים": {
       title: "🎙 סשנים מתוכננים — פירוט",
       items: sortByDate(sessionsList.map(s => ({
-        id: s.id, primary: projName(s.project_id),
+        id: s.id, primary: s.project_id ? projName(s.project_id) : (s.title || "סשן"),
         secondary: [shortDate(s.date), s.start_time ? s.start_time.slice(0, 5) : ""].filter(Boolean).join(" · ") || undefined,
         sortDate: s.date,
       }))),
