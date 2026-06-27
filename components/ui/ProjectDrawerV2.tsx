@@ -3053,8 +3053,10 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
   async function openDeliveryFolder() {
     if (!deliveryFolderPath || openingFolder) return;
     // Open a blank tab synchronously (within the click) so the redirect after
-    // the async fetch isn't blocked by the popup blocker.
-    const win = window.open("", "_blank", "noopener,noreferrer");
+    // the async fetch isn't blocked by the popup blocker. NOTE: do NOT pass
+    // "noopener" here — that makes window.open() return null, leaving an
+    // orphaned about:blank tab we can neither redirect nor close.
+    const win = window.open("about:blank", "_blank");
     setOpeningFolder(true);
     setOpenFolderErr(null);
     try {
@@ -3065,11 +3067,15 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
       });
       const data = await res.json();
       if (!res.ok || !data.ok || !data.shareLink) throw new Error(data.error || "no link");
-      if (win) win.location.href = data.shareLink;
-      else window.open(data.shareLink, "_blank", "noopener,noreferrer");
+      if (win && !win.closed) {
+        win.opener = null; // sever opener since we dropped "noopener" above
+        win.location.href = data.shareLink;
+      } else {
+        window.open(data.shareLink, "_blank", "noopener,noreferrer");
+      }
     } catch {
-      win?.close();
-      setOpenFolderErr("לא ניתן לפתוח את התיקייה");
+      if (win && !win.closed) win.close();
+      setOpenFolderErr("לא ניתן לפתוח את תיקיית Dropbox");
     } finally {
       setOpeningFolder(false);
     }

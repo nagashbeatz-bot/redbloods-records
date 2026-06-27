@@ -34,6 +34,8 @@ async function createFolderShareLink(token: string, path: string): Promise<strin
     const url = (inner?.metadata as Record<string, string> | undefined)?.url;
     if (url) return url;
   }
+  // Safe diagnostics (no token): which path failed and Dropbox's own summary.
+  console.error(`[dropbox/folder-link] create failed: status=${res.status} path=${path} summary=${err.error_summary ?? "?"}`);
   throw new Error((err.error_summary as string) ?? "Failed to create Dropbox folder share link");
 }
 
