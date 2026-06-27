@@ -599,6 +599,8 @@ function VictorProjectDrawer({
   const [effectiveShareLink, setEffectiveShareLink] = useState<string | null>(work.dropboxShareLink ?? null);
   const [effectiveFiles, setEffectiveFiles] = useState<FileLink[]>(work.filesSent ?? []);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [openingDbx, setOpeningDbx] = useState(false);
+  const [dbxFallback, setDbxFallback] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
   const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
@@ -730,6 +732,37 @@ function VictorProjectDrawer({
     setEffectiveFolder(data.folderPath);
     setEffectiveShareLink(data.shareLink);
     return data.folderPath as string;
+  }
+
+  // "Open in Dropbox" → go straight to the Production subfolder (where all
+  // Victor uploads land), not the parent folder with 01_From_Redbloods etc.
+  // Owner gets a fresh Production share link via folder-link; if that isn't
+  // available (e.g. Victor, who can't call the owner-only route, or any error)
+  // we fall back to the stored parent link so the button never breaks.
+  async function openInDropbox() {
+    if (openingDbx) return;
+    setOpeningDbx(true);
+    setDbxFallback(null);
+    try {
+      let url = effectiveShareLink;
+      if (effectiveFolder) {
+        try {
+          const res = await fetch("/api/dropbox/folder-link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: `${effectiveFolder}/Production` }),
+          });
+          const data = await res.json();
+          if (res.ok && data.ok && data.shareLink) url = data.shareLink;
+        } catch { /* keep fallback */ }
+      }
+      if (url) {
+        const w = window.open(url, "_blank", "noopener,noreferrer");
+        if (!w) setDbxFallback(url); // popup blocked → render a clickable link
+      }
+    } finally {
+      setOpeningDbx(false);
+    }
   }
 
   async function saveNotes() {
@@ -941,18 +974,33 @@ function VictorProjectDrawer({
                   {uploading ? `${uploadProgress}%` : "↑ העלאה"}
                 </button>
                 {effectiveShareLink && (
-                  <a
-                    href={effectiveShareLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
-                      background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)",
-                      color: "#4A9EFF", textDecoration: "none",
-                    }}
-                  >
-                    פתח ב-Dropbox ↗
-                  </a>
+                  dbxFallback ? (
+                    <a
+                      href={dbxFallback}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
+                        background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)",
+                        color: "#4A9EFF", textDecoration: "none",
+                      }}
+                    >
+                      פתח ב-Dropbox ↗
+                    </a>
+                  ) : (
+                    <button
+                      onClick={openInDropbox}
+                      disabled={openingDbx}
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
+                        background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)",
+                        color: "#4A9EFF", fontFamily: "inherit",
+                        cursor: openingDbx ? "default" : "pointer", opacity: openingDbx ? 0.6 : 1,
+                      }}
+                    >
+                      {openingDbx ? "פותח…" : "פתח ב-Dropbox ↗"}
+                    </button>
+                  )
                 )}
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
