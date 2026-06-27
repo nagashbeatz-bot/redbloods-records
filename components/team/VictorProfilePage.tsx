@@ -1761,10 +1761,15 @@ export default function VictorProfilePage() {
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, display: "inline-block", boxShadow: `0 0 6px ${GREEN}88` }} />
                 פעיל
               </span>
-              <span style={{ fontSize: 12, color: MUTED }}>·</span>
-              <span style={{ fontSize: 12, color: MUTED }}>תאריך התחלה: 12.03.2024</span>
-              <span style={{ fontSize: 12, color: MUTED }}>·</span>
-              <span style={{ fontSize: 12, color: MUTED }}>תחום עיסוק: הפקה · ביטים</span>
+              {/* Start-date / field-of-work line — owner-only chrome; hidden for Victor. */}
+              {isOwner && (
+                <>
+                  <span style={{ fontSize: 12, color: MUTED }}>·</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>תאריך התחלה: 12.03.2024</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>·</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>תחום עיסוק: הפקה · ביטים</span>
+                </>
+              )}
             </div>
           </div>
 
