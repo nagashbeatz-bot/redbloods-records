@@ -600,7 +600,7 @@ function ReferenceCard({
   const vid = ytId(refItem.url);
   const thumb = vid ? `https://img.youtube.com/vi/${vid}/hqdefault.jpg` : null;
   return (
-    <div style={{ display: "flex", gap: 14, padding: 12, borderRadius: 14, background: CARD2, border: `1px solid ${BDR}` }}>
+    <div style={{ display: "flex", gap: 16, padding: 15, borderRadius: 14, background: CARD2, border: `1px solid ${BDR}` }}>
       {/* Thumbnail → plays in-app (does NOT leave the page) */}
       <button
         onClick={() => { if (vid) onPlay(vid); }}
@@ -628,7 +628,7 @@ function ReferenceCard({
         </div>
         <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || `רפרנס ${index}`}</div>
         <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 10.5, color: MUTED, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{refItem.url}</a>
-        {refItem.note && <div style={{ fontSize: 12, color: TEXT2, marginTop: 6, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{refItem.note}</div>}
+        {refItem.note && <div style={{ fontSize: 12, color: TEXT2, marginTop: 9, lineHeight: 1.85, whiteSpace: "pre-wrap" }}>{refItem.note}</div>}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9 }}>
           {vid ? (
             <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit" }}>▶ נגן</button>
@@ -966,7 +966,7 @@ function VictorProjectDrawer({
         onClick={e => e.stopPropagation()}
         style={{
           position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-          width: "min(1180px, 94vw)", maxHeight: "90vh", zIndex: 1001,
+          width: "min(1300px, 95vw)", maxHeight: "90vh", zIndex: 1001,
           background: "#090910",
           border: `1px solid ${BDR2}`,
           borderRadius: 20,
@@ -1077,7 +1077,7 @@ function VictorProjectDrawer({
 
         {/* ── Scrollable body ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.55fr)_minmax(330px,0.75fr)]" style={{ gap: 16, alignItems: "start" }}>
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.9fr)_minmax(310px,0.7fr)]" style={{ gap: 18, alignItems: "start" }}>
 
             {/* ════ MAIN column: brief + references (what Victor must do) ════ */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -1140,7 +1140,7 @@ function VictorProjectDrawer({
                     >+ הוסף רפרנס</button>
                   )}
                 </div>
-                <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
                   {isOwner && refForm.open && (
                     <div style={{ padding: 12, borderRadius: 12, background: CARD2, border: `1px solid ${PURPLE}33`, display: "flex", flexDirection: "column", gap: 8 }}>
                       <input value={refForm.url} onChange={e => setRefForm(f => ({ ...f, url: e.target.value }))} placeholder="קישור YouTube (https://…)" dir="ltr" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
