@@ -701,8 +701,15 @@ function VictorProjectDrawer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorName: "Victor",
-          artistName: work.artist || "Unknown",
-          projectName: work.projectName || "Unknown",
+          // Organize under the existing /Projects convention (Victor-page only):
+          //   linked (has projectId)  → /Projects/<artist>/<project>/Victor
+          //   Victor-only (no project) → /Projects/Victor/<work title>
+          useProjectsLayout: true,
+          projectId: work.projectId,
+          projectName: work.projectName,
+          artistName: work.artist,
+          workTitle: work.title,
+          workId: work.id,
         }),
       });
       const data = await res.json();
