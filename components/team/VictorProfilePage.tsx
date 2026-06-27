@@ -663,18 +663,11 @@ function VictorProjectDrawer({
     setUploadProgress(0);
     setUploadError(null);
     try {
-      // Snapshot the file bytes NOW, while the input's File handle is fresh.
-      // ensureDropboxFolder() below can take a few seconds (Dropbox round-trip),
-      // and an input-derived File can be invalidated across that gap — sending it
-      // afterwards yields a corrupt multipart body ("Failed to parse body as
-      // FormData" on the server). Uploading a snapshot is immune to that.
-      const buffer = await file.arrayBuffer();
-      const snapshot = new File([buffer], file.name, { type: file.type });
       // Auto-create the Dropbox folder on first upload (no manual button).
       const folder = await ensureDropboxFolder();
       if (!folder) { setUploading(false); return; }
       const fd = new FormData();
-      fd.append("file", snapshot, file.name);
+      fd.append("file", file);
       fd.append("workId", work.id);
       fd.append("dropboxFolder", folder);
       fd.append("subFolder", "Production");
