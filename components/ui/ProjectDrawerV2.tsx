@@ -3036,18 +3036,44 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
 
   // Delivery files = those already stored under a "/Delivery/" subfolder.
   const deliveryFiles = files.filter(f => f.dropboxPath?.includes("/Delivery/"));
-  // "Open folder" link derived from an existing delivery file's path. Always
-  // points at the main Delivery folder, even for files nested in Delivery/ערוצים,
-  // and encodes each path segment so Hebrew / spaces / quotes don't break the URL.
-  const deliveryFolderUrl = (() => {
+  // Main Delivery folder PATH (app-folder-relative) derived from an existing
+  // delivery file. Always the top Delivery folder, even for files nested in
+  // Delivery/ערוצים. We never turn this into a manual /home/... URL — instead we
+  // ask Dropbox for a real share link on click (see openDeliveryFolder), which
+  // resolves the app-folder prefix correctly.
+  const deliveryFolderPath = (() => {
     const p = deliveryFiles[0]?.dropboxPath;
     if (!p) return "";
     const marker = "/Delivery/";
     const i = p.indexOf(marker);
-    const folder = i >= 0 ? p.slice(0, i + marker.length - 1) : p.slice(0, p.lastIndexOf("/"));
-    const encoded = folder.split("/").filter(Boolean).map(encodeURIComponent).join("/");
-    return `https://www.dropbox.com/home/${encoded}`;
+    return i >= 0 ? p.slice(0, i + marker.length - 1) : p.slice(0, p.lastIndexOf("/"));
   })();
+  const [openingFolder, setOpeningFolder] = useState(false);
+  const [openFolderErr, setOpenFolderErr] = useState<string | null>(null);
+  async function openDeliveryFolder() {
+    if (!deliveryFolderPath || openingFolder) return;
+    // Open a blank tab synchronously (within the click) so the redirect after
+    // the async fetch isn't blocked by the popup blocker.
+    const win = window.open("", "_blank", "noopener,noreferrer");
+    setOpeningFolder(true);
+    setOpenFolderErr(null);
+    try {
+      const res = await fetch("/api/dropbox/folder-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: deliveryFolderPath }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok || !data.shareLink) throw new Error(data.error || "no link");
+      if (win) win.location.href = data.shareLink;
+      else window.open(data.shareLink, "_blank", "noopener,noreferrer");
+    } catch {
+      win?.close();
+      setOpenFolderErr("לא ניתן לפתוח את התיקייה");
+    } finally {
+      setOpeningFolder(false);
+    }
+  }
 
   const [deletingFilePath, setDeletingFilePath] = useState<string | null>(null);
   const [fileDelLoading,   setFileDelLoading]   = useState(false);
@@ -3180,11 +3206,15 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
           {/* Footer: note + open folder */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11.5, color: MUTED }}>🗂 הקבצים יופיעו באזור &quot;קבצי מסירה&quot; מטה</span>
-            {deliveryFolderUrl && (
-              <a
-                href={deliveryFolderUrl} target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textDecoration: "none", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px" }}
-              >פתח תיקיית מסירה ↗</a>
+            {deliveryFolderPath && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {openFolderErr && <span style={{ fontSize: 11, color: "#EF4444" }}>{openFolderErr}</span>}
+                <button
+                  onClick={openDeliveryFolder}
+                  disabled={openingFolder}
+                  style={{ fontSize: 12, fontWeight: 700, color: TEXT2, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: openingFolder ? "default" : "pointer", opacity: openingFolder ? 0.6 : 1 }}
+                >{openingFolder ? "פותח…" : "פתח תיקיית מסירה ↗"}</button>
+              </div>
             )}
           </div>
         </div>
