@@ -3077,6 +3077,34 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
     }
   }
 
+  // "Copy client link" — ensures a public external share link and copies it.
+  const [copyingLink, setCopyingLink] = useState(false);
+  const [copyState, setCopyState] = useState<"" | "copied" | "notpublic">("");
+  async function copyClientLink() {
+    if (!deliveryFolderPath || copyingLink) return;
+    setCopyingLink(true);
+    setOpenFolderErr(null);
+    setCopyState("");
+    try {
+      const res = await fetch("/api/dropbox/folder-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: deliveryFolderPath }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok || !data.shareLink) throw new Error(data.error || "no-link");
+      await navigator.clipboard.writeText(data.shareLink);
+      // Dropbox couldn't make it public (account/team policy) → warn the user.
+      setCopyState(data.visibility === "public" ? "copied" : "notpublic");
+      setTimeout(() => setCopyState(""), 6000);
+    } catch (e) {
+      const detail = e instanceof Error && e.message && e.message !== "no-link" ? ` (${e.message})` : "";
+      setOpenFolderErr(`לא ניתן ליצור לינק ללקוח${detail}`);
+    } finally {
+      setCopyingLink(false);
+    }
+  }
+
   const [deletingFilePath, setDeletingFilePath] = useState<string | null>(null);
   const [fileDelLoading,   setFileDelLoading]   = useState(false);
   const [fileDelErr,       setFileDelErr]        = useState<string | null>(null);
@@ -3209,8 +3237,11 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11.5, color: MUTED }}>🗂 הקבצים יופיעו באזור &quot;קבצי מסירה&quot; מטה</span>
             {deliveryFolderPath && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 {openFolderErr && <span style={{ fontSize: 11, color: "#EF4444" }}>{openFolderErr}</span>}
+                {copyState === "copied" && <span style={{ fontSize: 11, color: "#10B981" }}>✓ לינק ללקוח הועתק</span>}
+                {copyState === "notpublic" && <span style={{ fontSize: 11, color: "#F59E0B" }}>הועתק, אך הלינק אינו ציבורי — בדוק הגדרות שיתוף ב-Dropbox</span>}
+                {/* Owner: open the folder inside Dropbox (redirect to /home is normal). */}
                 {folderLink ? (
                   <a
                     href={folderLink} target="_blank" rel="noopener noreferrer"
@@ -3223,6 +3254,12 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
                     style={{ fontSize: 12, fontWeight: 700, color: TEXT2, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: openingFolder ? "default" : "pointer", opacity: openingFolder ? 0.6 : 1 }}
                   >{openingFolder ? "פותח…" : "פתח תיקיית מסירה ↗"}</button>
                 )}
+                {/* Client: copy an external (public) share link to send to the artist. */}
+                <button
+                  onClick={copyClientLink}
+                  disabled={copyingLink}
+                  style={{ fontSize: 12, fontWeight: 700, color: TEXT, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: copyingLink ? "default" : "pointer", opacity: copyingLink ? 0.6 : 1 }}
+                >{copyingLink ? "מכין…" : "העתק לינק ללקוח"}</button>
               </div>
             )}
           </div>
