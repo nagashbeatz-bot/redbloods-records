@@ -12,6 +12,7 @@
  */
 
 import { useEffect } from "react";
+import { useRole } from "@/lib/use-role";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const ALLOW_LOCAL_PUSH = process.env.NEXT_PUBLIC_ALLOW_LOCAL_PUSH === "true";
@@ -26,7 +27,11 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
 }
 
 export default function PushManager() {
+  const role = useRole();
   useEffect(() => {
+    // Owner-only. Victor (or any non-owner) must never register a service
+    // worker, see a notification-permission prompt, or create a subscription.
+    if (role !== "owner") return;
     if (
       typeof window === "undefined" ||
       !("serviceWorker" in navigator) ||
@@ -72,7 +77,7 @@ export default function PushManager() {
         console.warn("Push setup failed:", e);
       }
     })();
-  }, []);
+  }, [role]);
 
   return null; // No UI
 }

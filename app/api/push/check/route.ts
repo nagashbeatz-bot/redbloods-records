@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToAll } from "@/lib/push";
+import { requireOwner } from "@/lib/require-auth";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -32,6 +33,8 @@ async function setLastSent() {
 }
 
 export async function POST(req: NextRequest) {
+  // Owner-only — a Victor/unknown session can never trigger a push send.
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const last = await getLastSent();
     const now  = new Date();

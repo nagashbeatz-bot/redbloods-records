@@ -4,6 +4,7 @@ import { useState, useEffect, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
+import { useRole } from "@/lib/use-role";
 
 const MOBILE_TABS = [
   { href: "/dashboard",      label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
@@ -122,15 +123,17 @@ export default function MobileNav({
   navRef?: RefObject<HTMLElement | null>;
 }) {
   const pathname = usePathname();
+  const role = useRole();
   const [moreOpen, setMoreOpen] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
 
   useEffect(() => {
+    if (role !== "owner") return; // alerts are owner-only — no fetch for Victor
     fetch("/api/agent/alerts?status=new&count=1")
       .then((r) => r.json())
       .then((d) => setUnreadAlerts(d.count ?? 0))
       .catch(() => {});
-  }, []);
+  }, [role]);
 
   const moreActive = MORE_ITEMS.some(
     (item) => pathname === item.href || pathname.startsWith(item.href + "/")

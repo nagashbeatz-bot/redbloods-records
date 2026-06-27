@@ -4,9 +4,12 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getAlerts, createAlertIfNotCoolingDown, getUnreadCount } from "@/lib/agent/alerts-store";
+import { requireOwner } from "@/lib/require-auth";
 import type { AlertSeverity, AlertStatus } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
+  // Owner-only — agent alerts are the owner's and must not reach Victor.
+  const denied = await requireOwner(); if (denied) return denied;
   const params  = req.nextUrl.searchParams;
   const status  = params.get("status")  as AlertStatus | null;
   const countOnly = params.get("count") === "1";
@@ -27,6 +30,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json();
     const alert = await createAlertIfNotCoolingDown({
