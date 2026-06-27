@@ -111,8 +111,11 @@ function NavLink({ href, label, icon, iconColor, pathname, badge, hoveredHref, o
 export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: ClientRole; onOpenChat?: () => void }) {
   const pathname = usePathname();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
-  const [premium, setPremium] = useState(false);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
+
+  // Friendly display name by role (no DB / no profiles system).
+  const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : "Redbloods";
+  const displaySub  = role === "owner" ? "מנהל מערכת" : role === "victor" ? "ספק" : "";
 
   // Full nav ONLY for owner; victor → minimal (his page); null/unknown → none.
   // role comes pre-hydrated from AppShell (cached before paint) so the owner's
@@ -126,19 +129,10 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const navTools = role === "owner" ? NAV_TOOLS : [];
 
   useEffect(() => {
+    // Keep applying any previously-saved skin; the toggle UI was removed.
     const stored = localStorage.getItem("rb_skin");
-    const isPremium = stored === "premium";
-    setPremium(isPremium);
-    document.documentElement.setAttribute("data-skin", isPremium ? "premium" : "default");
+    document.documentElement.setAttribute("data-skin", stored === "premium" ? "premium" : "default");
   }, []);
-
-  function toggleSkin() {
-    const next = !premium;
-    setPremium(next);
-    const val = next ? "premium" : "default";
-    localStorage.setItem("rb_skin", val);
-    document.documentElement.setAttribute("data-skin", val);
-  }
 
   useEffect(() => {
     if (role !== "owner") return; // alerts are owner-only
@@ -243,22 +237,9 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
           fontSize: 13, fontWeight: 700, color: SUB,
         }}>RB</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Redbloods Admin</div>
-          <div style={{ fontSize: 10, color: MUTED }}>מנהל מערכת</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
+          {displaySub && <div style={{ fontSize: 10, color: MUTED }}>{displaySub}</div>}
         </div>
-        <button
-          onClick={toggleSkin}
-          title={premium ? "עבור לסקין ברירת מחדל" : "עבור לסקין Premium"}
-          style={{
-            fontSize: 9, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
-            background: `rgba(220,38,38,0.15)`,
-            border: `1px solid rgba(220,38,38,0.3)`,
-            color: BRAND, fontWeight: 900, letterSpacing: "0.04em",
-            flexShrink: 0,
-          }}
-        >
-          {premium ? "PRO" : "STD"}
-        </button>
         <button
           onClick={async () => {
             try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }
