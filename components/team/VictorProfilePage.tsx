@@ -19,6 +19,12 @@ const AMBER   = "#F59E0B";
 const RED     = "#EF4444";
 const BG      = "#0A0A0D";
 
+const WT_INPUT: React.CSSProperties = {
+  width: "100%", padding: "9px 12px", borderRadius: 10, border: `1px solid ${BDR2}`,
+  background: CARD2, color: TEXT, fontSize: 13, fontFamily: "inherit",
+  outline: "none", boxSizing: "border-box",
+};
+
 function fmt(n: number, curr = "$") {
   return `${curr}${n.toLocaleString()}`;
 }
@@ -99,7 +105,7 @@ function WorkStatusDropdown({
 }: {
   workId: string;
   status: string;
-  workProjectId?: string;
+  workProjectId?: string | null;
   workProjectName?: string;
   onUpdated?: (newStatus: string) => void;
 }) {
@@ -1297,6 +1303,40 @@ export default function VictorProfilePage() {
     fetchSalary(year);
   }, [month, fetchSalary, isOwner]);
 
+  // ── New Victor-only work (owner only) — writes vendor_project_work ONLY.
+  // NEVER calls createProject / POST /api/projects; project_id stays null. ──
+  const [workModalOpen, setWorkModalOpen] = useState(false);
+  const [wtTitle,  setWtTitle]  = useState("");
+  const [wtStatus, setWtStatus] = useState<string>("פעיל");
+  const [wtNotes,  setWtNotes]  = useState("");
+  const [wtSaving, setWtSaving] = useState(false);
+  const [wtError,  setWtError]  = useState("");
+
+  function openWorkModal() {
+    setWtTitle(""); setWtStatus("פעיל"); setWtNotes(""); setWtError("");
+    setWorkModalOpen(true);
+  }
+
+  async function saveWork() {
+    if (!wtTitle.trim()) { setWtError("שם העבודה חובה"); return; }
+    setWtSaving(true); setWtError("");
+    try {
+      const res = await fetch("/api/vendor/victor/work", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // title only — no projectId → vendor_project_work row with project_id=null.
+        body: JSON.stringify({ title: wtTitle.trim(), status: wtStatus, notes: wtNotes.trim() || undefined }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setWorkModalOpen(false);
+      await fetchMonth(month);
+    } catch {
+      setWtError("שגיאה ביצירת העבודה");
+    } finally {
+      setWtSaving(false);
+    }
+  }
+
   const currency     = stats?.salaryCurrency ?? "$";
   const salary       = stats?.monthlySalary ?? 0;
   const goal         = stats?.goal ?? 0;
@@ -1430,8 +1470,20 @@ export default function VictorProfilePage() {
             </div>
           </div>
 
-          {/* No project-creation action here — projects are created in the
-              Projects page and linked to Victor via "שלח לויקטור". */}
+          {/* Owner only — creates a Victor-only work item (vendor_project_work),
+              NOT a general project. Real projects are created in the Projects page. */}
+          {isOwner && (
+            <button
+              onClick={openWorkModal}
+              style={{
+                padding: "10px 22px", borderRadius: 12, flexShrink: 0,
+                background: `${PURPLE}14`, border: `1px solid ${PURPLE}33`,
+                color: PURPLE, fontSize: 13, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7,
+              }}>
+              + עבודה חדשה ל-Victor
+            </button>
+          )}
         </div>
 
         {/* ── KPI Row ── */}
@@ -1525,6 +1577,7 @@ export default function VictorProfilePage() {
                           {fmtDate(w.internalDeadline)}
                         </td>
                         <td style={{ padding: "11px 14px" }}>
+                          {isOwner ? (
                           <WorkStatusDropdown
                             workId={w.id}
                             status={w.status}
@@ -1532,6 +1585,9 @@ export default function VictorProfilePage() {
                             workProjectName={w.projectName}
                             onUpdated={newStatus => setWork(prev => prev.map(item => item.id === w.id ? { ...item, status: newStatus as import("@/lib/types").VictorStatus } : item))}
                           />
+                          ) : (
+                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${MUTED}22`, color: TEXT2, fontWeight: 800 }}>{w.status}</span>
+                          )}
                         </td>
                         <td style={{ padding: "11px 14px" }}>
                           <button
@@ -1760,6 +1816,55 @@ export default function VictorProfilePage() {
         onClose={() => setSelectedWork(null)}
         onRefresh={() => fetchMonth(month)}
       />
+    )}
+
+    {/* ── New Victor-only work modal (owner only) — writes vendor_project_work only ── */}
+    {isOwner && workModalOpen && (
+      <>
+        <div
+          onClick={() => { if (!wtSaving) setWorkModalOpen(false); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 998 }}
+        />
+        <div style={{
+          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+          zIndex: 999, width: 420, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto",
+          background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
+        }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>עבודה חדשה ל-Victor</div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>עבודה פנימית של Victor בלבד — לא נוצר פרויקט במערכת</div>
+
+          {wtError && <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12, fontWeight: 600 }}>{wtError}</div>}
+
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>שם העבודה *</div>
+            <input value={wtTitle} onChange={e => setWtTitle(e.target.value)} autoFocus style={WT_INPUT} />
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס</div>
+            <select value={wtStatus} onChange={e => setWtStatus(e.target.value)} style={{ ...WT_INPUT, cursor: "pointer" }}>
+              {VICTOR_WORK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>הערות</div>
+            <textarea value={wtNotes} onChange={e => setWtNotes(e.target.value)} rows={3} style={{ ...WT_INPUT, resize: "vertical", lineHeight: 1.5 }} />
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setWorkModalOpen(false)} disabled={wtSaving}
+              style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: wtSaving ? "default" : "pointer", fontFamily: "inherit" }}
+            >ביטול</button>
+            <button
+              onClick={saveWork} disabled={wtSaving}
+              style={{ flex: 2, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 800, background: wtSaving ? MUTED : PURPLE, border: "none", color: "#fff", cursor: wtSaving ? "default" : "pointer", fontFamily: "inherit" }}
+            >{wtSaving ? "יוצר…" : "צור עבודה"}</button>
+          </div>
+        </div>
+      </>
     )}
 
     {/* ── Salary edit modal (centered, dark, Redbloods style) ── */}

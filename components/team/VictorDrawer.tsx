@@ -205,7 +205,7 @@ function WorkRow({ work, onOpenProject, onPatch, onToast }: WorkRowProps) {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
         <div
           style={{ fontSize: 13, color: "#D0D0D0", fontWeight: 600, cursor: "pointer", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          onClick={() => onOpenProject(work.projectId)}
+          onClick={() => { if (work.projectId) onOpenProject(work.projectId); }}
         >
           {work.projectName}{work.artist ? ` — ${work.artist}` : ""}
         </div>
@@ -223,7 +223,7 @@ function WorkRow({ work, onOpenProject, onPatch, onToast }: WorkRowProps) {
               zIndex: 200, minWidth: 190, boxShadow: "0 8px 30px rgba(0,0,0,0.6)", overflow: "hidden",
             }}>
               {[
-                { label: "פתח פרויקט ↗",      action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); onOpenProject(work.projectId); } },
+                { label: "פתח פרויקט ↗",      action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); if (work.projectId) onOpenProject(work.projectId); } },
                 { label: "העתק לינק Dropbox",  action: copyLink },
                 { label: "פתח ב-Dropbox ↗",    action: (e: React.MouseEvent) => { e.stopPropagation(); setMenuOpen(false); if (work.dropboxShareLink) window.open(work.dropboxShareLink, "_blank"); else onToast("אין לינק Dropbox"); } },
                 { sep: true },
@@ -602,7 +602,7 @@ export default function VictorDrawer({ month, onClose, onStatsRefresh }: Props) 
   const completed = work.filter((w) => w.status === "הושלם");
   const cancelled = work.filter((w) => w.status === "בוטל");
 
-  const existingIds = new Set(work.map((w) => w.projectId));
+  const existingIds = new Set(work.map((w) => w.projectId).filter((id): id is string => !!id));
 
   return createPortal(
     <>

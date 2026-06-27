@@ -44,7 +44,9 @@ function mapRow(
   projectMap: Map<string, { name: string; artist: string }>,
   stuckAfterDays: number
 ): VendorWork {
-  const proj         = projectMap.get(row.project_id as string);
+  const projectId    = (row.project_id as string | null) ?? null;
+  const title        = (row.title as string | null) ?? null;
+  const proj         = projectId ? projectMap.get(projectId) : undefined;
   const sentDate     = (row.sent_date as string | null) ?? null;
   const daysSinceSent = sentDate ? daysBetween(sentDate) : null;
   // stuck = active AND days since sent > threshold
@@ -53,8 +55,9 @@ function mapRow(
   return {
     id:               row.id as string,
     vendorName:       row.vendor_name as string,
-    projectId:        row.project_id as string,
-    projectName:      proj?.name   ?? "פרויקט לא ידוע",
+    projectId,
+    title,
+    projectName:      proj?.name ?? title ?? "עבודה ללא פרויקט",
     artist:           proj?.artist ?? "",
     status:           (row.status     as VictorStatus)    ?? "פעיל",
     workState:        (row.work_state as VictorWorkState | null) ?? null,
@@ -137,16 +140,17 @@ export async function getVictorWorkForProject(projectId: string): Promise<Vendor
 // ── Write ─────────────────────────────────────────────────────────────────────
 
 export async function createVictorWork(
-  projectId: string,
+  projectId: string | null,
   initial?: Partial<Pick<VendorWork,
-    "status" | "workState" | "outcome" | "sentDate" | "notes" | "dropboxFolder" | "dropboxShareLink"
+    "title" | "status" | "workState" | "outcome" | "sentDate" | "notes" | "dropboxFolder" | "dropboxShareLink"
   >>
 ): Promise<VendorWork> {
   const { data, error } = await supabase
     .from("vendor_project_work")
     .insert({
       vendor_name:        "victor",
-      project_id:         projectId,
+      project_id:         projectId ?? null,
+      title:              initial?.title      ?? null,
       status:             initial?.status     ?? "פעיל",
       work_state:         initial?.workState  ?? "נשלח לויקטור",
       outcome:            initial?.outcome    ?? null,

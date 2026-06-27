@@ -26,7 +26,8 @@ export async function POST(req: Request) {
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json() as {
-      projectId: string;
+      projectId?: string;
+      title?: string;
       status?: string;
       workState?: string;
       outcome?: string;
@@ -35,12 +36,21 @@ export async function POST(req: Request) {
       dropboxFolder?: string;
       dropboxShareLink?: string;
     };
-    if (!body.projectId) return NextResponse.json({ ok: false, error: "projectId חסר" }, { status: 400 });
+
+    const projectId = body.projectId?.trim() || null;
+    const title     = body.title?.trim() || null;
+    // Either a real project (the "שלח לויקטור" flow) OR a Victor-only work title.
+    // NEVER creates a row in `projects` — this only writes vendor_project_work.
+    if (!projectId && !title) {
+      return NextResponse.json({ ok: false, error: "צריך projectId או title" }, { status: 400 });
+    }
 
     const { createVictorWork } = await import("@/lib/vendor-store");
-    const work = await createVictorWork(body.projectId, {
+    const work = await createVictorWork(projectId, {
+      title:            title ?? undefined,
       status:           (body.status    as import("@/lib/types").VictorStatus)    ?? "פעיל",
-      workState:        (body.workState as import("@/lib/types").VictorWorkState) ?? "נשלח לויקטור",
+      // Project-only "send to Victor" defaults to "נשלח לויקטור"; standalone work has no send-state.
+      workState:        projectId ? ((body.workState as import("@/lib/types").VictorWorkState) ?? "נשלח לויקטור") : ((body.workState as import("@/lib/types").VictorWorkState) ?? undefined),
       outcome:          (body.outcome   as import("@/lib/types").VictorOutcome)   ?? undefined,
       sentDate:         body.sentDate ?? new Date().toISOString().split("T")[0],
       notes:            body.notes ?? "",

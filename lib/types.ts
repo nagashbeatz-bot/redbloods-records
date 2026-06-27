@@ -201,8 +201,9 @@ export const VICTOR_OUTCOMES: VictorOutcome[] = [
 export interface VendorWork {
   id: string;
   vendorName: string;
-  projectId: string;
-  projectName: string;           // joined from projects table
+  projectId: string | null;      // null = Victor-only work (no general project)
+  title: string | null;          // standalone work title (when no project_id)
+  projectName: string;           // title, or joined projects.name, or fallback
   artist: string;                // joined from projects table
   status: VictorStatus;          // "פעיל" | "הושלם" | "בוטל"
   workState: VictorWorkState | null;  // detail state within active work
