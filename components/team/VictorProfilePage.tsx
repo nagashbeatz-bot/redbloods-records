@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { useProjects } from "@/components/ProjectsProvider";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink } from "@/lib/types";
 
 const BRAND   = "#DC2626";
@@ -19,12 +18,6 @@ const PURPLE  = "#8B5CF6";
 const AMBER   = "#F59E0B";
 const RED     = "#EF4444";
 const BG      = "#0A0A0D";
-
-const npInputStyle: React.CSSProperties = {
-  width: "100%", padding: "9px 12px", borderRadius: 10, border: `1px solid ${BDR2}`,
-  background: CARD2, color: TEXT, fontSize: 13, fontFamily: "inherit",
-  outline: "none", boxSizing: "border-box",
-};
 
 function fmt(n: number, curr = "$") {
   return `${curr}${n.toLocaleString()}`;
@@ -1252,58 +1245,9 @@ function VictorProjectDrawer({
 
 export default function VictorProfilePage() {
   const router = useRouter();
-  const { createProject } = useProjects();
-
-  // ── New-project modal (simplified: Victor beat/idea — no artist/type fields) ──
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [npName,     setNpName]     = useState("");
-  // Victor work status (not the general project status) — defaults to "פעיל".
-  const [npStatus,   setNpStatus]   = useState<string>("פעיל");
-  const [npDeadline, setNpDeadline] = useState("");
-  const [npNotes,    setNpNotes]    = useState("");
-  const [npSaving,   setNpSaving]   = useState(false);
-  const [npError,    setNpError]    = useState("");
-  const [toast,      setToast]      = useState<string | null>(null);
-
-  function openNewProject() {
-    setNpName(""); setNpStatus("פעיל");
-    setNpDeadline(""); setNpNotes(""); setNpError("");
-    setNewProjectOpen(true);
-  }
-
-  async function saveNewProject() {
-    if (!npName.trim()) { setNpError("שם הביט / פרויקט חובה"); return; }
-    setNpSaving(true); setNpError("");
-    try {
-      const newId = await createProject({
-        name:        npName.trim(),
-        artist:      "",
-        projectType: "רידים",
-        status:      "בעבודה",   // general project status — never the Victor work status
-        deadline:    npDeadline,
-        notes:       npNotes,
-      });
-      if (newId) {
-        // Link the new project to Victor — quiet insert only (no Tasks / no
-        // Google Tasks / no finance). Pass the chosen Victor work status.
-        try {
-          await fetch("/api/vendor/victor/work", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId: newId, status: npStatus }),
-          });
-        } catch { /* link is best-effort — project was still created */ }
-        await fetchMonth(month);
-      }
-      setNewProjectOpen(false);
-      setToast("הפרויקט נוצר ושויך ל-Victor ✓");
-      setTimeout(() => setToast(null), 3000);
-    } catch {
-      setNpError("שגיאה ביצירת הפרויקט");
-    } finally {
-      setNpSaving(false);
-    }
-  }
+  // Project creation was removed from the Victor page entirely: it must NEVER
+  // create a row in `projects`. New projects are created only in the Projects
+  // page and linked to Victor via vendor_project_work ("שלח לויקטור" flow).
 
   const [month, setMonth] = useState(currentMonth);
   const [stats, setStats] = useState<VictorMonthStats | null>(null);
@@ -1486,19 +1430,8 @@ export default function VictorProfilePage() {
             </div>
           </div>
 
-          {/* Action — owner only. Victor never creates/assigns projects. */}
-          {isOwner && (
-            <button
-              onClick={openNewProject}
-              style={{
-                padding: "10px 22px", borderRadius: 12, flexShrink: 0,
-                background: `${PURPLE}14`, border: `1px solid ${PURPLE}33`,
-                color: PURPLE, fontSize: 13, fontWeight: 700,
-                cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7,
-              }}>
-              + פתח פרויקט חדש
-            </button>
-          )}
+          {/* No project-creation action here — projects are created in the
+              Projects page and linked to Victor via "שלח לויקטור". */}
         </div>
 
         {/* ── KPI Row ── */}
@@ -1909,95 +1842,6 @@ export default function VictorProfilePage() {
       </>
     )}
 
-    {/* ── New project modal (centered, dark, Redbloods style) ── */}
-    {isOwner && newProjectOpen && (
-      <>
-        <div
-          onClick={() => { if (!npSaving) setNewProjectOpen(false); }}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 998 }}
-        />
-        <div style={{
-          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-          zIndex: 999, width: 440, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto",
-          background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
-          boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
-        }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>פתיחת ביט / פרויקט חדש</div>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>נוצר כפרויקט רגיל ומשויך ל-Victor</div>
-
-          {npError && (
-            <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12, fontWeight: 600 }}>{npError}</div>
-          )}
-
-          {/* Name */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>שם ביט / פרויקט *</div>
-            <input
-              value={npName} onChange={e => setNpName(e.target.value)} autoFocus
-              style={npInputStyle}
-            />
-          </div>
-
-          {/* Victor work status */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס אצל Victor</div>
-            <select value={npStatus} onChange={e => setNpStatus(e.target.value)} style={{ ...npInputStyle, cursor: "pointer" }}>
-              {VICTOR_WORK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-
-          {/* Deadline */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>דדליין</div>
-            <input
-              type="date" value={npDeadline} onChange={e => setNpDeadline(e.target.value)}
-              style={{ ...npInputStyle, colorScheme: "dark" as React.CSSProperties["colorScheme"] }}
-            />
-          </div>
-
-          {/* Notes */}
-          <div style={{ marginBottom: 22 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>הערות</div>
-            <textarea
-              value={npNotes} onChange={e => setNpNotes(e.target.value)} rows={3}
-              style={{ ...npInputStyle, resize: "vertical", lineHeight: 1.5 }}
-            />
-          </div>
-
-          {/* Buttons */}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => setNewProjectOpen(false)} disabled={npSaving}
-              style={{
-                flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
-                background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
-                cursor: npSaving ? "default" : "pointer", fontFamily: "inherit",
-              }}
-            >ביטול</button>
-            <button
-              onClick={saveNewProject} disabled={npSaving}
-              style={{
-                flex: 2, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 800,
-                background: npSaving ? MUTED : PURPLE, border: "none", color: "#fff",
-                cursor: npSaving ? "default" : "pointer", fontFamily: "inherit",
-              }}
-            >{npSaving ? "יוצר…" : "צור ושייך ל-Victor"}</button>
-          </div>
-        </div>
-      </>
-    )}
-
-    {/* ── Success toast ── */}
-    {toast && (
-      <div style={{
-        position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-        zIndex: 1000, background: CARD, border: `1px solid ${PURPLE}55`,
-        color: TEXT, fontSize: 13, fontWeight: 700, padding: "11px 20px",
-        borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", direction: "rtl",
-      }}>
-        {toast}
-      </div>
-    )}
     </>
   );
 }
