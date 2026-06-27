@@ -366,6 +366,7 @@ function AudioPlayer({
   onDeleteCancel,
   deleting,
   deleteError,
+  canDelete,
 }: {
   file: FileLink;
   onDownload: () => void;
@@ -375,6 +376,7 @@ function AudioPlayer({
   onDeleteCancel: () => void;
   deleting: boolean;
   deleteError: boolean;
+  canDelete: boolean;
 }) {
   const { name } = file;
   const url = file.dropboxShareUrl || file.url || "";
@@ -459,7 +461,8 @@ function AudioPlayer({
             flexShrink: 0, outline: "none",
           }}
         >⬇</button>
-        {/* Delete button */}
+        {/* Delete button (owner only) */}
+        {canDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
           disabled={!hasPath}
@@ -470,6 +473,7 @@ function AudioPlayer({
             flexShrink: 0, outline: "none",
           }}
         >🗑</button>
+        )}
       </div>
       {/* Inline delete confirm */}
       {deleteConfirm && (
@@ -501,6 +505,7 @@ function FileRow({
   onDeleteCancel,
   deleting,
   deleteError,
+  canDelete,
 }: {
   file: FileLink;
   onDownload: () => void;
@@ -510,6 +515,7 @@ function FileRow({
   onDeleteCancel: () => void;
   deleting: boolean;
   deleteError: boolean;
+  canDelete: boolean;
 }) {
   const { name } = file;
   const hasUrl = !!(file.dropboxShareUrl || file.url);
@@ -537,7 +543,8 @@ function FileRow({
             flexShrink: 0, outline: "none",
           }}
         >⬇</button>
-        {/* Delete button */}
+        {/* Delete button (owner only) */}
+        {canDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
           disabled={!hasPath}
@@ -548,6 +555,7 @@ function FileRow({
             flexShrink: 0, outline: "none",
           }}
         >🗑</button>
+        )}
       </div>
       {/* Inline delete confirm */}
       {deleteConfirm && (
@@ -574,10 +582,12 @@ function VictorProjectDrawer({
   work,
   onClose,
   onRefresh,
+  isOwner,
 }: {
   work: VendorWork;
   onClose: () => void;
   onRefresh?: () => void;
+  isOwner: boolean;
 }) {
   const router = useRouter();
   const [updating, setUpdating] = useState(false);
@@ -850,13 +860,19 @@ function VictorProjectDrawer({
                   fontSize: 10, padding: "2px 8px", borderRadius: 6,
                   background: `${PURPLE}20`, color: PURPLE, fontWeight: 800, letterSpacing: "0.04em",
                 }}>VICTOR</span>
-                <WorkStatusDropdown
-                  workId={work.id}
-                  status={work.status}
-                  workProjectId={work.projectId}
-                  workProjectName={work.projectName}
-                  onUpdated={() => { onRefresh?.(); }}
-                />
+                {isOwner ? (
+                  <WorkStatusDropdown
+                    workId={work.id}
+                    status={work.status}
+                    workProjectId={work.projectId}
+                    workProjectName={work.projectName}
+                    onUpdated={() => { onRefresh?.(); }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${MUTED}22`, color: TEXT2, fontWeight: 800, letterSpacing: "0.04em" }}>
+                    {work.status}
+                  </span>
+                )}
                 {work.workState && <StatusChip status={work.workState} />}
               </div>
             </div>
@@ -994,6 +1010,7 @@ function VictorProjectDrawer({
                       onDelete: isSent ? () => handleDeleteFile(f, idx) : () => {},
                       deleting: isSent && deletingIdx === idx,
                       deleteError: deleteError && deletingIdx === idx,
+                      canDelete: isOwner,
                     };
                     return isAudioFile(f.name) ? (
                       <AudioPlayer key={i} {...props} />
@@ -1144,8 +1161,8 @@ function VictorProjectDrawer({
 
           </div>
 
-          {/* ── Remove from Victor board ── */}
-          {!confirmRemove ? (
+          {/* ── Remove from Victor board (owner only) ── */}
+          {isOwner && (!confirmRemove ? (
             <button
               onClick={() => { setConfirmRemove(true); setRemoveError(null); }}
               style={{
@@ -1225,7 +1242,7 @@ function VictorProjectDrawer({
                 </button>
               </div>
             </div>
-          )}
+          ))}
 
         </div>
       </div>
@@ -1247,12 +1264,6 @@ export default function VictorProfilePage() {
   const [npSaving,   setNpSaving]   = useState(false);
   const [npError,    setNpError]    = useState("");
   const [toast,      setToast]      = useState<string | null>(null);
-
-  function openNewProject() {
-    setNpName(""); setNpStatus("פעיל");
-    setNpDeadline(""); setNpNotes(""); setNpError("");
-    setNewProjectOpen(true);
-  }
 
   async function saveNewProject() {
     if (!npName.trim()) { setNpError("שם הביט / פרויקט חובה"); return; }
@@ -1469,17 +1480,8 @@ export default function VictorProfilePage() {
             </div>
           </div>
 
-          {/* Action */}
-          <button
-            onClick={openNewProject}
-            style={{
-              padding: "10px 22px", borderRadius: 12, flexShrink: 0,
-              background: `${PURPLE}14`, border: `1px solid ${PURPLE}33`,
-              color: PURPLE, fontSize: 13, fontWeight: 700,
-              cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7,
-            }}>
-            + פתח פרויקט חדש
-          </button>
+          {/* New projects are created in the Projects page and assigned to Victor
+              via the project's "שלח לויקטור" flow — never created from here. */}
         </div>
 
         {/* ── KPI Row ── */}
@@ -1804,6 +1806,7 @@ export default function VictorProfilePage() {
     {selectedWork && (
       <VictorProjectDrawer
         work={selectedWork}
+        isOwner={isOwner}
         onClose={() => setSelectedWork(null)}
         onRefresh={() => fetchMonth(month)}
       />

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireVictorAccess, requireOwner } from "@/lib/require-auth";
+import { requireVictorAccess, requireOwner, getAuthRole } from "@/lib/require-auth";
+
+// Victor may only patch file/folder fields — never status/work-state/deadlines.
+const VICTOR_PATCH_FIELDS = new Set(["filesSent", "filesReceived", "dropboxFolder", "dropboxShareLink"]);
 
 /**
  * GET    /api/vendor/victor/work/[id]  — fetch a single work record (victor/owner)
@@ -32,6 +35,13 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await req.json();
+
+    // Victor = view + files only: reject any non-file field (status, workState,
+    // outcome, deadlines, notes…). Owner may patch anything.
+    if ((await getAuthRole()) !== "owner") {
+      const hasForbiddenField = Object.keys(body ?? {}).some((k) => !VICTOR_PATCH_FIELDS.has(k));
+      if (hasForbiddenField) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
 
     const { updateVictorWork, getVictorWorkById } = await import("@/lib/vendor-store");
 
