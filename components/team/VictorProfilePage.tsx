@@ -740,26 +740,23 @@ function VictorProjectDrawer({
 
   // "Open in Dropbox" → go straight to the Production subfolder (where all
   // Victor uploads land), not the parent folder with 01_From_Redbloods etc.
-  // Owner gets a fresh Production share link via folder-link; if that isn't
-  // available (e.g. Victor, who can't call the owner-only route, or any error)
-  // we fall back to the stored parent link so the button never breaks.
+  // Uses the workId-based victor-safe route (owner + victor); on any error we
+  // fall back to the stored parent link so the button never breaks.
   async function openInDropbox() {
     if (openingDbx) return;
     setOpeningDbx(true);
     setDbxFallback(null);
     try {
       let url = effectiveShareLink;
-      if (effectiveFolder) {
-        try {
-          const res = await fetch("/api/dropbox/folder-link", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: `${effectiveFolder}/Production` }),
-          });
-          const data = await res.json();
-          if (res.ok && data.ok && data.shareLink) url = data.shareLink;
-        } catch { /* keep fallback */ }
-      }
+      try {
+        const res = await fetch("/api/vendor/victor/production-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workId: work.id }),
+        });
+        const data = await res.json();
+        if (res.ok && data.ok && data.shareLink) url = data.shareLink;
+      } catch { /* keep fallback */ }
       if (url) {
         const w = window.open(url, "_blank", "noopener,noreferrer");
         if (!w) setDbxFallback(url); // popup blocked → render a clickable link
