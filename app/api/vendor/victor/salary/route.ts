@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
 
 /**
+ * Owner-only — Victor never sees salary in Phase 2A.
  * GET  /api/vendor/victor/salary?year=YYYY  — list salary months for a year
  * POST /api/vendor/victor/salary             — send a month to finance (creates transaction)
  * PATCH /api/vendor/victor/salary            — update amount and/or status override for a
@@ -8,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 export async function GET(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const year = parseInt(
       req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear()),
@@ -22,6 +25,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { workMonth, amount, currency, historicPaid = false, paidDate } = (await req.json()) as {
       workMonth: string;
@@ -98,6 +102,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { workMonth, amount, status } = (await req.json()) as {
       workMonth: string;

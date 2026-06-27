@@ -112,6 +112,20 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [premium, setPremium] = useState(false);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
+  const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
+
+  // Phase 2A: Victor (supplier) sees a minimal nav — only his page.
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.role === "owner" || d?.role === "victor") setMyRole(d.role); })
+      .catch(() => {});
+  }, []);
+  const isVictor = myRole === "victor";
+  const navMain = isVictor
+    ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" }]
+    : NAV_MAIN;
+  const navTools = isVictor ? [] : NAV_TOOLS;
 
   useEffect(() => {
     const stored = localStorage.getItem("rb_skin");
@@ -129,11 +143,12 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
   }
 
   useEffect(() => {
+    if (myRole !== "owner") return; // alerts are owner-only
     fetch("/api/agent/alerts?status=new&count=1")
       .then((r) => r.json())
       .then((d) => setUnreadAlerts(d.count ?? 0))
       .catch(() => {});
-  }, []);
+  }, [myRole]);
 
   return (
     <aside
@@ -173,7 +188,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
         }}>ראשי</div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV_MAIN.map(({ href, label, icon, iconColor }) => (
+          {navMain.map(({ href, label, icon, iconColor }) => (
             <NavLink
               key={href}
               href={href}
@@ -198,7 +213,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
             padding: "0 8px 10px",
           }}>כלים</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {NAV_TOOLS.map(({ href, label, icon }) => (
+            {navTools.map(({ href, label, icon }) => (
               <Link key={href} href={href} style={{
                 display: "flex", alignItems: "center", gap: 11,
                 padding: "9px 12px 9px 14px", borderRadius: 10,

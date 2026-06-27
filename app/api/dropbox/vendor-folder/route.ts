@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { getDropboxToken } from "@/lib/dropbox-token";
+import { requireVictorAccess } from "@/lib/require-auth";
 
 /**
  * POST /api/dropbox/vendor-folder
@@ -83,6 +84,7 @@ async function getOrCreateShareLink(token: string, path: string): Promise<string
 }
 
 export async function POST(req: Request) {
+  const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const body = await req.json() as {
       vendorName:  string;
@@ -91,6 +93,10 @@ export async function POST(req: Request) {
     };
 
     const { vendorName, artistName, projectName } = body;
+    // Scope to Victor's vendor tree only (single supplier in Phase 2A).
+    if ((vendorName ?? "").trim().toLowerCase() !== "victor") {
+      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+    }
     if (!vendorName || !artistName || !projectName) {
       return NextResponse.json({ ok: false, error: "׳—׳¡׳¨׳™׳ ׳©׳“׳•׳×: vendorName, artistName, projectName" }, { status: 400 });
     }

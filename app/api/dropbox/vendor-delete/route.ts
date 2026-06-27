@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
 
 export async function POST(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { getDropboxToken } = await import("@/lib/dropbox-token");
     const token = await getDropboxToken();

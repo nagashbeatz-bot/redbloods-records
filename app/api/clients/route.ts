@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listClients, createClient } from "@/lib/clients-store";
-import { requireAuth } from "@/lib/require-auth";
+import { requireOwner } from "@/lib/require-auth";
 
 export async function GET() {
-  const unauth = await requireAuth(); if (unauth) return unauth;
+  const unauth = await requireOwner(); if (unauth) return unauth;
   try {
     const clients = await listClients();
     return NextResponse.json({ clients });
@@ -14,7 +14,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const unauth = await requireAuth(); if (unauth) return unauth;
+  const unauth = await requireOwner(); if (unauth) return unauth;
   try {
     const body = await req.json();
     if (!body.name?.trim()) {

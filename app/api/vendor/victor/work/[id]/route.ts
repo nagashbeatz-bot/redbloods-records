@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
+import { requireVictorAccess, requireOwner } from "@/lib/require-auth";
 
 /**
- * GET    /api/vendor/victor/work/[id]  — fetch a single work record
- * PATCH  /api/vendor/victor/work/[id]  — update a work record
- * DELETE /api/vendor/victor/work/[id]  — delete a work record
+ * GET    /api/vendor/victor/work/[id]  — fetch a single work record (victor/owner)
+ * PATCH  /api/vendor/victor/work/[id]  — update a work record (victor/owner)
+ * DELETE /api/vendor/victor/work/[id]  — delete a work record (owner only)
  */
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const { id } = await params;
     const { getVictorWorkById } = await import("@/lib/vendor-store");
@@ -26,6 +28,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const { id } = await params;
     const body = await req.json();
@@ -34,6 +37,11 @@ export async function PATCH(
 
     // Fetch existing record before update (needed for linked_task_id + projectName)
     const existingWork = await getVictorWorkById(id);
+
+    // Ownership guard: this endpoint only manages Victor's work rows.
+    if (existingWork && existingWork.vendorName !== "victor") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
 
     // Apply all regular field updates
     await updateVictorWork(id, body);
@@ -98,6 +106,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await params;
     const { deleteVictorWork } = await import("@/lib/vendor-store");

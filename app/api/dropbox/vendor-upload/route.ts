@@ -1,4 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
+import { requireVictorAccess } from "@/lib/require-auth";
 
 export const maxDuration = 300;
 
@@ -20,6 +21,7 @@ function dropboxArg(obj: Record<string, unknown>): string {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const { getDropboxToken } = await import("@/lib/dropbox-token");
     const token = await getDropboxToken();
@@ -89,9 +91,14 @@ export async function POST(req: NextRequest) {
     const { supabase } = await import("@/lib/supabase");
     const { data: row } = await supabase
       .from("vendor_project_work")
-      .select("files_sent, project_id")
+      .select("files_sent, project_id, vendor_name")
       .eq("id", workId)
       .maybeSingle();
+
+    // Ownership: only Victor's work rows may receive uploads here.
+    if (!row || (row.vendor_name as string) !== "victor") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
 
     const currentFiles = (row?.files_sent as typeof newFile[]) ?? [];
     await updateVictorWork(workId, { filesSent: [...currentFiles, newFile] });

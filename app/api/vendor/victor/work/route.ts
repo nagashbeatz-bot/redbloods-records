@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireVictorAccess, requireOwner } from "@/lib/require-auth";
 
 /**
  * GET  /api/vendor/victor/work?projectId=...  — get work record for a project
- * POST /api/vendor/victor/work               — create a new work record
+ * POST /api/vendor/victor/work               — create a new work record (owner only)
  */
 
 export async function GET(req: Request) {
+  const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
@@ -21,6 +23,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json() as {
       projectId: string;

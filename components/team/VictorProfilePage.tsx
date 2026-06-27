@@ -1295,6 +1295,16 @@ export default function VictorProfilePage() {
   const [loading, setLoading] = useState(true);
   const [salaryLoading, setSalaryLoading] = useState(true);
   const [selectedWork, setSelectedWork] = useState<VendorWork | null>(null);
+  // Phase 2A: Victor (supplier) must not see salary. Owner sees it as before.
+  const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
+  const isOwner = myRole === "owner";
+
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.role === "owner" || d?.role === "victor") setMyRole(d.role); })
+      .catch(() => {});
+  }, []);
 
   const fetchMonth = useCallback(async (m: string) => {
     setLoading(true);
@@ -1321,9 +1331,10 @@ export default function VictorProfilePage() {
 
   useEffect(() => { fetchMonth(month); }, [month, fetchMonth]);
   useEffect(() => {
+    if (!isOwner) return; // salary is owner-only (endpoint is 403 for Victor)
     const year = Number(month.split("-")[0]);
     fetchSalary(year);
-  }, [month, fetchSalary]);
+  }, [month, fetchSalary, isOwner]);
 
   const currency     = stats?.salaryCurrency ?? "$";
   const salary       = stats?.monthlySalary ?? 0;
@@ -1485,7 +1496,7 @@ export default function VictorProfilePage() {
               color: GREEN,
               icon: "₪",
             },
-          ].map(({ label, value, sub, color, icon }) => (
+          ].filter((kpi) => isOwner || kpi.label !== "שכר חודשי").map(({ label, value, sub, color, icon }) => (
             <div key={label} style={{
               background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
               padding: "18px 20px", position: "relative", overflow: "hidden",
@@ -1691,7 +1702,8 @@ export default function VictorProfilePage() {
             </div>
           </div>
 
-          {/* ── Col 3: Salary ── */}
+          {/* ── Col 3: Salary (owner only — hidden from Victor in Phase 2A) ── */}
+          {isOwner && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
             {/* Current month salary — click anywhere to edit (internal, no Finance) */}
@@ -1783,6 +1795,7 @@ export default function VictorProfilePage() {
               )}
             </div>
           </div>
+          )}
 
         </div>
       </div>

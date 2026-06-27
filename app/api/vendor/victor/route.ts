@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireVictorAccess } from "@/lib/require-auth";
 
 /**
  * GET /api/vendor/victor?month=YYYY-MM
  * Returns Victor stats + work list for the given month (default: current month).
  */
 export async function GET(req: Request) {
+  const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const { searchParams } = new URL(req.url);
     const now   = new Date();
