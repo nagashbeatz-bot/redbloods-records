@@ -121,11 +121,16 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
       .then((d) => { if (d?.role === "owner" || d?.role === "victor") setMyRole(d.role); })
       .catch(() => {});
   }, []);
-  const isVictor = myRole === "victor";
-  const navMain = isVictor
-    ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" }]
-    : NAV_MAIN;
-  const navTools = isVictor ? [] : NAV_TOOLS;
+  // Full nav ONLY once we know the user is an owner. While role is loading (null)
+  // or unknown, show no main nav — prevents a flash of the full Sidebar for Victor
+  // before /api/me resolves. Victor → minimal (his page only).
+  const navMain =
+    myRole === "owner"
+      ? NAV_MAIN
+      : myRole === "victor"
+        ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" }]
+        : [];
+  const navTools = myRole === "owner" ? NAV_TOOLS : [];
 
   useEffect(() => {
     const stored = localStorage.getItem("rb_skin");
