@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink } from "@/lib/types";
+import { inMonth } from "@/lib/victor-segments";
 
 const BRAND   = "#DC2626";
 const CARD    = "#111318";
@@ -746,30 +747,16 @@ function VictorProjectDrawer({
     action?: () => void;
   }[] = [
     {
-      label: "נשלח לויקטור",
+      label: "פרויקט נשלח",
       done: !!work.sentDate,
       date: work.sentDate,
-      action: !work.sentDate ? () => patchWork({ sentDate: todayISO(), workState: "נשלח לויקטור" }) : undefined,
-    },
-    {
-      label: "חזר מויקטור",
-      done: !!work.returnedDate,
-      date: work.returnedDate,
-      action: !work.returnedDate ? () => patchWork({ returnedDate: todayISO(), workState: "חזר מויקטור" }) : undefined,
-    },
-    {
-      label: "בדיקה ואישור",
-      done: work.outcome === "אושר" || work.outcome === "נכנס לפרויקט בפועל",
-      date: null,
-      action: work.outcome !== "אושר" && work.outcome !== "נכנס לפרויקט בפועל"
-        ? () => patchWork({ outcome: "אושר" })
-        : undefined,
+      action: isOwner && !work.sentDate ? () => patchWork({ sentDate: todayISO(), workState: "נשלח לויקטור" }) : undefined,
     },
     {
       label: "פרויקט הושלם",
       done: work.status === "הושלם",
-      date: null,
-      action: work.status !== "הושלם" ? () => patchWork({ status: "הושלם" }) : undefined,
+      date: work.returnedDate,   // completion date — kept in sync with status by updateVictorWork
+      action: isOwner && work.status !== "הושלם" ? () => patchWork({ status: "הושלם" }) : undefined,
     },
   ];
 
@@ -1345,7 +1332,11 @@ export default function VictorProfilePage() {
   const stuck        = stats?.stuck ?? 0;
   const pct          = goal > 0 ? Math.min(100, Math.round((completed / goal) * 100)) : 0;
 
-  const displayWork = work.slice(0, 12);
+  // Only work attributed to the selected month — same helper the KPIs/salary use
+  // (inMonth: sent_date, else created_at), so the table stays consistent with them.
+  // Victor-only items (project_id=null) carry a sent_date on creation, so they filter too.
+  const monthWork   = work.filter((w) => inMonth(w, month));
+  const displayWork = monthWork.slice(0, 12);
 
   const allFiles = work.flatMap(w => [
     ...(w.filesReceived ?? []).map(f => ({ ...f, dir: "in",  project: w.projectName })),
@@ -1605,9 +1596,9 @@ export default function VictorProfilePage() {
                     ))}
                   </tbody>
                 </table>
-                {work.length > 12 && (
+                {monthWork.length > 12 && (
                   <div style={{ padding: "10px 16px", borderTop: `1px solid ${BDR}`, textAlign: "center" }}>
-                    <span style={{ fontSize: 11, color: MUTED }}>+ {work.length - 12} פרויקטים נוספים</span>
+                    <span style={{ fontSize: 11, color: MUTED }}>+ {monthWork.length - 12} פרויקטים נוספים</span>
                   </div>
                 )}
               </>

@@ -187,7 +187,16 @@ export async function updateVictorWork(
   }>
 ): Promise<void> {
   const dbFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if ("status"           in fields) dbFields.status             = fields.status;
+  if ("status" in fields) {
+    dbFields.status = fields.status;
+    // Keep completion date in sync with status (single source of truth):
+    // → "הושלם" sets returned_date to today; any other status clears it.
+    // Skipped if the caller explicitly provided returnedDate in the same patch.
+    if (!("returnedDate" in fields)) {
+      dbFields.returned_date =
+        fields.status === "הושלם" ? new Date().toISOString().split("T")[0] : null;
+    }
+  }
   if ("workState"        in fields) dbFields.work_state         = fields.workState;
   if ("outcome"          in fields) dbFields.outcome            = fields.outcome;
   if ("sentDate"         in fields) dbFields.sent_date          = fields.sentDate;
