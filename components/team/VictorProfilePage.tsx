@@ -1895,14 +1895,14 @@ export default function VictorProfilePage() {
                         <td style={{ padding: "11px 14px" }}>
                           <button
                             onClick={() => setSelectedWork(w)}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#FFFFFF"; e.currentTarget.style.boxShadow = "0 0 12px rgba(255,255,255,0.28)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "#EDEDF0"; e.currentTarget.style.boxShadow = "none"; }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#E4E4EA"; e.currentTarget.style.boxShadow = "0 0 8px rgba(255,255,255,0.16)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.boxShadow = "none"; }}
                             style={{
-                              ...btnStyle, fontSize: 11, fontWeight: 800,
-                              color: "#15151A",
-                              padding: "5px 12px", borderRadius: 8,
-                              border: "1px solid rgba(255,255,255,0.5)",
-                              background: "#EDEDF0",
+                              ...btnStyle, fontSize: 11, fontWeight: 700,
+                              color: "#1A1A20",
+                              padding: "5px 13px", borderRadius: 10,
+                              border: "1px solid rgba(255,255,255,0.18)",
+                              background: "#D7D7DD",
                               cursor: "pointer",
                               transition: "background 0.15s, box-shadow 0.15s",
                             }}>
