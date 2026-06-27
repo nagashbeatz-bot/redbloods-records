@@ -595,8 +595,6 @@ function VictorProjectDrawer({
   const [notesDirty, setNotesDirty] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [creatingFolder, setCreatingFolder] = useState(false);
-  const [folderError, setFolderError] = useState<string | null>(null);
   const [effectiveFolder, setEffectiveFolder] = useState<string | null>(work.dropboxFolder ?? null);
   const [effectiveShareLink, setEffectiveShareLink] = useState<string | null>(work.dropboxShareLink ?? null);
   const [effectiveFiles, setEffectiveFiles] = useState<FileLink[]>(work.filesSent ?? []);
@@ -608,6 +606,13 @@ function VictorProjectDrawer({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  // Close on Escape (matches modal pattern used elsewhere in the app).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -654,15 +659,17 @@ function VictorProjectDrawer({
   }
 
   async function handleUpload(file: File) {
-    if (!effectiveFolder) return;
     setUploading(true);
     setUploadProgress(0);
     setUploadError(null);
     try {
+      // Auto-create the Dropbox folder on first upload (no manual button).
+      const folder = await ensureDropboxFolder();
+      if (!folder) { setUploading(false); return; }
       const fd = new FormData();
       fd.append("file", file);
       fd.append("workId", work.id);
-      fd.append("dropboxFolder", effectiveFolder);
+      fd.append("dropboxFolder", folder);
       fd.append("subFolder", "Production");
       const responseText = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -692,42 +699,37 @@ function VictorProjectDrawer({
     }
   }
 
-  async function handleCreateFolder() {
-    setCreatingFolder(true);
-    setFolderError(null);
-    try {
-      const res = await fetch("/api/dropbox/vendor-folder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorName: "Victor",
-          // Organize under the existing /Projects convention (Victor-page only):
-          //   linked (has projectId)  → /Projects/<artist>/<project>/Victor
-          //   Victor-only (no project) → /Projects/Victor/<work title>
-          useProjectsLayout: true,
-          projectId: work.projectId,
-          projectName: work.projectName,
-          artistName: work.artist,
-          workTitle: work.title,
-          workId: work.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "שגיאה ביצירת התיקייה");
-      const res2 = await fetch(`/api/vendor/victor/work/${work.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dropboxFolder: data.folderPath, dropboxShareLink: data.shareLink }),
-      });
-      if (!res2.ok) throw new Error("שגיאה בשמירת הנתונים");
-      setEffectiveFolder(data.folderPath);
-      setEffectiveShareLink(data.shareLink);
-      onRefresh?.();
-    } catch (err) {
-      setFolderError(err instanceof Error ? err.message : "שגיאה ביצירת התיקייה");
-    } finally {
-      setCreatingFolder(false);
-    }
+  // Ensure a Dropbox folder exists for this work, creating it on demand.
+  // Returns the folder path, or throws so the caller can surface the error.
+  async function ensureDropboxFolder(): Promise<string | null> {
+    if (effectiveFolder) return effectiveFolder;
+    const res = await fetch("/api/dropbox/vendor-folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vendorName: "Victor",
+        // Organize under the existing /Projects convention (Victor-page only):
+        //   linked (has projectId)  → /Projects/<artist>/<project>/Victor
+        //   Victor-only (no project) → /Projects/Victor/<work title>
+        useProjectsLayout: true,
+        projectId: work.projectId,
+        projectName: work.projectName,
+        artistName: work.artist,
+        workTitle: work.title,
+        workId: work.id,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "שגיאה ביצירת התיקייה");
+    // Persist folder + share link on the work record.
+    await fetch(`/api/vendor/victor/work/${work.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dropboxFolder: data.folderPath, dropboxShareLink: data.shareLink }),
+    });
+    setEffectiveFolder(data.folderPath);
+    setEffectiveShareLink(data.shareLink);
+    return data.folderPath as string;
   }
 
   async function saveNotes() {
@@ -778,23 +780,29 @@ function VictorProjectDrawer({
       <div
         onClick={onClose}
         style={{
-          position: "fixed", top: 60, bottom: 0, left: 0, right: 248,
-          background: "rgba(0,0,0,0.60)", backdropFilter: "blur(2px)",
+          position: "fixed", inset: 0,
+          background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)",
           zIndex: 1000,
         }}
       />
 
-      {/* Panel */}
-      <div style={{
-        position: "fixed", top: 60, bottom: 0, left: 0,
-        width: 490, zIndex: 1001,
-        background: "#090910",
-        borderRight: `1px solid ${BDR2}`,
-        boxShadow: "6px 0 48px rgba(0,0,0,0.75)",
-        display: "flex", flexDirection: "column",
-        overflow: "hidden",
-        direction: "rtl",
-      }}>
+      {/* Centered modal */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+          width: "min(880px, 94vw)", maxHeight: "90vh", zIndex: 1001,
+          background: "#090910",
+          border: `1px solid ${BDR2}`,
+          borderRadius: 20,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.85)",
+          display: "flex", flexDirection: "column",
+          overflow: "hidden",
+          direction: "rtl",
+        }}
+      >
 
         {/* ── Header ── */}
         <div style={{
@@ -915,43 +923,23 @@ function VictorProjectDrawer({
                   style={{ display: "none" }}
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
                 />
-                {!effectiveFolder ? (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                    <button
-                      onClick={handleCreateFolder}
-                      disabled={creatingFolder}
-                      style={{
-                        fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
-                        background: creatingFolder ? "rgba(255,255,255,0.05)" : "rgba(0,98,238,0.12)",
-                        border: "1px solid rgba(0,98,238,0.3)",
-                        color: creatingFolder ? "#52526A" : "#4A9EFF",
-                        cursor: creatingFolder ? "not-allowed" : "pointer",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      {creatingFolder ? "יוצר..." : "צור תיקיית Dropbox"}
-                    </button>
-                    {folderError && (
-                      <span style={{ fontSize: 10, color: "#EF4444" }}>{folderError}</span>
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    title="העלאת קובץ"
-                    style={{
-                      fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
-                      background: uploading ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.12)",
-                      border: "1px solid rgba(16,185,129,0.3)",
-                      color: uploading ? "#52526A" : "#10B981",
-                      cursor: uploading ? "not-allowed" : "pointer",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {uploading ? `${uploadProgress}%` : "↑ העלאה"}
-                  </button>
-                )}
+                {/* Single upload button — the Dropbox folder is created
+                    automatically on first upload (no manual "create folder"). */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  title="העלאת קובץ"
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
+                    background: uploading ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.12)",
+                    border: "1px solid rgba(16,185,129,0.3)",
+                    color: uploading ? "#52526A" : "#10B981",
+                    cursor: uploading ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {uploading ? `${uploadProgress}%` : "↑ העלאה"}
+                </button>
                 {effectiveShareLink && (
                   <a
                     href={effectiveShareLink}
