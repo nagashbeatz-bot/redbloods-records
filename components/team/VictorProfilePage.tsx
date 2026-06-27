@@ -58,7 +58,7 @@ function currentMonth() {
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   "פעיל":         { bg: "rgba(245,158,11,0.12)",  color: AMBER  },
-  "הושלם":        { bg: "rgba(139,92,246,0.12)",  color: PURPLE },
+  "הושלם":        { bg: "rgba(16,185,129,0.12)",  color: GREEN  },
   "בוטל":         { bg: "rgba(239,68,68,0.12)",   color: RED    },
   "ממתין":        { bg: "rgba(82,82,106,0.12)",   color: MUTED  },
   "נשלח":         { bg: "rgba(59,130,246,0.12)",  color: "#60A5FA" },
@@ -855,9 +855,7 @@ function VictorProjectDrawer({
                     onUpdated={() => { onRefresh?.(); }}
                   />
                 ) : (
-                  <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${MUTED}22`, color: TEXT2, fontWeight: 800, letterSpacing: "0.04em" }}>
-                    {work.status}
-                  </span>
+                  <StatusChip status={work.status} />
                 )}
                 {work.workState && <StatusChip status={work.workState} />}
               </div>
@@ -1579,7 +1577,7 @@ export default function VictorProfilePage() {
                             onUpdated={newStatus => setWork(prev => prev.map(item => item.id === w.id ? { ...item, status: newStatus as import("@/lib/types").VictorStatus } : item))}
                           />
                           ) : (
-                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${MUTED}22`, color: TEXT2, fontWeight: 800 }}>{w.status}</span>
+                            <StatusChip status={w.status} />
                           )}
                         </td>
                         <td style={{ padding: "11px 14px" }}>
