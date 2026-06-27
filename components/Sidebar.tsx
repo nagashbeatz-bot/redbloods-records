@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
-
-// Run before paint on the client (avoids nav flicker); no-op shape on the server.
-const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
-const ROLE_CACHE_KEY = "rb_role";
+import { ROLE_CACHE_KEY, type ClientRole } from "@/lib/use-role";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -111,53 +108,22 @@ function NavLink({ href, label, icon, iconColor, pathname, badge, hoveredHref, o
   );
 }
 
-export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () => void }) {
+export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: ClientRole; onOpenChat?: () => void }) {
   const pathname = usePathname();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [premium, setPremium] = useState(false);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
-  const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
 
-  // Hydrate the last-known role from cache BEFORE paint. AppShell remounts on
-  // every navigation, so without this the owner's full nav would blink away to
-  // empty each time until /api/me resolves. Only a cached "owner"/"victor" is
-  // trusted to render nav while the request is in flight.
-  useIsoLayoutEffect(() => {
-    try {
-      const cached = localStorage.getItem(ROLE_CACHE_KEY);
-      if (cached === "owner" || cached === "victor") setMyRole(cached);
-    } catch { /* ignore */ }
-  }, []);
-
-  // Confirm/refresh role from the server; cache it, or clear on unknown/denied
-  // (so a stale owner cache can never linger after switching users).
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/me")
-      .then((r) => (r.ok ? r.json() : { role: "denied" }))
-      .then((d) => {
-        if (!alive) return;
-        if (d?.role === "owner" || d?.role === "victor") {
-          setMyRole(d.role);
-          try { localStorage.setItem(ROLE_CACHE_KEY, d.role); } catch { /* ignore */ }
-        } else {
-          setMyRole(null);
-          try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }
-        }
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  // Full nav ONLY once we know the user is an owner. While role is loading (null)
-  // or unknown, show no main nav — prevents a flash of the full Sidebar for Victor
-  // before /api/me resolves. Victor → minimal (his page only).
+  // Full nav ONLY for owner; victor → minimal (his page); null/unknown → none.
+  // role comes pre-hydrated from AppShell (cached before paint) so the owner's
+  // nav stays stable across navigations and Victor never sees the full nav.
   const navMain =
-    myRole === "owner"
+    role === "owner"
       ? NAV_MAIN
-      : myRole === "victor"
+      : role === "victor"
         ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" }]
         : [];
-  const navTools = myRole === "owner" ? NAV_TOOLS : [];
+  const navTools = role === "owner" ? NAV_TOOLS : [];
 
   useEffect(() => {
     const stored = localStorage.getItem("rb_skin");
@@ -175,12 +141,12 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
   }
 
   useEffect(() => {
-    if (myRole !== "owner") return; // alerts are owner-only
+    if (role !== "owner") return; // alerts are owner-only
     fetch("/api/agent/alerts?status=new&count=1")
       .then((r) => r.json())
       .then((d) => setUnreadAlerts(d.count ?? 0))
       .catch(() => {});
-  }, [myRole]);
+  }, [role]);
 
   return (
     <aside
@@ -236,7 +202,8 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
           ))}
         </div>
 
-        {/* Section label: כלים */}
+        {/* Section: כלים — owner only (hidden from Victor and while role loads) */}
+        {role === "owner" && (
         <div style={{ marginTop: 12 }}>
           <div style={{ height: 1, background: BORDER2, margin: "0 4px 12px" }} />
           <div style={{
@@ -258,6 +225,7 @@ export default function Sidebar({ onOpenChat: _onOpenChat }: { onOpenChat?: () =
             ))}
           </div>
         </div>
+        )}
       </div>
 
       {/* Footer */}

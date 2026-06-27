@@ -16,6 +16,7 @@ import GlobalProjectDrawerProvider from "@/components/GlobalProjectDrawer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import PushManager from "@/components/PushManager";
 import QuickActionsModal from "@/components/quick-actions/QuickActionsModal";
+import { useRole } from "@/lib/use-role";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel
 const SIDEBAR_WIDTH = 248; // px — desktop sidebar
@@ -24,6 +25,8 @@ const MOBILE_PLAYER_H = 74; // px — mobile mini player (2-row card)
 
 export default function AppShell({ children, topRight }: { children: React.ReactNode; topRight?: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
+  const role = useRole();
+  const isOwner = role === "owner"; // LISTEN + AI agent + tools are owner-only chrome
   const { projects } = useProjects();
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);
@@ -119,7 +122,7 @@ export default function AppShell({ children, topRight }: { children: React.React
       <div className="app-shell-row" style={{ display: "flex", flex: 1, minHeight: 0 }}>
 
         {/* Desktop sidebar — hidden on mobile */}
-        <Sidebar onOpenChat={() => setChatOpen(true)} />
+        <Sidebar role={role} onOpenChat={() => setChatOpen(true)} />
 
         {/* Main column: header + scrollable content + desktop chat panel */}
         <main
@@ -145,7 +148,7 @@ export default function AppShell({ children, topRight }: { children: React.React
           >
             {/* Mobile header — CSS hidden on desktop (no JS flash) */}
             <div className="flex md:hidden" style={{ width: "100%", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
-              <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} variant="mobile" />
+              {isOwner ? <JahknoRadioPlayer playerOffset={0} sidebarWidth={0} variant="mobile" /> : <div style={{ width: 40 }} />}
               <div style={{
                 position: "absolute",
                 left: "50%",
@@ -162,12 +165,14 @@ export default function AppShell({ children, topRight }: { children: React.React
 
             {/* Desktop header — CSS hidden on mobile (no JS flash) */}
             <div className="hidden md:flex" style={{ width: "100%", alignItems: "center", justifyContent: "space-between" }}>
-              <JahknoRadioPlayer
-                playerOffset={playerVisible ? PLAYER_H : 0}
-                sidebarWidth={SIDEBAR_WIDTH}
-                variant="desktop"
-              />
-              {topRight ?? (
+              {isOwner ? (
+                <JahknoRadioPlayer
+                  playerOffset={playerVisible ? PLAYER_H : 0}
+                  sidebarWidth={SIDEBAR_WIDTH}
+                  variant="desktop"
+                />
+              ) : <div />}
+              {topRight ?? (isOwner ? (
                 <button
                   onClick={() => setChatOpen(!chatOpen)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
@@ -180,7 +185,7 @@ export default function AppShell({ children, topRight }: { children: React.React
                   <span>✦</span>
                   {chatOpen ? "סגור סוכן" : "סוכן AI"}
                 </button>
-              )}
+              ) : <div />)}
             </div>
           </header>
 
