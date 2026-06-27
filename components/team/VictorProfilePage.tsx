@@ -1393,13 +1393,17 @@ export default function VictorProfilePage() {
 
         {/* ── Top bar: breadcrumb + month switcher ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
-          {/* Back */}
-          <button
-            onClick={() => router.push("/team")}
-            style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 14, fontWeight: 700 }}
-          >
-            → חזרה לרשימה
-          </button>
+          {/* Back — owner only (Victor has no team list to return to) */}
+          {isOwner ? (
+            <button
+              onClick={() => router.push("/team")}
+              style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 14, fontWeight: 700 }}
+            >
+              → חזרה לרשימה
+            </button>
+          ) : (
+            <div />
+          )}
 
           {/* Title */}
           <div style={{ textAlign: "center" }}>
