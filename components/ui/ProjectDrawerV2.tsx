@@ -3050,15 +3050,15 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
   })();
   const [openingFolder, setOpeningFolder] = useState(false);
   const [openFolderErr, setOpenFolderErr] = useState<string | null>(null);
+  const [folderLink, setFolderLink] = useState<string | null>(null);
   async function openDeliveryFolder() {
     if (!deliveryFolderPath || openingFolder) return;
-    // Open a blank tab synchronously (within the click) so the redirect after
-    // the async fetch isn't blocked by the popup blocker. NOTE: do NOT pass
-    // "noopener" here — that makes window.open() return null, leaving an
-    // orphaned about:blank tab we can neither redirect nor close.
-    const win = window.open("about:blank", "_blank");
+    // Do NOT pre-open a tab — a failed/empty fetch would leave an orphan
+    // about:blank. Fetch the real share link first, then open it. If the popup
+    // blocker stops us, stash the link so the user can click it directly.
     setOpeningFolder(true);
     setOpenFolderErr(null);
+    setFolderLink(null);
     try {
       const res = await fetch("/api/dropbox/folder-link", {
         method: "POST",
@@ -3066,16 +3066,12 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
         body: JSON.stringify({ path: deliveryFolderPath }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok || !data.shareLink) throw new Error(data.error || "no link");
-      if (win && !win.closed) {
-        win.opener = null; // sever opener since we dropped "noopener" above
-        win.location.href = data.shareLink;
-      } else {
-        window.open(data.shareLink, "_blank", "noopener,noreferrer");
-      }
-    } catch {
-      if (win && !win.closed) win.close();
-      setOpenFolderErr("לא ניתן לפתוח את תיקיית Dropbox");
+      if (!res.ok || !data.ok || !data.shareLink) throw new Error(data.error || "no-link");
+      const w = window.open(data.shareLink, "_blank", "noopener,noreferrer");
+      if (!w) setFolderLink(data.shareLink); // popup blocked → show a manual link
+    } catch (e) {
+      const detail = e instanceof Error && e.message && e.message !== "no-link" ? ` (${e.message})` : "";
+      setOpenFolderErr(`לא ניתן לפתוח את תיקיית Dropbox${detail}`);
     } finally {
       setOpeningFolder(false);
     }
@@ -3215,11 +3211,18 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
             {deliveryFolderPath && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {openFolderErr && <span style={{ fontSize: 11, color: "#EF4444" }}>{openFolderErr}</span>}
-                <button
-                  onClick={openDeliveryFolder}
-                  disabled={openingFolder}
-                  style={{ fontSize: 12, fontWeight: 700, color: TEXT2, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: openingFolder ? "default" : "pointer", opacity: openingFolder ? 0.6 : 1 }}
-                >{openingFolder ? "פותח…" : "פתח תיקיית מסירה ↗"}</button>
+                {folderLink ? (
+                  <a
+                    href={folderLink} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textDecoration: "none", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px" }}
+                  >פתח תיקיית מסירה ↗</a>
+                ) : (
+                  <button
+                    onClick={openDeliveryFolder}
+                    disabled={openingFolder}
+                    style={{ fontSize: 12, fontWeight: 700, color: TEXT2, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: openingFolder ? "default" : "pointer", opacity: openingFolder ? 0.6 : 1 }}
+                  >{openingFolder ? "פותח…" : "פתח תיקיית מסירה ↗"}</button>
+                )}
               </div>
             )}
           </div>

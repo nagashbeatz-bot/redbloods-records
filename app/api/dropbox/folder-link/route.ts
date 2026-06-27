@@ -11,13 +11,17 @@ import { requireOwner } from "@/lib/require-auth";
  * Body: { path }  (app-folder-relative, e.g. "/Projects/Artist/Song/Delivery")
  * Returns: { ok, shareLink }
  */
-async function createFolderShareLink(token: string, path: string): Promise<string> {
+// Mirrors the proven getOrCreateShareLink in /api/dropbox/vendor-folder, which
+// already returns working folder links for Victor: create → if it already
+// exists, take the inline metadata url → otherwise fall back to
+// list_shared_links (the already-exists error does NOT always carry the url).
+async function getOrCreateFolderShareLink(token: string, path: string): Promise<string> {
   const res = await fetch(
     "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ path, settings: { requested_visibility: "public" } }),
+      body: JSON.stringify({ path, settings: { requested_visibility: { ".tag": "public" } } }),
     }
   );
 
@@ -26,17 +30,28 @@ async function createFolderShareLink(token: string, path: string): Promise<strin
     return data.url;
   }
 
-  // Link already exists → Dropbox returns it inside the error payload.
-  const err = (await res.json()) as Record<string, unknown>;
-  const errObj = err.error as Record<string, unknown> | undefined;
-  if (errObj?.[".tag"] === "shared_link_already_exists") {
-    const inner = errObj.shared_link_already_exists as Record<string, unknown> | undefined;
-    const url = (inner?.metadata as Record<string, string> | undefined)?.url;
-    if (url) return url;
+  // Link already exists → Dropbox sometimes returns it inline in the error.
+  const body = (await res.json()) as {
+    error_summary?: string;
+    error?: { shared_link_already_exists?: { metadata?: { url?: string } } };
+  };
+  const existing = body?.error?.shared_link_already_exists?.metadata?.url;
+  if (existing) return existing;
+
+  // Fallback: the link exists but the url wasn't inline — fetch it directly.
+  const listRes = await fetch("https://api.dropboxapi.com/2/sharing/list_shared_links", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ path, direct_only: true }),
+  });
+  if (listRes.ok) {
+    const listData = (await listRes.json()) as { links?: { url: string }[] };
+    if (listData.links?.length) return listData.links[0].url;
   }
+
   // Safe diagnostics (no token): which path failed and Dropbox's own summary.
-  console.error(`[dropbox/folder-link] create failed: status=${res.status} path=${path} summary=${err.error_summary ?? "?"}`);
-  throw new Error((err.error_summary as string) ?? "Failed to create Dropbox folder share link");
+  console.error(`[dropbox/folder-link] create failed: status=${res.status} path=${path} summary=${body.error_summary ?? "?"}`);
+  throw new Error(body.error_summary ?? "Failed to create Dropbox folder share link");
 }
 
 export async function POST(req: Request) {
@@ -48,7 +63,7 @@ export async function POST(req: Request) {
     const { path } = (await req.json()) as { path?: string };
     if (!path) return NextResponse.json({ error: "missing path" }, { status: 400 });
 
-    const shareLink = await createFolderShareLink(token, path);
+    const shareLink = await getOrCreateFolderShareLink(token, path);
     return NextResponse.json({ ok: true, shareLink });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "server error";
