@@ -7,6 +7,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
 import SensitiveValue from "@/components/ui/SensitiveValue";
+import { usePrivacyMode } from "@/lib/use-privacy";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
@@ -490,6 +491,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const player = usePlayerSafe();
 
   const [isMobile,     setIsMobile]     = useState(false);
+  const [privacyHidden] = usePrivacyMode();
   const [activeTab,       setActiveTab]       = useState<DrawerTab>("סקירה");
   const [financeFormType, setFinanceFormType] = useState<"income" | "expense">("income");
   const [financeFormSeq,  setFinanceFormSeq]  = useState(0);
@@ -1200,6 +1202,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               onTabChange={setActiveTab}
             />
           ) : activeTab === "כספים" ? (
+            privacyHidden ? (
+              <PrivacyHiddenCard text="מצב לקוח פעיל — נתוני הכספים של הפרויקט מוסתרים" minHeight={320} />
+            ) : (
             <FinanceContent
               key={`fin-${financeFormSeq}`}
               transactions={transactions}
@@ -1222,6 +1227,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               }}
               onPriceUpdate={(newPrice: number) => setAgreedPrice(newPrice)}
             />
+            )
           ) : activeTab === "סשנים" ? (
             <SessionsContent sessions={sessions} sessDone={sessDone} onStatusChange={updateSessionStatus} />
           ) : activeTab === "קבצים" ? (
@@ -1345,6 +1351,17 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   );
 }
 
+// Privacy Mode placeholder — shown in place of any financial block while
+// client mode is active. Keeps a stable min-height so layout doesn't jump.
+function PrivacyHiddenCard({ text, minHeight = 180 }: { text: string; minHeight?: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, minHeight, padding: "28px 22px", textAlign: "center" }}>
+      <div style={{ fontSize: 32, color: "#EAB308" }}>👁</div>
+      <div style={{ fontSize: 13.5, fontWeight: 800, color: "#E8E8EC", lineHeight: 1.6 }}>{text}</div>
+    </div>
+  );
+}
+
 // ─── Overview tab ──────────────────────────────────────────────────────────────
 function OverviewContent({
   project, transactions, sessions, projectActions,
@@ -1370,6 +1387,7 @@ function OverviewContent({
   onTabChange:     (t: DrawerTab) => void;
   onDeleteAction:  (id: string) => Promise<void>;
 }) {
+  const [privacyHidden] = usePrivacyMode();
   const days = daysUntilDeadline(project.deadline);
 
   // ── פיד עדכונים — state ──────────────────────────────────────────────
@@ -1409,7 +1427,7 @@ function OverviewContent({
   };
 
   const txTitle = (status: string, type: "income" | "expense", amount: number): string => {
-    const amt = `${currency}${amount.toLocaleString()}`;
+    const amt = privacyHidden ? "••••" : `${currency}${amount.toLocaleString()}`;
     if (type === "income") {
       if (status === "התקבל") return `התקבל תשלום: ${amt}`;
       if (status === "שולם")  return `שולם תשלום: ${amt}`;
@@ -1759,7 +1777,9 @@ function OverviewContent({
       {/* ── ROW 1 COL 2: סיכום כספי ────────────────────────────────────── */}
       <Card style={{ gridColumn: 2, gridRow: 1 }}>
         <CardTitle>סיכום כספי</CardTitle>
-        {finLoaded ? (
+        {privacyHidden ? (
+          <PrivacyHiddenCard text="מצב לקוח פעיל — הסיכום הכספי מוסתר" minHeight={150} />
+        ) : finLoaded ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
             {/* 2×2 grid */}
             {(() => {
@@ -2094,6 +2114,7 @@ function BalanceReminderModal({
   onMarkException: () => Promise<boolean>;
   onDismiss: () => void;
 }) {
+  const [privacyHidden] = usePrivacyMode();
   const [date,   setDate]   = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [err,    setErr]    = useState("");
@@ -2104,7 +2125,7 @@ function BalanceReminderModal({
     return () => document.removeEventListener("keydown", handler);
   }, [onDismiss]);
 
-  const amountLabel = `${currency}${balance.toLocaleString()}`;
+  const amountLabel = privacyHidden ? "••••" : `${currency}${balance.toLocaleString()}`;
 
   async function handleConfirm() {
     if (!date || saving) return;
