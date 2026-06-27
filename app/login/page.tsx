@@ -1,13 +1,12 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 
 export const dynamic = "force-dynamic";
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const redirectTo = params.get("redirect") || "/dashboard";
 
@@ -28,9 +27,12 @@ function LoginForm() {
         setLoading(false);
         return;
       }
-      // Cookies are set by the browser client; navigate to the gated app.
-      router.replace(redirectTo.startsWith("/") ? redirectTo : "/dashboard");
-      router.refresh();
+      // Hard navigation (not router.push) so the root data providers remount and
+      // refetch with the new session cookie — otherwise pages render empty until
+      // a manual refresh, because client-side navigation keeps the providers
+      // (already mounted on /login) with their stale anonymous (401) state.
+      const target = redirectTo.startsWith("/") && redirectTo !== "/login" ? redirectTo : "/dashboard";
+      window.location.assign(target);
     } catch {
       setError("שגיאה בהתחברות, נסה שוב");
       setLoading(false);
