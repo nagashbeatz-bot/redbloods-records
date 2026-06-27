@@ -584,48 +584,63 @@ function ytId(url: string): string | null {
 
 function ReferenceCard({
   refItem,
+  index,
   isOwner,
+  onPlay,
   onEdit,
   onDelete,
 }: {
   refItem: VictorReference;
+  index: number;
   isOwner: boolean;
+  onPlay: (videoId: string) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const vid = ytId(refItem.url);
   const thumb = vid ? `https://img.youtube.com/vi/${vid}/hqdefault.jpg` : null;
   return (
-    <div style={{ display: "flex", gap: 12, padding: 10, borderRadius: 12, background: CARD2, border: `1px solid ${BDR}` }}>
-      {/* Thumbnail → opens on YouTube */}
-      <a
-        href={refItem.url} target="_blank" rel="noopener noreferrer"
-        style={{ position: "relative", flexShrink: 0, width: 120, height: 68, borderRadius: 8, overflow: "hidden", background: "#000", display: "block" }}
+    <div style={{ display: "flex", gap: 14, padding: 12, borderRadius: 14, background: CARD2, border: `1px solid ${BDR}` }}>
+      {/* Thumbnail → plays in-app (does NOT leave the page) */}
+      <button
+        onClick={() => { if (vid) onPlay(vid); }}
+        disabled={!vid}
+        title={vid ? "נגן כאן" : "אין וידאו"}
+        style={{ position: "relative", flexShrink: 0, width: 180, aspectRatio: "16 / 9", borderRadius: 10, overflow: "hidden", background: "#000", border: "none", padding: 0, cursor: vid ? "pointer" : "default", display: "block" }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {thumb ? (
           <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
-          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: MUTED, fontSize: 22 }}>▶</div>
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: MUTED, fontSize: 26 }}>▶</div>
         )}
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(0,0,0,0.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>▶</span>
-        </div>
-      </a>
+        {vid && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ width: 42, height: 42, borderRadius: "50%", background: "rgba(220,38,38,0.92)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, paddingRight: 2 }}>▶</span>
+          </div>
+        )}
+      </button>
       {/* Body */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || "רפרנס"}</div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, padding: "2px 9px", borderRadius: 6, background: `${PURPLE}1F`, color: PURPLE }}>רפרנס {index}</span>
           <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(239,68,68,0.12)", color: "#F87171" }}>YouTube</span>
         </div>
-        <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 11, color: "#60A5FA", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{refItem.url}</a>
-        {refItem.note && <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{refItem.note}</div>}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}>
-          <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10.5, fontWeight: 700, color: PURPLE, textDecoration: "none", padding: "3px 9px", borderRadius: 7, background: `${PURPLE}14`, border: `1px solid ${PURPLE}33` }}>פתח ביוטיוב ↗</a>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || `רפרנס ${index}`}</div>
+        <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 10.5, color: MUTED, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{refItem.url}</a>
+        {refItem.note && <div style={{ fontSize: 12, color: TEXT2, marginTop: 6, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{refItem.note}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9 }}>
+          {vid ? (
+            <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit" }}>▶ נגן</button>
+          ) : (
+            <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: PURPLE, textDecoration: "none", padding: "5px 12px", borderRadius: 8, background: `${PURPLE}14`, border: `1px solid ${PURPLE}33` }}>פתח קישור ↗</a>
+          )}
+          {vid && <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: MUTED, textDecoration: "none" }}>פתח ביוטיוב ↗</a>}
+          <div style={{ flex: 1 }} />
           {isOwner && (
             <>
-              <button onClick={onEdit} title="ערוך" style={{ fontSize: 11, padding: "3px 8px", borderRadius: 7, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>✎</button>
-              <button onClick={onDelete} title="מחק" style={{ fontSize: 11, padding: "3px 8px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
+              <button onClick={onEdit} title="ערוך" style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>✎</button>
+              <button onClick={onDelete} title="מחק" style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
             </>
           )}
         </div>
@@ -675,13 +690,19 @@ function VictorProjectDrawer({
     { open: false, editId: null, url: "", title: "", note: "" }
   );
   const [savingRef, setSavingRef] = useState(false);
+  // In-app YouTube player — holds the video id while open (iframe mounts only then).
+  const [playingId, setPlayingId] = useState<string | null>(null);
 
-  // Close on Escape (matches modal pattern used elsewhere in the app).
+  // Close on Escape — the player first (if open), otherwise the whole modal.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (playingId) setPlayingId(null);
+      else onClose();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, playingId]);
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -945,7 +966,7 @@ function VictorProjectDrawer({
         onClick={e => e.stopPropagation()}
         style={{
           position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-          width: "min(880px, 94vw)", maxHeight: "90vh", zIndex: 1001,
+          width: "min(1180px, 94vw)", maxHeight: "90vh", zIndex: 1001,
           background: "#090910",
           border: `1px solid ${BDR2}`,
           borderRadius: 20,
@@ -1056,7 +1077,7 @@ function VictorProjectDrawer({
 
         {/* ── Scrollable body ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
-          <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr]" style={{ gap: 14, alignItems: "start" }}>
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.55fr)_minmax(330px,0.75fr)]" style={{ gap: 16, alignItems: "start" }}>
 
             {/* ════ MAIN column: brief + references (what Victor must do) ════ */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -1075,7 +1096,7 @@ function VictorProjectDrawer({
                     >✎ ערוך</button>
                   )}
                 </div>
-                <div style={{ padding: "14px 16px" }}>
+                <div style={{ padding: "18px 20px" }}>
                   {editingBrief ? (
                     <>
                       <textarea
@@ -1096,9 +1117,9 @@ function VictorProjectDrawer({
                     </>
                   ) : (
                     effectiveBrief.trim() ? (
-                      <div style={{ fontSize: 12.5, lineHeight: 1.8, color: TEXT2, whiteSpace: "pre-wrap", maxHeight: 300, overflowY: "auto", direction: "rtl" }}>{effectiveBrief}</div>
+                      <div style={{ fontSize: 13, lineHeight: 1.9, color: TEXT2, whiteSpace: "pre-wrap", maxHeight: 360, overflowY: "auto", direction: "rtl" }}>{effectiveBrief}</div>
                     ) : (
-                      <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>{isOwner ? "אין בריף עדיין — לחץ ✎ ערוך כדי להוסיף" : "אין בריף לעבודה זו"}</div>
+                      <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "28px 0", lineHeight: 1.7 }}>{isOwner ? "אין עדיין בריף — לחץ ערוך כדי להוסיף הוראות לויקטור" : "אין בריף לעבודה זו"}</div>
                     )
                   )}
                 </div>
@@ -1134,11 +1155,13 @@ function VictorProjectDrawer({
                   {effectiveRefs.length === 0 && !refForm.open ? (
                     <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>{isOwner ? "אין רפרנסים — הוסף קישור YouTube" : "אין רפרנסים לעבודה זו"}</div>
                   ) : (
-                    effectiveRefs.map(ref => (
+                    effectiveRefs.map((ref, i) => (
                       <ReferenceCard
                         key={ref.id}
                         refItem={ref}
+                        index={i + 1}
                         isOwner={isOwner}
+                        onPlay={setPlayingId}
                         onEdit={() => setRefForm({ open: true, editId: ref.id, url: ref.url, title: ref.title, note: ref.note })}
                         onDelete={() => deleteReference(ref.id)}
                       />
@@ -1487,6 +1510,31 @@ function VictorProjectDrawer({
           </div>{/* grid */}
         </div>
       </div>
+
+      {/* In-app YouTube player — iframe mounts only while open, so closing it
+          unmounts the iframe and stops the video. No external library. */}
+      {playingId && createPortal(
+        <div
+          onClick={() => setPlayingId(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.86)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(960px, 94vw)", aspectRatio: "16 / 9", background: "#000", borderRadius: 14, overflow: "hidden", border: `1px solid ${BDR2}`, boxShadow: "0 24px 80px rgba(0,0,0,0.85)" }}>
+            <button
+              onClick={() => setPlayingId(null)}
+              title="סגור"
+              style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 32, height: 32, borderRadius: 8, background: "rgba(0,0,0,0.6)", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}
+            >✕</button>
+            <iframe
+              src={`https://www.youtube.com/embed/${playingId}?autoplay=1`}
+              title="YouTube"
+              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+              style={{ width: "100%", height: "100%", border: "none" }}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 }
