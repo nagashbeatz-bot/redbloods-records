@@ -1265,6 +1265,12 @@ export default function VictorProfilePage() {
   const [npError,    setNpError]    = useState("");
   const [toast,      setToast]      = useState<string | null>(null);
 
+  function openNewProject() {
+    setNpName(""); setNpStatus("פעיל");
+    setNpDeadline(""); setNpNotes(""); setNpError("");
+    setNewProjectOpen(true);
+  }
+
   async function saveNewProject() {
     if (!npName.trim()) { setNpError("שם הביט / פרויקט חובה"); return; }
     setNpSaving(true); setNpError("");
@@ -1480,8 +1486,19 @@ export default function VictorProfilePage() {
             </div>
           </div>
 
-          {/* New projects are created in the Projects page and assigned to Victor
-              via the project's "שלח לויקטור" flow — never created from here. */}
+          {/* Action — owner only. Victor never creates/assigns projects. */}
+          {isOwner && (
+            <button
+              onClick={openNewProject}
+              style={{
+                padding: "10px 22px", borderRadius: 12, flexShrink: 0,
+                background: `${PURPLE}14`, border: `1px solid ${PURPLE}33`,
+                color: PURPLE, fontSize: 13, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7,
+              }}>
+              + פתח פרויקט חדש
+            </button>
+          )}
         </div>
 
         {/* ── KPI Row ── */}
@@ -1893,7 +1910,7 @@ export default function VictorProfilePage() {
     )}
 
     {/* ── New project modal (centered, dark, Redbloods style) ── */}
-    {newProjectOpen && (
+    {isOwner && newProjectOpen && (
       <>
         <div
           onClick={() => { if (!npSaving) setNewProjectOpen(false); }}
