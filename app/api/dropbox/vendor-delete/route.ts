@@ -23,7 +23,14 @@ export async function POST(req: NextRequest) {
 
     if (!delRes.ok) {
       const errText = await delRes.text();
-      console.error("[dropbox/vendor-delete]", errText);
+      let summary = errText;
+      try { summary = JSON.parse(errText)?.error_summary ?? errText; } catch { /* keep raw */ }
+      // Already gone in Dropbox (deleted manually / bad path) → treat as success
+      // so the file can still be removed from the work's list (hard delete).
+      if (summary.includes("not_found")) {
+        return NextResponse.json({ ok: true, notFound: true });
+      }
+      console.error("[dropbox/vendor-delete]", summary);
       return NextResponse.json({ error: "שגיאה במחיקה מ-Dropbox" }, { status: 500 });
     }
 

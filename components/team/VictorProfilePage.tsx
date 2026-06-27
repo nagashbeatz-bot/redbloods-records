@@ -414,7 +414,6 @@ function AudioPlayer({
   }
 
   const hasUrl = !!url;
-  const hasPath = !!file.dropboxPath;
 
   return (
     <div style={{ borderRadius: 10, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
@@ -465,20 +464,20 @@ function AudioPlayer({
         {canDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
-          disabled={!hasPath}
-          title={hasPath ? "מחק קובץ" : "אין מסלול Dropbox"}
+          title="מחק קובץ"
           style={{
-            background: "none", border: "none", cursor: hasPath ? "pointer" : "not-allowed",
-            color: hasPath ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
-            flexShrink: 0, outline: "none",
+            background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)",
+            borderRadius: 7, cursor: "pointer",
+            color: "#F87171", fontSize: 13, padding: "3px 8px",
+            flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >🗑</button>
+        >🗑 מחק</button>
         )}
       </div>
       {/* Inline delete confirm */}
       {deleteConfirm && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
-          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק?</span>
+          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק את הקובץ מהרשימה? יימחק גם מ-Dropbox אם קיים</span>
           {deleteError && <span style={{ fontSize: 10, color: RED }}>שגיאה — נסה שוב</span>}
           <button
             onClick={e => { e.stopPropagation(); onDelete(); }}
@@ -519,7 +518,6 @@ function FileRow({
 }) {
   const { name } = file;
   const hasUrl = !!(file.dropboxShareUrl || file.url);
-  const hasPath = !!file.dropboxPath;
 
   return (
     <div style={{ borderRadius: 10, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
@@ -547,20 +545,20 @@ function FileRow({
         {canDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
-          disabled={!hasPath}
-          title={hasPath ? "מחק קובץ" : "אין מסלול Dropbox"}
+          title="מחק קובץ"
           style={{
-            background: "none", border: "none", cursor: hasPath ? "pointer" : "not-allowed",
-            color: hasPath ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
-            flexShrink: 0, outline: "none",
+            background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)",
+            borderRadius: 7, cursor: "pointer",
+            color: "#F87171", fontSize: 13, padding: "3px 8px",
+            flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >🗑</button>
+        >🗑 מחק</button>
         )}
       </div>
       {/* Inline delete confirm */}
       {deleteConfirm && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
-          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק?</span>
+          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק את הקובץ מהרשימה? יימחק גם מ-Dropbox אם קיים</span>
           {deleteError && <span style={{ fontSize: 10, color: RED }}>שגיאה — נסה שוב</span>}
           <button
             onClick={e => { e.stopPropagation(); onDelete(); }}
@@ -635,15 +633,21 @@ function VictorProjectDrawer({
     setDeletingIdx(idx);
     setDeleteError(false);
     try {
-      const delRes = await fetch("/api/dropbox/vendor-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dropboxPath: file.dropboxPath }),
-      });
-      if (!delRes.ok) {
-        setDeleteError(true);
-        setDeletingIdx(null);
-        return;
+      // Try Dropbox delete only when we have a path. The route treats
+      // not_found as success, so a file already gone in Dropbox (or with no
+      // stored path) is still hard-deleted from the list. Only a real
+      // permission/server error keeps the file so the user can retry.
+      if (file.dropboxPath) {
+        const delRes = await fetch("/api/dropbox/vendor-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dropboxPath: file.dropboxPath }),
+        });
+        if (!delRes.ok) {
+          setDeleteError(true);
+          setDeletingIdx(null);
+          return;
+        }
       }
       const filtered = effectiveFiles.filter((_, i) => i !== idx);
       await fetch(`/api/vendor/victor/work/${work.id}`, {
