@@ -7,6 +7,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
+import SensitiveValue from "@/components/ui/SensitiveValue";
 import ActionMenu from "@/components/project/ActionMenu";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import DatePickerInput from "@/components/ui/DatePickerInput";
@@ -152,7 +153,7 @@ function KpiCard({ label, value, sub, color, icon, onMouseEnter, onMouseLeave }:
         </span>
         <span style={{ fontSize: 16, opacity: 0.55 }}>{icon}</span>
       </div>
-      <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.02em" }}>{value}</div>
+      <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.02em" }}>{/[₪$]/.test(value) ? <SensitiveValue>{value}</SensitiveValue> : value}</div>
       {sub && <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{sub}</div>}
     </div>
   );
@@ -217,10 +218,10 @@ function KpiPopover({
               </div>
               <div style={{ flexShrink: 0, textAlign: "left" }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: "#F59E0B" }}>
-                  ₪{item.remaining.toLocaleString()}
+                  <SensitiveValue>{`₪${item.remaining.toLocaleString()}`}</SensitiveValue>
                 </div>
                 <div style={{ fontSize: 10, color: "#555" }}>
-                  מתוך ₪{item.agreed.toLocaleString()}
+                  <SensitiveValue>{`מתוך ₪${item.agreed.toLocaleString()}`}</SensitiveValue>
                 </div>
               </div>
             </div>
@@ -820,7 +821,7 @@ function ProjectRow({
 
       {/* Expected income */}
       <div style={{ fontSize: 13, color: remaining > 0 ? "#F59E0B" : MUTED, fontWeight: remaining > 0 ? 700 : 400 }}>
-        {remaining > 0 ? `₪${remaining.toLocaleString()}` : "—"}
+        {remaining > 0 ? <SensitiveValue>{`₪${remaining.toLocaleString()}`}</SensitiveValue> : "—"}
       </div>
 
       {/* Deadline */}
@@ -938,7 +939,7 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
         </div>
         {remaining > 0 && (
           <span style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginRight: 4 }}>
-            ₪{remaining.toLocaleString()}
+            <SensitiveValue>{`₪${remaining.toLocaleString()}`}</SensitiveValue>
           </span>
         )}
         <div style={{ flex: 1 }} />

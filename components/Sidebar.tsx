@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { ROLE_CACHE_KEY, type ClientRole } from "@/lib/use-role";
+import { usePrivacyMode } from "@/lib/use-privacy";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -112,6 +113,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const pathname = usePathname();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
+  const [privacyHidden, togglePrivacy] = usePrivacyMode();
 
   // Friendly display name by role (no DB / no profiles system).
   const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : "Redbloods";
@@ -240,6 +242,24 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
           {displaySub && <div style={{ fontSize: 10, color: MUTED }}>{displaySub}</div>}
         </div>
+        {/* Privacy / "מצב לקוח" toggle — owner only. Fixed 32×32, only colors
+            change between states so the footer never resizes. */}
+        {role === "owner" && (
+          <button
+            onClick={togglePrivacy}
+            title={privacyHidden ? "מצב לקוח פעיל" : "הסתר כספים"}
+            style={{
+              width: 32, height: 32, flexShrink: 0, borderRadius: "50%",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", fontFamily: "inherit", fontSize: 14, lineHeight: 1,
+              background: privacyHidden ? "rgba(234,179,8,0.14)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${privacyHidden ? "rgba(234,179,8,0.5)" : "rgba(255,255,255,0.1)"}`,
+              color: privacyHidden ? "#EAB308" : SUB,
+              boxShadow: privacyHidden ? "0 0 8px rgba(234,179,8,0.25)" : "none",
+              transition: "color 0.15s, background 0.15s, box-shadow 0.15s, border-color 0.15s",
+            }}
+          >👁</button>
+        )}
         <button
           onClick={async () => {
             try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }

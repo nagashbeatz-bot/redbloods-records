@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
+import { usePrivacyMode } from "@/lib/use-privacy";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const BRAND  = "#DC2626";
@@ -640,6 +641,7 @@ function TxModal({
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function FinancePage() {
   const { projects } = useProjects();
+  const [privacyHidden, togglePrivacy] = usePrivacyMode();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [_settings,    setSettings]     = useState<FinanceSetting[]>([]);
   const [loaded,       setLoaded]       = useState(false);
@@ -857,6 +859,27 @@ export default function FinancePage() {
     display: "flex", alignItems: "center", justifyContent: "center",
     cursor: "pointer", fontFamily: "inherit", outline: "none",
   };
+
+  // Privacy / "מצב לקוח": never render any financial content — show a clean
+  // placeholder instead (same route, no redirect). Toggling off re-renders the
+  // real page immediately. Fixed min-height keeps the layout from jumping.
+  if (privacyHidden) {
+    return (
+      <div dir="rtl" style={{ padding: "16px 40px" }}>
+        <div style={{ minHeight: "72vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center", maxWidth: 440, padding: "40px 34px", borderRadius: 18, background: CARD, border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 42, marginBottom: 14, color: "#EAB308" }}>👁</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, marginBottom: 8 }}>מצב לקוח פעיל — תוכן הכספים מוסתר</div>
+            <div style={{ fontSize: 13, color: MUTED, marginBottom: 24, lineHeight: 1.7 }}>הסכומים, הטבלאות וה-KPI הכספיים מוסתרים. כבה את מצב הלקוח כדי לראות אותם שוב.</div>
+            <button
+              onClick={togglePrivacy}
+              style={{ fontSize: 13, fontWeight: 800, color: "#15151A", padding: "9px 20px", borderRadius: 10, background: "#EAB308", border: "none", cursor: "pointer", fontFamily: "inherit" }}
+            >כבה מצב לקוח</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div dir="rtl" style={{ padding: "16px 40px" }}>

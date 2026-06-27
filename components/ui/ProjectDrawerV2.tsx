@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
 import UploadButton from "@/components/ui/UploadButton";
+import SensitiveValue from "@/components/ui/SensitiveValue";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
@@ -864,7 +865,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     lineHeight: 1,
                     color: finLoaded ? (balance > 0 ? RED_WARN : GREEN) : MUTED,
                   }}>
-                    {finLoaded ? `${currency}${balance.toLocaleString()}` : "…"}
+                    {finLoaded ? <SensitiveValue>{`${currency}${balance.toLocaleString()}`}</SensitiveValue> : "…"}
                   </div>
                 </div>
 
@@ -882,7 +883,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     color: finLoaded && agreedPrice !== 0 ? TEXT : MUTED,
                     lineHeight: 1,
                   }}>
-                    {finLoaded ? `${currency}${agreedPrice.toLocaleString()}` : "…"}
+                    {finLoaded ? <SensitiveValue>{`${currency}${agreedPrice.toLocaleString()}`}</SensitiveValue> : "…"}
                   </div>
                 </div>
 

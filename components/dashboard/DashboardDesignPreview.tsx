@@ -11,6 +11,8 @@ import { daysUntilDeadline } from "@/lib/utils";
 import type { Project, AgentAlert } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
+import SensitiveValue from "@/components/ui/SensitiveValue";
+import { usePrivacyMode } from "@/lib/use-privacy";
 import Link from "next/link";
 import TasksAttentionModal from "@/components/dashboard/TasksAttentionModal";
 
@@ -255,7 +257,9 @@ function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouse
           lineHeight: 1.4, textAlign: "right", maxWidth: "52%",
         }}>{label}</span>
       </div>
-      <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color }}>{count}</div>
+      <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color }}>
+        {typeof count === "string" && /[₪$]/.test(count) ? <SensitiveValue>{count}</SensitiveValue> : count}
+      </div>
       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
         {sub && <Dot color={color} />}
         <span style={{ fontSize: 10, color: sub ? "#707070" : "transparent" }}>{sub || "—"}</span>
@@ -532,6 +536,7 @@ function saveSnap(kpi: KpiItem[], pills: { active: number; overdue: number }): v
 
 export default function DashboardDesignPreview() {
   const { projects, loading } = useProjects();
+  const [privacyHidden] = usePrivacyMode();
 
   // ── Live-2: real alerts, calendar, proposals ──────────────────────────
   const [alerts, setAlerts]             = useState<AgentAlert[]>([]);
@@ -788,7 +793,7 @@ export default function DashboardDesignPreview() {
       const name = t.project_id ? (projects.find((p) => p.id === t.project_id)?.name ?? "פרויקט") : "כללי";
       items.push({
         icon: "$", iconBg: "rgba(16,185,129,0.15)", iconColor: "#10B981",
-        title: `תשלום צפוי היום: ${t.currency ?? "₪"}${t.amount.toLocaleString()}`,
+        title: `תשלום צפוי היום: ${privacyHidden ? "••••" : `${t.currency ?? "₪"}${t.amount.toLocaleString()}`}`,
         sub: name,
       });
     });
@@ -797,7 +802,7 @@ export default function DashboardDesignPreview() {
     proposalsList.filter((p) => p.followup_date === today).forEach((p) => items.push({
       icon: "📋", iconBg: "rgba(249,115,22,0.15)", iconColor: "#F97316",
       title: `פולואפ הצעה: ${p.client_name || p.title}`,
-      sub: p.amount ? `${p.currency ?? "₪"}${p.amount.toLocaleString()}` : p.title,
+      sub: p.amount ? (privacyHidden ? "••••" : `${p.currency ?? "₪"}${p.amount.toLocaleString()}`) : p.title,
     }));
 
     // 5. Most overdue project (today-relevant deadline)
@@ -813,7 +818,7 @@ export default function DashboardDesignPreview() {
     });
 
     return items.slice(0, 7);
-  }, [overdueProjects, calToday, tasksList, incomeDueToday, proposalsList, projects]);
+  }, [overdueProjects, calToday, tasksList, incomeDueToday, proposalsList, projects, privacyHidden]);
 
   // ── Expected income = outstanding balance (agreed − paid), same as Projects ──
   const expectedIncome = useMemo(() => {
@@ -894,13 +899,13 @@ export default function DashboardDesignPreview() {
           id: p.id,
           primary: p.name,
           secondary: p.artist || undefined,
-          value: `₪${p.remaining.toLocaleString()} מתוך ₪${p.agreed.toLocaleString()}`,
+          value: privacyHidden ? "••••" : `₪${p.remaining.toLocaleString()} מתוך ₪${p.agreed.toLocaleString()}`,
         })),
         ...showsExpectedItems.map(s => ({
           id: s.id,
           primary: s.description,
           secondary: `🎤 הופעה צפויה${s.artist ? ` · ${s.artist}` : ""}${s.date ? ` · ${shortDate(s.date)}` : ""}`,
-          value: `₪${s.amount.toLocaleString()}`,
+          value: privacyHidden ? "••••" : `₪${s.amount.toLocaleString()}`,
         })),
       ],
     },
@@ -916,7 +921,7 @@ export default function DashboardDesignPreview() {
       items: campaignsList.map(c => ({ id: c.id, primary: c.title, secondary: c.artist_name || undefined })),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [activeProjects, overdueProjects, sessionsList, showsList, expectedIncome, showsExpectedItems, proposalsList, campaignsList, projects]);
+  }), [activeProjects, overdueProjects, sessionsList, showsList, expectedIncome, showsExpectedItems, proposalsList, campaignsList, projects, privacyHidden]);
 
   function handleKpiEnter(title: string, color: string, items: KpiPopoverItem[], e: React.MouseEvent<HTMLDivElement>) {
     if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
