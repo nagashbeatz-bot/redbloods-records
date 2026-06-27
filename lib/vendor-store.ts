@@ -19,6 +19,7 @@ import type {
   VictorOutcome,
   VictorSalaryMonth,
   SalaryStatus,
+  VictorReference,
 } from "@/lib/types";
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -68,6 +69,8 @@ function mapRow(
     dropboxFolder:    (row.dropbox_folder    as string | null) ?? null,
     dropboxShareLink: (row.dropbox_share_link as string | null) ?? null,
     notes:            (row.notes             as string) ?? "",
+    briefText:        (row.brief_text        as string | null) ?? "",
+    references:       (row.reference_links   as VictorReference[] | null) ?? [],
     filesSent:        (row.files_sent        as VendorWork["filesSent"])    ?? [],
     filesReceived:    (row.files_received    as VendorWork["filesReceived"]) ?? [],
     isStuck,
@@ -181,6 +184,8 @@ export async function updateVictorWork(
     dropboxFolder:    string | null;
     dropboxShareLink: string | null;
     notes:            string;
+    briefText:        string;
+    references:       VictorReference[];
     filesSent:        VendorWork["filesSent"];
     filesReceived:    VendorWork["filesReceived"];
     linkedTaskId:     string | null;
@@ -205,6 +210,8 @@ export async function updateVictorWork(
   if ("dropboxFolder"    in fields) dbFields.dropbox_folder     = fields.dropboxFolder;
   if ("dropboxShareLink" in fields) dbFields.dropbox_share_link = fields.dropboxShareLink;
   if ("notes"            in fields) dbFields.notes              = fields.notes;
+  if ("briefText"        in fields) dbFields.brief_text         = fields.briefText;
+  if ("references"       in fields) dbFields.reference_links    = fields.references;
   if ("filesSent"        in fields) dbFields.files_sent         = fields.filesSent;
   if ("filesReceived"    in fields) dbFields.files_received     = fields.filesReceived;
   if ("linkedTaskId"     in fields) dbFields.linked_task_id     = fields.linkedTaskId;

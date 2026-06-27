@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
 
 const BRAND   = "#DC2626";
@@ -576,6 +576,64 @@ function FileRow({
   );
 }
 
+/** Extract a YouTube video id from common URL shapes (no external library). */
+function ytId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function ReferenceCard({
+  refItem,
+  isOwner,
+  onEdit,
+  onDelete,
+}: {
+  refItem: VictorReference;
+  isOwner: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const vid = ytId(refItem.url);
+  const thumb = vid ? `https://img.youtube.com/vi/${vid}/hqdefault.jpg` : null;
+  return (
+    <div style={{ display: "flex", gap: 12, padding: 10, borderRadius: 12, background: CARD2, border: `1px solid ${BDR}` }}>
+      {/* Thumbnail → opens on YouTube */}
+      <a
+        href={refItem.url} target="_blank" rel="noopener noreferrer"
+        style={{ position: "relative", flexShrink: 0, width: 120, height: 68, borderRadius: 8, overflow: "hidden", background: "#000", display: "block" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {thumb ? (
+          <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: MUTED, fontSize: 22 }}>▶</div>
+        )}
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(0,0,0,0.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>▶</span>
+        </div>
+      </a>
+      {/* Body */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || "רפרנס"}</div>
+          <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(239,68,68,0.12)", color: "#F87171" }}>YouTube</span>
+        </div>
+        <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 11, color: "#60A5FA", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{refItem.url}</a>
+        {refItem.note && <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{refItem.note}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}>
+          <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10.5, fontWeight: 700, color: PURPLE, textDecoration: "none", padding: "3px 9px", borderRadius: 7, background: `${PURPLE}14`, border: `1px solid ${PURPLE}33` }}>פתח ביוטיוב ↗</a>
+          {isOwner && (
+            <>
+              <button onClick={onEdit} title="ערוך" style={{ fontSize: 11, padding: "3px 8px", borderRadius: 7, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>✎</button>
+              <button onClick={onDelete} title="מחק" style={{ fontSize: 11, padding: "3px 8px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VictorProjectDrawer({
   work,
   onClose,
@@ -606,6 +664,17 @@ function VictorProjectDrawer({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  // Brief ("קרא אותי קודם") — owner edits, Victor views.
+  const [effectiveBrief, setEffectiveBrief] = useState<string>(work.briefText ?? "");
+  const [editingBrief, setEditingBrief] = useState(false);
+  const [briefDraft, setBriefDraft] = useState("");
+  const [savingBrief, setSavingBrief] = useState(false);
+  // References (YouTube) — owner adds/edits/deletes, Victor views/opens.
+  const [effectiveRefs, setEffectiveRefs] = useState<VictorReference[]>(work.references ?? []);
+  const [refForm, setRefForm] = useState<{ open: boolean; editId: string | null; url: string; title: string; note: string }>(
+    { open: false, editId: null, url: "", title: "", note: "" }
+  );
+  const [savingRef, setSavingRef] = useState(false);
 
   // Close on Escape (matches modal pattern used elsewhere in the app).
   useEffect(() => {
@@ -626,6 +695,55 @@ function VictorProjectDrawer({
     } finally {
       setUpdating(false);
     }
+  }
+
+  // ── Brief ("קרא אותי קודם") ──────────────────────────────────────────────────
+  async function saveBrief() {
+    if (savingBrief) return;
+    setSavingBrief(true);
+    try {
+      await patchWork({ briefText: briefDraft });
+      setEffectiveBrief(briefDraft);
+      setEditingBrief(false);
+    } finally {
+      setSavingBrief(false);
+    }
+  }
+
+  // ── References (YouTube) ─────────────────────────────────────────────────────
+  async function saveReference() {
+    const url = refForm.url.trim();
+    if (!url || savingRef) return;
+    setSavingRef(true);
+    try {
+      let next: VictorReference[];
+      if (refForm.editId) {
+        next = effectiveRefs.map((r) =>
+          r.id === refForm.editId ? { ...r, url, title: refForm.title.trim(), note: refForm.note.trim() } : r
+        );
+      } else {
+        const ref: VictorReference = {
+          id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+          url,
+          title: refForm.title.trim(),
+          note: refForm.note.trim(),
+          provider: "youtube",
+          createdAt: new Date().toISOString(),
+        };
+        next = [...effectiveRefs, ref];
+      }
+      await patchWork({ references: next });
+      setEffectiveRefs(next);
+      setRefForm({ open: false, editId: null, url: "", title: "", note: "" });
+    } finally {
+      setSavingRef(false);
+    }
+  }
+
+  async function deleteReference(id: string) {
+    const next = effectiveRefs.filter((r) => r.id !== id);
+    setEffectiveRefs(next); // optimistic — dead refs never get stuck
+    await patchWork({ references: next });
   }
 
   async function handleDeleteFile(file: FileLink, idx: number) {
@@ -937,7 +1055,102 @@ function VictorProjectDrawer({
         </div>
 
         {/* ── Scrollable body ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
+          <div className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr]" style={{ gap: 14, alignItems: "start" }}>
+
+            {/* ════ MAIN column: brief + references (what Victor must do) ════ */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+
+              {/* ── קרא אותי קודם ── */}
+              <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>📌</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קרא אותי קודם</span>
+                  </div>
+                  {isOwner && !editingBrief && (
+                    <button
+                      onClick={() => { setBriefDraft(effectiveBrief); setEditingBrief(true); }}
+                      style={{ fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}
+                    >✎ ערוך</button>
+                  )}
+                </div>
+                <div style={{ padding: "14px 16px" }}>
+                  {editingBrief ? (
+                    <>
+                      <textarea
+                        value={briefDraft}
+                        onChange={e => setBriefDraft(e.target.value)}
+                        rows={10}
+                        autoFocus
+                        placeholder="מה להכין · מבנה השיר · BPM / סולם · וייב · מה לקחת מהרפרנסים · מה לא לעשות…"
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.7, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", resize: "vertical", direction: "rtl", boxSizing: "border-box" }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                        <span style={{ fontSize: 10, color: MUTED }}>{briefDraft.length} תווים</span>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setEditingBrief(false)} disabled={savingBrief} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: savingBrief ? "default" : "pointer", fontFamily: "inherit" }}>בטל</button>
+                          <button onClick={saveBrief} disabled={savingBrief} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: savingBrief ? MUTED : PURPLE, border: "none", color: "#fff", cursor: savingBrief ? "default" : "pointer", fontFamily: "inherit" }}>{savingBrief ? "שומר…" : "שמור"}</button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    effectiveBrief.trim() ? (
+                      <div style={{ fontSize: 12.5, lineHeight: 1.8, color: TEXT2, whiteSpace: "pre-wrap", maxHeight: 300, overflowY: "auto", direction: "rtl" }}>{effectiveBrief}</div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>{isOwner ? "אין בריף עדיין — לחץ ✎ ערוך כדי להוסיף" : "אין בריף לעבודה זו"}</div>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* ── רפרנסים ── */}
+              <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>🔗</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>רפרנסים</span>
+                    {effectiveRefs.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}18`, color: PURPLE }}>{effectiveRefs.length}</span>}
+                  </div>
+                  {isOwner && (
+                    <button
+                      onClick={() => setRefForm({ open: true, editId: null, url: "", title: "", note: "" })}
+                      style={{ fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}
+                    >+ הוסף רפרנס</button>
+                  )}
+                </div>
+                <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                  {isOwner && refForm.open && (
+                    <div style={{ padding: 12, borderRadius: 12, background: CARD2, border: `1px solid ${PURPLE}33`, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <input value={refForm.url} onChange={e => setRefForm(f => ({ ...f, url: e.target.value }))} placeholder="קישור YouTube (https://…)" dir="ltr" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                      <input value={refForm.title} onChange={e => setRefForm(f => ({ ...f, title: e.target.value }))} placeholder="כותרת (אופציונלי)" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", direction: "rtl", boxSizing: "border-box" }} />
+                      <textarea value={refForm.note} onChange={e => setRefForm(f => ({ ...f, note: e.target.value }))} placeholder="הערה — מה לקחת מהרפרנס" rows={2} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", direction: "rtl", resize: "vertical", boxSizing: "border-box" }} />
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        <button onClick={() => setRefForm({ open: false, editId: null, url: "", title: "", note: "" })} disabled={savingRef} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: savingRef ? "default" : "pointer", fontFamily: "inherit" }}>בטל</button>
+                        <button onClick={saveReference} disabled={savingRef || !refForm.url.trim()} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: (savingRef || !refForm.url.trim()) ? MUTED : PURPLE, border: "none", color: "#fff", cursor: (savingRef || !refForm.url.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>{savingRef ? "שומר…" : refForm.editId ? "עדכן" : "הוסף"}</button>
+                      </div>
+                    </div>
+                  )}
+                  {effectiveRefs.length === 0 && !refForm.open ? (
+                    <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>{isOwner ? "אין רפרנסים — הוסף קישור YouTube" : "אין רפרנסים לעבודה זו"}</div>
+                  ) : (
+                    effectiveRefs.map(ref => (
+                      <ReferenceCard
+                        key={ref.id}
+                        refItem={ref}
+                        isOwner={isOwner}
+                        onEdit={() => setRefForm({ open: true, editId: ref.id, url: ref.url, title: ref.title, note: ref.note })}
+                        onDelete={() => deleteReference(ref.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* ════ SIDE column: files + progress ════ */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
 
           {/* Files card */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
@@ -1270,6 +1483,8 @@ function VictorProjectDrawer({
             </div>
           ))}
 
+            </div>{/* side column */}
+          </div>{/* grid */}
         </div>
       </div>
     </>

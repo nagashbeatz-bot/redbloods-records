@@ -55,6 +55,16 @@ export interface FileLink {
   versionLabel?: string;     // e.g. "V1", "מיקס 1", "מאסטר"
 }
 
+/** A YouTube reference attached to a Victor work ("רפרנסים"). */
+export interface VictorReference {
+  id: string;
+  url: string;
+  title: string;
+  note: string;
+  provider: "youtube";
+  createdAt: string;         // ISO
+}
+
 /** Album track status now uses the same values as ProjectStatus */
 export type AlbumTrackStatus = ProjectStatus;
 export type MixMasterStatus  = "לא התחיל" | "בתהליך" | "הושלם";
@@ -214,6 +224,8 @@ export interface VendorWork {
   dropboxFolder: string | null;      // base path, e.g. "Victor/Artist - Project"
   dropboxShareLink: string | null;   // public share link to base folder
   notes: string;
+  briefText: string;                 // "קרא אותי קודם" brief (owner-editable)
+  references: VictorReference[];     // YouTube reference links (owner-editable)
   filesSent: FileLink[];
   filesReceived: FileLink[];
   isStuck: boolean;                  // computed: פעיל + daysSinceSent > stuckAfterDays
