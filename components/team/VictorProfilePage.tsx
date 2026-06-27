@@ -1071,8 +1071,6 @@ function VictorProjectDrawer({
                       fontSize: 10, color: MUTED, flexShrink: 0,
                       background: "rgba(255,255,255,0.04)", padding: "2px 7px", borderRadius: 5,
                     }}>{fmtDate(t.date)}</span>
-                  ) : t.action && !t.done ? (
-                    <span style={{ fontSize: 10, color: PURPLE, fontWeight: 700 }}>סמן ✓</span>
                   ) : null}
                 </div>
               ))}
