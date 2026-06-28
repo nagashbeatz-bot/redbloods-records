@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+import { usePrivacyMode } from "@/lib/use-privacy";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
 const BG    = "#080808";
@@ -1388,6 +1389,7 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function ShowsHubPreview() {
+  const [privacyHidden, togglePrivacy] = usePrivacyMode();
   const [shows,     setShows]     = useState<Show[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
@@ -1597,6 +1599,26 @@ export default function ShowsHubPreview() {
     borderRadius: 9, padding: "8px 12px", fontSize: 12, fontFamily: "inherit",
     outline: "none", direction: "rtl",
   };
+
+  // Privacy / "מצב לקוח": same shared source of truth as Finance — block the
+  // whole Shows page with a clean placeholder (no data rendered) while active.
+  if (privacyHidden) {
+    return (
+      <div style={{ minHeight: "100vh", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl", padding: "16px 28px" }}>
+        <div style={{ minHeight: "72vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center", maxWidth: 440, padding: "40px 34px", borderRadius: 18, background: CARD, border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 42, marginBottom: 14, color: "#EAB308" }}>👁</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, marginBottom: 8 }}>מצב לקוח פעיל — נתונים רגישים מוסתרים</div>
+            <div style={{ fontSize: 13, color: MUTED, marginBottom: 24, lineHeight: 1.7 }}>פרטי ההופעות, הסכומים וה-KPI מוסתרים. כבה את מצב הלקוח כדי לראות אותם שוב.</div>
+            <button
+              onClick={togglePrivacy}
+              style={{ fontSize: 13, fontWeight: 800, color: "#15151A", padding: "9px 20px", borderRadius: 10, background: "#EAB308", border: "none", cursor: "pointer", fontFamily: "inherit" }}
+            >כבה מצב לקוח</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl" }}>
