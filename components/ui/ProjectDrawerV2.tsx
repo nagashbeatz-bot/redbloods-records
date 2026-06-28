@@ -1343,7 +1343,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
       {/* ── Edit existing session (same modal, edit mode) ── */}
       {editingSession && (
         <ScheduleModal
-          action={ACTIONS[0]}
+          action={
+            editingSession.session_type === "חזרה"
+              ? (ACTIONS.find(a => a.id === "rehearsal") ?? ACTIONS[0])
+              : editingSession.session_type === "ניקוי מיקס"
+                ? (ACTIONS.find(a => a.id === "channel-clean") ?? ACTIONS[0])
+                : ACTIONS[0]
+          }
           projectId={projectId}
           projectName={project.name}
           artist={project.artist}

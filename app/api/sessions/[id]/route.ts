@@ -10,7 +10,7 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const body = await req.json();
-    const { date, startTime, endTime, status, sessionType, notes, photographer, location, startIso, endIso } = body;
+    const { date, startTime, endTime, status, sessionType, notes, photographer, location, startIso, endIso, summary } = body;
 
     const patch: Record<string, unknown> = {};
     if (date         !== undefined) patch.date         = date        || null;
@@ -35,11 +35,17 @@ export async function PATCH(
     // Only when the session already has a calendar_event_id and the client sent
     // absolute start/end ISO times (computed in the browser's Israel tz).
     const calEventId = (data as { calendar_event_id?: string | null }).calendar_event_id;
-    if (calEventId && startIso && endIso) {
+    // Update the existing event when we have a time change (startIso/endIso)
+    // and/or a recomputed title (summary). System → Calendar only; never pulls.
+    if (calEventId && (startIso || endIso || (typeof summary === "string" && summary.trim()))) {
       try {
         const { isConnected, updateCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
         if (await isConnected() && await calendarEventExists(calEventId)) {
-          await updateCalendarEvent(calEventId, { startIso, endIso });
+          const upd: { startIso?: string; endIso?: string; summary?: string } = {};
+          if (startIso) upd.startIso = startIso;
+          if (endIso)   upd.endIso   = endIso;
+          if (typeof summary === "string" && summary.trim()) upd.summary = summary.trim();
+          await updateCalendarEvent(calEventId, upd);
         }
       } catch (calErr) {
         console.error("[sessions PATCH id] calendar update error:", calErr);

@@ -321,7 +321,9 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       const r = await fetch(`/api/sessions/${editSession!.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, startTime, endTime, startIso, endIso }),
+        // summary recomputed from current system data (same buildEventTitle as
+        // creation) so the linked calendar event's title stays in sync too.
+        body: JSON.stringify({ date, startTime, endTime, startIso, endIso, summary: title }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setPhase({ error: d.error ?? "שגיאה בשמירת הסשן" }); return; }
