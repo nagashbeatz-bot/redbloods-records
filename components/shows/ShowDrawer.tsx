@@ -20,9 +20,12 @@ const STATUS_COLOR: Record<ShowStatus, { bg: string; text: string }> = {
   "בוטל":           { bg: "rgba(107,114,128,0.15)", text: "#6B7280" },
 };
 const PAYMENT_COLOR: Record<PaymentStatus, { bg: string; text: string }> = {
-  "לא שולם": { bg: "rgba(239,68,68,0.15)",   text: "#EF4444" },
-  "חלקי":    { bg: "rgba(245,158,11,0.15)",  text: "#F59E0B" },
   "שולם":    { bg: "rgba(16,185,129,0.15)",  text: "#10B981" },
+  "לא שולם": { bg: "rgba(239,68,68,0.15)",   text: "#EF4444" },
+  "צפוי":    { bg: "rgba(59,130,246,0.15)",  text: "#3B82F6" },
+  "מקדמה":   { bg: "rgba(245,158,11,0.15)",  text: "#F59E0B" },
+  "בוטל":    { bg: "rgba(107,114,128,0.15)", text: "#9CA3AF" },
+  "חלקי":    { bg: "rgba(245,158,11,0.15)",  text: "#F59E0B" },
 };
 
 function Badge({ children, bg, text }: { children: React.ReactNode; bg: string; text: string }) {

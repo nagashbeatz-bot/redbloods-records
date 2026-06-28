@@ -2,10 +2,12 @@
 // (no supabase / server-only imports here)
 
 export const SHOW_STATUSES = ["ליד חדש","ממתין לתשובה","צריך פולואפ","נסגר","אושרה","בוצע","בוטל"] as const;
-export const PAYMENT_STATUSES = ["לא שולם","חלקי","שולם"] as const;
+// Selectable payment statuses (unified for all shows). "חלקי" is legacy-only:
+// existing rows may still hold it — it is shown as "מקדמה" and never offered.
+export const PAYMENT_STATUSES = ["שולם","לא שולם","צפוי","מקדמה","בוטל"] as const;
 
 export type ShowStatus    = typeof SHOW_STATUSES[number];
-export type PaymentStatus = typeof PAYMENT_STATUSES[number];
+export type PaymentStatus = typeof PAYMENT_STATUSES[number] | "חלקי";
 
 export interface Show {
   id: string;

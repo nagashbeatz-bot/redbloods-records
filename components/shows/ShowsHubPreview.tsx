@@ -31,10 +31,18 @@ const STATUS_COLOR: Record<ShowStatus, { bg: string; text: string }> = {
   "בוטל":         { bg: "rgba(107,114,128,0.18)", text: "#6B7280" },
 };
 const PAY_COLOR: Record<PaymentStatus, { bg: string; text: string }> = {
-  "לא שולם": { bg: "rgba(239,68,68,0.18)",   text: "#EF4444" },
-  "חלקי":    { bg: "rgba(245,158,11,0.18)",  text: "#F59E0B" },
   "שולם":    { bg: "rgba(16,185,129,0.18)",  text: "#10B981" },
+  "לא שולם": { bg: "rgba(239,68,68,0.18)",   text: "#EF4444" },
+  "צפוי":    { bg: "rgba(59,130,246,0.18)",  text: "#3B82F6" },
+  "מקדמה":   { bg: "rgba(245,158,11,0.18)",  text: "#F59E0B" },
+  "בוטל":    { bg: "rgba(107,114,128,0.18)", text: "#9CA3AF" },
+  "חלקי":    { bg: "rgba(245,158,11,0.18)",  text: "#F59E0B" }, // legacy → shown as "מקדמה"
 };
+
+/** Legacy "חלקי" rows are shown as "מקדמה"; never display "חלקי". */
+function payLabel(status: string): string {
+  return status === "חלקי" ? "מקדמה" : status;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function fmtIls(n: number) { return `₪${n.toLocaleString("he-IL")}`; }
@@ -85,7 +93,7 @@ function Badge({ bg, text, children }: { bg: string; text: string; children: Rea
 
 // ─── StatusPicker ────────────────────────────────────────────────────────────
 function StatusPicker({
-  value, options, colorMap, onChange, disabled, legacyValue,
+  value, options, colorMap, onChange, disabled, legacyValue, labelFor,
 }: {
   value: string;
   options: readonly string[];
@@ -93,7 +101,9 @@ function StatusPicker({
   onChange: (val: string) => void;
   disabled?: boolean;
   legacyValue?: boolean;
+  labelFor?: (v: string) => string;
 }) {
+  const lbl = labelFor ?? ((v: string) => v);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -123,7 +133,7 @@ function StatusPicker({
           outline: "none", fontFamily: "inherit", whiteSpace: "nowrap",
           opacity: disabled ? 0.55 : 1, transition: "none",
         }}
-      >{value}{disabled ? "" : " ▾"}</button>
+      >{lbl(value)}{disabled ? "" : " ▾"}</button>
 
       {open && (
         <div style={{
@@ -161,7 +171,7 @@ function StatusPicker({
                   onMouseLeave={e => { if (!cur) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
                   {cur && <span style={{ fontSize: 10, opacity: 0.9 }}>✓</span>}
-                  {opt}
+                  {lbl(opt)}
                 </button>
               );
             })}
@@ -227,7 +237,7 @@ function ShowCard({ show, accent, grad, onClick, selected, index }: {
         <div style={{ fontSize: 10, color: MUTED }}>{show.location || "—"}</div>
         <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
           <Badge bg={STATUS_COLOR[show.status].bg} text={STATUS_COLOR[show.status].text}>{show.status}</Badge>
-          <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
+          <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{payLabel(show.payment_status)}</Badge>
         </div>
         <div style={{ display: "flex", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BDR}` }}>
           {[
@@ -833,14 +843,26 @@ function ShowFormModal({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={labelStyle}>סטטוס</label>
-              <select value={form.status} onChange={e => set("status", e.target.value as ShowStatus)} style={inputStyle}>
+              <select value={form.status} onChange={e => {
+                const v = e.target.value as ShowStatus;
+                set("status", v);
+                // Approved + future date → default payment to "צפוי", but never
+                // override a manual choice (only when still the default "לא שולם").
+                const isFuture = !!form.date && form.date > new Date().toISOString().slice(0, 10);
+                if (v === "אושרה" && isFuture && form.payment_status === "לא שולם") {
+                  set("payment_status", "צפוי");
+                }
+              }} style={inputStyle}>
                 {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label style={labelStyle}>סטטוס תשלום</label>
               <select value={form.payment_status} onChange={e => set("payment_status", e.target.value as PaymentStatus)} style={inputStyle}>
-                {PAYMENT_STATUSES.map(p => <option key={p} value={p}>{p}</option>)}
+                {(PAYMENT_STATUSES.includes(form.payment_status as typeof PAYMENT_STATUSES[number])
+                  ? PAYMENT_STATUSES
+                  : [form.payment_status, ...PAYMENT_STATUSES]
+                ).map(p => <option key={p} value={p}>{payLabel(p)}</option>)}
               </select>
             </div>
           </div>
@@ -1038,7 +1060,7 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
             <div style={{ fontSize: 22, fontWeight: 800, color: TEXT, marginBottom: 10 }}>{show.name}</div>
             <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
               <Badge bg={STATUS_COLOR[show.status]?.bg ?? "rgba(255,255,255,0.1)"} text={STATUS_COLOR[show.status]?.text ?? TEXT2}>{show.status}</Badge>
-              <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{show.payment_status}</Badge>
+              <Badge bg={PAY_COLOR[show.payment_status].bg} text={PAY_COLOR[show.payment_status].text}>{payLabel(show.payment_status)}</Badge>
               {show.calendar_event_id && <Badge bg="rgba(59,130,246,0.18)" text={BLUE}>📅 ביומן</Badge>}
             </div>
           </div>
@@ -1090,6 +1112,7 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
                   value={show.payment_status}
                   options={PAYMENT_STATUSES}
                   colorMap={PAY_COLOR}
+                  labelFor={payLabel}
                   onChange={val => handlePatch("payment_status", val)}
                   disabled={savingField === "payment_status"}
                 />
@@ -1218,6 +1241,149 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
   );
 }
 
+// ─── Close-show modal ────────────────────────────────────────────────────────
+// Lightweight "סגירת הופעה" form. Toggles are documentation only (saved into
+// show.notes); they map to a SINGLE payment_status. One PATCH on the show —
+// syncShowFinance then runs server-side as usual. No per-party DB status.
+function CloseShowModal({ show, trigger, onClose, onDone }: {
+  show: Show;
+  trigger: "done" | "paid";
+  onClose: () => void;
+  onDone: (updated: Show) => void;
+}) {
+  const split        = computeShowSplit(show);
+  const djRelevant   = (show.dj_fee ?? 0) > 0;
+  const artRelevant  = split.artistFee > 0;
+  const preset       = trigger === "paid"; // "שולם" was picked → assume settled
+
+  const [incomeReceived, setIncomeReceived] = useState(preset);
+  const [djPaid,         setDjPaid]         = useState(preset);
+  const [artistPaid,     setArtistPaid]     = useState(preset);
+  const [djName,         setDjName]         = useState(show.dj_name ?? "");
+  const [note,           setNote]           = useState("");
+  const [saving,         setSaving]         = useState(false);
+  const [err,            setErr]            = useState<string | null>(null);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  async function save() {
+    setSaving(true); setErr(null);
+    try {
+      const checks  = [incomeReceived, djRelevant ? djPaid : null, artRelevant ? artistPaid : null].filter(v => v !== null) as boolean[];
+      const allPaid = checks.length > 0 && checks.every(Boolean);
+      const anyPaid = checks.some(Boolean);
+      const payment_status = allPaid ? "שולם" : anyPaid ? "מקדמה" : (show.payment_status === "בוטל" ? "בוטל" : "צפוי");
+
+      const body: Record<string, unknown> = { payment_status };
+      if (trigger === "done") body.status = "בוצע";
+      if (djRelevant && djName.trim() && djName.trim() !== (show.dj_name ?? "")) body.dj_name = djName.trim();
+
+      const stamp = new Date().toLocaleDateString("he-IL");
+      const parts = [
+        `התקבל ${incomeReceived ? "✓" : "✗"}`,
+        djRelevant  ? `דיג׳יי${djName.trim() ? ` (${djName.trim()})` : ""} ${djPaid ? "✓" : "✗"}` : null,
+        artRelevant ? `אמן ${artistPaid ? "✓" : "✗"}` : null,
+      ].filter(Boolean).join(" · ");
+      const summary = `סגירת הופעה ${stamp}: ${parts}${note.trim() ? ` — ${note.trim()}` : ""}`;
+      body.notes = [show.notes?.trim(), summary].filter(Boolean).join("\n");
+
+      const res  = await fetch(`/api/shows/${show.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
+      onDone(data.show as Show);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "שגיאה");
+      setSaving(false);
+    }
+  }
+
+  const toggle = (label: string, sub: string, on: boolean, onToggle: () => void, color: string) => (
+    <button type="button" onClick={onToggle} style={{
+      display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "right",
+      padding: "11px 12px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+      background: on ? `${color}14` : CARD, border: `1px solid ${on ? `${color}45` : BDR}`,
+    }}>
+      <span style={{
+        width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+        background: on ? color : "transparent", border: `1px solid ${on ? color : MUTED}`,
+        color: "#fff", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
+      }}>{on ? "✓" : ""}</span>
+      <span style={{ flex: 1 }}>
+        <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: TEXT }}>{label}</span>
+        <span style={{ display: "block", fontSize: 11, color: MUTED, marginTop: 1 }}>{sub}</span>
+      </span>
+    </button>
+  );
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 99999,
+      background: "rgba(0,0,0,0.74)", backdropFilter: "blur(3px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div onClick={e => e.stopPropagation()} dir="rtl" style={{
+        background: "#111318", border: "1px solid rgba(220,38,38,0.25)",
+        borderRadius: 18, padding: "20px 20px 16px", width: 440, maxWidth: "95vw",
+        maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.9)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: TEXT, margin: 0 }}>סגירת הופעה</h2>
+        </div>
+        <div style={{ fontSize: 13, color: TEXT2, marginBottom: 14 }}>
+          <strong style={{ color: TEXT }}>{show.name}</strong>
+          {show.artist ? ` — ${show.artist}` : ""} · מחיר הופעה <strong style={{ color: GREEN }}>{fmtIls(show.show_price || 0)}</strong>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {toggle("הכסף מההופעה התקבל", fmtIls(show.show_price || 0), incomeReceived, () => setIncomeReceived(v => !v), GREEN)}
+          {djRelevant &&
+            toggle(`שולם לדיג׳יי${show.dj_name ? ` — ${show.dj_name}` : ""}`, fmtIls(show.dj_fee || 0), djPaid, () => setDjPaid(v => !v), AMBER)}
+          {artRelevant &&
+            toggle(`שולם לאמן${show.artist ? ` — ${show.artist}` : ""}`, fmtIls(split.artistFee), artistPaid, () => setArtistPaid(v => !v), BLUE)}
+        </div>
+
+        {djRelevant && (
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 6 }}>למי שילמתי (דיג׳יי)</label>
+            <input value={djName} onChange={e => setDjName(e.target.value)} placeholder="שם הדיג׳יי..."
+              style={{ width: "100%", boxSizing: "border-box", background: CARD, border: `1px solid ${BDR}`, borderRadius: 9, color: TEXT, fontSize: 13, padding: "9px 11px", outline: "none", fontFamily: "inherit" }} />
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>ניתן לרשום ידנית דיג׳יי שלא ברשימה (לא נוצר לקוח חדש).</div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 14 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 6 }}>הערה</label>
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder="הערה קצרה על הסגירה..."
+            onKeyDown={e => { if (e.key === "Enter" && !saving) save(); }}
+            style={{ width: "100%", boxSizing: "border-box", background: CARD, border: `1px solid ${BDR}`, borderRadius: 9, color: TEXT, fontSize: 13, padding: "9px 11px", outline: "none", fontFamily: "inherit" }} />
+        </div>
+
+        {err && <div style={{ fontSize: 12, color: "#EF4444", marginTop: 12 }}>{err}</div>}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          <button type="button" onClick={onClose} style={{
+            flex: 1, padding: "11px", borderRadius: 10, border: `1px solid ${BDR}`,
+            background: "transparent", color: TEXT2, cursor: "pointer", fontSize: 13, fontFamily: "inherit",
+          }}>ביטול</button>
+          <button type="button" onClick={save} disabled={saving} style={{
+            flex: 2, padding: "11px", borderRadius: 10, border: "none",
+            background: saving ? CARD2 : BRAND, color: "#fff", cursor: saving ? "default" : "pointer",
+            fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+          }}>{saving ? "שומר..." : "שמור וסגור הופעה"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function ShowsHubPreview() {
   const [shows,     setShows]     = useState<Show[]>([]);
@@ -1234,6 +1400,8 @@ export default function ShowsHubPreview() {
   const [patching,      setPatching]      = useState<{ id: string; field: "status" | "payment_status" } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deletingId,    setDeletingId]    = useState<string | null>(null);
+  // "Close show" modal — opened when status→"בוצע" or payment_status→"שולם".
+  const [closeShow, setCloseShow] = useState<{ show: Show; trigger: "done" | "paid" } | null>(null);
 
   const loadShows = useCallback(() => {
     return fetch("/api/shows")
@@ -1374,6 +1542,11 @@ export default function ShowsHubPreview() {
   }
 
   async function patchStatus(id: string, field: "status" | "payment_status", value: string) {
+    // Intercept "close" actions: open the close-show modal instead of patching now.
+    if ((field === "status" && value === "בוצע") || (field === "payment_status" && value === "שולם")) {
+      const show = shows.find(s => s.id === id);
+      if (show) { setCloseShow({ show, trigger: field === "status" ? "done" : "paid" }); return; }
+    }
     setPatching({ id, field });
     try {
       const res = await fetch(`/api/shows/${id}`, {
@@ -1621,6 +1794,7 @@ export default function ShowsHubPreview() {
                                   value={s.payment_status}
                                   options={PAYMENT_STATUSES}
                                   colorMap={PAY_COLOR}
+                                  labelFor={payLabel}
                                   onChange={val => patchStatus(s.id, "payment_status", val)}
                                   disabled={patching?.id === s.id && patching.field === "payment_status"}
                                 />
@@ -1676,6 +1850,21 @@ export default function ShowsHubPreview() {
           editShow={modal.show}
           onClose={() => setModal(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {/* ── Close-show modal ───────────────────────────────────────────────── */}
+      {closeShow && (
+        <CloseShowModal
+          show={closeShow.show}
+          trigger={closeShow.trigger}
+          onClose={() => setCloseShow(null)}
+          onDone={(updatedShow) => {
+            setShows(prev => prev.map(s => s.id === updatedShow.id ? updatedShow : s));
+            if (selected?.id === updatedShow.id) setSelected(updatedShow);
+            setCloseShow(null);
+            setToast({ message: "ההופעה נסגרה ועודכנה", type: "success" });
+          }}
         />
       )}
 
