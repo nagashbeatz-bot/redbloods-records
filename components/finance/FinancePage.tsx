@@ -1198,7 +1198,7 @@ export default function FinancePage() {
   // real page immediately. Fixed min-height keeps the layout from jumping.
   if (privacyHidden) {
     return (
-      <div dir="rtl" style={{ padding: "16px 40px" }}>
+      <div dir="rtl" style={{ padding: "16px 28px", maxWidth: 1400, margin: "0 auto" }}>
         <div style={{ minHeight: "72vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ textAlign: "center", maxWidth: 440, padding: "40px 34px", borderRadius: 18, background: CARD, border: "1px solid rgba(255,255,255,0.08)" }}>
             <div style={{ fontSize: 42, marginBottom: 14, color: "#EAB308" }}>👁</div>
@@ -1215,7 +1215,7 @@ export default function FinancePage() {
   }
 
   return (
-    <div dir="rtl" style={{ padding: "16px 40px" }}>
+    <div dir="rtl" style={{ padding: "16px 28px", maxWidth: 1400, margin: "0 auto" }}>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
