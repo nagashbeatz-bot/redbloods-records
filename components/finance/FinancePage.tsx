@@ -1340,6 +1340,13 @@ export default function FinancePage() {
         const pctLabel    = (v: number) => totalIncome > 0 ? `${Math.round(Math.max(0, v) / totalIncome * 100)}% מהיעד` : undefined;
         return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
+        {/* RTL story, right→left: סך הכנסות → שולם → ממתין → סך הוצאות → נטו */}
+        <SummaryCard icon="💰" label="סך הכנסות"
+          value={fmtAmount(totalIncome)} color={GREEN}
+          sub={`${periodTx.filter((t) => t.type === "income").length} הכנסות`}
+          progress={totalIncome > 0 ? 1 : undefined}
+          progressLabel={totalIncome > 0 ? "100% מהיעד" : undefined}
+        />
         <SummaryCard icon="✅" label="שולם"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
           sub={ofPlan()}
@@ -1352,23 +1359,17 @@ export default function FinancePage() {
           progress={totalIncome > 0 ? stats.incomeExpected / totalIncome : undefined}
           progressLabel={pctLabel(stats.incomeExpected)}
         />
-        <SummaryCard icon="📈" label="נטו"
-          value={fmtAmount(stats.profitReal)} color={stats.profitReal >= 0 ? GREEN : RED}
-          sub={stats.profitReal >= 0 ? "רווח בפועל" : "גירעון"}
-          progress={totalIncome > 0 ? stats.profitReal / totalIncome : undefined}
-          progressLabel={pctLabel(stats.profitReal)}
-        />
         <SummaryCard icon="📉" label='סך הוצאות'
           value={fmtAmount(expensesPaid)} color={expensesPaid > 0 ? RED : MUTED}
           sub={ofPlan()}
           progress={totalIncome > 0 ? expensesPaid / totalIncome : undefined}
           progressLabel={pctLabel(expensesPaid)}
         />
-        <SummaryCard icon="💰" label="סך הכנסות"
-          value={fmtAmount(totalIncome)} color={GREEN}
-          sub={`${periodTx.filter((t) => t.type === "income").length} הכנסות`}
-          progress={totalIncome > 0 ? 1 : undefined}
-          progressLabel={totalIncome > 0 ? "100% מהיעד" : undefined}
+        <SummaryCard icon="📈" label="נטו"
+          value={fmtAmount(stats.profitReal)} color={stats.profitReal >= 0 ? GREEN : RED}
+          sub={stats.profitReal >= 0 ? "רווח בפועל" : "גירעון"}
+          progress={totalIncome > 0 ? stats.profitReal / totalIncome : undefined}
+          progressLabel={pctLabel(stats.profitReal)}
         />
       </div>
         );
