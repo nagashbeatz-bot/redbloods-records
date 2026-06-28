@@ -203,6 +203,42 @@ export async function syncShowFinance(show: Show): Promise<void> {
   }
 }
 
+/**
+ * HARD-delete a show's canonical Finance transactions (used when the show
+ * itself is deleted — not cancelled). Deletes ONLY transactions that certainly
+ * belong to this show: first by the stored linked_* ids, then a precise
+ * fallback by the internal `show_id:<uuid>` marker in notes. Never deletes by
+ * category/scope/name. Missing transactions are skipped (non-fatal). Returns
+ * how many rows were deleted.
+ */
+export async function deleteShowFinance(show: Show): Promise<number> {
+  let deleted = 0;
+  try {
+    const ids = [
+      show.linked_income_transaction_id,
+      show.linked_dj_expense_transaction_id,
+      show.linked_artist_expense_transaction_id,
+    ].filter(Boolean) as string[];
+
+    if (ids.length > 0) {
+      const { data, error } = await supabase
+        .from("transactions").delete().in("id", ids).select("id");
+      if (error) console.error("[shows-finance-sync] delete by linked ids failed:", error.message);
+      else deleted += data?.length ?? 0;
+    }
+
+    // Fallback: catch any leftover row carrying this exact show's marker
+    // (the show_id is a unique UUID, so this can only match this show's rows).
+    const { data: fb, error: fbErr } = await supabase
+      .from("transactions").delete().ilike("notes", `%show_id:${show.id}%`).select("id");
+    if (fbErr) console.error("[shows-finance-sync] delete by marker failed:", fbErr.message);
+    else deleted += fb?.length ?? 0;
+  } catch (e) {
+    console.error("[shows-finance-sync] deleteShowFinance error:", e);
+  }
+  return deleted;
+}
+
 /** Mark a show's linked transactions as "בוטל" (used before deleting a show). Never deletes. */
 export async function cancelShowFinance(show: Show): Promise<void> {
   try {

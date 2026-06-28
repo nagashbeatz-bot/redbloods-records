@@ -179,14 +179,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
-    // Cancel (not delete) any linked Finance transactions before removing the show.
+    // Real delete: hard-delete the show's linked Finance transactions (NOT
+    // cancel — don't leave them as "בוטל"), then remove the show. No
+    // syncShowFinance here. (status="בוטל" cancellation is handled separately
+    // via PATCH → syncShowFinance, and is unchanged.)
     const show = await getShow(id);
+    let deletedTransactions = 0;
     if (show) {
-      const { cancelShowFinance } = await import("@/lib/shows-finance-sync");
-      await cancelShowFinance(show);
+      const { deleteShowFinance } = await import("@/lib/shows-finance-sync");
+      deletedTransactions = await deleteShowFinance(show);
     }
     await deleteShow(id);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, deletedTransactions });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: 500 });
