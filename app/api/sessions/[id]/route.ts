@@ -41,10 +41,15 @@ export async function PATCH(
       try {
         const { isConnected, updateCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
         if (await isConnected() && await calendarEventExists(calEventId)) {
-          const upd: { startIso?: string; endIso?: string; summary?: string } = {};
+          const upd: { startIso?: string; endIso?: string; summary?: string; keepSummaryIfAttendees?: boolean } = {};
           if (startIso) upd.startIso = startIso;
           if (endIso)   upd.endIso   = endIso;
-          if (typeof summary === "string" && summary.trim()) upd.summary = summary.trim();
+          if (typeof summary === "string" && summary.trim()) {
+            upd.summary = summary.trim();
+            // Don't overwrite a public/invited event's title — keep it if the
+            // event has attendees (it was created with an artist invite).
+            upd.keepSummaryIfAttendees = true;
+          }
           await updateCalendarEvent(calEventId, upd);
         }
       } catch (calErr) {

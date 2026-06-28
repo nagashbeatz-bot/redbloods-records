@@ -788,6 +788,10 @@ export interface EventUpdatePayload {
   endIso?:      string;
   location?:    string;
   description?: string;
+  // When true, the summary update is SKIPPED if the event has attendees
+  // (i.e. it was created with an invite + public title) — so we never
+  // overwrite a public title with an internal one. Time still updates.
+  keepSummaryIfAttendees?: boolean;
 }
 
 export async function updateCalendarEvent(
@@ -802,7 +806,11 @@ export async function updateCalendarEvent(
   const current = await calendar.events.get({ calendarId, eventId });
 
   const requestBody: Record<string, unknown> = { ...current.data };
-  if (updates.summary     !== undefined) requestBody.summary     = updates.summary;
+  // Preserve a public/invite title: skip the summary patch when the event has
+  // attendees and the caller opted in. (Never overwrite an invited event's title.)
+  const hasAttendees = Array.isArray(current.data.attendees) && current.data.attendees.length > 0;
+  const skipSummary  = updates.keepSummaryIfAttendees === true && hasAttendees;
+  if (updates.summary     !== undefined && !skipSummary) requestBody.summary = updates.summary;
   if (updates.location    !== undefined) requestBody.location    = updates.location;
   if (updates.description !== undefined) requestBody.description = updates.description;
   if (updates.startIso !== undefined) {
