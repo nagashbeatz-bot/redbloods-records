@@ -1177,9 +1177,10 @@ export default function FinancePage() {
     );
   }
 
-  // הופעות group body: sub-group by the internal show_id marker (never shown) and
-  // render a per-show summary card (income / dj / artist / label profit / status),
-  // then that show's rows. Transactions with no marker fall back to plain rows.
+  // הופעות group body: sub-group by the internal show_id marker (never shown)
+  // ONLY to derive each show's name for the "שיוך" column, then render plain
+  // rows like every other group. No inner show card. Marker-less rows show
+  // "הופעה".
   function renderShowsBody(txs: Transaction[]): React.ReactNode {
     const byShow = new Map<string, Transaction[]>();
     txs.forEach((t) => {
@@ -1193,59 +1194,12 @@ export default function FinancePage() {
       let groupAff: { label: string; icon: string; col: string } | undefined;
       if (k !== "_none") {
         const incomeTx = group.find((t) => t.type === "income");
-        const income   = group.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-        const dj       = group.filter((t) => t.type === "expense" && t.category.includes("דיג")).reduce((s, t) => s + t.amount, 0);
-        const artist   = group.filter((t) => t.type === "expense" && t.category.includes("אמן")).reduce((s, t) => s + t.amount, 0);
-        const labelProfit = income - dj - artist;
-        const title    = incomeTx
+        // Prefer the show name from the income description; otherwise the show
+        // name in the last "(...)" of an expense description; else "הופעה".
+        const title = incomeTx
           ? incomeTx.description.replace(/^הכנסה מהופעה\s*[—–-]\s*/, "")
-          : (group[0]?.description ?? "הופעה");
+          : (group[0]?.description.match(/\(([^)]+)\)\s*$/)?.[1] ?? "הופעה");
         groupAff = { label: title || "הופעה", icon: "🎤", col: BRAND };
-        const statusTx = incomeTx ?? group[0];
-        const sc       = STATUS_COLOR[statusTx?.payment_status ?? ""] ?? MUTED;
-        const subParts = [incomeTx?.date ? fmtDate(incomeTx.date) : null, incomeTx?.artist || null].filter(Boolean);
-        blocks.push(
-          <div key={`card-${k}`} style={{ padding: "12px 16px 4px" }}>
-            <div style={{
-              border: `1px solid ${BRAND}33`, borderRadius: 14, padding: "12px 14px",
-              background: `linear-gradient(160deg, ${BRAND}12, ${BRAND}06)`,
-              display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
-            }}>
-              {/* title + thumbnail */}
-              <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 200, flex: "1 1 200px" }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                  background: `${BRAND}1A`, border: `1px solid ${BRAND}33`,
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-                }}>🎤</div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 15.5, fontWeight: 800, color: TEXT, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-                  {subParts.length > 0 && (
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{subParts.join(" · ")}</div>
-                  )}
-                </div>
-              </div>
-              {/* compact stat chips: income / dj / artist / label profit / status */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {([
-                  ["הכנסה", fmtAmount(income), GREEN],
-                  ["דיג׳יי", fmtAmount(dj), AMBER],
-                  ["אמן", fmtAmount(artist), BLUE],
-                  ["רווח לייבל", fmtAmount(labelProfit), labelProfit >= 0 ? GREEN : RED],
-                  ["סטטוס", statusTx?.payment_status ?? "—", sc],
-                ] as const).map(([label, val, col]) => (
-                  <div key={label} style={{
-                    width: 92, background: CARD, border: `1px solid ${BDR2}`, borderRadius: 9,
-                    padding: "7px 6px", textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: 9.5, color: MUTED, marginBottom: 3 }}>{label}</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: col, letterSpacing: "-0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
       }
       group.forEach((tx) => blocks.push(renderTxRow(tx, ri++, groupAff)));
     });
