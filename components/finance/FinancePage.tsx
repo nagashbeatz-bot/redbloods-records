@@ -79,6 +79,9 @@ const GENERAL_EXPENSE_CATEGORIES = ["שכירות", "חשמל", "מים", "אי�
 const INCOME_TYPES               = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תשלום מלא", "תוספת / חריגה", "אחר"];
 const INCOME_STATUSES:  PaymentStatus[] = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
 const EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
+// Quick inline status options (row badge popover) — by transaction type.
+const QUICK_INCOME_STATUSES:  PaymentStatus[] = ["התקבל", "צפוי", "לא שולם", "חלקי", "בוטל"];
+const QUICK_EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "לא שולם", "חלקי", "בוטל"];
 const PAYMENT_METHODS   = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
 const HEB_MONTHS        = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
 
@@ -197,6 +200,17 @@ function userVisibleNotes(notes: string | null | undefined): string {
     .replace(/show_id:\S+/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+/** The internal "show_id:<uuid>" marker inside notes, or "" if none. */
+function notesMarker(notes: string | null | undefined): string {
+  const m = (notes ?? "").match(/show_id:\S+/);
+  return m ? m[0] : "";
+}
+
+/** Re-attach the technical marker to a user-edited note (marker stays in DB). */
+function mergeNotes(marker: string, userText: string): string {
+  return [marker, (userText ?? "").trim()].filter(Boolean).join(" ");
 }
 
 function calcStats(txList: Transaction[]) {
@@ -444,7 +458,7 @@ function ProjectSelect({
 
 // ── Transaction Modal ─────────────────────────────────────────────────────────
 function TxModal({
-  draft, setDraft, saving, onSave, onCancel, projects, title,
+  draft, setDraft, saving, onSave, onCancel, projects, title, isEdit = false,
 }: {
   draft: TxDraft;
   setDraft: (d: TxDraft) => void;
@@ -453,6 +467,7 @@ function TxModal({
   onCancel: () => void;
   projects: { id: string; name: string; artist: string }[];
   title: string;
+  isEdit?: boolean;
 }) {
   const isIncome    = draft.type === "income";
   const isGeneral   = draft.scope === "general";
@@ -488,7 +503,8 @@ function TxModal({
           <h2 style={{ fontSize: 16, fontWeight: 800, color: TEXT, margin: 0 }}>{title}</h2>
         </div>
 
-        {/* Type toggle */}
+        {/* Type toggle — hidden when editing an existing transaction (type is fixed) */}
+        {!isEdit && (
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           {(["income", "expense"] as const).map((t) => (
             <button key={t} type="button"
@@ -505,8 +521,10 @@ function TxModal({
             </button>
           ))}
         </div>
+        )}
 
-        {/* Scope toggle */}
+        {/* Scope toggle — hidden when editing (scope is fixed for an existing tx) */}
+        {!isEdit && (
         <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
           {(["project", "general"] as Scope[]).map((s) => (
             <button key={s} type="button"
@@ -523,6 +541,7 @@ function TxModal({
             </button>
           ))}
         </div>
+        )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
@@ -688,6 +707,8 @@ export default function FinancePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft,     setDraft]     = useState<TxDraft>(emptyDraft());
   const [saving,    setSaving]    = useState(false);
+  // Inline quick-status popover: which row is open + where to anchor it.
+  const [statusMenu, setStatusMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const loadAll = useCallback(() => {
     setLoaded(false);
@@ -822,9 +843,34 @@ export default function FinancePage() {
       projectId: tx.project_id ?? "", type: tx.type, date: tx.date ?? "",
       description: tx.description, artist: tx.artist, amount: String(tx.amount),
       currency: tx.currency, paymentStatus: tx.payment_status, paymentMethod: tx.payment_method,
-      receiptRef: tx.receipt_ref, notes: tx.notes, category: tx.category,
+      // Show only the real note; the technical show_id marker is re-attached on save.
+      receiptRef: tx.receipt_ref, notes: userVisibleNotes(tx.notes), category: tx.category,
     });
     setModalOpen(true);
+  }
+
+  // Quick inline status change from the row badge — patches payment_status only.
+  async function quickSetStatus(tx: Transaction, status: PaymentStatus) {
+    setStatusMenu(null);
+    if (status === tx.payment_status) return;
+    const prevStatus = tx.payment_status;
+    // Optimistic: update state so KPIs/totals (derived from transactions) refresh.
+    setTransactions((prev) => prev.map((t) => t.id === tx.id ? { ...t, payment_status: status } : t));
+    try {
+      const res  = await fetch(`/api/transactions/${tx.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentStatus: status }),
+      });
+      const data = await res.json();
+      if (data.transaction) {
+        setTransactions((prev) => prev.map((t) => t.id === tx.id ? data.transaction : t));
+      } else {
+        throw new Error("no transaction in response");
+      }
+    } catch {
+      // Revert on failure.
+      setTransactions((prev) => prev.map((t) => t.id === tx.id ? { ...t, payment_status: prevStatus } : t));
+    }
   }
 
   async function handleSave() {
@@ -832,6 +878,9 @@ export default function FinancePage() {
     if (draft.scope === "project" && !draft.projectId) return;
     setSaving(true);
     try {
+      // Preserve the technical show_id marker that openEdit stripped for display.
+      const orig = editingId ? transactions.find((t) => t.id === editingId) : undefined;
+      const mergedNotes = mergeNotes(notesMarker(orig?.notes), draft.notes);
       const body = {
         scope: draft.scope,
         projectId: draft.scope === "general" ? null : draft.projectId,
@@ -839,7 +888,7 @@ export default function FinancePage() {
         description: draft.description, artist: draft.artist,
         amount: Number(draft.amount) || 0, currency: draft.currency,
         paymentStatus: draft.paymentStatus, paymentMethod: draft.paymentMethod,
-        receiptRef: draft.receiptRef, notes: draft.notes, category: draft.category,
+        receiptRef: draft.receiptRef, notes: mergedNotes, category: draft.category,
       };
       if (editingId) {
         const res  = await fetch(`/api/transactions/${editingId}`, {
@@ -908,8 +957,47 @@ export default function FinancePage() {
           onSave={handleSave}
           onCancel={() => { setModalOpen(false); setEditingId(null); }}
           projects={projects}
-          title={editingId ? "עריכת תנועה" : "תנועה חדשה"} />
+          isEdit={!!editingId}
+          title={editingId ? (draft.type === "income" ? "עריכת הכנסה" : "עריכת הוצאה") : "תנועה חדשה"} />
       )}
+
+      {/* Quick inline status popover (anchored under the row badge) */}
+      {statusMenu && typeof document !== "undefined" && createPortal((() => {
+        const tx = transactions.find((t) => t.id === statusMenu.id);
+        if (!tx) return null;
+        const opts = tx.type === "income" ? QUICK_INCOME_STATUSES : QUICK_EXPENSE_STATUSES;
+        return (
+          <>
+            <div onClick={() => setStatusMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 99998 }} />
+            <div onClick={(e) => e.stopPropagation()} style={{
+              position: "fixed", top: statusMenu.y + 4, left: statusMenu.x, zIndex: 99999,
+              background: CARD2, border: `1px solid ${BDR2}`, borderRadius: 10,
+              boxShadow: "0 12px 40px rgba(0,0,0,0.7)", padding: 4, minWidth: 130,
+              display: "flex", flexDirection: "column", gap: 2, direction: "rtl",
+            }}>
+              {opts.map((s) => {
+                const c = STATUS_COLOR[s] ?? MUTED;
+                const active = s === tx.payment_status;
+                return (
+                  <button key={s} type="button" onClick={() => quickSetStatus(tx, s)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+                      borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
+                      fontSize: 12, fontWeight: 600, textAlign: "right",
+                      background: active ? `${c}1F` : "transparent", color: c, whiteSpace: "nowrap",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = `${c}1F`; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = active ? `${c}1F` : "transparent"; }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: c }} />
+                    {s}
+                    {active && <span style={{ marginInlineStart: "auto", fontSize: 10 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        );
+      })(), document.body)}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -1264,7 +1352,17 @@ export default function FinancePage() {
                       <div style={{ fontSize: 14, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER }}>
                         {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
                       </div>
-                      <div><StatusBadge status={tx.payment_status} /></div>
+                      <div>
+                        <button type="button" title="שינוי סטטוס מהיר"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setStatusMenu(statusMenu?.id === tx.id ? null : { id: tx.id, x: r.left, y: r.bottom });
+                          }}
+                          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}>
+                          <StatusBadge status={tx.payment_status} />
+                        </button>
+                      </div>
                       <div style={{ textAlign: "center", color: expanded ? BRAND : MUTED, fontSize: 11 }}>
                         {expanded ? "▲" : "▼"}
                       </div>
