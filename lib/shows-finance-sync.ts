@@ -7,6 +7,11 @@ import { computeShowSplit } from "@/lib/shows-types";
 // pipeline and must NOT create Finance transactions.
 const CONFIRMED_STATUSES = new Set(["נסגר", "אושרה", "בוצע"]);
 
+/** Whether a show status counts as a confirmed booking (has Finance transactions). */
+export function isConfirmedShowStatus(status: string): boolean {
+  return CONFIRMED_STATUSES.has(status);
+}
+
 /**
  * Phase 1: keep a show's canonical Finance transactions in sync with its state.
  *
@@ -134,8 +139,9 @@ export async function syncShowFinance(show: Show): Promise<void> {
     }
 
     // ── DJ expense ──
-    // Create for any confirmed booking with a dj_fee; "שולם" → שולם, else לא שולם.
-    const expenseStatus = (isCancelled || !hasDj) ? "בוטל" : (isPaid ? "שולם" : "לא שולם");
+    // Confirmed booking with a dj_fee: "שולם" → paid, otherwise "צפוי" (expected
+    // payment for an approved/open show — not "לא שולם"/overdue).
+    const expenseStatus = (isCancelled || !hasDj) ? "בוטל" : (isPaid ? "שולם" : "צפוי");
     const shouldHaveExpense = !isCancelled && isConfirmed && hasDj;
     if (show.linked_dj_expense_transaction_id) {
       await patchTransaction(show.linked_dj_expense_transaction_id, {
@@ -148,7 +154,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
     } else if (shouldHaveExpense) {
       const id = await createTransaction({
         type:          "expense",
-        payment_status: isPaid ? "שולם" : "לא שולם",
+        payment_status: isPaid ? "שולם" : "צפוי",
         amount:        show.dj_fee,
         date,
         artist:        djParty,
@@ -170,7 +176,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
     // gross, the dj expense follows dj_fee, and the artist cut tracks (price-dj)/2.
     const effectiveArtistFee = computeShowSplit(show).artistFee;
     const hasArtistFee     = effectiveArtistFee > 0;
-    const artistStatus     = (isCancelled || !hasArtistFee) ? "בוטל" : (isPaid ? "שולם" : "לא שולם");
+    const artistStatus     = (isCancelled || !hasArtistFee) ? "בוטל" : (isPaid ? "שולם" : "צפוי");
     const shouldHaveArtist = !isCancelled && isConfirmed && hasArtistFee;
     if (show.linked_artist_expense_transaction_id) {
       await patchTransaction(show.linked_artist_expense_transaction_id, {
@@ -183,7 +189,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
     } else if (shouldHaveArtist) {
       const id = await createTransaction({
         type:          "expense",
-        payment_status: isPaid ? "שולם" : "לא שולם",
+        payment_status: isPaid ? "שולם" : "צפוי",
         amount:        effectiveArtistFee,
         date,
         artist:        show.artist,
@@ -254,4 +260,49 @@ export async function cancelShowFinance(show: Show): Promise<void> {
   } catch (e) {
     console.error("[shows-finance-sync] cancelShowFinance error:", e);
   }
+}
+
+/**
+ * Apply per-party closure statuses to a show's 3 linked transactions (after the
+ * normal sync). Income received → "התקבל" (shown as "שולם"), else "צפוי";
+ * dj/artist paid → "שולם", else "צפוי". Only touches the linked rows; missing
+ * ones are skipped. NOTE: a later show edit re-runs syncShowFinance, which
+ * re-derives all three from the single show.payment_status — so this per-party
+ * granularity is not preserved across future edits (would need DB columns).
+ */
+export async function applyShowClosureStatuses(
+  show: Show,
+  t: { incomeReceived: boolean; djPaid: boolean; artistPaid: boolean },
+): Promise<void> {
+  try {
+    if (show.linked_income_transaction_id)
+      await patchTransaction(show.linked_income_transaction_id, { payment_status: t.incomeReceived ? "התקבל" : "צפוי" });
+    if (show.linked_dj_expense_transaction_id)
+      await patchTransaction(show.linked_dj_expense_transaction_id, { payment_status: t.djPaid ? "שולם" : "צפוי" });
+    if (show.linked_artist_expense_transaction_id)
+      await patchTransaction(show.linked_artist_expense_transaction_id, { payment_status: t.artistPaid ? "שולם" : "צפוי" });
+  } catch (e) {
+    console.error("[shows-finance-sync] applyShowClosureStatuses error:", e);
+  }
+}
+
+/**
+ * Remove a show's Finance transactions WITHOUT deleting the show — used when a
+ * show is reverted to a pipeline status (e.g. "ממתין לתשובה"). Hard-deletes the
+ * linked transactions (same safe logic as deleteShowFinance) and clears the
+ * linked_* ids so a later re-approval recreates them fresh. Returns the count.
+ */
+export async function clearShowFinance(show: Show): Promise<number> {
+  const deleted = await deleteShowFinance(show);
+  try {
+    await supabase.from("shows").update({
+      linked_income_transaction_id: null,
+      linked_dj_expense_transaction_id: null,
+      linked_artist_expense_transaction_id: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", show.id);
+  } catch (e) {
+    console.error("[shows-finance-sync] clearShowFinance clear-ids error:", e);
+  }
+  return deleted;
 }

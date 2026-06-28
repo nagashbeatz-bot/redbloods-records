@@ -63,9 +63,27 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const show = await patchShow(id, patch);
 
     // ── Sync canonical Finance transactions when a finance-relevant field changed ──
-    if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date"].some((k) => k in body)) {
-      const { syncShowFinance } = await import("@/lib/shows-finance-sync");
-      await syncShowFinance(show);
+    if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date", "closeShow"].some((k) => k in body)) {
+      const fin = await import("@/lib/shows-finance-sync");
+      if (!fin.isConfirmedShowStatus(show.status) && show.status !== "בוטל") {
+        // Reverted to a pipeline status (e.g. "ממתין לתשובה") → remove the show's
+        // Finance transactions entirely (not "בוטל"); keep the show itself.
+        await fin.clearShowFinance(show);
+      } else {
+        await fin.syncShowFinance(show);
+        // Close-show modal: apply per-party paid/expected statuses to the 3
+        // linked transactions (after sync created/linked them).
+        if (body.closeShow && typeof body.closeShow === "object") {
+          const fresh = await getShow(id);
+          if (fresh) {
+            await fin.applyShowClosureStatuses(fresh, {
+              incomeReceived: !!body.closeShow.incomeReceived,
+              djPaid:         !!body.closeShow.djPaid,
+              artistPaid:     !!body.closeShow.artistPaid,
+            });
+          }
+        }
+      }
     }
 
     // ── Google Calendar ─────────────────────────────────────────────────────

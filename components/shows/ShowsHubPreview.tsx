@@ -1281,6 +1281,8 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
       const body: Record<string, unknown> = { payment_status };
       if (trigger === "done") body.status = "בוצע";
       if (djRelevant && djName.trim() && djName.trim() !== (show.dj_name ?? "")) body.dj_name = djName.trim();
+      // Per-party closure → the server updates the 3 linked transactions individually.
+      body.closeShow = { incomeReceived, djPaid: djRelevant && djPaid, artistPaid: artRelevant && artistPaid };
 
       const stamp = new Date().toLocaleDateString("he-IL");
       const parts = [
