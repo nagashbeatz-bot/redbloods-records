@@ -42,7 +42,13 @@ interface Transaction {
   receipt_ref: string;
   notes: string;
   category: string;
+  expense_scope: string;
   created_at: string;
+}
+
+/** A transaction that originated from the Shows module (categorized as הופעה). */
+function isShowTx(tx: Transaction): boolean {
+  return tx.expense_scope === "הופעה" || tx.category === "הופעה";
 }
 
 interface FinanceSetting {
@@ -1231,6 +1237,16 @@ export default function FinancePage() {
                             display: "inline-block", width: "fit-content",
                           }}>
                             כללי
+                          </span>
+                        )}
+                        {isShowTx(tx) && (
+                          <span style={{
+                            fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                            background: `${BRAND}14`, color: BRAND,
+                            border: `1px solid ${BRAND}30`,
+                            display: "inline-block", width: "fit-content",
+                          }}>
+                            הופעה
                           </span>
                         )}
                       </div>

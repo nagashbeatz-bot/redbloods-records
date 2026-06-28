@@ -123,6 +123,7 @@ export async function syncShowFinance(show: Show): Promise<void> {
         artist:      incomeParty,
         description: `הכנסה מהופעה — ${displayName(show)}`,
         category:    "הופעה",
+        expense_scope: "הופעה",
         notes:       `show_id:${show.id}`,
       });
       if (id) {
