@@ -489,7 +489,7 @@ function ProjectSelect({
 
 // ── Transaction Modal ─────────────────────────────────────────────────────────
 function TxModal({
-  draft, setDraft, saving, onSave, onCancel, projects, title, isEdit = false,
+  draft, setDraft, saving, onSave, onCancel, projects, title, isEdit = false, onDelete,
 }: {
   draft: TxDraft;
   setDraft: (d: TxDraft) => void;
@@ -499,6 +499,7 @@ function TxModal({
   projects: { id: string; name: string; artist: string }[];
   title: string;
   isEdit?: boolean;
+  onDelete?: () => void;
 }) {
   const isIncome    = draft.type === "income";
   const isGeneral   = draft.scope === "general";
@@ -699,6 +700,15 @@ function TxModal({
               {saving ? "שומר..." : isIncome ? "שמור הכנסה" : isGeneral ? "שמור הוצאה כללית" : "שמור הוצאה"}
             </button>
           </div>
+
+          {/* Delete — edit mode only */}
+          {isEdit && onDelete && (
+            <button type="button" onClick={onDelete} disabled={saving} style={{
+              padding: "10px", borderRadius: 10, border: `1px solid ${RED}30`,
+              background: `${RED}0A`, color: RED, cursor: saving ? "not-allowed" : "pointer",
+              fontSize: 13, fontWeight: 600, fontFamily: "inherit", marginTop: 2,
+            }}>× מחק תנועה</button>
+          )}
         </div>
       </div>
     </div>
@@ -731,7 +741,6 @@ export default function FinancePage() {
   const [projectFilter, setProjectFilter] = useState("");
   const [sortMode,     setSortMode]     = useState<SortMode>("date-desc");
   const [groupByMonth, setGroupByMonth] = useState(false);
-  const [expandedIds,  setExpandedIds]  = useState<Set<string>>(new Set());
 
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -756,14 +765,6 @@ export default function FinancePage() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
-
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
 
   // ── Period computations ────────────────────────────────────────────────────
   const range       = getRange(period, monthOffset, customFrom, customTo);
@@ -885,28 +886,23 @@ export default function FinancePage() {
     setModalOpen(true);
   }
 
-  // Quick inline status change from the row badge — patches payment_status only.
-  async function quickSetStatus(tx: Transaction, status: PaymentStatus) {
+  // Status picked from the row badge: open the edit modal pre-set to that
+  // status — NO immediate PATCH. The PATCH happens only on "שמור", together
+  // with any extra detail/note the user adds first.
+  function openEditWithStatus(tx: Transaction, status: PaymentStatus) {
     setStatusMenu(null);
-    if (status === tx.payment_status) return;
-    const prevStatus = tx.payment_status;
-    // Optimistic: update state so KPIs/totals (derived from transactions) refresh.
-    setTransactions((prev) => prev.map((t) => t.id === tx.id ? { ...t, payment_status: status } : t));
-    try {
-      const res  = await fetch(`/api/transactions/${tx.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentStatus: status }),
-      });
-      const data = await res.json();
-      if (data.transaction) {
-        setTransactions((prev) => prev.map((t) => t.id === tx.id ? data.transaction : t));
-      } else {
-        throw new Error("no transaction in response");
-      }
-    } catch {
-      // Revert on failure.
-      setTransactions((prev) => prev.map((t) => t.id === tx.id ? { ...t, payment_status: prevStatus } : t));
-    }
+    openEdit(tx);
+    setDraft((prev) => ({ ...prev, paymentStatus: status }));
+  }
+
+  // Delete from inside the edit modal (with confirm), using the existing handler.
+  async function handleDeleteFromModal() {
+    if (!editingId) return;
+    if (!window.confirm("למחוק את התנועה? פעולה זו אינה הפיכה.")) return;
+    const id = editingId;
+    setModalOpen(false);
+    setEditingId(null);
+    await handleDelete(id);
   }
 
   async function handleSave() {
@@ -949,7 +945,6 @@ export default function FinancePage() {
 
   async function handleDelete(id: string) {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
-    setExpandedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
     await fetch(`/api/transactions/${id}`, { method: "DELETE" });
   }
 
@@ -978,7 +973,7 @@ export default function FinancePage() {
     const proj     = projects.find((p) => p.id === tx.project_id);
     const isIncome = tx.type === "income";
     const undated  = !tx.date;
-    const expanded = expandedIds.has(tx.id);
+    const baseBg   = undated ? "#1D1810" : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)";
     // שיוך — business source. Project rows MUST show the project name; show rows
     // get their name via the override; everything else is "כללי".
     const aff = affiliation ?? (
@@ -988,18 +983,18 @@ export default function FinancePage() {
     );
     return (
       <div key={tx.id}>
-        {/* Main row */}
+        {/* Row — click anywhere opens the edit modal */}
         <div
-          onClick={() => toggleExpand(tx.id)}
+          onClick={() => openEdit(tx)}
           style={{
             display: "grid", gridTemplateColumns: GRID_COLS,
             gap: 12, padding: "13px 16px", alignItems: "center",
-            borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.06)`,
-            background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)",
+            borderBottom: `1px solid rgba(255,255,255,0.06)`,
+            background: baseBg,
             cursor: "pointer",
           }}
-          onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
-          onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = baseBg; }}
         >
           {/* סוג: income/expense ONLY */}
           <div>
@@ -1053,63 +1048,12 @@ export default function FinancePage() {
               <StatusBadge status={tx.payment_status} />
             </button>
           </div>
-          <div style={{ textAlign: "center", color: expanded ? BRAND : MUTED, fontSize: 11 }}>
-            {expanded ? "▲" : "▼"}
-          </div>
+          <button type="button" title="עריכת תנועה"
+            onClick={(e) => { e.stopPropagation(); openEdit(tx); }}
+            style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, fontFamily: "inherit", padding: 0 }}>
+            ✏
+          </button>
         </div>
-
-        {/* Expanded details */}
-        {expanded && (
-          <div style={{
-            padding: "10px 16px 12px 16px", borderBottom: `1px solid rgba(255,255,255,0.04)`,
-            background: `rgba(255,255,255,0.02)`,
-            display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
-          }}>
-            {tx.payment_method && (
-              <div style={{ fontSize: 11, color: TEXT2 }}>
-                <span style={{ color: MUTED, marginLeft: 4 }}>אמצעי תשלום:</span>
-                {tx.payment_method}
-              </div>
-            )}
-            {tx.receipt_ref && (
-              <div style={{ fontSize: 11, color: TEXT2 }}>
-                <span style={{ color: MUTED, marginLeft: 4 }}>אסמכתא:</span>
-                {tx.receipt_ref}
-              </div>
-            )}
-            {tx.category && (
-              <div style={{ fontSize: 11, color: TEXT2 }}>
-                <span style={{ color: MUTED, marginLeft: 4 }}>קטגוריה:</span>
-                {tx.category}
-              </div>
-            )}
-            {userVisibleNotes(tx.notes) && (
-              <div style={{ fontSize: 11, color: TEXT2 }}>
-                <span style={{ color: MUTED, marginLeft: 4 }}>הערות:</span>
-                {userVisibleNotes(tx.notes)}
-              </div>
-            )}
-            {!tx.payment_method && !tx.receipt_ref && !tx.category && !userVisibleNotes(tx.notes) && (
-              <div style={{ fontSize: 11, color: MUTED }}>אין פרטים נוספים</div>
-            )}
-            <div style={{ display: "flex", gap: 8, marginRight: "auto" }}>
-              <button onClick={(e) => { e.stopPropagation(); openEdit(tx); }} style={{
-                padding: "5px 14px", borderRadius: 8, border: `1px solid ${BDR2}`,
-                background: "transparent", color: TEXT2, cursor: "pointer",
-                fontSize: 12, fontFamily: "inherit",
-              }}>
-                ✏ ערוך
-              </button>
-              <button onClick={(e) => { e.stopPropagation(); handleDelete(tx.id); }} style={{
-                padding: "5px 14px", borderRadius: 8, border: `1px solid ${RED}25`,
-                background: `${RED}06`, color: RED, cursor: "pointer",
-                fontSize: 12, fontFamily: "inherit",
-              }}>
-                × מחק
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -1244,6 +1188,7 @@ export default function FinancePage() {
           onCancel={() => { setModalOpen(false); setEditingId(null); }}
           projects={projects}
           isEdit={!!editingId}
+          onDelete={editingId ? handleDeleteFromModal : undefined}
           title={editingId ? (draft.type === "income" ? "עריכת הכנסה" : "עריכת הוצאה") : "תנועה חדשה"} />
       )}
 
@@ -1265,7 +1210,7 @@ export default function FinancePage() {
                 const c = STATUS_COLOR[s] ?? MUTED;
                 const active = s === tx.payment_status;
                 return (
-                  <button key={s} type="button" onClick={() => quickSetStatus(tx, s)}
+                  <button key={s} type="button" onClick={() => openEditWithStatus(tx, s)}
                     style={{
                       display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
                       borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
@@ -1583,22 +1528,22 @@ export default function FinancePage() {
                 const proj     = projects.find((p) => p.id === tx.project_id);
                 const isIncome = tx.type === "income";
                 const undated  = !tx.date;
-                const expanded = expandedIds.has(tx.id);
+                const baseBg   = undated ? "#1D1810" : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)";
 
                 return (
                   <div key={tx.id}>
-                    {/* Main row */}
+                    {/* Row — click anywhere opens the edit modal */}
                     <div
-                      onClick={() => toggleExpand(tx.id)}
+                      onClick={() => openEdit(tx)}
                       style={{
                         display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
                         gap: 8, padding: "17px 16px", alignItems: "center",
-                        borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.06)`,
-                        background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)",
+                        borderBottom: `1px solid rgba(255,255,255,0.06)`,
+                        background: baseBg,
                         cursor: "pointer",
                       }}
-                      onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
-                      onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2; }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = baseBg; }}
                     >
                       <div style={{ fontSize: 12, color: undated ? AMBER : TEXT2 }}>
                         {undated ? "ללא תאריך" : fmtDate(tx.date)}
@@ -1651,63 +1596,12 @@ export default function FinancePage() {
                           <StatusBadge status={tx.payment_status} />
                         </button>
                       </div>
-                      <div style={{ textAlign: "center", color: expanded ? BRAND : MUTED, fontSize: 11 }}>
-                        {expanded ? "▲" : "▼"}
-                      </div>
+                      <button type="button" title="עריכת תנועה"
+                        onClick={(e) => { e.stopPropagation(); openEdit(tx); }}
+                        style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, fontFamily: "inherit", padding: 0 }}>
+                        ✏
+                      </button>
                     </div>
-
-                    {/* Expanded details */}
-                    {expanded && (
-                      <div style={{
-                        padding: "10px 16px 12px 16px", borderBottom: `1px solid rgba(255,255,255,0.04)`,
-                        background: `rgba(255,255,255,0.02)`,
-                        display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
-                      }}>
-                        {tx.payment_method && (
-                          <div style={{ fontSize: 11, color: TEXT2 }}>
-                            <span style={{ color: MUTED, marginLeft: 4 }}>אמצעי תשלום:</span>
-                            {tx.payment_method}
-                          </div>
-                        )}
-                        {tx.receipt_ref && (
-                          <div style={{ fontSize: 11, color: TEXT2 }}>
-                            <span style={{ color: MUTED, marginLeft: 4 }}>אסמכתא:</span>
-                            {tx.receipt_ref}
-                          </div>
-                        )}
-                        {tx.category && (
-                          <div style={{ fontSize: 11, color: TEXT2 }}>
-                            <span style={{ color: MUTED, marginLeft: 4 }}>קטגוריה:</span>
-                            {tx.category}
-                          </div>
-                        )}
-                        {userVisibleNotes(tx.notes) && (
-                          <div style={{ fontSize: 11, color: TEXT2 }}>
-                            <span style={{ color: MUTED, marginLeft: 4 }}>הערות:</span>
-                            {userVisibleNotes(tx.notes)}
-                          </div>
-                        )}
-                        {!tx.payment_method && !tx.receipt_ref && !tx.category && !userVisibleNotes(tx.notes) && (
-                          <div style={{ fontSize: 11, color: MUTED }}>אין פרטים נוספים</div>
-                        )}
-                        <div style={{ display: "flex", gap: 8, marginRight: "auto" }}>
-                          <button onClick={(e) => { e.stopPropagation(); openEdit(tx); }} style={{
-                            padding: "5px 14px", borderRadius: 8, border: `1px solid ${BDR2}`,
-                            background: "transparent", color: TEXT2, cursor: "pointer",
-                            fontSize: 12, fontFamily: "inherit",
-                          }}>
-                            ✏ ערוך
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDelete(tx.id); }} style={{
-                            padding: "5px 14px", borderRadius: 8, border: `1px solid ${RED}25`,
-                            background: `${RED}06`, color: RED, cursor: "pointer",
-                            fontSize: 12, fontFamily: "inherit",
-                          }}>
-                            × מחק
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
