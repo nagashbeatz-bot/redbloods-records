@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { Client } from "@/lib/clients-store";
 
@@ -486,7 +486,7 @@ function ProposalCard({ proposal, onUpdate, onDelete, onConverted, openProject, 
 
 // ─── ProposalsSection (main export) ──────────────────────────────────────────
 
-export default function ProposalsSection({ client, proposals, onUpdate, onAdd, onDelete, onConverted, openProject }: {
+export default function ProposalsSection({ client, proposals, onUpdate, onAdd, onDelete, onConverted, openProject, openAddSignal }: {
   client: Client;
   proposals: Proposal[];
   onUpdate: (p: Proposal) => void;
@@ -494,8 +494,11 @@ export default function ProposalsSection({ client, proposals, onUpdate, onAdd, o
   onDelete: (id: string) => void;
   onConverted: (proposalId: string, projectId: string, project: NewProject) => void;
   openProject: (id: string) => void;
+  openAddSignal?: number;   // increments → open the add form (remote trigger)
 }) {
   const [showForm, setShowForm] = useState(false);
+  // Open the existing add form when the parent's signal changes (e.g. header "הצעה חדשה").
+  useEffect(() => { if (openAddSignal) setShowForm(true); }, [openAddSignal]);
   const [converting, setConverting] = useState(false);
   const [convertTarget, setConvertTarget] = useState<{ proposalId: string; proposalTitle: string } | null>(null);
 

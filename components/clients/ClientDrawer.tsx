@@ -324,55 +324,72 @@ function ModalContent({
   const typeColor   = TYPE_COLORS[client.type]    ?? TYPE_COLORS["אחר"];
   const statusColor = STATUS_COLORS[client.status] ?? STATUS_COLORS["חדש"];
 
+  // ── Summary KPIs (from existing data only) ──
+  const OPEN_PROPOSAL = new Set(["הצעה נשלחה", "ממתין לתשובה", "צריך פולואפ", "לחזור בעתיד"]);
+  const openProposals  = proposals.filter((p) => OPEN_PROPOSAL.has(p.status));
+  const openValue      = openProposals.reduce((s, p) => s + (p.amount || 0), 0);
+  const propCurrency   = proposals[0]?.currency ?? "₪";
+  const activeProjects = projects.filter((p) => !["הושלם", "בוטל"].includes(p.status)).length;
+  const nextFollowup   = openProposals
+    .map((p) => p.followup_date).filter(Boolean).sort()[0] ?? null;
+
+  // Remote trigger to open ProposalsSection's "add" form from the header action.
+  const [proposalAddSignal, setProposalAddSignal] = useState(0);
+
   return (
     <>
       {/* ── Sticky header ── */}
-      <div style={{ padding: "18px 22px 16px", borderBottom: "1px solid #222", flexShrink: 0 }}>
+      <div style={{ padding: "20px 24px 18px", borderBottom: "1px solid #222", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#F0F0F0", marginBottom: 8, lineHeight: 1.2 }}>{client.name}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#F5F5F5", marginBottom: 10, lineHeight: 1.15, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis" }}>{client.name}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Chip bg={typeColor.bg} color={typeColor.color}>{client.type}</Chip>
               <Chip bg={statusColor.bg} color={statusColor.color}>{client.status}</Chip>
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            <IconBtn onClick={() => onEdit(client)} title="עריכה">✎</IconBtn>
+            <IconBtn onClick={() => onEdit(client)} title="אפשרויות">⋯</IconBtn>
             <IconBtn onClick={onClose} title="סגור" style={{ fontSize: 20 }}>×</IconBtn>
           </div>
         </div>
       </div>
 
       {/* ── Scrollable body ── */}
-      <div style={{ overflowY: "auto", flex: 1, padding: "18px 22px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ overflowY: "auto", flex: 1, padding: "18px 24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
 
-        {/* Contact + quick actions */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            <ContactItem icon="📞" value={client.phone} href={client.phone ? `tel:${client.phone}` : undefined} />
-            <ContactItem icon="✉" value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
+        {/* Contact / meta row (only fields that exist — no fake placeholders) */}
+        {(client.email || client.phone) && (
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
+            {client.email && <ContactItem icon="✉" value={client.email} href={`mailto:${client.email}`} />}
+            {client.phone && <ContactItem icon="📞" value={client.phone} href={`tel:${client.phone}`} />}
           </div>
+        )}
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {client.phone && (
-              <QuickBtn href={`https://wa.me/972${client.phone.replace(/^0/, "").replace(/\D/g, "")}`} color="#25D366" icon="💬" label="WhatsApp" />
-            )}
-            {client.phone && <CopyBtn text={client.phone} label="טלפון" icon="📋" />}
-            {client.email && (
-              <QuickBtn href={`mailto:${client.email}`} color="#3B82F6" icon="✉" label="מייל" />
-            )}
-            {/* Two separate action buttons */}
-            <QuickBtn
-              onClick={() => onOpenForm("meeting")}
-              color="#F59E0B" icon="📅" label="פגישה"
-              active={formMode === "meeting"}
-            />
-            <QuickBtn
-              onClick={() => onOpenForm("session")}
-              color="#A855F7" icon="🎵" label="סשן"
-              active={formMode === "session"}
-            />
-          </div>
+        {/* Quick actions */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {client.phone && (
+            <QuickBtn href={`https://wa.me/972${client.phone.replace(/^0/, "").replace(/\D/g, "")}`} color="#25D366" icon="💬" label="וואטסאפ" />
+          )}
+          {client.phone && <QuickBtn href={`tel:${client.phone}`} color="#3B82F6" icon="📞" label="שיחה" />}
+          <QuickBtn onClick={() => setProposalAddSignal((n) => n + 1)} color="#A855F7" icon="📄" label="הצעה חדשה" />
+          <button
+            onClick={() => onOpenForm(formMode === "newProject" ? null : "newProject")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 10,
+              border: "none", background: formMode === "newProject" ? "#B91C1C" : "#DC2626", color: "#fff",
+              fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+              boxShadow: "0 2px 12px rgba(220,38,38,0.35)",
+            }}
+          >+ פרויקט חדש</button>
+        </div>
+
+        {/* Summary KPI cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+          <KpiCard icon="📄" label='סה"כ הצעות'     value={String(proposals.length)}            color="#60A5FA" />
+          <KpiCard icon="💰" label="שווי פתוח"       value={fmtMoney(openValue, propCurrency)}   color="#34D399" />
+          <KpiCard icon="📁" label="פרויקטים פעילים" value={String(activeProjects)}              color="#A855F7" />
+          <KpiCard icon="📅" label="פולואפ הבא"       value={nextFollowup ? fmtDate(nextFollowup) : "—"} color="#FBBF24" />
         </div>
 
         {/* Activity form (meeting or session) */}
@@ -461,6 +478,7 @@ function ModalContent({
             <ProposalsSection
               client={client}
               proposals={proposals}
+              openAddSignal={proposalAddSignal}
               onAdd={onProposalAdd}
               onUpdate={onProposalUpdate}
               onDelete={onProposalDelete}
@@ -1028,12 +1046,25 @@ function DeliveryRow({ delivery: d, projectName }: { delivery: DeliveryRecord; p
 
 function SectionCard({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div style={{ background: "#1A1A1A", border: "1px solid #222", borderRadius: 14, padding: "14px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em" }}>{title}</div>
+    <div style={{ background: "#161616", border: "1px solid #242424", borderRadius: 16, padding: "16px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: "#ECECEC", letterSpacing: "0.01em" }}>{title}</div>
         {action}
       </div>
       {children}
+    </div>
+  );
+}
+
+// Clean KPI card for the client summary row.
+function KpiCard({ icon, label, value, color }: { icon: string; label: string; value: string; color: string }) {
+  return (
+    <div style={{ background: "#161616", border: "1px solid #242424", borderRadius: 14, padding: "13px 14px", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+        <span style={{ width: 24, height: 24, borderRadius: 7, background: `${color}1A`, border: `1px solid ${color}33`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>{icon}</span>
+        <span style={{ fontSize: 11, color: "#8A8A92", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 800, color, letterSpacing: "-0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
     </div>
   );
 }
