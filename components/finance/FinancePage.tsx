@@ -78,11 +78,13 @@ interface TxDraft {
 const PROJECT_EXPENSE_CATEGORIES = ["מיקס / מאסטר", "חדר חזרות", "צילום", "נסיעות", "ציוד", "אחר"];
 const GENERAL_EXPENSE_CATEGORIES = ["שכירות", "חשמל", "מים", "אינטרנט", "תוכנות ומנויים", "ציוד", "צוות", "שיווק", "נסיעות", "חובות", "משרד / סטודיו", "אחר"];
 const INCOME_TYPES               = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תשלום מלא", "תוספת / חריגה", "אחר"];
-const INCOME_STATUSES:  PaymentStatus[] = ["צפוי", "התקבל", "חלקי", "בוטל", "לבדיקה"];
-const EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "צפוי", "לא שולם", "חלקי", "בוטל"];
-// Quick inline status options (row badge popover) — by transaction type.
-const QUICK_INCOME_STATUSES:  PaymentStatus[] = ["התקבל", "צפוי", "לא שולם", "חלקי", "בוטל"];
-const QUICK_EXPENSE_STATUSES: PaymentStatus[] = ["שולם", "לא שולם", "חלקי", "בוטל"];
+// Unified status set for ALL transactions (income + expense). "התקבל" is no
+// longer offered in the UI — it is shown as "שולם" and saved as "שולם".
+const ALL_STATUSES: PaymentStatus[] = ["שולם", "לא שולם", "צפוי", "בוטל", "חלקי"];
+const INCOME_STATUSES        = ALL_STATUSES;
+const EXPENSE_STATUSES       = ALL_STATUSES;
+const QUICK_INCOME_STATUSES  = ALL_STATUSES;
+const QUICK_EXPENSE_STATUSES = ALL_STATUSES;
 const PAYMENT_METHODS   = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
 const HEB_MONTHS        = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
 
@@ -274,6 +276,11 @@ const selectStyle: React.CSSProperties = {
 };
 
 // ── Status Badge ──────────────────────────────────────────────────────────────
+/** Legacy "התקבל" rows are shown as "שולם" (same color); never display "התקבל". */
+function statusLabel(status: string): string {
+  return status === "התקבל" ? "שולם" : status;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const color = STATUS_COLOR[status] ?? "#6B7280";
   return (
@@ -283,7 +290,7 @@ function StatusBadge({ status }: { status: string }) {
       borderRadius: 100, padding: "2px 8px", whiteSpace: "nowrap",
       display: "inline-flex", alignItems: "center",
     }}>
-      {status}
+      {statusLabel(status)}
     </span>
   );
 }
@@ -817,7 +824,7 @@ export default function FinancePage() {
     if (viewTab === "expense" && t.type !== "expense") return false;
     if (viewTab === "shows"   && !isShowTx(t))         return false;
     if (viewTab === "unpaid"  && t.payment_status !== "לא שולם") return false;
-    if (statusFilter           && t.payment_status !== statusFilter) return false;
+    if (statusFilter           && (t.payment_status === "התקבל" ? "שולם" : t.payment_status) !== statusFilter) return false;
     if (projectFilter          && t.project_id !== projectFilter) return false;
     if (sourceFilter !== "all" && (t.scope ?? "project") !== sourceFilter) return false;
     return true;
@@ -891,7 +898,7 @@ export default function FinancePage() {
   const displayItems    = buildDisplayItems(datedFiltered, undatedFiltered);
 
   const projectsWithTx = projects.filter((p) => transactions.some((t) => t.project_id === p.id));
-  const allStatuses    = [...new Set(transactions.map((t) => t.payment_status))];
+  const allStatuses    = [...new Set(transactions.map((t) => t.payment_status === "התקבל" ? "שולם" : t.payment_status))];
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
   function openAdd() {
@@ -906,7 +913,8 @@ export default function FinancePage() {
       scope: tx.scope ?? "project",
       projectId: tx.project_id ?? "", type: tx.type, date: tx.date ?? "",
       description: tx.description, artist: tx.artist, amount: String(tx.amount),
-      currency: tx.currency, paymentStatus: tx.payment_status, paymentMethod: tx.payment_method,
+      // Normalize legacy "התקבל" to "שולם" so the form shows/saves the unified status.
+      currency: tx.currency, paymentStatus: tx.payment_status === "התקבל" ? "שולם" : tx.payment_status, paymentMethod: tx.payment_method,
       // Show only the real note; the technical show_id marker is re-attached on save.
       receiptRef: tx.receipt_ref, notes: userVisibleNotes(tx.notes), category: tx.category,
     });
@@ -1235,7 +1243,8 @@ export default function FinancePage() {
             }}>
               {opts.map((s) => {
                 const c = STATUS_COLOR[s] ?? MUTED;
-                const active = s === tx.payment_status;
+                // Legacy "התקבל" rows highlight the "שולם" option.
+                const active = s === tx.payment_status || (s === "שולם" && tx.payment_status === "התקבל");
                 return (
                   <button key={s} type="button" onClick={() => openEditWithStatus(tx, s)}
                     style={{
@@ -1331,7 +1340,7 @@ export default function FinancePage() {
         const pctLabel    = (v: number) => totalIncome > 0 ? `${Math.round(Math.max(0, v) / totalIncome * 100)}% מהיעד` : undefined;
         return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
-        <SummaryCard icon="✅" label="שולם / התקבל"
+        <SummaryCard icon="✅" label="שולם"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
           sub={ofPlan()}
           progress={totalIncome > 0 ? stats.incomeReceived / totalIncome : undefined}
