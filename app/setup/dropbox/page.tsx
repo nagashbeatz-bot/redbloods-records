@@ -9,6 +9,7 @@ function DropboxSetupInner() {
   const router = useRouter();
 
   const [connected,     setConnected]     = useState<boolean | null>(null);
+  const [account,       setAccount]       = useState<unknown>(null);
   const [loading,       setLoading]       = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
@@ -16,9 +17,9 @@ function DropboxSetupInner() {
   const oauthError    = params.get("error");
 
   useEffect(() => {
-    fetch("/api/dropbox/status")
+    fetch("/api/dropbox/status?account=1")
       .then((r) => r.json())
-      .then((d) => setConnected(!!d.connected))
+      .then((d) => { setConnected(!!d.connected); setAccount(d.account ?? d.accountError ?? null); })
       .catch(() => setConnected(false));
   }, [justConnected]);
 
@@ -97,9 +98,31 @@ function DropboxSetupInner() {
               <span style={{ fontSize: 13, color: "#10B981", fontWeight: 600 }}>מחובר — הטוקן מתחדש אוטומטית</span>
             </div>
 
-            <p style={{ color: "#555", fontSize: 13, lineHeight: 1.7, marginBottom: 24 }}>
+            <p style={{ color: "#555", fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
               Dropbox מחובר ופועל. הטוקן מתחדש אוטומטית בכל פעם שהוא פג — אין צורך לחזור לכאן.
             </p>
+
+            {/* Connected account identity — confirm WHICH Dropbox the system uses */}
+            {account != null && (() => {
+              const a = account as { email?: string; name?: string; account_id?: string; team?: string; root_info?: { [".tag"]?: string }; topFolders?: { default?: string[] | { error: string }; teamRoot?: string[] | { error: string } | null } };
+              const fmtFolders = (f?: string[] | { error: string } | null) =>
+                !f ? "—" : Array.isArray(f) ? (f.length ? f.join(" · ") : "(ריק)") : `שגיאה: ${f.error}`;
+              return (
+                <div style={{ background: "#0D0D0D", border: "1px solid #242424", borderRadius: 12, padding: "14px 16px", marginBottom: 20, fontSize: 12, color: "#999", lineHeight: 1.9 }}>
+                  <div style={{ color: "#ECECEC", fontWeight: 700, marginBottom: 6 }}>החשבון המחובר</div>
+                  <div>אימייל: <span style={{ color: "#C0C0C0", direction: "ltr", display: "inline-block" }}>{a.email ?? "—"}</span></div>
+                  <div>שם: <span style={{ color: "#C0C0C0" }}>{a.name ?? "—"}</span></div>
+                  {a.team && <div>צוות: <span style={{ color: "#C0C0C0" }}>{a.team}</span></div>}
+                  <div>סוג root: <span style={{ color: "#C0C0C0" }}>{a.root_info?.[".tag"] ?? "—"}</span></div>
+                  <div style={{ marginTop: 8, color: "#ECECEC", fontWeight: 700 }}>תיקיות גלויות (root)</div>
+                  <div style={{ direction: "ltr", textAlign: "right", color: "#8A8A92", fontSize: 11 }}>default: {fmtFolders(a.topFolders?.default)}</div>
+                  {a.topFolders?.teamRoot != null && <div style={{ direction: "ltr", textAlign: "right", color: "#8A8A92", fontSize: 11 }}>team: {fmtFolders(a.topFolders?.teamRoot)}</div>}
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#666" }}>
+                    אם התיקיות שלך (redbloods records / מיקסים לשלוח / Steven...) <b style={{ color: "#F59E0B" }}>לא</b> מופיעות כאן — נתק והתחבר מחדש לחשבון/צוות שמכיל אותן (ראה הערה למטה).
+                  </div>
+                </div>
+              );
+            })()}
             <p style={{ color: "#555", fontSize: 12, lineHeight: 1.7, marginBottom: 24 }}>
               לחיבור מחדש עם חשבון אחר, נתק ולאחר מכן התחבר שוב.
             </p>
