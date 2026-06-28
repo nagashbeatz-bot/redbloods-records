@@ -53,6 +53,7 @@ export interface FileLink {
   dropboxShareUrl?: string;  // permanent Dropbox public share link
   trackId?: string;          // UUID of album_tracks.id — links file to a track
   versionLabel?: string;     // e.g. "V1", "מיקס 1", "מאסטר"
+  category?: string;         // intake category: מאסטר/אקפלה/אינסטרומנטל/ערוצים/גרסת הופעה/אחר
 }
 
 /** A YouTube reference attached to a Victor work ("רפרנסים"). */

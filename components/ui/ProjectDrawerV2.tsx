@@ -13,6 +13,7 @@ import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 import ScheduleModal from "@/components/project/ScheduleModal";
+import StevenIntakeModal from "@/components/project/StevenIntakeModal";
 import { ACTIONS, type ActionDef } from "@/lib/action-types";
 
 interface Props {
@@ -3097,6 +3098,7 @@ function deliveryTag(name: string, dropboxPath?: string): { label: string; color
 function FilesContent({ project, onFileDeleted }: { project: Project; onFileDeleted: () => void }) {
   const files = project.files ?? [];
   const reversed = [...files].reverse();
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   // Delivery files = those already stored under a "/Delivery/" subfolder.
   const deliveryFiles = files.filter(f => f.dropboxPath?.includes("/Delivery/"));
@@ -3251,6 +3253,24 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
 
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* ── Intake action: pull files Steven uploaded to Dropbox ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11.5, color: MUTED }}>קלוט קבצים ש-Steven העלה לתיקיית Dropbox — בלי הורדה/העלאה ידנית.</span>
+        <button onClick={() => setIntakeOpen(true)} style={{
+          display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", borderRadius: 10,
+          border: `1px solid ${BRAND}40`, background: `${BRAND}12`, color: BRAND,
+          fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+        }}>↓ קליטה מ-Steven</button>
+      </div>
+      {intakeOpen && (
+        <StevenIntakeModal
+          projectId={project.id}
+          projectName={project.name}
+          onClose={() => setIntakeOpen(false)}
+          onDone={onFileDeleted}
+        />
+      )}
+
       {/* ── מסירה ללקוח — delivery card (completed projects only) ── */}
       {isDone && (
         <div style={{
