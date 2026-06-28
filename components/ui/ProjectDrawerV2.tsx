@@ -510,6 +510,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [projectActions,  setProjectActions]  = useState<ProjectAction[]>([]);
   const [mounted,         setMounted]         = useState(false);
   const [scheduleAction, setScheduleAction] = useState<ActionDef | null>(null);
+  const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [showSendModal,  setShowSendModal]  = useState(false);
   const [copyFeedback,   setCopyFeedback]   = useState<"idle" | "copied" | "nolink">("idle");
   const uploadWrapRef  = useRef<HTMLDivElement>(null);
@@ -1229,7 +1230,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             />
             )
           ) : activeTab === "סשנים" ? (
-            <SessionsContent sessions={sessions} sessDone={sessDone} onStatusChange={updateSessionStatus} />
+            <SessionsContent sessions={sessions} sessDone={sessDone} onStatusChange={updateSessionStatus} onEditSession={setEditingSession} />
           ) : activeTab === "קבצים" ? (
             <FilesContent project={project} onFileDeleted={refresh} />
           ) : (
@@ -1338,6 +1339,31 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           }}
         />
       )}
+
+      {/* ── Edit existing session (same modal, edit mode) ── */}
+      {editingSession && (
+        <ScheduleModal
+          action={ACTIONS[0]}
+          projectId={projectId}
+          projectName={project.name}
+          artist={project.artist}
+          editSession={{
+            id:         editingSession.id,
+            date:       editingSession.date,
+            start_time: editingSession.start_time ?? null,
+            end_time:   editingSession.end_time ?? null,
+          }}
+          onClose={() => setEditingSession(null)}
+          onSessionCreated={() => {
+            fetch(`/api/sessions?projectId=${projectId}`)
+              .then(r => r.json())
+              .then(d => setSessions(d.sessions ?? []))
+              .catch(() => {});
+            setEditingSession(null);
+          }}
+        />
+      )}
+
       {showSendModal && (
         <SendModal
           projectId={projectId}
@@ -2960,7 +2986,7 @@ function SessionStatusControl({ status, onChange }: { status: string; onChange: 
   );
 }
 
-function SessionsContent({ sessions, sessDone, onStatusChange }: { sessions: Session[]; sessDone: number; onStatusChange: (id: string, status: string) => void }) {
+function SessionsContent({ sessions, sessDone, onStatusChange, onEditSession }: { sessions: Session[]; sessDone: number; onStatusChange: (id: string, status: string) => void; onEditSession: (s: Session) => void }) {
   const upcoming = [...sessions]
     .filter(s => s.date && s.status !== "בוטל" && new Date(s.date) >= new Date())
     .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))[0];
@@ -3001,19 +3027,29 @@ function SessionsContent({ sessions, sessDone, onStatusChange }: { sessions: Ses
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {sorted.map(s => {
             return (
-              <div key={s.id} style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: "10px 14px", background: "rgba(255,255,255,0.034)",
-                borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
-              }}>
+              <div key={s.id}
+                onClick={() => onEditSession(s)}
+                title="לחץ לעריכת הסשן"
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
+                  padding: "10px 14px", background: "rgba(255,255,255,0.034)",
+                  borderRadius: 12, border: "1px solid rgba(255,255,255,0.09)",
+                  transition: "background 0.13s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.06)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.034)"; }}
+              >
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#F4F4F4" }}>
                     {s.date
                       ? new Date(s.date).toLocaleDateString("he-IL", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
                       : "ללא תאריך"}
+                    {s.start_time ? <span style={{ color: MUTED, fontWeight: 500 }}> · {s.start_time}</span> : null}
                   </div>
                 </div>
-                <SessionStatusControl status={s.status} onChange={(ns) => onStatusChange(s.id, ns)} />
+                <div onClick={e => e.stopPropagation()}>
+                  <SessionStatusControl status={s.status} onChange={(ns) => onStatusChange(s.id, ns)} />
+                </div>
               </div>
             );
           })}

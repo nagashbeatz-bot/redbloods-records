@@ -37,6 +37,14 @@ type Phase =
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+// Existing session being edited (instead of creating a new one).
+interface EditSession {
+  id:         string;
+  date:       string | null;
+  start_time?: string | null;
+  end_time?:   string | null;
+}
+
 interface Props {
   action:      ActionDef;
   projectId:   string;
@@ -44,6 +52,21 @@ interface Props {
   artist:      string;
   onClose:     () => void;
   onSessionCreated?: () => void;
+  editSession?: EditSession;        // when set → modal is in edit mode
+}
+
+/** Parse "HH:MM" → {h,m}, or null. */
+function parseHM(t?: string | null): { h: number; m: number } | null {
+  if (!t) return null;
+  const [h, m] = t.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return { h, m };
+}
+/** Minutes between two "HH:MM" times (positive). */
+function hmDiffMinutes(start: string, end: string): number {
+  const a = parseHM(start), b = parseHM(end);
+  if (!a || !b) return 0;
+  return (b.h * 60 + b.m) - (a.h * 60 + a.m);
 }
 
 // Extract YYYY-MM-DD and HH:MM in Israel timezone from an ISO datetime string
@@ -55,9 +78,16 @@ function isoToIsrael(iso: string): { date: string; time: string } {
   return { date, time };
 }
 
-export default function ScheduleModal({ action, projectId, projectName, artist, onClose, onSessionCreated }: Props) {
-  const [minutes,       setMinutes]       = useState(action.defaultMinutes);
-  const [tab,           setTab]           = useState<Tab>("recommended");
+export default function ScheduleModal({ action, projectId, projectName, artist, onClose, onSessionCreated, editSession }: Props) {
+  const isEdit = !!editSession;
+  // Edit mode prefill: duration from the session's start/end, and a manual time.
+  const editDurMin = editSession?.start_time && editSession?.end_time
+    ? Math.max(15, hmDiffMinutes(editSession.start_time, editSession.end_time))
+    : action.defaultMinutes;
+  const editStartHM = parseHM(editSession?.start_time);
+
+  const [minutes,       setMinutes]       = useState(isEdit ? editDurMin : action.defaultMinutes);
+  const [tab,           setTab]           = useState<Tab>(isEdit ? "manual" : "recommended");
   const [phase,         setPhase]         = useState<Phase>("idle");
   const [sendToArtist,   setSendToArtist]   = useState(false);
   const [artistEmail,    setArtistEmail]    = useState("");
@@ -126,8 +156,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
   // Manual picker state — always Israel calendar date, never UTC
   const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
-  const [manualDate, setManualDate] = useState(todayStr);
-  const [manualHM,   setManualHM]   = useState<{ h: number; m: number } | null>(null);
+  const [manualDate, setManualDate] = useState(isEdit ? (editSession?.date || todayStr) : todayStr);
+  const [manualHM,   setManualHM]   = useState<{ h: number; m: number } | null>(isEdit ? editStartHM : null);
 
   // Track whether the user has already triggered a slot search at least once
   const [hasSearched, setHasSearched] = useState(false);
@@ -253,6 +283,12 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   async function checkAndConfirm(startIso: string, endIso: string, label: string) {
     setSelectedStart(startIso);
     prevMinutesRef.current = minutes;
+    // Edit mode: skip the availability check (the session's own event would
+    // otherwise look like a conflict) and go straight to confirm.
+    if (isEdit) {
+      setPhase({ confirm: { start: startIso, end: endIso, label, hardConflict: false, bufferWarning: false, conflictNames: [], forceCreate: false } });
+      return;
+    }
     setPhase("checking");
     try {
       const r = await fetch("/api/calendar/check-slot", {
@@ -275,7 +311,27 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   }
 
   // ── Create event ──────────────────────────────────────────────────────────
+  // Edit an existing session: PATCH the session (the route updates its existing
+  // calendar event if it has one — never creates a new one).
+  async function saveEdit(startIso: string, endIso: string, label: string) {
+    setPhase("creating");
+    try {
+      const { date, time: startTime } = isoToIsrael(startIso);
+      const { time: endTime }         = isoToIsrael(endIso);
+      const r = await fetch(`/api/sessions/${editSession!.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, startTime, endTime, startIso, endIso }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setPhase({ error: d.error ?? "שגיאה בשמירת הסשן" }); return; }
+      onSessionCreated?.();
+      setPhase({ created: { label } });
+    } catch { setPhase({ error: "שגיאת רשת" }); }
+  }
+
   async function createEvent(startIso: string, endIso: string, label: string) {
+    if (isEdit) { await saveEdit(startIso, endIso, label); return; }
     setPhase("creating");
     try {
       // When sending to artist: use public title so they see "סשן עם נגש ביטס".
@@ -395,7 +451,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         {/* ── Header ───────────────────────────────────────────────── */}
         <div style={{ marginBottom: 22 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#A855F7", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
-            ⚡ {action.modalTitle}
+            {isEdit ? "✎ עריכת סשן" : `⚡ ${action.modalTitle}`}
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -403,7 +459,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               <div style={{ fontSize: 14, color: "#999", marginTop: 4 }}>{artist}</div>
             </div>
             {/* ₪ optional finance button — only on confirm screen, project-scoped */}
-            {isConfirm && !showFinance && projectId && (
+            {isConfirm && !showFinance && projectId && !isEdit && (
               <button
                 onClick={handleOpenFinance}
                 title="הצג מצב כספי"
@@ -641,7 +697,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         {!showFinance && phase === "checking" && <Spinner label="בודק זמינות..." />}
 
         {/* ── Creating ────────────────────────────────────────────── */}
-        {!showFinance && phase === "creating" && <Spinner label="יוצר אירוע ביומן..." />}
+        {!showFinance && phase === "creating" && <Spinner label={isEdit ? "שומר שינויים..." : "יוצר אירוע ביומן..."} />}
 
         {/* ── Confirm ─────────────────────────────────────────────── */}
         {!showFinance && isConfirm && confirmData && (
@@ -650,6 +706,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             action={action}
             artist={artist}
             projectName={projectName}
+            editMode={isEdit}
             sendToArtist={sendToArtist}
             setSendToArtist={setSendToArtist}
             artistEmail={artistEmail}
@@ -669,6 +726,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             action={action}
             artist={artist}
             projectName={projectName}
+            editMode={isEdit}
             onClose={onClose}
           />
         )}
@@ -852,12 +910,12 @@ function ManualPicker({
 }
 
 function ConfirmPanel({
-  data, action, artist, projectName,
+  data, action, artist, projectName, editMode = false,
   sendToArtist, setSendToArtist, artistEmail, setArtistEmail, emailFromClients,
   publicTitle, onBack, onCreate, onForce,
 }: {
   data: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean };
-  action: ActionDef; artist: string; projectName: string;
+  action: ActionDef; artist: string; projectName: string; editMode?: boolean;
   sendToArtist: boolean; setSendToArtist: (v: boolean) => void;
   artistEmail: string; setArtistEmail: (v: string) => void;
   emailFromClients: boolean;
@@ -876,7 +934,7 @@ function ConfirmPanel({
         padding: "16px", marginBottom: 14,
       }}>
         <div style={{ fontSize: 10, color: "#555", marginBottom: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          אישור יצירת אירוע
+          {editMode ? "אישור עריכת סשן" : "אישור יצירת אירוע"}
         </div>
         <Row label="פעולה"   value={action.calPrefix} />
         <Row label="אמן"     value={artist} />
@@ -884,7 +942,8 @@ function ConfirmPanel({
         <Row label="זמן"     value={data.label} highlight />
       </div>
 
-      {/* ── Artist invite section ─────────────────────────────────── */}
+      {/* ── Artist invite section (create only) ───────────────────── */}
+      {!editMode && (
       <div style={{
         background: sendToArtist ? "rgba(168,85,247,0.06)" : "#111",
         border: `1px solid ${sendToArtist ? "rgba(168,85,247,0.25)" : "#222"}`,
@@ -950,6 +1009,7 @@ function ConfirmPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* ── Warnings ─────────────────────────────────────────────── */}
       {data.hardConflict && (
@@ -967,7 +1027,7 @@ function ConfirmPanel({
       {!hasWarning && (
         <div style={{ display: "flex", gap: 10 }}>
           <Btn primary onClick={onCreate} disabled={!canCreate}>
-            {sendToArtist ? "✓ צור ושלח הזמנה לאמן" : "✓ צור אירוע ביומן"}
+            {editMode ? "✓ שמור שינויים" : sendToArtist ? "✓ צור ושלח הזמנה לאמן" : "✓ צור אירוע ביומן"}
           </Btn>
           <Btn onClick={onBack}>חזור</Btn>
         </div>
@@ -984,11 +1044,11 @@ function ConfirmPanel({
 }
 
 function CreatedPanel({
-  data, action, artist, projectName, onClose,
+  data, action, artist, projectName, onClose, editMode = false,
 }: {
   data: { label: string; htmlLink?: string; inviteSent?: boolean; paymentAmount?: number; paymentCurrency?: string };
   action: ActionDef; artist: string; projectName: string;
-  onClose: () => void;
+  onClose: () => void; editMode?: boolean;
 }) {
   return (
     <div>
@@ -997,7 +1057,7 @@ function CreatedPanel({
         borderRadius: 14, padding: "16px", marginBottom: 14,
       }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#10B981", marginBottom: 10 }}>
-          ✓ האירוע נוצר ביומן
+          {editMode ? "✓ הסשן עודכן" : "✓ האירוע נוצר ביומן"}
         </div>
         <Row label="פעולה"  value={action.calPrefix} />
         <Row label="אמן"    value={artist} />

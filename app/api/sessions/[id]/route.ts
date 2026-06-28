@@ -10,7 +10,7 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const body = await req.json();
-    const { date, startTime, endTime, status, sessionType, notes, photographer, location } = body;
+    const { date, startTime, endTime, status, sessionType, notes, photographer, location, startIso, endIso } = body;
 
     const patch: Record<string, unknown> = {};
     if (date         !== undefined) patch.date         = date        || null;
@@ -30,6 +30,21 @@ export async function PATCH(
       .single();
 
     if (error) throw new Error(error.message);
+
+    // ── Google Calendar: update the EXISTING event (never create a new one) ──
+    // Only when the session already has a calendar_event_id and the client sent
+    // absolute start/end ISO times (computed in the browser's Israel tz).
+    const calEventId = (data as { calendar_event_id?: string | null }).calendar_event_id;
+    if (calEventId && startIso && endIso) {
+      try {
+        const { isConnected, updateCalendarEvent, calendarEventExists } = await import("@/lib/google-calendar");
+        if (await isConnected() && await calendarEventExists(calEventId)) {
+          await updateCalendarEvent(calEventId, { startIso, endIso });
+        }
+      } catch (calErr) {
+        console.error("[sessions PATCH id] calendar update error:", calErr);
+      }
+    }
 
     // Bump project's updated_at
     const projectId = (data as { project_id?: string }).project_id;
