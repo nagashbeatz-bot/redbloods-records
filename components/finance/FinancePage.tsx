@@ -287,26 +287,32 @@ function SummaryCard({
   return (
     <div style={{
       background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
-      padding: "20px 20px", flex: "1 1 0", minWidth: 0, position: "relative", overflow: "hidden",
+      padding: "16px 18px 14px", flex: "1 1 0", minWidth: 0, minHeight: 132,
+      position: "relative", overflow: "hidden", display: "flex", flexDirection: "column",
     }}>
-      {icon && (
-        <div style={{ position: "absolute", bottom: -6, left: -4, fontSize: 52, opacity: 0.04, userSelect: "none", pointerEvents: "none", lineHeight: 1 }}>
-          {icon}
+      {/* top accent */}
+      <div style={{ position: "absolute", top: 0, insetInline: 0, height: 3, background: `linear-gradient(270deg, ${color}, ${color}00)` }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        {icon && (
+          <div style={{
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            background: `${color}1A`, border: `1px solid ${color}33`, color,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
+          }}>{icon}</div>
+        )}
+        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, letterSpacing: "0.02em", lineHeight: 1.2 }}>
+          {label}
         </div>
-      )}
-      <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
-        {label}
       </div>
-      <div style={{ fontSize: 28, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
-      {showDelta && (
-        <div style={{ fontSize: 10, color: deltaColor, marginTop: 6, display: "flex", alignItems: "center", gap: 3 }}>
+      <div style={{ fontSize: 32, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1, marginTop: "auto" }}>{value}</div>
+      {showDelta ? (
+        <div style={{ fontSize: 11, color: deltaColor, marginTop: 7, display: "flex", alignItems: "center", gap: 4 }}>
           <span>{deltaSign}{Math.abs(delta!).toLocaleString()}{deltaCurrency}</span>
           <span style={{ color: MUTED }}>{compLabel}</span>
         </div>
-      )}
-      {!showDelta && sub && (
-        <div style={{ fontSize: 11, color: TEXT2, marginTop: 6 }}>{sub}</div>
-      )}
+      ) : sub ? (
+        <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 7 }}>{sub}</div>
+      ) : null}
     </div>
   );
 }
@@ -957,7 +963,7 @@ export default function FinancePage() {
           onClick={() => toggleExpand(tx.id)}
           style={{
             display: "grid", gridTemplateColumns: GRID_COLS,
-            gap: 8, padding: "17px 16px", alignItems: "center",
+            gap: 14, padding: "20px 18px", alignItems: "center",
             borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.06)`,
             background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)",
             cursor: "pointer",
@@ -1010,7 +1016,7 @@ export default function FinancePage() {
           <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {tx.description || tx.category || "—"}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER }}>
+          <div style={{ fontSize: 15.5, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER, letterSpacing: "-0.02em" }}>
             {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
           </div>
           <div>
@@ -1090,7 +1096,7 @@ export default function FinancePage() {
     return (
       <div style={{
         display: "grid", gridTemplateColumns: GRID_COLS,
-        gap: 8, padding: "8px 16px",
+        gap: 14, padding: "11px 18px",
         background: CARD2, borderBottom: `1px solid ${BDR}`,
         fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
       }}>
@@ -1106,21 +1112,39 @@ export default function FinancePage() {
     if (txs.length === 0) return null;
     const collapsed = collapsedGroups.has(key);
     const { inc, exp, net } = groupSummary(txs);
+    const pill = (label: string, val: number, col: string) => (
+      <span style={{
+        display: "inline-flex", alignItems: "baseline", gap: 5,
+        background: `${col}12`, border: `1px solid ${col}28`, borderRadius: 100,
+        padding: "4px 11px", fontSize: 11.5,
+      }}>
+        <span style={{ color: MUTED }}>{label}</span>
+        <strong style={{ color: col, fontWeight: 800 }}>{fmtAmount(val)}</strong>
+      </span>
+    );
     return (
-      <div key={key} style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
+      <div key={key} style={{
+        background: CARD, border: `1px solid ${accent}33`, borderRadius: 16,
+        overflow: "hidden", marginBottom: 16,
+      }}>
         <button onClick={() => toggleGroup(key)} style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 12,
-          padding: "12px 16px", background: `${accent}0E`, border: "none",
+          width: "100%", display: "flex", flexDirection: "column", gap: 10,
+          padding: "16px 20px", background: `${accent}14`, border: "none",
           borderBottom: collapsed ? "none" : `1px solid ${BDR}`, cursor: "pointer", fontFamily: "inherit",
         }}>
-          <span style={{ color: accent, fontSize: 12, transform: collapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "none" }}>▸</span>
-          <span style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{icon} {title}</span>
-          <span style={{ fontSize: 11, color: MUTED }}>{txs.length} תנועות</span>
-          <span style={{ display: "flex", gap: 16, marginInlineStart: "auto", fontSize: 11 }}>
-            <span style={{ color: MUTED }}>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(inc)}</strong></span>
-            <span style={{ color: MUTED }}>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(exp)}</strong></span>
-            <span style={{ color: MUTED }}>נטו: <strong style={{ color: net >= 0 ? GREEN : RED }}>{fmtAmount(net)}</strong></span>
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ color: accent, fontSize: 14, transform: collapsed ? "rotate(0deg)" : "rotate(90deg)" }}>▸</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{icon} {title}</span>
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: accent, background: `${accent}1A`,
+              borderRadius: 100, padding: "2px 10px",
+            }}>{txs.length} תנועות</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, paddingInlineStart: 28, flexWrap: "wrap" }}>
+            {pill("הכנסות", inc, GREEN)}
+            {pill("הוצאות", exp, AMBER)}
+            {pill("נטו", net, net >= 0 ? GREEN : RED)}
+          </div>
         </button>
         {!collapsed && (
           <div>
@@ -1156,30 +1180,45 @@ export default function FinancePage() {
           : (group[0]?.description ?? "הופעה");
         const statusTx = incomeTx ?? group[0];
         const sc       = STATUS_COLOR[statusTx?.payment_status ?? ""] ?? MUTED;
+        const subParts = [incomeTx?.date ? fmtDate(incomeTx.date) : null, incomeTx?.artist || null].filter(Boolean);
         blocks.push(
-          <div key={`card-${k}`} style={{ padding: "12px 16px 0" }}>
+          <div key={`card-${k}`} style={{ padding: "14px 18px 6px" }}>
             <div style={{
-              border: `1px solid ${BRAND}22`, borderRadius: 12, padding: "10px 12px",
-              background: `${BRAND}08`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+              border: `1px solid ${BRAND}33`, borderRadius: 14, padding: "14px 16px",
+              background: `${BRAND}0C`,
             }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginInlineEnd: "auto" }}>🎤 {title}</span>
-              {[
-                ["הכנסה", income, GREEN],
-                ["דיג׳יי", dj, AMBER],
-                ["אמן", artist, BLUE],
-                ["רווח לייבל", labelProfit, labelProfit >= 0 ? GREEN : RED],
-              ].map(([label, val, col]) => (
-                <span key={label as string} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 72 }}>
-                  <span style={{ fontSize: 9, color: MUTED }}>{label as string}</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: col as string }}>{fmtAmount(val as number)}</span>
-                </span>
-              ))}
-              {statusTx && (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, color: sc, background: `${sc}18`,
-                  border: `1px solid ${sc}35`, borderRadius: 100, padding: "2px 10px",
-                }}>{statusTx.payment_status}</span>
-              )}
+              {/* title + status */}
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ marginInlineEnd: "auto" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, lineHeight: 1.2 }}>🎤 {title}</div>
+                  {subParts.length > 0 && (
+                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{subParts.join(" · ")}</div>
+                  )}
+                </div>
+                {statusTx && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color: sc, background: `${sc}18`,
+                    border: `1px solid ${sc}40`, borderRadius: 100, padding: "4px 12px", whiteSpace: "nowrap",
+                  }}>{statusTx.payment_status}</span>
+                )}
+              </div>
+              {/* mini cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 13 }}>
+                {([
+                  ["הכנסה", income, GREEN],
+                  ["דיג׳יי", dj, AMBER],
+                  ["אמן", artist, BLUE],
+                  ["רווח לייבל", labelProfit, labelProfit >= 0 ? GREEN : RED],
+                ] as const).map(([label, val, col]) => (
+                  <div key={label} style={{
+                    background: CARD, border: `1px solid ${BDR2}`, borderRadius: 10,
+                    padding: "9px 8px", textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: col, letterSpacing: "-0.02em" }}>{fmtAmount(val)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         );
@@ -1485,26 +1524,27 @@ export default function FinancePage() {
 
           {/* ── Segmented tabs ────────────────────────────────────────── */}
           <div style={{
-            display: "flex", gap: 4, marginBottom: 12,
-            background: CARD, border: `1px solid ${BDR}`, borderRadius: 12, padding: 4,
+            display: "flex", gap: 6, marginBottom: 14,
+            background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: 5,
           }}>
             {([["all","הכל",TEXT2],["income","הכנסות",GREEN],["expense","הוצאות",AMBER],["shows","הופעות",BRAND],["unpaid","לא שולם",RED]] as const).map(([k, label, color]) => {
               const active = viewTab === k;
               return (
                 <button key={k} onClick={() => setViewTab(k)} style={{
-                  flex: 1, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  background: active ? `${color}18` : "transparent",
-                  color: active ? color : MUTED,
-                  fontSize: 13, fontWeight: active ? 700 : 500,
-                  outline: active ? `1px solid ${color}35` : "none",
+                  flex: 1, padding: "13px 0", borderRadius: 11, border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                  background: active ? `${color}1F` : "transparent",
+                  color: active ? color : TEXT2,
+                  fontSize: 14.5, fontWeight: active ? 800 : 600,
+                  outline: active ? `1px solid ${color}55` : "none",
+                  boxShadow: active ? `inset 0 -2px 0 ${color}` : "none",
                   fontFamily: "inherit",
                 }}>
                   {label}
                   {k === "unpaid" && unpaidCount > 0 && (
                     <span style={{
-                      fontSize: 9, fontWeight: 800, color: "#fff", background: RED,
-                      borderRadius: 100, padding: "1px 6px", minWidth: 16, textAlign: "center",
+                      fontSize: 10, fontWeight: 800, color: "#fff", background: RED,
+                      borderRadius: 100, padding: "1px 7px", minWidth: 18, textAlign: "center",
                     }}>{unpaidCount}</span>
                   )}
                 </button>
