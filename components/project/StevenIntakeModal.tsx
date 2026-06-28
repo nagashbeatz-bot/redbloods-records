@@ -111,7 +111,7 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
             <input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.dropbox.com/scl/fo/..."
               onKeyDown={(e) => { if (e.key === "Enter") scan(); }} style={inp} />
             <div style={{ fontSize: 11, color: "#555", marginTop: 8, lineHeight: 1.6 }}>
-              נסרקת רק התיקייה הזו (DELIVERABLES / FINAL_MIX / ACAPELLA / INSTRUMENTAL / STEMS). ברירת המחדל: <b style={{ color: "#999" }}>העברה</b> לתיקיית הפרויקט.
+              נסרקת רק התיקייה הזו. אפשר גם להדביק את ה-<span style={{ color: "#999" }}>home URL</span> של התיקייה (dropbox.com/home/...) — מומלץ לתיקייה שאתה יצרת ושיתפת. ברירת המחדל: <b style={{ color: "#999" }}>העברה</b> לתיקיית הפרויקט.
             </div>
             {error && <div style={{ fontSize: 12, color: "#EF4444", marginTop: 12 }}>{error}</div>}
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>

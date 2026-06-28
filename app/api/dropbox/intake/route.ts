@@ -12,7 +12,22 @@ async function dbx(token: string, endpoint: string, body: unknown) {
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
-  return { ok: res.ok, json };
+  return { ok: res.ok, status: res.status, json };
+}
+
+/** Build a readable diagnostic from a Dropbox error response (no token/secrets). */
+function dbxError(endpoint: string, status: number, json: unknown) {
+  const j = (json ?? {}) as { error_summary?: string; error?: Record<string, unknown> };
+  const err = (j.error ?? {}) as Record<string, unknown>;
+  const sub = (k: string) => (err[k] as Record<string, unknown> | undefined)?.[".tag"] as string | undefined;
+  const tag = (err[".tag"] as string | undefined) ?? sub("shared_link") ?? sub("path") ?? sub("reason") ?? "unknown";
+  let hint = "";
+  if (status === 401)                            hint = "אימות נכשל — ייתכן שצריך re-auth ל-Dropbox (/setup/dropbox).";
+  else if (/missing_scope|no_permission/.test(tag)) hint = "חסר scope ל-Dropbox app (sharing.read / files.metadata.read) — הוסף ב-App Console ואז re-auth.";
+  else if (/shared_link_access_denied/.test(tag)) hint = "ה-shared link מוגבל (לא 'כל מי שיש לו הלינק'), או חסר scope sharing.read.";
+  else if (/shared_link_not_found|invalid/.test(tag)) hint = "הלינק לא נמצא/לא תקין — העתק מחדש, או הדבק את ה-home URL של התיקייה.";
+  else if (/not_found/.test(tag))                 hint = "הנתיב לא נמצא בחשבון — בדוק את ה-home URL / שם התיקייה.";
+  return { endpoint, status, tag, summary: j.error_summary ?? "", hint };
 }
 
 function sanitize(s: string): string {
@@ -36,30 +51,39 @@ export async function POST(req: NextRequest) {
     const action = body.action as "scan" | "move";
     const token = await getDropboxToken();
 
-    // ── SCAN: list the shared folder DIRECTLY via shared_link (no internal path
-    // required) → categorize. Each file's own path_lower/path_display is kept so
-    // MOVE can use the entry path (not the folder path). ────────────────────────
+    // ── SCAN: list the folder → categorize. Two modes:
+    //   • home URL (dropbox.com/home/<path>) → list by ACCOUNT path (preferred;
+    //     entries get account-absolute paths, ideal for move).
+    //   • shared link (/scl/fo/…) → list via shared_link.
+    // Each file's own path_lower/path_display is kept so MOVE uses the entry path.
     if (action === "scan") {
       const url = (body.url as string ?? "").trim();
       if (!url) return NextResponse.json({ error: "חסר לינק לתיקייה" }, { status: 400 });
 
-      // ── Temporary safe scan logging (no token, no sensitive data) ──
-      const isSharedLink = /dropbox\.com\/(scl\/fo|sh|s)\//i.test(url) || /dropbox\.com\//i.test(url);
-      console.log("[intake/scan] sharedLink?", isSharedLink);
-
-      // Optional metadata — diagnostics only, NOT required for the flow.
-      let rootName = "";
-      try {
-        const meta = await dbx(token, "sharing/get_shared_link_metadata", { url });
-        console.log("[intake/scan] metadata returned?", meta.ok);
-        if (meta.ok) {
-          const m = meta.json as { [".tag"]?: string; path_lower?: string; path_display?: string; name?: string };
-          console.log("[intake/scan] metadata tag:", m[".tag"], "hasPath(lower/display)?", !!(m.path_lower || m.path_display));
-          rootName = m.name ?? "";
+      // ── Determine mode + list args ──
+      const homeMatch = url.match(/dropbox\.com\/home(\/[^?#]*)/i);
+      const isHome = !!homeMatch;
+      let mode: "path" | "shared_link";
+      let rootPath = "";
+      let listArgs: Record<string, unknown>;
+      if (isHome) {
+        rootPath = decodeURIComponent(homeMatch![1]).replace(/\/+$/, "");
+        if (!rootPath || rootPath === "/") {
+          return NextResponse.json({ error: "לא ניתן לחלץ נתיב מה-home URL" }, { status: 400 });
         }
-      } catch { /* non-fatal */ }
+        mode = "path";
+        listArgs = { path: rootPath, recursive: true, include_media_info: false, include_deleted: false };
+        console.log("[intake/scan] mode=path (home URL) path:", rootPath);
+      } else {
+        mode = "shared_link";
+        listArgs = {
+          path: "", recursive: true,
+          include_media_info: false, include_deleted: false, include_has_explicit_shared_members: false,
+          shared_link: { url },
+        };
+        console.log("[intake/scan] mode=shared_link");
+      }
 
-      // List via shared_link directly.
       const entries: IntakeEntry[] = [];
       let entriesTotal = 0, entriesWithPath = 0;
       let firstSample: unknown = null;
@@ -73,15 +97,14 @@ export async function POST(req: NextRequest) {
         });
       };
 
-      let resp = await dbx(token, "files/list_folder", {
-        path: "", recursive: true,
-        include_media_info: false, include_deleted: false, include_has_explicit_shared_members: false,
-        shared_link: { url },
-      });
+      let resp = await dbx(token, "files/list_folder", listArgs);
       if (!resp.ok) {
-        const summary = (resp.json as { error_summary?: string }).error_summary;
-        console.log("[intake/scan] list_folder failed:", summary);
-        return NextResponse.json({ error: "אין גישה לתיקייה — ודא שזה לינק תקין לתיקיית Dropbox", detail: summary }, { status: 400 });
+        const diag = dbxError("files/list_folder", resp.status, resp.json);
+        console.log("[intake/scan] list_folder FAILED:", JSON.stringify({ mode, ...diag }));
+        return NextResponse.json({
+          error: `אין גישה לתיקייה (${diag.tag})${diag.hint ? ` — ${diag.hint}` : ""}`,
+          diagnostic: { mode, ...diag },
+        }, { status: 400 });
       }
       collect(resp.json);
       let guard = 0;
@@ -92,26 +115,25 @@ export async function POST(req: NextRequest) {
         collect(resp.json);
       }
 
-      console.log(`[intake/scan] entries total=${entriesTotal} withMovablePath=${entriesWithPath}`);
+      console.log(`[intake/scan] mode=${mode} entries total=${entriesTotal} withMovablePath=${entriesWithPath}`);
       console.log("[intake/scan] sample paths:", entries.slice(0, 3).map((e) => e.path));
 
       if (entriesTotal === 0) {
         return NextResponse.json({ error: "התיקייה ריקה — לא נמצאו קבצים" }, { status: 400 });
       }
       if (entriesWithPath === 0) {
-        // Per request: surface a diagnostic with the entry shape, no workaround.
         console.log("[intake/scan] no entry path_lower/path_display — sample entry:", JSON.stringify(firstSample));
         return NextResponse.json({
-          error: "Dropbox החזיר קבצים אך ללא path_lower/path_display שניתן להזיז דרך ה-shared link הזה.",
-          diagnostic: { entriesTotal, sampleEntry: firstSample },
+          error: "Dropbox החזיר קבצים אך ללא path_lower/path_display שניתן להזיז. נסה להדביק את ה-home URL של התיקייה.",
+          diagnostic: { mode, entriesTotal, sampleEntry: firstSample },
         }, { status: 400 });
       }
 
-      // rootPath "" → each entry's path (relative to the shared root) is used as-is
-      // for Stems detection, e.g. "/stems/lead vocal.wav".
+      // path mode → rootPath is the account folder; shared_link → "" (entry paths
+      // are relative to the shared root). Used only for the Stems detection.
       const projectName = (body.projectName as string) || "PROJECT";
-      const items = buildIntake(entries, projectName, "");
-      return NextResponse.json({ ok: true, count: items.length, rootName, items });
+      const items = buildIntake(entries, projectName, mode === "path" ? rootPath : "");
+      return NextResponse.json({ ok: true, count: items.length, mode, items });
     }
 
     // ── MOVE: move each previewed file into the project delivery folder ────────
