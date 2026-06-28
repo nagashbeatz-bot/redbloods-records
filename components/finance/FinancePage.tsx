@@ -321,20 +321,30 @@ function SummaryCard({
 }
 
 // ── Monthly Donut ─────────────────────────────────────────────────────────────
-function MonthlyDonut({ income, expenses }: { income: number; expenses: number }) {
+function MonthlyDonut({ income, expenses, pending }: { income: number; expenses: number; pending: number }) {
   const total = income + expenses;
   const pct   = total > 0 ? income / total : 0.5;
   const net   = income - expenses;
 
-  const R = 52, CX = 65, stroke = 10;
+  const R = 64, CX = 80, stroke = 14;
   const circumference = 2 * Math.PI * R;
   const incomeArc = circumference * pct;
   const expArc    = circumference * (1 - pct);
 
+  const row = (label: string, val: number, col: string) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <span style={{ fontSize: 12.5, color: TEXT2, display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", background: col, display: "inline-block", flexShrink: 0 }} />
+        {label}
+      </span>
+      <span style={{ fontSize: 13.5, fontWeight: 800, color: col }}>₪{val.toLocaleString()}</span>
+    </div>
+  );
+
   return (
-    <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 20px" }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>סקירה חודשית</div>
-      <svg viewBox="0 0 130 130" width={130} style={{ display: "block", margin: "0 auto", direction: "ltr" }}>
+    <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "22px 20px" }}>
+      <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 18 }}>סקירה חודשית</div>
+      <svg viewBox="0 0 160 160" width={170} style={{ display: "block", margin: "0 auto", direction: "ltr" }}>
         <circle cx={CX} cy={CX} r={R} fill="none" stroke={BDR2} strokeWidth={stroke} />
         <circle cx={CX} cy={CX} r={R} fill="none" stroke={AMBER} strokeWidth={stroke}
           strokeDasharray={`${expArc} ${circumference}`}
@@ -348,25 +358,18 @@ function MonthlyDonut({ income, expenses }: { income: number; expenses: number }
           transform={`rotate(-90 ${CX} ${CX})`}
           strokeLinecap="round"
         />
-        <text x={CX} y={CX - 4} textAnchor="middle" fill={TEXT} fontSize={13} fontWeight={900}>
-          {net >= 0 ? "+" : ""}{Math.abs(net).toLocaleString()}₪
+        <text x={CX} y={CX - 3} textAnchor="middle" fill={net >= 0 ? GREEN : RED} fontSize={22} fontWeight={900}>
+          {net >= 0 ? "+" : "−"}{Math.abs(net).toLocaleString()}₪
         </text>
-        <text x={CX} y={CX + 14} textAnchor="middle" fill={MUTED} fontSize={9}>נטו</text>
+        <text x={CX} y={CX + 17} textAnchor="middle" fill={MUTED} fontSize={11}>נטו החודש</text>
       </svg>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: TEXT2, display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: GREEN, display: "inline-block", flexShrink: 0 }} />
-            הכנסות
-          </span>
-          <span style={{ fontSize: 12, fontWeight: 800, color: GREEN }}>₪{income.toLocaleString()}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: TEXT2, display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: AMBER, display: "inline-block", flexShrink: 0 }} />
-            הוצאות
-          </span>
-          <span style={{ fontSize: 12, fontWeight: 800, color: AMBER }}>₪{expenses.toLocaleString()}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 11, marginTop: 18, paddingTop: 16, borderTop: `1px solid ${BDR}` }}>
+        {row("הכנסות", income, GREEN)}
+        {row("הוצאות", expenses, AMBER)}
+        {row("ממתין / לא שולם", pending, BLUE)}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, paddingTop: 11, borderTop: `1px solid ${BDR}` }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>נטו</span>
+          <span style={{ fontSize: 16, fontWeight: 900, color: net >= 0 ? GREEN : RED }}>₪{net.toLocaleString()}</span>
         </div>
       </div>
     </div>
@@ -937,7 +940,7 @@ export default function FinancePage() {
   const unpaidCount  = periodTx.filter((t) => t.payment_status === "לא שולם").length;
 
   // ── Source grouping (הופעות / פרויקטים / כללי) ─────────────────────────────
-  const GRID_COLS = "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px";
+  const GRID_COLS = "76px 2.2fr 1.4fr 96px 128px 104px 28px";
   const isProjectTx = (t: Transaction) => !isShowTx(t) && (!!t.project_id || (t.scope ?? "project") === "project");
   const showsTxs    = filtered.filter(isShowTx);
   const projectTxs  = filtered.filter(isProjectTx);
@@ -956,7 +959,6 @@ export default function FinancePage() {
   function renderTxRow(tx: Transaction, i: number) {
     const proj     = projects.find((p) => p.id === tx.project_id);
     const isIncome = tx.type === "income";
-    const isGen    = (tx.scope ?? "project") === "general";
     const undated  = !tx.date;
     const expanded = expandedIds.has(tx.id);
     return (
@@ -966,7 +968,7 @@ export default function FinancePage() {
           onClick={() => toggleExpand(tx.id)}
           style={{
             display: "grid", gridTemplateColumns: GRID_COLS,
-            gap: 14, padding: "20px 18px", alignItems: "center",
+            gap: 12, padding: "13px 16px", alignItems: "center",
             borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.06)`,
             background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)",
             cursor: "pointer",
@@ -974,52 +976,50 @@ export default function FinancePage() {
           onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
           onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2; }}
         >
-          <div style={{ fontSize: 12, color: undated ? AMBER : TEXT2 }}>
-            {undated ? "ללא תאריך" : fmtDate(tx.date)}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {/* סוג: income/expense ONLY */}
+          <div>
             <span style={{
-              fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-              background: isIncome ? `${GREEN}12` : `${AMBER}12`,
-              color: isIncome ? GREEN : AMBER,
-              border: `1px solid ${isIncome ? `${GREEN}25` : `${AMBER}25`}`,
-              display: "inline-block", width: "fit-content",
+              fontSize: 10, fontWeight: 800, borderRadius: 6, padding: "3px 8px",
+              background: isIncome ? `${GREEN}16` : `${RED}14`,
+              color: isIncome ? GREEN : RED,
+              border: `1px solid ${isIncome ? `${GREEN}30` : `${RED}2E`}`,
+              display: "inline-block", whiteSpace: "nowrap",
             }}>
               {isIncome ? "הכנסה" : "הוצאה"}
             </span>
-            {isGen && (
-              <span style={{
-                fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                background: `${PURPLE}12`, color: PURPLE,
-                border: `1px solid ${PURPLE}25`,
-                display: "inline-block", width: "fit-content",
-              }}>
-                כללי
-              </span>
-            )}
-            {isShowTx(tx) && (
-              <span style={{
-                fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                background: `${BRAND}14`, color: BRAND,
-                border: `1px solid ${BRAND}30`,
-                display: "inline-block", width: "fit-content",
-              }}>
-                הופעה
-              </span>
-            )}
           </div>
-          <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {isGen
-              ? <span style={{ color: PURPLE }}>🏢 כללי</span>
-              : (proj?.name ?? "—")}
+          {/* מה זה? — description + date subline */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {tx.description || tx.category || "—"}
+            </div>
+            <div style={{ fontSize: 10.5, color: undated ? AMBER : MUTED, marginTop: 2 }}>
+              {undated ? "ללא תאריך" : fmtDate(tx.date)}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {/* מי קשור? */}
+          <div style={{ fontSize: 12.5, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {tx.artist || proj?.artist || "—"}
           </div>
-          <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {tx.description || tx.category || "—"}
+          {/* מקור — single badge */}
+          <div>
+            {(() => {
+              const src = isShowTx(tx) ? { label: "הופעה", icon: "🎤", col: BRAND }
+                : isProjectTx(tx)     ? { label: "פרויקט", icon: "📁", col: BLUE }
+                : { label: "כללי", icon: "🏢", col: PURPLE };
+              return (
+                <span title={proj?.name ?? undefined} style={{
+                  fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
+                  background: `${src.col}14`, color: src.col, border: `1px solid ${src.col}2E`,
+                  display: "inline-block", whiteSpace: "nowrap",
+                }}>
+                  {src.icon} {src.label}
+                </span>
+              );
+            })()}
           </div>
-          <div style={{ fontSize: 15.5, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER, letterSpacing: "-0.02em" }}>
+          {/* סכום — green in / red out */}
+          <div style={{ fontSize: 15.5, fontWeight: 800, color: isIncome ? GREEN : RED, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>
             {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
           </div>
           <div>
@@ -1099,13 +1099,12 @@ export default function FinancePage() {
     return (
       <div style={{
         display: "grid", gridTemplateColumns: GRID_COLS,
-        gap: 14, padding: "11px 18px",
+        gap: 12, padding: "9px 16px",
         background: CARD2, borderBottom: `1px solid ${BDR}`,
         fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
       }}>
-        <div>תאריך</div><div>סוג</div><div>פרויקט / מקור</div>
-        <div>אמן / ספק</div><div>תיאור / קטגוריה</div>
-        <div>סכום</div><div>סטטוס</div><div />
+        <div>סוג</div><div>מה זה?</div><div>מי קשור?</div>
+        <div>מקור</div><div>סכום</div><div>סטטוס</div><div />
       </div>
     );
   }
@@ -1184,27 +1183,28 @@ export default function FinancePage() {
         const sc       = STATUS_COLOR[statusTx?.payment_status ?? ""] ?? MUTED;
         const subParts = [incomeTx?.date ? fmtDate(incomeTx.date) : null, incomeTx?.artist || null].filter(Boolean);
         blocks.push(
-          <div key={`card-${k}`} style={{ padding: "14px 18px 6px" }}>
+          <div key={`card-${k}`} style={{ padding: "12px 16px 4px" }}>
             <div style={{
-              border: `1px solid ${BRAND}33`, borderRadius: 14, padding: "14px 16px",
+              border: `1px solid ${BRAND}33`, borderRadius: 14, padding: "12px 14px",
               background: `linear-gradient(160deg, ${BRAND}12, ${BRAND}06)`,
+              display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
             }}>
               {/* title + thumbnail */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 13 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 200, flex: "1 1 200px" }}>
                 <div style={{
-                  width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
                   background: `${BRAND}1A`, border: `1px solid ${BRAND}33`,
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
                 }}>🎤</div>
-                <div style={{ marginInlineEnd: "auto", minWidth: 0 }}>
-                  <div style={{ fontSize: 16.5, fontWeight: 800, color: TEXT, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 15.5, fontWeight: 800, color: TEXT, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
                   {subParts.length > 0 && (
-                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{subParts.join(" · ")}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{subParts.join(" · ")}</div>
                   )}
                 </div>
               </div>
-              {/* 5 mini cards: income / dj / artist / label profit / status */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+              {/* compact stat chips: income / dj / artist / label profit / status */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {([
                   ["הכנסה", fmtAmount(income), GREEN],
                   ["דיג׳יי", fmtAmount(dj), AMBER],
@@ -1213,11 +1213,11 @@ export default function FinancePage() {
                   ["סטטוס", statusTx?.payment_status ?? "—", sc],
                 ] as const).map(([label, val, col]) => (
                   <div key={label} style={{
-                    background: CARD, border: `1px solid ${BDR2}`, borderRadius: 10,
-                    padding: "9px 6px", textAlign: "center",
+                    width: 92, background: CARD, border: `1px solid ${BDR2}`, borderRadius: 9,
+                    padding: "7px 6px", textAlign: "center",
                   }}>
-                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: col, letterSpacing: "-0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
+                    <div style={{ fontSize: 9.5, color: MUTED, marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: col, letterSpacing: "-0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
                   </div>
                 ))}
               </div>
@@ -1421,8 +1421,8 @@ export default function FinancePage() {
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
 
         {/* Left: monthly summary */}
-        <div style={{ flexShrink: 0, width: 300 }}>
-          <MonthlyDonut income={stats.incomeReceived} expenses={expensesPaid} />
+        <div style={{ flexShrink: 0, width: 330 }}>
+          <MonthlyDonut income={stats.incomeReceived} expenses={expensesPaid} pending={stats.incomeExpected} />
 
           {/* Needs attention */}
           {hasAttention && (
@@ -1606,7 +1606,6 @@ export default function FinancePage() {
                 const { tx, rowIndex: i } = item;
                 const proj     = projects.find((p) => p.id === tx.project_id);
                 const isIncome = tx.type === "income";
-                const isGen    = (tx.scope ?? "project") === "general";
                 const undated  = !tx.date;
                 const expanded = expandedIds.has(tx.id);
 
@@ -1628,41 +1627,30 @@ export default function FinancePage() {
                       <div style={{ fontSize: 12, color: undated ? AMBER : TEXT2 }}>
                         {undated ? "ללא תאריך" : fmtDate(tx.date)}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <div>
                         <span style={{
-                          fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                          background: isIncome ? `${GREEN}12` : `${AMBER}12`,
-                          color: isIncome ? GREEN : AMBER,
-                          border: `1px solid ${isIncome ? `${GREEN}25` : `${AMBER}25`}`,
-                          display: "inline-block", width: "fit-content",
+                          fontSize: 10, fontWeight: 800, borderRadius: 6, padding: "3px 8px",
+                          background: isIncome ? `${GREEN}16` : `${RED}14`,
+                          color: isIncome ? GREEN : RED,
+                          border: `1px solid ${isIncome ? `${GREEN}30` : `${RED}2E`}`,
+                          display: "inline-block", whiteSpace: "nowrap",
                         }}>
                           {isIncome ? "הכנסה" : "הוצאה"}
                         </span>
-                        {isGen && (
-                          <span style={{
-                            fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                            background: `${PURPLE}12`, color: PURPLE,
-                            border: `1px solid ${PURPLE}25`,
-                            display: "inline-block", width: "fit-content",
-                          }}>
-                            כללי
-                          </span>
-                        )}
-                        {isShowTx(tx) && (
-                          <span style={{
-                            fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
-                            background: `${BRAND}14`, color: BRAND,
-                            border: `1px solid ${BRAND}30`,
-                            display: "inline-block", width: "fit-content",
-                          }}>
-                            הופעה
-                          </span>
-                        )}
                       </div>
-                      <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {isGen
-                          ? <span style={{ color: PURPLE }}>🏢 כללי</span>
-                          : (proj?.name ?? "—")}
+                      <div>
+                        {(() => {
+                          const src = isShowTx(tx) ? { label: "הופעה", icon: "🎤", col: BRAND }
+                            : (!!tx.project_id || (tx.scope ?? "project") === "project") ? { label: "פרויקט", icon: "📁", col: BLUE }
+                            : { label: "כללי", icon: "🏢", col: PURPLE };
+                          return (
+                            <span title={proj?.name ?? undefined} style={{
+                              fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
+                              background: `${src.col}14`, color: src.col, border: `1px solid ${src.col}2E`,
+                              display: "inline-block", whiteSpace: "nowrap",
+                            }}>{src.icon} {src.label}</span>
+                          );
+                        })()}
                       </div>
                       <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {tx.artist || proj?.artist || "—"}
@@ -1670,7 +1658,7 @@ export default function FinancePage() {
                       <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {tx.description || tx.category || "—"}
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: isIncome ? GREEN : RED, whiteSpace: "nowrap" }}>
                         {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
                       </div>
                       <div>
