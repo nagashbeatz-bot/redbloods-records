@@ -180,6 +180,19 @@ function fmtAmount(amount: number, currency = "₪"): string {
   return `${amount.toLocaleString("he-IL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}${currency}`;
 }
 
+/**
+ * User-facing notes: strips the internal "show_id:<uuid>" marker that the
+ * Shows→Finance sync stores in notes (an internal link, not a user note).
+ * Returns the remaining real note, or "" if the note was purely technical.
+ * Anything a user typed survives — only the technical token is removed.
+ */
+function userVisibleNotes(notes: string | null | undefined): string {
+  return (notes ?? "")
+    .replace(/show_id:\S+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function calcStats(txList: Transaction[]) {
   const income          = txList.filter((t) => t.type === "income");
   const expenses        = txList.filter((t) => t.type === "expense");
@@ -1266,13 +1279,13 @@ export default function FinancePage() {
                             {tx.category}
                           </div>
                         )}
-                        {tx.notes && (
+                        {userVisibleNotes(tx.notes) && (
                           <div style={{ fontSize: 11, color: TEXT2 }}>
                             <span style={{ color: MUTED, marginLeft: 4 }}>הערות:</span>
-                            {tx.notes}
+                            {userVisibleNotes(tx.notes)}
                           </div>
                         )}
-                        {!tx.payment_method && !tx.receipt_ref && !tx.category && !tx.notes && (
+                        {!tx.payment_method && !tx.receipt_ref && !tx.category && !userVisibleNotes(tx.notes) && (
                           <div style={{ fontSize: 11, color: MUTED }}>אין פרטים נוספים</div>
                         )}
                         <div style={{ display: "flex", gap: 8, marginRight: "auto" }}>
