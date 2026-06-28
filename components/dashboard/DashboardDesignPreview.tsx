@@ -321,14 +321,14 @@ function KpiPopover({ popover, onClose }: {
           {shown.map(item => (
             <div key={item.id} style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", gap: 12,
+              padding: "9px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", gap: 12,
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#F5F5F5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {item.primary}
                 </div>
                 {item.secondary && (
-                  <div style={{ fontSize: 10, color: "#666", marginTop: 2 }}>{item.secondary}</div>
+                  <div style={{ fontSize: 11, color: "#9A9AA8", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.secondary}</div>
                 )}
               </div>
               {item.value && (
@@ -571,7 +571,7 @@ export default function DashboardDesignPreview() {
   const [financeLoaded,  setFinanceLoaded]  = useState(false);
 
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
-  const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string | null; title?: string | null; date?: string | null; start_time?: string | null }[]>([]);
+  const [sessionsList,        setSessionsList]        = useState<{ id: string; project_id: string | null; title?: string | null; date?: string | null; start_time?: string | null; session_type?: string | null }[]>([]);
   const [showsList,           setShowsList]           = useState<{ id: string; name: string; artist?: string; date?: string | null }[]>([]);
   const [proposalsList,       setProposalsList]       = useState<{ id: string; title: string; client_name?: string; amount?: number; currency?: string; followup_date?: string | null }[]>([]);
   const [campaignsList,       setCampaignsList]       = useState<{ id: string; title: string; artist_name?: string }[]>([]);
@@ -691,8 +691,8 @@ export default function DashboardDesignPreview() {
         const planned = sessions.filter((s: { status?: string }) => s.status === "מתוכנן");
         updateStatCache({ upcomingSessions: planned.length });
         setUpcomingSessions(planned.length);
-        setSessionsList(planned.map((s: { id: string; project_id: string | null; title?: string | null; date?: string | null; start_time?: string | null }) => ({
-          id: s.id, project_id: s.project_id, title: s.title, date: s.date, start_time: s.start_time,
+        setSessionsList(planned.map((s: { id: string; project_id: string | null; title?: string | null; date?: string | null; start_time?: string | null; session_type?: string | null }) => ({
+          id: s.id, project_id: s.project_id, title: s.title, date: s.date, start_time: s.start_time, session_type: s.session_type,
         })));
       })
       .catch(() => {});
@@ -857,7 +857,8 @@ export default function DashboardDesignPreview() {
   ];
 
   // ── KPI hover previews: per-card breakdown of what each number is based on ──
-  const projName  = (id: string) => projects.find(p => p.id === id)?.name ?? "—";
+  const projName   = (id: string) => projects.find(p => p.id === id)?.name ?? "—";
+  const projArtist = (id: string) => projects.find(p => p.id === id)?.artist ?? "";
   const shortDate = (d?: string | null) =>
     d ? new Date(d).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }) : "";
   const money = (amount?: number, currency?: string) =>
@@ -879,8 +880,13 @@ export default function DashboardDesignPreview() {
     "סשנים קרובים": {
       title: "🎙 סשנים מתוכננים — פירוט",
       items: sortByDate(sessionsList.map(s => ({
-        id: s.id, primary: s.project_id ? projName(s.project_id) : (s.title || "סשן"),
-        secondary: [shortDate(s.date), s.start_time ? s.start_time.slice(0, 5) : ""].filter(Boolean).join(" · ") || undefined,
+        id: s.id,
+        // Project session → "{artist} — {projectName}" (artist omitted if missing);
+        // independent session → its manual title.
+        primary: s.project_id
+          ? ([projArtist(s.project_id), projName(s.project_id)].filter(Boolean).join(" — ") || "סשן")
+          : (s.title || "סשן"),
+        secondary: [s.session_type, shortDate(s.date), s.start_time ? s.start_time.slice(0, 5) : ""].filter(Boolean).join(" · ") || undefined,
         sortDate: s.date,
       }))),
     },
