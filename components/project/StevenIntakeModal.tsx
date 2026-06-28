@@ -29,6 +29,7 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
   const [url,    setUrl]    = useState("");
   const [items,  setItems]  = useState<IntakeItem[]>([]);
   const [error,  setError]  = useState<string | null>(null);
+  const [diag,   setDiag]   = useState<unknown>(null);
   const [result, setResult] = useState<{ moved: number; total: number; results: { name: string; ok: boolean; error?: string }[] } | null>(null);
 
   useEffect(() => {
@@ -39,14 +40,14 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
 
   async function scan() {
     if (!url.trim()) { setError("הדבק לינק לתיקיית Dropbox של Steven"); return; }
-    setStep("scanning"); setError(null);
+    setStep("scanning"); setError(null); setDiag(null);
     try {
       const res = await fetch("/api/dropbox/intake", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "scan", url: url.trim(), projectName }),
       });
       const d = await res.json();
-      if (!res.ok) { setError(d.error ?? "שגיאת סריקה"); setStep("input"); return; }
+      if (!res.ok) { setError(d.error ?? "שגיאת סריקה"); setDiag(d.diagnostic ?? null); setStep("input"); return; }
       setItems(d.items ?? []); setStep("preview");
     } catch { setError("שגיאת רשת"); setStep("input"); }
   }
@@ -114,6 +115,13 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
               נסרקת רק התיקייה הזו. אפשר גם להדביק את ה-<span style={{ color: "#999" }}>home URL</span> של התיקייה (dropbox.com/home/...) — מומלץ לתיקייה שאתה יצרת ושיתפת. ברירת המחדל: <b style={{ color: "#999" }}>העברה</b> לתיקיית הפרויקט.
             </div>
             {error && <div style={{ fontSize: 12, color: "#EF4444", marginTop: 12 }}>{error}</div>}
+            {diag != null && (
+              <pre style={{
+                marginTop: 10, maxHeight: 200, overflow: "auto", background: "#0D0D0D", border: "1px solid #242424",
+                borderRadius: 8, padding: "10px 12px", fontSize: 10.5, color: "#9A9AA8", direction: "ltr",
+                whiteSpace: "pre-wrap", wordBreak: "break-word",
+              }}>{JSON.stringify(diag, null, 2)}</pre>
+            )}
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
               <button onClick={onClose} style={btnGhost}>ביטול</button>
               <button onClick={scan} style={{ ...btnPrimary, marginInlineStart: "auto" }}>↓ סרוק תיקייה</button>

@@ -4,45 +4,56 @@ import { getDropboxToken } from "@/lib/dropbox-token";
 import { addFileToProject } from "@/lib/projects-store";
 import { buildIntake, type IntakeEntry, type IntakeItem } from "@/lib/file-intake";
 
-// ── Dropbox helpers ───────────────────────────────────────────────────────────
-async function dbx(token: string, endpoint: string, body: unknown) {
+// ── Dropbox call helper — captures status + raw body, supports a path-root header.
+async function dbx(token: string, endpoint: string, body: unknown, pathRoot?: string) {
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  if (pathRoot) headers["Dropbox-API-Path-Root"] = pathRoot;
   const res = await fetch(`https://api.dropboxapi.com/2/${endpoint}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    method: "POST", headers, body: JSON.stringify(body),
   });
-  const json = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, json };
+  const raw  = await res.text();
+  let json: unknown = {};
+  try { json = raw ? JSON.parse(raw) : {}; } catch { /* keep raw */ }
+  return { ok: res.ok, status: res.status, json, raw };
 }
 
-/** Build a readable diagnostic from a Dropbox error response (no token/secrets). */
-function dbxError(endpoint: string, status: number, json: unknown) {
-  const j = (json ?? {}) as { error_summary?: string; error?: Record<string, unknown> };
+/** Extract a best-effort Dropbox error tag from the parsed body. */
+function dbxTag(json: unknown): string {
+  const j = (json ?? {}) as { error?: Record<string, unknown> };
   const err = (j.error ?? {}) as Record<string, unknown>;
   const sub = (k: string) => (err[k] as Record<string, unknown> | undefined)?.[".tag"] as string | undefined;
-  const tag = (err[".tag"] as string | undefined) ?? sub("shared_link") ?? sub("path") ?? sub("reason") ?? "unknown";
-  let hint = "";
-  if (status === 401)                            hint = "אימות נכשל — ייתכן שצריך re-auth ל-Dropbox (/setup/dropbox).";
-  else if (/missing_scope|no_permission/.test(tag)) hint = "חסר scope ל-Dropbox app (sharing.read / files.metadata.read) — הוסף ב-App Console ואז re-auth.";
-  else if (/shared_link_access_denied/.test(tag)) hint = "ה-shared link מוגבל (לא 'כל מי שיש לו הלינק'), או חסר scope sharing.read.";
-  else if (/shared_link_not_found|invalid/.test(tag)) hint = "הלינק לא נמצא/לא תקין — העתק מחדש, או הדבק את ה-home URL של התיקייה.";
-  else if (/not_found/.test(tag))                 hint = "הנתיב לא נמצא בחשבון — בדוק את ה-home URL / שם התיקייה.";
-  return { endpoint, status, tag, summary: j.error_summary ?? "", hint };
+  return (err[".tag"] as string | undefined) ?? sub("shared_link") ?? sub("path") ?? sub("reason") ?? sub("path_lookup") ?? "unknown";
 }
 
-function sanitize(s: string): string {
-  return s.replace(/[\\:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
+/** Current account root info → lets us set Dropbox-API-Path-Root for team spaces. */
+async function getRootInfo(token: string): Promise<{ tag: string; root?: string; home?: string } | null> {
+  try {
+    const r = await dbx(token, "users/get_current_account", null);
+    if (!r.ok) return null;
+    const ri = (r.json as { root_info?: { [".tag"]?: string; root_namespace_id?: string; home_namespace_id?: string } }).root_info;
+    if (!ri) return null;
+    return { tag: ri[".tag"] ?? "user", root: ri.root_namespace_id, home: ri.home_namespace_id };
+  } catch { return null; }
 }
-function formatArtist(artist: string): string {
-  const names = (artist || "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
-  if (names.length === 0) return "Unknown";
-  if (names.length <= 2) return names.join(", ");
-  return `${names[0]} + Others`;
+
+// ── Path helpers ──────────────────────────────────────────────────────────────
+function normPath(s: string): string {
+  return ("/" + s.replace(/^\/+/, "").replace(/\/+$/, "")).replace(/\/{2,}/g, "/");
 }
-/** Official project delivery folder (same convention as /api/delivery). */
-function deliveryPath(artist: string, projectName: string): string {
-  return `/${sanitize(formatArtist(artist || "Unknown"))} - ${sanitize(projectName)}/05_Delivery`;
+/** Candidate account paths to try for a home URL: full, double-decoded, and
+ *  each of those without its first segment (in case it's a root/workspace name). */
+function homeCandidates(decoded: string): string[] {
+  const set = new Set<string>();
+  const a = normPath(decoded); set.add(a);
+  try { const d = decodeURIComponent(decoded); if (d !== decoded) set.add(normPath(d)); } catch { /* ignore */ }
+  for (const p of [...set]) {
+    const seg = p.replace(/^\//, "").split("/");
+    if (seg.length > 1) set.add(normPath(seg.slice(1).join("/")));
+  }
+  return [...set].filter((p) => p && p !== "/");
 }
+
+const SCOPE_HINT = "נדרשים scopes: files.metadata.read · files.content.write · sharing.read. אם השגיאה היא missing_scope / no_permission / 401 → צריך re-auth ב-/setup/dropbox.";
 
 // ── POST /api/dropbox/intake ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
@@ -51,39 +62,64 @@ export async function POST(req: NextRequest) {
     const action = body.action as "scan" | "move";
     const token = await getDropboxToken();
 
-    // ── SCAN: list the folder → categorize. Two modes:
-    //   • home URL (dropbox.com/home/<path>) → list by ACCOUNT path (preferred;
-    //     entries get account-absolute paths, ideal for move).
-    //   • shared link (/scl/fo/…) → list via shared_link.
-    // Each file's own path_lower/path_display is kept so MOVE uses the entry path.
+    // Account root (for team-space path-root). Non-fatal if unavailable.
+    const rootInfo = await getRootInfo(token);
+    const pathRoot = rootInfo?.tag === "team" && rootInfo.root
+      ? JSON.stringify({ ".tag": "root", root: rootInfo.root })
+      : undefined;
+
+    // ── SCAN ──────────────────────────────────────────────────────────────────
     if (action === "scan") {
       const url = (body.url as string ?? "").trim();
       if (!url) return NextResponse.json({ error: "חסר לינק לתיקייה" }, { status: 400 });
 
-      // ── Determine mode + list args ──
       const homeMatch = url.match(/dropbox\.com\/home(\/[^?#]*)/i);
       const isHome = !!homeMatch;
-      let mode: "path" | "shared_link";
-      let rootPath = "";
-      let listArgs: Record<string, unknown>;
+      const decodedHome = isHome ? decodeURIComponent(homeMatch![1]) : null;
+      console.log("[intake/scan] url-type:", isHome ? "home" : "shared", "rootInfo:", JSON.stringify(rootInfo), "pathRoot?", !!pathRoot);
+      if (isHome) console.log("[intake/scan] decoded home path:", decodedHome);
+
+      type Attempt = { label: string; status: number; ok: boolean; tag?: string; raw?: string };
+      const attempts: Attempt[] = [];
+      let success: { json: unknown } | null = null;
+      let usedPathRoot: string | undefined;
+      let usedRootPath = "";
+      let mode: "path" | "shared_link" = isHome ? "path" : "shared_link";
+
+      const tryCall = async (args: Record<string, unknown>, pr: string | undefined, label: string) => {
+        const r = await dbx(token, "files/list_folder", args, pr);
+        attempts.push({ label, status: r.status, ok: r.ok, tag: r.ok ? undefined : dbxTag(r.json), raw: r.ok ? undefined : r.raw.slice(0, 2000) });
+        console.log(`[intake/scan] attempt "${label}" → ${r.status} ${r.ok ? "OK" : dbxTag(r.json)}`);
+        if (!r.ok) console.log(`[intake/scan]   raw: ${r.raw.slice(0, 600)}`);
+        return r;
+      };
+
       if (isHome) {
-        rootPath = decodeURIComponent(homeMatch![1]).replace(/\/+$/, "");
-        if (!rootPath || rootPath === "/") {
-          return NextResponse.json({ error: "לא ניתן לחלץ נתיב מה-home URL" }, { status: 400 });
+        const cands = homeCandidates(decodedHome!);
+        // Try team-root first (if any), then default namespace; each × candidates.
+        const roots: (string | undefined)[] = pathRoot ? [pathRoot, undefined] : [undefined];
+        outer: for (const pr of roots) {
+          for (const p of cands) {
+            const r = await tryCall({ path: p, recursive: true, include_media_info: false, include_deleted: false }, pr, `path=${p} root=${pr ? "team" : "default"}`);
+            if (r.ok) { success = r; usedPathRoot = pr; usedRootPath = p; break outer; }
+          }
         }
-        mode = "path";
-        listArgs = { path: rootPath, recursive: true, include_media_info: false, include_deleted: false };
-        console.log("[intake/scan] mode=path (home URL) path:", rootPath);
       } else {
-        mode = "shared_link";
-        listArgs = {
-          path: "", recursive: true,
-          include_media_info: false, include_deleted: false, include_has_explicit_shared_members: false,
-          shared_link: { url },
-        };
-        console.log("[intake/scan] mode=shared_link");
+        const roots: (string | undefined)[] = pathRoot ? [undefined, pathRoot] : [undefined];
+        for (const pr of roots) {
+          const r = await tryCall({ path: "", recursive: true, include_media_info: false, include_deleted: false, include_has_explicit_shared_members: false, shared_link: { url } }, pr, `shared_link root=${pr ? "team" : "default"}`);
+          if (r.ok) { success = r; usedPathRoot = pr; break; }
+        }
       }
 
+      if (!success) {
+        return NextResponse.json({
+          error: "אין גישה לתיקייה — ראה פרטי אבחון.",
+          diagnostic: { mode, pastedUrl: url, decodedHomePath: decodedHome, rootInfo, attempts, scopesHint: SCOPE_HINT },
+        }, { status: 400 });
+      }
+
+      // Page through, categorize.
       const entries: IntakeEntry[] = [];
       let entriesTotal = 0, entriesWithPath = 0;
       let firstSample: unknown = null;
@@ -96,47 +132,35 @@ export async function POST(req: NextRequest) {
           if (p) { entriesWithPath++; entries.push({ path: p, name: e.name, size: e.size }); }
         });
       };
-
-      let resp = await dbx(token, "files/list_folder", listArgs);
-      if (!resp.ok) {
-        const diag = dbxError("files/list_folder", resp.status, resp.json);
-        console.log("[intake/scan] list_folder FAILED:", JSON.stringify({ mode, ...diag }));
-        return NextResponse.json({
-          error: `אין גישה לתיקייה (${diag.tag})${diag.hint ? ` — ${diag.hint}` : ""}`,
-          diagnostic: { mode, ...diag },
-        }, { status: 400 });
-      }
-      collect(resp.json);
+      collect(success.json as Parameters<typeof collect>[0]);
+      let cont = success.json as { has_more?: boolean; cursor?: string };
       let guard = 0;
-      while ((resp.json as { has_more?: boolean }).has_more && guard < 50) {
+      while (cont.has_more && cont.cursor && guard < 50) {
         guard++;
-        resp = await dbx(token, "files/list_folder/continue", { cursor: (resp.json as { cursor: string }).cursor });
-        if (!resp.ok) break;
-        collect(resp.json);
+        const r = await dbx(token, "files/list_folder/continue", { cursor: cont.cursor }, usedPathRoot);
+        if (!r.ok) break;
+        collect(r.json as Parameters<typeof collect>[0]);
+        cont = r.json as { has_more?: boolean; cursor?: string };
       }
 
-      console.log(`[intake/scan] mode=${mode} entries total=${entriesTotal} withMovablePath=${entriesWithPath}`);
+      console.log(`[intake/scan] SUCCESS mode=${mode} rootPath="${usedRootPath}" total=${entriesTotal} withPath=${entriesWithPath}`);
       console.log("[intake/scan] sample paths:", entries.slice(0, 3).map((e) => e.path));
 
-      if (entriesTotal === 0) {
-        return NextResponse.json({ error: "התיקייה ריקה — לא נמצאו קבצים" }, { status: 400 });
-      }
+      if (entriesTotal === 0) return NextResponse.json({ error: "התיקייה ריקה — לא נמצאו קבצים" }, { status: 400 });
       if (entriesWithPath === 0) {
-        console.log("[intake/scan] no entry path_lower/path_display — sample entry:", JSON.stringify(firstSample));
         return NextResponse.json({
-          error: "Dropbox החזיר קבצים אך ללא path_lower/path_display שניתן להזיז. נסה להדביק את ה-home URL של התיקייה.",
-          diagnostic: { mode, entriesTotal, sampleEntry: firstSample },
+          error: "Dropbox החזיר קבצים אך ללא path להעברה.",
+          diagnostic: { mode, sampleEntry: firstSample },
         }, { status: 400 });
       }
 
-      // path mode → rootPath is the account folder; shared_link → "" (entry paths
-      // are relative to the shared root). Used only for the Stems detection.
       const projectName = (body.projectName as string) || "PROJECT";
-      const items = buildIntake(entries, projectName, mode === "path" ? rootPath : "");
-      return NextResponse.json({ ok: true, count: items.length, mode, items });
+      const items = buildIntake(entries, projectName, mode === "path" ? usedRootPath : "");
+      // Echo back which path-root the scan used → move reuses it.
+      return NextResponse.json({ ok: true, count: items.length, mode, usedTeamRoot: !!usedPathRoot, items });
     }
 
-    // ── MOVE: move each previewed file into the project delivery folder ────────
+    // ── MOVE ──────────────────────────────────────────────────────────────────
     if (action === "move") {
       const projectId = body.projectId as string;
       const items = (body.items as IntakeItem[]) ?? [];
@@ -148,28 +172,25 @@ export async function POST(req: NextRequest) {
       if (!proj) return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
       const target = deliveryPath((proj as { artist: string }).artist, (proj as { name: string }).name);
 
-      // Ensure destination folder exists (ignore conflict).
-      await dbx(token, "files/create_folder_v2", { path: target, autorename: false });
+      // Same path-root the account uses (team space → root namespace).
+      await dbx(token, "files/create_folder_v2", { path: target, autorename: false }, pathRoot);
 
       const results: { name: string; ok: boolean; error?: string }[] = [];
       let moved = 0;
       for (const it of items) {
         try {
           const to = `${target}/${it.targetName}`;
-          const mv = await dbx(token, "files/move_v2", { from_path: it.path, to_path: to, autorename: true });
+          const mv = await dbx(token, "files/move_v2", { from_path: it.path, to_path: to, autorename: true }, pathRoot);
           if (!mv.ok) {
-            results.push({ name: it.targetName, ok: false, error: (mv.json as { error_summary?: string }).error_summary ?? "move failed" });
+            results.push({ name: it.targetName, ok: false, error: dbxTag(mv.json) + (mv.raw ? ` — ${mv.raw.slice(0, 200)}` : "") });
             continue;
           }
           const md = (mv.json as { metadata?: { path_display?: string; name?: string } }).metadata;
           const finalPath = md?.path_display ?? to;
           const finalName = md?.name ?? it.targetName;
-          // Only record in the project AFTER a successful move.
           await addFileToProject(projectId, {
-            name:        finalName,
-            url:         `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`,
-            dropboxPath: finalPath,
-            category:    it.category,
+            name: finalName, url: `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`,
+            dropboxPath: finalPath, category: it.category,
           });
           moved++;
           results.push({ name: finalName, ok: true });
@@ -177,9 +198,7 @@ export async function POST(req: NextRequest) {
           results.push({ name: it.targetName, ok: false, error: e instanceof Error ? e.message : "שגיאה" });
         }
       }
-
-      const allOk = moved === items.length;
-      return NextResponse.json({ ok: allOk, moved, total: items.length, results });
+      return NextResponse.json({ ok: moved === items.length, moved, total: items.length, results });
     }
 
     return NextResponse.json({ error: "פעולה לא מוכרת" }, { status: 400 });
@@ -188,4 +207,18 @@ export async function POST(req: NextRequest) {
     console.error("[dropbox/intake]", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+}
+
+// ── delivery path (same convention as /api/delivery) ──────────────────────────
+function sanitize(s: string): string {
+  return s.replace(/[\\:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+function formatArtist(artist: string): string {
+  const names = (artist || "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
+  if (names.length === 0) return "Unknown";
+  if (names.length <= 2) return names.join(", ");
+  return `${names[0]} + Others`;
+}
+function deliveryPath(artist: string, projectName: string): string {
+  return `/${sanitize(formatArtist(artist || "Unknown"))} - ${sanitize(projectName)}/05_Delivery`;
 }
