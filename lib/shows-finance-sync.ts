@@ -1,7 +1,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
-import { getEffectiveArtistFee } from "@/lib/shows-types";
+import { computeShowSplit } from "@/lib/shows-types";
 
 // Confirmed bookings only — leads (ליד חדש / ממתין לתשובה / צריך פולואפ) are
 // pipeline and must NOT create Finance transactions.
@@ -164,10 +164,10 @@ export async function syncShowFinance(show: Show): Promise<void> {
     }
 
     // ── Artist expense ──
-    // Use the effective artist fee: explicit artist_fee, or the legacy 50/50
-    // fallback ((price-dj)/2) when artist_fee is unset (0/null). So existing
-    // shows keep modelling the artist's cut with no manual backfill.
-    const effectiveArtistFee = getEffectiveArtistFee(show);
+    // Artist always takes half of the net after the dj (computeShowSplit). When
+    // the dj fee changes, this re-splits the rest automatically so income stays
+    // gross, the dj expense follows dj_fee, and the artist cut tracks (price-dj)/2.
+    const effectiveArtistFee = computeShowSplit(show).artistFee;
     const hasArtistFee     = effectiveArtistFee > 0;
     const artistStatus     = (isCancelled || !hasArtistFee) ? "בוטל" : (isPaid ? "שולם" : "לא שולם");
     const shouldHaveArtist = !isCancelled && isConfirmed && hasArtistFee;

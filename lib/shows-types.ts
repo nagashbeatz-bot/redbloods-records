@@ -38,22 +38,27 @@ export interface Show {
 }
 
 /**
- * Effective artist fee, bridging the legacy 50/50 model to the explicit
- * `artist_fee` field introduced in Phase B.
+ * Canonical show distribution — the SINGLE source of truth shared by the Shows
+ * UI and the Finance sync, so both always agree (one helper, one calc).
  *
- *  • artist_fee > 0            → explicit override, use as-is.
- *  • artist_fee 0/null/undefined → "not set": fall back to the old model where
- *    the artist took half of what remained after the dj — max(0, (price-dj)/2).
- *  • price - dj <= 0           → nothing to distribute, fee is 0.
+ *   grossAmount = show_price
+ *   djFee       = dj_fee
+ *   netAfterDj  = max(0, gross - dj)
+ *   artistFee   = netAfterDj / 2     (artist always takes half of the net)
+ *   labelProfit = netAfterDj / 2
  *
- * So existing shows (artist_fee = 0) keep their original 50/50 behaviour with
- * no manual backfill, while any explicit artist_fee replaces the split.
- * NOTE: until a separate "artist truly gets 0" flag exists, 0 means "not set".
+ * The split is ALWAYS 50/50 of whatever remains after the dj. The legacy
+ * explicit `artist_fee` field is intentionally NOT consulted, so changing the
+ * dj fee always re-splits the rest automatically. `artist_fee` is now vestigial
+ * (still stored, but ignored by every calc).
  */
-export function getEffectiveArtistFee(
-  s: Pick<Show, "artist_fee" | "show_price" | "dj_fee">,
-): number {
-  if ((s.artist_fee ?? 0) > 0) return s.artist_fee;
-  const distributable = (s.show_price ?? 0) - (s.dj_fee ?? 0);
-  return distributable > 0 ? distributable / 2 : 0;
+export function computeShowSplit(
+  s: Pick<Show, "show_price" | "dj_fee">,
+): { grossAmount: number; djFee: number; netAfterDj: number; artistFee: number; labelProfit: number } {
+  const grossAmount = s.show_price ?? 0;
+  const djFee       = s.dj_fee ?? 0;
+  const netAfterDj  = Math.max(0, grossAmount - djFee);
+  const artistFee   = netAfterDj / 2;
+  const labelProfit = netAfterDj - artistFee; // == netAfterDj/2, avoids fp drift
+  return { grossAmount, djFee, netAfterDj, artistFee, labelProfit };
 }
