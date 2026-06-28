@@ -509,6 +509,9 @@ function TxModal({
   const statusList   = isIncome ? INCOME_STATUSES : EXPENSE_STATUSES;
   const isOther      = draft.category === "אחר";
   const canSave      = !saving && !!draft.amount && (isGeneral || !!draft.projectId) && (!isOther || !!draft.description);
+  // In-modal delete confirmation (no window.confirm); resets when the modal
+  // unmounts on close.
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
@@ -701,13 +704,37 @@ function TxModal({
             </button>
           </div>
 
-          {/* Delete — edit mode only */}
+          {/* Delete — edit mode only, with an in-modal confirm step */}
           {isEdit && onDelete && (
-            <button type="button" onClick={onDelete} disabled={saving} style={{
-              padding: "10px", borderRadius: 10, border: `1px solid ${RED}30`,
-              background: `${RED}0A`, color: RED, cursor: saving ? "not-allowed" : "pointer",
-              fontSize: 13, fontWeight: 600, fontFamily: "inherit", marginTop: 2,
-            }}>× מחק תנועה</button>
+            confirmDelete ? (
+              <div style={{
+                marginTop: 2, padding: "13px 14px", borderRadius: 12,
+                border: `1px solid ${RED}33`, background: `${RED}0F`,
+              }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT }}>למחוק את התנועה הזו?</div>
+                <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, lineHeight: 1.5 }}>
+                  הפעולה תמחק את התנועה מהכספים ולא ניתן לשחזר אותה.
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button type="button" onClick={() => setConfirmDelete(false)} style={{
+                    flex: 1, padding: "9px", borderRadius: 9, border: `1px solid ${BDR2}`,
+                    background: "transparent", color: TEXT2, cursor: "pointer",
+                    fontSize: 12.5, fontFamily: "inherit",
+                  }}>ביטול</button>
+                  <button type="button" onClick={onDelete} disabled={saving} style={{
+                    flex: 1, padding: "9px", borderRadius: 9, border: "none",
+                    background: RED, color: "#fff", cursor: saving ? "not-allowed" : "pointer",
+                    fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
+                  }}>כן, מחק תנועה</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setConfirmDelete(true)} disabled={saving} style={{
+                padding: "10px", borderRadius: 10, border: `1px solid ${RED}30`,
+                background: `${RED}0A`, color: RED, cursor: saving ? "not-allowed" : "pointer",
+                fontSize: 13, fontWeight: 600, fontFamily: "inherit", marginTop: 2,
+              }}>× מחק תנועה</button>
+            )
           )}
         </div>
       </div>
@@ -895,10 +922,10 @@ export default function FinancePage() {
     setDraft((prev) => ({ ...prev, paymentStatus: status }));
   }
 
-  // Delete from inside the edit modal (with confirm), using the existing handler.
+  // Delete from inside the edit modal — confirmation is an in-modal UI (no
+  // window.confirm); this just performs the existing delete.
   async function handleDeleteFromModal() {
     if (!editingId) return;
-    if (!window.confirm("למחוק את התנועה? פעולה זו אינה הפיכה.")) return;
     const id = editingId;
     setModalOpen(false);
     setEditingId(null);
