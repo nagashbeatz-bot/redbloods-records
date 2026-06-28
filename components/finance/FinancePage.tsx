@@ -940,7 +940,7 @@ export default function FinancePage() {
   const unpaidCount  = periodTx.filter((t) => t.payment_status === "לא שולם").length;
 
   // ── Source grouping (הופעות / פרויקטים / כללי) ─────────────────────────────
-  const GRID_COLS = "76px 2.2fr 1.4fr 96px 128px 104px 28px";
+  const GRID_COLS = "72px 1.9fr 1.6fr 1.3fr 120px 100px 28px";
   const isProjectTx = (t: Transaction) => !isShowTx(t) && (!!t.project_id || (t.scope ?? "project") === "project");
   const showsTxs    = filtered.filter(isShowTx);
   const projectTxs  = filtered.filter(isProjectTx);
@@ -956,11 +956,18 @@ export default function FinancePage() {
 
   // Single transaction row — extracted so it can render inside any group or the
   // flat month-grouped table. Behaviour (quick status, expand, edit) unchanged.
-  function renderTxRow(tx: Transaction, i: number) {
+  function renderTxRow(tx: Transaction, i: number, affiliation?: { label: string; icon: string; col: string }) {
     const proj     = projects.find((p) => p.id === tx.project_id);
     const isIncome = tx.type === "income";
     const undated  = !tx.date;
     const expanded = expandedIds.has(tx.id);
+    // שיוך — business source. Project rows MUST show the project name; show rows
+    // get their name via the override; everything else is "כללי".
+    const aff = affiliation ?? (
+      isShowTx(tx)      ? { label: "הופעה", icon: "🎤", col: BRAND }
+      : isProjectTx(tx) ? { label: proj?.name || "פרויקט", icon: "📁", col: BLUE }
+      : { label: "כללי", icon: "🏢", col: PURPLE }
+    );
     return (
       <div key={tx.id}>
         {/* Main row */}
@@ -988,7 +995,7 @@ export default function FinancePage() {
               {isIncome ? "הכנסה" : "הוצאה"}
             </span>
           </div>
-          {/* מה זה? — description + date subline */}
+          {/* תנועה — description / title, with date subline */}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {tx.description || tx.category || "—"}
@@ -997,26 +1004,21 @@ export default function FinancePage() {
               {undated ? "ללא תאריך" : fmtDate(tx.date)}
             </div>
           </div>
-          {/* מי קשור? */}
+          {/* שיוך — business source (project name / show / כללי) */}
+          <div style={{ minWidth: 0 }}>
+            <span title={aff.label} style={{
+              display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
+              fontSize: 11.5, fontWeight: 700, color: aff.col,
+              background: `${aff.col}12`, border: `1px solid ${aff.col}2A`,
+              borderRadius: 6, padding: "3px 9px",
+            }}>
+              <span style={{ flexShrink: 0 }}>{aff.icon}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{aff.label}</span>
+            </span>
+          </div>
+          {/* אמן / ספק */}
           <div style={{ fontSize: 12.5, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {tx.artist || proj?.artist || "—"}
-          </div>
-          {/* מקור — single badge */}
-          <div>
-            {(() => {
-              const src = isShowTx(tx) ? { label: "הופעה", icon: "🎤", col: BRAND }
-                : isProjectTx(tx)     ? { label: "פרויקט", icon: "📁", col: BLUE }
-                : { label: "כללי", icon: "🏢", col: PURPLE };
-              return (
-                <span title={proj?.name ?? undefined} style={{
-                  fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
-                  background: `${src.col}14`, color: src.col, border: `1px solid ${src.col}2E`,
-                  display: "inline-block", whiteSpace: "nowrap",
-                }}>
-                  {src.icon} {src.label}
-                </span>
-              );
-            })()}
           </div>
           {/* סכום — green in / red out */}
           <div style={{ fontSize: 15.5, fontWeight: 800, color: isIncome ? GREEN : RED, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>
@@ -1103,8 +1105,8 @@ export default function FinancePage() {
         background: CARD2, borderBottom: `1px solid ${BDR}`,
         fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
       }}>
-        <div>סוג</div><div>מה זה?</div><div>מי קשור?</div>
-        <div>מקור</div><div>סכום</div><div>סטטוס</div><div />
+        <div>סוג</div><div>תנועה</div><div>שיוך</div>
+        <div>אמן / ספק</div><div>סכום</div><div>סטטוס</div><div />
       </div>
     );
   }
@@ -1170,6 +1172,7 @@ export default function FinancePage() {
     let ri = 0;
     const blocks: React.ReactNode[] = [];
     byShow.forEach((group, k) => {
+      let groupAff: { label: string; icon: string; col: string } | undefined;
       if (k !== "_none") {
         const incomeTx = group.find((t) => t.type === "income");
         const income   = group.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
@@ -1179,6 +1182,7 @@ export default function FinancePage() {
         const title    = incomeTx
           ? incomeTx.description.replace(/^הכנסה מהופעה\s*[—–-]\s*/, "")
           : (group[0]?.description ?? "הופעה");
+        groupAff = { label: title || "הופעה", icon: "🎤", col: BRAND };
         const statusTx = incomeTx ?? group[0];
         const sc       = STATUS_COLOR[statusTx?.payment_status ?? ""] ?? MUTED;
         const subParts = [incomeTx?.date ? fmtDate(incomeTx.date) : null, incomeTx?.artist || null].filter(Boolean);
@@ -1225,7 +1229,7 @@ export default function FinancePage() {
           </div>
         );
       }
-      group.forEach((tx) => blocks.push(renderTxRow(tx, ri++)));
+      group.forEach((tx) => blocks.push(renderTxRow(tx, ri++, groupAff)));
     });
     return blocks;
   }
@@ -1585,8 +1589,8 @@ export default function FinancePage() {
                 background: CARD2, borderBottom: `1px solid ${BDR}`,
                 fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
               }}>
-                <div>תאריך</div><div>סוג</div><div>פרויקט / מקור</div>
-                <div>אמן / ספק</div><div>תיאור / קטגוריה</div>
+                <div>תאריך</div><div>סוג</div><div>שיוך</div>
+                <div>אמן / ספק</div><div>תנועה</div>
                 <div>סכום</div><div>סטטוס</div><div />
               </div>
 
@@ -1641,14 +1645,17 @@ export default function FinancePage() {
                       <div>
                         {(() => {
                           const src = isShowTx(tx) ? { label: "הופעה", icon: "🎤", col: BRAND }
-                            : (!!tx.project_id || (tx.scope ?? "project") === "project") ? { label: "פרויקט", icon: "📁", col: BLUE }
+                            : (!!tx.project_id || (tx.scope ?? "project") === "project") ? { label: proj?.name || "פרויקט", icon: "📁", col: BLUE }
                             : { label: "כללי", icon: "🏢", col: PURPLE };
                           return (
-                            <span title={proj?.name ?? undefined} style={{
-                              fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
+                            <span title={src.label} style={{
+                              display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
+                              fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
                               background: `${src.col}14`, color: src.col, border: `1px solid ${src.col}2E`,
-                              display: "inline-block", whiteSpace: "nowrap",
-                            }}>{src.icon} {src.label}</span>
+                            }}>
+                              <span style={{ flexShrink: 0 }}>{src.icon}</span>
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{src.label}</span>
+                            </span>
                           );
                         })()}
                       </div>
