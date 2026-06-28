@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
+import { useVictorLang, useVictorT, statusLabel, setVictorLang, VICTOR_LANGS, type VictorLang } from "@/lib/victor-i18n";
 
 const BRAND   = "#DC2626";
 const CARD    = "#111318";
@@ -74,24 +75,26 @@ const SALARY_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 function StatusChip({ status }: { status: string }) {
+  const [lang] = useVictorLang();
   const s = STATUS_COLORS[status] ?? { bg: "rgba(255,255,255,0.06)", color: TEXT2 };
   return (
     <span style={{
       padding: "2px 9px", borderRadius: 7,
       background: s.bg, color: s.color,
       fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
-    }}>{status}</span>
+    }}>{statusLabel(lang, status)}</span>
   );
 }
 
 function SalaryChip({ status }: { status: string }) {
+  const [lang] = useVictorLang();
   const s = SALARY_STATUS_COLORS[status] ?? { bg: "rgba(255,255,255,0.06)", color: TEXT2 };
   return (
     <span style={{
       padding: "2px 8px", borderRadius: 6,
       background: s.bg, color: s.color,
       fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
-    }}>{status}</span>
+    }}>{statusLabel(lang, status)}</span>
   );
 }
 
@@ -118,6 +121,8 @@ function WorkStatusDropdown({
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
+  const [lang] = useVictorLang();
+  const t = useVictorT();
 
   const hasLinkedProject = !!(workProjectId && workProjectName && workProjectName !== "פרויקט לא ידוע");
 
@@ -218,7 +223,7 @@ function WorkStatusDropdown({
           display: "inline-flex", alignItems: "center", gap: 4,
         }}
       >
-        {localStatus}
+        {statusLabel(lang, localStatus)}
         <span style={{ fontSize: 8, opacity: 0.5 }}>{saving ? "…" : "▾"}</span>
       </button>
 
@@ -247,7 +252,7 @@ function WorkStatusDropdown({
                 onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
                 onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               >
-                {opt}
+                {statusLabel(lang, opt)}
               </button>
             );
           })}
@@ -275,11 +280,11 @@ function WorkStatusDropdown({
             boxShadow: "0 16px 48px rgba(0,0,0,0.8)",
           }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#F2F2F2", marginBottom: 8 }}>
-              סמן פרויקט כהושלם?
+              {t("confirm.markCompleted")}
             </div>
             <div style={{ fontSize: 13, color: "#A0A0B0", marginBottom: 22, lineHeight: 1.5 }}>
-              העבודה מקושרת לפרויקט{workProjectName ? ` "${workProjectName}"` : ""}.
-              לסמן גם את הפרויקט כהושלם?
+              {t("confirm.linkedTo")}{workProjectName ? ` "${workProjectName}"` : ""}.
+              {" "}{t("confirm.alsoProject")}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-start" }}>
               <button
@@ -293,7 +298,7 @@ function WorkStatusDropdown({
                   fontFamily: "inherit",
                 }}
               >
-                {saving ? "…" : "כן, סמן הכול כהושלם"}
+                {saving ? "…" : t("confirm.yesAll")}
               </button>
               <button
                 onClick={() => setShowConfirm(false)}
@@ -307,7 +312,7 @@ function WorkStatusDropdown({
                   fontFamily: "inherit",
                 }}
               >
-                בטל
+                {t("drawer.cancel")}
               </button>
             </div>
           </div>
@@ -414,6 +419,7 @@ function AudioPlayer({
   }
 
   const hasUrl = !!url;
+  const t = useVictorT();
 
   return (
     <div style={{ borderRadius: 10, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
@@ -453,7 +459,7 @@ function AudioPlayer({
         <button
           onClick={e => { e.stopPropagation(); onDownload(); }}
           disabled={!hasUrl}
-          title={hasUrl ? "הורדה" : "אין קישור להורדה"}
+          title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{
             background: "none", border: "none", cursor: hasUrl ? "pointer" : "not-allowed",
             color: hasUrl ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
@@ -464,31 +470,31 @@ function AudioPlayer({
         {canDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
-          title="מחק קובץ"
+          title={t("file.delete")}
           style={{
             background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)",
             borderRadius: 7, cursor: "pointer",
             color: "#F87171", fontSize: 13, padding: "3px 8px",
             flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >🗑 מחק</button>
+        >{t("file.deleteBtn")}</button>
         )}
       </div>
       {/* Inline delete confirm */}
       {deleteConfirm && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
-          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק את הקובץ מהרשימה? יימחק גם מ-Dropbox אם קיים</span>
-          {deleteError && <span style={{ fontSize: 10, color: RED }}>שגיאה — נסה שוב</span>}
+          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>{t("file.deleteConfirm")}</span>
+          {deleteError && <span style={{ fontSize: 10, color: RED }}>{t("file.retryError")}</span>}
           <button
             onClick={e => { e.stopPropagation(); onDelete(); }}
             disabled={deleting}
             style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleting ? MUTED : RED, border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
-          >{deleting ? "…" : "אישור"}</button>
+          >{deleting ? "…" : t("drawer.confirm")}</button>
           <button
             onClick={e => { e.stopPropagation(); onDeleteCancel(); }}
             disabled={deleting}
             style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
-          >בטל</button>
+          >{t("drawer.cancel")}</button>
         </div>
       )}
     </div>
@@ -518,6 +524,7 @@ function FileRow({
 }) {
   const { name } = file;
   const hasUrl = !!(file.dropboxShareUrl || file.url);
+  const t = useVictorT();
 
   return (
     <div style={{ borderRadius: 10, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
@@ -534,7 +541,7 @@ function FileRow({
         <button
           onClick={e => { e.stopPropagation(); onDownload(); }}
           disabled={!hasUrl}
-          title={hasUrl ? "הורדה" : "אין קישור להורדה"}
+          title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{
             background: "none", border: "none", cursor: hasUrl ? "pointer" : "not-allowed",
             color: hasUrl ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
@@ -545,31 +552,31 @@ function FileRow({
         {canDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDeleteConfirm(); }}
-          title="מחק קובץ"
+          title={t("file.delete")}
           style={{
             background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)",
             borderRadius: 7, cursor: "pointer",
             color: "#F87171", fontSize: 13, padding: "3px 8px",
             flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >🗑 מחק</button>
+        >{t("file.deleteBtn")}</button>
         )}
       </div>
       {/* Inline delete confirm */}
       {deleteConfirm && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
-          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>למחוק את הקובץ מהרשימה? יימחק גם מ-Dropbox אם קיים</span>
-          {deleteError && <span style={{ fontSize: 10, color: RED }}>שגיאה — נסה שוב</span>}
+          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>{t("file.deleteConfirm")}</span>
+          {deleteError && <span style={{ fontSize: 10, color: RED }}>{t("file.retryError")}</span>}
           <button
             onClick={e => { e.stopPropagation(); onDelete(); }}
             disabled={deleting}
             style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleting ? MUTED : RED, border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
-          >{deleting ? "…" : "אישור"}</button>
+          >{deleting ? "…" : t("drawer.confirm")}</button>
           <button
             onClick={e => { e.stopPropagation(); onDeleteCancel(); }}
             disabled={deleting}
             style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}
-          >בטל</button>
+          >{t("drawer.cancel")}</button>
         </div>
       )}
     </div>
@@ -599,13 +606,14 @@ function ReferenceCard({
 }) {
   const vid = ytId(refItem.url);
   const thumb = vid ? `https://img.youtube.com/vi/${vid}/hqdefault.jpg` : null;
+  const t = useVictorT();
   return (
     <div style={{ display: "flex", gap: 16, padding: 15, borderRadius: 14, background: CARD2, border: `1px solid ${BDR}` }}>
       {/* Thumbnail → plays in-app (does NOT leave the page) */}
       <button
         onClick={() => { if (vid) onPlay(vid); }}
         disabled={!vid}
-        title={vid ? "נגן כאן" : "אין וידאו"}
+        title={vid ? t("ref.playHere") : t("ref.noVideo")}
         style={{ position: "relative", flexShrink: 0, width: 180, aspectRatio: "16 / 9", borderRadius: 10, overflow: "hidden", background: "#000", border: "none", padding: 0, cursor: vid ? "pointer" : "default", display: "block" }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -623,24 +631,24 @@ function ReferenceCard({
       {/* Body */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, padding: "2px 9px", borderRadius: 6, background: `${PURPLE}1F`, color: PURPLE }}>רפרנס {index}</span>
+          <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, padding: "2px 9px", borderRadius: 6, background: `${PURPLE}1F`, color: PURPLE }}>{t("ref.n", { n: index })}</span>
           <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(239,68,68,0.12)", color: "#F87171" }}>YouTube</span>
         </div>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || `רפרנס ${index}`}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || t("ref.n", { n: index })}</div>
         <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 10.5, color: MUTED, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{refItem.url}</a>
         {refItem.note && <div style={{ fontSize: 12, color: TEXT2, marginTop: 9, lineHeight: 1.85, whiteSpace: "pre-wrap" }}>{refItem.note}</div>}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9 }}>
           {vid ? (
-            <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit" }}>▶ נגן</button>
+            <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{t("ref.play")}</button>
           ) : (
-            <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: PURPLE, textDecoration: "none", padding: "5px 12px", borderRadius: 8, background: `${PURPLE}14`, border: `1px solid ${PURPLE}33` }}>פתח קישור ↗</a>
+            <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: PURPLE, textDecoration: "none", padding: "5px 12px", borderRadius: 8, background: `${PURPLE}14`, border: `1px solid ${PURPLE}33` }}>{t("ref.openLink")}</a>
           )}
-          {vid && <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: MUTED, textDecoration: "none" }}>פתח ביוטיוב ↗</a>}
+          {vid && <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: MUTED, textDecoration: "none" }}>{t("ref.openYoutube")}</a>}
           <div style={{ flex: 1 }} />
           {isOwner && (
             <>
-              <button onClick={onEdit} title="ערוך" style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>✎</button>
-              <button onClick={onDelete} title="מחק" style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
+              <button onClick={onEdit} title={t("file.editTitle")} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>✎</button>
+              <button onClick={onDelete} title={t("file.deleteTitle")} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
             </>
           )}
         </div>
@@ -661,6 +669,8 @@ function VictorProjectDrawer({
   isOwner: boolean;
 }) {
   const router = useRouter();
+  const t = useVictorT();
+  const [lang] = useVictorLang();
   const [updating, setUpdating] = useState(false);
   const [notes, setNotes] = useState(work.notes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
@@ -823,7 +833,7 @@ function VictorProjectDrawer({
           if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100));
         };
         xhr.onload = () => xhr.status === 200 ? resolve(xhr.responseText) : reject(new Error(xhr.responseText));
-        xhr.onerror = () => reject(new Error("שגיאת רשת"));
+        xhr.onerror = () => reject(new Error(t("err.network")));
         xhr.send(fd);
       });
       try {
@@ -834,7 +844,7 @@ function VictorProjectDrawer({
       } catch {}
       onRefresh?.();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "שגיאה בהעלאת הקובץ";
+      const msg = err instanceof Error ? err.message : t("err.upload");
       setUploadError(msg);
       console.error("upload failed", err);
     } finally {
@@ -865,7 +875,7 @@ function VictorProjectDrawer({
       }),
     });
     const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || "שגיאה ביצירת התיקייה");
+    if (!res.ok || !data.ok) throw new Error(data.error || t("err.folder"));
     // Persist folder + share link on the work record.
     await fetch(`/api/vendor/victor/work/${work.id}`, {
       method: "PATCH",
@@ -929,13 +939,13 @@ function VictorProjectDrawer({
     action?: () => void;
   }[] = [
     {
-      label: "פרויקט נשלח",
+      label: t("drawer.stepSent"),
       done: !!work.sentDate,
       date: work.sentDate,
       action: isOwner && !work.sentDate ? () => patchWork({ sentDate: todayISO(), workState: "נשלח לויקטור" }) : undefined,
     },
     {
-      label: "פרויקט הושלם",
+      label: t("drawer.stepCompleted"),
       done: work.status === "הושלם",
       date: work.returnedDate,   // completion date — kept in sync with status by updateVictorWork
       action: isOwner && work.status !== "הושלם" ? () => patchWork({ status: "הושלם" }) : undefined,
@@ -945,7 +955,7 @@ function VictorProjectDrawer({
   const doneCount = tasks.filter(t => t.done).length;
 
   const timingColor = days === null ? MUTED : days < 0 ? RED : days <= 3 ? AMBER : GREEN;
-  const timingLabel = days === null ? null : days < 0 ? `${Math.abs(days)} ימים באיחור` : days === 0 ? "היום!" : `${days} ימים נותרו`;
+  const timingLabel = days === null ? null : days < 0 ? `${Math.abs(days)} ${t("drawer.daysLate")}` : days === 0 ? t("drawer.today") : `${days} ${t("drawer.daysLeft")}`;
 
   return (
     <>
@@ -1003,10 +1013,10 @@ function VictorProjectDrawer({
                   letterSpacing: "0.03em",
                 }}
               >
-                פתח בפרויקטים ↗
+                {t("drawer.openInProjects")}
               </button>
             ) : (
-              <span style={{ fontSize: 11, color: MUTED }}>אין פרויקט מקושר</span>
+              <span style={{ fontSize: 11, color: MUTED }}>{t("drawer.noLinkedProject")}</span>
             )}
           </div>
 
@@ -1055,7 +1065,7 @@ function VictorProjectDrawer({
             {work.internalDeadline ? (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 12, color: MUTED }}>📅 דד-ליין:</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>{t("drawer.deadlineLabel")}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.internalDeadline)}</span>
                 </div>
                 {timingLabel && (
@@ -1070,7 +1080,7 @@ function VictorProjectDrawer({
                 )}
               </>
             ) : (
-              <span style={{ fontSize: 12, color: MUTED }}>אין דד-ליין מוגדר</span>
+              <span style={{ fontSize: 12, color: MUTED }}>{t("drawer.noDeadline")}</span>
             )}
           </div>
         </div>
@@ -1087,13 +1097,13 @@ function VictorProjectDrawer({
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 14 }}>📌</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קרא אותי קודם</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("drawer.readme")}</span>
                   </div>
                   {isOwner && !editingBrief && (
                     <button
                       onClick={() => { setBriefDraft(effectiveBrief); setEditingBrief(true); }}
                       style={{ fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}
-                    >✎ ערוך</button>
+                    >{t("drawer.edit")}</button>
                   )}
                 </div>
                 <div style={{ padding: "18px 20px" }}>
@@ -1104,14 +1114,14 @@ function VictorProjectDrawer({
                         onChange={e => setBriefDraft(e.target.value)}
                         rows={10}
                         autoFocus
-                        placeholder="מה להכין · מבנה השיר · BPM / סולם · וייב · מה לקחת מהרפרנסים · מה לא לעשות…"
+                        placeholder={t("drawer.briefPlaceholder")}
                         style={{ width: "100%", padding: "10px 12px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.7, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", resize: "vertical", direction: "rtl", boxSizing: "border-box" }}
                       />
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-                        <span style={{ fontSize: 10, color: MUTED }}>{briefDraft.length} תווים</span>
+                        <span style={{ fontSize: 10, color: MUTED }}>{briefDraft.length} {t("drawer.chars")}</span>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => setEditingBrief(false)} disabled={savingBrief} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: savingBrief ? "default" : "pointer", fontFamily: "inherit" }}>בטל</button>
-                          <button onClick={saveBrief} disabled={savingBrief} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: savingBrief ? MUTED : PURPLE, border: "none", color: "#fff", cursor: savingBrief ? "default" : "pointer", fontFamily: "inherit" }}>{savingBrief ? "שומר…" : "שמור"}</button>
+                          <button onClick={() => setEditingBrief(false)} disabled={savingBrief} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: savingBrief ? "default" : "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+                          <button onClick={saveBrief} disabled={savingBrief} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: savingBrief ? MUTED : PURPLE, border: "none", color: "#fff", cursor: savingBrief ? "default" : "pointer", fontFamily: "inherit" }}>{savingBrief ? t("drawer.saving") : t("drawer.save")}</button>
                         </div>
                       </div>
                     </>
@@ -1119,7 +1129,7 @@ function VictorProjectDrawer({
                     effectiveBrief.trim() ? (
                       <div style={{ fontSize: 13, lineHeight: 1.9, color: TEXT2, whiteSpace: "pre-wrap", maxHeight: 360, overflowY: "auto", direction: "rtl" }}>{effectiveBrief}</div>
                     ) : (
-                      <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "28px 0", lineHeight: 1.7 }}>{isOwner ? "אין עדיין בריף — לחץ ערוך כדי להוסיף הוראות לויקטור" : "אין בריף לעבודה זו"}</div>
+                      <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "28px 0", lineHeight: 1.7 }}>{isOwner ? t("drawer.briefEmptyOwner") : t("drawer.briefEmptyViewer")}</div>
                     )
                   )}
                 </div>
@@ -1130,30 +1140,30 @@ function VictorProjectDrawer({
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 14 }}>🔗</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>רפרנסים</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("drawer.refs")}</span>
                     {effectiveRefs.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}18`, color: PURPLE }}>{effectiveRefs.length}</span>}
                   </div>
                   {isOwner && (
                     <button
                       onClick={() => setRefForm({ open: true, editId: null, url: "", title: "", note: "" })}
                       style={{ fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}
-                    >+ הוסף רפרנס</button>
+                    >{t("drawer.addRef")}</button>
                   )}
                 </div>
                 <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
                   {isOwner && refForm.open && (
                     <div style={{ padding: 12, borderRadius: 12, background: CARD2, border: `1px solid ${PURPLE}33`, display: "flex", flexDirection: "column", gap: 8 }}>
-                      <input value={refForm.url} onChange={e => setRefForm(f => ({ ...f, url: e.target.value }))} placeholder="קישור YouTube (https://…)" dir="ltr" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                      <input value={refForm.title} onChange={e => setRefForm(f => ({ ...f, title: e.target.value }))} placeholder="כותרת (אופציונלי)" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", direction: "rtl", boxSizing: "border-box" }} />
-                      <textarea value={refForm.note} onChange={e => setRefForm(f => ({ ...f, note: e.target.value }))} placeholder="הערה — מה לקחת מהרפרנס" rows={2} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", direction: "rtl", resize: "vertical", boxSizing: "border-box" }} />
+                      <input value={refForm.url} onChange={e => setRefForm(f => ({ ...f, url: e.target.value }))} placeholder={t("drawer.refUrlPlaceholder")} dir="ltr" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                      <input value={refForm.title} onChange={e => setRefForm(f => ({ ...f, title: e.target.value }))} placeholder={t("drawer.refTitlePlaceholder")} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", direction: "rtl", boxSizing: "border-box" }} />
+                      <textarea value={refForm.note} onChange={e => setRefForm(f => ({ ...f, note: e.target.value }))} placeholder={t("drawer.refNotePlaceholder")} rows={2} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", direction: "rtl", resize: "vertical", boxSizing: "border-box" }} />
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <button onClick={() => setRefForm({ open: false, editId: null, url: "", title: "", note: "" })} disabled={savingRef} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: savingRef ? "default" : "pointer", fontFamily: "inherit" }}>בטל</button>
-                        <button onClick={saveReference} disabled={savingRef || !refForm.url.trim()} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: (savingRef || !refForm.url.trim()) ? MUTED : PURPLE, border: "none", color: "#fff", cursor: (savingRef || !refForm.url.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>{savingRef ? "שומר…" : refForm.editId ? "עדכן" : "הוסף"}</button>
+                        <button onClick={() => setRefForm({ open: false, editId: null, url: "", title: "", note: "" })} disabled={savingRef} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: savingRef ? "default" : "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+                        <button onClick={saveReference} disabled={savingRef || !refForm.url.trim()} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: (savingRef || !refForm.url.trim()) ? MUTED : PURPLE, border: "none", color: "#fff", cursor: (savingRef || !refForm.url.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>{savingRef ? t("drawer.saving") : refForm.editId ? t("drawer.refUpdate") : t("drawer.refAdd")}</button>
                       </div>
                     </div>
                   )}
                   {effectiveRefs.length === 0 && !refForm.open ? (
-                    <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>{isOwner ? "אין רפרנסים — הוסף קישור YouTube" : "אין רפרנסים לעבודה זו"}</div>
+                    <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "16px 0" }}>{isOwner ? t("drawer.refsEmptyOwner") : t("drawer.refsEmptyViewer")}</div>
                   ) : (
                     effectiveRefs.map((ref, i) => (
                       <ReferenceCard
@@ -1184,7 +1194,7 @@ function VictorProjectDrawer({
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 14 }}>📁</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("files.title")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
@@ -1198,7 +1208,7 @@ function VictorProjectDrawer({
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  title="העלאת קובץ"
+                  title={t("files.uploadTitle")}
                   style={{
                     fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
                     background: uploading ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.12)",
@@ -1208,7 +1218,7 @@ function VictorProjectDrawer({
                     fontFamily: "inherit",
                   }}
                 >
-                  {uploading ? `${uploadProgress}%` : "↑ העלאה"}
+                  {uploading ? `${uploadProgress}%` : t("files.upload")}
                 </button>
                 {effectiveShareLink && (
                   dbxFallback ? (
@@ -1222,7 +1232,7 @@ function VictorProjectDrawer({
                         color: "#4A9EFF", textDecoration: "none",
                       }}
                     >
-                      פתח ב-Dropbox ↗
+                      {t("files.openDropbox")}
                     </a>
                   ) : (
                     <button
@@ -1235,7 +1245,7 @@ function VictorProjectDrawer({
                         cursor: openingDbx ? "default" : "pointer", opacity: openingDbx ? 0.6 : 1,
                       }}
                     >
-                      {openingDbx ? "פותח…" : "פתח ב-Dropbox ↗"}
+                      {openingDbx ? t("files.opening") : t("files.openDropbox")}
                     </button>
                   )
                 )}
@@ -1243,7 +1253,7 @@ function VictorProjectDrawer({
                   fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
                   background: files.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
                   color: files.length > 0 ? GREEN : MUTED,
-                }}>{files.length} קבצים</span>
+                }}>{files.length} {t("files.count")}</span>
               </div>
             </div>
 
@@ -1254,8 +1264,8 @@ function VictorProjectDrawer({
             {files.length === 0 ? (
               <div style={{ padding: "28px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 32, marginBottom: 10, opacity: 0.25 }}>📂</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, marginBottom: 4 }}>אין קבצים לפרויקט זה</div>
-                <div style={{ fontSize: 11, color: MUTED }}>קבצים שייושלחו ויתקבלו יופיעו כאן</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, marginBottom: 4 }}>{t("files.empty")}</div>
+                <div style={{ fontSize: 11, color: MUTED }}>{t("files.emptySub")}</div>
               </div>
             ) : (
               <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
@@ -1296,7 +1306,7 @@ function VictorProjectDrawer({
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 14 }}>✅</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>התקדמות</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("drawer.progress")}</span>
               </div>
               <span style={{
                 fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
@@ -1358,14 +1368,14 @@ function VictorProjectDrawer({
             <div style={{ margin: "0 16px 14px" }}>
               {work.outcome && (
                 <div style={{ fontSize: 11, color: PURPLE, fontWeight: 800, marginBottom: 6 }}>
-                  תוצאה: {work.outcome}
+                  {t("drawer.outcome")} {statusLabel(lang, work.outcome)}
                 </div>
               )}
               <textarea
                 value={notes}
                 onChange={e => { setNotes(e.target.value); setNotesDirty(true); }}
                 onBlur={saveNotes}
-                placeholder="הוסף הערות..."
+                placeholder={t("drawer.notesPlaceholder")}
                 rows={2}
                 style={{
                   width: "100%", padding: "9px 12px", borderRadius: 10, fontSize: 12,
@@ -1386,13 +1396,13 @@ function VictorProjectDrawer({
               background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px",
               borderTop: `3px solid ${work.internalDeadline ? (days !== null && days < 0 ? RED : AMBER) : BDR}`,
             }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>📅 דד-ליין</div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{t("drawer.deadlineCard")}</div>
               <div style={{ fontSize: 20, fontWeight: 900, color: days !== null && days < 0 ? RED : TEXT, letterSpacing: "-0.02em", marginBottom: 4 }}>
                 {work.internalDeadline ? fmtDate(work.internalDeadline) : "—"}
               </div>
               {days !== null && (
                 <div style={{ fontSize: 11, color: timingColor, fontWeight: 700 }}>
-                  {days < 0 ? `${Math.abs(days)} ימים אחרי` : days === 0 ? "היום!" : `${days} ימים נותרו`}
+                  {days < 0 ? `${Math.abs(days)} ${t("drawer.daysAfter")}` : days === 0 ? t("drawer.today") : `${days} ${t("drawer.daysLeft")}`}
                 </div>
               )}
             </div>
@@ -1402,19 +1412,19 @@ function VictorProjectDrawer({
               background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px",
               borderTop: `3px solid ${PURPLE}`,
             }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>🔄 מעקב</div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{t("drawer.tracking")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {work.sentDate ? (
                   <div>
-                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>📤 נשלח</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>{t("drawer.sent")}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.sentDate)}</div>
                   </div>
                 ) : (
-                  <div style={{ fontSize: 12, color: MUTED }}>טרם נשלח</div>
+                  <div style={{ fontSize: 12, color: MUTED }}>{t("drawer.notSentYet")}</div>
                 )}
                 {work.returnedDate && (
                   <div>
-                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>📥 חזר</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>{t("drawer.returned")}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: GREEN }}>{fmtDate(work.returnedDate)}</div>
                   </div>
                 )}
@@ -1434,7 +1444,7 @@ function VictorProjectDrawer({
                 cursor: "pointer", fontFamily: "inherit",
               }}
             >
-              מחק פרויקט 🗑
+              {t("drawer.removeProject")}
             </button>
           ) : (
             <div style={{
@@ -1443,7 +1453,7 @@ function VictorProjectDrawer({
               padding: "12px 16px",
             }}>
               <div style={{ fontSize: 12, color: "#FCA5A5", fontWeight: 700, marginBottom: 10, textAlign: "center" }}>
-                למחוק מעמוד ויקטור?
+                {t("drawer.removeConfirm")}
               </div>
               {removeError && (
                 <div style={{ fontSize: 11, color: "#FCA5A5", marginBottom: 8, textAlign: "center" }}>
@@ -1461,7 +1471,7 @@ function VictorProjectDrawer({
                         const taskRes = await fetch(`/api/tasks/${work.linkedTaskId}`, { method: "DELETE" });
                         if (!taskRes.ok) {
                           const taskData = await taskRes.json().catch(() => ({}));
-                          setRemoveError(taskData.error ?? "מחיקת משימת המעקב נכשלה");
+                          setRemoveError(taskData.error ?? t("err.taskDelete"));
                           setRemoving(false);
                           return;
                         }
@@ -1469,14 +1479,14 @@ function VictorProjectDrawer({
                       // Step 2: delete vendor_project_work record
                       const workRes = await fetch(`/api/vendor/victor/work/${work.id}`, { method: "DELETE" });
                       if (!workRes.ok) {
-                        setRemoveError("מחיקת הפרויקט מויקטור נכשלה");
+                        setRemoveError(t("err.workRemove"));
                         setRemoving(false);
                         return;
                       }
                       onRefresh?.();
                       onClose();
                     } catch {
-                      setRemoveError("שגיאת רשת — נסה שוב");
+                      setRemoveError(t("err.networkRetry"));
                       setRemoving(false);
                     }
                   }}
@@ -1488,7 +1498,7 @@ function VictorProjectDrawer({
                     cursor: removing ? "default" : "pointer", fontFamily: "inherit",
                   }}
                 >
-                  {removing ? "מוחק..." : "אישור"}
+                  {removing ? t("drawer.removing") : t("drawer.confirm")}
                 </button>
                 <button
                   onClick={() => { setConfirmRemove(false); setRemoveError(null); }}
@@ -1500,7 +1510,7 @@ function VictorProjectDrawer({
                     cursor: removing ? "default" : "pointer", fontFamily: "inherit",
                   }}
                 >
-                  בטל
+                  {t("drawer.cancel")}
                 </button>
               </div>
             </div>
@@ -1521,7 +1531,7 @@ function VictorProjectDrawer({
           <div onClick={e => e.stopPropagation()} style={{ position: "relative", width: "min(960px, 94vw)", aspectRatio: "16 / 9", background: "#000", borderRadius: 14, overflow: "hidden", border: `1px solid ${BDR2}`, boxShadow: "0 24px 80px rgba(0,0,0,0.85)" }}>
             <button
               onClick={() => setPlayingId(null)}
-              title="סגור"
+              title={t("player.close")}
               style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 32, height: 32, borderRadius: 8, background: "rgba(0,0,0,0.6)", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}
             >✕</button>
             <iframe
@@ -1541,6 +1551,8 @@ function VictorProjectDrawer({
 
 export default function VictorProfilePage() {
   const router = useRouter();
+  const [lang] = useVictorLang();
+  const t = useVictorT();
   // Project creation was removed from the Victor page entirely: it must NEVER
   // create a row in `projects`. New projects are created only in the Projects
   // page and linked to Victor via vendor_project_work ("שלח לויקטור" flow).
@@ -1608,7 +1620,7 @@ export default function VictorProfilePage() {
   }
 
   async function saveWork() {
-    if (!wtTitle.trim()) { setWtError("שם העבודה חובה"); return; }
+    if (!wtTitle.trim()) { setWtError(t("err.workNameRequired")); return; }
     setWtSaving(true); setWtError("");
     try {
       const res = await fetch("/api/vendor/victor/work", {
@@ -1621,7 +1633,7 @@ export default function VictorProfilePage() {
       setWorkModalOpen(false);
       await fetchMonth(month);
     } catch {
-      setWtError("שגיאה ביצירת העבודה");
+      setWtError(t("err.workCreate"));
     } finally {
       setWtSaving(false);
     }
@@ -1698,23 +1710,31 @@ export default function VictorProfilePage() {
 
         {/* ── Top bar: breadcrumb + month switcher ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
-          {/* Back — owner only (Victor has no team list to return to) */}
-          {isOwner ? (
-            <button
-              onClick={() => router.push("/team")}
-              style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 14, fontWeight: 700 }}
+          {/* Left cluster: back (owner) + Victor-page language switcher (content-area only) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {isOwner && (
+              <button
+                onClick={() => router.push("/team")}
+                style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 14, fontWeight: 700 }}
+              >
+                {t("header.backToList")}
+              </button>
+            )}
+            <select
+              value={lang}
+              onChange={e => setVictorLang(e.target.value as VictorLang)}
+              title={t("lang.label")}
+              style={{ background: CARD, color: TEXT2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: "7px 10px", fontSize: 12, fontFamily: "inherit", cursor: "pointer", outline: "none" }}
             >
-              → חזרה לרשימה
-            </button>
-          ) : (
-            <div />
-          )}
+              {VICTOR_LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+            </select>
+          </div>
 
           {/* Title */}
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>צוות / ספקים</div>
+            <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>{t("header.breadcrumb")}</div>
             <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>
-              פרופיל ספק — <span style={{ color: PURPLE }}>Victor</span>
+              {t("header.supplierProfile")} <span style={{ color: PURPLE }}>Victor</span>
             </h1>
           </div>
 
@@ -1727,7 +1747,7 @@ export default function VictorProfilePage() {
             <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>‹</button>
             <div style={{ minWidth: 150, textAlign: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{monthLabel(month)}</div>
-              {loading && <div style={{ fontSize: 9, color: MUTED }}>טוען...</div>}
+              {loading && <div style={{ fontSize: 9, color: MUTED }}>{t("common.loading")}</div>}
             </div>
             <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>›</button>
           </div>
@@ -1753,21 +1773,21 @@ export default function VictorProfilePage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <span style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>Victor</span>
-              <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`, color: PURPLE, fontWeight: 700 }}>מפיק ביטים</span>
+              <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`, color: PURPLE, fontWeight: 700 }}>{t("profile.role")}</span>
             </div>
-            <div style={{ fontSize: 13, color: TEXT2, marginTop: 5 }}>הפקה · סאונד עיצוב · ביטים</div>
+            <div style={{ fontSize: 13, color: TEXT2, marginTop: 5 }}>{t("profile.subtitle")}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
               <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: GREEN, fontWeight: 700 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, display: "inline-block", boxShadow: `0 0 6px ${GREEN}88` }} />
-                פעיל
+                {statusLabel(lang, "פעיל")}
               </span>
               {/* Start-date / field-of-work line — owner-only chrome; hidden for Victor. */}
               {isOwner && (
                 <>
                   <span style={{ fontSize: 12, color: MUTED }}>·</span>
-                  <span style={{ fontSize: 12, color: MUTED }}>תאריך התחלה: 12.03.2024</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>{t("profile.startDate")} 12.03.2024</span>
                   <span style={{ fontSize: 12, color: MUTED }}>·</span>
-                  <span style={{ fontSize: 12, color: MUTED }}>תחום עיסוק: הפקה · ביטים</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>{t("profile.field")}</span>
                 </>
               )}
             </div>
@@ -1784,7 +1804,7 @@ export default function VictorProfilePage() {
                 color: PURPLE, fontSize: 13, fontWeight: 700,
                 cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7,
               }}>
-              + עבודה חדשה ל-Victor
+              {t("header.newVictorWork")}
             </button>
           )}
         </div>
@@ -1792,19 +1812,20 @@ export default function VictorProfilePage() {
         {/* ── KPI Row ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 18 }}>
           {[
-            { label: "יעד חודשי כולל", value: goal > 0 ? goal : "—", sub: "פרויקטים", color: TEXT,   icon: "🎯" },
-            { label: "הושלמו",          value: completed,              sub: `מתוך ${goal}`,   color: PURPLE, icon: "✅" },
-            { label: "בתהליך",          value: active,                 sub: "פרויקטים",       color: AMBER,  icon: "🔄" },
-            { label: "באיחור",          value: stuck,                  sub: "תקועים",         color: stuck > 0 ? RED : MUTED, icon: "⚠️" },
+            { id: "goal",      label: t("kpi.totalMonthly"), value: goal > 0 ? goal : "—", sub: t("kpi.inProgressSub"), color: TEXT,   icon: "🎯" },
+            { id: "completed", label: t("kpi.completed"),    value: completed,              sub: t("kpi.completedOf", { goal }), color: PURPLE, icon: "✅" },
+            { id: "active",    label: t("kpi.inProgress"),   value: active,                 sub: t("kpi.inProgressSub"), color: AMBER,  icon: "🔄" },
+            { id: "stuck",     label: t("kpi.stuck"),        value: stuck,                  sub: t("kpi.stuckSub"),      color: stuck > 0 ? RED : MUTED, icon: "⚠️" },
             {
-              label: "שכר חודשי",
+              id: "salary",
+              label: t("kpi.monthlySalary"),
               value: currentSalaryRec ? fmt(currentSalaryRec.amount, currentSalaryRec.currency) : (salary > 0 ? fmt(salary, currency) : "—"),
-              sub: currentSalaryRec?.status ?? (stats?.paymentStatus ?? ""),
+              sub: currentSalaryRec?.status ? statusLabel(lang, currentSalaryRec.status) : (stats?.paymentStatus ? statusLabel(lang, stats.paymentStatus) : ""),
               color: GREEN,
               icon: "₪",
             },
-          ].filter((kpi) => isOwner || kpi.label !== "שכר חודשי").map(({ label, value, sub, color, icon }) => (
-            <div key={label} style={{
+          ].filter((kpi) => isOwner || kpi.id !== "salary").map(({ id, label, value, sub, color, icon }) => (
+            <div key={id} style={{
               background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
               padding: "18px 20px", position: "relative", overflow: "hidden",
             }}>
@@ -1829,10 +1850,10 @@ export default function VictorProfilePage() {
               display: "flex", alignItems: "center", justifyContent: "space-between",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>פרויקטים</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{t("projects.title")}</span>
                 <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 7, background: `${PURPLE}18`, color: PURPLE, fontWeight: 700 }}>{work.length}</span>
               </div>
-              <span style={{ fontSize: 12, color: MUTED }}>ב{monthLabel(month)}</span>
+              <span style={{ fontSize: 12, color: MUTED }}>{t("projects.in")}{monthLabel(month)}</span>
             </div>
 
             {loading ? (
@@ -1844,14 +1865,14 @@ export default function VictorProfilePage() {
             ) : displayWork.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center" }}>
                 <div style={{ fontSize: 32, opacity: 0.2, marginBottom: 8 }}>📋</div>
-                <div style={{ fontSize: 13, color: MUTED }}>אין פרויקטים לחודש זה</div>
+                <div style={{ fontSize: 13, color: MUTED }}>{t("projects.empty")}</div>
               </div>
             ) : (
               <>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: CARD2 }}>
-                      {["שם פרויקט", "אמן / לקוח", "דד ליין", "סטטוס", "פעולה"].map(h => (
+                      {[t("projects.colName"), t("projects.colArtist"), t("projects.colDeadline"), t("projects.colStatus"), t("projects.colAction")].map(h => (
                         <th key={h} style={{
                           padding: "10px 14px", textAlign: "right",
                           fontSize: 10, fontWeight: 700, color: MUTED,
@@ -1906,7 +1927,7 @@ export default function VictorProfilePage() {
                               cursor: "pointer",
                               transition: "background 0.15s, box-shadow 0.15s",
                             }}>
-                            פתח פרויקט ↗
+                            {t("projects.open")}
                           </button>
                         </td>
                       </tr>
@@ -1915,7 +1936,7 @@ export default function VictorProfilePage() {
                 </table>
                 {monthWork.length > 12 && (
                   <div style={{ padding: "10px 16px", borderTop: `1px solid ${BDR}`, textAlign: "center" }}>
-                    <span style={{ fontSize: 11, color: MUTED }}>+ {monthWork.length - 12} פרויקטים נוספים</span>
+                    <span style={{ fontSize: 11, color: MUTED }}>{t("projects.more", { n: monthWork.length - 12 })}</span>
                   </div>
                 )}
               </>
@@ -1927,14 +1948,14 @@ export default function VictorProfilePage() {
 
             {/* Capacity Card */}
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>קיבולת חודשית</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>{t("capacity.title")}</div>
 
               {/* Big counter */}
               <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4, direction: "ltr" }}>
                 <span style={{ fontSize: 40, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{completed}</span>
                 <span style={{ fontSize: 20, fontWeight: 700, color: MUTED }}>/ {goal}</span>
               </div>
-              <div style={{ fontSize: 12, color: TEXT2, marginBottom: 14 }}>פרויקטים הושלמו</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginBottom: 14 }}>{t("capacity.completed")}</div>
 
               {/* Progress bar */}
               <div style={{ height: 11, background: CARD2, borderRadius: 6, overflow: "hidden", marginBottom: 7 }}>
@@ -1946,11 +1967,11 @@ export default function VictorProfilePage() {
                 }} />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 16 }}>
-                <span>{pct}% מהיעד החודשי</span>
+                <span>{t("capacity.ofGoal", { pct })}</span>
                 {pct >= 60
-                  ? <span style={{ color: GREEN, fontWeight: 700 }}>במסלול ✓</span>
+                  ? <span style={{ color: GREEN, fontWeight: 700 }}>{t("capacity.onTrack")}</span>
                   : pct > 0
-                    ? <span style={{ color: AMBER, fontWeight: 700 }}>מאחור</span>
+                    ? <span style={{ color: AMBER, fontWeight: 700 }}>{t("capacity.behind")}</span>
                     : null
                 }
               </div>
@@ -1959,12 +1980,12 @@ export default function VictorProfilePage() {
               {stats && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
                   {[
-                    { label: "בתהליך",        value: active,             color: AMBER  },
-                    { label: "דורשים בדיקה",   value: stats.needsReview,  color: AMBER  },
-                    { label: "דורשים תיקון",   value: stats.needsFix,     color: RED    },
-                    { label: "תקועים",         value: stats.stuck,        color: stuck > 0 ? RED : MUTED },
-                    { label: "קצב נוכחי",      value: stats.paceValue,    color: TEXT2  },
-                    { label: "יעד לעכשיו",     value: stats.expectedByNow,color: TEXT2  },
+                    { label: t("stat.inProgress"),  value: active,             color: AMBER  },
+                    { label: t("stat.needsReview"), value: stats.needsReview,  color: AMBER  },
+                    { label: t("stat.needsFix"),    value: stats.needsFix,     color: RED    },
+                    { label: t("stat.stuck"),       value: stats.stuck,        color: stuck > 0 ? RED : MUTED },
+                    { label: t("stat.pace"),        value: stats.paceValue,    color: TEXT2  },
+                    { label: t("stat.goalNow"),     value: stats.expectedByNow,color: TEXT2  },
                   ].filter(r => r.value !== 0 && r.value !== null && r.value !== undefined).map(r => (
                     <div key={r.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                       <span style={{ color: MUTED }}>{r.label}</span>
@@ -1978,19 +1999,19 @@ export default function VictorProfilePage() {
             {/* Files Card */}
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>קבצים</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("files.title")}</span>
                 <button style={{
                   ...btnStyle, fontSize: 11, fontWeight: 700, color: PURPLE,
                   padding: "4px 12px", borderRadius: 8,
                   border: `1px solid ${PURPLE}33`, background: `${PURPLE}10`,
                 }}>
-                  + העלאה
+                  {t("files.uploadBtn")}
                 </button>
               </div>
 
               {allFiles.length === 0 ? (
                 <div style={{ fontSize: 13, color: MUTED, textAlign: "center", padding: "14px 0" }}>
-                  אין קבצים לחודש זה
+                  {t("files.emptyMonth")}
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 240, overflowY: "auto" }}>
@@ -2010,7 +2031,7 @@ export default function VictorProfilePage() {
                   ))}
                   {allFiles.length > 14 && (
                     <div style={{ fontSize: 10, color: MUTED, textAlign: "center", paddingTop: 4 }}>
-                      + {allFiles.length - 14} קבצים נוספים
+                      {t("files.more", { n: allFiles.length - 14 })}
                     </div>
                   )}
                 </div>
@@ -2025,12 +2046,12 @@ export default function VictorProfilePage() {
             {/* Current month salary — click anywhere to edit (internal, no Finance) */}
             <div
               onClick={openSalaryModal}
-              title="לחץ לעריכת המשכורת"
+              title={t("salary.editTitle")}
               style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18, padding: "18px 22px", cursor: "pointer" }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>
-                  משכורות — {monthLabel(month)}
+                  {t("salary.title")} {monthLabel(month)}
                 </div>
                 <span style={{ fontSize: 12, color: MUTED }}>✎</span>
               </div>
@@ -2045,17 +2066,17 @@ export default function VictorProfilePage() {
                   ? fmt(currentSalaryRec.amount, currentSalaryRec.currency)
                   : salary > 0 ? fmt(salary, currency) : "—"}
               </div>
-              <div style={{ fontSize: 11, color: MUTED, marginBottom: 16 }}>סה"כ שכר חודשי</div>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 16 }}>{t("salary.totalMonthly")}</div>
 
               {/* Salary details */}
               {currentSalaryRec ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: MUTED }}>סטטוס תשלום</span>
+                    <span style={{ fontSize: 12, color: MUTED }}>{t("salary.payStatus")}</span>
                     <SalaryChip status={currentSalaryRec.status} />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 12, color: MUTED }}>תאריך תשלום</span>
+                    <span style={{ fontSize: 12, color: MUTED }}>{t("salary.payDate")}</span>
                     <span style={{ fontSize: 12, color: TEXT2, fontWeight: 700 }}>{fmtDate(currentSalaryRec.dueDate)}</span>
                   </div>
                   {currentSalaryRec.transactionId && (
@@ -2064,21 +2085,21 @@ export default function VictorProfilePage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: MUTED, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
-                  אין רשומת שכר לחודש זה
+                  {t("salary.noRecord")}
                 </div>
               )}
             </div>
 
             {/* Salary history */}
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 14 }}>היסטוריית תשלומים</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 14 }}>{t("payments.history")}</div>
 
               {salaryLoading ? (
                 <div>
                   {[1,2,3].map(i => <div key={i} style={{ height: 13, background: "rgba(255,255,255,0.05)", borderRadius: 4, marginBottom: 9 }} />)}
                 </div>
               ) : historyMonths.length === 0 ? (
-                <div style={{ fontSize: 13, color: MUTED }}>אין היסטוריה</div>
+                <div style={{ fontSize: 13, color: MUTED }}>{t("payments.empty")}</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
                   {historyMonths.map((s, i) => {
@@ -2106,7 +2127,7 @@ export default function VictorProfilePage() {
               {/* Show all link */}
               {salaryMonths.length > 5 && (
                 <div style={{ marginTop: 10, textAlign: "center" }}>
-                  <span style={{ fontSize: 11, color: MUTED, cursor: "default" }}>הצג הכל ←</span>
+                  <span style={{ fontSize: 11, color: MUTED, cursor: "default" }}>{t("payments.showAll")}</span>
                 </div>
               )}
             </div>
@@ -2139,25 +2160,25 @@ export default function VictorProfilePage() {
           background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
           boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
         }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>עבודה חדשה ל-Victor</div>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>עבודה פנימית של Victor בלבד — לא נוצר פרויקט במערכת</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{t("newwork.title")}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{t("newwork.subtitle")}</div>
 
           {wtError && <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12, fontWeight: 600 }}>{wtError}</div>}
 
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>שם העבודה *</div>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("newwork.nameLabel")}</div>
             <input value={wtTitle} onChange={e => setWtTitle(e.target.value)} autoFocus style={WT_INPUT} />
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס</div>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("newwork.status")}</div>
             <select value={wtStatus} onChange={e => setWtStatus(e.target.value)} style={{ ...WT_INPUT, cursor: "pointer" }}>
-              {VICTOR_WORK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              {VICTOR_WORK_STATUSES.map(s => <option key={s} value={s}>{statusLabel(lang, s)}</option>)}
             </select>
           </div>
 
           <div style={{ marginBottom: 22 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>הערות</div>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("newwork.notesLabel")}</div>
             <textarea value={wtNotes} onChange={e => setWtNotes(e.target.value)} rows={3} style={{ ...WT_INPUT, resize: "vertical", lineHeight: 1.5 }} />
           </div>
 
@@ -2165,11 +2186,11 @@ export default function VictorProfilePage() {
             <button
               onClick={() => setWorkModalOpen(false)} disabled={wtSaving}
               style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: wtSaving ? "default" : "pointer", fontFamily: "inherit" }}
-            >ביטול</button>
+            >{t("newwork.cancel")}</button>
             <button
               onClick={saveWork} disabled={wtSaving}
               style={{ flex: 2, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 800, background: wtSaving ? MUTED : PURPLE, border: "none", color: "#fff", cursor: wtSaving ? "default" : "pointer", fontFamily: "inherit" }}
-            >{wtSaving ? "יוצר…" : "צור עבודה"}</button>
+            >{wtSaving ? t("newwork.creating") : t("newwork.create")}</button>
           </div>
         </div>
       </>
@@ -2188,12 +2209,12 @@ export default function VictorProfilePage() {
           background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
           boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
         }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>עריכת משכורת</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{t("salaryModal.title")}</div>
           <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{monthLabel(month)}</div>
 
           {/* Amount */}
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סכום</div>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("salaryModal.amount")}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 15, color: TEXT2, fontWeight: 700 }}>{currency}</span>
               <input
@@ -2210,7 +2231,7 @@ export default function VictorProfilePage() {
 
           {/* Status */}
           <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>סטטוס תשלום</div>
+            <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("salaryModal.payStatus")}</div>
             <div style={{ display: "flex", gap: 8 }}>
               {(["צפוי", "שולם"] as const).map(opt => {
                 const sc = SALARY_STATUS_COLORS[opt];
@@ -2226,7 +2247,7 @@ export default function VictorProfilePage() {
                       color: isActive ? sc.color : MUTED,
                       cursor: "pointer", fontFamily: "inherit",
                     }}
-                  >{opt}</button>
+                  >{statusLabel(lang, opt)}</button>
                 );
               })}
             </div>
@@ -2241,7 +2262,7 @@ export default function VictorProfilePage() {
                 background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
                 cursor: salarySaving ? "default" : "pointer", fontFamily: "inherit",
               }}
-            >ביטול</button>
+            >{t("salaryModal.cancel")}</button>
             <button
               onClick={saveSalary} disabled={salarySaving}
               style={{
@@ -2249,7 +2270,7 @@ export default function VictorProfilePage() {
                 background: salarySaving ? MUTED : BRAND, border: "none", color: "#fff",
                 cursor: salarySaving ? "default" : "pointer", fontFamily: "inherit",
               }}
-            >{salarySaving ? "שומר…" : "שמור"}</button>
+            >{salarySaving ? t("drawer.saving") : t("drawer.save")}</button>
           </div>
         </div>
       </>
