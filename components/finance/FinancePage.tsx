@@ -272,47 +272,50 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Summary Card ──────────────────────────────────────────────────────────────
 function SummaryCard({
-  label, value, color, sub, icon,
-  delta, deltaCurrency = "₪", compLabel, deltaPositiveIsGood = true,
+  label, value, color, sub, icon, progress, progressLabel,
 }: {
   label: string; value: string; color: string; sub?: string; icon?: string;
-  delta?: number; deltaCurrency?: string; compLabel?: string; deltaPositiveIsGood?: boolean;
+  progress?: number; progressLabel?: string;
 }) {
-  const showDelta = delta !== undefined && compLabel;
-  const deltaColor = !showDelta || delta === 0
-    ? MUTED
-    : (delta > 0) === deltaPositiveIsGood ? GREEN : RED;
-  const deltaSign = delta !== undefined && delta > 0 ? "+" : "";
+  const pct = progress === undefined ? undefined : Math.max(0, Math.min(1, progress));
 
   return (
     <div style={{
-      background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
-      padding: "16px 18px 14px", flex: "1 1 0", minWidth: 0, minHeight: 132,
+      background: `linear-gradient(160deg, ${color}0A, ${CARD} 55%)`,
+      border: `1px solid ${BDR2}`, borderRadius: 16,
+      padding: "15px 17px 14px", flex: "1 1 0", minWidth: 0, minHeight: 138,
       position: "relative", overflow: "hidden", display: "flex", flexDirection: "column",
     }}>
       {/* top accent */}
       <div style={{ position: "absolute", top: 0, insetInline: 0, height: 3, background: `linear-gradient(270deg, ${color}, ${color}00)` }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        {icon && (
-          <div style={{
-            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-            background: `${color}1A`, border: `1px solid ${color}33`, color,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17,
-          }}>{icon}</div>
-        )}
-        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, letterSpacing: "0.02em", lineHeight: 1.2 }}>
+      {/* header: label + icon, chevron drill affordance */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ color: MUTED, fontSize: 13, opacity: 0.7 }}>‹</span>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, letterSpacing: "0.01em", lineHeight: 1.2, marginInlineStart: "auto", textAlign: "left" }}>
           {label}
         </div>
+        {icon && (
+          <div style={{
+            width: 36, height: 36, borderRadius: 11, flexShrink: 0,
+            background: `${color}18`, border: `1px solid ${color}30`, color,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+          }}>{icon}</div>
+        )}
       </div>
-      <div style={{ fontSize: 32, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1, marginTop: "auto" }}>{value}</div>
-      {showDelta ? (
-        <div style={{ fontSize: 11, color: deltaColor, marginTop: 7, display: "flex", alignItems: "center", gap: 4 }}>
-          <span>{deltaSign}{Math.abs(delta!).toLocaleString()}{deltaCurrency}</span>
-          <span style={{ color: MUTED }}>{compLabel}</span>
+      <div style={{ fontSize: 31, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1, marginTop: "auto" }}>{value}</div>
+      {sub && (
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>{sub}</div>
+      )}
+      {pct !== undefined && (
+        <div style={{ marginTop: 9 }}>
+          <div style={{ height: 5, borderRadius: 100, background: BDR2, overflow: "hidden" }}>
+            <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: color, borderRadius: 100 }} />
+          </div>
+          {progressLabel && (
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 5, textAlign: "left" }}>{progressLabel}</div>
+          )}
         </div>
-      ) : sub ? (
-        <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 7 }}>{sub}</div>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -1128,23 +1131,22 @@ export default function FinancePage() {
         overflow: "hidden", marginBottom: 16,
       }}>
         <button onClick={() => toggleGroup(key)} style={{
-          width: "100%", display: "flex", flexDirection: "column", gap: 10,
-          padding: "16px 20px", background: `${accent}14`, border: "none",
+          width: "100%", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          padding: "14px 18px", background: `${accent}12`, border: "none",
           borderBottom: collapsed ? "none" : `1px solid ${BDR}`, cursor: "pointer", fontFamily: "inherit",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ color: accent, fontSize: 14, transform: collapsed ? "rotate(0deg)" : "rotate(90deg)" }}>▸</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: TEXT }}>{icon} {title}</span>
-            <span style={{
-              fontSize: 11, fontWeight: 700, color: accent, background: `${accent}1A`,
-              borderRadius: 100, padding: "2px 10px",
-            }}>{txs.length} תנועות</span>
-          </div>
-          <div style={{ display: "flex", gap: 8, paddingInlineStart: 28, flexWrap: "wrap" }}>
-            {pill("הכנסות", inc, GREEN)}
-            {pill("הוצאות", exp, AMBER)}
+          <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{title}</span>
+          <span style={{
+            fontSize: 12, fontWeight: 800, color: accent, background: `${accent}1A`,
+            borderRadius: 8, minWidth: 24, padding: "2px 8px", textAlign: "center",
+          }}>{txs.length}</span>
+          <span style={{ fontSize: 18, marginInlineEnd: 2 }}>{icon}</span>
+          <span style={{ display: "flex", gap: 8, marginInlineStart: "auto", flexWrap: "wrap" }}>
+            {pill("סך הכנסות", inc, GREEN)}
+            {pill("סך הוצאות", exp, AMBER)}
             {pill("נטו", net, net >= 0 ? GREEN : RED)}
-          </div>
+          </span>
+          <span style={{ color: accent, fontSize: 14, transform: collapsed ? "rotate(180deg)" : "rotate(0deg)" }}>⌄</span>
         </button>
         {!collapsed && (
           <div>
@@ -1185,37 +1187,37 @@ export default function FinancePage() {
           <div key={`card-${k}`} style={{ padding: "14px 18px 6px" }}>
             <div style={{
               border: `1px solid ${BRAND}33`, borderRadius: 14, padding: "14px 16px",
-              background: `${BRAND}0C`,
+              background: `linear-gradient(160deg, ${BRAND}12, ${BRAND}06)`,
             }}>
-              {/* title + status */}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                <div style={{ marginInlineEnd: "auto" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, lineHeight: 1.2 }}>🎤 {title}</div>
+              {/* title + thumbnail */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 13 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                  background: `${BRAND}1A`, border: `1px solid ${BRAND}33`,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+                }}>🎤</div>
+                <div style={{ marginInlineEnd: "auto", minWidth: 0 }}>
+                  <div style={{ fontSize: 16.5, fontWeight: 800, color: TEXT, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
                   {subParts.length > 0 && (
                     <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{subParts.join(" · ")}</div>
                   )}
                 </div>
-                {statusTx && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, color: sc, background: `${sc}18`,
-                    border: `1px solid ${sc}40`, borderRadius: 100, padding: "4px 12px", whiteSpace: "nowrap",
-                  }}>{statusTx.payment_status}</span>
-                )}
               </div>
-              {/* mini cards */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 13 }}>
+              {/* 5 mini cards: income / dj / artist / label profit / status */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
                 {([
-                  ["הכנסה", income, GREEN],
-                  ["דיג׳יי", dj, AMBER],
-                  ["אמן", artist, BLUE],
-                  ["רווח לייבל", labelProfit, labelProfit >= 0 ? GREEN : RED],
+                  ["הכנסה", fmtAmount(income), GREEN],
+                  ["דיג׳יי", fmtAmount(dj), AMBER],
+                  ["אמן", fmtAmount(artist), BLUE],
+                  ["רווח לייבל", fmtAmount(labelProfit), labelProfit >= 0 ? GREEN : RED],
+                  ["סטטוס", statusTx?.payment_status ?? "—", sc],
                 ] as const).map(([label, val, col]) => (
                   <div key={label} style={{
                     background: CARD, border: `1px solid ${BDR2}`, borderRadius: 10,
-                    padding: "9px 8px", textAlign: "center",
+                    padding: "9px 6px", textAlign: "center",
                   }}>
                     <div style={{ fontSize: 10, color: MUTED, marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: col, letterSpacing: "-0.02em" }}>{fmtAmount(val)}</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: col, letterSpacing: "-0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
                   </div>
                 ))}
               </div>
@@ -1375,43 +1377,45 @@ export default function FinancePage() {
       </div>
 
       {/* ── KPI cards (5 in a row) ───────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 14 }}>
+      {(() => {
+        const totalIncome = stats.incomeReceived + stats.incomeExpected;
+        const ofPlan      = () => totalIncome > 0 ? `מתוך ${fmtAmount(totalIncome)} מתוכנן` : "—";
+        const pctLabel    = (v: number) => totalIncome > 0 ? `${Math.round(Math.max(0, v) / totalIncome * 100)}% מהיעד` : undefined;
+        return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
         <SummaryCard icon="✅" label="שולם / התקבל"
-          value={fmtAmount(stats.incomeReceived)}
-          color={GREEN}
-          sub={`${periodTx.filter((t) => t.type === "income" && t.payment_status === "התקבל").length} תשלומים`}
-          delta={compStats ? stats.incomeReceived - compStats.incomeReceived : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={true}
+          value={fmtAmount(stats.incomeReceived)} color={GREEN}
+          sub={ofPlan()}
+          progress={totalIncome > 0 ? stats.incomeReceived / totalIncome : undefined}
+          progressLabel={pctLabel(stats.incomeReceived)}
         />
         <SummaryCard icon="⏳" label="ממתין לתשלום"
-          value={fmtAmount(stats.incomeExpected)}
-          color={stats.incomeExpected > 0 ? AMBER : MUTED}
-          sub={`${periodTx.filter((t) => t.type === "income" && ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחות`}
-          delta={compStats ? stats.incomeExpected - compStats.incomeExpected : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={false}
+          value={fmtAmount(stats.incomeExpected)} color={stats.incomeExpected > 0 ? AMBER : MUTED}
+          sub={ofPlan()}
+          progress={totalIncome > 0 ? stats.incomeExpected / totalIncome : undefined}
+          progressLabel={pctLabel(stats.incomeExpected)}
         />
         <SummaryCard icon="📈" label="נטו"
-          value={fmtAmount(stats.profitReal)}
-          color={stats.profitReal >= 0 ? GREEN : RED}
+          value={fmtAmount(stats.profitReal)} color={stats.profitReal >= 0 ? GREEN : RED}
           sub={stats.profitReal >= 0 ? "רווח בפועל" : "גירעון"}
-          delta={compStats ? stats.profitReal - compStats.profitReal : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={true}
+          progress={totalIncome > 0 ? stats.profitReal / totalIncome : undefined}
+          progressLabel={pctLabel(stats.profitReal)}
         />
-        <SummaryCard icon="📉" label='סה"כ הוצאות'
-          value={fmtAmount(expensesPaid)}
-          color={expensesPaid > 0 ? RED : MUTED}
-          sub={`${periodTx.filter((t) => t.type === "expense" && t.payment_status === "שולם").length} הוצאות`}
-          delta={compStats ? expensesPaid - (compStats.projExpPaid + compStats.genExpPaid) : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={false}
+        <SummaryCard icon="📉" label='סך הוצאות'
+          value={fmtAmount(expensesPaid)} color={expensesPaid > 0 ? RED : MUTED}
+          sub={ofPlan()}
+          progress={totalIncome > 0 ? expensesPaid / totalIncome : undefined}
+          progressLabel={pctLabel(expensesPaid)}
         />
-        <SummaryCard icon="💰" label='סה"כ הכנסות'
-          value={fmtAmount(stats.incomeReceived + stats.incomeExpected)}
-          color={GREEN}
+        <SummaryCard icon="💰" label="סך הכנסות"
+          value={fmtAmount(totalIncome)} color={GREEN}
           sub={`${periodTx.filter((t) => t.type === "income").length} הכנסות`}
-          delta={compStats ? (stats.incomeReceived + stats.incomeExpected) - (compStats.incomeReceived + compStats.incomeExpected) : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={true}
+          progress={totalIncome > 0 ? 1 : undefined}
+          progressLabel={totalIncome > 0 ? "100% מהיעד" : undefined}
         />
       </div>
+        );
+      })()}
 
       {/* ── Two-column layout ────────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
@@ -1422,9 +1426,16 @@ export default function FinancePage() {
 
           {/* Needs attention */}
           {hasAttention && (
-            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 2 }}>
-                דורש טיפול
+            <div style={{
+              marginTop: 14, display: "flex", flexDirection: "column", gap: 8,
+              background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 16px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>דורש טיפול</span>
+                <span style={{
+                  fontSize: 10, fontWeight: 800, color: "#fff", background: RED,
+                  borderRadius: 100, minWidth: 18, padding: "1px 6px", textAlign: "center",
+                }}>{noDateTx.length + attentionUnpaidIncome.length + attentionOpenExpenses.length}</span>
               </div>
               {noDateTx.length > 0 && (
                 <button onClick={() => setShowUndated((v) => !v)} style={{
@@ -1533,11 +1544,11 @@ export default function FinancePage() {
                 <button key={k} onClick={() => setViewTab(k)} style={{
                   flex: 1, padding: "13px 0", borderRadius: 11, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                  background: active ? `${color}1F` : "transparent",
+                  background: active ? `${color}22` : "transparent",
                   color: active ? color : TEXT2,
                   fontSize: 14.5, fontWeight: active ? 800 : 600,
                   outline: active ? `1px solid ${color}55` : "none",
-                  boxShadow: active ? `inset 0 -2px 0 ${color}` : "none",
+                  boxShadow: active ? `inset 0 -3px 0 ${color}, 0 4px 14px ${color}22` : "none",
                   fontFamily: "inherit",
                 }}>
                   {label}
