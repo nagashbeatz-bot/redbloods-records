@@ -52,6 +52,18 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
     } catch { setError("שגיאת רשת"); setStep("input"); }
   }
 
+  async function runDiag() {
+    setError(null); setDiag(null);
+    try {
+      const res = await fetch("/api/dropbox/intake", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "diag" }),
+      });
+      const d = await res.json();
+      setDiag(d);
+    } catch { setError("שגיאת רשת"); }
+  }
+
   async function move() {
     setStep("moving"); setError(null);
     try {
@@ -122,9 +134,10 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
                 whiteSpace: "pre-wrap", wordBreak: "break-word",
               }}>{JSON.stringify(diag, null, 2)}</pre>
             )}
-            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 18, alignItems: "center" }}>
               <button onClick={onClose} style={btnGhost}>ביטול</button>
-              <button onClick={scan} style={{ ...btnPrimary, marginInlineStart: "auto" }}>↓ סרוק תיקייה</button>
+              <button onClick={runDiag} style={{ ...btnGhost, marginInlineStart: "auto" }} title="הצג אילו תיקיות ה-Dropbox רואה">🔎 בדוק חיבור</button>
+              <button onClick={scan} style={btnPrimary}>↓ סרוק תיקייה</button>
             </div>
           </>
         )}

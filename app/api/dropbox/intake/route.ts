@@ -4,20 +4,17 @@ import { getDropboxToken } from "@/lib/dropbox-token";
 import { addFileToProject } from "@/lib/projects-store";
 import { buildIntake, type IntakeEntry, type IntakeItem } from "@/lib/file-intake";
 
-// ── Dropbox call helper — captures status + raw body, supports a path-root header.
+// ── Dropbox call helper — status + raw body, optional path-root header. ────────
 async function dbx(token: string, endpoint: string, body: unknown, pathRoot?: string) {
   const headers: Record<string, string> = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   if (pathRoot) headers["Dropbox-API-Path-Root"] = pathRoot;
-  const res = await fetch(`https://api.dropboxapi.com/2/${endpoint}`, {
-    method: "POST", headers, body: JSON.stringify(body),
-  });
-  const raw  = await res.text();
+  const res = await fetch(`https://api.dropboxapi.com/2/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body) });
+  const raw = await res.text();
   let json: unknown = {};
   try { json = raw ? JSON.parse(raw) : {}; } catch { /* keep raw */ }
   return { ok: res.ok, status: res.status, json, raw };
 }
 
-/** Extract a best-effort Dropbox error tag from the parsed body. */
 function dbxTag(json: unknown): string {
   const j = (json ?? {}) as { error?: Record<string, unknown> };
   const err = (j.error ?? {}) as Record<string, unknown>;
@@ -25,7 +22,6 @@ function dbxTag(json: unknown): string {
   return (err[".tag"] as string | undefined) ?? sub("shared_link") ?? sub("path") ?? sub("reason") ?? sub("path_lookup") ?? "unknown";
 }
 
-/** Current account root info → lets us set Dropbox-API-Path-Root for team spaces. */
 async function getRootInfo(token: string): Promise<{ tag: string; root?: string; home?: string } | null> {
   try {
     const r = await dbx(token, "users/get_current_account", null);
@@ -36,15 +32,21 @@ async function getRootInfo(token: string): Promise<{ tag: string; root?: string;
   } catch { return null; }
 }
 
-// ── Path helpers ──────────────────────────────────────────────────────────────
+/** Top-level folder names the token can see at a root (no files, no secrets). */
+async function listTopLevel(token: string, pathRoot?: string): Promise<{ ok: boolean; folders?: string[]; status?: number; tag?: string; raw?: string }> {
+  const r = await dbx(token, "files/list_folder", { path: "", recursive: false, include_media_info: false, include_deleted: false }, pathRoot);
+  if (!r.ok) return { ok: false, status: r.status, tag: dbxTag(r.json), raw: r.raw.slice(0, 600) };
+  const names = ((r.json as { entries?: { [".tag"]?: string; name?: string }[] }).entries ?? [])
+    .filter((e) => e[".tag"] === "folder").map((e) => e.name as string).slice(0, 80);
+  return { ok: true, folders: names };
+}
+
 function normPath(s: string): string {
   return ("/" + s.replace(/^\/+/, "").replace(/\/+$/, "")).replace(/\/{2,}/g, "/");
 }
-/** Candidate account paths to try for a home URL: full, double-decoded, and
- *  each of those without its first segment (in case it's a root/workspace name). */
 function homeCandidates(decoded: string): string[] {
   const set = new Set<string>();
-  const a = normPath(decoded); set.add(a);
+  set.add(normPath(decoded));
   try { const d = decodeURIComponent(decoded); if (d !== decoded) set.add(normPath(d)); } catch { /* ignore */ }
   for (const p of [...set]) {
     const seg = p.replace(/^\//, "").split("/");
@@ -53,20 +55,39 @@ function homeCandidates(decoded: string): string[] {
   return [...set].filter((p) => p && p !== "/");
 }
 
-const SCOPE_HINT = "נדרשים scopes: files.metadata.read · files.content.write · sharing.read. אם השגיאה היא missing_scope / no_permission / 401 → צריך re-auth ב-/setup/dropbox.";
+type Collected = { entries: IntakeEntry[]; total: number; withPath: number; firstSample: unknown };
+function makeCollector(c: Collected) {
+  return (j: { entries?: { [".tag"]?: string; name?: string; path_lower?: string; path_display?: string; size?: number }[] }, queue?: string[]) => {
+    (j.entries ?? []).forEach((e) => {
+      if (e[".tag"] === "folder") { if (queue && e.path_lower) queue.push(e.path_lower); return; }
+      if (e[".tag"] !== "file" || !e.name) return;
+      c.total++;
+      if (c.firstSample === null) c.firstSample = e;
+      const p = e.path_lower || e.path_display;
+      if (p) { c.withPath++; c.entries.push({ path: p, name: e.name, size: e.size }); }
+    });
+  };
+}
+
+const SCOPE_HINT = "נדרשים scopes: files.metadata.read · files.content.write · sharing.read. אם missing_scope / no_permission / 401 → re-auth ב-/setup/dropbox.";
 
 // ── POST /api/dropbox/intake ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const action = body.action as "scan" | "move";
+    const action = body.action as "scan" | "move" | "diag";
     const token = await getDropboxToken();
 
-    // Account root (for team-space path-root). Non-fatal if unavailable.
     const rootInfo = await getRootInfo(token);
-    const pathRoot = rootInfo?.tag === "team" && rootInfo.root
-      ? JSON.stringify({ ".tag": "root", root: rootInfo.root })
-      : undefined;
+    const pathRoot = rootInfo?.tag === "team" && rootInfo.root ? JSON.stringify({ ".tag": "root", root: rootInfo.root }) : undefined;
+
+    // ── DIAG: show what the token can see (top-level folders). ─────────────────
+    if (action === "diag") {
+      const defaultRoot = await listTopLevel(token, undefined);
+      const teamRoot    = pathRoot ? await listTopLevel(token, pathRoot) : null;
+      console.log("[intake/diag] rootInfo:", JSON.stringify(rootInfo), "default:", JSON.stringify(defaultRoot), "team:", JSON.stringify(teamRoot));
+      return NextResponse.json({ ok: true, rootInfo, defaultRoot, teamRoot, scopesHint: SCOPE_HINT });
+    }
 
     // ── SCAN ──────────────────────────────────────────────────────────────────
     if (action === "scan") {
@@ -76,87 +97,91 @@ export async function POST(req: NextRequest) {
       const homeMatch = url.match(/dropbox\.com\/home(\/[^?#]*)/i);
       const isHome = !!homeMatch;
       const decodedHome = isHome ? decodeURIComponent(homeMatch![1]) : null;
-      console.log("[intake/scan] url-type:", isHome ? "home" : "shared", "rootInfo:", JSON.stringify(rootInfo), "pathRoot?", !!pathRoot);
-      if (isHome) console.log("[intake/scan] decoded home path:", decodedHome);
+      console.log("[intake/scan] type:", isHome ? "home" : "shared", "rootInfo:", JSON.stringify(rootInfo), "pathRoot?", !!pathRoot, isHome ? `home:${decodedHome}` : "");
 
       type Attempt = { label: string; status: number; ok: boolean; tag?: string; raw?: string };
       const attempts: Attempt[] = [];
-      let success: { json: unknown } | null = null;
+      const c: Collected = { entries: [], total: 0, withPath: 0, firstSample: null };
+      const collect = makeCollector(c);
       let usedPathRoot: string | undefined;
       let usedRootPath = "";
-      let mode: "path" | "shared_link" = isHome ? "path" : "shared_link";
-
-      const tryCall = async (args: Record<string, unknown>, pr: string | undefined, label: string) => {
-        const r = await dbx(token, "files/list_folder", args, pr);
-        attempts.push({ label, status: r.status, ok: r.ok, tag: r.ok ? undefined : dbxTag(r.json), raw: r.ok ? undefined : r.raw.slice(0, 2000) });
-        console.log(`[intake/scan] attempt "${label}" → ${r.status} ${r.ok ? "OK" : dbxTag(r.json)}`);
-        if (!r.ok) console.log(`[intake/scan]   raw: ${r.raw.slice(0, 600)}`);
-        return r;
-      };
+      const mode: "path" | "shared_link" = isHome ? "path" : "shared_link";
 
       if (isHome) {
+        // ── Account-path mode (recursive supported) ──
         const cands = homeCandidates(decodedHome!);
-        // Try team-root first (if any), then default namespace; each × candidates.
         const roots: (string | undefined)[] = pathRoot ? [pathRoot, undefined] : [undefined];
+        let ok = false;
         outer: for (const pr of roots) {
           for (const p of cands) {
-            const r = await tryCall({ path: p, recursive: true, include_media_info: false, include_deleted: false }, pr, `path=${p} root=${pr ? "team" : "default"}`);
-            if (r.ok) { success = r; usedPathRoot = pr; usedRootPath = p; break outer; }
+            const r = await dbx(token, "files/list_folder", { path: p, recursive: true, include_media_info: false, include_deleted: false }, pr);
+            attempts.push({ label: `path=${p} root=${pr ? "team" : "default"}`, status: r.status, ok: r.ok, tag: r.ok ? undefined : dbxTag(r.json), raw: r.ok ? undefined : r.raw.slice(0, 1200) });
+            console.log(`[intake/scan] path "${p}" root=${pr ? "team" : "default"} → ${r.status} ${r.ok ? "OK" : dbxTag(r.json)}`);
+            if (r.ok) {
+              collect(r.json as Parameters<typeof collect>[0]);
+              let cont = r.json as { has_more?: boolean; cursor?: string }; let g = 0;
+              while (cont.has_more && cont.cursor && g < 50) { g++; const cr = await dbx(token, "files/list_folder/continue", { cursor: cont.cursor }, pr); if (!cr.ok) break; collect(cr.json as Parameters<typeof collect>[0]); cont = cr.json as { has_more?: boolean; cursor?: string }; }
+              ok = true; usedPathRoot = pr; usedRootPath = p; break outer;
+            }
           }
         }
-      } else {
-        const roots: (string | undefined)[] = pathRoot ? [undefined, pathRoot] : [undefined];
-        for (const pr of roots) {
-          const r = await tryCall({ path: "", recursive: true, include_media_info: false, include_deleted: false, include_has_explicit_shared_members: false, shared_link: { url } }, pr, `shared_link root=${pr ? "team" : "default"}`);
-          if (r.ok) { success = r; usedPathRoot = pr; break; }
+        if (!ok) {
+          // Active diagnostic: what folders does the token actually see at root?
+          const defaultRoot = await listTopLevel(token, undefined);
+          const teamRoot    = pathRoot ? await listTopLevel(token, pathRoot) : null;
+          return NextResponse.json({
+            error: "הנתיב לא נמצא (path/not_found). בדוק את ה-root listing באבחון — ייתכן שה-Dropbox מחובר לחשבון אחר, או שהאפליקציה היא App-Folder ולא Full Dropbox.",
+            diagnostic: { mode, pastedUrl: url, decodedHomePath: decodedHome, triedPaths: cands, rootInfo, attempts, rootListing: { defaultRoot, teamRoot }, scopesHint: SCOPE_HINT },
+          }, { status: 400 });
         }
+      } else {
+        // ── Shared-link mode: recursive NOT supported → manual BFS ──
+        const roots: (string | undefined)[] = pathRoot ? [undefined, pathRoot] : [undefined];
+        let chosen: string | undefined;
+        // Pick a root that can list the top level ("").
+        let topOk = false;
+        for (const pr of roots) {
+          const r = await dbx(token, "files/list_folder", { path: "", recursive: false, include_media_info: false, include_deleted: false, include_has_explicit_shared_members: false, shared_link: { url } }, pr);
+          attempts.push({ label: `shared top root=${pr ? "team" : "default"}`, status: r.status, ok: r.ok, tag: r.ok ? undefined : dbxTag(r.json), raw: r.ok ? undefined : r.raw.slice(0, 1200) });
+          console.log(`[intake/scan] shared top root=${pr ? "team" : "default"} → ${r.status} ${r.ok ? "OK" : dbxTag(r.json)}`);
+          if (r.ok) {
+            chosen = pr; topOk = true; usedPathRoot = pr;
+            const queue: string[] = [];
+            collect(r.json as Parameters<typeof collect>[0], queue);
+            let cont = r.json as { has_more?: boolean; cursor?: string }; let g = 0;
+            while (cont.has_more && cont.cursor && g < 50) { g++; const cr = await dbx(token, "files/list_folder/continue", { cursor: cont.cursor }, pr); if (!cr.ok) break; collect(cr.json as Parameters<typeof collect>[0], queue); cont = cr.json as { has_more?: boolean; cursor?: string }; }
+            // BFS into subfolders (recursive:false per call).
+            const seen = new Set<string>([""]); let folders = 0;
+            while (queue.length && folders < 300) {
+              const p = queue.shift()!; if (seen.has(p)) continue; seen.add(p); folders++;
+              const sr = await dbx(token, "files/list_folder", { path: p, recursive: false, shared_link: { url } }, pr);
+              if (!sr.ok) { attempts.push({ label: `shared sub "${p}"`, status: sr.status, ok: false, tag: dbxTag(sr.json), raw: sr.raw.slice(0, 400) }); continue; }
+              collect(sr.json as Parameters<typeof collect>[0], queue);
+              let sc = sr.json as { has_more?: boolean; cursor?: string }; let sg = 0;
+              while (sc.has_more && sc.cursor && sg < 50) { sg++; const cr = await dbx(token, "files/list_folder/continue", { cursor: sc.cursor }, pr); if (!cr.ok) break; collect(cr.json as Parameters<typeof collect>[0], queue); sc = cr.json as { has_more?: boolean; cursor?: string }; }
+            }
+            break;
+          }
+        }
+        if (!topOk) {
+          return NextResponse.json({
+            error: "אין גישה ל-shared link — ראה אבחון.",
+            diagnostic: { mode, pastedUrl: url, rootInfo, attempts, scopesHint: SCOPE_HINT },
+          }, { status: 400 });
+        }
+        void chosen;
       }
 
-      if (!success) {
-        return NextResponse.json({
-          error: "אין גישה לתיקייה — ראה פרטי אבחון.",
-          diagnostic: { mode, pastedUrl: url, decodedHomePath: decodedHome, rootInfo, attempts, scopesHint: SCOPE_HINT },
-        }, { status: 400 });
-      }
+      console.log(`[intake/scan] SUCCESS mode=${mode} rootPath="${usedRootPath}" total=${c.total} withPath=${c.withPath}`);
+      console.log("[intake/scan] sample paths:", c.entries.slice(0, 3).map((e) => e.path));
 
-      // Page through, categorize.
-      const entries: IntakeEntry[] = [];
-      let entriesTotal = 0, entriesWithPath = 0;
-      let firstSample: unknown = null;
-      const collect = (j: { entries?: { [".tag"]?: string; name?: string; path_lower?: string; path_display?: string; size?: number }[] }) => {
-        (j.entries ?? []).forEach((e) => {
-          if (e[".tag"] !== "file" || !e.name) return;
-          entriesTotal++;
-          if (firstSample === null) firstSample = e;
-          const p = e.path_lower || e.path_display;
-          if (p) { entriesWithPath++; entries.push({ path: p, name: e.name, size: e.size }); }
-        });
-      };
-      collect(success.json as Parameters<typeof collect>[0]);
-      let cont = success.json as { has_more?: boolean; cursor?: string };
-      let guard = 0;
-      while (cont.has_more && cont.cursor && guard < 50) {
-        guard++;
-        const r = await dbx(token, "files/list_folder/continue", { cursor: cont.cursor }, usedPathRoot);
-        if (!r.ok) break;
-        collect(r.json as Parameters<typeof collect>[0]);
-        cont = r.json as { has_more?: boolean; cursor?: string };
-      }
-
-      console.log(`[intake/scan] SUCCESS mode=${mode} rootPath="${usedRootPath}" total=${entriesTotal} withPath=${entriesWithPath}`);
-      console.log("[intake/scan] sample paths:", entries.slice(0, 3).map((e) => e.path));
-
-      if (entriesTotal === 0) return NextResponse.json({ error: "התיקייה ריקה — לא נמצאו קבצים" }, { status: 400 });
-      if (entriesWithPath === 0) {
-        return NextResponse.json({
-          error: "Dropbox החזיר קבצים אך ללא path להעברה.",
-          diagnostic: { mode, sampleEntry: firstSample },
-        }, { status: 400 });
+      if (c.total === 0) return NextResponse.json({ error: "התיקייה ריקה — לא נמצאו קבצים" }, { status: 400 });
+      if (c.withPath === 0) {
+        return NextResponse.json({ error: "Dropbox החזיר קבצים אך ללא path להעברה.", diagnostic: { mode, sampleEntry: c.firstSample } }, { status: 400 });
       }
 
       const projectName = (body.projectName as string) || "PROJECT";
-      const items = buildIntake(entries, projectName, mode === "path" ? usedRootPath : "");
-      // Echo back which path-root the scan used → move reuses it.
+      const items = buildIntake(c.entries, projectName, mode === "path" ? usedRootPath : "");
       return NextResponse.json({ ok: true, count: items.length, mode, usedTeamRoot: !!usedPathRoot, items });
     }
 
@@ -164,15 +189,12 @@ export async function POST(req: NextRequest) {
     if (action === "move") {
       const projectId = body.projectId as string;
       const items = (body.items as IntakeItem[]) ?? [];
-      if (!projectId || items.length === 0) {
-        return NextResponse.json({ error: "חסר פרויקט או קבצים" }, { status: 400 });
-      }
+      if (!projectId || items.length === 0) return NextResponse.json({ error: "חסר פרויקט או קבצים" }, { status: 400 });
 
       const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
       if (!proj) return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
       const target = deliveryPath((proj as { artist: string }).artist, (proj as { name: string }).name);
 
-      // Same path-root the account uses (team space → root namespace).
       await dbx(token, "files/create_folder_v2", { path: target, autorename: false }, pathRoot);
 
       const results: { name: string; ok: boolean; error?: string }[] = [];
@@ -181,17 +203,11 @@ export async function POST(req: NextRequest) {
         try {
           const to = `${target}/${it.targetName}`;
           const mv = await dbx(token, "files/move_v2", { from_path: it.path, to_path: to, autorename: true }, pathRoot);
-          if (!mv.ok) {
-            results.push({ name: it.targetName, ok: false, error: dbxTag(mv.json) + (mv.raw ? ` — ${mv.raw.slice(0, 200)}` : "") });
-            continue;
-          }
+          if (!mv.ok) { results.push({ name: it.targetName, ok: false, error: dbxTag(mv.json) + (mv.raw ? ` — ${mv.raw.slice(0, 200)}` : "") }); continue; }
           const md = (mv.json as { metadata?: { path_display?: string; name?: string } }).metadata;
           const finalPath = md?.path_display ?? to;
           const finalName = md?.name ?? it.targetName;
-          await addFileToProject(projectId, {
-            name: finalName, url: `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`,
-            dropboxPath: finalPath, category: it.category,
-          });
+          await addFileToProject(projectId, { name: finalName, url: `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`, dropboxPath: finalPath, category: it.category });
           moved++;
           results.push({ name: finalName, ok: true });
         } catch (e) {
