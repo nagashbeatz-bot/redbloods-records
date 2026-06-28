@@ -214,6 +214,24 @@ function mergeNotes(marker: string, userText: string): string {
   return [marker, (userText ?? "").trim()].filter(Boolean).join(" ");
 }
 
+/**
+ * Display label for the "תנועה" column — never empty, even for older rows that
+ * were saved without a description/category. Display-only (no DB change):
+ *   1. description → 2. category → 3. show fallback → 4. project fallback →
+ *   5. general fallback, by type.
+ */
+function getTransactionLabel(tx: Transaction): string {
+  if (tx.description && tx.description.trim()) return tx.description.trim();
+  if (tx.category && tx.category.trim())       return tx.category.trim();
+  const isIncome = tx.type === "income";
+  if (isShowTx(tx)) {
+    return isIncome ? "הכנסה מהופעה" : "תנועת הופעה";
+  }
+  const isProject = !!tx.project_id || (tx.scope ?? "project") === "project";
+  if (isProject) return isIncome ? "הכנסה מפרויקט" : "הוצאה לפרויקט";
+  return isIncome ? "הכנסה כללית" : "הוצאה כללית";
+}
+
 function calcStats(txList: Transaction[]) {
   const income          = txList.filter((t) => t.type === "income");
   const expenses        = txList.filter((t) => t.type === "expense");
@@ -998,7 +1016,7 @@ export default function FinancePage() {
           {/* תנועה — description / title, with date subline */}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {tx.description || tx.category || "—"}
+              {getTransactionLabel(tx)}
             </div>
             <div style={{ fontSize: 10.5, color: undated ? AMBER : MUTED, marginTop: 2 }}>
               {undated ? "ללא תאריך" : fmtDate(tx.date)}
@@ -1663,7 +1681,7 @@ export default function FinancePage() {
                         {tx.artist || proj?.artist || "—"}
                       </div>
                       <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {tx.description || tx.category || "—"}
+                        {getTransactionLabel(tx)}
                       </div>
                       <div style={{ fontSize: 15, fontWeight: 800, color: isIncome ? GREEN : RED, whiteSpace: "nowrap" }}>
                         {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
