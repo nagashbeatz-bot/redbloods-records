@@ -697,7 +697,7 @@ function TxModal({
                 fontSize: 13, fontWeight: 700, fontFamily: "inherit",
               }}
             >
-              {saving ? "שומר..." : isIncome ? "שמור הכנסה" : isGeneral ? "שמור הוצאה כללית" : "שמור הוצאה"}
+              {saving ? "שומר..." : isIncome ? "שמור הכנסה" : "שמור הוצאה"}
             </button>
           </div>
 
