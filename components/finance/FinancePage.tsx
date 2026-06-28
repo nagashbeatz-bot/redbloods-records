@@ -26,6 +26,7 @@ type Period        = "month" | "3months" | "custom";
 type SortMode      = "date-desc" | "date-asc" | "amount-desc" | "project" | "status" | "type";
 type Scope         = "project" | "general";
 type SourceFilter  = "all" | "project" | "general";
+type ViewTab       = "all" | "income" | "expense" | "shows" | "unpaid";
 
 interface Transaction {
   id: string;
@@ -694,7 +695,7 @@ export default function FinancePage() {
   const [showUndated, setShowUndated] = useState(false);
 
   // Table filters
-  const [typeFilter,   setTypeFilter]   = useState<"all" | "income" | "expense">("all");
+  const [viewTab,      setViewTab]      = useState<ViewTab>("all");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -709,6 +710,8 @@ export default function FinancePage() {
   const [saving,    setSaving]    = useState(false);
   // Inline quick-status popover: which row is open + where to anchor it.
   const [statusMenu, setStatusMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  // Source groups (הופעות / פרויקטים / כללי) that are collapsed.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const loadAll = useCallback(() => {
     setLoaded(false);
@@ -752,7 +755,10 @@ export default function FinancePage() {
 
   // ── Table filtered rows ────────────────────────────────────────────────────
   function matchesFilters(t: Transaction) {
-    if (typeFilter !== "all"   && t.type !== typeFilter) return false;
+    if (viewTab === "income"  && t.type !== "income")  return false;
+    if (viewTab === "expense" && t.type !== "expense") return false;
+    if (viewTab === "shows"   && !isShowTx(t))         return false;
+    if (viewTab === "unpaid"  && t.payment_status !== "לא שולם") return false;
     if (statusFilter           && t.payment_status !== statusFilter) return false;
     if (projectFilter          && t.project_id !== projectFilter) return false;
     if (sourceFilter !== "all" && (t.scope ?? "project") !== sourceFilter) return false;
@@ -919,6 +925,269 @@ export default function FinancePage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const expensesPaid = stats.projExpPaid + stats.genExpPaid;
+  const unpaidCount  = periodTx.filter((t) => t.payment_status === "לא שולם").length;
+
+  // ── Source grouping (הופעות / פרויקטים / כללי) ─────────────────────────────
+  const GRID_COLS = "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px";
+  const isProjectTx = (t: Transaction) => !isShowTx(t) && (!!t.project_id || (t.scope ?? "project") === "project");
+  const showsTxs    = filtered.filter(isShowTx);
+  const projectTxs  = filtered.filter(isProjectTx);
+  const generalTxs  = filtered.filter((t) => !isShowTx(t) && !isProjectTx(t));
+
+  function groupSummary(txs: Transaction[]) {
+    const inc = txs.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+    const exp = txs.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+    return { inc, exp, net: inc - exp };
+  }
+  const toggleGroup = (key: string) =>
+    setCollapsedGroups((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  // Single transaction row — extracted so it can render inside any group or the
+  // flat month-grouped table. Behaviour (quick status, expand, edit) unchanged.
+  function renderTxRow(tx: Transaction, i: number) {
+    const proj     = projects.find((p) => p.id === tx.project_id);
+    const isIncome = tx.type === "income";
+    const isGen    = (tx.scope ?? "project") === "general";
+    const undated  = !tx.date;
+    const expanded = expandedIds.has(tx.id);
+    return (
+      <div key={tx.id}>
+        {/* Main row */}
+        <div
+          onClick={() => toggleExpand(tx.id)}
+          style={{
+            display: "grid", gridTemplateColumns: GRID_COLS,
+            gap: 8, padding: "17px 16px", alignItems: "center",
+            borderBottom: expanded ? "none" : `1px solid rgba(255,255,255,0.06)`,
+            background: undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)",
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
+          onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLDivElement).style.background = undated ? "#1D1810" : expanded ? `${BRAND}08` : i % 2 === 0 ? CARD : CARD2; }}
+        >
+          <div style={{ fontSize: 12, color: undated ? AMBER : TEXT2 }}>
+            {undated ? "ללא תאריך" : fmtDate(tx.date)}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{
+              fontSize: 9, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+              background: isIncome ? `${GREEN}12` : `${AMBER}12`,
+              color: isIncome ? GREEN : AMBER,
+              border: `1px solid ${isIncome ? `${GREEN}25` : `${AMBER}25`}`,
+              display: "inline-block", width: "fit-content",
+            }}>
+              {isIncome ? "הכנסה" : "הוצאה"}
+            </span>
+            {isGen && (
+              <span style={{
+                fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                background: `${PURPLE}12`, color: PURPLE,
+                border: `1px solid ${PURPLE}25`,
+                display: "inline-block", width: "fit-content",
+              }}>
+                כללי
+              </span>
+            )}
+            {isShowTx(tx) && (
+              <span style={{
+                fontSize: 8, fontWeight: 700, borderRadius: 4, padding: "2px 5px",
+                background: `${BRAND}14`, color: BRAND,
+                border: `1px solid ${BRAND}30`,
+                display: "inline-block", width: "fit-content",
+              }}>
+                הופעה
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {isGen
+              ? <span style={{ color: PURPLE }}>🏢 כללי</span>
+              : (proj?.name ?? "—")}
+          </div>
+          <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {tx.artist || proj?.artist || "—"}
+          </div>
+          <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {tx.description || tx.category || "—"}
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: isIncome ? GREEN : isGen ? PURPLE : AMBER }}>
+            {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
+          </div>
+          <div>
+            <button type="button" title="שינוי סטטוס מהיר"
+              onClick={(e) => {
+                e.stopPropagation();
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setStatusMenu(statusMenu?.id === tx.id ? null : { id: tx.id, x: r.left, y: r.bottom });
+              }}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}>
+              <StatusBadge status={tx.payment_status} />
+            </button>
+          </div>
+          <div style={{ textAlign: "center", color: expanded ? BRAND : MUTED, fontSize: 11 }}>
+            {expanded ? "▲" : "▼"}
+          </div>
+        </div>
+
+        {/* Expanded details */}
+        {expanded && (
+          <div style={{
+            padding: "10px 16px 12px 16px", borderBottom: `1px solid rgba(255,255,255,0.04)`,
+            background: `rgba(255,255,255,0.02)`,
+            display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
+          }}>
+            {tx.payment_method && (
+              <div style={{ fontSize: 11, color: TEXT2 }}>
+                <span style={{ color: MUTED, marginLeft: 4 }}>אמצעי תשלום:</span>
+                {tx.payment_method}
+              </div>
+            )}
+            {tx.receipt_ref && (
+              <div style={{ fontSize: 11, color: TEXT2 }}>
+                <span style={{ color: MUTED, marginLeft: 4 }}>אסמכתא:</span>
+                {tx.receipt_ref}
+              </div>
+            )}
+            {tx.category && (
+              <div style={{ fontSize: 11, color: TEXT2 }}>
+                <span style={{ color: MUTED, marginLeft: 4 }}>קטגוריה:</span>
+                {tx.category}
+              </div>
+            )}
+            {userVisibleNotes(tx.notes) && (
+              <div style={{ fontSize: 11, color: TEXT2 }}>
+                <span style={{ color: MUTED, marginLeft: 4 }}>הערות:</span>
+                {userVisibleNotes(tx.notes)}
+              </div>
+            )}
+            {!tx.payment_method && !tx.receipt_ref && !tx.category && !userVisibleNotes(tx.notes) && (
+              <div style={{ fontSize: 11, color: MUTED }}>אין פרטים נוספים</div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginRight: "auto" }}>
+              <button onClick={(e) => { e.stopPropagation(); openEdit(tx); }} style={{
+                padding: "5px 14px", borderRadius: 8, border: `1px solid ${BDR2}`,
+                background: "transparent", color: TEXT2, cursor: "pointer",
+                fontSize: 12, fontFamily: "inherit",
+              }}>
+                ✏ ערוך
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); handleDelete(tx.id); }} style={{
+                padding: "5px 14px", borderRadius: 8, border: `1px solid ${RED}25`,
+                background: `${RED}06`, color: RED, cursor: "pointer",
+                fontSize: 12, fontFamily: "inherit",
+              }}>
+                × מחק
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Shared per-group column header.
+  function groupColHeader() {
+    return (
+      <div style={{
+        display: "grid", gridTemplateColumns: GRID_COLS,
+        gap: 8, padding: "8px 16px",
+        background: CARD2, borderBottom: `1px solid ${BDR}`,
+        fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
+      }}>
+        <div>תאריך</div><div>סוג</div><div>פרויקט / מקור</div>
+        <div>אמן / ספק</div><div>תיאור / קטגוריה</div>
+        <div>סכום</div><div>סטטוס</div><div />
+      </div>
+    );
+  }
+
+  // Collapsible source-group card with a mini income/expense/net summary.
+  function renderGroup(key: string, title: string, icon: string, accent: string, txs: Transaction[], body: React.ReactNode) {
+    if (txs.length === 0) return null;
+    const collapsed = collapsedGroups.has(key);
+    const { inc, exp, net } = groupSummary(txs);
+    return (
+      <div key={key} style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
+        <button onClick={() => toggleGroup(key)} style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 12,
+          padding: "12px 16px", background: `${accent}0E`, border: "none",
+          borderBottom: collapsed ? "none" : `1px solid ${BDR}`, cursor: "pointer", fontFamily: "inherit",
+        }}>
+          <span style={{ color: accent, fontSize: 12, transform: collapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "none" }}>▸</span>
+          <span style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{icon} {title}</span>
+          <span style={{ fontSize: 11, color: MUTED }}>{txs.length} תנועות</span>
+          <span style={{ display: "flex", gap: 16, marginInlineStart: "auto", fontSize: 11 }}>
+            <span style={{ color: MUTED }}>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(inc)}</strong></span>
+            <span style={{ color: MUTED }}>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(exp)}</strong></span>
+            <span style={{ color: MUTED }}>נטו: <strong style={{ color: net >= 0 ? GREEN : RED }}>{fmtAmount(net)}</strong></span>
+          </span>
+        </button>
+        {!collapsed && (
+          <div>
+            {groupColHeader()}
+            {body}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // הופעות group body: sub-group by the internal show_id marker (never shown) and
+  // render a per-show summary card (income / dj / artist / label profit / status),
+  // then that show's rows. Transactions with no marker fall back to plain rows.
+  function renderShowsBody(txs: Transaction[]): React.ReactNode {
+    const byShow = new Map<string, Transaction[]>();
+    txs.forEach((t) => {
+      const k = notesMarker(t.notes) || "_none";
+      if (!byShow.has(k)) byShow.set(k, []);
+      byShow.get(k)!.push(t);
+    });
+    let ri = 0;
+    const blocks: React.ReactNode[] = [];
+    byShow.forEach((group, k) => {
+      if (k !== "_none") {
+        const incomeTx = group.find((t) => t.type === "income");
+        const income   = group.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+        const dj       = group.filter((t) => t.type === "expense" && t.category.includes("דיג")).reduce((s, t) => s + t.amount, 0);
+        const artist   = group.filter((t) => t.type === "expense" && t.category.includes("אמן")).reduce((s, t) => s + t.amount, 0);
+        const labelProfit = income - dj - artist;
+        const title    = incomeTx
+          ? incomeTx.description.replace(/^הכנסה מהופעה\s*[—–-]\s*/, "")
+          : (group[0]?.description ?? "הופעה");
+        const statusTx = incomeTx ?? group[0];
+        const sc       = STATUS_COLOR[statusTx?.payment_status ?? ""] ?? MUTED;
+        blocks.push(
+          <div key={`card-${k}`} style={{ padding: "12px 16px 0" }}>
+            <div style={{
+              border: `1px solid ${BRAND}22`, borderRadius: 12, padding: "10px 12px",
+              background: `${BRAND}08`, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginInlineEnd: "auto" }}>🎤 {title}</span>
+              {[
+                ["הכנסה", income, GREEN],
+                ["דיג׳יי", dj, AMBER],
+                ["אמן", artist, BLUE],
+                ["רווח לייבל", labelProfit, labelProfit >= 0 ? GREEN : RED],
+              ].map(([label, val, col]) => (
+                <span key={label as string} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 72 }}>
+                  <span style={{ fontSize: 9, color: MUTED }}>{label as string}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: col as string }}>{fmtAmount(val as number)}</span>
+                </span>
+              ))}
+              {statusTx && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: sc, background: `${sc}18`,
+                  border: `1px solid ${sc}35`, borderRadius: 100, padding: "2px 10px",
+                }}>{statusTx.payment_status}</span>
+              )}
+            </div>
+          </div>
+        );
+      }
+      group.forEach((tx) => blocks.push(renderTxRow(tx, ri++)));
+    });
+    return blocks;
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   const navBtnStyle: React.CSSProperties = {
@@ -1066,49 +1335,42 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* ── KPI cards (6 in a row) ───────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 14 }}>
-        <SummaryCard icon="💎" label='סה"כ נטו'
-          value={fmtAmount(stats.profitReal)}
-          color={stats.profitReal >= 0 ? GREEN : RED}
-          sub={stats.profitReal >= 0 ? "רווח בפועל" : "גירעון"}
-          delta={compStats ? stats.profitReal - compStats.profitReal : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={true}
-        />
-        <SummaryCard icon="💰" label='סה"כ הכנסות'
+      {/* ── KPI cards (5 in a row) ───────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 14 }}>
+        <SummaryCard icon="✅" label="שולם / התקבל"
           value={fmtAmount(stats.incomeReceived)}
           color={GREEN}
           sub={`${periodTx.filter((t) => t.type === "income" && t.payment_status === "התקבל").length} תשלומים`}
           delta={compStats ? stats.incomeReceived - compStats.incomeReceived : undefined}
           compLabel={compLabel} deltaPositiveIsGood={true}
         />
-        <SummaryCard icon="💸" label='סה"כ הוצאות'
+        <SummaryCard icon="⏳" label="ממתין לתשלום"
+          value={fmtAmount(stats.incomeExpected)}
+          color={stats.incomeExpected > 0 ? AMBER : MUTED}
+          sub={`${periodTx.filter((t) => t.type === "income" && ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחות`}
+          delta={compStats ? stats.incomeExpected - compStats.incomeExpected : undefined}
+          compLabel={compLabel} deltaPositiveIsGood={false}
+        />
+        <SummaryCard icon="📈" label="נטו"
+          value={fmtAmount(stats.profitReal)}
+          color={stats.profitReal >= 0 ? GREEN : RED}
+          sub={stats.profitReal >= 0 ? "רווח בפועל" : "גירעון"}
+          delta={compStats ? stats.profitReal - compStats.profitReal : undefined}
+          compLabel={compLabel} deltaPositiveIsGood={true}
+        />
+        <SummaryCard icon="📉" label='סה"כ הוצאות'
           value={fmtAmount(expensesPaid)}
-          color={expensesPaid > 0 ? AMBER : MUTED}
+          color={expensesPaid > 0 ? RED : MUTED}
           sub={`${periodTx.filter((t) => t.type === "expense" && t.payment_status === "שולם").length} הוצאות`}
           delta={compStats ? expensesPaid - (compStats.projExpPaid + compStats.genExpPaid) : undefined}
           compLabel={compLabel} deltaPositiveIsGood={false}
         />
-        <SummaryCard icon="✅" label="הכנסות מוכרות"
-          value={fmtAmount(stats.incomeReceived)}
+        <SummaryCard icon="💰" label='סה"כ הכנסות'
+          value={fmtAmount(stats.incomeReceived + stats.incomeExpected)}
           color={GREEN}
-          sub={stats.incomeReceived > 0 && (stats.incomeReceived + stats.incomeExpected) > 0
-            ? `${Math.round(stats.incomeReceived / (stats.incomeReceived + stats.incomeExpected) * 100)}% מהסה"כ`
-            : "—"}
-        />
-        <SummaryCard icon="⏳" label="הכנסות עתידיות"
-          value={fmtAmount(stats.incomeExpected)}
-          color={stats.incomeExpected > 0 ? BLUE : MUTED}
-          sub={`${periodTx.filter((t) => t.type === "income" && ["צפוי","חלקי","לבדיקה"].includes(t.payment_status)).length} פתוחות`}
-          delta={compStats ? stats.incomeExpected - compStats.incomeExpected : undefined}
+          sub={`${periodTx.filter((t) => t.type === "income").length} הכנסות`}
+          delta={compStats ? (stats.incomeReceived + stats.incomeExpected) - (compStats.incomeReceived + compStats.incomeExpected) : undefined}
           compLabel={compLabel} deltaPositiveIsGood={true}
-        />
-        <SummaryCard icon="🔮" label="הוצאות עתידיות"
-          value={fmtAmount(stats.expensesExpected)}
-          color={stats.expensesExpected > 0 ? PURPLE : MUTED}
-          sub={`${periodTx.filter((t) => t.type === "expense" && ["צפוי","לא שולם","חלקי"].includes(t.payment_status)).length} פתוחות`}
-          delta={compStats ? stats.expensesExpected - compStats.expensesExpected : undefined}
-          compLabel={compLabel} deltaPositiveIsGood={false}
         />
       </div>
 
@@ -1123,7 +1385,7 @@ export default function FinancePage() {
           {hasAttention && (
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 2 }}>
-                דורש תשומת לב
+                דורש טיפול
               </div>
               {noDateTx.length > 0 && (
                 <button onClick={() => setShowUndated((v) => !v)} style={{
@@ -1142,7 +1404,7 @@ export default function FinancePage() {
                 </button>
               )}
               {attentionUnpaidIncome.length > 0 && (
-                <button onClick={() => { setTypeFilter("income"); setStatusFilter("לא שולם"); }} style={{
+                <button onClick={() => { setViewTab("income"); setStatusFilter("לא שולם"); }} style={{
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "7px 12px", borderRadius: 10, width: "100%",
                   background: `${RED}08`, border: `1px solid ${RED}22`,
@@ -1155,7 +1417,7 @@ export default function FinancePage() {
                 </button>
               )}
               {attentionOpenExpenses.length > 0 && (
-                <button onClick={() => { setTypeFilter("expense"); setStatusFilter(""); }} style={{
+                <button onClick={() => { setViewTab("expense"); setStatusFilter(""); }} style={{
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "7px 12px", borderRadius: 10, width: "100%",
                   background: `${AMBER}08`, border: `1px solid ${AMBER}22`,
@@ -1226,18 +1488,26 @@ export default function FinancePage() {
             display: "flex", gap: 4, marginBottom: 12,
             background: CARD, border: `1px solid ${BDR}`, borderRadius: 12, padding: 4,
           }}>
-            {([["all","הכל",TEXT2],[" income","הכנסות",GREEN],["expense","הוצאות",AMBER]] as const).map(([key, label, color]) => {
-              const k = key.trim() as "all" | "income" | "expense";
-              const active = typeFilter === k;
+            {([["all","הכל",TEXT2],["income","הכנסות",GREEN],["expense","הוצאות",AMBER],["shows","הופעות",BRAND],["unpaid","לא שולם",RED]] as const).map(([k, label, color]) => {
+              const active = viewTab === k;
               return (
-                <button key={k} onClick={() => setTypeFilter(k)} style={{
+                <button key={k} onClick={() => setViewTab(k)} style={{
                   flex: 1, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                   background: active ? `${color}18` : "transparent",
                   color: active ? color : MUTED,
                   fontSize: 13, fontWeight: active ? 700 : 500,
                   outline: active ? `1px solid ${color}35` : "none",
                   fontFamily: "inherit",
-                }}>{label}</button>
+                }}>
+                  {label}
+                  {k === "unpaid" && unpaidCount > 0 && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, color: "#fff", background: RED,
+                      borderRadius: 100, padding: "1px 6px", minWidth: 16, textAlign: "center",
+                    }}>{unpaidCount}</span>
+                  )}
+                </button>
               );
             })}
           </div>
@@ -1255,7 +1525,7 @@ export default function FinancePage() {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : groupByMonth ? (
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
               {/* Table header */}
               <div style={{
@@ -1431,6 +1701,17 @@ export default function FinancePage() {
                 <span style={{ marginRight: "auto" }}>{filtered.length} תנועות מסוננות</span>
               </div>
             </div>
+          ) : (
+            <>
+              {renderGroup("g-shows", "הופעות", "🎤", BRAND, showsTxs, renderShowsBody(showsTxs))}
+              {renderGroup("g-projects", "פרויקטים", "📁", BLUE, projectTxs, projectTxs.map((tx, i) => renderTxRow(tx, i)))}
+              {renderGroup("g-general", "כללי", "🏢", PURPLE, generalTxs, generalTxs.map((tx, i) => renderTxRow(tx, i)))}
+              <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
+                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span style={{ marginRight: "auto" }}>{filtered.length} תנועות מסוננות</span>
+              </div>
+            </>
           )}
         </div>
       </div>
