@@ -1549,10 +1549,21 @@ export default function ShowsHubPreview() {
     }
     setPatching({ id, field });
     try {
+      const body: Record<string, unknown> = { [field]: value };
+      // Approving a future-dated show defaults its payment to "צפוי" (same rule
+      // as the full form) — only when it's still "לא שולם"/empty; never overrides
+      // a manual מקדמה/שולם/בוטל. Applies to quick patch (row + panel) too.
+      if (field === "status" && value === "אושרה") {
+        const show    = shows.find(s => s.id === id);
+        const isFuture = !!show?.date && show.date > new Date().toISOString().slice(0, 10);
+        if (isFuture && (!show?.payment_status || show.payment_status === "לא שולם")) {
+          body.payment_status = "צפוי";
+        }
+      }
       const res = await fetch(`/api/shows/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: value }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה");
