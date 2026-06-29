@@ -362,6 +362,11 @@ function downloadFile(file: FileLink) {
   document.body.removeChild(a);
 }
 
+// Single active Victor-drawer audio — playing one file pauses any other (each
+// row's own "pause" event then resets its UI). Drawer-local; does NOT touch the
+// app's global PlayerProvider.
+let currentVictorAudio: HTMLAudioElement | null = null;
+
 function AudioPlayer({
   file,
   onDownload,
@@ -385,31 +390,78 @@ function AudioPlayer({
 }) {
   const { name } = file;
   const url = file.dropboxShareUrl || file.url || "";
+  const hasUrl = !!url;
+  const t = useVictorT();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(0); // 0..100
   const [duration, setDuration] = useState(0);
-  const audioRef = useState<HTMLAudioElement | null>(null);
-  const ref = audioRef;
 
-  function getOrCreateAudio(): HTMLAudioElement {
-    if (!ref[0]) {
-      const a = new Audio(toDirectUrl(url));
-      a.preload = "metadata";
-      a.onended = () => setPlaying(false);
-      a.ontimeupdate = () => {
-        if (a.duration) setProgress((a.currentTime / a.duration) * 100);
-      };
-      a.ondurationchange = () => setDuration(a.duration || 0);
-      ref[0] = a;
-    }
-    return ref[0];
-  }
+  // One stable <audio> per file URL. State is driven by the real media events,
+  // so an external pause (another row taking over, drawer closing) updates the UI
+  // too. Cleanup pauses + tears down on unmount → no audio left playing after the
+  // drawer closes, the project changes, or the file is deleted.
+  useEffect(() => {
+    if (!url) return;
+    const a = new Audio(toDirectUrl(url));
+    a.preload = "metadata";
+    audioRef.current = a;
+    const onTime  = () => { if (a.duration && !isNaN(a.duration)) setProgress((a.currentTime / a.duration) * 100); };
+    const onMeta  = () => setDuration(a.duration && !isNaN(a.duration) ? a.duration : 0);
+    const onPlay  = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => { setPlaying(false); setProgress(0); };
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("loadedmetadata", onMeta);
+    a.addEventListener("durationchange", onMeta);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onEnded);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onMeta);
+      a.removeEventListener("durationchange", onMeta);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onEnded);
+      a.pause();
+      if (currentVictorAudio === a) currentVictorAudio = null;
+      a.src = "";
+      if (audioRef.current === a) audioRef.current = null;
+    };
+  }, [url]);
 
   function togglePlay(e: React.MouseEvent) {
     e.stopPropagation();
-    const a = getOrCreateAudio();
-    if (playing) { a.pause(); setPlaying(false); }
-    else { a.play().catch(() => {}); setPlaying(true); }
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) {
+      // Only one Victor audio at a time — pause whoever was playing.
+      if (currentVictorAudio && currentVictorAudio !== a) currentVictorAudio.pause();
+      currentVictorAudio = a;
+      a.play().catch(() => {});
+    } else {
+      a.pause();
+    }
+  }
+
+  function seekToClientX(clientX: number) {
+    const a = audioRef.current, bar = barRef.current;
+    if (!a || !bar || !a.duration || isNaN(a.duration)) return;
+    const rect = bar.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    a.currentTime = frac * a.duration;
+    setProgress(frac * 100);
+  }
+  function onBarPointerDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    seekToClientX(e.clientX);
+  }
+  function onBarPointerMove(e: React.PointerEvent) {
+    if (e.buttons !== 1) return; // only while dragging
+    seekToClientX(e.clientX);
   }
 
   function fmtTime(s: number) {
@@ -417,9 +469,6 @@ function AudioPlayer({
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
   }
-
-  const hasUrl = !!url;
-  const t = useVictorT();
 
   return (
     <div style={{ borderRadius: 10, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
@@ -436,16 +485,12 @@ function AudioPlayer({
           <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
             {name}
           </div>
-          {/* Progress bar with padding for larger hit area */}
+          {/* Progress bar — click or drag to seek (larger hit area via padding) */}
           <div
-            style={{ padding: "3px 0", cursor: "pointer", position: "relative" }}
-            onClick={e => {
-              e.stopPropagation();
-              const a = getOrCreateAudio();
-              if (!a.duration) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              a.currentTime = ((e.clientX - rect.left) / rect.width) * a.duration;
-            }}
+            ref={barRef}
+            style={{ padding: "5px 0", cursor: "pointer", position: "relative", touchAction: "none" }}
+            onPointerDown={onBarPointerDown}
+            onPointerMove={onBarPointerMove}
           >
             <div style={{ height: 8, background: "rgba(255,255,255,0.1)", borderRadius: 4, position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${progress}%`, background: PURPLE, borderRadius: 4 }} />
