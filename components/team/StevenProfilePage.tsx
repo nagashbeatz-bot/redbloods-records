@@ -142,6 +142,25 @@ function StyledInput({ value, onChange, placeholder, type = "text", inputMode }:
   );
 }
 
+// ── Editable price field (no spinner / inner icon; red focus) ────────────────────
+function PriceInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [str, setStr] = useState(String(value));
+  useEffect(() => { setStr(String(value)); }, [value]);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, direction: "ltr" }}>
+      <span style={{ color: GREEN, fontWeight: 800, fontSize: 12.5 }}>$</span>
+      <input
+        value={str}
+        inputMode="numeric"
+        onChange={e => { const v = e.target.value.replace(/[^\d]/g, ""); setStr(v); onChange(Number(v) || 0); }}
+        onFocus={e => (e.currentTarget.style.borderColor = BRAND)}
+        onBlur={e => (e.currentTarget.style.borderColor = BDR2)}
+        style={{ width: 72, background: CARD, color: GREEN, border: `1px solid ${BDR2}`, borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", outline: "none", textAlign: "left" }}
+      />
+    </span>
+  );
+}
+
 // ── Toast (no browser alert) ─────────────────────────────────────────────────────
 function Toast({ msg }: { msg: string | null }) {
   if (!msg || typeof document === "undefined") return null;
@@ -381,8 +400,6 @@ function WorkModal({ work, onChange, onClose, notify, lang, t }: { work: Work; o
     return () => { document.removeEventListener("keydown", h); audioRef.current?.pause(); };
   }, [onClose]);
 
-  const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
-
   function addFiles(list: FileList | null) {
     const picked = Array.from(list ?? []);
     if (!picked.length) return;
@@ -450,7 +467,7 @@ function WorkModal({ work, onChange, onClose, notify, lang, t }: { work: Work; o
                 {detailRow(t.status, <PillGroup value={work.status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={v => onChange({ status: v })} />)}
                 {detailRow(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
                 {detailRow(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
-                {detailRow(t.agreedPrice, <span style={{ fontSize: 12.5, fontWeight: 700, color: GREEN, direction: "ltr" }}>{fmt(work.price)}</span>)}
+                {detailRow(t.agreedPrice, <PriceInput value={work.price} onChange={n => onChange({ price: n })} />)}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0" }}>
                   <span style={{ fontSize: 12.5, color: MUTED }}>{t.payment}</span>
                   <PillGroup value={work.pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} labelFor={o => payLabel(o, lang)} onChange={v => onChange({ pay: v })} />
