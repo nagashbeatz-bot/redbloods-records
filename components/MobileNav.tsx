@@ -127,6 +127,17 @@ export default function MobileNav({
   const [moreOpen, setMoreOpen] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
 
+  // Role-gated nav — must mirror the desktop Sidebar so mobile never exposes more
+  // than desktop. Owner → full nav; Victor → only his page; null/unknown → none
+  // (security is also enforced server-side in proxy.ts, this is defense-in-depth).
+  const isOwner  = role === "owner";
+  const isVictor = role === "victor";
+  const tabs = isOwner
+    ? MOBILE_TABS
+    : isVictor
+      ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" as string | undefined }]
+      : [];
+
   useEffect(() => {
     if (role !== "owner") return; // alerts are owner-only — no fetch for Victor
     fetch("/api/agent/alerts?status=new&count=1")
@@ -135,9 +146,13 @@ export default function MobileNav({
       .catch(() => {});
   }, [role]);
 
-  const moreActive = MORE_ITEMS.some(
+  // "more" sheet (extra sections) is owner-only.
+  const moreActive = isOwner && MORE_ITEMS.some(
     (item) => pathname === item.href || pathname.startsWith(item.href + "/")
   );
+
+  // Nothing to show while the role is still unknown — never default to the full nav.
+  if (tabs.length === 0) return null;
 
   return (
     <>
@@ -152,11 +167,11 @@ export default function MobileNav({
         style={{
           background: "#141414",
           borderColor: "#2A2A2A",
-          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateColumns: `repeat(${tabs.length + (isOwner ? 1 : 0)}, 1fr)`,
           paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
-        {MOBILE_TABS.map(({ href, label, icon, iconColor }) => {
+        {tabs.map(({ href, label, icon, iconColor }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -177,22 +192,24 @@ export default function MobileNav({
           );
         })}
 
-        <button
-          onClick={() => setMoreOpen(true)}
-          style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            gap: 3, padding: "10px 0", minHeight: 56,
-            color: moreActive || moreOpen ? "#DC2626" : "#666",
-            fontSize: 11, fontWeight: 600,
-            background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-          }}
-        >
-          <span style={{ fontSize: 22, lineHeight: 1 }}>•••</span>
-          עוד
-        </button>
+        {isOwner && (
+          <button
+            onClick={() => setMoreOpen(true)}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center",
+              gap: 3, padding: "10px 0", minHeight: 56,
+              color: moreActive || moreOpen ? "#DC2626" : "#666",
+              fontSize: 11, fontWeight: 600,
+              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            <span style={{ fontSize: 22, lineHeight: 1 }}>•••</span>
+            עוד
+          </button>
+        )}
       </nav>
 
-      {moreOpen && (
+      {isOwner && moreOpen && (
         <MoreSheet
           onClose={() => setMoreOpen(false)}
           onOpenChat={onOpenChat}
