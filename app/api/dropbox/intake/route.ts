@@ -76,7 +76,7 @@ const SCOPE_HINT = "נדרשים scopes: files.metadata.read · files.content.wr
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const action = body.action as "scan" | "move" | "diag";
+    const action = body.action as "scan" | "move" | "diag" | "delete-source";
     const token = await getDropboxToken();
 
     const rootInfo = await getRootInfo(token);
@@ -204,7 +204,55 @@ export async function POST(req: NextRequest) {
 
       const projectName = (body.projectName as string) || "PROJECT";
       const items = buildIntake(c.entries, projectName, usedRootPath);
-      return NextResponse.json({ ok: true, count: items.length, mode, usedTeamRoot: !!usedPathRoot, items });
+      // sourcePath = the scanned folder's account path (e.g. the FINAL DELIVERABLES
+      // folder). Returned so the modal can optionally delete it after a full move.
+      return NextResponse.json({ ok: true, count: items.length, mode, usedTeamRoot: !!usedPathRoot, items, sourcePath: usedRootPath });
+    }
+
+    // ── DELETE-SOURCE ───────────────────────────────────────────────────────────
+    // Owner deletes the original FINAL DELIVERABLES source folder AFTER a fully
+    // successful intake. Hard safety: only a folder whose own name is exactly
+    // "FINAL DELIVERABLES" (never a parent), and only when it holds no remaining
+    // files (the intake already moved them out).
+    if (action === "delete-source") {
+      const raw = (body.sourcePath as string ?? "").trim();
+      const sourcePath = raw.replace(/\/+$/, "");
+      if (!sourcePath || !sourcePath.startsWith("/")) {
+        return NextResponse.json({ error: "missing/invalid sourcePath" }, { status: 400 });
+      }
+      const base = sourcePath.slice(sourcePath.lastIndexOf("/") + 1).trim().toLowerCase();
+      if (base !== "final deliverables") {
+        // Never delete Mix 5 / DELIVERABLES / Steven / any parent folder.
+        console.log(`[intake/delete-source] REFUSED — not FINAL DELIVERABLES: ${sourcePath}`);
+        return NextResponse.json({ error: "not_final_deliverables" }, { status: 400 });
+      }
+
+      // List recursively — block if ANY file remains (un-intaked content).
+      let entries: { [".tag"]?: string }[] = [];
+      const ls = await dbx(token, "files/list_folder", { path: sourcePath, recursive: true, include_deleted: false }, pathRoot);
+      if (!ls.ok) {
+        return NextResponse.json({ error: `list failed: ${dbxTag(ls.json)}` }, { status: 400 });
+      }
+      entries = (ls.json as { entries?: { [".tag"]?: string }[] }).entries ?? [];
+      let cont = ls.json as { has_more?: boolean; cursor?: string }; let g = 0;
+      while (cont.has_more && cont.cursor && g < 50) {
+        g++;
+        const cr = await dbx(token, "files/list_folder/continue", { cursor: cont.cursor }, pathRoot);
+        if (!cr.ok) break;
+        entries.push(...((cr.json as { entries?: { [".tag"]?: string }[] }).entries ?? []));
+        cont = cr.json as { has_more?: boolean; cursor?: string };
+      }
+      if (entries.some((e) => e[".tag"] === "file")) {
+        return NextResponse.json({ ok: false, hasFiles: true });
+      }
+
+      const del = await dbx(token, "files/delete_v2", { path: sourcePath }, pathRoot);
+      if (!del.ok) {
+        console.log(`[intake/delete-source] delete failed tag=${dbxTag(del.json)} path=${sourcePath} raw=${del.raw.slice(0, 300)}`);
+        return NextResponse.json({ error: `delete failed: ${dbxTag(del.json)}` }, { status: 400 });
+      }
+      console.log(`[intake/delete-source] deleted ${sourcePath}`);
+      return NextResponse.json({ ok: true });
     }
 
     // ── MOVE ──────────────────────────────────────────────────────────────────

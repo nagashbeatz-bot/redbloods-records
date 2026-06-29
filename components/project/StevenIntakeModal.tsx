@@ -38,6 +38,32 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
   const [linkErr,   setLinkErr]   = useState<string | null>(null);
   const [folderLink, setFolderLink] = useState<string | null>(null);
 
+  // Source folder of the scanned link (e.g. the FINAL DELIVERABLES folder) — used
+  // to optionally delete it after a fully successful intake.
+  const [sourcePath, setSourcePath] = useState<string>("");
+  const [srcConfirm, setSrcConfirm] = useState(false);
+  const [srcBusy,    setSrcBusy]    = useState(false);
+  const [srcState,   setSrcState]   = useState<"" | "deleted" | "hasfiles">("");
+  const [srcErr,     setSrcErr]     = useState<string | null>(null);
+
+  async function deleteSourceFolder() {
+    if (!sourcePath || srcBusy) return;
+    setSrcBusy(true); setSrcErr(null);
+    try {
+      const res = await fetch("/api/dropbox/intake", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete-source", sourcePath }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "failed");
+      if (d.hasFiles) { setSrcState("hasfiles"); setSrcConfirm(false); return; }
+      if (d.ok) { setSrcState("deleted"); setSrcConfirm(false); }
+    } catch (e) {
+      console.error("[intake] delete source folder failed:", e);
+      setSrcErr("לא הצלחנו למחוק את תיקיית המקור. נסה שוב.");
+    } finally { setSrcBusy(false); }
+  }
+
   async function fetchFolderLink(): Promise<{ shareLink: string; visibility?: string }> {
     const res = await fetch("/api/dropbox/folder-link", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -91,7 +117,7 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
       });
       const d = await res.json();
       if (!res.ok) { setError(d.error ?? "שגיאת סריקה"); setDiag(d.diagnostic ?? null); setStep("input"); return; }
-      setItems(d.items ?? []); setStep("preview");
+      setItems(d.items ?? []); setSourcePath(d.sourcePath ?? ""); setStep("preview");
     } catch { setError("שגיאת רשת"); setStep("input"); }
   }
 
@@ -294,6 +320,32 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
                   </a>
                 )}
               </div>
+            )}
+
+            {/* Delete the original FINAL DELIVERABLES source folder — only after a
+                FULLY successful intake, and only when the scanned folder is itself
+                named FINAL DELIVERABLES (never a parent). */}
+            {result.moved === result.total && result.total > 0 &&
+             sourcePath.replace(/\/+$/, "").split("/").pop()?.trim().toLowerCase() === "final deliverables" && (
+              srcState === "deleted" ? (
+                <div style={{ fontSize: 11.5, color: "#10B981", marginBottom: 12 }}>✓ תיקיית FINAL DELIVERABLES נמחקה מ-Dropbox</div>
+              ) : srcConfirm ? (
+                <div style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 10, padding: "11px 13px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 9 }}>
+                  <div style={{ fontSize: 12, color: "#E8E8E8", lineHeight: 1.6 }}>
+                    תיקיית FINAL DELIVERABLES המקורית תימחק מ-Dropbox. הקבצים שנקלטו כבר נמצאים בתיקיית המסירה של הפרויקט. להמשיך?
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setSrcConfirm(false)} disabled={srcBusy} style={{ ...btnGhost, flex: 1 }}>ביטול</button>
+                    <button onClick={deleteSourceFolder} disabled={srcBusy} style={{ flex: 1, padding: "11px 18px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.5)", background: "rgba(239,68,68,0.15)", color: "#F87171", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", opacity: srcBusy ? 0.6 : 1 }}>{srcBusy ? "מוחק…" : "מחק"}</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button onClick={() => { setSrcErr(null); setSrcConfirm(true); }} style={{ width: "100%", padding: "11px 18px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", color: "#F87171", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", marginBottom: srcState === "hasfiles" || srcErr ? 8 : 12 }}>🗑 מחק תיקיית FINAL DELIVERABLES</button>
+                  {srcState === "hasfiles" && <div style={{ fontSize: 11.5, color: "#F59E0B", marginBottom: 12 }}>התיקייה עדיין מכילה קבצים שלא נקלטו ולכן לא נמחקה</div>}
+                  {srcErr && <div style={{ fontSize: 11.5, color: "#EF4444", marginBottom: 12 }}>{srcErr}</div>}
+                </>
+              )
             )}
 
             <button onClick={onClose} style={{ ...btnPrimary, width: "100%" }}>סגור</button>
