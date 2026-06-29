@@ -155,7 +155,7 @@ export default function StevenProfilePage() {
           <button onClick={() => router.push("/team")} style={{
             display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 10,
             background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-          }}>← חזרה לרשימה</button>
+          }}>→ חזרה לרשימה</button>
         </div>
 
         {/* ── Header ── */}
