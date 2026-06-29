@@ -41,7 +41,7 @@ const VENDORS: Vendor[] = [
   },
   {
     id: "victor",
-    name: "Victor",
+    name: "Viktor",
     role: "מפיק ביטים",
     skills: "הפקה · סאונד",
     status: "פעיל",

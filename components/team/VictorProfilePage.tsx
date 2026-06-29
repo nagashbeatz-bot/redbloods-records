@@ -1780,7 +1780,7 @@ export default function VictorProfilePage() {
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>{t("header.breadcrumb")}</div>
             <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>
-              {t("header.supplierProfile")} <span style={{ color: PURPLE }}>Victor</span>
+              {t("header.supplierProfile")} <span style={{ color: PURPLE }}>Viktor</span>
             </h1>
           </div>
 
@@ -1818,7 +1818,7 @@ export default function VictorProfilePage() {
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>Victor</span>
+              <span style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>Viktor</span>
               <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`, color: PURPLE, fontWeight: 700 }}>{t("profile.role")}</span>
             </div>
             <div style={{ fontSize: 13, color: TEXT2, marginTop: 5 }}>{t("profile.subtitle")}</div>
