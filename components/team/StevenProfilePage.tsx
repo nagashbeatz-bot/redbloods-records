@@ -78,9 +78,9 @@ function PillGroup<T extends string>({ value, options, onChange, colorFor }: { v
     </div>
   );
 }
-function StyledInput({ value, onChange, placeholder, type = "text" }: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+function StyledInput({ value, onChange, placeholder, type = "text", inputMode }: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"] }) {
   return (
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type} style={{
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type} inputMode={inputMode} style={{
       background: CARD, color: TEXT, border: `1px solid ${BDR2}`, borderRadius: 9, padding: "8px 12px",
       fontSize: 12.5, fontWeight: 600, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box", direction: "rtl",
     }} />
@@ -117,6 +117,12 @@ function nowStamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function isoDay(offset = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function fmtSize(b?: number): string {
   if (!b) return "";
@@ -467,9 +473,9 @@ function NewWorkModal({ onClose, onAdd }: { onClose: () => void; onAdd: (w: Work
   const [project, setProject]   = useState("");
   const [workType, setWorkType] = useState<WorkType>("מיקס מאסטרינג");
   const [status, setStatus]     = useState<WorkStatus>("פעיל");
-  const [startDate, setStartDate] = useState("");
-  const [deadline, setDeadline] = useState("");
-  const [price, setPrice]       = useState("");
+  const [startDate, setStartDate] = useState(() => isoDay(0));   // today
+  const [deadline, setDeadline] = useState(() => isoDay(3));     // today + 3 days
+  const [price, setPrice]       = useState("200");
   const [pay, setPay]           = useState<PayStatus>("לא שולם");
   const [err, setErr]           = useState<string | null>(null);
 
@@ -509,11 +515,11 @@ function NewWorkModal({ onClose, onAdd }: { onClose: () => void; onAdd: (w: Work
           {row("סוג עבודה", <PillGroup value={workType} options={WORK_TYPES} onChange={setWorkType} />)}
           {row("סטטוס", <PillGroup value={status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} onChange={setStatus} />)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {row("תאריך התחלה", <StyledInput value={startDate} onChange={setStartDate} placeholder="01.07.26" />)}
-            {row("דדליין", <StyledInput value={deadline} onChange={setDeadline} placeholder="03.07.26" />)}
+            {row("תאריך התחלה", <StyledInput value={startDate} onChange={setStartDate} placeholder="2026-07-01" />)}
+            {row("דדליין", <StyledInput value={deadline} onChange={setDeadline} placeholder="2026-07-03" />)}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "end" }}>
-            {row("מחיר ($)", <StyledInput value={price} onChange={setPrice} placeholder="170" type="number" />)}
+            {row("מחיר ($)", <StyledInput value={price} onChange={setPrice} placeholder="200" inputMode="numeric" />)}
             {row("תשלום", <PillGroup value={pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} onChange={setPay} />)}
           </div>
           {err && <div style={{ fontSize: 12, color: RED }}>{err}</div>}
