@@ -15,80 +15,62 @@ const TEXT   = "#F2F2F2";
 const TEXT2  = "#A0A0B0";
 const MUTED  = "#52526A";
 const GREEN  = "#10B981";
-const AMBER  = "#F59E0B";
-const PURPLE = "#8B5CF6";
+const BLUE   = "#3B82F6"; // calm "completed" accent
+const RED    = "#EF4444";
 
-// ── Types + mock data (UI-only; no DB. A real sound_engineer_work store exists
-//    for future wiring — see lib/sound-engineer-store.ts). ───────────────────────
-type SoundStatus = "בעבודה" | "ממתין לקבצים" | "נשלחה גרסה" | "צריך תיקונים" | "הושלם";
-type FileStatus  = "נשלחו" | "התקבלו" | "חסרים";
+// ── Types + mock data (UI-only; no DB) ─────────────────────────────────────────
+type WorkStatus = "פעיל" | "הושלם" | "בוטל";
+type PayStatus  = "שולם" | "לא שולם";
+type FileStatus = "נשלחו" | "התקבלו" | "חסרים";
 
 interface Work {
-  id: string; project: string; workType: string; status: SoundStatus;
-  deadline: string; price: number; paid: number; files: FileStatus;
+  id: string; project: string; workType: string; status: WorkStatus;
+  deadline: string; price: number; pay: PayStatus; files: FileStatus;
 }
 
 const WORKS: Work[] = [
-  { id: "1", project: "My Story",      workType: "מיקס + מאסטר", status: "בעבודה",        deadline: "03.07.26", price: 170, paid: 0,   files: "נשלחו" },
-  { id: "2", project: "Heart of Time", workType: "מאסטר",        status: "נשלחה גרסה",    deadline: "01.07.26", price: 90,  paid: 90,  files: "התקבלו" },
-  { id: "3", project: "Closer Part 2", workType: "מיקס",         status: "ממתין לקבצים",  deadline: "—",        price: 170, paid: 80,  files: "חסרים" },
-  { id: "4", project: "City Lights",   workType: "מיקס",         status: "צריך תיקונים",  deadline: "28.06.26", price: 110, paid: 50,  files: "נשלחו" },
-  { id: "5", project: "Late Nights",   workType: "מאסטר",        status: "הושלם",         deadline: "25.06.26", price: 120, paid: 120, files: "התקבלו" },
-  { id: "6", project: "Echoes",        workType: "מיקס + מאסטר", status: "ממתין לקבצים",  deadline: "—",        price: 160, paid: 0,   files: "חסרים" },
+  { id: "1", project: "My Story",      workType: "מיקס + מאסטר", status: "פעיל",  deadline: "03.07.26", price: 170, pay: "לא שולם", files: "נשלחו" },
+  { id: "2", project: "Heart of Time", workType: "מאסטר",        status: "הושלם", deadline: "01.07.26", price: 90,  pay: "שולם",    files: "התקבלו" },
+  { id: "3", project: "Closer Part 2", workType: "מיקס",         status: "פעיל",  deadline: "—",        price: 170, pay: "לא שולם", files: "חסרים" },
+  { id: "4", project: "City Lights",   workType: "מיקס",         status: "פעיל",  deadline: "28.06.26", price: 110, pay: "לא שולם", files: "נשלחו" },
+  { id: "5", project: "Late Nights",   workType: "מאסטר",        status: "הושלם", deadline: "25.06.26", price: 120, pay: "שולם",    files: "התקבלו" },
+  { id: "6", project: "Echoes",        workType: "מיקס + מאסטר", status: "בוטל",  deadline: "—",        price: 160, pay: "לא שולם", files: "חסרים" },
 ];
 
-// Per-work overview content. Only My Story is fully specced (the reference image);
-// others reuse a sensible default so the modal never looks broken.
-const DEFAULT_OVERVIEW = {
-  brief: ["ווקאל קדמי ונקי", "לשמור על האנרגיה בפזמון", "Reference: Drake / PARTYNEXTDOOR vibe", "מאסטר מוכן לסטרימינג"],
-  checklist: [
-    { label: "Stems התקבלו", done: true },
-    { label: "Reference התקבל", done: true },
-    { label: "הערות מיקס התקבלו", done: true },
-    { label: "אישור סופי", done: false },
-  ],
-  files: ["stems.zip", "rough mix.wav", "My Story Mix v1.wav", "My Story Mix v2.wav"],
-};
-const TIMELINE = ["נשלח ל-Steven", "בעבודה", "גרסה ראשונה", "תיקונים", "הושלם"];
-function timelineCurrent(status: SoundStatus): number {
-  switch (status) {
-    case "ממתין לקבצים": return 0;
-    case "בעבודה":       return 1;
-    case "נשלחה גרסה":   return 2;
-    case "צריך תיקונים": return 3;
-    case "הושלם":        return 4;
-  }
+// Overview content (mock; same for all works so the modal never looks broken).
+const BRIEF = ["ווקאל קדמי ונקי", "לשמור על האנרגיה בפזמון", "Reference: Drake / PARTYNEXTDOOR vibe", "מאסטר מוכן לסטרימינג"];
+const CHECKLIST = [
+  { label: "Stems התקבלו", done: true },
+  { label: "Reference התקבל", done: true },
+  { label: "הערות מיקס התקבלו", done: true },
+  { label: "אישור סופי", done: false },
+];
+const MODAL_FILES = ["stems.zip", "rough mix.wav", "My Story Mix v1.wav", "My Story Mix v2.wav"];
+const TIMELINE = ["נפתחה עבודה", "פעיל", "הושלם"];
+function timelineCurrent(status: WorkStatus): number {
+  if (status === "הושלם") return 2;
+  return 1; // פעיל / בוטל both sit at the active stage (cancel shown via the chip)
 }
 
-// ── Shared chips ────────────────────────────────────────────────────────────────
-const STATUS_COLOR: Record<SoundStatus, string> = {
-  "בעבודה": BRAND, "ממתין לקבצים": AMBER, "נשלחה גרסה": AMBER, "צריך תיקונים": PURPLE, "הושלם": GREEN,
-};
-function StatusChip({ status }: { status: SoundStatus }) {
+// ── Chips ───────────────────────────────────────────────────────────────────────
+const STATUS_COLOR: Record<WorkStatus, string> = { "פעיל": GREEN, "הושלם": BLUE, "בוטל": RED };
+function StatusChip({ status }: { status: WorkStatus }) {
   const c = STATUS_COLOR[status];
-  return (
-    <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap",
-      background: `${c}1A`, border: `1px solid ${c}40`, color: c }}>{status}</span>
-  );
+  return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}1A`, border: `1px solid ${c}40`, color: c }}>{status}</span>;
+}
+function PayChip({ pay }: { pay: PayStatus }) {
+  const c = pay === "שולם" ? GREEN : MUTED;
+  return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}40`, color: pay === "שולם" ? GREEN : TEXT2 }}>{pay}</span>;
 }
 function FilesChip({ files }: { files: FileStatus }) {
   const c = files === "חסרים" ? BRAND : GREEN;
-  return (
-    <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap",
-      background: `${c}14`, border: `1px solid ${c}33`, color: c }}>{files}</span>
-  );
-}
-function payLabel(w: Work): { label: string; color: string } {
-  if (w.paid <= 0) return { label: "לא שולם", color: BRAND };
-  if (w.paid >= w.price) return { label: "שולם", color: GREEN };
-  return { label: "חלקי", color: AMBER };
+  return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}33`, color: c }}>{files}</span>;
 }
 
 // ── KPI card ────────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, icon, color = TEXT }: { label: string; value: string | number; icon: string; color?: string }) {
   return (
-    <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "18px 20px 16px",
-      position: "relative", overflow: "hidden", minWidth: 0 }}>
+    <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "18px 20px 16px", position: "relative", overflow: "hidden", minWidth: 0 }}>
       <div style={{ position: "absolute", bottom: -10, left: -6, fontSize: 58, opacity: 0.05, lineHeight: 1, userSelect: "none", pointerEvents: "none" }}>{icon}</div>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTED, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
       <div style={{ fontSize: 32, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
@@ -104,10 +86,21 @@ export default function StevenProfilePage() {
   const [openWork, setOpenWork] = useState<Work | null>(null);
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
+  const active = WORKS.filter(w => w.status === "פעיל").length;
+  const done   = WORKS.filter(w => w.status === "הושלם").length;
+  const cancelled = WORKS.filter(w => w.status === "בוטל").length;
 
   return (
     <div dir="rtl" style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "32px 28px 80px" }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
+
+        {/* Back button (same pattern as Victor) */}
+        <div style={{ marginBottom: 14 }}>
+          <button onClick={() => router.push("/team")} style={{
+            display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 10,
+            background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+          }}>← חזרה לרשימה</button>
+        </div>
 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
@@ -118,7 +111,7 @@ export default function StevenProfilePage() {
           }}>+ עבודה חדשה ל-Steven</button>
 
           <div style={{ textAlign: "center", flex: 1, minWidth: 240 }}>
-            <button onClick={() => router.push("/team")} style={{ fontSize: 12, color: MUTED, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginBottom: 4 }}>צוות / ספקים</button>
+            <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>צוות / ספקים</div>
             <h1 style={{ fontSize: 30, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>פרופיל ספק — <span style={{ color: BRAND }}>Steven</span></h1>
             <div style={{ fontSize: 13, color: TEXT2, marginTop: 6 }}>איש סאונד / מיקס ומאסטר</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6 }}>
@@ -147,25 +140,25 @@ export default function StevenProfilePage() {
 
         {/* ── KPI row ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <KpiCard label="עבודות פתוחות"   value={6}        icon="📁" />
-          <KpiCard label="ממתין לקבצים"    value={2}        icon="☁️" />
-          <KpiCard label="ממתין למסירה"    value={3}        icon="🎧" />
-          <KpiCard label="ממתין לאישור"    value={1}        icon="✔" />
-          <KpiCard label="חוב ל-Steven"    value={fmt(340)} icon="👛" color={BRAND} />
-          <KpiCard label="שולם החודש"      value={fmt(170)} icon="💳" color={GREEN} />
+          <KpiCard label="עבודות פתוחות" value={WORKS.length} icon="📁" />
+          <KpiCard label="עבודות פעילות" value={active}       icon="🎚" color={GREEN} />
+          <KpiCard label="עבודות הושלמו" value={done}         icon="✔" color={BLUE} />
+          <KpiCard label="בוטלו"         value={cancelled}    icon="✕" color={RED} />
+          <KpiCard label="חוב ל-Steven"  value={fmt(340)}     icon="👛" color={BRAND} />
+          <KpiCard label="שולם החודש"    value={fmt(170)}     icon="💳" color={GREEN} />
         </div>
 
-        {/* ── Main grid: table + side cards ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr) minmax(280px, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* ── Main grid: table (wide) + side cards ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
-          {/* Col 1: Sound works table */}
+          {/* Sound works table */}
           <div style={sectionCard}>
             <div style={cardHead}>עבודות סאונד</div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: CARD2 }}>
-                    {["פרויקט", "סוג עבודה", "סטטוס", "דדליין", "מחיר", "שולם", "קבצים", "פעולה"].map(h => (
+                    {["פרויקט", "סוג עבודה", "סטטוס", "דדליין", "מחיר", "תשלום", "קבצים", "פעולה"].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "right", fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -178,7 +171,7 @@ export default function StevenProfilePage() {
                       <td style={{ padding: "11px 14px" }}><StatusChip status={w.status} /></td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: "right" }}>{fmt(w.price)}</td>
-                      <td style={{ padding: "11px 14px", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: "right", color: w.paid >= w.price && w.price > 0 ? GREEN : w.paid > 0 ? AMBER : MUTED }}>{fmt(w.paid)}</td>
+                      <td style={{ padding: "11px 14px" }}><PayChip pay={w.pay} /></td>
                       <td style={{ padding: "11px 14px" }}><FilesChip files={w.files} /></td>
                       <td style={{ padding: "11px 14px" }}>
                         <button onClick={() => setOpenWork(w)} style={{ fontSize: 11.5, fontWeight: 700, color: GREEN, background: `${GREEN}14`, border: `1px solid ${GREEN}33`, borderRadius: 9, padding: "5px 13px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>פתח עבודה</button>
@@ -190,18 +183,31 @@ export default function StevenProfilePage() {
             </div>
           </div>
 
-          {/* Col 2: what's missing + recent files */}
+          {/* Side: payment history + recent files */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={sectionCard}>
-              <div style={cardHead}>מה חסר לפני שליחה</div>
-              <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 11 }}>
-                {["Stems", "Reference", "הערות מיקס"].map(x => (
-                  <div key={x} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: TEXT2 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, flexShrink: 0 }} />{x}
+              <div style={cardHead}>היסטוריית תשלומים</div>
+              <div style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
+                {[
+                  { proj: "My Story",      m: "יוני 2026", a: fmt(170), d: "10.06.26" },
+                  { proj: "Heart of Time", m: "מאי 2026",  a: fmt(220), d: "10.05.26" },
+                  { proj: "Closer Part 2", m: "אפר׳ 2026", a: fmt(195), d: "10.04.26" },
+                  { proj: "Late Nights",   m: "מרץ 2026",  a: fmt(160), d: "10.03.26" },
+                ].map(p => (
+                  <div key={p.proj} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 6px", borderBottom: `1px solid ${BDR}` }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.proj}</div>
+                      <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{p.m} · {p.d}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, direction: "ltr" }}>{p.a}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}14`, border: `1px solid ${GREEN}33`, borderRadius: 6, padding: "2px 8px" }}>שולם</span>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
+
             <div style={sectionCard}>
               <div style={cardHead}>קבצים אחרונים</div>
               <div style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -211,57 +217,15 @@ export default function StevenProfilePage() {
                   { n: "Closer Part 2 Mix v1.wav", t: "09:17 31.05.26" },
                   { n: "Vocal Comp Take 3.wav", t: "11:02 30.05.26" },
                 ].map(f => (
-                  <div key={f.n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: `1px solid ${BDR}` }}>
+                  <div key={f.n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 6px", borderBottom: `1px solid ${BDR}` }}>
                     <span style={{ fontSize: 15, color: BRAND, flexShrink: 0 }}>〰</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.n}</div>
+                      <div style={{ fontSize: 12.5, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.n}</div>
                       <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{f.t}</div>
                     </div>
                   </div>
                 ))}
                 <button style={{ fontSize: 11.5, color: BRAND, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: "8px 6px", textAlign: "right" }}>הצג הכל →</button>
-              </div>
-            </div>
-          </div>
-
-          {/* Col 3: billing + payment history */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={sectionCard}>
-              <div style={cardHead}>התחשבנות</div>
-              <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 11 }}>
-                {[
-                  { l: "סה״כ לתשלום", v: fmt(340), c: BRAND },
-                  { l: "שולם", v: fmt(170), c: GREEN },
-                  { l: "יתרה", v: fmt(170), c: BRAND },
-                  { l: "תשלום הבא", v: "10.07.26", c: TEXT2 },
-                ].map(r => (
-                  <div key={r.l} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                    <span style={{ color: MUTED }}>{r.l}</span>
-                    <span style={{ fontWeight: 800, color: r.c, direction: "ltr" }}>{r.v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={sectionCard}>
-              <div style={cardHead}>היסטוריית תשלומים</div>
-              <div style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-                {[
-                  { m: "יוני 2026", a: fmt(170), d: "10.06.26" },
-                  { m: "מאי 2026", a: fmt(220), d: "10.05.26" },
-                  { m: "אפר׳ 2026", a: fmt(195), d: "10.04.26" },
-                  { m: "מרץ 2026", a: fmt(160), d: "10.03.26" },
-                ].map(p => (
-                  <div key={p.m} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 6px", borderBottom: `1px solid ${BDR}` }}>
-                    <div>
-                      <div style={{ fontSize: 12.5, color: TEXT, fontWeight: 700 }}>{p.m}</div>
-                      <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{p.d}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, direction: "ltr" }}>{p.a}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}14`, border: `1px solid ${GREEN}33`, borderRadius: 6, padding: "2px 8px" }}>שולם</span>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </div>
@@ -283,7 +247,6 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
   }, [onClose]);
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
-  const pay = payLabel(work);
   const curStage = timelineCurrent(work.status);
   const TABS = ["סקירה", "קבצים", "גרסאות", "תשלומים", "הערות"];
 
@@ -308,7 +271,7 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
             <StatusChip status={work.status} />
             <FilesChip files={work.files} />
-            <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2 }}>{pay.label} $</span>
+            <PayChip pay={work.pay} />
           </div>
           {/* Tabs */}
           <div style={{ display: "flex", gap: 20, marginTop: 14 }}>
@@ -337,8 +300,7 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
                     { l: "סטטוס", chip: <StatusChip status={work.status} /> },
                     { l: "דדליין", v: work.deadline },
                     { l: "מחיר שסוכם", v: fmt(work.price), c: GREEN },
-                    { l: "שולם", v: fmt(work.paid) },
-                    { l: "סטטוס תשלום", chip: <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, background: `${pay.color}1A`, border: `1px solid ${pay.color}40`, color: pay.color }}>{pay.label}</span> },
+                    { l: "תשלום", chip: <PayChip pay={work.pay} /> },
                     { l: "עודכן לאחרונה", v: "היום" },
                   ] as { l: string; v?: string; c?: string; chip?: React.ReactNode }[]).map((r, i, arr) => (
                     <div key={r.l} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 0", borderBottom: i < arr.length - 1 ? `1px solid ${BDR}` : "none" }}>
@@ -354,7 +316,7 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
                 <div style={subCard}>
                   <div style={innerHead}>הערות לבריף</div>
                   <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    {DEFAULT_OVERVIEW.brief.map(b => (
+                    {BRIEF.map(b => (
                       <div key={b} style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: TEXT2, lineHeight: 1.5 }}>
                         <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, flexShrink: 0, marginTop: 5 }} />{b}
                       </div>
@@ -364,7 +326,7 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
                 <div style={subCard}>
                   <div style={innerHead}>צ׳קליסט לפני סיום</div>
                   <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 11 }}>
-                    {DEFAULT_OVERVIEW.checklist.map(c => (
+                    {CHECKLIST.map(c => (
                       <div key={c.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12.5, color: TEXT2 }}>
                         <span>{c.label}</span>
                         <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12,
@@ -380,7 +342,7 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
                 <div style={subCard}>
                   <div style={innerHead}>קבצים וגרסאות</div>
                   <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {DEFAULT_OVERVIEW.files.map(name => {
+                    {MODAL_FILES.map(name => {
                       const isAudio = /\.(wav|mp3|m4a|flac|aiff?)$/i.test(name);
                       return (
                         <div key={name} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD, border: `1px solid ${BDR}` }}>
@@ -397,14 +359,14 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
                   <div style={innerHead}>ציר זמן</div>
                   <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 0 }}>
                     {TIMELINE.map((stage, i) => {
-                      const done = i < curStage, current = i === curStage;
-                      const c = current ? BRAND : done ? GREEN : MUTED;
+                      const isDone = i < curStage, current = i === curStage;
+                      const c = current ? BRAND : isDone ? GREEN : MUTED;
                       return (
                         <div key={stage} style={{ display: "flex", alignItems: "center", gap: 11, position: "relative", paddingBottom: i < TIMELINE.length - 1 ? 16 : 0 }}>
-                          {i < TIMELINE.length - 1 && <span style={{ position: "absolute", right: 6.5, top: 14, bottom: 0, width: 2, background: done ? GREEN : BDR }} />}
+                          {i < TIMELINE.length - 1 && <span style={{ position: "absolute", right: 6.5, top: 14, bottom: 0, width: 2, background: isDone ? GREEN : BDR }} />}
                           <span style={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0, zIndex: 1,
-                            background: current ? BRAND : done ? GREEN : "transparent", border: `2px solid ${c}`, boxShadow: current ? `0 0 8px ${BRAND}88` : "none" }} />
-                          <span style={{ fontSize: 12.5, fontWeight: current ? 800 : 600, color: current ? TEXT : done ? TEXT2 : MUTED }}>{stage}</span>
+                            background: current ? BRAND : isDone ? GREEN : "transparent", border: `2px solid ${c}`, boxShadow: current ? `0 0 8px ${BRAND}88` : "none" }} />
+                          <span style={{ fontSize: 12.5, fontWeight: current ? 800 : 600, color: current ? TEXT : isDone ? TEXT2 : MUTED }}>{stage}</span>
                         </div>
                       );
                     })}
@@ -423,8 +385,8 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
             <button key={b.l} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{b.i} {b.l}</button>
           ))}
           <div style={{ flex: 1 }} />
-          <button style={{ padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>סמן שהתקבלה גרסה</button>
-          <button style={{ padding: "10px 18px", borderRadius: 10, background: "transparent", border: `1px solid ${BRAND}66`, color: BRAND, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>סמן כהושלם</button>
+          <button style={{ padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>סמן כהושלם</button>
+          <button style={{ padding: "10px 18px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}66`, color: RED, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>בטל עבודה</button>
         </div>
       </div>
     </div>
