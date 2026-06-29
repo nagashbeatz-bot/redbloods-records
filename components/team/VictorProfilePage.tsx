@@ -1706,7 +1706,7 @@ export default function VictorProfilePage() {
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
       padding: "32px 28px 80px",
     }}>
-      <div style={{ maxWidth: 1380, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
         {/* ── Top bar: breadcrumb + month switcher ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
@@ -1869,7 +1869,8 @@ export default function VictorProfilePage() {
               </div>
             ) : (
               <>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", minWidth: 540, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: CARD2 }}>
                       {[t("projects.colName"), t("projects.colArtist"), t("projects.colDeadline"), t("projects.colStatus"), t("projects.colAction")].map(h => (
@@ -1934,6 +1935,7 @@ export default function VictorProfilePage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 {monthWork.length > 12 && (
                   <div style={{ padding: "10px 16px", borderTop: `1px solid ${BDR}`, textAlign: "center" }}>
                     <span style={{ fontSize: 11, color: MUTED }}>{t("projects.more", { n: monthWork.length - 12 })}</span>
