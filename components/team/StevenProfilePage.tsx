@@ -106,6 +106,7 @@ const TR = {
     soundSupplier: "ספק סאונד", supplierType: "סוג ספק: איש סאונד", updatedToday: "עודכן לאחרונה: היום",
     kpiOpen: "עבודות פתוחות", kpiActive: "עבודות פעילות", kpiDone: "עבודות הושלמו", kpiDebt: "חוב ל-Steven", kpiPaidMonth: "שולם החודש",
     payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם",
+    noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולה", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
     job: "עבודה:", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם", briefNotes: "הערות לבריף",
@@ -123,6 +124,7 @@ const TR = {
     soundSupplier: "Sound Supplier", supplierType: "Supplier type: Sound Engineer", updatedToday: "Updated today",
     kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid This Month",
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid",
+    noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Action", openJob: "Open Job", noJobs: "No Steven jobs yet",
     job: "Job:", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price", briefNotes: "Brief Notes",
@@ -412,8 +414,8 @@ export default function StevenProfilePage() {
           <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
         </div>
 
-        {/* ── Sound jobs table (full width) ── */}
-        <div>
+        {/* ── Main grid ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
           <div style={sectionCard}>
             <div style={cardHead}>{t.soundJobs}</div>
@@ -451,6 +453,17 @@ export default function StevenProfilePage() {
             </div>
           </div>
 
+          {/* Side cards (empty states — no mock data) */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={sectionCard}>
+              <div style={cardHead}>{t.payHistory}</div>
+              <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noPayments}</div>
+            </div>
+            <div style={sectionCard}>
+              <div style={cardHead}>{t.recentFiles}</div>
+              <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noRecentFiles}</div>
+            </div>
+          </div>
         </div>
       </div>
 
