@@ -314,6 +314,7 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
               amountPaid:       0,
               sentDate:         today,
               internalDeadline: deadline3,
+              skipFinanceSync:  true,             // do NOT create a Finance expense for Steven
             }),
           });
           const workData = await workPost.json() as { ok: boolean; work: { id: string } | null };

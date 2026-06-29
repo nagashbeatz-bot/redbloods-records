@@ -289,11 +289,12 @@ export default function StevenProfilePage() {
     }));
     if (!target || !target.dbBacked) return; // manual "new work" rows are local-only
 
-    const body: Record<string, unknown> = {};
+    // skipFinanceSync keeps these edits from creating/updating any Finance transaction.
+    const body: Record<string, unknown> = { skipFinanceSync: true };
     if (patch.workType !== undefined) body.workType    = uiWorkTypeToDb(patch.workType);
     if (patch.status   !== undefined) body.status      = uiStatusToDb(patch.status);
     if (patch.price    !== undefined) body.agreedPrice = patch.price;
-    if (Object.keys(body).length === 0) return;
+    if (Object.keys(body).length === 1) return; // only the flag → nothing actually changed
 
     try {
       const res = await fetch(`/api/sound-engineer/${id}`, {

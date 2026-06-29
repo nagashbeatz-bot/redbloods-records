@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       internalDeadline?: string | null;
       filesLink?:       string | null;
       notes?:           string;
+      skipFinanceSync?: boolean;
     };
 
     if (!body.projectId)    return NextResponse.json({ ok: false, error: "projectId חסר" },    { status: 400 });
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
       internalDeadline: body.internalDeadline,
       filesLink:        body.filesLink,
       notes:            body.notes,
+      skipFinanceSync:  body.skipFinanceSync,
     });
 
     return NextResponse.json({ ok: true, work });

@@ -185,6 +185,9 @@ export async function createSoundEngineerWork(
     internalDeadline?: string | null;
     filesLink?:       string | null;
     notes?:           string;
+    /** When true, do NOT create the linked expense transaction. (Used by the
+     *  Steven send flow, which must not touch Finance.) Not persisted to DB. */
+    skipFinanceSync?: boolean;
   }
 ): Promise<SoundEngineerWork> {
   // Get artist for transaction
@@ -224,8 +227,8 @@ export async function createSoundEngineerWork(
   const row = data as Record<string, unknown>;
   let linkedTransactionId: string | null = null;
 
-  // Sync expense transaction if price is set
-  if (agreedPrice > 0) {
+  // Sync expense transaction if price is set (unless caller opted out of Finance)
+  if (!fields.skipFinanceSync && agreedPrice > 0) {
     linkedTransactionId = await syncTransaction({
       projectId,
       artist,
@@ -264,6 +267,8 @@ export async function updateSoundEngineerWork(
     internalDeadline: string | null;
     filesLink:        string | null;
     notes:            string;
+    /** When true, skip the linked-transaction sync entirely (Steven flow). Not persisted. */
+    skipFinanceSync:  boolean;
   }>
 ): Promise<SoundEngineerWork> {
   // Fetch current record first
@@ -315,7 +320,7 @@ export async function updateSoundEngineerWork(
     fields.engineerName !== undefined ||
     fields.workType     !== undefined;
 
-  if (priceChanged && agreed > 0) {
+  if (!fields.skipFinanceSync && priceChanged && agreed > 0) {
     const { data: proj } = await supabase
       .from("projects")
       .select("artist")
