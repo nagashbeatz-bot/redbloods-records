@@ -681,8 +681,8 @@ function ReferenceCard({
         </div>
         <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || t("ref.n", { n: index })}</div>
         <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 10.5, color: MUTED, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{refItem.url}</a>
-        {refItem.note && <div style={{ fontSize: 12, color: TEXT2, marginTop: 9, lineHeight: 1.85, whiteSpace: "pre-wrap" }}>{refItem.note}</div>}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9 }}>
+        {refItem.note && <div style={{ fontSize: 12, color: TEXT2, marginTop: 9, lineHeight: 1.85, whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" }}>{refItem.note}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9, flexWrap: "wrap" }}>
           {vid ? (
             <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{t("ref.play")}</button>
           ) : (
@@ -1856,7 +1856,7 @@ export default function VictorProfilePage() {
         </div>
 
         {/* ── KPI Row ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>
           {[
             { id: "goal",      label: t("kpi.totalMonthly"), value: goal > 0 ? goal : "—", sub: t("kpi.inProgressSub"), color: TEXT,   icon: "🎯" },
             { id: "completed", label: t("kpi.completed"),    value: completed,              sub: t("kpi.completedOf", { goal }), color: PURPLE, icon: "✅" },
@@ -1887,7 +1887,17 @@ export default function VictorProfilePage() {
         </div>
 
         {/* ── Main 3-Column Layout ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 16, alignItems: "start" }}>
+        <div style={{
+          display: "grid",
+          // Match track count to the visible columns: Victor has no Salary column,
+          // so use 2 tracks (otherwise the 3rd track is wasted empty space and the
+          // Files/Capacity column is squished). minmax(0,…) keeps the table track
+          // shrink-safe; the side tracks get a sensible min width.
+          gridTemplateColumns: isOwner
+            ? "minmax(0, 2fr) minmax(300px, 1fr) minmax(300px, 1fr)"
+            : "minmax(0, 2fr) minmax(340px, 1fr)",
+          gap: 16, alignItems: "start",
+        }}>
 
           {/* ── Col 1: Projects Table ── */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, overflow: "hidden" }}>
