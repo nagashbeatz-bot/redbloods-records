@@ -3197,12 +3197,15 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
         body: JSON.stringify({ dropboxPath, projectId: project.id }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "מחיקה נכשלה");
+      if (!res.ok) throw new Error(data.error || "delete failed");
+      // Success: drop the file from the UI immediately (refresh re-fetches without it).
       setDeletingFilePath(null);
       onFileDeleted();
     } catch (err) {
-      setFileDelErr(err instanceof Error ? err.message : "שגיאה במחיקה");
-      setTimeout(() => setFileDelErr(null), 4000);
+      // On failure keep the file in the UI; show a clear Hebrew message.
+      console.error("[ProjectDrawerV2] delete file failed:", err);
+      setFileDelErr("לא הצלחנו למחוק את הקובץ מ-Dropbox. נסה שוב.");
+      setTimeout(() => setFileDelErr(null), 5000);
     } finally {
       setFileDelLoading(false);
     }
@@ -3316,13 +3319,12 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
       return (
         <div key={rowKey} style={{ padding: "12px 14px", background: `${RED_WARN}08`, borderRadius: 11, border: `1px solid ${RED_WARN}25`, display: "flex", flexDirection: "column", gap: 8 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>למחוק את הקובץ?</div>
-            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>הקובץ יימחק גם מ-Dropbox. הפעולה אינה ניתנת לביטול.</div>
-            <div style={{ fontSize: 11, color: LABEL, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>למחוק את הקובץ מ-Dropbox?</div>
+            <div style={{ fontSize: 11, color: LABEL, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setDeletingFilePath(null)} disabled={fileDelLoading} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer" }}>ביטול</button>
-            <button onClick={() => handleDeleteFile(f.dropboxPath!)} disabled={fileDelLoading} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, background: `${RED_WARN}15`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700, opacity: fileDelLoading ? 0.5 : 1 }}>{fileDelLoading ? "מוחק…" : "מחק קובץ"}</button>
+            <button onClick={() => handleDeleteFile(f.dropboxPath!)} disabled={fileDelLoading} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, background: `${RED_WARN}15`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700, opacity: fileDelLoading ? 0.5 : 1 }}>{fileDelLoading ? "מוחק…" : "מחק"}</button>
           </div>
         </div>
       );
@@ -3338,9 +3340,9 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
             {f.versionLabel && <div style={{ fontSize: 10.5, color: LABEL, marginTop: 1 }}>{f.versionLabel}</div>}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, justifySelf: "start" }}>
-          {href && <a href={href} target="_blank" rel="noopener noreferrer" title="פתח" style={{ fontSize: 13, color: BLUE, textDecoration: "none", padding: "3px 7px", borderRadius: 6 }}>↗</a>}
-          {canDelete && <button onClick={() => setDeletingFilePath(rowKey)} title="מחק קובץ" style={{ background: "none", border: "none", padding: "3px 7px", cursor: "pointer", color: "#55556A", fontSize: 14, lineHeight: 1, borderRadius: 6 }} onMouseEnter={e => (e.currentTarget.style.color = RED_WARN)} onMouseLeave={e => (e.currentTarget.style.color = "#55556A")}>⌫</button>}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, justifySelf: "start" }}>
+          {href && <a href={href} target="_blank" rel="noopener noreferrer" title="פתח ב-Dropbox" style={{ ...ghostSm, color: BLUE, textDecoration: "none" }}>פתח ↗</a>}
+          {canDelete && <button onClick={() => setDeletingFilePath(rowKey)} title="מחק קובץ" style={ghostSm} onMouseEnter={e => (e.currentTarget.style.color = RED_WARN)} onMouseLeave={e => (e.currentTarget.style.color = TEXT2)}>🗑 מחק</button>}
         </div>
       </div>
     );
