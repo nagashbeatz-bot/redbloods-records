@@ -22,6 +22,7 @@ const RED    = "#EF4444";
 type WorkStatus = "פעיל" | "הושלם" | "בוטל";
 type PayStatus  = "שולם" | "לא שולם";
 type WorkType   = "מיקס מאסטרינג" | "מאסטרינג";
+type FileSource = "Owner" | "Steven";
 
 const WORK_TYPES: WorkType[]       = ["מיקס מאסטרינג", "מאסטרינג"];
 const STATUS_OPTIONS: WorkStatus[] = ["פעיל", "הושלם", "בוטל"];
@@ -29,28 +30,26 @@ const PAY_OPTIONS: PayStatus[]     = ["שולם", "לא שולם"];
 
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
-  deadline: string; price: number; pay: PayStatus;
+  startDate: string; deadline: string; price: number; pay: PayStatus;
 }
+interface WorkFile { id: string; name: string; time: string; source: FileSource }
 
 const INITIAL_WORKS: Work[] = [
-  { id: "1", project: "My Story",      workType: "מיקס מאסטרינג", status: "פעיל",  deadline: "03.07.26", price: 170, pay: "לא שולם" },
-  { id: "2", project: "Heart of Time", workType: "מאסטרינג",      status: "הושלם", deadline: "01.07.26", price: 90,  pay: "שולם" },
-  { id: "3", project: "Closer Part 2", workType: "מיקס מאסטרינג", status: "פעיל",  deadline: "—",        price: 170, pay: "לא שולם" },
-  { id: "4", project: "City Lights",   workType: "מיקס מאסטרינג", status: "פעיל",  deadline: "28.06.26", price: 110, pay: "לא שולם" },
-  { id: "5", project: "Late Nights",   workType: "מאסטרינג",      status: "הושלם", deadline: "25.06.26", price: 120, pay: "שולם" },
-  { id: "6", project: "Echoes",        workType: "מיקס מאסטרינג", status: "בוטל",  deadline: "—",        price: 160, pay: "לא שולם" },
+  { id: "1", project: "My Story",      workType: "מיקס מאסטרינג", status: "פעיל",  startDate: "01.07.26", deadline: "03.07.26", price: 170, pay: "לא שולם" },
+  { id: "2", project: "Heart of Time", workType: "מאסטרינג",      status: "הושלם", startDate: "20.06.26", deadline: "01.07.26", price: 90,  pay: "שולם" },
+  { id: "3", project: "Closer Part 2", workType: "מיקס מאסטרינג", status: "פעיל",  startDate: "25.06.26", deadline: "—",        price: 170, pay: "לא שולם" },
+  { id: "4", project: "City Lights",   workType: "מיקס מאסטרינג", status: "פעיל",  startDate: "18.06.26", deadline: "28.06.26", price: 110, pay: "לא שולם" },
+  { id: "5", project: "Late Nights",   workType: "מאסטרינג",      status: "הושלם", startDate: "10.06.26", deadline: "25.06.26", price: 120, pay: "שולם" },
+  { id: "6", project: "Echoes",        workType: "מיקס מאסטרינג", status: "בוטל",  startDate: "26.06.26", deadline: "—",        price: 160, pay: "לא שולם" },
 ];
 
 const BRIEF = ["ווקאל קדמי ונקי", "לשמור על האנרגיה בפזמון", "Reference: Drake / PARTYNEXTDOOR vibe", "מאסטר מוכן לסטרימינג"];
-const CHECKLIST = [
-  { label: "Stems התקבלו", done: true },
-  { label: "Reference התקבל", done: true },
-  { label: "הערות מיקס התקבלו", done: true },
-  { label: "אישור סופי", done: false },
+const INITIAL_FILES: WorkFile[] = [
+  { id: "f1", name: "stems.zip",          time: "02.06.26 09:10", source: "Owner" },
+  { id: "f2", name: "rough mix.wav",      time: "02.06.26 09:12", source: "Owner" },
+  { id: "f3", name: "My Story Mix v1.wav", time: "31.05.26 09:17", source: "Steven" },
+  { id: "f4", name: "My Story Mix v2.wav", time: "02.06.26 10:24", source: "Steven" },
 ];
-const INITIAL_MODAL_FILES = ["stems.zip", "rough mix.wav", "My Story Mix v1.wav", "My Story Mix v2.wav"];
-const TIMELINE = ["נפתחה עבודה", "פעיל", "הושלם"];
-function timelineCurrent(status: WorkStatus): number { return status === "הושלם" ? 2 : 1; }
 
 // ── Chips ───────────────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<WorkStatus, string> = { "פעיל": GREEN, "הושלם": BLUE, "בוטל": RED };
@@ -63,19 +62,20 @@ function PayChip({ pay }: { pay: PayStatus }) {
   return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}40`, color: pay === "שולם" ? GREEN : TEXT2 }}>{pay}</span>;
 }
 
-// ── Modern dark form controls ────────────────────────────────────────────────────
-function StyledSelect({ value, onChange, options, color }: { value: string; onChange: (v: string) => void; options: readonly string[]; color?: string }) {
+// ── Modern pill / segmented control (replaces native selects) ────────────────────
+function PillGroup<T extends string>({ value, options, onChange, colorFor }: { value: T; options: readonly T[]; onChange: (v: T) => void; colorFor?: (o: T) => string }) {
   return (
-    <div style={{ position: "relative", display: "inline-flex" }}>
-      <select value={value} onChange={e => onChange(e.target.value)} style={{
-        appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
-        background: CARD, color: color ?? TEXT, border: `1px solid ${color ? color + "55" : BDR2}`, borderRadius: 9,
-        padding: "8px 30px 8px 12px", fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
-        cursor: "pointer", outline: "none", colorScheme: "dark", direction: "rtl", width: "100%", minWidth: 120,
-      }}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: MUTED, fontSize: 10 }}>▾</span>
+    <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-start" }}>
+      {options.map(o => {
+        const sel = o === value;
+        const c = colorFor ? colorFor(o) : BRAND;
+        return (
+          <button key={o} onClick={() => onChange(o)} style={{
+            fontSize: 12, fontWeight: 800, padding: "6px 13px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+            background: sel ? `${c}1F` : "transparent", border: `1px solid ${sel ? c + "66" : BDR2}`, color: sel ? c : TEXT2, transition: "all .12s",
+          }}>{o}</button>
+        );
+      })}
     </div>
   );
 }
@@ -113,6 +113,12 @@ function KpiCard({ label, value, icon, color = TEXT }: { label: string; value: s
 const sectionCard: React.CSSProperties = { background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, overflow: "hidden" };
 const cardHead: React.CSSProperties = { padding: "14px 20px", borderBottom: `1px solid ${BDR}`, fontSize: 14, fontWeight: 800, color: TEXT };
 const ghostBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" };
+
+function nowStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 export default function StevenProfilePage() {
   const router = useRouter();
@@ -197,10 +203,10 @@ export default function StevenProfilePage() {
           <div style={sectionCard}>
             <div style={cardHead}>עבודות סאונד</div>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: 660, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: CARD2 }}>
-                    {["פרויקט", "סוג עבודה", "סטטוס", "דדליין", "מחיר", "תשלום", "פעולה"].map(h => (
+                    {["פרויקט", "סוג עבודה", "סטטוס", "תאריך התחלה", "דדליין", "מחיר", "תשלום", "פעולה"].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "right", fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -211,6 +217,7 @@ export default function StevenProfilePage() {
                       <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}><span style={{ marginLeft: 5 }}>🎵</span>{w.project}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{w.workType}</td>
                       <td style={{ padding: "11px 14px" }}><StatusChip status={w.status} /></td>
+                      <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.startDate}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: "right" }}>{fmt(w.price)}</td>
                       <td style={{ padding: "11px 14px" }}><PayChip pay={w.pay} /></td>
@@ -284,12 +291,33 @@ export default function StevenProfilePage() {
   );
 }
 
-// ── "פתח עבודה" modal ───────────────────────────────────────────────────────────
+// ── File row ─────────────────────────────────────────────────────────────────────
+function FileRow({ file, onPlay, onDownload, onRemove }: { file: WorkFile; onPlay: () => void; onDownload: () => void; onRemove: () => void }) {
+  const isAudio = /\.(wav|mp3|m4a|flac|aiff?)$/i.test(file.name);
+  const srcColor = file.source === "Steven" ? BLUE : BRAND;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD, border: `1px solid ${BDR}` }}>
+      <span style={{ fontSize: 14, color: isAudio ? BRAND : TEXT2, flexShrink: 0 }}>{isAudio ? "〰" : "🗎"}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+        <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>
+          {file.time} · <span style={{ color: srcColor, fontWeight: 700 }}>{file.source === "Steven" ? "Steven" : "Owner"}</span>
+        </div>
+      </div>
+      {isAudio && <button onClick={onPlay} title="נגן" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}22`, border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>▶</button>}
+      <button onClick={onDownload} title="הורד" style={{ background: "none", border: "none", color: MUTED, fontSize: 14, cursor: "pointer", flexShrink: 0 }}>⬇</button>
+      <button onClick={onRemove} title="הסר" style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+        onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+    </div>
+  );
+}
+
+// ── "פתח עבודה" modal — single screen, files-centric ────────────────────────────
 function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: (patch: Partial<Work>) => void; onClose: () => void; notify: (m: string) => void }) {
-  const [tab, setTab] = useState("סקירה");
   const [saved, setSaved] = useState(false);
-  const [files, setFiles] = useState<string[]>(INITIAL_MODAL_FILES);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [files, setFiles] = useState<WorkFile[]>(INITIAL_FILES);
+  const sentInputRef = useRef<HTMLInputElement | null>(null);
+  const recvInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -298,26 +326,41 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
   }, [onClose]);
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
-  const curStage = timelineCurrent(work.status);
-  const TABS = ["סקירה", "קבצים", "גרסאות", "תשלומים", "הערות"];
+  const sent = files.filter(f => f.source === "Owner");
+  const recv = files.filter(f => f.source === "Steven");
+
+  function addPicked(e: React.ChangeEvent<HTMLInputElement>, source: FileSource) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length) {
+      setFiles(prev => [
+        ...prev,
+        ...picked.map((f, i) => ({ id: `${Date.now()}_${i}`, name: f.name, time: nowStamp(), source })),
+      ]);
+      notify(source === "Owner" ? "הקבצים נוספו לעבודה (מקומי)" : "נוסף קובץ בשם Steven (מקומי)");
+    }
+    if (e.target) e.target.value = "";
+  }
+
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
-
-  function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(e.target.files ?? []).map(f => f.name);
-    if (picked.length) { setFiles(prev => [...prev, ...picked]); notify(`נוספו ${picked.length} קבצים (מקומי בלבד)`); }
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
+  const detailRow = (label: string, node: React.ReactNode) => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderBottom: `1px solid ${BDR}` }}>
+      <span style={{ fontSize: 12.5, color: MUTED }}>{label}</span>{node}
+    </div>
+  );
+  const uploadBtn: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 9, background: `${BRAND}14`, border: `1px solid ${BRAND}40`, color: BRAND, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" };
 
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={e => e.stopPropagation()} dir="rtl" style={{
-        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1180px, 96vw)", maxHeight: "92vh",
+        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1080px, 96vw)", maxHeight: "92vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
-        <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={onPickFiles} />
+        <input ref={sentInputRef} type="file" multiple style={{ display: "none" }} onChange={e => addPicked(e, "Owner")} />
+        <input ref={recvInputRef} type="file" multiple style={{ display: "none" }} onChange={e => addPicked(e, "Steven")} />
+
         {/* Header */}
-        <div style={{ padding: "20px 24px 14px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
+        <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div>
               <div style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>עבודה: {work.project}</div>
@@ -329,105 +372,78 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
             <StatusChip status={work.status} />
             <PayChip pay={work.pay} />
           </div>
-          <div style={{ display: "flex", gap: 20, marginTop: 14 }}>
-            {TABS.map(t => (
-              <button key={t} onClick={() => setTab(t)} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: "6px 0", fontSize: 13.5, fontWeight: tab === t ? 800 : 600, color: tab === t ? TEXT : MUTED, borderBottom: `2px solid ${tab === t ? BRAND : "transparent"}` }}>{t}</button>
-            ))}
-          </div>
         </div>
 
-        {/* Body */}
+        {/* Body — no tabs */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px" }}>
-          {tab === "סקירה" ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, alignItems: "start" }}>
-              <div style={subCard}>
-                <div style={innerHead}>פרטי עבודה</div>
-                <div style={{ padding: "6px 16px 12px" }}>
-                  {[
-                    { l: "פרויקט", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.project}</span> },
-                    { l: "סוג עבודה", node: <StyledSelect value={work.workType} options={WORK_TYPES} onChange={v => onChange({ workType: v as WorkType })} /> },
-                    { l: "סטטוס", node: <StyledSelect value={work.status} options={STATUS_OPTIONS} color={STATUS_COLOR[work.status]} onChange={v => onChange({ status: v as WorkStatus })} /> },
-                    { l: "דדליין", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span> },
-                    { l: "מחיר שסוכם", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: GREEN, direction: "ltr" }}>{fmt(work.price)}</span> },
-                    { l: "תשלום", node: <StyledSelect value={work.pay} options={PAY_OPTIONS} color={work.pay === "שולם" ? GREEN : undefined} onChange={v => onChange({ pay: v as PayStatus })} /> },
-                    { l: "עודכן לאחרונה", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>היום</span> },
-                  ].map((r, i, arr) => (
-                    <div key={r.l} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderBottom: i < arr.length - 1 ? `1px solid ${BDR}` : "none" }}>
-                      <span style={{ fontSize: 12.5, color: MUTED }}>{r.l}</span>
-                      {r.node}
-                    </div>
-                  ))}
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) minmax(0, 1.6fr)", gap: 16, alignItems: "start" }}>
+
+            {/* Work details (right) */}
+            <div style={subCard}>
+              <div style={innerHead}>פרטי עבודה</div>
+              <div style={{ padding: "6px 16px 12px" }}>
+                {detailRow("פרויקט", <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.project}</span>)}
+                {detailRow("סוג עבודה", <PillGroup value={work.workType} options={WORK_TYPES} onChange={v => onChange({ workType: v })} />)}
+                {detailRow("סטטוס", <PillGroup value={work.status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} onChange={v => onChange({ status: v })} />)}
+                {detailRow("תאריך התחלה", <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
+                {detailRow("דדליין", <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
+                {detailRow("מחיר שסוכם", <span style={{ fontSize: 12.5, fontWeight: 700, color: GREEN, direction: "ltr" }}>{fmt(work.price)}</span>)}
+                {detailRow("תשלום", <PillGroup value={work.pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} onChange={v => onChange({ pay: v })} />)}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0" }}>
+                  <span style={{ fontSize: 12.5, color: MUTED }}>עודכן לאחרונה</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>היום</span>
                 </div>
               </div>
+            </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div style={subCard}>
-                  <div style={innerHead}>הערות לבריף</div>
-                  <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    {BRIEF.map(b => (
-                      <div key={b} style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: TEXT2, lineHeight: 1.5 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, flexShrink: 0, marginTop: 5 }} />{b}
-                      </div>
-                    ))}
+            {/* Files (center/left, wide) */}
+            <div style={subCard}>
+              <div style={innerHead}>קבצי עבודה</div>
+              <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
+                {/* Sent to Steven */}
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>קבצים שנשלחו ל-Steven <span style={{ color: MUTED }}>({sent.length})</span></span>
+                    <button onClick={() => sentInputRef.current?.click()} style={uploadBtn}>+ העלה קבצים ל-Steven</button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {sent.length ? sent.map(f => (
+                      <FileRow key={f.id} file={f} onPlay={() => notify("אין קובץ לניגון כרגע")} onDownload={() => notify("אין קובץ להורדה כרגע")} onRemove={() => { setFiles(prev => prev.filter(x => x.id !== f.id)); notify("הקובץ הוסר"); }} />
+                    )) : <div style={{ fontSize: 11.5, color: MUTED, padding: "4px 2px" }}>אין עדיין קבצים</div>}
                   </div>
                 </div>
-                <div style={subCard}>
-                  <div style={innerHead}>צ׳קליסט לפני סיום</div>
-                  <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 11 }}>
-                    {CHECKLIST.map(c => (
-                      <div key={c.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12.5, color: TEXT2 }}>
-                        <span>{c.label}</span>
-                        <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, background: c.done ? BRAND : "transparent", border: `1.5px solid ${c.done ? BRAND : BDR2}`, color: "#fff" }}>{c.done ? "✓" : ""}</span>
-                      </div>
-                    ))}
+                {/* Received from Steven */}
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>קבצים שהתקבלו מ-Steven <span style={{ color: MUTED }}>({recv.length})</span></span>
+                    <button onClick={() => recvInputRef.current?.click()} style={{ ...uploadBtn, background: `${BLUE}14`, border: `1px solid ${BLUE}40`, color: BLUE }}>+ הוסף קובץ מ-Steven</button>
                   </div>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div style={subCard}>
-                  <div style={innerHead}>קבצים וגרסאות</div>
-                  <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {files.map((name, idx) => {
-                      const isAudio = /\.(wav|mp3|m4a|flac|aiff?)$/i.test(name);
-                      return (
-                        <div key={`${name}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD, border: `1px solid ${BDR}` }}>
-                          <span style={{ fontSize: 14, color: isAudio ? BRAND : TEXT2, flexShrink: 0 }}>{isAudio ? "〰" : "🗎"}</span>
-                          <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-                          {isAudio && <button onClick={() => notify("אין קובץ לניגון כרגע")} title="נגן" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}22`, border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>▶</button>}
-                          <button onClick={() => notify("אין קובץ להורדה כרגע")} title="הורד" style={{ background: "none", border: "none", color: MUTED, fontSize: 14, cursor: "pointer", flexShrink: 0 }}>⬇</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div style={subCard}>
-                  <div style={innerHead}>ציר זמן</div>
-                  <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 0 }}>
-                    {TIMELINE.map((stage, i) => {
-                      const isDone = i < curStage, current = i === curStage;
-                      const c = current ? BRAND : isDone ? GREEN : MUTED;
-                      return (
-                        <div key={stage} style={{ display: "flex", alignItems: "center", gap: 11, position: "relative", paddingBottom: i < TIMELINE.length - 1 ? 16 : 0 }}>
-                          {i < TIMELINE.length - 1 && <span style={{ position: "absolute", right: 6.5, top: 14, bottom: 0, width: 2, background: isDone ? GREEN : BDR }} />}
-                          <span style={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0, zIndex: 1, background: current ? BRAND : isDone ? GREEN : "transparent", border: `2px solid ${c}`, boxShadow: current ? `0 0 8px ${BRAND}88` : "none" }} />
-                          <span style={{ fontSize: 12.5, fontWeight: current ? 800 : 600, color: current ? TEXT : isDone ? TEXT2 : MUTED }}>{stage}</span>
-                        </div>
-                      );
-                    })}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {recv.length ? recv.map(f => (
+                      <FileRow key={f.id} file={f} onPlay={() => notify("אין קובץ לניגון כרגע")} onDownload={() => notify("אין קובץ להורדה כרגע")} onRemove={() => { setFiles(prev => prev.filter(x => x.id !== f.id)); notify("הקובץ הוסר"); }} />
+                    )) : <div style={{ fontSize: 11.5, color: MUTED, padding: "4px 2px" }}>אין עדיין קבצים</div>}
                   </div>
                 </div>
               </div>
             </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: "48px 0", color: MUTED, fontSize: 13 }}>אזור &quot;{tab}&quot; יהיה זמין בקרוב</div>
-          )}
+          </div>
+
+          {/* Brief notes (small, below) */}
+          <div style={{ ...subCard, marginTop: 16 }}>
+            <div style={innerHead}>הערות לבריף</div>
+            <div style={{ padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: "10px 18px" }}>
+              {BRIEF.map(b => (
+                <div key={b} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: TEXT2 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, flexShrink: 0 }} />{b}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
         <div style={{ flexShrink: 0, borderTop: `1px solid ${BDR}`, padding: "12px 24px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-start" }}>
           <button onClick={() => notify("אין עדיין קישור Dropbox לעבודה הזו")} style={ghostBtn}>📦 פתח בדרופבוקס</button>
-          <button onClick={() => fileInputRef.current?.click()} style={ghostBtn}>↑ העלה קבצים</button>
           <button onClick={() => { setSaved(true); notify("נשמר"); setTimeout(() => setSaved(false), 2000); }} style={{ ...ghostBtn, background: saved ? `${GREEN}18` : ghostBtn.background, border: `1px solid ${saved ? GREEN + "55" : BDR2}`, color: saved ? GREEN : TEXT2 }}>{saved ? "✓ נשמר" : "💾 שמור שינויים"}</button>
           <div style={{ flex: 1 }} />
           <button onClick={() => { onChange({ status: "הושלם" }); notify("העבודה סומנה כהושלמה"); }} style={{ padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>סמן כהושלם</button>
@@ -445,6 +461,7 @@ function NewWorkModal({ onClose, onAdd }: { onClose: () => void; onAdd: (w: Work
   const [project, setProject]   = useState("");
   const [workType, setWorkType] = useState<WorkType>("מיקס מאסטרינג");
   const [status, setStatus]     = useState<WorkStatus>("פעיל");
+  const [startDate, setStartDate] = useState("");
   const [deadline, setDeadline] = useState("");
   const [price, setPrice]       = useState("");
   const [pay, setPay]           = useState<PayStatus>("לא שולם");
@@ -461,7 +478,7 @@ function NewWorkModal({ onClose, onAdd }: { onClose: () => void; onAdd: (w: Work
     onAdd({
       id: (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
       project: project.trim(), workType, status,
-      deadline: deadline.trim() || "—",
+      startDate: startDate.trim() || "—", deadline: deadline.trim() || "—",
       price: Number(price) || 0, pay,
     });
     onClose();
@@ -469,14 +486,13 @@ function NewWorkModal({ onClose, onAdd }: { onClose: () => void; onAdd: (w: Work
 
   const row = (label: string, node: React.ReactNode) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2 }}>{label}</span>
-      {node}
+      <span style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2 }}>{label}</span>{node}
     </div>
   );
 
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div onClick={e => e.stopPropagation()} dir="rtl" style={{ background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(520px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif", padding: "22px 24px 20px" }}>
+      <div onClick={e => e.stopPropagation()} dir="rtl" style={{ background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(540px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif", padding: "22px 24px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ fontSize: 18, fontWeight: 900, color: TEXT }}>עבודה חדשה ל-Steven</div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 18, cursor: "pointer", lineHeight: 1 }}>×</button>
@@ -484,15 +500,16 @@ function NewWorkModal({ onClose, onAdd }: { onClose: () => void; onAdd: (w: Work
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {row("פרויקט", <StyledInput value={project} onChange={setProject} placeholder="שם הפרויקט" />)}
+          {row("סוג עבודה", <PillGroup value={workType} options={WORK_TYPES} onChange={setWorkType} />)}
+          {row("סטטוס", <PillGroup value={status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} onChange={setStatus} />)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {row("סוג עבודה", <StyledSelect value={workType} options={WORK_TYPES} onChange={v => setWorkType(v as WorkType)} />)}
-            {row("סטטוס", <StyledSelect value={status} options={STATUS_OPTIONS} color={STATUS_COLOR[status]} onChange={v => setStatus(v as WorkStatus)} />)}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {row("תאריך התחלה", <StyledInput value={startDate} onChange={setStartDate} placeholder="01.07.26" />)}
             {row("דדליין", <StyledInput value={deadline} onChange={setDeadline} placeholder="03.07.26" />)}
-            {row("מחיר ($)", <StyledInput value={price} onChange={setPrice} placeholder="170" type="number" />)}
           </div>
-          {row("תשלום", <StyledSelect value={pay} options={PAY_OPTIONS} color={pay === "שולם" ? GREEN : undefined} onChange={v => setPay(v as PayStatus)} />)}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "end" }}>
+            {row("מחיר ($)", <StyledInput value={price} onChange={setPrice} placeholder="170" type="number" />)}
+            {row("תשלום", <PillGroup value={pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} onChange={setPay} />)}
+          </div>
           {err && <div style={{ fontSize: 12, color: RED }}>{err}</div>}
         </div>
 
