@@ -1,33 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getDropboxToken } from "@/lib/dropbox-token";
+import { deliveryFolder } from "@/lib/project-paths";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function sanitizeName(s: string): string {
-  // Remove chars invalid in Dropbox paths (not /, which is a separator)
-  return s
-    .replace(/[\\:*?"<>|]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
-}
-
-function formatArtistName(artist: string): string {
-  const names = artist
-    .split(/[,،;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (names.length === 0) return "Unknown";
-  if (names.length <= 2) return names.join(", ");
-  return `${names[0]} + Others`;
-}
-
-function buildDeliveryPath(artist: string, projectName: string): string {
-  const artistPart  = sanitizeName(formatArtistName(artist || "Unknown"));
-  const projectPart = sanitizeName(projectName);
-  return `/${artistPart} - ${projectPart}/05_Delivery`;
-}
 
 async function createDropboxFolder(token: string, path: string): Promise<void> {
   const res = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
@@ -164,7 +140,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "projectId and projectName required" }, { status: 400 });
   }
 
-  const folderPath = buildDeliveryPath(artist ?? "", projectName);
+  const folderPath = deliveryFolder(artist ?? "", projectName, projectId);
 
   try {
     await createDropboxFolder(token, folderPath);

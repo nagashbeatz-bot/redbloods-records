@@ -3350,8 +3350,8 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
         </div>
       )}
 
-      {/* ── קבצי מסירה ── */}
-      {isDone && (
+      {/* ── קבצי מסירה — shown whenever delivery files exist (e.g. Steven intake), not only for completed projects ── */}
+      {(isDone || deliveryFiles.length > 0) && (
         <div style={sectionCard}>
           <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
             קבצי מסירה <span style={{ color: MUTED, fontWeight: 700 }}>({deliveryFiles.length})</span>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { projectBaseFolder, sanitizeFolder } from "@/lib/project-paths";
 
 // Allow up to 5 minutes for large audio file uploads (WAV/FLAC can be 200MB+)
 export const maxDuration = 300;
@@ -11,17 +12,6 @@ function dropboxArg(obj: Record<string, unknown>): string {
   return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
     `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
   );
-}
-
-/** Sanitize a string for use as a Dropbox FOLDER name (not the file name). */
-function sanitizeFolder(s: string): string {
-  return s.replace(/[<>:"/\\|?*]/g, "").replace(/\s+/g, " ").trim();
-}
-
-/** First (primary) artist from a comma/semicolon-separated artist string.
- *  The project's Dropbox folder is always based on the primary artist only. */
-function primaryArtist(raw: string): string {
-  return (raw || "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean)[0] ?? "";
 }
 
 async function createDropboxShareLink(token: string, path: string): Promise<string> {
@@ -71,17 +61,7 @@ export async function POST(req: NextRequest) {
     // existing files keep their stored dropboxPath. The file NAME is unchanged.
     const { getProject } = await import("@/lib/projects-store");
     const project       = await getProject(projectId);
-    const artistFolder  = sanitizeFolder(primaryArtist(project?.artist ?? ""));
-    const projectFolder = sanitizeFolder(project?.name ?? "");
-
-    let folderPath: string;
-    if (artistFolder && projectFolder) {
-      folderPath = `/Projects/${artistFolder}/${projectFolder}`;
-    } else if (projectFolder) {
-      folderPath = `/Projects/ללא אמן/${projectFolder}`;
-    } else {
-      folderPath = `/Projects/ללא אמן/Untitled Project - ${projectId.slice(0, 8)}`;
-    }
+    let folderPath = projectBaseFolder(project?.artist ?? "", project?.name ?? "", projectId);
 
     // Optional subfolder (e.g. "Delivery" or nested "Delivery/ערוצים") — new
     // uploads only; existing files are untouched. Each path segment is sanitized

@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { getDropboxToken } from "@/lib/dropbox-token";
 import { addFileToProject } from "@/lib/projects-store";
 import { buildIntake, type IntakeEntry, type IntakeItem } from "@/lib/file-intake";
+import { deliveryFolder } from "@/lib/project-paths";
 
 // ── Dropbox call helper — status + raw body, optional path-root header. ────────
 async function dbx(token: string, endpoint: string, body: unknown, pathRoot?: string) {
@@ -214,7 +215,9 @@ export async function POST(req: NextRequest) {
 
       const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
       if (!proj) return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
-      const target = deliveryPath((proj as { artist: string }).artist, (proj as { name: string }).name);
+      // Canonical target — same place manual delivery uploads go:
+      // /Projects/{primaryArtist}/{projectName}/Delivery (+ /ערוצים for stems).
+      const target = deliveryFolder((proj as { artist: string }).artist, (proj as { name: string }).name, projectId);
 
       await dbx(token, "files/create_folder_v2", { path: target, autorename: false }, pathRoot);
       // Pre-create any sub-folders (e.g. ערוצים). If it already exists, Dropbox
@@ -255,18 +258,4 @@ export async function POST(req: NextRequest) {
     console.error("[dropbox/intake]", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
-
-// ── delivery path (same convention as /api/delivery) ──────────────────────────
-function sanitize(s: string): string {
-  return s.replace(/[\\:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
-}
-function formatArtist(artist: string): string {
-  const names = (artist || "").split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
-  if (names.length === 0) return "Unknown";
-  if (names.length <= 2) return names.join(", ");
-  return `${names[0]} + Others`;
-}
-function deliveryPath(artist: string, projectName: string): string {
-  return `/${sanitize(formatArtist(artist || "Unknown"))} - ${sanitize(projectName)}/05_Delivery`;
 }

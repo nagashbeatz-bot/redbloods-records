@@ -210,12 +210,24 @@ export default function PlayerProvider({ children }: { children: React.ReactNode
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
 
+// Delivery files are technical client deliverables, NOT the project's preview
+// track — they must never feed the player. Identified by their Dropbox location
+// (…/Delivery/…, same marker the files tab uses) or an intake category.
+const DELIVERY_CATEGORIES = new Set(["מאסטר", "גרסת הופעה", "אקפלה", "אינסטרומנטל", "ערוצים", "אחר"]);
+
+export function isDeliveryFile(f: { dropboxPath?: string; category?: string }): boolean {
+  if (f.dropboxPath && /\/Delivery\//i.test(f.dropboxPath)) return true;
+  if (f.category && DELIVERY_CATEGORIES.has(f.category)) return true;
+  return false;
+}
+
 export function getLatestAudioFile(
-  files: { name: string; url: string; assetId?: number; dropboxPath?: string; dropboxShareUrl?: string }[]
+  files: { name: string; url: string; assetId?: number; dropboxPath?: string; dropboxShareUrl?: string; category?: string }[]
 ): { name: string; url: string; assetId?: number; dropboxPath?: string; dropboxShareUrl?: string } | null {
   // Only Dropbox files are playable — skip legacy Monday entries (no dropboxPath)
+  // and delivery files (master/acapella/stems/… — never the project's preview track).
   const audioFiles = files.filter((f) =>
-    f.dropboxPath && AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
+    f.dropboxPath && !isDeliveryFile(f) && AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
   );
   return audioFiles.length > 0 ? audioFiles[audioFiles.length - 1] : null;
 }
