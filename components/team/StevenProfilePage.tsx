@@ -22,7 +22,6 @@ const RED    = "#EF4444";
 type WorkStatus = "פעיל" | "הושלם" | "בוטל";
 type PayStatus  = "שולם" | "לא שולם";
 type WorkType   = "מיקס מאסטרינג" | "מאסטרינג";
-type FileSource = "Owner" | "Steven";
 
 const WORK_TYPES: WorkType[]       = ["מיקס מאסטרינג", "מאסטרינג"];
 const STATUS_OPTIONS: WorkStatus[] = ["פעיל", "הושלם", "בוטל"];
@@ -32,7 +31,7 @@ interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
   startDate: string; deadline: string; price: number; pay: PayStatus;
 }
-interface WorkFile { id: string; name: string; time: string; source: FileSource }
+interface WorkFile { id: string; name: string; time: string; size?: number; url?: string }
 
 const INITIAL_WORKS: Work[] = [
   { id: "1", project: "My Story",      workType: "מיקס מאסטרינג", status: "פעיל",  startDate: "01.07.26", deadline: "03.07.26", price: 170, pay: "לא שולם" },
@@ -45,10 +44,10 @@ const INITIAL_WORKS: Work[] = [
 
 const BRIEF = ["ווקאל קדמי ונקי", "לשמור על האנרגיה בפזמון", "Reference: Drake / PARTYNEXTDOOR vibe", "מאסטר מוכן לסטרימינג"];
 const INITIAL_FILES: WorkFile[] = [
-  { id: "f1", name: "stems.zip",          time: "02.06.26 09:10", source: "Owner" },
-  { id: "f2", name: "rough mix.wav",      time: "02.06.26 09:12", source: "Owner" },
-  { id: "f3", name: "My Story Mix v1.wav", time: "31.05.26 09:17", source: "Steven" },
-  { id: "f4", name: "My Story Mix v2.wav", time: "02.06.26 10:24", source: "Steven" },
+  { id: "f1", name: "stems.zip",           time: "02.06.26 09:10" },
+  { id: "f2", name: "rough mix.wav",       time: "02.06.26 09:12" },
+  { id: "f3", name: "My Story Mix v1.wav", time: "31.05.26 09:17" },
+  { id: "f4", name: "My Story Mix v2.wav", time: "02.06.26 10:24" },
 ];
 
 // ── Chips ───────────────────────────────────────────────────────────────────────
@@ -62,7 +61,7 @@ function PayChip({ pay }: { pay: PayStatus }) {
   return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}40`, color: pay === "שולם" ? GREEN : TEXT2 }}>{pay}</span>;
 }
 
-// ── Modern pill / segmented control (replaces native selects) ────────────────────
+// ── Modern pill / segmented control ──────────────────────────────────────────────
 function PillGroup<T extends string>({ value, options, onChange, colorFor }: { value: T; options: readonly T[]; onChange: (v: T) => void; colorFor?: (o: T) => string }) {
   return (
     <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-start" }}>
@@ -118,6 +117,12 @@ function nowStamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtSize(b?: number): string {
+  if (!b) return "";
+  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB`;
+  if (b >= 1e3) return `${Math.round(b / 1e3)} KB`;
+  return `${b} B`;
 }
 
 export default function StevenProfilePage() {
@@ -291,54 +296,46 @@ export default function StevenProfilePage() {
   );
 }
 
-// ── File row ─────────────────────────────────────────────────────────────────────
-function FileRow({ file, onPlay, onDownload, onRemove }: { file: WorkFile; onPlay: () => void; onDownload: () => void; onRemove: () => void }) {
-  const isAudio = /\.(wav|mp3|m4a|flac|aiff?)$/i.test(file.name);
-  const srcColor = file.source === "Steven" ? BLUE : BRAND;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD, border: `1px solid ${BDR}` }}>
-      <span style={{ fontSize: 14, color: isAudio ? BRAND : TEXT2, flexShrink: 0 }}>{isAudio ? "〰" : "🗎"}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
-        <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>
-          {file.time} · <span style={{ color: srcColor, fontWeight: 700 }}>{file.source === "Steven" ? "Steven" : "Owner"}</span>
-        </div>
-      </div>
-      {isAudio && <button onClick={onPlay} title="נגן" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}22`, border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>▶</button>}
-      <button onClick={onDownload} title="הורד" style={{ background: "none", border: "none", color: MUTED, fontSize: 14, cursor: "pointer", flexShrink: 0 }}>⬇</button>
-      <button onClick={onRemove} title="הסר" style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-        onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
-    </div>
-  );
-}
-
-// ── "פתח עבודה" modal — single screen, files-centric ────────────────────────────
+// ── "פתח עבודה" modal — single screen, one Drag & Drop file zone ─────────────────
 function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: (patch: Partial<Work>) => void; onClose: () => void; notify: (m: string) => void }) {
   const [saved, setSaved] = useState(false);
   const [files, setFiles] = useState<WorkFile[]>(INITIAL_FILES);
-  const sentInputRef = useRef<HTMLInputElement | null>(null);
-  const recvInputRef = useRef<HTMLInputElement | null>(null);
+  const [drag, setDrag] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
+    return () => { document.removeEventListener("keydown", h); audioRef.current?.pause(); };
   }, [onClose]);
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
-  const sent = files.filter(f => f.source === "Owner");
-  const recv = files.filter(f => f.source === "Steven");
 
-  function addPicked(e: React.ChangeEvent<HTMLInputElement>, source: FileSource) {
-    const picked = Array.from(e.target.files ?? []);
-    if (picked.length) {
-      setFiles(prev => [
-        ...prev,
-        ...picked.map((f, i) => ({ id: `${Date.now()}_${i}`, name: f.name, time: nowStamp(), source })),
-      ]);
-      notify(source === "Owner" ? "הקבצים נוספו לעבודה (מקומי)" : "נוסף קובץ בשם Steven (מקומי)");
-    }
-    if (e.target) e.target.value = "";
+  function addFiles(list: FileList | null) {
+    const picked = Array.from(list ?? []);
+    if (!picked.length) return;
+    setFiles(prev => [
+      ...prev,
+      ...picked.map((f, i) => ({ id: `${Date.now()}_${i}`, name: f.name, time: nowStamp(), size: f.size, url: URL.createObjectURL(f) })),
+    ]);
+    notify("הקבצים נוספו לעבודה");
+  }
+  function removeFile(f: WorkFile) {
+    if (f.url) URL.revokeObjectURL(f.url);
+    setFiles(prev => prev.filter(x => x.id !== f.id));
+    notify("הקובץ הוסר");
+  }
+  function playFile(f: WorkFile) {
+    if (!f.url) { notify("אין קובץ לניגון כרגע"); return; }
+    audioRef.current?.pause();
+    const a = new Audio(f.url); audioRef.current = a;
+    a.play().catch(() => notify("לא ניתן לנגן את הקובץ"));
+  }
+  function downloadFile(f: WorkFile) {
+    if (!f.url) { notify("אין קובץ להורדה כרגע"); return; }
+    const a = document.createElement("a"); a.href = f.url; a.download = f.name;
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
@@ -348,7 +345,6 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
       <span style={{ fontSize: 12.5, color: MUTED }}>{label}</span>{node}
     </div>
   );
-  const uploadBtn: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 9, background: `${BRAND}14`, border: `1px solid ${BRAND}40`, color: BRAND, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" };
 
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -356,8 +352,7 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
         background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1080px, 96vw)", maxHeight: "92vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
-        <input ref={sentInputRef} type="file" multiple style={{ display: "none" }} onChange={e => addPicked(e, "Owner")} />
-        <input ref={recvInputRef} type="file" multiple style={{ display: "none" }} onChange={e => addPicked(e, "Steven")} />
+        <input ref={inputRef} type="file" multiple style={{ display: "none" }} onChange={e => { addFiles(e.target.files); if (e.target) e.target.value = ""; }} />
 
         {/* Header */}
         <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
@@ -396,33 +391,52 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
               </div>
             </div>
 
-            {/* Files (center/left, wide) */}
+            {/* Files (center/left, wide) — single drag & drop zone + flat list */}
             <div style={subCard}>
-              <div style={innerHead}>קבצי עבודה</div>
-              <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
-                {/* Sent to Steven */}
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>קבצים שנשלחו ל-Steven <span style={{ color: MUTED }}>({sent.length})</span></span>
-                    <button onClick={() => sentInputRef.current?.click()} style={uploadBtn}>+ העלה קבצים ל-Steven</button>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {sent.length ? sent.map(f => (
-                      <FileRow key={f.id} file={f} onPlay={() => notify("אין קובץ לניגון כרגע")} onDownload={() => notify("אין קובץ להורדה כרגע")} onRemove={() => { setFiles(prev => prev.filter(x => x.id !== f.id)); notify("הקובץ הוסר"); }} />
-                    )) : <div style={{ fontSize: 11.5, color: MUTED, padding: "4px 2px" }}>אין עדיין קבצים</div>}
-                  </div>
+              <div style={innerHead}>קבצי עבודה <span style={{ color: MUTED, fontWeight: 700 }}>({files.length})</span></div>
+              <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Drop zone */}
+                <div
+                  onClick={() => inputRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); if (!drag) setDrag(true); }}
+                  onDragLeave={e => { e.preventDefault(); setDrag(false); }}
+                  onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+                    textAlign: "center", padding: "26px 16px", borderRadius: 14, cursor: "pointer",
+                    border: `2px dashed ${drag ? BRAND : BDR2}`,
+                    background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)",
+                    boxShadow: drag ? `0 0 22px ${BRAND}33` : "none", transition: "all .15s",
+                  }}
+                >
+                  <div style={{ fontSize: 30, lineHeight: 1, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>גרור לכאן קבצים</div>
+                  <div style={{ fontSize: 12, color: TEXT2 }}>או לחץ להעלאה ידנית</div>
+                  <div style={{ fontSize: 10.5, color: MUTED }}>Stems, Mix, Master, Reference, ZIP</div>
+                  <button onClick={e => { e.stopPropagation(); inputRef.current?.click(); }} style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, padding: "7px 16px", borderRadius: 9, background: `${BRAND}14`, border: `1px solid ${BRAND}40`, color: BRAND, cursor: "pointer", fontFamily: "inherit" }}>בחר קבצים</button>
                 </div>
-                {/* Received from Steven */}
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>קבצים שהתקבלו מ-Steven <span style={{ color: MUTED }}>({recv.length})</span></span>
-                    <button onClick={() => recvInputRef.current?.click()} style={{ ...uploadBtn, background: `${BLUE}14`, border: `1px solid ${BLUE}40`, color: BLUE }}>+ הוסף קובץ מ-Steven</button>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {recv.length ? recv.map(f => (
-                      <FileRow key={f.id} file={f} onPlay={() => notify("אין קובץ לניגון כרגע")} onDownload={() => notify("אין קובץ להורדה כרגע")} onRemove={() => { setFiles(prev => prev.filter(x => x.id !== f.id)); notify("הקובץ הוסר"); }} />
-                    )) : <div style={{ fontSize: 11.5, color: MUTED, padding: "4px 2px" }}>אין עדיין קבצים</div>}
-                  </div>
+
+                {/* Flat file list */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {files.length ? files.map(f => {
+                    const isAudio = /\.(wav|mp3|m4a|flac|aiff?)$/i.test(f.name);
+                    const sz = fmtSize(f.size);
+                    return (
+                      <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD, border: `1px solid ${BDR}` }}>
+                        <span style={{ fontSize: 14, color: isAudio ? BRAND : TEXT2, flexShrink: 0 }}>{isAudio ? "〰" : "🗎"}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                          <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{f.time}{sz ? ` · ${sz}` : ""}</div>
+                        </div>
+                        {isAudio && <button onClick={() => playFile(f)} title="נגן" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}22`, border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>▶</button>}
+                        <button onClick={() => downloadFile(f)} title="הורד" style={{ background: "none", border: "none", color: MUTED, fontSize: 14, cursor: "pointer", flexShrink: 0 }}>⬇</button>
+                        <button onClick={() => removeFile(f)} title="הסר" style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                          onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                      </div>
+                    );
+                  }) : (
+                    <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "14px 0" }}>אין עדיין קבצים בעבודה הזו</div>
+                  )}
                 </div>
               </div>
             </div>
