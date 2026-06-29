@@ -18,26 +18,30 @@ const GREEN  = "#10B981";
 const BLUE   = "#3B82F6"; // calm "completed" accent
 const RED    = "#EF4444";
 
-// ── Types + mock data (UI-only; no DB) ─────────────────────────────────────────
+// ── Types + options (UI-only; no DB) ────────────────────────────────────────────
 type WorkStatus = "פעיל" | "הושלם" | "בוטל";
 type PayStatus  = "שולם" | "לא שולם";
-type FileStatus = "נשלחו" | "התקבלו" | "חסרים";
+type WorkType   = "מיקס מאסטרינג" | "מאסטרינג";
+
+const WORK_TYPES: WorkType[]    = ["מיקס מאסטרינג", "מאסטרינג"];
+const STATUS_OPTIONS: WorkStatus[] = ["פעיל", "הושלם", "בוטל"];
+const PAY_OPTIONS: PayStatus[]  = ["שולם", "לא שולם"];
 
 interface Work {
-  id: string; project: string; workType: string; status: WorkStatus;
-  deadline: string; price: number; pay: PayStatus; files: FileStatus;
+  id: string; project: string; workType: WorkType; status: WorkStatus;
+  deadline: string; price: number; pay: PayStatus;
 }
 
-const WORKS: Work[] = [
-  { id: "1", project: "My Story",      workType: "מיקס + מאסטר", status: "פעיל",  deadline: "03.07.26", price: 170, pay: "לא שולם", files: "נשלחו" },
-  { id: "2", project: "Heart of Time", workType: "מאסטר",        status: "הושלם", deadline: "01.07.26", price: 90,  pay: "שולם",    files: "התקבלו" },
-  { id: "3", project: "Closer Part 2", workType: "מיקס",         status: "פעיל",  deadline: "—",        price: 170, pay: "לא שולם", files: "חסרים" },
-  { id: "4", project: "City Lights",   workType: "מיקס",         status: "פעיל",  deadline: "28.06.26", price: 110, pay: "לא שולם", files: "נשלחו" },
-  { id: "5", project: "Late Nights",   workType: "מאסטר",        status: "הושלם", deadline: "25.06.26", price: 120, pay: "שולם",    files: "התקבלו" },
-  { id: "6", project: "Echoes",        workType: "מיקס + מאסטר", status: "בוטל",  deadline: "—",        price: 160, pay: "לא שולם", files: "חסרים" },
+const INITIAL_WORKS: Work[] = [
+  { id: "1", project: "My Story",      workType: "מיקס מאסטרינג", status: "פעיל",  deadline: "03.07.26", price: 170, pay: "לא שולם" },
+  { id: "2", project: "Heart of Time", workType: "מאסטרינג",      status: "הושלם", deadline: "01.07.26", price: 90,  pay: "שולם" },
+  { id: "3", project: "Closer Part 2", workType: "מיקס מאסטרינג", status: "פעיל",  deadline: "—",        price: 170, pay: "לא שולם" },
+  { id: "4", project: "City Lights",   workType: "מיקס מאסטרינג", status: "פעיל",  deadline: "28.06.26", price: 110, pay: "לא שולם" },
+  { id: "5", project: "Late Nights",   workType: "מאסטרינג",      status: "הושלם", deadline: "25.06.26", price: 120, pay: "שולם" },
+  { id: "6", project: "Echoes",        workType: "מיקס מאסטרינג", status: "בוטל",  deadline: "—",        price: 160, pay: "לא שולם" },
 ];
 
-// Overview content (mock; same for all works so the modal never looks broken).
+// Overview content (mock).
 const BRIEF = ["ווקאל קדמי ונקי", "לשמור על האנרגיה בפזמון", "Reference: Drake / PARTYNEXTDOOR vibe", "מאסטר מוכן לסטרימינג"];
 const CHECKLIST = [
   { label: "Stems התקבלו", done: true },
@@ -49,7 +53,7 @@ const MODAL_FILES = ["stems.zip", "rough mix.wav", "My Story Mix v1.wav", "My St
 const TIMELINE = ["נפתחה עבודה", "פעיל", "הושלם"];
 function timelineCurrent(status: WorkStatus): number {
   if (status === "הושלם") return 2;
-  return 1; // פעיל / בוטל both sit at the active stage (cancel shown via the chip)
+  return 1;
 }
 
 // ── Chips ───────────────────────────────────────────────────────────────────────
@@ -62,9 +66,26 @@ function PayChip({ pay }: { pay: PayStatus }) {
   const c = pay === "שולם" ? GREEN : MUTED;
   return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}40`, color: pay === "שולם" ? GREEN : TEXT2 }}>{pay}</span>;
 }
-function FilesChip({ files }: { files: FileStatus }) {
-  const c = files === "חסרים" ? BRAND : GREEN;
-  return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}33`, color: c }}>{files}</span>;
+
+// ── Styled dark select (modern, matches the system; not the browser default) ─────
+function StyledSelect({ value, onChange, options, color }: { value: string; onChange: (v: string) => void; options: readonly string[]; color?: string }) {
+  return (
+    <div style={{ position: "relative", display: "inline-flex" }}>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
+          background: CARD, color: color ?? TEXT, border: `1px solid ${color ? color + "55" : BDR2}`, borderRadius: 9,
+          padding: "6px 28px 6px 12px", fontSize: 12.5, fontWeight: 700, fontFamily: "inherit",
+          cursor: "pointer", outline: "none", colorScheme: "dark", direction: "rtl", minWidth: 120,
+        }}
+      >
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: MUTED, fontSize: 10 }}>▾</span>
+    </div>
+  );
 }
 
 // ── KPI card ────────────────────────────────────────────────────────────────────
@@ -83,12 +104,14 @@ const cardHead: React.CSSProperties = { padding: "14px 20px", borderBottom: `1px
 
 export default function StevenProfilePage() {
   const router = useRouter();
-  const [openWork, setOpenWork] = useState<Work | null>(null);
+  const [works, setWorks]   = useState<Work[]>(INITIAL_WORKS);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openWork = works.find(w => w.id === openId) ?? null;
+  const updateWork = (id: string, patch: Partial<Work>) => setWorks(prev => prev.map(w => (w.id === id ? { ...w, ...patch } : w)));
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
-  const active = WORKS.filter(w => w.status === "פעיל").length;
-  const done   = WORKS.filter(w => w.status === "הושלם").length;
-  const cancelled = WORKS.filter(w => w.status === "בוטל").length;
+  const active = works.filter(w => w.status === "פעיל").length;
+  const done   = works.filter(w => w.status === "הושלם").length;
 
   return (
     <div dir="rtl" style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "32px 28px 80px" }}>
@@ -138,12 +161,11 @@ export default function StevenProfilePage() {
           </div>
         </div>
 
-        {/* ── KPI row ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <KpiCard label="עבודות פתוחות" value={WORKS.length} icon="📁" />
+        {/* ── KPI row (5 cards) ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
+          <KpiCard label="עבודות פתוחות" value={works.length} icon="📁" />
           <KpiCard label="עבודות פעילות" value={active}       icon="🎚" color={GREEN} />
           <KpiCard label="עבודות הושלמו" value={done}         icon="✔" color={BLUE} />
-          <KpiCard label="בוטלו"         value={cancelled}    icon="✕" color={RED} />
           <KpiCard label="חוב ל-Steven"  value={fmt(340)}     icon="👛" color={BRAND} />
           <KpiCard label="שולם החודש"    value={fmt(170)}     icon="💳" color={GREEN} />
         </div>
@@ -155,16 +177,16 @@ export default function StevenProfilePage() {
           <div style={sectionCard}>
             <div style={cardHead}>עבודות סאונד</div>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: CARD2 }}>
-                    {["פרויקט", "סוג עבודה", "סטטוס", "דדליין", "מחיר", "תשלום", "קבצים", "פעולה"].map(h => (
+                    {["פרויקט", "סוג עבודה", "סטטוס", "דדליין", "מחיר", "תשלום", "פעולה"].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "right", fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {WORKS.map((w, i) => (
+                  {works.map((w, i) => (
                     <tr key={w.id} style={{ borderTop: `1px solid ${BDR}`, background: i % 2 ? "rgba(255,255,255,0.01)" : "transparent" }}>
                       <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}><span style={{ marginLeft: 5 }}>🎵</span>{w.project}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{w.workType}</td>
@@ -172,9 +194,11 @@ export default function StevenProfilePage() {
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: "right" }}>{fmt(w.price)}</td>
                       <td style={{ padding: "11px 14px" }}><PayChip pay={w.pay} /></td>
-                      <td style={{ padding: "11px 14px" }}><FilesChip files={w.files} /></td>
                       <td style={{ padding: "11px 14px" }}>
-                        <button onClick={() => setOpenWork(w)} style={{ fontSize: 11.5, fontWeight: 700, color: GREEN, background: `${GREEN}14`, border: `1px solid ${GREEN}33`, borderRadius: 9, padding: "5px 13px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>פתח עבודה</button>
+                        <button onClick={() => setOpenId(w.id)}
+                          onMouseEnter={e => { e.currentTarget.style.background = "#E4E4EA"; e.currentTarget.style.boxShadow = "0 0 8px rgba(255,255,255,0.16)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.boxShadow = "none"; }}
+                          style={{ fontSize: 11, fontWeight: 700, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s" }}>פתח עבודה</button>
                       </td>
                     </tr>
                   ))}
@@ -232,14 +256,15 @@ export default function StevenProfilePage() {
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} onClose={() => setOpenWork(null)} />}
+      {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onClose={() => setOpenId(null)} />}
     </div>
   );
 }
 
 // ── "פתח עבודה" modal ───────────────────────────────────────────────────────────
-function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
+function WorkModal({ work, onChange, onClose }: { work: Work; onChange: (patch: Partial<Work>) => void; onClose: () => void }) {
   const [tab, setTab] = useState("סקירה");
+  const [saved, setSaved] = useState(false);
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
@@ -270,7 +295,6 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
             <StatusChip status={work.status} />
-            <FilesChip files={work.files} />
             <PayChip pay={work.pay} />
           </div>
           {/* Tabs */}
@@ -290,22 +314,22 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
           {tab === "סקירה" ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, alignItems: "start" }}>
 
-              {/* Right: work details */}
+              {/* Right: work details (editable) */}
               <div style={subCard}>
                 <div style={innerHead}>פרטי עבודה</div>
                 <div style={{ padding: "6px 16px 12px" }}>
-                  {([
-                    { l: "פרויקט", v: work.project },
-                    { l: "סוג עבודה", v: work.workType },
-                    { l: "סטטוס", chip: <StatusChip status={work.status} /> },
-                    { l: "דדליין", v: work.deadline },
-                    { l: "מחיר שסוכם", v: fmt(work.price), c: GREEN },
-                    { l: "תשלום", chip: <PayChip pay={work.pay} /> },
-                    { l: "עודכן לאחרונה", v: "היום" },
-                  ] as { l: string; v?: string; c?: string; chip?: React.ReactNode }[]).map((r, i, arr) => (
-                    <div key={r.l} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 0", borderBottom: i < arr.length - 1 ? `1px solid ${BDR}` : "none" }}>
+                  {[
+                    { l: "פרויקט", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.project}</span> },
+                    { l: "סוג עבודה", node: <StyledSelect value={work.workType} options={WORK_TYPES} onChange={v => onChange({ workType: v as WorkType })} /> },
+                    { l: "סטטוס", node: <StyledSelect value={work.status} options={STATUS_OPTIONS} color={STATUS_COLOR[work.status]} onChange={v => onChange({ status: v as WorkStatus })} /> },
+                    { l: "דדליין", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span> },
+                    { l: "מחיר שסוכם", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: GREEN, direction: "ltr" }}>{fmt(work.price)}</span> },
+                    { l: "תשלום", node: <StyledSelect value={work.pay} options={PAY_OPTIONS} color={work.pay === "שולם" ? GREEN : undefined} onChange={v => onChange({ pay: v as PayStatus })} /> },
+                    { l: "עודכן לאחרונה", node: <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>היום</span> },
+                  ].map((r, i, arr) => (
+                    <div key={r.l} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderBottom: i < arr.length - 1 ? `1px solid ${BDR}` : "none" }}>
                       <span style={{ fontSize: 12.5, color: MUTED }}>{r.l}</span>
-                      {r.chip ? r.chip : <span style={{ fontSize: 12.5, fontWeight: 700, color: r.c ?? TEXT, direction: r.v?.startsWith("$") ? "ltr" : "rtl" }}>{r.v}</span>}
+                      {r.node}
                     </div>
                   ))}
                 </div>
@@ -380,13 +404,14 @@ function WorkModal({ work, onClose }: { work: Work; onClose: () => void }) {
         </div>
 
         {/* Footer actions */}
-        <div style={{ flexShrink: 0, borderTop: `1px solid ${BDR}`, padding: "12px 24px", display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
-          {[{ l: "פתח בדרופבוקס", i: "📦" }, { l: "העלה קבצים", i: "↑" }, { l: "שמור שינויים", i: "💾" }].map(b => (
+        <div style={{ flexShrink: 0, borderTop: `1px solid ${BDR}`, padding: "12px 24px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-start" }}>
+          {[{ l: "פתח בדרופבוקס", i: "📦" }, { l: "העלה קבצים", i: "↑" }].map(b => (
             <button key={b.l} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{b.i} {b.l}</button>
           ))}
+          <button onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2000); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 10, background: saved ? `${GREEN}18` : "rgba(255,255,255,0.05)", border: `1px solid ${saved ? GREEN + "55" : BDR2}`, color: saved ? GREEN : TEXT2, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{saved ? "✓ נשמר" : "💾 שמור שינויים"}</button>
           <div style={{ flex: 1 }} />
-          <button style={{ padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>סמן כהושלם</button>
-          <button style={{ padding: "10px 18px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}66`, color: RED, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>בטל עבודה</button>
+          <button onClick={() => onChange({ status: "הושלם" })} style={{ padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>סמן כהושלם</button>
+          <button onClick={() => onChange({ status: "בוטל" })} style={{ padding: "10px 18px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}66`, color: RED, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>בטל עבודה</button>
         </div>
       </div>
     </div>
