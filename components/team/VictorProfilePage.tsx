@@ -1186,17 +1186,18 @@ function VictorProjectDrawer({
             <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
 
           {/* Files card */}
-          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden", minWidth: 0 }}>
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
+              gap: 8, flexWrap: "wrap",
               padding: "12px 16px",
               borderBottom: files.length > 0 ? `1px solid ${BDR}` : "none",
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>📁</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("files.title")}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>📁</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("files.title")}</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1215,7 +1216,7 @@ function VictorProjectDrawer({
                     border: "1px solid rgba(16,185,129,0.3)",
                     color: uploading ? "#52526A" : "#10B981",
                     cursor: uploading ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
+                    fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
                   }}
                 >
                   {uploading ? `${uploadProgress}%` : t("files.upload")}
@@ -1229,7 +1230,7 @@ function VictorProjectDrawer({
                       style={{
                         fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
                         background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)",
-                        color: "#4A9EFF", textDecoration: "none",
+                        color: "#4A9EFF", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
                       }}
                     >
                       {t("files.openDropbox")}
@@ -1241,7 +1242,7 @@ function VictorProjectDrawer({
                       style={{
                         fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 7,
                         background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)",
-                        color: "#4A9EFF", fontFamily: "inherit",
+                        color: "#4A9EFF", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
                         cursor: openingDbx ? "default" : "pointer", opacity: openingDbx ? 0.6 : 1,
                       }}
                     >
@@ -1252,7 +1253,7 @@ function VictorProjectDrawer({
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
                   background: files.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
-                  color: files.length > 0 ? GREEN : MUTED,
+                  color: files.length > 0 ? GREEN : MUTED, whiteSpace: "nowrap", flexShrink: 0,
                 }}>{files.length} {t("files.count")}</span>
               </div>
             </div>
