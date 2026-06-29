@@ -91,18 +91,6 @@ function mapRecord(r: SoundEngineerWork): Work {
   };
 }
 
-const PAYMENTS = [
-  { proj: "My Story",      mHe: "יוני 2026", mEn: "Jun 2026", a: 170, d: "10.06.26" },
-  { proj: "Heart of Time", mHe: "מאי 2026",  mEn: "May 2026", a: 220, d: "10.05.26" },
-  { proj: "Closer Part 2", mHe: "אפר׳ 2026", mEn: "Apr 2026", a: 195, d: "10.04.26" },
-  { proj: "Late Nights",   mHe: "מרץ 2026",  mEn: "Mar 2026", a: 160, d: "10.03.26" },
-];
-const RECENT_FILES = [
-  { n: "My Story Mix v2.wav", t: "10:24 02.06.26" },
-  { n: "Heart of Time Master.mp3", t: "14:08 01.06.26" },
-  { n: "Closer Part 2 Mix v1.wav", t: "09:17 31.05.26" },
-  { n: "Vocal Comp Take 3.wav", t: "11:02 30.05.26" },
-];
 const INITIAL_FILES: WorkFile[] = [
   { id: "f1", name: "stems.zip",           time: "02.06.26 09:10" },
   { id: "f2", name: "rough mix.wav",       time: "02.06.26 09:12" },
@@ -118,7 +106,7 @@ const TR = {
     soundSupplier: "ספק סאונד", supplierType: "סוג ספק: איש סאונד", updatedToday: "עודכן לאחרונה: היום",
     kpiOpen: "עבודות פתוחות", kpiActive: "עבודות פעילות", kpiDone: "עבודות הושלמו", kpiDebt: "חוב ל-Steven", kpiPaidMonth: "שולם החודש",
     payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם",
-    soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולה", openJob: "פתח עבודה",
+    soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולה", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
     job: "עבודה:", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם", briefNotes: "הערות לבריף",
     brief: ["ווקאל קדמי ונקי", "לשמור על האנרגיה בפזמון", "Reference: Drake / PARTYNEXTDOOR vibe", "מאסטר מוכן לסטרימינג"],
@@ -135,7 +123,7 @@ const TR = {
     soundSupplier: "Sound Supplier", supplierType: "Supplier type: Sound Engineer", updatedToday: "Updated today",
     kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid This Month",
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid",
-    soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Action", openJob: "Open Job",
+    soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Action", openJob: "Open Job", noJobs: "No Steven jobs yet",
     job: "Job:", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price", briefNotes: "Brief Notes",
     brief: ["Clean upfront vocal", "Keep the chorus energy", "Reference: Drake / PARTYNEXTDOOR vibe", "Streaming-ready master"],
@@ -424,8 +412,8 @@ export default function StevenProfilePage() {
           <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
         </div>
 
-        {/* ── Main grid ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* ── Sound jobs table (full width) ── */}
+        <div>
 
           <div style={sectionCard}>
             <div style={cardHead}>{t.soundJobs}</div>
@@ -439,7 +427,9 @@ export default function StevenProfilePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {works.map((w, i) => (
+                  {works.length === 0 ? (
+                    <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
+                  ) : works.map((w, i) => (
                     <tr key={w.id} style={{ borderTop: `1px solid ${BDR}`, background: i % 2 ? "rgba(255,255,255,0.01)" : "transparent" }}>
                       <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}><span style={{ marginInlineEnd: 5 }}>🎵</span>{w.project}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{wtLabel(w.workType, lang)}</td>
@@ -461,43 +451,6 @@ export default function StevenProfilePage() {
             </div>
           </div>
 
-          {/* Side cards */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={sectionCard}>
-              <div style={cardHead}>{t.payHistory}</div>
-              <div style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-                {PAYMENTS.map(p => (
-                  <div key={p.proj} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 6px", borderBottom: `1px solid ${BDR}` }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.proj}</div>
-                      <div style={{ fontSize: 11, color: TEXT2, marginTop: 2 }}>{rtl ? p.mHe : p.mEn} · {p.d}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, direction: "ltr" }}>{fmt(p.a)}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}14`, border: `1px solid ${GREEN}33`, borderRadius: 6, padding: "2px 8px" }}>{t.paid}</span>
-                    </div>
-                  </div>
-                ))}
-                <button onClick={() => notify(t.tViewAllPay)} style={{ fontSize: 11.5, color: BRAND, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: "8px 6px", textAlign: textStart }}>{t.viewAll}</button>
-              </div>
-            </div>
-
-            <div style={sectionCard}>
-              <div style={cardHead}>{t.recentFiles}</div>
-              <div style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-                {RECENT_FILES.map(f => (
-                  <div key={f.n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 6px", borderBottom: `1px solid ${BDR}` }}>
-                    <span style={{ fontSize: 15, color: BRAND, flexShrink: 0 }}>〰</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.n}</div>
-                      <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{f.t}</div>
-                    </div>
-                  </div>
-                ))}
-                <button onClick={() => notify(t.tViewAllFiles)} style={{ fontSize: 11.5, color: BRAND, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: "8px 6px", textAlign: textStart }}>{t.viewAll}</button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
