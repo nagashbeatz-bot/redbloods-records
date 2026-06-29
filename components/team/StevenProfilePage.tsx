@@ -298,7 +298,6 @@ export default function StevenProfilePage() {
 
 // ── "פתח עבודה" modal — single screen, one Drag & Drop file zone ─────────────────
 function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: (patch: Partial<Work>) => void; onClose: () => void; notify: (m: string) => void }) {
-  const [saved, setSaved] = useState(false);
   const [files, setFiles] = useState<WorkFile[]>(INITIAL_FILES);
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -383,17 +382,19 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
                 {detailRow("תאריך התחלה", <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
                 {detailRow("דדליין", <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
                 {detailRow("מחיר שסוכם", <span style={{ fontSize: 12.5, fontWeight: 700, color: GREEN, direction: "ltr" }}>{fmt(work.price)}</span>)}
-                {detailRow("תשלום", <PillGroup value={work.pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} onChange={v => onChange({ pay: v })} />)}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0" }}>
-                  <span style={{ fontSize: 12.5, color: MUTED }}>עודכן לאחרונה</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>היום</span>
+                  <span style={{ fontSize: 12.5, color: MUTED }}>תשלום</span>
+                  <PillGroup value={work.pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} onChange={v => onChange({ pay: v })} />
                 </div>
               </div>
             </div>
 
             {/* Files (center/left, wide) — single drag & drop zone + flat list */}
             <div style={subCard}>
-              <div style={innerHead}>קבצי עבודה <span style={{ color: MUTED, fontWeight: 700 }}>({files.length})</span></div>
+              <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span>קבצי עבודה <span style={{ color: MUTED, fontWeight: 700 }}>({files.length})</span></span>
+                <button onClick={() => notify("אין עדיין קישור Dropbox לעבודה הזו")} style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>📦 פתח בדרופבוקס</button>
+              </div>
               <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
                 {/* Drop zone */}
                 <div
@@ -416,8 +417,8 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
                   <button onClick={e => { e.stopPropagation(); inputRef.current?.click(); }} style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, padding: "7px 16px", borderRadius: 9, background: `${BRAND}14`, border: `1px solid ${BRAND}40`, color: BRAND, cursor: "pointer", fontFamily: "inherit" }}>בחר קבצים</button>
                 </div>
 
-                {/* Flat file list */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {/* Flat file list — internal scroll so the modal never grows */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
                   {files.length ? files.map(f => {
                     const isAudio = /\.(wav|mp3|m4a|flac|aiff?)$/i.test(f.name);
                     const sz = fmtSize(f.size);
@@ -453,15 +454,6 @@ function WorkModal({ work, onChange, onClose, notify }: { work: Work; onChange: 
               ))}
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div style={{ flexShrink: 0, borderTop: `1px solid ${BDR}`, padding: "12px 24px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-start" }}>
-          <button onClick={() => notify("אין עדיין קישור Dropbox לעבודה הזו")} style={ghostBtn}>📦 פתח בדרופבוקס</button>
-          <button onClick={() => { setSaved(true); notify("נשמר"); setTimeout(() => setSaved(false), 2000); }} style={{ ...ghostBtn, background: saved ? `${GREEN}18` : ghostBtn.background, border: `1px solid ${saved ? GREEN + "55" : BDR2}`, color: saved ? GREEN : TEXT2 }}>{saved ? "✓ נשמר" : "💾 שמור שינויים"}</button>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => { onChange({ status: "הושלם" }); notify("העבודה סומנה כהושלמה"); }} style={{ padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>סמן כהושלם</button>
-          <button onClick={() => { onChange({ status: "בוטל" }); notify("העבודה בוטלה"); }} style={{ padding: "10px 18px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}66`, color: RED, fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>בטל עבודה</button>
         </div>
       </div>
     </div>
