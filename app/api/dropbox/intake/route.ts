@@ -249,7 +249,9 @@ export async function POST(req: NextRequest) {
           results.push({ name: it.targetName, ok: false, error: e instanceof Error ? e.message : "שגיאה" });
         }
       }
-      return NextResponse.json({ ok: moved === items.length, moved, total: items.length, results });
+      // `deliveryPath` lets the modal offer "open folder / copy client link" via
+      // the existing /api/dropbox/folder-link endpoint.
+      return NextResponse.json({ ok: moved === items.length, moved, total: items.length, results, deliveryPath: target });
     }
 
     return NextResponse.json({ error: "פעולה לא מוכרת" }, { status: 400 });

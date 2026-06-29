@@ -30,7 +30,50 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
   const [items,  setItems]  = useState<IntakeItem[]>([]);
   const [error,  setError]  = useState<string | null>(null);
   const [diag,   setDiag]   = useState<unknown>(null);
-  const [result, setResult] = useState<{ moved: number; total: number; results: { name: string; ok: boolean; error?: string }[] } | null>(null);
+  const [result, setResult] = useState<{ moved: number; total: number; results: { name: string; ok: boolean; error?: string }[]; deliveryPath?: string } | null>(null);
+
+  // Done-screen actions (reuse the existing /api/dropbox/folder-link endpoint).
+  const [linkBusy,  setLinkBusy]  = useState<"" | "copy" | "open">("");
+  const [linkState, setLinkState] = useState<"" | "copied" | "notpublic">("");
+  const [linkErr,   setLinkErr]   = useState<string | null>(null);
+  const [folderLink, setFolderLink] = useState<string | null>(null);
+
+  async function fetchFolderLink(): Promise<{ shareLink: string; visibility?: string }> {
+    const res = await fetch("/api/dropbox/folder-link", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: result?.deliveryPath }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok || !d.shareLink) throw new Error(d.error || "no-link");
+    return { shareLink: d.shareLink, visibility: d.visibility };
+  }
+
+  async function copyClientLink() {
+    if (!result?.deliveryPath || linkBusy) return;
+    setLinkBusy("copy"); setLinkErr(null); setLinkState("");
+    try {
+      const { shareLink, visibility } = await fetchFolderLink();
+      await navigator.clipboard.writeText(shareLink);
+      setLinkState(visibility === "public" ? "copied" : "notpublic");
+      setTimeout(() => setLinkState(""), 6000);
+    } catch (e) {
+      const detail = e instanceof Error && e.message && e.message !== "no-link" ? ` (${e.message})` : "";
+      setLinkErr(`לא ניתן ליצור לינק ללקוח${detail}`);
+    } finally { setLinkBusy(""); }
+  }
+
+  async function openDeliveryFolder() {
+    if (!result?.deliveryPath || linkBusy) return;
+    setLinkBusy("open"); setLinkErr(null); setFolderLink(null);
+    try {
+      const { shareLink } = await fetchFolderLink();
+      const w = window.open(shareLink, "_blank", "noopener,noreferrer");
+      if (!w) setFolderLink(shareLink); // popup blocked → show a manual link
+    } catch (e) {
+      const detail = e instanceof Error && e.message && e.message !== "no-link" ? ` (${e.message})` : "";
+      setLinkErr(`לא ניתן לפתוח את תיקיית Dropbox${detail}`);
+    } finally { setLinkBusy(""); }
+  }
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -73,7 +116,7 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
       });
       const d = await res.json();
       if (res.status >= 500) { setError(d.error ?? "שגיאת שרת"); setStep("preview"); return; }
-      setResult({ moved: d.moved ?? 0, total: d.total ?? items.length, results: d.results ?? [] });
+      setResult({ moved: d.moved ?? 0, total: d.total ?? items.length, results: d.results ?? [], deliveryPath: d.deliveryPath });
       setStep("done");
       if ((d.moved ?? 0) > 0) onDone();
     } catch { setError("שגיאת רשת"); setStep("preview"); }
@@ -205,8 +248,24 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
               {result.moved === result.total ? "ההעברה הושלמה בהצלחה!" : "ההעברה הושלמה חלקית"}
             </div>
             <div style={{ fontSize: 12.5, color: "#999", marginBottom: 14 }}>
-              {result.moved} מתוך {result.total} קבצים הועברו לתיקיית הפרויקט. זמינים בטאב "קבצים".
+              {result.moved} מתוך {result.total} קבצים הועברו לתיקיית המסירה. זמינים בטאב "קבצים".
             </div>
+
+            {/* Short summary of what moved, by category */}
+            {grouped.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 16 }}>
+                {grouped.map((g) => (
+                  <span key={g.cat} style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700,
+                    color: "#CFCFCF", background: "#161616", border: "1px solid #242424", borderRadius: 999, padding: "5px 11px",
+                  }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: CAT_COLOR[g.cat] }} />
+                    {g.cat} <span style={{ color: "#666" }}>({g.list.length})</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
             {result.results.some((r) => !r.ok) && (
               <div style={{ textAlign: "right", background: "#161616", border: "1px solid #242424", borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
                 {result.results.filter((r) => !r.ok).map((r, i) => (
@@ -214,6 +273,29 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
                 ))}
               </div>
             )}
+
+            {/* Delivery folder actions (reuse existing folder-link endpoint) */}
+            {result.deliveryPath && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={copyClientLink} disabled={!!linkBusy} style={{ ...btnGhost, flex: 1, opacity: linkBusy ? 0.6 : 1 }}>
+                    {linkBusy === "copy" ? "מכין…" : "⎘ העתק לינק ללקוח"}
+                  </button>
+                  <button onClick={openDeliveryFolder} disabled={!!linkBusy} style={{ ...btnGhost, flex: 1, opacity: linkBusy ? 0.6 : 1 }}>
+                    {linkBusy === "open" ? "פותח…" : "פתח תיקיית מסירה ↗"}
+                  </button>
+                </div>
+                {linkState === "copied"   && <div style={{ fontSize: 11.5, color: "#10B981" }}>✓ לינק ללקוח הועתק</div>}
+                {linkState === "notpublic" && <div style={{ fontSize: 11.5, color: "#F59E0B" }}>הועתק, אך הלינק אינו ציבורי — בדוק הגדרות שיתוף ב-Dropbox</div>}
+                {linkErr && <div style={{ fontSize: 11.5, color: "#EF4444" }}>{linkErr}</div>}
+                {folderLink && (
+                  <a href={folderLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: "#3B82F6", direction: "ltr", wordBreak: "break-all" }}>
+                    {folderLink}
+                  </a>
+                )}
+              </div>
+            )}
+
             <button onClick={onClose} style={{ ...btnPrimary, width: "100%" }}>סגור</button>
           </div>
         )}
