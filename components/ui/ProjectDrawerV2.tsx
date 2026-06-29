@@ -292,6 +292,37 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
         }
       }
 
+      // For Mix/Master sends to a sound engineer: create the sound_engineer_work
+      // record FIRST so we can link it to the action (parallels the Victor flow).
+      if (dest === "מיקס / מאסטר" && selection) {
+        try {
+          const today    = new Date().toISOString().slice(0, 10);
+          const dl       = new Date();
+          dl.setDate(dl.getDate() + 3);
+          const deadline3 = dl.toISOString().slice(0, 10);
+
+          const workPost = await fetch("/api/sound-engineer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId,
+              engineerName:     selection,        // "Steven" | "Bill"
+              workType:         "מיקס + מאסטר",   // no mix/master selector in send → default combined
+              status:           "נשלח",           // supported equivalent of "just sent"
+              agreedPrice:      200,
+              currency:         "$",              // USD
+              amountPaid:       0,
+              sentDate:         today,
+              internalDeadline: deadline3,
+            }),
+          });
+          const workData = await workPost.json() as { ok: boolean; work: { id: string } | null };
+          if (workData.ok && workData.work) linkedWorkId = workData.work.id;
+        } catch {
+          // Work creation failure is non-fatal — continue to save the action
+        }
+      }
+
       // Create the action, linking to the work record if available
       const payload = { ...buildPayload(), ...(linkedWorkId ? { linkedWorkId } : {}) };
       const res = await fetch("/api/project-actions", {
@@ -594,8 +625,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
     const action = projectActions.find(a => a.id === actionId);
     const linkedWorkId = action?.linked_work_id;
 
-    if (linkedWorkId) {
-      // Cascade: Google Task → tasks row → vendor_project_work → project_action
+    if (linkedWorkId && action?.recipient_role === "sound_engineer") {
+      // Sound-engineer cascade (Steven/Bill): remove the linked sound_engineer_work.
+      // The linked expense transaction is intentionally left in place (Finance untouched).
+      const workDel = await fetch(`/api/sound-engineer/${linkedWorkId}`, { method: "DELETE" });
+      if (!workDel.ok) throw new Error("מחיקת עבודת סאונד נכשלה");
+    } else if (linkedWorkId) {
+      // Victor cascade: Google Task → tasks row → vendor_project_work → project_action
 
       // 1. Fetch work to get linkedTaskId
       const workRes = await fetch(`/api/vendor/victor/work/${linkedWorkId}`);

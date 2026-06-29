@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import type { SoundEngineerWork } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -39,17 +40,56 @@ const wtLabel     = (w: WorkType, lang: Lang)   => (lang === "en" ? WT_EN[w] : w
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
   startDate: string; deadline: string; price: number; pay: PayStatus;
+  amountPaid: number; currency: string; dbBacked: boolean;
 }
 interface WorkFile { id: string; name: string; time: string; size?: number; url?: string }
 
-const INITIAL_WORKS: Work[] = [
-  { id: "1", project: "My Story",      workType: "מיקס מאסטרינג", status: "פעיל",  startDate: "01.07.26", deadline: "03.07.26", price: 170, pay: "לא שולם" },
-  { id: "2", project: "Heart of Time", workType: "מאסטרינג",      status: "הושלם", startDate: "20.06.26", deadline: "01.07.26", price: 90,  pay: "שולם" },
-  { id: "3", project: "Closer Part 2", workType: "מיקס מאסטרינג", status: "פעיל",  startDate: "25.06.26", deadline: "—",        price: 170, pay: "לא שולם" },
-  { id: "4", project: "City Lights",   workType: "מיקס מאסטרינג", status: "פעיל",  startDate: "18.06.26", deadline: "28.06.26", price: 110, pay: "לא שולם" },
-  { id: "5", project: "Late Nights",   workType: "מאסטרינג",      status: "הושלם", startDate: "10.06.26", deadline: "25.06.26", price: 120, pay: "שולם" },
-  { id: "6", project: "Echoes",        workType: "מיקס מאסטרינג", status: "בוטל",  startDate: "26.06.26", deadline: "—",        price: 160, pay: "לא שולם" },
-];
+// ── DB ↔ UI mapping (the page UI has fewer enum values than the DB) ───────────────
+//   DB SoundEngineerStatus:   לא נשלח | נשלח | בתהליך | חזר | אושר | בוטל
+//   UI WorkStatus:            פעיל | הושלם | בוטל
+//   DB SoundEngineerWorkType: מיקס | מאסטר | מיקס + מאסטר | תיקונים
+//   UI WorkType:              מיקס מאסטרינג | מאסטרינג
+function dbStatusToUi(s: string): WorkStatus {
+  if (s === "אושר") return "הושלם";
+  if (s === "בוטל") return "בוטל";
+  return "פעיל"; // לא נשלח / נשלח / בתהליך / חזר
+}
+function uiStatusToDb(s: WorkStatus): string {
+  if (s === "הושלם") return "אושר";
+  if (s === "בוטל") return "בוטל";
+  return "בתהליך"; // פעיל
+}
+function dbWorkTypeToUi(w: string): WorkType {
+  return w === "מאסטר" ? "מאסטרינג" : "מיקס מאסטרינג";
+}
+function uiWorkTypeToDb(w: WorkType): string {
+  return w === "מאסטרינג" ? "מאסטר" : "מיקס + מאסטר";
+}
+// Pay status is display-only, derived from amounts (no payment_status column on this table).
+function payFromAmounts(agreed: number, paid: number): PayStatus {
+  return agreed > 0 && paid >= agreed ? "שולם" : "לא שולם";
+}
+// DB dates are ISO (yyyy-mm-dd); UI shows DD.MM.YY.
+function fmtDbDate(d: string | null): string {
+  if (!d) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  return m ? `${m[3]}.${m[2]}.${m[1].slice(2)}` : d;
+}
+function mapRecord(r: SoundEngineerWork): Work {
+  return {
+    id:         r.id,
+    project:    r.projectName,
+    workType:   dbWorkTypeToUi(r.workType),
+    status:     dbStatusToUi(r.status),
+    startDate:  fmtDbDate(r.sentDate),
+    deadline:   fmtDbDate(r.internalDeadline),
+    price:      r.agreedPrice,
+    pay:        payFromAmounts(r.agreedPrice, r.amountPaid),
+    amountPaid: r.amountPaid,
+    currency:   r.currency || "$",
+    dbBacked:   true,
+  };
+}
 
 const PAYMENTS = [
   { proj: "My Story",      mHe: "יוני 2026", mEn: "Jun 2026", a: 170, d: "10.06.26" },
@@ -207,7 +247,7 @@ function fmtSize(b?: number): string {
 
 export default function StevenProfilePage() {
   const router = useRouter();
-  const [works, setWorks]   = useState<Work[]>(INITIAL_WORKS);
+  const [works, setWorks]   = useState<Work[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [lang, setLang]     = useState<Lang>("he");
@@ -223,13 +263,56 @@ export default function StevenProfilePage() {
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }
 
+  // Load Steven's real work records from the existing API.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/sound-engineer?engineer=Steven")
+      .then(r => r.json())
+      .then((d: { ok: boolean; works?: SoundEngineerWork[] }) => {
+        if (alive && d.ok && d.works) setWorks(d.works.map(mapRecord));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const openWork = works.find(w => w.id === openId) ?? null;
-  const updateWork = (id: string, patch: Partial<Work>) => setWorks(prev => prev.map(w => (w.id === id ? { ...w, ...patch } : w)));
+
+  // Edit a work: optimistic local update + PATCH to the existing API for DB-backed rows.
+  // Persisted fields: work_type, status, agreed_price. (pay/dates stay display-only here.)
+  async function updateWork(id: string, patch: Partial<Work>) {
+    const target = works.find(w => w.id === id);
+    setWorks(prev => prev.map(w => {
+      if (w.id !== id) return w;
+      const next = { ...w, ...patch };
+      if (patch.price !== undefined) next.pay = payFromAmounts(next.price, next.amountPaid);
+      return next;
+    }));
+    if (!target || !target.dbBacked) return; // manual "new work" rows are local-only
+
+    const body: Record<string, unknown> = {};
+    if (patch.workType !== undefined) body.workType    = uiWorkTypeToDb(patch.workType);
+    if (patch.status   !== undefined) body.status      = uiStatusToDb(patch.status);
+    if (patch.price    !== undefined) body.agreedPrice = patch.price;
+    if (Object.keys(body).length === 0) return;
+
+    try {
+      const res = await fetch(`/api/sound-engineer/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) notify(rtl ? "השמירה נכשלה" : "Save failed");
+    } catch {
+      notify(rtl ? "השמירה נכשלה" : "Save failed");
+    }
+  }
   const addWork = (w: Work) => setWorks(prev => [w, ...prev]);
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
-  const active = works.filter(w => w.status === "פעיל").length;
-  const done   = works.filter(w => w.status === "הושלם").length;
+  const active  = works.filter(w => w.status === "פעיל").length;
+  const done    = works.filter(w => w.status === "הושלם").length;
+  const debt    = works.reduce((s, w) => s + Math.max(0, w.price - w.amountPaid), 0);
+  const paidSum = works.reduce((s, w) => s + w.amountPaid, 0);
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "32px 28px 80px" }}>
@@ -298,8 +381,8 @@ export default function StevenProfilePage() {
           <KpiCard label={t.kpiOpen}      value={works.length} icon="📁" />
           <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={GREEN} />
           <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={BLUE} />
-          <KpiCard label={t.kpiDebt}      value={fmt(340)}     icon="👛" color={BRAND} />
-          <KpiCard label={t.kpiPaidMonth} value={fmt(170)}     icon="💳" color={GREEN} />
+          <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
+          <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
         </div>
 
         {/* ── Main grid ── */}
@@ -470,7 +553,7 @@ function WorkModal({ work, onChange, onClose, notify, lang, t }: { work: Work; o
                 {detailRow(t.agreedPrice, <PriceInput value={work.price} onChange={n => onChange({ price: n })} />)}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0" }}>
                   <span style={{ fontSize: 12.5, color: MUTED }}>{t.payment}</span>
-                  <PillGroup value={work.pay} options={PAY_OPTIONS} colorFor={o => (o === "שולם" ? GREEN : MUTED)} labelFor={o => payLabel(o, lang)} onChange={v => onChange({ pay: v })} />
+                  <PayChip pay={work.pay} lang={lang} />
                 </div>
               </div>
             </div>
@@ -570,6 +653,7 @@ function NewWorkModal({ onClose, onAdd, lang, t }: { onClose: () => void; onAdd:
       project: project.trim(), workType, status,
       startDate: startDate.trim() || "—", deadline: deadline.trim() || "—",
       price: Number(price) || 0, pay,
+      amountPaid: pay === "שולם" ? Number(price) || 0 : 0, currency: "$", dbBacked: false,
     });
     onClose();
   }
