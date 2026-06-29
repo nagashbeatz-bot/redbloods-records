@@ -35,7 +35,7 @@ const VENDORS: Vendor[] = [
     skills: "מיקסינג · מאסטרינג",
     status: "פעיל",
     type: "sound-engineer",
-    hasProfile: false,
+    hasProfile: true,
     initial: "S",
     color: BRAND,
   },
@@ -350,6 +350,7 @@ export default function TeamPage() {
                 vendor={vendor}
                 onOpenProfile={() => {
                   if (vendor.id === "victor") router.push("/team/victor");
+                  else if (vendor.id === "steven") router.push("/team/steven");
                 }}
               />
             ))}
