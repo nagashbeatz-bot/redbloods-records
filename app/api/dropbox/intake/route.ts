@@ -136,6 +136,16 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // ── Shared-link mode: recursive NOT supported → manual BFS ──
+        // Resolve the shared folder's ACCOUNT path so entry paths become
+        // absolute (and therefore movable). Available now that the folder lives
+        // inside our app folder.
+        let sharedRoot = "";
+        try {
+          const meta = await dbx(token, "sharing/get_shared_link_metadata", { url });
+          if (meta.ok) sharedRoot = (meta.json as { path_lower?: string }).path_lower ?? "";
+          console.log("[intake/scan] shared metadata path_lower:", sharedRoot || "(none)");
+        } catch { /* non-fatal */ }
+
         const roots: (string | undefined)[] = pathRoot ? [undefined, pathRoot] : [undefined];
         let chosen: string | undefined;
         // Pick a root that can list the top level ("").
@@ -170,6 +180,12 @@ export async function POST(req: NextRequest) {
           }, { status: 400 });
         }
         void chosen;
+        // Make entry paths absolute under the shared folder's account path so move works.
+        if (sharedRoot) {
+          const sr = sharedRoot.toLowerCase();
+          c.entries = c.entries.map((e) => ({ ...e, path: e.path.toLowerCase().startsWith(sr) ? e.path : normPath(sharedRoot + e.path) }));
+          usedRootPath = sharedRoot;
+        }
       }
 
       console.log(`[intake/scan] SUCCESS mode=${mode} rootPath="${usedRootPath}" total=${c.total} withPath=${c.withPath}`);
@@ -181,7 +197,7 @@ export async function POST(req: NextRequest) {
       }
 
       const projectName = (body.projectName as string) || "PROJECT";
-      const items = buildIntake(c.entries, projectName, mode === "path" ? usedRootPath : "");
+      const items = buildIntake(c.entries, projectName, usedRootPath);
       return NextResponse.json({ ok: true, count: items.length, mode, usedTeamRoot: !!usedPathRoot, items });
     }
 
@@ -203,7 +219,11 @@ export async function POST(req: NextRequest) {
         try {
           const to = `${target}/${it.targetName}`;
           const mv = await dbx(token, "files/move_v2", { from_path: it.path, to_path: to, autorename: true }, pathRoot);
-          if (!mv.ok) { results.push({ name: it.targetName, ok: false, error: dbxTag(mv.json) + (mv.raw ? ` — ${mv.raw.slice(0, 200)}` : "") }); continue; }
+          if (!mv.ok) {
+            console.log(`[intake/move] FAILED tag=${dbxTag(mv.json)} from=${it.path} to=${to} raw=${mv.raw.slice(0, 400)}`);
+            results.push({ name: it.targetName, ok: false, error: `${dbxTag(mv.json)} | from_path=${it.path} | ${mv.raw.slice(0, 500)}` });
+            continue;
+          }
           const md = (mv.json as { metadata?: { path_display?: string; name?: string } }).metadata;
           const finalPath = md?.path_display ?? to;
           const finalName = md?.name ?? it.targetName;
