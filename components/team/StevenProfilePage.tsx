@@ -126,6 +126,8 @@ const TR = {
     tAdded: "הקבצים נוספו לעבודה", tRemoved: "הקובץ הוסר", tNoPlay: "אין קובץ לניגון כרגע", tNoDownload: "אין קובץ להורדה כרגע", tNoDropbox: "אין עדיין קישור Dropbox לעבודה הזו",
     tJobAdded: "עבודה חדשה נוספה", tViewAllPay: "היסטוריית תשלומים מלאה תהיה זמינה בקרוב", tViewAllFiles: "רשימת הקבצים המלאה תהיה זמינה בקרוב",
     langHe: "השפה הוחלפה לעברית", langEn: "השפה הוחלפה לאנגלית",
+    deleteWork: "מחק עבודה", confirmTitle: "למחוק את העבודה של Steven?", confirmBody: "הפעולה תסיר את העבודה מעמוד Steven. היא לא תמחק פרויקט, קבצים או כספים.",
+    confirmYes: "מחק", confirmNo: "ביטול", tDeleted: "העבודה נמחקה", priceSaved: "המחיר נשמר", priceInvalid: "מחיר לא תקין",
   },
   en: {
     breadcrumb: "Team / Suppliers", profileTitle: "Supplier Profile —", role: "Sound Engineer / Mix & Master", active: "Active",
@@ -141,6 +143,8 @@ const TR = {
     tAdded: "Files added to job", tRemoved: "File removed", tNoPlay: "No playable file yet", tNoDownload: "No downloadable file yet", tNoDropbox: "No Dropbox link for this job yet",
     tJobAdded: "Job added", tViewAllPay: "Full payment history coming soon", tViewAllFiles: "Full file list coming soon",
     langHe: "Language switched to Hebrew", langEn: "Language switched to English",
+    deleteWork: "Delete job", confirmTitle: "Delete Steven's job?", confirmBody: "This removes the job from Steven's page. It will not delete the project, files or finances.",
+    confirmYes: "Delete", confirmNo: "Cancel", tDeleted: "Job deleted", priceSaved: "Price saved", priceInvalid: "Invalid price",
   },
 };
 type T = (typeof TR)["he"];
@@ -183,18 +187,33 @@ function StyledInput({ value, onChange, placeholder, type = "text", inputMode }:
 }
 
 // ── Editable price field (no spinner / inner icon; red focus) ────────────────────
-function PriceInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+//    Commits ONLY on Enter or blur — never per keystroke. Empty/non-numeric reverts.
+function PriceInput({ value, onCommit, onInvalid }: { value: number; onCommit: (n: number) => void; onInvalid: () => void }) {
   const [str, setStr] = useState(String(value));
   useEffect(() => { setStr(String(value)); }, [value]);
+
+  function commit() {
+    const trimmed = str.trim();
+    if (trimmed === "" || !/^\d+$/.test(trimmed)) {
+      setStr(String(value)); // revert to last valid value
+      onInvalid();
+      return;
+    }
+    const n = Number(trimmed);
+    if (n === value) return;  // unchanged → no save
+    onCommit(n);
+  }
+
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 3, direction: "ltr" }}>
       <span style={{ color: GREEN, fontWeight: 800, fontSize: 12.5 }}>$</span>
       <input
         value={str}
         inputMode="numeric"
-        onChange={e => { const v = e.target.value.replace(/[^\d]/g, ""); setStr(v); onChange(Number(v) || 0); }}
+        onChange={e => setStr(e.target.value.replace(/[^\d]/g, ""))}
+        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
         onFocus={e => (e.currentTarget.style.borderColor = BRAND)}
-        onBlur={e => (e.currentTarget.style.borderColor = BDR2)}
+        onBlur={e => { e.currentTarget.style.borderColor = BDR2; commit(); }}
         style={{ width: 72, background: CARD, color: GREEN, border: `1px solid ${BDR2}`, borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", outline: "none", textAlign: "left" }}
       />
     </span>
@@ -308,6 +327,25 @@ export default function StevenProfilePage() {
     }
   }
   const addWork = (w: Work) => setWorks(prev => [w, ...prev]);
+
+  // Delete a job: optimistic remove + close, then DELETE for DB-backed rows.
+  // Local-only rows ("+ עבודה חדשה") are just dropped from state. Removes ONLY
+  // sound_engineer_work here — the linked project_action is not touched (no action
+  // id on this page). Finance/transactions/Dropbox/projects are never deleted.
+  async function deleteWork(id: string) {
+    const target = works.find(w => w.id === id);
+    setWorks(prev => prev.filter(w => w.id !== id));
+    setOpenId(null);
+    notify(t.tDeleted);
+    if (target?.dbBacked) {
+      try {
+        const res = await fetch(`/api/sound-engineer/${id}`, { method: "DELETE" });
+        if (!res.ok) notify(rtl ? "המחיקה נכשלה" : "Delete failed");
+      } catch {
+        notify(rtl ? "המחיקה נכשלה" : "Delete failed");
+      }
+    }
+  }
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
   const active  = works.filter(w => w.status === "פעיל").length;
@@ -463,7 +501,7 @@ export default function StevenProfilePage() {
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onClose={() => setOpenId(null)} notify={notify} lang={lang} t={t} />}
+      {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} notify={notify} lang={lang} t={t} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onAdd={w => { addWork(w); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
     </div>
@@ -471,9 +509,10 @@ export default function StevenProfilePage() {
 }
 
 // ── "Open Job" modal — single screen, one Drag & Drop file zone ──────────────────
-function WorkModal({ work, onChange, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [files, setFiles] = useState<WorkFile[]>(INITIAL_FILES);
   const [drag, setDrag] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rtl = lang === "he";
@@ -551,10 +590,19 @@ function WorkModal({ work, onChange, onClose, notify, lang, t }: { work: Work; o
                 {detailRow(t.status, <PillGroup value={work.status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={v => onChange({ status: v })} />)}
                 {detailRow(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
                 {detailRow(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
-                {detailRow(t.agreedPrice, <PriceInput value={work.price} onChange={n => onChange({ price: n })} />)}
+                {detailRow(t.agreedPrice, <PriceInput value={work.price} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0" }}>
                   <span style={{ fontSize: 12.5, color: MUTED }}>{t.payment}</span>
                   <PayChip pay={work.pay} lang={lang} />
+                </div>
+                {/* Danger zone — delete this job (subtle, not primary) */}
+                <div style={{ paddingTop: 12, marginTop: 2, borderTop: `1px solid ${BDR}`, display: "flex", justifyContent: "flex-start" }}>
+                  <button
+                    onClick={() => setConfirmOpen(true)}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#3A1212"; e.currentTarget.style.borderColor = RED; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = `${RED}55`; }}
+                    style={{ fontSize: 12, fontWeight: 700, padding: "7px 14px", borderRadius: 9, background: "transparent", border: `1px solid ${RED}55`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
+                  >🗑 {t.deleteWork}</button>
                 </div>
               </div>
             </div>
@@ -622,6 +670,20 @@ function WorkModal({ work, onChange, onClose, notify, lang, t }: { work: Work; o
             </div>
           </div>
         </div>
+
+        {/* Delete confirmation (in-app, no browser confirm) */}
+        {confirmOpen && (
+          <div onClick={() => setConfirmOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${RED}44`, borderRadius: 16, width: "min(420px, 92vw)", padding: "22px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, marginBottom: 10 }}>{t.confirmTitle}</div>
+              <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 18 }}>{t.confirmBody}</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setConfirmOpen(false)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
+                <button onClick={() => { setConfirmOpen(false); onDelete(); }} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.confirmYes}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
