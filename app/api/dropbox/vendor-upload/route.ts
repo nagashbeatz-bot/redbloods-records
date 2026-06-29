@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { requireVictorAccess } from "@/lib/require-auth";
+import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
+import { queueVictorUploadNotice } from "@/lib/victor-upload-notify";
 
 export const maxDuration = 300;
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
     const { supabase } = await import("@/lib/supabase");
     const { data: row } = await supabase
       .from("vendor_project_work")
-      .select("files_sent, project_id, vendor_name")
+      .select("files_sent, project_id, vendor_name, title")
       .eq("id", workId)
       .maybeSingle();
 
@@ -102,6 +103,22 @@ export async function POST(req: NextRequest) {
 
     const currentFiles = (row?.files_sent as typeof newFile[]) ?? [];
     await updateVictorWork(workId, { filesSent: [...currentFiles, newFile] });
+
+    // ── Owner push (batched, 3-min window) — ONLY when Victor uploaded, and only
+    //    after the file is saved. Best-effort: never block/fail the upload. ──
+    try {
+      if ((await getAuthRole()) === "victor") {
+        let projectName = (row.title as string | null) ?? "";
+        if (!projectName && row.project_id) {
+          const { data: proj } = await supabase
+            .from("projects").select("name").eq("id", row.project_id as string).maybeSingle();
+          projectName = (proj?.name as string) ?? "";
+        }
+        await queueVictorUploadNotice(workId, projectName || "פרויקט");
+      }
+    } catch (e) {
+      console.error("[vendor-upload] notify queue failed (non-fatal):", e);
+    }
 
     return NextResponse.json({ ok: true, file: newFile });
   } catch (err) {

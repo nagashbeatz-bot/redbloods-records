@@ -92,6 +92,16 @@ export async function register() {
     maybeSend("evening");
   }, { timezone: TZ });
 
+  // ── Victor upload notice — flush due 3-min batches (owner-only push) ────────
+  cron.schedule("* * * * *", async () => {
+    try {
+      const { flushDueVictorUploadNotices } = await import("@/lib/victor-upload-notify");
+      await flushDueVictorUploadNotices();
+    } catch (err) {
+      console.error("[victor-upload-notify] flush tick failed:", err);
+    }
+  }, { timezone: TZ });
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }
