@@ -324,16 +324,19 @@ export default function ProjectsDesignPreview() {
   const { openProject, drawerProjectId } = useGlobalProjectDrawer();
   const player = usePlayerSafe();
 
-  // Deep-link guard: while ?open=ID is resolving into an open drawer, cover the
-  // list with an overlay so it doesn't flash. Give up after a short timeout so a
-  // missing/invalid project falls back to the normal list.
-  const [deepLinkGaveUp, setDeepLinkGaveUp] = useState(false);
+  // Deep-link guard: while a ?open=ID page-load is resolving into an open drawer,
+  // cover the list with an overlay so it doesn't flash. The deep-link phase ends
+  // as soon as ANY drawer opens (reactive) or after a short timeout. Once done it
+  // stays done — so CLOSING the drawer (drawerProjectId → null while the URL is
+  // still being cleared) can never re-trigger the "opening" overlay.
+  const [deepLinkDone, setDeepLinkDone] = useState(false);
   useEffect(() => {
+    if (drawerProjectId) { setDeepLinkDone(true); return; }
     const hasOpen = typeof window !== "undefined" && !!new URLSearchParams(window.location.search).get("open");
     if (!hasOpen) return;
-    const t = setTimeout(() => setDeepLinkGaveUp(true), 1500);
+    const t = setTimeout(() => setDeepLinkDone(true), 1500);
     return () => clearTimeout(t);
-  }, []);
+  }, [drawerProjectId]);
 
   const [search,          setSearch]          = useState("");
   const [statusFilter,    setStatusFilter]    = useState<"הכל הפעיל" | "הושלמו" | ProjectStatus>("הכל הפעיל");
@@ -461,7 +464,7 @@ export default function ProjectsDesignPreview() {
 
   // A ?open=ID deep link is still resolving into an open drawer — cover the list.
   const openParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("open") : null;
-  const awaitingDeepLink = !!openParam && drawerProjectId !== openParam && !deepLinkGaveUp;
+  const awaitingDeepLink = !!openParam && drawerProjectId !== openParam && !deepLinkDone;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
