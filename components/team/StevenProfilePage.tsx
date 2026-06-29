@@ -136,6 +136,7 @@ export default function StevenProfilePage() {
   const [works, setWorks]   = useState<Work[]>(INITIAL_WORKS);
   const [openId, setOpenId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [lang, setLang]     = useState<"he" | "en">("he"); // page-local UI language toggle (no global i18n)
   const [toast, setToast]   = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -182,7 +183,22 @@ export default function StevenProfilePage() {
             </div>
           </div>
 
-          <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "14px 18px", display: "flex", alignItems: "center", gap: 16, minWidth: 280 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 280 }}>
+          {/* Page-local language toggle (UI only — no global i18n) */}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ display: "inline-flex", gap: 4, background: CARD, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4 }}>
+              {(["he", "en"] as const).map(l => {
+                const sel = lang === l;
+                return (
+                  <button key={l} onClick={() => { setLang(l); notify(l === "he" ? "השפה הוחלפה לעברית" : "השפה הוחלפה לאנגלית"); }} style={{
+                    fontSize: 12, fontWeight: 800, padding: "5px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                    background: sel ? `${BRAND}1F` : "transparent", border: `1px solid ${sel ? BRAND + "66" : "transparent"}`, color: sel ? BRAND : TEXT2, transition: "all .12s",
+                  }}>{l === "he" ? "עברית" : "English"}</button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "14px 18px", display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ textAlign: "right" }}>
               <span style={{ fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 7, background: `${BRAND}1A`, border: `1px solid ${BRAND}40`, color: BRAND }}>ספק סאונד</span>
               <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, margin: "8px 0 2px" }}>Steven</div>
@@ -196,6 +212,7 @@ export default function StevenProfilePage() {
             </div>
             <div style={{ width: 60, height: 60, borderRadius: "50%", flexShrink: 0, background: `linear-gradient(135deg, ${BRAND}33, ${BRAND}66)`,
               border: `2px solid ${BRAND}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, fontWeight: 900, color: "#fff", boxShadow: `0 0 18px ${BRAND}22` }}>S</div>
+          </div>
           </div>
         </div>
 
