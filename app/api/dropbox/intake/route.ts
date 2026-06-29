@@ -160,11 +160,16 @@ export async function POST(req: NextRequest) {
             collect(r.json as Parameters<typeof collect>[0], queue);
             let cont = r.json as { has_more?: boolean; cursor?: string }; let g = 0;
             while (cont.has_more && cont.cursor && g < 50) { g++; const cr = await dbx(token, "files/list_folder/continue", { cursor: cont.cursor }, pr); if (!cr.ok) break; collect(cr.json as Parameters<typeof collect>[0], queue); cont = cr.json as { has_more?: boolean; cursor?: string }; }
-            // BFS into subfolders (recursive:false per call).
+            // BFS into subfolders (recursive:false per call). When listing via a
+            // shared_link, `path` must be RELATIVE to the link root — entries'
+            // path_lower can come back absolute (under the account), so strip the
+            // shared folder's account path first or the sub-listing 404s silently.
+            const srLower = sharedRoot.toLowerCase();
+            const relForLink = (p: string) => (srLower && p.toLowerCase().startsWith(srLower) ? (p.slice(srLower.length) || "") : p);
             const seen = new Set<string>([""]); let folders = 0;
             while (queue.length && folders < 300) {
               const p = queue.shift()!; if (seen.has(p)) continue; seen.add(p); folders++;
-              const sr = await dbx(token, "files/list_folder", { path: p, recursive: false, shared_link: { url } }, pr);
+              const sr = await dbx(token, "files/list_folder", { path: relForLink(p), recursive: false, shared_link: { url } }, pr);
               if (!sr.ok) { attempts.push({ label: `shared sub "${p}"`, status: sr.status, ok: false, tag: dbxTag(sr.json), raw: sr.raw.slice(0, 400) }); continue; }
               collect(sr.json as Parameters<typeof collect>[0], queue);
               let sc = sr.json as { has_more?: boolean; cursor?: string }; let sg = 0;
@@ -212,12 +217,19 @@ export async function POST(req: NextRequest) {
       const target = deliveryPath((proj as { artist: string }).artist, (proj as { name: string }).name);
 
       await dbx(token, "files/create_folder_v2", { path: target, autorename: false }, pathRoot);
+      // Pre-create any sub-folders (e.g. ערוצים). If it already exists, Dropbox
+      // returns a conflict we ignore — files are merged into it and per-file
+      // move uses autorename, so nothing is ever overwritten.
+      const subdirs = new Set(items.map((it) => it.targetDir).filter(Boolean));
+      for (const sd of subdirs) {
+        await dbx(token, "files/create_folder_v2", { path: `${target}/${sd}`, autorename: false }, pathRoot);
+      }
 
       const results: { name: string; ok: boolean; error?: string }[] = [];
       let moved = 0;
       for (const it of items) {
         try {
-          const to = `${target}/${it.targetName}`;
+          const to = it.targetDir ? `${target}/${it.targetDir}/${it.targetName}` : `${target}/${it.targetName}`;
           const mv = await dbx(token, "files/move_v2", { from_path: it.path, to_path: to, autorename: true }, pathRoot);
           if (!mv.ok) {
             console.log(`[intake/move] FAILED tag=${dbxTag(mv.json)} from=${it.path} to=${to} raw=${mv.raw.slice(0, 400)}`);

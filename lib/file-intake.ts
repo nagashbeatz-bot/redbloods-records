@@ -22,6 +22,7 @@ export interface IntakeItem extends IntakeEntry {
   category:    IntakeCategory;
   stemType?:   string;       // sub-type label for ערוצים (e.g. "Lead Vocal")
   targetName:  string;       // clean destination file name
+  targetDir:   string;       // sub-folder under 05_Delivery ("" = root, "ערוצים" = stems)
   targetLabel: string;       // friendly label for the preview/files tab
 }
 
@@ -65,6 +66,61 @@ export function classify(name: string, relPath: string): { category: IntakeCateg
   if (/FINAL ?MIX|\bMASTER\b/.test(n))               return { category: "מאסטר" };
   if (/\bLIVE\b|\bSHOW\b|PERFORMANCE|הופעה/.test(n)) return { category: "גרסת הופעה" };
   return { category: "אחר" };
+}
+
+/** Split "Bass Stem_BUNNY.wav" → { base: "Bass Stem_BUNNY", ext: ".wav" }. */
+function stripExt(name: string): { base: string; ext: string } {
+  const m = name.match(/^(.*?)(\.[a-z0-9]+)$/i);
+  return m ? { base: m[1], ext: m[2] } : { base: name, ext: "" };
+}
+
+// Tokens we never strip as a "repeated tag" — they're meaningful stem descriptors.
+const KEEP_TOKENS = new Set(["STEM", "STEMS", "WAV", "AIFF", "MP3", "FLAC"]);
+
+/** Trailing tag = last alnum token preceded by a separator: "Bass Stem_BUNNY" → {sep:"_", token:"BUNNY"}. */
+function trailingTag(base: string): { sep: string; token: string } | null {
+  const m = base.match(/([ _\-]+)([A-Za-z0-9]+)\s*$/);
+  return m ? { sep: m[1], token: m[2] } : null;
+}
+
+/**
+ * Steven usually appends the project name to every stem (Bass Stem_BUNNY,
+ * Drum Stem_BUNNY, …). Detect a token that repeats as the trailing tag across
+ * the majority of stem files and return a stripper that removes it. Iterates so
+ * double tags ("_BUNNY_MIX5") are both removed. Meaningful words (STEM…) are
+ * never stripped, so "Bass Stem_BUNNY" → "Bass Stem" (not "Bass").
+ */
+function makeStemTagStripper(bases: string[]): (base: string) => string {
+  let strip = (s: string) => s.trim();
+  for (let pass = 0; pass < 3; pass++) {
+    const cur = bases.map((b) => strip(b));
+    const freq = new Map<string, number>();
+    for (const b of cur) {
+      const t = trailingTag(b);
+      if (!t) continue;
+      const key = t.token.toUpperCase();
+      if (KEEP_TOKENS.has(key)) continue;
+      freq.set(key, (freq.get(key) ?? 0) + 1);
+    }
+    let best = "", bestN = 0;
+    for (const [k, n] of freq) if (n > bestN) { best = k; bestN = n; }
+    // Require a real majority (≥60% and ≥2 files) before treating it as a tag.
+    if (bestN < 2 || bestN < Math.ceil(cur.length * 0.6)) break;
+    const prev = strip;
+    strip = (s: string) => {
+      const p = prev(s);
+      const t = trailingTag(p);
+      if (t && t.token.toUpperCase() === best) return p.slice(0, p.length - t.sep.length - t.token.length).trim();
+      return p;
+    };
+  }
+  return strip;
+}
+
+/** Clean a stem's destination name: keep the (de-tagged) original, path-safe. */
+function stemTargetName(base: string, ext: string): string {
+  const clean = base.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+  return (clean || "Stem") + ext;
 }
 
 function sanitizeProjectName(projectName: string): string {
@@ -111,23 +167,43 @@ const CATEGORY_LABEL: Record<IntakeCategory, string> = {
  */
 export function buildIntake(entries: IntakeEntry[], projectName: string, rootPath: string): IntakeItem[] {
   const root = (rootPath || "").toLowerCase().replace(/\/+$/, "");
-  const used = new Set<string>();
-  return entries.map((e) => {
-    const rel = e.path.toLowerCase().startsWith(root) ? e.path.slice(root.length) : e.path;
-    const { category, stemType, stemKey } = classify(e.name, rel);
 
-    let target = baseTargetName(projectName, e.name, category, stemKey);
-    if (used.has(target.toLowerCase())) {
+  // First pass: classify everything (needed before we can detect the repeated
+  // stem tag across the whole set of stem files).
+  const classified = entries.map((e) => {
+    const rel = e.path.toLowerCase().startsWith(root) ? e.path.slice(root.length) : e.path;
+    return { e, ...classify(e.name, rel) };
+  });
+
+  const stemBases = classified.filter((c) => c.category === "ערוצים").map((c) => stripExt(c.e.name).base);
+  const stripTag = makeStemTagStripper(stemBases);
+
+  // Dedup is per target directory: a stem "Master.wav" in ערוצים never collides
+  // with a root "Master.wav".
+  const used = new Set<string>();
+  return classified.map(({ e, category, stemType, stemKey }) => {
+    const targetDir = category === "ערוצים" ? "ערוצים" : "";
+
+    let target: string;
+    if (category === "ערוצים") {
+      const { base, ext } = stripExt(e.name);
+      target = stemTargetName(stripTag(base), ext);
+    } else {
+      target = baseTargetName(projectName, e.name, category, stemKey);
+    }
+
+    const key = (n: string) => `${targetDir}|${n.toLowerCase()}`;
+    if (used.has(key(target))) {
       let i = 2;
-      while (used.has(withSuffix(target, i).toLowerCase())) i++;
+      while (used.has(key(withSuffix(target, i)))) i++;
       target = withSuffix(target, i);
     }
-    used.add(target.toLowerCase());
+    used.add(key(target));
 
     const targetLabel = category === "ערוצים"
-      ? `ערוצים · ${stemType}`
+      ? (stemType ? `ערוצים · ${stemType}` : "ערוצים")
       : CATEGORY_LABEL[category];
 
-    return { ...e, category, stemType, targetName: target, targetLabel };
+    return { ...e, category, stemType, targetName: target, targetDir, targetLabel };
   });
 }
