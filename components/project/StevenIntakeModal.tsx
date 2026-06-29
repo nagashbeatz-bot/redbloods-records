@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 
 interface IntakeItem {
   path: string; name: string; size?: number;
-  category: string; stemType?: string; targetName: string; targetDir?: string; targetLabel: string;
+  category: string; targetName: string; targetDir?: string; targetLabel: string;
 }
 type Step = "input" | "scanning" | "preview" | "moving" | "done";
 
@@ -177,7 +177,6 @@ export default function StevenIntakeModal({ projectId, projectName, onClose, onD
                           <span style={{ color: "#555" }}>→ </span>
                           {it.targetDir ? <span style={{ color: CAT_COLOR["ערוצים"] }}>{`${it.targetDir}/`}</span> : null}
                           {it.targetName}
-                          {it.stemType ? <span style={{ color: CAT_COLOR["ערוצים"] }}>{`  ·  ${it.stemType}`}</span> : null}
                         </div>
                       </div>
                     ))}

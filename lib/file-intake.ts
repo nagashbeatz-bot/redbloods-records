@@ -20,7 +20,6 @@ export interface IntakeEntry {
 
 export interface IntakeItem extends IntakeEntry {
   category:    IntakeCategory;
-  stemType?:   string;       // sub-type label for ערוצים (e.g. "Lead Vocal")
   targetName:  string;       // clean destination file name
   targetDir:   string;       // sub-folder under 05_Delivery ("" = root, "ערוצים" = stems)
   targetLabel: string;       // friendly label for the preview/files tab
@@ -41,25 +40,10 @@ function isInStems(relPath: string): boolean {
 /** Uppercase + separators (_ - .) → spaces, so \b word boundaries work. */
 const norm = (s: string) => UPPER(s).replace(/[._\-]+/g, " ");
 
-/** Detect a stem sub-type from the file name. Returns label + UPPER_SNAKE key. */
-function detectStem(name: string): { label: string; key: string } {
-  const n = norm(name);
-  if (/\bLEAD[\s_-]*VOCAL/.test(n))        return { label: "Lead Vocal",        key: "LEAD_VOCAL" };
-  if (/\bLEAD[\s_-]*INSTRUMENTAL/.test(n)) return { label: "Lead Instrumental", key: "LEAD_INSTRUMENTAL" };
-  if (/\bHI[\s_-]*PERC/.test(n))           return { label: "Hi Perc",           key: "HI_PERC" };
-  if (/\bLO[\s_-]*PERC/.test(n))           return { label: "Lo Perc",           key: "LO_PERC" };
-  if (/\bHORN/.test(n))                    return { label: "Horn",              key: "HORN" };
-  if (/\bSTRINGS?\b/.test(n))              return { label: "Strings",           key: "STRINGS" };
-  if (/\bSOUND[\s_-]*EFX|\bSFX\b/.test(n)) return { label: "Sound EFX",         key: "SFX" };
-  return { label: "ערוץ - לא מסווג", key: "UNCLASSIFIED" };
-}
-
 /** Classify a single file by its name + relative path (relative to the scanned root). */
-export function classify(name: string, relPath: string): { category: IntakeCategory; stemType?: string; stemKey?: string } {
-  if (isInStems(relPath)) {
-    const stem = detectStem(name);
-    return { category: "ערוצים", stemType: stem.label, stemKey: stem.key };
-  }
+export function classify(name: string, relPath: string): { category: IntakeCategory } {
+  // Anything inside a Stems folder is simply "ערוצים" — no internal sub-typing.
+  if (isInStems(relPath)) return { category: "ערוצים" };
   const n = norm(name);
   if (/ACAPELLA|A CAPELLA/.test(n))                  return { category: "אקפלה" };
   if (/INSTRUMENTAL|\bINST\b/.test(n))               return { category: "אינסטרומנטל" };
@@ -130,8 +114,8 @@ function sanitizeProjectName(projectName: string): string {
     .slice(0, 60) || "PROJECT";
 }
 
-/** Base destination name (without dedup suffix) for a classified file. */
-function baseTargetName(projectName: string, name: string, category: IntakeCategory, stemKey: string | undefined): string {
+/** Base destination name (without dedup suffix) for a classified non-stem file. */
+function baseTargetName(projectName: string, name: string, category: IntakeCategory): string {
   const p   = sanitizeProjectName(projectName);
   const ext = extOf(name);
   switch (category) {
@@ -139,7 +123,6 @@ function baseTargetName(projectName: string, name: string, category: IntakeCateg
     case "גרסת הופעה":  return `${p}_LIVE_VERSION.${ext}`;
     case "אקפלה":       return `${p}_ACAPELLA.${ext}`;
     case "אינסטרומנטל": return `${p}_INSTRUMENTAL.${ext}`;
-    case "ערוצים":      return `${p}_STEM_${stemKey || "UNCLASSIFIED"}.${ext}`;
     default: {
       // "אחר" — keep the original name, lightly sanitized.
       const clean = name.replace(/[\\/:*?"<>|]/g, "").trim();
@@ -181,7 +164,7 @@ export function buildIntake(entries: IntakeEntry[], projectName: string, rootPat
   // Dedup is per target directory: a stem "Master.wav" in ערוצים never collides
   // with a root "Master.wav".
   const used = new Set<string>();
-  return classified.map(({ e, category, stemType, stemKey }) => {
+  return classified.map(({ e, category }) => {
     const targetDir = category === "ערוצים" ? "ערוצים" : "";
 
     let target: string;
@@ -189,7 +172,7 @@ export function buildIntake(entries: IntakeEntry[], projectName: string, rootPat
       const { base, ext } = stripExt(e.name);
       target = stemTargetName(stripTag(base), ext);
     } else {
-      target = baseTargetName(projectName, e.name, category, stemKey);
+      target = baseTargetName(projectName, e.name, category);
     }
 
     const key = (n: string) => `${targetDir}|${n.toLowerCase()}`;
@@ -200,10 +183,6 @@ export function buildIntake(entries: IntakeEntry[], projectName: string, rootPat
     }
     used.add(key(target));
 
-    const targetLabel = category === "ערוצים"
-      ? (stemType ? `ערוצים · ${stemType}` : "ערוצים")
-      : CATEGORY_LABEL[category];
-
-    return { ...e, category, stemType, targetName: target, targetDir, targetLabel };
+    return { ...e, category, targetName: target, targetDir, targetLabel: CATEGORY_LABEL[category] };
   });
 }
