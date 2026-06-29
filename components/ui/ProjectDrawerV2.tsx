@@ -3123,8 +3123,9 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
   const [openingFolder, setOpeningFolder] = useState(false);
   const [openFolderErr, setOpenFolderErr] = useState<string | null>(null);
   const [folderLink, setFolderLink] = useState<string | null>(null);
-  async function openDeliveryFolder() {
-    if (!deliveryFolderPath || openingFolder) return;
+  // Open a Dropbox folder (delivery folder or the ערוצים sub-folder) in a new tab.
+  async function openFolder(path: string) {
+    if (!path || openingFolder) return;
     // Do NOT pre-open a tab — a failed/empty fetch would leave an orphan
     // about:blank. Fetch the real share link first, then open it. If the popup
     // blocker stops us, stash the link so the user can click it directly.
@@ -3135,7 +3136,7 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
       const res = await fetch("/api/dropbox/folder-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: deliveryFolderPath }),
+        body: JSON.stringify({ path }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok || !data.shareLink) throw new Error(data.error || "no-link");
@@ -3149,11 +3150,11 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
     }
   }
 
-  // "Copy client link" — ensures a public external share link and copies it.
+  // Copy a public external share link for a folder (delivery or ערוצים).
   const [copyingLink, setCopyingLink] = useState(false);
   const [copyState, setCopyState] = useState<"" | "copied" | "notpublic">("");
-  async function copyClientLink() {
-    if (!deliveryFolderPath || copyingLink) return;
+  async function copyLink(path: string) {
+    if (!path || copyingLink) return;
     setCopyingLink(true);
     setOpenFolderErr(null);
     setCopyState("");
@@ -3161,7 +3162,7 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
       const res = await fetch("/api/dropbox/folder-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: deliveryFolderPath }),
+        body: JSON.stringify({ path }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok || !data.shareLink) throw new Error(data.error || "no-link");
@@ -3176,6 +3177,11 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
       setCopyingLink(false);
     }
   }
+
+  // ── Channels (ערוצים) folder: path + manual delete ──
+  const [channelsConfirm, setChannelsConfirm] = useState(false);
+  const [channelsDeleting, setChannelsDeleting] = useState(false);
+  const [channelsErr, setChannelsErr] = useState<string | null>(null);
 
   const [deletingFilePath, setDeletingFilePath] = useState<string | null>(null);
   const [fileDelLoading,   setFileDelLoading]   = useState(false);
@@ -3221,6 +3227,49 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
     .map(cat => ({ cat, list: deliveryFiles.filter(f => deliveryCategoryOf(f) === cat) }))
     .filter(g => g.list.length > 0);
 
+  const DELIVERY_CAT_META: Record<string, { icon: string; desc: string }> = {
+    "מאסטר":       { icon: "🎚", desc: "הקבצים הסופיים המוכנים" },
+    "גרסת הופעה":  { icon: "🎙", desc: "גרסה להופעות" },
+    "אקפלה":       { icon: "🎤", desc: "שירה בלבד" },
+    "אינסטרומנטל": { icon: "🎵", desc: "ללא שירה" },
+    "ערוצים":      { icon: "🗂", desc: "התיקייה מכילה את כל ה-Stems" },
+    "אחר":         { icon: "📄", desc: "קבצים נוספים" },
+  };
+
+  // ── Channels (ערוצים) folder ──
+  const channelFiles = deliveryFiles.filter(f => deliveryCategoryOf(f) === "ערוצים");
+  // Folder path = directory of any channel file (handles both new /Delivery/ערוצים
+  // and legacy /05_Delivery/ערוצים layouts).
+  const channelsFolderPath = (() => {
+    const p = channelFiles.find(f => f.dropboxPath)?.dropboxPath;
+    return p ? p.slice(0, p.lastIndexOf("/")) : "";
+  })();
+  async function deleteChannelsFolder() {
+    if (!channelsFolderPath) return;
+    setChannelsDeleting(true); setChannelsErr(null);
+    try {
+      // delete_v2 removes the folder + contents in Dropbox; the store then drops
+      // every project.files entry nested under that path.
+      const res = await fetch("/api/dropbox/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dropboxPath: channelsFolderPath, projectId: project.id }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "מחיקה נכשלה");
+      setChannelsConfirm(false);
+      onFileDeleted();
+    } catch (e) {
+      setChannelsErr(e instanceof Error ? e.message : "שגיאה במחיקה");
+      setTimeout(() => setChannelsErr(null), 5000);
+    } finally {
+      setChannelsDeleting(false);
+    }
+  }
+
+  // ── View switch + per-category expand ──
+  const [view, setView] = useState<"project" | "delivery">("project");
+  const [expandedCat, setExpandedCat] = useState<string | null>(null);
+
   // ── Multi-select delete (project files only) ──
   const selectableProjectPaths = projectFiles.filter(f => f.dropboxPath).map(f => f.dropboxPath!);
   const toggleSelect = (path: string) => {
@@ -3257,14 +3306,6 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
     border: `1px solid ${BORDER}`, borderRadius: 16, background: "rgba(255,255,255,0.018)",
     padding: "16px 18px", display: "flex", flexDirection: "column", gap: 11,
   };
-  const colHeader = (
-    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, padding: "0 12px 2px" }}>
-      <span style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>סוג</span>
-      <span style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>שם הקובץ</span>
-      <span style={{ fontSize: 10, color: MUTED, fontWeight: 600, justifySelf: "start" }}>פעולות</span>
-    </div>
-  );
-
   const renderFileRow = (f: (typeof files)[number], i: number, prefix: string) => {
     const href      = f.dropboxShareUrl || f.url || "";
     const tag       = deliveryTag(f.name, f.dropboxPath);
@@ -3310,9 +3351,139 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
     fontFamily: "inherit", border: `1px solid ${active ? BRAND + "55" : BORDER}`,
     background: active ? `${BRAND}18` : "transparent", color: active ? BRAND : TEXT2, whiteSpace: "nowrap",
   });
+  const segBtn = (active: boolean): React.CSSProperties => ({
+    padding: "8px 18px", borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: "pointer",
+    fontFamily: "inherit", border: `1px solid ${active ? BRAND + "66" : "transparent"}`,
+    background: active ? `${BRAND}1A` : "transparent", color: active ? BRAND : TEXT2, whiteSpace: "nowrap",
+    boxShadow: active ? `0 0 16px ${BRAND}22` : "none", transition: "all .15s",
+  });
+  const ghostSm: React.CSSProperties = {
+    fontSize: 11.5, fontWeight: 700, fontFamily: "inherit", color: TEXT2, background: "transparent",
+    border: `1px solid ${BORDER2}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap",
+  };
+  const dangerSm: React.CSSProperties = {
+    fontSize: 11.5, fontWeight: 700, fontFamily: "inherit", color: RED_WARN, background: `${RED_WARN}12`,
+    border: `1px solid ${RED_WARN}38`, borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap",
+  };
+
+  const iconBox = (color: string, glyph: string) => (
+    <span style={{
+      width: 40, height: 40, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+      background: `${color}1A`, border: `1px solid ${color}33`, color, fontSize: 18, lineHeight: 1,
+    }}>{glyph}</span>
+  );
+  const fileFormat = (name: string): string => {
+    const ext = name.split(".").pop()?.toUpperCase() ?? "";
+    return ext && ext.length <= 5 ? ext : "FILE";
+  };
+  const fileColor = (name: string): string => {
+    const e = name.toLowerCase().split(".").pop() ?? "";
+    if (["wav", "aiff", "aif", "flac"].includes(e)) return "#A855F7";
+    if (["mp3", "m4a", "ogg"].includes(e)) return "#F59E0B";
+    return BLUE;
+  };
+
+  // ── Project file card (preview/sketch only) ──
+  const renderProjectCard = (f: (typeof files)[number], i: number) => {
+    const rowKey  = f.dropboxPath ?? `p_${i}`;
+    const href    = f.dropboxShareUrl || f.url || "";
+    const checked = !!f.dropboxPath && selected.has(f.dropboxPath);
+
+    if (deletingFilePath === rowKey) {
+      return (
+        <div key={rowKey} style={{ background: `${RED_WARN}08`, border: `1px solid ${RED_WARN}25`, borderRadius: 14, padding: "14px 15px", display: "flex", flexDirection: "column", gap: 9 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>למחוק את הקובץ?</div>
+          <div style={{ fontSize: 11, color: MUTED }}>הקובץ יימחק גם מ-Dropbox. הפעולה אינה ניתנת לביטול.</div>
+          <div style={{ fontSize: 11, color: LABEL, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setDeletingFilePath(null)} disabled={fileDelLoading} style={ghostSm}>ביטול</button>
+            <button onClick={() => handleDeleteFile(f.dropboxPath!)} disabled={fileDelLoading} style={{ ...dangerSm, opacity: fileDelLoading ? 0.5 : 1 }}>{fileDelLoading ? "מוחק…" : "מחק קובץ"}</button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={rowKey} style={{
+        background: CARD_BG, border: `1px solid ${checked ? BRAND + "55" : BORDER}`, borderRadius: 14,
+        padding: "13px 14px", display: "flex", flexDirection: "column", gap: 12,
+        boxShadow: checked ? `0 0 0 1px ${BRAND}33` : "none", transition: "border .15s, box-shadow .15s",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ display: "flex", gap: 10, minWidth: 0 }}>
+            {iconBox(fileColor(f.name), "🎵")}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+              <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2 }}>{fileFormat(f.name)}{f.versionLabel ? ` · ${f.versionLabel}` : ""}</div>
+            </div>
+          </div>
+          {f.dropboxPath
+            ? <input type="checkbox" checked={checked} onChange={() => toggleSelect(f.dropboxPath!)} style={{ cursor: "pointer", flexShrink: 0, marginTop: 2 }} />
+            : <span style={{ width: 13, flexShrink: 0 }} />}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: "auto" }}>
+          {href && <a href={href} target="_blank" rel="noopener noreferrer" title="פתח ב-Dropbox" style={{ ...ghostSm, color: BLUE, textDecoration: "none" }}>פתח ↗</a>}
+          {f.dropboxPath && <button onClick={() => setDeletingFilePath(rowKey)} title="מחק קובץ" style={ghostSm} onMouseEnter={e => (e.currentTarget.style.color = RED_WARN)} onMouseLeave={e => (e.currentTarget.style.color = TEXT2)}>🗑 מחק</button>}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Delivery category card ──
+  const renderCategoryCard = (g: { cat: string; list: typeof files }) => {
+    const color  = DELIVERY_CAT_COLOR[g.cat] ?? "#6B7280";
+    const meta   = DELIVERY_CAT_META[g.cat] ?? { icon: "📄", desc: "" };
+    const isChannels = g.cat === "ערוצים";
+    return (
+      <div key={g.cat} style={{
+        background: CARD_BG, border: `1px solid ${isChannels ? AMBER + "55" : BORDER}`, borderRadius: 14,
+        padding: "15px 15px 13px", display: "flex", flexDirection: "column", gap: 9,
+        boxShadow: isChannels ? `0 0 18px ${AMBER}14` : "none",
+      }}>
+        {iconBox(color, meta.icon)}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{g.cat}</span>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color, background: `${color}1A`, border: `1px solid ${color}33`, borderRadius: 999, padding: "2px 9px" }}>{g.list.length} קבצים</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5, minHeight: 30 }}>{meta.desc}</div>
+
+        {isChannels ? (
+          channelsConfirm ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "auto" }}>
+              <div style={{ fontSize: 11.5, color: TEXT2, fontWeight: 700 }}>למחוק את כל תיקיית הערוצים?</div>
+              <div style={{ fontSize: 10.5, color: MUTED }}>התיקייה וכל ה-Stems יימחקו מ-Dropbox ומהמערכת.</div>
+              <div style={{ display: "flex", gap: 7 }}>
+                <button onClick={() => setChannelsConfirm(false)} disabled={channelsDeleting} style={{ ...ghostSm, flex: 1 }}>ביטול</button>
+                <button onClick={deleteChannelsFolder} disabled={channelsDeleting} style={{ ...dangerSm, flex: 1, opacity: channelsDeleting ? 0.5 : 1 }}>{channelsDeleting ? "מוחק…" : "מחק תיקייה"}</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: "auto" }}>
+              <button onClick={() => setChannelsConfirm(true)} style={dangerSm}>🗑 מחק תיקיית ערוצים</button>
+              <div style={{ display: "flex", gap: 7 }}>
+                <button onClick={() => copyLink(channelsFolderPath)} disabled={copyingLink} style={{ ...ghostSm, flex: 1 }}>{copyingLink ? "…" : "🔗 העתק לינק"}</button>
+                <button onClick={() => openFolder(channelsFolderPath)} disabled={openingFolder} style={{ ...ghostSm, flex: 1 }}>{openingFolder ? "…" : "פתח תיקייה ↗"}</button>
+              </div>
+            </div>
+          )
+        ) : (
+          <button onClick={() => setExpandedCat(expandedCat === g.cat ? null : g.cat)} style={{ ...ghostSm, marginTop: "auto" }}>
+            👁 {expandedCat === g.cat ? "הסתר קבצים" : "צפה בקבצים"}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const showDeliveryTab = isDone || deliveryFiles.length > 0;
+  const cardGrid = (min: number): React.CSSProperties => ({
+    display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))`, gap: 12,
+  });
 
   return (
-    <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {intakeOpen && (
         <StevenIntakeModal
           projectId={project.id}
@@ -3322,158 +3493,43 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
         />
       )}
 
-      {/* ── מסירה ללקוח — delivery zone (completed projects only) ── */}
-      {isDone && (
-        <div style={{
-          border: `1px solid ${BRAND}40`, borderRadius: 16, padding: "18px 20px",
-          background: `${BRAND}08`, display: "flex", flexDirection: "column", gap: 14,
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>📦 מסירה ללקוח</div>
-
-          {/* Mode tabs: manual upload vs. automatic Steven intake */}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setDeliveryMode("manual")} style={tabBtn(deliveryMode === "manual")}>⬆ קליטה ידנית</button>
-            <button onClick={() => setDeliveryMode("auto")}   style={tabBtn(deliveryMode === "auto")}>↓ קליטה אוטומטית (Steven)</button>
-          </div>
-
-          {deliveryMode === "manual" ? (
-            /* Manual upload work area: type chips (right) + dropzone hint (left) */
-            <div style={{
-              display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch",
-              border: `1px solid ${BORDER}`, borderRadius: 14,
-              background: "rgba(255,255,255,0.02)", padding: 16,
-            }}>
-              <div style={{ flex: "1 1 300px", minWidth: 240, display: "flex", flexDirection: "column", gap: 11 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, letterSpacing: "0.04em" }}>בחר סוג קובץ להעלאה</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
-                  {DELIVERY_TYPES.map((t) => (
-                    <UploadButton
-                      key={t.label}
-                      projectId={project.id}
-                      projectName={project.name}
-                      artist={project.artist ?? ""}
-                      existingFiles={deliveryFiles}
-                      size="md"
-                      subfolder={t.subfolder}
-                      deliveryTypeLabel={t.typeLabel}
-                      label={t.label}
-                      icon={t.icon}
-                      acceptAnyFile
-                      preserveOriginalName={t.preserveOriginalName}
-                      stableLabelOnDrag
-                    />
-                  ))}
-                </div>
-              </div>
-              <div style={{
-                flex: "0 1 200px", display: "flex", flexDirection: "column",
-                alignItems: "center", justifyContent: "center", gap: 7, textAlign: "center", padding: "8px 6px",
-              }}>
-                <div style={{ fontSize: 32, lineHeight: 1, opacity: 0.8 }}>☁️</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>גרור קבצים לכאן</div>
-                <div style={{ fontSize: 11.5, color: TEXT2 }}>או בחר סוג קובץ להעלאה</div>
-              </div>
-            </div>
-          ) : (
-            /* Automatic Steven intake */
-            <div style={{
-              display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between",
-              border: `1px solid ${BORDER}`, borderRadius: 14, background: "rgba(255,255,255,0.02)", padding: 16,
-            }}>
-              <span style={{ fontSize: 11.5, color: TEXT2, flex: "1 1 240px", lineHeight: 1.6 }}>
-                קלוט קבצים ש-Steven העלה לתיקיית Dropbox — הדבק shared link / home URL, סרוק, בדוק ואשר העברה. בלי הורדה/העלאה ידנית.
+      {/* ── A. Main view switch + (project) bulk controls ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {view === "project" && (
+            <>
+              {selectableProjectPaths.length > 0 && (
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: MUTED, cursor: "pointer", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "5px 10px" }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: "pointer" }} />
+                  בחר הכל
+                </label>
+              )}
+              {selected.size > 0 && (
+                <button onClick={() => setBulkConfirm(true)} disabled={bulkDeleting} style={{ ...dangerSm, padding: "6px 12px" }}>🗑 מחק נבחרים ({selected.size})</button>
+              )}
+              <span style={{ fontSize: 11, color: MUTED, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                קבצים להזנה ולשמיעה על ידי הנגן <span title="רק קבצי preview/סקיצה מתנגנים בנגן; קבצי מסירה לא" style={{ cursor: "help" }}>ⓘ</span>
               </span>
-              <button onClick={() => setIntakeOpen(true)} style={{
-                display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 18px", borderRadius: 10,
-                border: `1px solid ${BRAND}40`, background: `${BRAND}12`, color: BRAND,
-                fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-              }}>↓ קליטה מ-Steven</button>
-            </div>
-          )}
-
-          {/* Footer: note + delivery folder actions */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11.5, color: MUTED }}>🗂 הקבצים יופיעו באזור &quot;קבצי מסירה&quot; מטה</span>
-            {deliveryFolderPath && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {openFolderErr && <span style={{ fontSize: 11, color: "#EF4444" }}>{openFolderErr}</span>}
-                {copyState === "copied" && <span style={{ fontSize: 11, color: "#10B981" }}>✓ לינק ללקוח הועתק</span>}
-                {copyState === "notpublic" && <span style={{ fontSize: 11, color: "#F59E0B" }}>הועתק, אך הלינק אינו ציבורי — בדוק הגדרות שיתוף ב-Dropbox</span>}
-                {folderLink ? (
-                  <a
-                    href={folderLink} target="_blank" rel="noopener noreferrer"
-                    style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textDecoration: "none", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px" }}
-                  >פתח תיקיית מסירה ↗</a>
-                ) : (
-                  <button
-                    onClick={openDeliveryFolder}
-                    disabled={openingFolder}
-                    style={{ fontSize: 12, fontWeight: 700, color: TEXT2, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: openingFolder ? "default" : "pointer", opacity: openingFolder ? 0.6 : 1 }}
-                  >{openingFolder ? "פותח…" : "פתח תיקיית מסירה ↗"}</button>
-                )}
-                <button
-                  onClick={copyClientLink}
-                  disabled={copyingLink}
-                  style={{ fontSize: 12, fontWeight: 700, color: TEXT, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: copyingLink ? "default" : "pointer", opacity: copyingLink ? 0.6 : 1 }}
-                >{copyingLink ? "מכין…" : "העתק לינק ללקוח"}</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── קבצי מסירה — grouped by category; never play, never feed the player ── */}
-      {(isDone || deliveryFiles.length > 0) && (
-        <div style={sectionCard}>
-          <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
-            קבצי מסירה <span style={{ color: MUTED, fontWeight: 700 }}>({deliveryFiles.length})</span>
-          </div>
-          {deliveryGroups.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {deliveryGroups.map((g) => (
-                <div key={g.cat} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 2px" }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: DELIVERY_CAT_COLOR[g.cat] ?? "#6B7280" }} />
-                    <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>{g.cat}</span>
-                    <span style={{ fontSize: 10.5, color: MUTED }}>({g.list.length})</span>
-                  </div>
-                  {g.list.map((f, i) => renderFileRow(f, i, `d_${g.cat}`))}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: MUTED, padding: "6px 2px" }}>עדיין לא הועלו קבצי מסירה</div>
+            </>
           )}
         </div>
-      )}
+        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}`, borderRadius: 11, padding: 4 }}>
+          {showDeliveryTab && <button onClick={() => setView("delivery")} style={segBtn(view === "delivery")}>מסירה ללקוח</button>}
+          <button onClick={() => setView("project")} style={segBtn(view === "project")}>קבצי פרויקט</button>
+        </div>
+      </div>
 
       {fileDelErr && (
-        <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}30`, borderRadius: 8, padding: "8px 12px" }}>
-          {fileDelErr}
-        </div>
+        <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}30`, borderRadius: 8, padding: "8px 12px" }}>{fileDelErr}</div>
       )}
 
-      {/* ── קבצי פרויקט — preview/sketch tracks only; multi-select delete ── */}
-      <div style={sectionCard}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      {/* ── B. Project files view (cards) ── */}
+      {view === "project" && (
+        <div style={sectionCard}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
               קבצי פרויקט <span style={{ color: MUTED, fontWeight: 700 }}>({projectFiles.length})</span>
             </div>
-            {selectableProjectPaths.length > 0 && (
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED, cursor: "pointer" }}>
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: "pointer" }} />
-                בחר הכל
-              </label>
-            )}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {selected.size > 0 && (
-              <button onClick={() => setBulkConfirm(true)} disabled={bulkDeleting} style={{
-                fontSize: 12, fontWeight: 700, fontFamily: "inherit", color: RED_WARN, cursor: "pointer",
-                background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}40`, borderRadius: 9, padding: "6px 13px",
-              }}>🗑 מחק נבחרים ({selected.size})</button>
-            )}
             <UploadButton
               projectId={project.id}
               projectName={project.name}
@@ -3483,44 +3539,140 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
               size="sm"
             />
           </div>
-        </div>
 
-        {/* Bulk-delete confirmation */}
-        {bulkConfirm && (
-          <div style={{ background: `${RED_WARN}08`, border: `1px solid ${RED_WARN}25`, borderRadius: 11, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>למחוק {selected.size} קבצים?</div>
-            <div style={{ fontSize: 11.5, color: MUTED }}>הקבצים יימחקו גם מ-Dropbox וגם מהמערכת. הפעולה אינה ניתנת לביטול.</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setBulkConfirm(false)} disabled={bulkDeleting} style={{ fontSize: 12, padding: "5px 13px", borderRadius: 7, background: "transparent", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
-              <button onClick={bulkDeleteProjectFiles} disabled={bulkDeleting} style={{ fontSize: 12, padding: "5px 13px", borderRadius: 7, background: `${RED_WARN}15`, border: `1px solid ${RED_WARN}40`, color: RED_WARN, cursor: "pointer", fontWeight: 700, fontFamily: "inherit", opacity: bulkDeleting ? 0.5 : 1 }}>{bulkDeleting ? "מוחק…" : "מחק קבצים"}</button>
+          {bulkConfirm && (
+            <div style={{ background: `${RED_WARN}08`, border: `1px solid ${RED_WARN}25`, borderRadius: 11, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>למחוק {selected.size} קבצים?</div>
+              <div style={{ fontSize: 11.5, color: MUTED }}>הקבצים יימחקו גם מ-Dropbox וגם מהמערכת. להמשיך?</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setBulkConfirm(false)} disabled={bulkDeleting} style={ghostSm}>ביטול</button>
+                <button onClick={bulkDeleteProjectFiles} disabled={bulkDeleting} style={{ ...dangerSm, opacity: bulkDeleting ? 0.5 : 1 }}>{bulkDeleting ? "מוחק…" : "מחק קבצים"}</button>
+              </div>
             </div>
-          </div>
-        )}
-        {bulkErr && (
-          <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}30`, borderRadius: 8, padding: "8px 12px" }}>{bulkErr}</div>
-        )}
+          )}
+          {bulkErr && <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}30`, borderRadius: 8, padding: "8px 12px" }}>{bulkErr}</div>}
 
-        {projectFiles.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {colHeader}
-            {projectFiles.map((f, i) => {
-              const rowKey = f.dropboxPath ?? `p_${i}`;
-              return (
-                <div key={rowKey} style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  {f.dropboxPath ? (
-                    <input type="checkbox" checked={selected.has(f.dropboxPath)} onChange={() => toggleSelect(f.dropboxPath!)} style={{ cursor: "pointer", flexShrink: 0 }} />
-                  ) : (
-                    <span style={{ width: 13, flexShrink: 0 }} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>{renderFileRow(f, i, "p")}</div>
+          {projectFiles.length > 0 ? (
+            <div style={cardGrid(220)}>
+              {projectFiles.map((f, i) => renderProjectCard(f, i))}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "28px 0" }}>אין קבצים עדיין</div>
+          )}
+        </div>
+      )}
+
+      {/* ── C. Delivery view ── */}
+      {view === "delivery" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Intake area — only for completed projects */}
+          {isDone ? (
+            <div style={{
+              border: `1px solid ${BRAND}40`, borderRadius: 16, padding: "18px 20px",
+              background: `${BRAND}08`, display: "flex", flexDirection: "column", gap: 14,
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>📦 מסירה ללקוח</div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setDeliveryMode("manual")} style={tabBtn(deliveryMode === "manual")}>⬆ קליטה ידנית</button>
+                <button onClick={() => setDeliveryMode("auto")}   style={tabBtn(deliveryMode === "auto")}>↓ קליטה אוטומטית (Steven)</button>
+              </div>
+
+              {deliveryMode === "manual" ? (
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch", border: `1px solid ${BORDER}`, borderRadius: 14, background: "rgba(255,255,255,0.02)", padding: 16 }}>
+                  <div style={{ flex: "1 1 300px", minWidth: 240, display: "flex", flexDirection: "column", gap: 11 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, letterSpacing: "0.04em" }}>בחר סוג קובץ להעלאה</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
+                      {DELIVERY_TYPES.map((t) => (
+                        <UploadButton
+                          key={t.label}
+                          projectId={project.id}
+                          projectName={project.name}
+                          artist={project.artist ?? ""}
+                          existingFiles={deliveryFiles}
+                          size="md"
+                          subfolder={t.subfolder}
+                          deliveryTypeLabel={t.typeLabel}
+                          label={t.label}
+                          icon={t.icon}
+                          acceptAnyFile
+                          preserveOriginalName={t.preserveOriginalName}
+                          stableLabelOnDrag
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ flex: "0 1 200px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7, textAlign: "center", padding: "8px 6px" }}>
+                    <div style={{ fontSize: 32, lineHeight: 1, opacity: 0.8 }}>☁️</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>גרור קבצים לכאן</div>
+                    <div style={{ fontSize: 11.5, color: TEXT2 }}>או בחר סוג קובץ להעלאה</div>
+                  </div>
                 </div>
-              );
-            })}
+              ) : (
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", border: `1px solid ${BORDER}`, borderRadius: 14, background: "rgba(255,255,255,0.02)", padding: 16 }}>
+                  <span style={{ fontSize: 11.5, color: TEXT2, flex: "1 1 240px", lineHeight: 1.6 }}>
+                    הקבצים נכלטים אוטומטית מתיקיית סטיבן — הדבק shared link / home URL, סרוק, בדוק ואשר העברה. בלי הורדה/העלאה ידנית.
+                  </span>
+                  <button onClick={() => setIntakeOpen(true)} style={{
+                    display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 18px", borderRadius: 10,
+                    border: `1px solid ${BRAND}40`, background: `${BRAND}12`, color: BRAND,
+                    fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                  }}>↓ קליטה מ-Steven</button>
+                </div>
+              )}
+
+              {/* General delivery actions */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11.5, color: MUTED }}>🗂 הקבצים יופיעו באזור &quot;קבצי מסירה&quot; מטה</span>
+                {deliveryFolderPath && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {openFolderErr && <span style={{ fontSize: 11, color: "#EF4444" }}>{openFolderErr}</span>}
+                    {copyState === "copied" && <span style={{ fontSize: 11, color: "#10B981" }}>✓ לינק ללקוח הועתק</span>}
+                    {copyState === "notpublic" && <span style={{ fontSize: 11, color: "#F59E0B" }}>הועתק, אך הלינק אינו ציבורי — בדוק הגדרות שיתוף ב-Dropbox</span>}
+                    {folderLink ? (
+                      <a href={folderLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 700, color: TEXT2, textDecoration: "none", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px" }}>פתח תיקיית מסירה ↗</a>
+                    ) : (
+                      <button onClick={() => openFolder(deliveryFolderPath)} disabled={openingFolder} style={{ fontSize: 12, fontWeight: 700, color: TEXT2, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: openingFolder ? "default" : "pointer", opacity: openingFolder ? 0.6 : 1 }}>{openingFolder ? "פותח…" : "פתח תיקיית מסירה ↗"}</button>
+                    )}
+                    <button onClick={() => copyLink(deliveryFolderPath)} disabled={copyingLink} style={{ fontSize: 12, fontWeight: 700, color: TEXT, fontFamily: "inherit", background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 9, padding: "7px 14px", cursor: copyingLink ? "default" : "pointer", opacity: copyingLink ? 0.6 : 1 }}>{copyingLink ? "מכין…" : "העתק לינק ללקוח"}</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: MUTED, background: "rgba(255,255,255,0.02)", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "14px 16px" }}>
+              אזור המסירה (העלאה ידנית / קליטה מ-Steven) ייפתח כשהפרויקט יסומן כ&quot;הושלם&quot;.
+            </div>
+          )}
+
+          {/* Delivery files as category cards */}
+          <div style={sectionCard}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+              קבצי מסירה <span style={{ color: MUTED, fontWeight: 700 }}>({deliveryFiles.length})</span>
+            </div>
+            {channelsErr && <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}30`, borderRadius: 8, padding: "8px 12px" }}>{channelsErr}</div>}
+            {deliveryGroups.length > 0 ? (
+              <>
+                <div style={cardGrid(240)}>
+                  {deliveryGroups.map((g) => renderCategoryCard(g))}
+                </div>
+                {expandedCat && (() => {
+                  const grp = deliveryGroups.find(g => g.cat === expandedCat);
+                  if (!grp) return null;
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4, borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: TEXT2 }}>{expandedCat} — קבצים</div>
+                      {grp.list.map((f, i) => renderFileRow(f, i, `x_${expandedCat}`))}
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: MUTED, padding: "6px 2px" }}>עדיין לא הועלו קבצי מסירה</div>
+            )}
           </div>
-        ) : (
-          <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "28px 0" }}>אין קבצים עדיין</div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

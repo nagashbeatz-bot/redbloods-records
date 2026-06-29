@@ -282,7 +282,12 @@ export async function ensureProjectStartDate(projectId: string): Promise<void> {
     .eq("id", projectId);
 }
 
-/** Remove a file from a project's files JSONB by its Dropbox path */
+/**
+ * Remove a file from a project's files JSONB by its Dropbox path. Also removes
+ * any files nested UNDER that path (so deleting a folder path, e.g. the
+ * "…/Delivery/ערוצים" channels folder, cleans every stem inside it). For a plain
+ * file path this is identical to an exact-match removal (a file has no children).
+ */
 export async function removeFileFromProjectByPath(
   id: string,
   dropboxPath: string
@@ -298,10 +303,11 @@ export async function removeFileFromProjectByPath(
   const current: { name: string; dropboxPath?: string }[] =
     (data as { files: typeof current }).files || [];
 
+  const prefix = `${dropboxPath}/`;
   const { error } = await supabase
     .from("projects")
     .update({
-      files:      current.filter((f) => f.dropboxPath !== dropboxPath),
+      files:      current.filter((f) => f.dropboxPath !== dropboxPath && !f.dropboxPath?.startsWith(prefix)),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
