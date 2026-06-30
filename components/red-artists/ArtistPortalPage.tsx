@@ -195,7 +195,7 @@ export default function ArtistPortalPage() {
   const isMobile = useIsMobile();
 
   return (
-    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 140px" : "30px 24px 140px" }}>
+    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
       <div style={{ maxWidth: 1400, margin: "0 auto", width: "100%" }}>
 
