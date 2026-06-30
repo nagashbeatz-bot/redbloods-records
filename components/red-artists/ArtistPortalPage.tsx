@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 // ── Redbloods design tokens (black / dark-grey / red / white — NO purple) ─────────
-const CARD2  = "#1A1A1A";
 const BDR    = "rgba(255,255,255,0.06)";
 const BDR2   = "rgba(255,255,255,0.10)";
 const BRAND  = "#DC2626";
@@ -39,18 +39,6 @@ const SONGS: { name: string; kind: string; status: SongStatus; date: string }[] 
   { name: "Another Life - Sketch",  kind: "סקיצה", status: "סקיצה",        date: "25.05.2025" },
 ];
 
-const BEATS: { name: string; bpm: string; key: string }[] = [
-  { name: "Midnight City", bpm: "92 BPM",  key: "F#m" },
-  { name: "No Sleep",      bpm: "120 BPM", key: "Cm" },
-  { name: "Focus",         bpm: "140 BPM", key: "Dm" },
-];
-
-const SCHEDULE: { day: string; month: string; title: string; time: string }[] = [
-  { day: "25", month: "יוני",  title: "פגישה עם Nagash", time: "18:00" },
-  { day: "01", month: "יולי",  title: "סשן אולפן",       time: "16:00" },
-  { day: "12", month: "יולי",  title: "הופעה / אירוע",   time: "21:00" },
-];
-
 const UPDATES: string[] = [
   "נוסף ביט חדש של Nagash בשם Focus",
   "המיקס של My Story מוכן לאישור",
@@ -58,11 +46,30 @@ const UPDATES: string[] = [
   "עודכן מאזן החודש",
 ];
 
-const QUICK_LINKS: { label: string; icon: string }[] = [
-  { label: "העלאת קובץ",  icon: "↑" },
-  { label: "יצירת הודעה", icon: "✉" },
-  { label: "מרכז תמיכה",  icon: "🎧" },
-  { label: "נהלי עבודה",  icon: "📋" },
+// ── Artist calendar (יומן האמן) — demo timeline ──────────────────────────────────
+type CalType   = "סשן" | "סושיאל" | "הופעה" | "צילום" | "דדליין";
+type CalStatus = "מתוכנן" | "ממתין לאישור" | "בוצע" | "מתוזמן";
+const CAL_TYPE_COLOR: Record<CalType, string> = {
+  "סשן":   "#60A5FA",
+  "סושיאל": "#EC4899",
+  "צילום":  "#F59E0B",
+  "הופעה":  "#FB7185",
+  "דדליין": "#EF4444",
+};
+const CAL_STATUS_COLOR: Record<CalStatus, string> = {
+  "מתוכנן":      "#9CA3AF",
+  "ממתין לאישור": "#F59E0B",
+  "בוצע":        "#34D399",
+  "מתוזמן":      "#60A5FA",
+};
+const CALENDAR: { day: string; month: string; time: string; type: CalType; title: string; desc: string; status: CalStatus }[] = [
+  { day: "01", month: "יולי", time: "16:00", type: "סשן",    title: "סשן אולפן",          desc: "הקלטת ווקאל ל-Heart of Time",     status: "מתוכנן" },
+  { day: "03", month: "יולי", time: "18:00", type: "סשן",    title: "פגישה עם Nagash",    desc: "תיאום שחרורים ולו״ז הוצאות",       status: "מתוכנן" },
+  { day: "05", month: "יולי", time: "12:00", type: "צילום",  title: "צילום תוכן",         desc: "סשן צילום לקאבר ולרילסים",         status: "מתוזמן" },
+  { day: "07", month: "יולי", time: "20:00", type: "סושיאל", title: "העלאת ריל",          desc: "ריל טיזר ל-My Story",             status: "מתוזמן" },
+  { day: "10", month: "יולי", time: "—",     type: "סושיאל", title: "קמפיין סושיאל",       desc: "קמפיין שחרור ל-Closer Part 2",     status: "מתוכנן" },
+  { day: "12", month: "יולי", time: "21:00", type: "הופעה",  title: "הופעה / אירוע",       desc: "הופעה במועדון · סט 40 דקות",        status: "מתוכנן" },
+  { day: "14", month: "יולי", time: "—",     type: "דדליין", title: "דדליין לאישור תוכן",  desc: "אישור סופי למאסטר של My Story",     status: "ממתין לאישור" },
 ];
 
 // Hero "latest updates" flash — hardcoded, rotates client-side.
@@ -129,8 +136,8 @@ export default function ArtistPortalPage() {
         {/* Responsive grids: "המוזיקה שלי" gets priority width; everything stacks on small screens. */}
         <style>{`
           .rap-grid-a, .rap-grid-b { display: grid; gap: 18px; align-items: start; }
-          .rap-grid-a { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1.05fr) minmax(0, 1fr); }
-          .rap-grid-b { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .rap-grid-a { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+          .rap-grid-b { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
           @media (max-width: 1040px) {
             .rap-grid-a, .rap-grid-b { grid-template-columns: 1fr; }
           }
@@ -201,20 +208,7 @@ function HomeDashboard() {
           {/* Identity (start / right in RTL) — name/avatar + "all updates" button */}
           <div style={{ display: "flex", flexDirection: "column", gap: 15, minWidth: 244 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{
-                padding: 3, borderRadius: "50%", flexShrink: 0,
-                background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND}, #7A1414, ${BRAND})`,
-                boxShadow: `0 0 38px ${BRAND}55`,
-              }}>
-                <div style={{
-                  width: 86, height: 86, borderRadius: "50%",
-                  background: "linear-gradient(140deg, #2A0E0E, #140808)",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
-                  boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5)",
-                }}>ש</div>
-              </div>
+              <ArtistAvatar />
               <div style={{ textAlign: "start" }}>
                 <div style={{ fontSize: 27, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
                 <div style={{ fontSize: 13.5, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
@@ -258,11 +252,9 @@ function HomeDashboard() {
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(282px, 1fr))", gap: 17 }}>
-          <ActionCard icon="✓" title="לאשר מיקס" body="My Story - Mix v2" tag="ממתין לאישור" cta="לצפייה" />
-          <ActionCard icon="♫" title="לבחור ביט" body="יש ביטים חדשים שמחכים לך" cta="לצפייה בביטים" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 17 }}>
           <ActionCard icon="↑" title="להעלות סקיצה" body="שתף רעיון חדש ללייבל" cta="העלאה" primary />
-          <ActionCard icon="📅" title="סשן קרוב" body="פגישה עם Nagash" sub="25.06.2025 · 18:00" cta="פרטים" />
+          <ActionCard icon="📅" title="סשן קרוב" body="פגישה עם Nagash" sub="03.07.2025 · 18:00" cta="פרטים" />
         </div>
       </div>
 
@@ -284,27 +276,6 @@ function HomeDashboard() {
                 <StatusBadge status={s.status} />
                 <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>{s.date}</span>
                 <button style={dotsBtn} aria-label="more">⋮</button>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-
-        {/* ביטים פנויים — Beat Room feel */}
-        <SectionCard title="ביטים פנויים" link="לכל הביטים →">
-          <div style={{ padding: "10px 12px" }}>
-            {BEATS.map(b => (
-              <div key={b.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 12px", borderRadius: 12, border: "1px solid transparent", transition: "all .14s" }}>
-                <div style={{ position: "relative" }}>
-                  <Cover size={48} />
-                  <Equalizer />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
-                  <span style={{ display: "inline-block", marginTop: 5, fontSize: 10.5, fontWeight: 700, color: TEXT2, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, borderRadius: 7, padding: "2px 9px", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{b.bpm} · {b.key}</span>
-                </div>
-                <button style={ghostPill}>♥ אהבתי</button>
-                <button style={ghostPill}>⌖ שמור</button>
               </div>
             ))}
           </div>
@@ -335,19 +306,37 @@ function HomeDashboard() {
       {/* ── 3. Main grid (row B) ── */}
       <div className="rap-grid-b">
 
-        {/* לו״ז קרוב */}
-        <SectionCard title="לו״ז קרוב" link="לכל הפגישות →">
-          <div style={{ padding: "10px 16px" }}>
-            {SCHEDULE.map((ev, i) => (
-              <div key={ev.day + ev.title} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 4px", borderBottom: i === SCHEDULE.length - 1 ? "none" : `1px solid ${BDR}` }}>
-                <div style={{ textAlign: "center", width: 50, flexShrink: 0, padding: "6px 0", borderRadius: 11, background: "rgba(220,38,38,0.08)", border: `1px solid ${BRAND}33` }}>
-                  <div style={{ fontSize: 19, fontWeight: 900, color: "#FF6B6B", lineHeight: 1 }}>{ev.day}</div>
-                  <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>{ev.month}</div>
+        {/* יומן האמן — prominent timeline */}
+        <SectionCard title="יומן האמן" link="לכל הפעילויות →">
+          <div style={{ padding: "8px 14px 12px" }}>
+            {CALENDAR.map((ev, i) => {
+              const tc = CAL_TYPE_COLOR[ev.type];
+              const sc = CAL_STATUS_COLOR[ev.status];
+              return (
+                <div key={ev.title} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                  style={{ display: "flex", alignItems: "stretch", gap: 13, padding: "13px 10px", borderRadius: 13, border: "1px solid transparent", borderBottom: i === CALENDAR.length - 1 ? "1px solid transparent" : `1px solid ${BDR}`, transition: "all .14s" }}>
+                  {/* date block */}
+                  <div style={{ textAlign: "center", width: 52, flexShrink: 0, padding: "7px 0", borderRadius: 11, background: "rgba(220,38,38,0.08)", border: `1px solid ${BRAND}33`, alignSelf: "center" }}>
+                    <div style={{ fontSize: 19, fontWeight: 900, color: "#FF6B6B", lineHeight: 1 }}>{ev.day}</div>
+                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>{ev.month}</div>
+                  </div>
+                  {/* colored type accent line */}
+                  <div style={{ width: 3, borderRadius: 3, background: tc, flexShrink: 0, boxShadow: `0 0 8px ${tc}66` }} />
+                  {/* content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{ev.title}</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: tc, background: `${tc}1A`, border: `1px solid ${tc}45`, borderRadius: 6, padding: "2px 8px" }}>{ev.type}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.desc}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: sc, background: `${sc}18`, border: `1px solid ${sc}40`, borderRadius: 6, padding: "2px 9px" }}>{ev.status}</span>
+                      <span style={{ fontSize: 11.5, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</span>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: TEXT }}>{ev.title}</div>
-                <div style={{ fontSize: 12, color: TEXT2, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </SectionCard>
 
@@ -363,24 +352,99 @@ function HomeDashboard() {
           </div>
         </SectionCard>
 
-        {/* קישורים מהירים — 2×2 */}
-        <SectionCard title="קישורים מהירים">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11, padding: "15px 16px 17px" }}>
-            {QUICK_LINKS.map(q => (
-              <button key={q.label} onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(220,38,38,0.4)"; e.currentTarget.style.background = "#1C1516"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = BDR; e.currentTarget.style.background = CARD2; }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 11, padding: "15px 14px", borderRadius: 13,
-                  background: CARD2, border: `1px solid ${BDR}`, color: TEXT, fontSize: 13, fontWeight: 700,
-                  cursor: "pointer", fontFamily: "inherit", textAlign: "start", transition: "all .14s",
-                }}>
-                <span style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, background: "rgba(220,38,38,0.13)", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{q.icon}</span>
-                {q.label}
-              </button>
-            ))}
-          </div>
-        </SectionCard>
       </div>
+    </div>
+  );
+}
+
+// ── Artist avatar — shows initial "ש" or an uploaded profile image ────────────────
+//    Upload goes to an isolated Dropbox folder via /api/red-artists/profile-image.
+//    The chosen path is remembered in localStorage (demo persistence — no DB).
+const AVATAR_KEY  = "rb_artist_avatar_path_shalev";
+const AVATAR_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+function ArtistAvatar() {
+  const [path, setPath]   = useState<string | null>(null);
+  const [ver, setVer]     = useState(0);          // cache-bust after re-upload (overwrites same path)
+  const [hover, setHover] = useState(false);
+  const [busy, setBusy]   = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    try { const p = localStorage.getItem(AVATAR_KEY); if (p) setPath(p); } catch { /* ignore */ }
+  }, []);
+
+  function notify(m: string) { setToast(m); setTimeout(() => setToast(null), 2600); }
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!AVATAR_MIME.includes(file.type)) { notify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
+    if (file.size > 5 * 1024 * 1024)      { notify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res  = await fetch("/api/red-artists/profile-image", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) { notify(data.error ?? "ההעלאה נכשלה"); }
+      else {
+        const p = data.path as string;
+        try { localStorage.setItem(AVATAR_KEY, p); } catch { /* ignore */ }
+        setPath(p);
+        setVer(Date.now());
+        notify("תמונת הפרופיל עודכנה");
+      }
+    } catch { notify("ההעלאה נכשלה"); }
+    finally { setBusy(false); }
+  }
+
+  const src = path ? `/api/dropbox/stream?path=${encodeURIComponent(path)}${ver ? `&t=${ver}` : ""}` : null;
+
+  return (
+    <div
+      onClick={() => { if (!busy) inputRef.current?.click(); }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title="עריכת תמונה"
+      style={{
+        padding: 3, borderRadius: "50%", flexShrink: 0, position: "relative", cursor: busy ? "wait" : "pointer",
+        background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND}, #7A1414, ${BRAND})`,
+        boxShadow: `0 0 38px ${BRAND}55`,
+      }}
+    >
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={onPick} />
+      <div style={{
+        width: 86, height: 86, borderRadius: "50%", overflow: "hidden", position: "relative",
+        background: "linear-gradient(140deg, #2A0E0E, #140808)", border: "1px solid rgba(255,255,255,0.10)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
+        boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5)",
+      }}>
+        {src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt="תמונת פרופיל" onError={() => { setPath(null); try { localStorage.removeItem(AVATAR_KEY); } catch { /* ignore */ } }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : "ש"}
+        {/* hover / busy overlay */}
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: "50%", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", gap: 2, background: "rgba(0,0,0,0.62)", color: "#fff",
+          opacity: hover || busy ? 1 : 0, transition: "opacity .15s", pointerEvents: "none",
+        }}>
+          <span style={{ fontSize: 16 }}>{busy ? "⏳" : "📷"}</span>
+          <span style={{ fontSize: 9.5, fontWeight: 700 }}>{busy ? "מעלה…" : (path ? "עריכת תמונה" : "העלאת תמונה")}</span>
+        </div>
+      </div>
+      {toast && typeof document !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 100020,
+          background: "#1A1C22", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 13, fontWeight: 700,
+          padding: "11px 20px", borderRadius: 12, boxShadow: "0 8px 30px rgba(0,0,0,0.6)", fontFamily: "'Heebo', Arial, sans-serif",
+        }}>{toast}</div>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -471,18 +535,6 @@ function BalanceRow({ label, value, color, icon }: { label: string; value: strin
   );
 }
 
-// Tiny equalizer accent overlaid on a beat cover — gives the "Beat Room" feel.
-function Equalizer() {
-  const bars = [10, 16, 7, 13];
-  return (
-    <div style={{ position: "absolute", bottom: 5, insetInlineStart: 5, display: "flex", alignItems: "flex-end", gap: 2, height: 16, pointerEvents: "none" }}>
-      {bars.map((h, i) => (
-        <span key={i} style={{ width: 2.5, height: h, borderRadius: 2, background: "#fff", opacity: 0.85, boxShadow: "0 0 6px rgba(255,255,255,0.4)" }} />
-      ))}
-    </div>
-  );
-}
-
 const playBtn: React.CSSProperties = {
   width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
   background: "linear-gradient(180deg, rgba(220,38,38,0.28), rgba(220,38,38,0.14))",
@@ -492,8 +544,4 @@ const playBtn: React.CSSProperties = {
 };
 const dotsBtn: React.CSSProperties = {
   background: "none", border: "none", color: MUTED, fontSize: 16, cursor: "pointer", flexShrink: 0, padding: "0 2px",
-};
-const ghostPill: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, padding: "6px 12px", borderRadius: 9, whiteSpace: "nowrap",
-  background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit",
 };
