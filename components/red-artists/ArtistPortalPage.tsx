@@ -36,6 +36,23 @@ const panel: React.CSSProperties = {
   overflow: "hidden",
 };
 
+// ── Player icons — clean monochrome SVG (Lucide-style, no emoji, no deps) ─────────
+type IcoProps = { size?: number; color?: string };
+function Svg({ size, color, fill, children }: { size: number; color: string; fill: string; children: React.ReactNode }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>{children}</svg>
+  );
+}
+const IcPlay     = ({ size = 20, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill={color}><polygon points="6 4 20 12 6 20 6 4" /></Svg>;
+const IcSkipFwd  = ({ size = 20, color = TEXT }: IcoProps)  => <Svg size={size} color={color} fill="none"><polygon points="5 4 15 12 5 20 5 4" /><line x1="19" y1="5" x2="19" y2="19" /></Svg>;
+const IcSkipBack = ({ size = 20, color = TEXT }: IcoProps)  => <Svg size={size} color={color} fill="none"><polygon points="19 20 9 12 19 4 19 20" /><line x1="5" y1="19" x2="5" y2="5" /></Svg>;
+const IcShuffle  = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="M4 4l5 5" /></Svg>;
+const IcRepeat   = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></Svg>;
+const IcHeart    = ({ size = 18, color = "#FF6B6B" }: IcoProps) => <Svg size={size} color={color} fill={color}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z" /></Svg>;
+const IcVolume   = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></Svg>;
+const IcList     = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3.5" y1="6" x2="3.5" y2="6" /><line x1="3.5" y1="12" x2="3.5" y2="12" /><line x1="3.5" y1="18" x2="3.5" y2="18" /></Svg>;
+const IcMonitor  = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></Svg>;
+
 // ── Demo data (UI only — hardcoded, no DB) ───────────────────────────────────────
 type SongStatus = "ממתין לאישור" | "בבדיקה" | "מאושר" | "סקיצה";
 const STATUS_COLOR: Record<SongStatus, string> = {
@@ -442,46 +459,82 @@ function MyMusicPage() {
         </div>
       </div>
 
-      {/* ── bottom mock player bar (visual only — does NOT touch the global player) ── */}
-      <div style={{ ...panel, display: "flex", alignItems: "center", justifyContent: isMobile ? "center" : undefined, gap: isMobile ? 14 : 22, flexWrap: "wrap", padding: isMobile ? "16px 16px" : "22px 28px", marginTop: 4, marginBottom: 12 }}>
-        {/* now playing (right) */}
-        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 11 : 14, minWidth: 0, flex: isMobile ? "1 1 100%" : "0 1 auto" }}>
-          {/* mini waveform */}
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 2.5, height: isMobile ? 32 : 42, flexShrink: 0 }}>
-            {[14, 28, 18, 36, 22, 31, 15, 25, 34, 20, 30, 16].map((h, i) => (
-              <span key={i} style={{ width: 3, height: isMobile ? h * 0.78 : h, borderRadius: 2, background: BRAND, opacity: 0.85 }} />
-            ))}
+      {/* ── bottom mock player (visual only — does NOT touch the global player) ── */}
+      {isMobile ? (
+        /* Mobile: compact modern player — artwork+meta, wide progress, centered controls */
+        <div style={{ ...panel, padding: "14px 16px 16px", marginTop: 4, marginBottom: 12 }}>
+          {/* now playing */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>הסיפור שלי</div>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>מיקס · 03:42</div>
+            </div>
+            <button style={pbtn} aria-label="אהבתי"><IcHeart size={18} /></button>
           </div>
-          <div style={{ width: isMobile ? 46 : 56, height: isMobile ? 46 : 56, borderRadius: 12, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: isMobile ? 14.5 : 15.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>הסיפור שלי</div>
-            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>מיקס · 03:42</div>
+          {/* progress */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 13 }}>
+            <span style={{ fontSize: 11, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>1:28</span>
+            <div style={{ flex: 1, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.12)", position: "relative" }}>
+              <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "40%", background: BRAND, borderRadius: 3 }} />
+              <div style={{ position: "absolute", insetInlineStart: "calc(40% - 6px)", top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: "50%", background: "#fff", boxShadow: `0 0 8px ${BRAND}` }} />
+            </div>
+            <span style={{ fontSize: 11, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>3:42</span>
           </div>
-          <span style={{ color: "#FF6B6B", fontSize: 17, flexShrink: 0 }}>♥</span>
-        </div>
-
-        {/* transport (center) */}
-        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 16 : 20, marginInlineStart: "auto", marginInlineEnd: "auto" }}>
-          <span style={{ color: TEXT2, fontSize: 17, cursor: "pointer" }}>⇄</span>
-          <span style={{ color: TEXT, fontSize: 19, cursor: "pointer" }}>⏮</span>
-          <button style={{ width: isMobile ? 50 : 58, height: isMobile ? 50 : 58, borderRadius: "50%", flexShrink: 0, background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.4), #150809 78%)", border: `1px solid ${BRAND}`, color: "#fff", fontSize: isMobile ? 16 : 18, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 0 22px rgba(220,38,38,0.45)` }}>▶</button>
-          <span style={{ color: TEXT, fontSize: 19, cursor: "pointer" }}>⏭</span>
-          <span style={{ color: TEXT2, fontSize: 17, cursor: "pointer" }}>↻</span>
-        </div>
-
-        {/* volume + icons (left) */}
-        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 14, minWidth: 0, flex: isMobile ? "1 1 100%" : "0 1 auto", justifyContent: isMobile ? "center" : "flex-end" }}>
-          <span style={{ color: TEXT2, fontSize: 16, flexShrink: 0 }}>🔊</span>
-          <div style={{ width: isMobile ? 120 : 150, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.10)", position: "relative", flexShrink: 1 }}>
-            <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "70%", background: BRAND, borderRadius: 3 }} />
+          {/* controls */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 26, marginTop: 15 }}>
+            <button style={pbtn} aria-label="ערבוב"><IcShuffle size={18} /></button>
+            <button style={pbtn} aria-label="הקודם"><IcSkipBack size={22} /></button>
+            <button style={{ ...pbtn, width: 54, height: 54, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.42), #150809 78%)", border: `1px solid ${BRAND}`, boxShadow: `0 0 22px rgba(220,38,38,0.45)` }} aria-label="נגן"><IcPlay size={22} /></button>
+            <button style={pbtn} aria-label="הבא"><IcSkipFwd size={22} /></button>
+            <button style={pbtn} aria-label="חזרה"><IcRepeat size={18} /></button>
           </div>
-          <span style={{ color: MUTED, fontSize: 16, flexShrink: 0 }}>🖥</span>
-          <span style={{ color: MUTED, fontSize: 16, flexShrink: 0 }}>☰</span>
         </div>
-      </div>
+      ) : (
+        /* Desktop: horizontal player */
+        <div style={{ ...panel, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap", padding: "22px 28px", marginTop: 4, marginBottom: 12 }}>
+          {/* now playing (right) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: "0 1 auto" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 2.5, height: 42, flexShrink: 0 }}>
+              {[14, 28, 18, 36, 22, 31, 15, 25, 34, 20, 30, 16].map((h, i) => (
+                <span key={i} style={{ width: 3, height: h, borderRadius: 2, background: BRAND, opacity: 0.85 }} />
+              ))}
+            </div>
+            <div style={{ width: 56, height: 56, borderRadius: 12, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>הסיפור שלי</div>
+              <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>מיקס · 03:42</div>
+            </div>
+            <button style={pbtn} aria-label="אהבתי"><IcHeart size={18} /></button>
+          </div>
+          {/* transport (center) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 18, marginInlineStart: "auto", marginInlineEnd: "auto" }}>
+            <button style={pbtn} aria-label="ערבוב"><IcShuffle size={18} /></button>
+            <button style={pbtn} aria-label="הקודם"><IcSkipBack size={22} /></button>
+            <button style={{ ...pbtn, width: 58, height: 58, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.4), #150809 78%)", border: `1px solid ${BRAND}`, boxShadow: `0 0 22px rgba(220,38,38,0.45)` }} aria-label="נגן"><IcPlay size={22} /></button>
+            <button style={pbtn} aria-label="הבא"><IcSkipFwd size={22} /></button>
+            <button style={pbtn} aria-label="חזרה"><IcRepeat size={18} /></button>
+          </div>
+          {/* volume + icons (left) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: "0 1 auto", justifyContent: "flex-end" }}>
+            <button style={pbtn} aria-label="עוצמה"><IcVolume size={18} /></button>
+            <div style={{ width: 150, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.10)", position: "relative", flexShrink: 1 }}>
+              <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "70%", background: BRAND, borderRadius: 3 }} />
+            </div>
+            <button style={pbtn} aria-label="מסך"><IcMonitor size={18} /></button>
+            <button style={pbtn} aria-label="תור"><IcList size={18} /></button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// Plain icon-button style for the player controls.
+const pbtn: React.CSSProperties = {
+  background: "none", border: "none", cursor: "pointer", padding: 4,
+  display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0,
+};
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
 function HomeDashboard() {
@@ -641,6 +694,7 @@ const weekArrow: React.CSSProperties = {
 };
 
 function WeeklyCalendar() {
+  const isMobile = useIsMobile();
   return (
     <div style={panel}>
       {/* header + subtitle */}
@@ -652,11 +706,11 @@ function WeeklyCalendar() {
         <div style={{ fontSize: 12, color: TEXT2, marginTop: 5 }}>הצצה לפגישות, משימות ושידורים הקרובים שלך</div>
       </div>
 
-      {/* week row with side arrows (decorative); ראשון on the right in RTL */}
-      <div style={{ display: "flex", alignItems: "stretch", gap: 8, padding: "16px 14px 8px" }}>
-        <button style={weekArrow} aria-label="שבוע קודם">›</button>
-        <div style={{ flex: 1, overflowX: "auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: 720 }}>
+      {/* week row — desktop: arrows + grid; mobile: clean snap scroll (no arrows) */}
+      <div style={{ display: "flex", alignItems: "stretch", gap: 8, padding: isMobile ? "14px 12px 8px" : "16px 14px 8px" }}>
+        {!isMobile && <button style={weekArrow} aria-label="שבוע קודם">›</button>}
+        <div style={{ flex: 1, overflowX: "auto", scrollSnapType: isMobile ? "x proximity" : undefined, WebkitOverflowScrolling: "touch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(7, 132px)" : "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: isMobile ? "max-content" : 720 }}>
             {WEEK.map(d => {
               const has = d.events.length > 0;
               const sel = d.selected;
@@ -666,6 +720,7 @@ function WeeklyCalendar() {
                   border: `1px solid ${sel ? BRAND : (has ? "rgba(220,38,38,0.18)" : BDR)}`,
                   background: sel ? "rgba(220,38,38,0.07)" : "rgba(255,255,255,0.012)",
                   boxShadow: sel ? `0 0 16px rgba(220,38,38,0.18)` : "none",
+                  scrollSnapAlign: isMobile ? "start" : undefined,
                 }}>
                   {/* day header */}
                   <div style={{ textAlign: "center", padding: "10px 6px 8px" }}>
@@ -694,7 +749,7 @@ function WeeklyCalendar() {
             })}
           </div>
         </div>
-        <button style={weekArrow} aria-label="שבוע הבא">‹</button>
+        {!isMobile && <button style={weekArrow} aria-label="שבוע הבא">‹</button>}
       </div>
 
       {/* campaign-of-the-week strip */}
