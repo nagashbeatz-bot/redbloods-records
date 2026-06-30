@@ -252,9 +252,8 @@ function HomeDashboard() {
             {SONGS.map(s => (
               <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
-                {/* play + music-file icon (rightmost in RTL) */}
+                {/* play (rightmost in RTL) */}
                 <button style={playBtn} aria-label="play">▶</button>
-                <button style={musicBtn} aria-label="file">♪</button>
                 {/* name + version */}
                 <div style={{ textAlign: "start", minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{s.name}</div>
@@ -582,13 +581,6 @@ const playBtn: React.CSSProperties = {
   border: `1px solid ${BRAND}55`, color: "#fff",
   fontSize: 10.5, cursor: "pointer", fontFamily: "inherit",
   boxShadow: `0 0 12px rgba(220,38,38,0.28)`,
-  display: "flex", alignItems: "center", justifyContent: "center",
-};
-// Music-file icon button — dark rounded square.
-const musicBtn: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-  background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: "#FF6B6B",
-  fontSize: 14, cursor: "pointer", fontFamily: "inherit",
   display: "flex", alignItems: "center", justifyContent: "center",
 };
 const dotsBtn: React.CSSProperties = {
