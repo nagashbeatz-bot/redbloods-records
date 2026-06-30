@@ -114,7 +114,17 @@ export default function ArtistPortalPage() {
   return (
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "30px 24px 100px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
-      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1300, margin: "0 auto" }}>
+
+        {/* Responsive grids: "המוזיקה שלי" gets priority width; everything stacks on small screens. */}
+        <style>{`
+          .rap-grid-a, .rap-grid-b { display: grid; gap: 18px; align-items: start; }
+          .rap-grid-a { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1.05fr) minmax(0, 1fr); }
+          .rap-grid-b { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          @media (max-width: 1040px) {
+            .rap-grid-a, .rap-grid-b { grid-template-columns: 1fr; }
+          }
+        `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
         <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
@@ -162,18 +172,19 @@ function HomeDashboard() {
       {/* ── 1. Hero ── */}
       <div style={{
         position: "relative", overflow: "hidden", borderRadius: 24,
-        border: `1px solid rgba(220,38,38,0.28)`,
+        border: `1px solid rgba(220,38,38,0.34)`,
         background: `
-          radial-gradient(130% 150% at 90% -10%, rgba(220,38,38,0.34) 0%, rgba(220,38,38,0.06) 40%, #100E0F 72%),
-          linear-gradient(180deg, #161213 0%, #0E0C0D 100%)`,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 70px rgba(220,38,38,0.10), 0 24px 60px rgba(0,0,0,0.5)`,
+          radial-gradient(140% 165% at 92% -18%, rgba(220,38,38,0.42) 0%, rgba(220,38,38,0.11) 36%, #120E0F 70%),
+          radial-gradient(90% 130% at 48% 130%, rgba(220,38,38,0.12) 0%, transparent 58%),
+          linear-gradient(180deg, #1A1314 0%, #0C0A0B 100%)`,
+        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 95px rgba(220,38,38,0.15), 0 30px 72px rgba(0,0,0,0.55)`,
       }}>
         {/* subtle vignette toward the greeting side */}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(10,10,11,0) 30%, rgba(10,10,11,0.7) 100%)", pointerEvents: "none" }} />
         {/* fine red top hairline glow */}
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
 
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 26, padding: "34px 38px" }}>
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 28, padding: "46px 42px" }}>
 
           {/* Identity (start / right in RTL) */}
           <div style={{ display: "flex", alignItems: "center", gap: 18, minWidth: 260 }}>
@@ -244,7 +255,7 @@ function HomeDashboard() {
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(244px, 1fr))", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(262px, 1fr))", gap: 16 }}>
           <ActionCard icon="✓" title="לאשר מיקס" body="My Story - Mix v2" tag="ממתין לאישור" cta="לצפייה" />
           <ActionCard icon="♫" title="לבחור ביט" body="יש ביטים חדשים שמחכים לך" cta="לצפייה בביטים" />
           <ActionCard icon="↑" title="להעלות סקיצה" body="שתף רעיון חדש ללייבל" cta="העלאה" primary />
@@ -252,19 +263,19 @@ function HomeDashboard() {
         </div>
       </div>
 
-      {/* ── 3. Main grid (row A) ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))", gap: 18, alignItems: "start" }}>
+      {/* ── 3. Main grid (row A) — music-forward in RTL: המוזיקה שלי (right) → ביטים → מאזן ── */}
+      <div className="rap-grid-a">
 
         {/* המוזיקה שלי */}
         <SectionCard title="המוזיקה שלי" link="לכל המוזיקה שלי →">
           <div style={{ padding: "10px 12px" }}>
             {SONGS.map(s => (
               <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 10px", borderRadius: 12, border: "1px solid transparent", transition: "all .14s" }}>
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
                 <Cover />
                 <button style={playBtn} aria-label="play">▶</button>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
                   <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{s.kind}</div>
                 </div>
                 <StatusBadge status={s.status} />
@@ -319,7 +330,7 @@ function HomeDashboard() {
       </div>
 
       {/* ── 3. Main grid (row B) ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))", gap: 18, alignItems: "start" }}>
+      <div className="rap-grid-b">
 
         {/* לו״ז קרוב */}
         <SectionCard title="לו״ז קרוב" link="לכל הפגישות →">
@@ -379,11 +390,11 @@ function ActionCard({ icon, title, body, sub, tag, cta, primary }: {
     <div
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.35)"; e.currentTarget.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.05), 0 18px 40px rgba(0,0,0,0.5)"; }}
       onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.borderColor = BDR2; e.currentTarget.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px rgba(0,0,0,0.4)"; }}
-      style={{ ...panel, padding: "20px 20px 18px", display: "flex", flexDirection: "column", gap: 12, minHeight: 176, transition: "transform .16s, border-color .16s, box-shadow .16s" }}>
-      <div style={{ width: 44, height: 44, borderRadius: 13, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19 }}>{icon}</div>
+      style={{ ...panel, padding: "22px 22px 20px", display: "flex", flexDirection: "column", gap: 13, minHeight: 190, transition: "transform .16s, border-color .16s, box-shadow .16s" }}>
+      <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21 }}>{icon}</div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>{title}</div>
-        <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5, lineHeight: 1.55 }}>{body}</div>
+        <div style={{ fontSize: 15.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>{title}</div>
+        <div style={{ fontSize: 13, color: TEXT2, marginTop: 6, lineHeight: 1.55 }}>{body}</div>
         {sub && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, direction: "ltr", textAlign: "right", fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
         {tag && <span style={{ display: "inline-block", marginTop: 9, fontSize: 10.5, fontWeight: 700, color: AMBER, background: `${AMBER}18`, border: `1px solid ${AMBER}40`, borderRadius: 7, padding: "3px 10px" }}>{tag}</span>}
       </div>
