@@ -533,8 +533,8 @@ function MyMusicPage() {
           {/* volume + icons (left) */}
           <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: "0 1 auto", justifyContent: "flex-end" }}>
             <button style={pbtn} aria-label="עוצמה"><IcVolume size={18} /></button>
-            <div style={{ width: 150, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.10)", position: "relative", flexShrink: 1 }}>
-              <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "70%", background: BRAND, borderRadius: 3 }} />
+            <div style={{ width: 150, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.10)", position: "relative", flexShrink: 1, direction: "ltr" }}>
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "70%", background: BRAND, borderRadius: 3 }} />
             </div>
             <button style={pbtn} aria-label="מסך"><IcMonitor size={18} /></button>
             <button style={pbtn} aria-label="תור"><IcList size={18} /></button>
@@ -653,12 +653,12 @@ function HomeDashboard() {
                 </div>
               </div>
             ))}
-            <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>‹ לכל השירים והסקיצות</button>
+            <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>לכל השירים והסקיצות ←</button>
           </div>
         </SectionCard>
 
         {/* מאזן (artist-only: income / expenses / balance — NO split, NO debt) */}
-        <SectionCard title="מאזן" link="לכל הדוחות הפיננסיים →">
+        <SectionCard title="מאזן" link="לכל הדוחות הפיננסיים ←">
           <div style={{ padding: "14px 18px 18px" }}>
             <BalanceRow label="הכנסות שלי" value="₪10,450" color={GREEN} icon="↑" />
             <BalanceRow label="הוצאות שלי" value="₪2,130"  color={TEXT}  icon="↓" />
@@ -683,7 +683,7 @@ function HomeDashboard() {
       <WeeklyCalendar />
 
       {/* ── 4. עדכונים מהלייבל (full width) ── */}
-      <SectionCard title="עדכונים מהלייבל" link="לכל העדכונים →">
+      <SectionCard title="עדכונים מהלייבל" link="לכל העדכונים ←">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "0 28px", padding: "8px 18px 12px" }}>
           {UPDATES.map(u => (
             <div key={u} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 4px", borderBottom: `1px solid ${BDR}` }}>
