@@ -487,17 +487,17 @@ function MyMusicPage() {
             </div>
             <button style={pbtn} aria-label="אהבתי"><IcHeart size={18} /></button>
           </div>
-          {/* progress */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 13 }}>
-            <span style={{ fontSize: 11, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>1:28</span>
+          {/* progress — LTR like any music player (elapsed left, total right) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 13, direction: "ltr" }}>
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>1:28</span>
             <div style={{ flex: 1, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.12)", position: "relative" }}>
-              <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "40%", background: BRAND, borderRadius: 3 }} />
-              <div style={{ position: "absolute", insetInlineStart: "calc(40% - 6px)", top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: "50%", background: "#fff", boxShadow: `0 0 8px ${BRAND}` }} />
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "40%", background: BRAND, borderRadius: 3 }} />
+              <div style={{ position: "absolute", left: "calc(40% - 6px)", top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: "50%", background: "#fff", boxShadow: `0 0 8px ${BRAND}` }} />
             </div>
-            <span style={{ fontSize: 11, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>3:42</span>
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>3:42</span>
           </div>
-          {/* controls */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 26, marginTop: 15 }}>
+          {/* controls — forced LTR so prev/next never flip: shuffle · prev · play · next · repeat */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 26, marginTop: 15, direction: "ltr" }}>
             <button style={pbtn} aria-label="ערבוב"><IcShuffle size={18} /></button>
             <button style={pbtn} aria-label="הקודם"><IcSkipBack size={22} /></button>
             <button style={{ ...pbtn, width: 54, height: 54, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.42), #150809 78%)", border: `1px solid ${BRAND}`, boxShadow: `0 0 22px rgba(220,38,38,0.45)` }} aria-label="נגן"><IcPlay size={22} /></button>
@@ -522,8 +522,8 @@ function MyMusicPage() {
             </div>
             <button style={pbtn} aria-label="אהבתי"><IcHeart size={18} /></button>
           </div>
-          {/* transport (center) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 18, marginInlineStart: "auto", marginInlineEnd: "auto" }}>
+          {/* transport (center) — forced LTR so prev/next never flip */}
+          <div style={{ display: "flex", alignItems: "center", gap: 18, marginInlineStart: "auto", marginInlineEnd: "auto", direction: "ltr" }}>
             <button style={pbtn} aria-label="ערבוב"><IcShuffle size={18} /></button>
             <button style={pbtn} aria-label="הקודם"><IcSkipBack size={22} /></button>
             <button style={{ ...pbtn, width: 58, height: 58, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.4), #150809 78%)", border: `1px solid ${BRAND}`, boxShadow: `0 0 22px rgba(220,38,38,0.45)` }} aria-label="נגן"><IcPlay size={22} /></button>
