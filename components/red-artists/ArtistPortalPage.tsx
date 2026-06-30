@@ -118,9 +118,13 @@ export default function ArtistPortalPage() {
 
         {/* Responsive grids: "המוזיקה שלי" gets priority width; everything stacks on small screens. */}
         <style>{`
-          .rap-grid-a { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+          .rap-grid-a { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+          .rap-acts   { display: grid; gap: 17px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
           @media (max-width: 1040px) {
             .rap-grid-a { grid-template-columns: 1fr; }
+          }
+          @media (max-width: 760px) {
+            .rap-acts { grid-template-columns: 1fr; }
           }
           @keyframes rapProgress { from { width: 0%; } to { width: 100%; } }
         `}</style>
@@ -233,7 +237,7 @@ function HomeDashboard() {
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 17 }}>
+        <div className="rap-acts">
           <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" cta="פרטים" />
           <ActionCard icon="↑" title="להעלות סקיצה" body="שיתוף רעיון חדש להערות" cta="העלאה" primary />
         </div>
@@ -247,17 +251,17 @@ function HomeDashboard() {
           <div style={{ padding: "8px 12px 6px" }}>
             {SONGS.map(s => (
               <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 11, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
-                {/* name + version (right) */}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
+                {/* play + music-file icon (rightmost in RTL) */}
+                <button style={playBtn} aria-label="play">▶</button>
+                <button style={musicBtn} aria-label="file">♪</button>
+                {/* name + version */}
                 <div style={{ textAlign: "start", minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{s.name}</div>
                   <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{s.kind}</div>
                 </div>
-                {/* music-file icon + play */}
-                <button style={musicBtn} aria-label="file">♪</button>
-                <button style={playBtn} aria-label="play">▶</button>
                 {/* metadata pushed to the left edge */}
-                <div style={{ display: "flex", alignItems: "center", gap: 11, marginInlineStart: "auto" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginInlineStart: "auto" }}>
                   <StatusBadge status={s.status} />
                   <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap", direction: "ltr" }}>{s.date}</span>
                   <button style={dotsBtn} aria-label="more">⋮</button>
