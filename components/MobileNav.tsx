@@ -4,7 +4,15 @@ import { useState, useEffect, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useRole } from "@/lib/use-role";
+import { useRole, ROLE_CACHE_KEY } from "@/lib/use-role";
+import { createSupabaseBrowser } from "@/lib/supabase-browser";
+
+// Logout — identical to the desktop Sidebar: clear cached role, sign out, /login.
+async function doLogout() {
+  try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }
+  try { await createSupabaseBrowser().auth.signOut(); } catch { /* ignore */ }
+  window.location.href = "/login";
+}
 
 const MOBILE_TABS = [
   { href: "/dashboard",      label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
@@ -102,6 +110,22 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
             <span style={{ fontSize: 20 }}>✦</span>
             סוכן AI
           </button>
+
+          {/* Logout — full width at the bottom (user area) */}
+          <button
+            onClick={() => { onClose(); doLogout(); }}
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "14px 16px", borderRadius: 14, marginTop: 4,
+              background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.35)",
+              color: "#EF4444", fontSize: 15, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            <span style={{ fontSize: 20 }}>🚪</span>
+            <span style={{ flex: 1 }}>יציאה מהמערכת</span>
+          </button>
         </div>
       </div>
     </div>,
@@ -168,7 +192,7 @@ export default function MobileNav({
         style={{
           background: "#141414",
           borderColor: "#2A2A2A",
-          gridTemplateColumns: `repeat(${tabs.length + (isOwner ? 1 : 0)}, 1fr)`,
+          gridTemplateColumns: `repeat(${tabs.length + 1}, 1fr)`,
           paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
@@ -193,7 +217,7 @@ export default function MobileNav({
           );
         })}
 
-        {isOwner && (
+        {isOwner ? (
           <button
             onClick={() => setMoreOpen(true)}
             style={{
@@ -206,6 +230,20 @@ export default function MobileNav({
           >
             <span style={{ fontSize: 22, lineHeight: 1 }}>•••</span>
             עוד
+          </button>
+        ) : (
+          // Non-owner (e.g. Victor) has no "more" sheet — give a direct logout.
+          <button
+            onClick={doLogout}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center",
+              gap: 3, padding: "10px 0", minHeight: 56,
+              color: "#DC2626", fontSize: 11, fontWeight: 700,
+              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            <span style={{ fontSize: 22, lineHeight: 1 }}>🚪</span>
+            יציאה
           </button>
         )}
       </nav>
