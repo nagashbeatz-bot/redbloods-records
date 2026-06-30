@@ -579,41 +579,33 @@ function HomeDashboard() {
         {/* fine red top hairline glow */}
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
 
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 16 : 30, padding: isMobile ? "24px 18px" : "44px 44px" }}>
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 14 : 24, padding: isMobile ? "18px 16px" : "26px 36px" }}>
 
-          {/* Identity (start / right in RTL) — name/avatar + "all updates" button */}
-          <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 15, minWidth: isMobile ? "100%" : 244 }}>
+          {/* Identity (start / right in RTL) — name + avatar */}
+          <div style={{ display: "flex", flexDirection: "column", minWidth: isMobile ? "100%" : 232 }}>
             <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16 }}>
               <ArtistAvatar />
               <div style={{ textAlign: "start", minWidth: 0 }}>
-                <div style={{ fontSize: isMobile ? 20 : 27, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
-                <div style={{ fontSize: isMobile ? 12.5 : 13.5, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 9, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
+                <div style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
+                <div style={{ fontSize: isMobile ? 12 : 13, color: TEXT2, marginTop: 3 }}>אמן • Redbloods Records</div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 7, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
                   <span style={{ fontSize: 11.5, color: GREEN, fontWeight: 700 }}>פעיל</span>
                 </div>
               </div>
             </div>
-            <button style={{
-              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "11px 18px", borderRadius: 12, border: "none", color: "#fff",
-              background: "linear-gradient(180deg, #E5322F, #C01C1C)",
-              fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
-              boxShadow: `0 6px 20px rgba(220,38,38,0.4)`,
-              width: isMobile ? "100%" : undefined,
-            }}>☰ לכל העדכונים</button>
           </div>
 
           {/* Greeting + live "latest updates" flash (grows, centered) */}
           <div style={{ flex: 1, minWidth: isMobile ? "100%" : 320, textAlign: isMobile ? "start" : "center" }}>
-            <h1 style={{ fontSize: isMobile ? 27 : 41, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
+            <h1 style={{ fontSize: isMobile ? 23 : 32, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
               ברוך הבא, שליו <span style={{ WebkitTextFillColor: "initial" }}>👋</span>
             </h1>
-            <p style={{ fontSize: isMobile ? 13 : 14.5, color: "#C8C8CC", lineHeight: 1.7, margin: isMobile ? "11px 0 0" : "13px auto 0", maxWidth: 520 }}>
+            <p style={{ fontSize: isMobile ? 12.5 : 13.5, color: "#C8C8CC", lineHeight: 1.6, margin: isMobile ? "6px 0 0" : "7px auto 0", maxWidth: 500 }}>
               זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.
             </p>
 
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 18, marginBottom: 10 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
               <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
             </div>
