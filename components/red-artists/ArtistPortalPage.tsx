@@ -52,6 +52,7 @@ const IcHeart    = ({ size = 18, color = "#FF6B6B" }: IcoProps) => <Svg size={si
 const IcVolume   = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></Svg>;
 const IcList     = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3.5" y1="6" x2="3.5" y2="6" /><line x1="3.5" y1="12" x2="3.5" y2="12" /><line x1="3.5" y1="18" x2="3.5" y2="18" /></Svg>;
 const IcMonitor  = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></Svg>;
+const IcUpload   = ({ size = 18, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>;
 
 // Single unified play button used in EVERY list across the portal (desktop +
 // mobile): dark circle, subtle red border + glow, clean white SVG play icon.
@@ -136,25 +137,17 @@ const LIBRARY: LibTrack[] = [
   { name: "תל אביב בלילה", kind: "דמו",   status: "בבחינה",       date: "20.05.2025", dur: "02:37" },
   { name: "עד שנפגש",     kind: "מיקס",  status: "ממתין לאישור", date: "18.05.2025", dur: "03:55" },
 ];
-const PENDING_TRACKS: { name: string; kind: string; date: string }[] = [
-  { name: "שבילי אור",     kind: "מיקס", date: "09.06.2025" },
-  { name: "לילות ללא סוף", kind: "מיקס", date: "07.06.2025" },
-  { name: "חלומות בגובה",  kind: "מיקס", date: "05.06.2025" },
-];
 const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "סה״כ שירים",   value: 24, icon: "♫" },
   { label: "סקיצות",       value: 8,  icon: "✎" },
   { label: "ממתין לאישור", value: 3,  icon: "◷" },
   { label: "מאסטרים",      value: 6,  icon: "♬" },
 ];
-// chip label → predicate over a track (null = match all)
-const MUSIC_CHIPS: { label: string; match: ((t: LibTrack) => boolean) | null; dot?: string }[] = [
-  { label: "הכל",          match: null },
-  { label: "סקיצות",       match: t => t.kind === "סקיצה",        dot: "#9CA3AF" },
-  { label: "מיקסים",       match: t => t.kind === "מיקס",         dot: "#60A5FA" },
-  { label: "מאסטרים",      match: t => t.kind === "מאסטר",        dot: "#34D399" },
-  { label: "ממתין לאישור", match: t => t.status === "ממתין לאישור", dot: "#F59E0B" },
-];
+// Music-tab filter tabs. "מוכנים" = ready (status מוכן or a מאסטר version);
+// "סקיצות" = everything still in progress (סקיצה / בבחינה / ממתין לאישור / דמו).
+// Uses only existing status/kind values — no new statuses invented.
+const MUSIC_TABS = ["כל השירים", "סקיצות", "מוכנים"] as const;
+const isReadyTrack = (t: LibTrack) => t.status === "מוכן" || t.kind === "מאסטר";
 
 // Hero "latest updates" flash — hardcoded, rotates client-side.
 const FLASH: { text: string; time: string }[] = [
@@ -210,10 +203,8 @@ export default function ArtistPortalPage() {
           .rap-grid-a { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
           .rap-acts   { display: grid; gap: 17px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
           .rap-kpi    { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-          .rap-music  { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr); }
           @media (max-width: 1040px) {
             .rap-grid-a { grid-template-columns: 1fr; }
-            .rap-music  { grid-template-columns: 1fr; }
           }
           @media (max-width: 820px) {
             .rap-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -270,25 +261,13 @@ function MusicStatus({ status }: { status: string }) {
   return <span style={{ fontSize: 11, fontWeight: 800, color: c, background: `${c}24`, border: `1px solid ${c}5A`, borderRadius: 8, padding: "4px 11px", whiteSpace: "nowrap" }}>{status}</span>;
 }
 
-function Disc() {
-  return (
-    <span style={{
-      width: 50, height: 50, borderRadius: "50%", flexShrink: 0,
-      background: "radial-gradient(circle at 50% 50%, #2A2A30 0%, #141416 60%, #0C0C0E 100%)",
-      border: `1px solid ${BDR2}`, display: "flex", alignItems: "center", justifyContent: "center",
-      color: TEXT2, fontSize: 17,
-    }}>♫</span>
-  );
-}
-
 function MyMusicPage() {
-  const [chip, setChip]   = useState("הכל");
+  const [tab, setTab]     = useState<string>("כל השירים");
   const [query, setQuery] = useState("");
   const isMobile = useIsMobile();
 
-  const active = MUSIC_CHIPS.find(c => c.label === chip) ?? MUSIC_CHIPS[0];
   const rows = LIBRARY.filter(t =>
-    (active.match ? active.match(t) : true) &&
+    (tab === "כל השירים" ? true : tab === "מוכנים" ? isReadyTrack(t) : !isReadyTrack(t)) &&
     (query.trim() === "" || t.name.includes(query.trim()))
   );
 
@@ -354,46 +333,46 @@ function MyMusicPage() {
         ))}
       </div>
 
-      {/* ── filters / search ── */}
+      {/* ── controls: upload + 3 tabs + search ── */}
       <div style={{ ...panel, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "14px 18px" }}>
-        {/* sort (right) */}
-        <button style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 18px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>⇅ תאריך עדכון</button>
-        {/* chips */}
-        <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-          {MUSIC_CHIPS.map(c => {
-            const sel = c.label === chip;
+        {/* upload (primary) — UI only; not wired (no song-upload flow exists yet) */}
+        <button style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "12px 20px", borderRadius: 12, border: "none", color: "#fff",
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: 13.5, fontWeight: 800,
+          cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
+          width: isMobile ? "100%" : "auto",
+        }}><IcUpload size={17} /> העלאת קובץ</button>
+        {/* 3 filter tabs */}
+        <div style={{ display: "inline-flex", gap: 6, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 999, padding: 4, width: isMobile ? "100%" : "auto" }}>
+          {MUSIC_TABS.map(tb => {
+            const sel = tb === tab;
             return (
-              <button key={c.label} onClick={() => setChip(c.label)} style={{
-                display: "inline-flex", alignItems: "center", gap: 7, padding: "11px 18px", borderRadius: 999,
+              <button key={tb} onClick={() => setTab(tb)} style={{
+                flex: isMobile ? 1 : undefined, padding: "9px 18px", borderRadius: 999,
                 fontSize: 13.5, fontWeight: sel ? 800 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-                background: sel ? "rgba(220,38,38,0.16)" : "rgba(255,255,255,0.03)",
-                border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : BDR2}`,
+                background: sel ? "rgba(220,38,38,0.18)" : "transparent",
+                border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : "transparent"}`,
                 color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
-              }}>
-                {c.dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />}
-                {c.label}
-              </button>
+              }}>{tb}</button>
             );
           })}
         </div>
-        {/* search (pushed left) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 9, marginInlineStart: "auto", background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: "10px 14px", minWidth: 280 }}>
+        {/* search (pushed left on desktop, full width on mobile) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginInlineStart: isMobile ? 0 : "auto", width: isMobile ? "100%" : undefined, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: "10px 14px", minWidth: isMobile ? 0 : 240 }}>
           <span style={{ color: MUTED, fontSize: 14 }}>⌕</span>
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="חיפוש שיר או גרסה..." style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TEXT, fontSize: 13, fontFamily: "inherit" }} />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="חיפוש שיר או גרסה..." style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: TEXT, fontSize: 13, fontFamily: "inherit" }} />
         </div>
       </div>
 
-      {/* ── main: library table + pending side ── */}
-      <div className="rap-music">
-
-        {/* library */}
-        <div style={panel}>
+      {/* ── library (full width) ── */}
+      <div style={panel}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "18px 24px", borderBottom: `1px solid ${BDR}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
               <span style={{ fontSize: 17.5, fontWeight: 800, color: TEXT }}>ספריית השירים שלי</span>
             </div>
-            <span style={{ fontSize: 12.5, color: MUTED }}>24 תוצאות</span>
+            <span style={{ fontSize: 12.5, color: MUTED }}>{rows.length} תוצאות</span>
           </div>
 
           {/* column header — desktop only (mobile uses cards) */}
@@ -454,30 +433,6 @@ function MyMusicPage() {
             )}
             <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0 10px", fontWeight: 700 }}>הצג עוד ⌄</button>
           </div>
-        </div>
-
-        {/* pending approval side */}
-        <div style={panel}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "18px 20px", borderBottom: `1px solid ${BDR}` }}>
-            <span style={{ fontSize: 16.5, fontWeight: 800, color: TEXT }}>ממתין לאישור</span>
-            <span style={{ fontSize: 11.5, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, borderRadius: 99, padding: "3px 10px" }}>{PENDING_TRACKS.length}</span>
-          </div>
-          <div style={{ padding: "8px 16px 14px" }}>
-            {PENDING_TRACKS.map((p, i) => (
-              <div key={p.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 10px", borderRadius: 14, border: "1px solid transparent", borderBottom: i === PENDING_TRACKS.length - 1 ? "1px solid transparent" : `1px solid ${BDR}`, transition: "all .14s" }}>
-                <PlayButton size={42} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>{p.kind} · עודכן {p.date}</div>
-                  <span style={{ display: "inline-block", marginTop: 8, fontSize: 10.5, fontWeight: 800, color: "#F59E0B", background: "rgba(245,158,11,0.18)", border: "1px solid rgba(245,158,11,0.5)", borderRadius: 7, padding: "3px 10px" }}>ממתין לאישור</span>
-                </div>
-                <Disc />
-              </div>
-            ))}
-            <button style={{ display: "block", width: "100%", textAlign: "center", marginTop: 10, padding: "13px 0", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>הצג הכל</button>
-          </div>
-        </div>
       </div>
 
       {/* ── bottom mock player (visual only — does NOT touch the global player) ── */}
