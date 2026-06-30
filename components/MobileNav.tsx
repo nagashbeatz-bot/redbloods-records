@@ -4,15 +4,8 @@ import { useState, useEffect, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useRole, ROLE_CACHE_KEY } from "@/lib/use-role";
-import { createSupabaseBrowser } from "@/lib/supabase-browser";
-
-// Logout — identical to the desktop Sidebar: clear cached role, sign out, /login.
-async function doLogout() {
-  try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }
-  try { await createSupabaseBrowser().auth.signOut(); } catch { /* ignore */ }
-  window.location.href = "/login";
-}
+import { useRole } from "@/lib/use-role";
+import { signOutAndRedirect } from "@/lib/supabase-browser";
 
 const MOBILE_TABS = [
   { href: "/dashboard",      label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
@@ -113,7 +106,7 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
 
           {/* Logout — full width at the bottom (user area) */}
           <button
-            onClick={() => { onClose(); doLogout(); }}
+            onClick={() => { onClose(); signOutAndRedirect(); }}
             style={{
               gridColumn: "1 / -1",
               display: "flex", alignItems: "center", gap: 12,
@@ -234,7 +227,7 @@ export default function MobileNav({
         ) : (
           // Non-owner (e.g. Victor) has no "more" sheet — give a direct logout.
           <button
-            onClick={doLogout}
+            onClick={signOutAndRedirect}
             style={{
               display: "flex", flexDirection: "column", alignItems: "center",
               gap: 3, padding: "10px 0", minHeight: 56,

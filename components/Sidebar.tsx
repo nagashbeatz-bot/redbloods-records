@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createSupabaseBrowser } from "@/lib/supabase-browser";
-import { ROLE_CACHE_KEY, type ClientRole } from "@/lib/use-role";
+import { signOutAndRedirect } from "@/lib/supabase-browser";
+import { type ClientRole } from "@/lib/use-role";
 import { usePrivacyMode } from "@/lib/use-privacy";
 
 const BRAND   = "#DC2626";
@@ -262,11 +262,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
           >👁</button>
         )}
         <button
-          onClick={async () => {
-            try { localStorage.removeItem(ROLE_CACHE_KEY); } catch { /* ignore */ }
-            try { await createSupabaseBrowser().auth.signOut(); } catch { /* ignore */ }
-            window.location.href = "/login";
-          }}
+          onClick={signOutAndRedirect}
           title="יציאה"
           style={{
             fontSize: 9, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
