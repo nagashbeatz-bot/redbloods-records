@@ -241,7 +241,9 @@ function MyMusicPage() {
 
   // grid template shared EXACTLY by the library header + every row (RTL: play on the
   // right in its own fixed column, then name, then the technical columns).
-  const cols = "52px minmax(0, 2.3fr) 0.9fr 1fr 1.1fr 0.7fr 0.5fr";
+  // Play fixed · שם השיר wide (the focus) · type a touch narrower · status/date/
+  // duration/options fixed & snug so columns sit tight under their headers.
+  const cols = "52px minmax(0, 1.8fr) minmax(0, 0.8fr) 118px 116px 66px 46px";
   const heads: { label: string; align: "start" | "center" }[] = [
     { label: "",              align: "center" }, // play column (no header)
     { label: "שם השיר",       align: "start"  },
@@ -342,7 +344,7 @@ function MyMusicPage() {
           </div>
 
           {/* column header — same grid + padding as rows */}
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
             {heads.map((h, i) => (
               <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
@@ -354,7 +356,7 @@ function MyMusicPage() {
               <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא נמצאו שירים</div>
             ) : rows.map(t => (
               <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
                 {/* play (right column) */}
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <button style={playBtnLg} aria-label="play">▶</button>
