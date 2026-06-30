@@ -13,7 +13,7 @@ const ALLOWED: Record<string, string> = {
   "image/webp": "webp",
 };
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
-const FOLDER = "/red-artists/shalev-tasama/profile-image";
+const FOLDER = "/app/red-artists/shalev-tasama/profile-image";
 
 /** ASCII-only serialization for the Dropbox-API-Arg header. */
 function dropboxArg(obj: Record<string, unknown>): string {
