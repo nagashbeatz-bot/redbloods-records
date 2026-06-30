@@ -33,10 +33,10 @@ const STATUS_COLOR: Record<SongStatus, string> = {
 };
 
 const SONGS: { name: string; kind: string; status: SongStatus; date: string }[] = [
-  { name: "My Story - Mix v2",      kind: "מיקס",  status: "ממתין לאישור", date: "28.05.2025" },
-  { name: "Heart of Time - Demo",   kind: "סקיצה", status: "בבדיקה",       date: "27.05.2025" },
-  { name: "Closer Part 2 - Master", kind: "מאסטר", status: "מאושר",        date: "26.05.2025" },
-  { name: "Another Life - Sketch",  kind: "סקיצה", status: "סקיצה",        date: "25.05.2025" },
+  { name: "הסיפור שלי",  kind: "מיקס",  status: "ממתין לאישור", date: "28.05.2025" },
+  { name: "לב של זמן",   kind: "סקיצה", status: "בבדיקה",       date: "27.05.2025" },
+  { name: "קלוזר חלק 2", kind: "מאסטר", status: "מאושר",        date: "26.05.2025" },
+  { name: "חיים אחרים",  kind: "סקיצה", status: "סקיצה",        date: "25.05.2025" },
 ];
 
 const UPDATES: string[] = [
@@ -57,14 +57,14 @@ const CAL_TYPE_COLOR: Record<CalType, string> = {
   "פגישה":  "#2DD4BF",
 };
 type WeekEvent = { time: string; title: string; type: CalType };
-const WEEK: { day: string; date: string; events: WeekEvent[] }[] = [
-  { day: "ראשון",  date: "01.07", events: [{ time: "16:00", title: "סשן אולפן",      type: "סשן" }] },
-  { day: "שני",    date: "02.07", events: [] },
-  { day: "שלישי",  date: "03.07", events: [{ time: "18:00", title: "צילום תוכן",     type: "צילום" }] },
-  { day: "רביעי",  date: "04.07", events: [{ time: "12:00", title: "העלאת ריל",      type: "סושיאל" }] },
-  { day: "חמישי",  date: "05.07", events: [{ time: "—",     title: "אישור טיזר",     type: "דדליין" }] },
-  { day: "שישי",   date: "06.07", events: [] },
-  { day: "שבת",    date: "07.07", events: [{ time: "21:00", title: "הופעה / אירוע",  type: "הופעה" }] },
+const WEEK: { day: string; date: string; selected?: boolean; events: WeekEvent[] }[] = [
+  { day: "ראשון",  date: "08.06", events: [{ time: "18:00", title: "סשן אמן והפקה", type: "סשן" }] },
+  { day: "שני",    date: "09.06", events: [{ time: "15:00", title: "סקירת סקיצות",  type: "סשן" }] },
+  { day: "שלישי",  date: "10.06", events: [{ time: "12:00", title: "ישיבת צוות",    type: "פגישה" }] },
+  { day: "רביעי",  date: "11.06", events: [{ time: "20:00", title: "שידור לייב",    type: "סושיאל" }] },
+  { day: "חמישי",  date: "12.06", events: [{ time: "16:00", title: "גרירת מיקס",    type: "צילום" }] },
+  { day: "שישי",   date: "13.06", events: [{ time: "11:00", title: "מעקב פרויקטים", type: "פגישה" }] },
+  { day: "שבת",    date: "14.06", selected: true, events: [] },
 ];
 const CAMPAIGN = { name: "קמפיין פרנציפ", total: "3 תכנים השבוע", pending: "1 ממתין לאישור", scheduled: "2 מתוזמנים" };
 
@@ -101,19 +101,6 @@ const linkBtn: React.CSSProperties = {
   background: "none", border: "none", color: BRAND, fontSize: 12, fontWeight: 700,
   cursor: "pointer", fontFamily: "inherit", padding: 0,
 };
-
-function Cover({ size = 44 }: { size?: number }) {
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: 10, flexShrink: 0,
-      background: `linear-gradient(140deg, ${BRAND}66 0%, #2A0E0E 70%)`,
-      border: `1px solid ${BDR2}`,
-      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 12px rgba(0,0,0,0.4)`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: size * 0.4, color: "#fff", opacity: 0.96,
-    }}>♪</div>
-  );
-}
 
 function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
   e.currentTarget.style.background = on ? "rgba(220,38,38,0.06)" : "transparent";
@@ -247,8 +234,8 @@ function HomeDashboard() {
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 17 }}>
-          <ActionCard icon="↑" title="להעלות סקיצה" body="שתף רעיון חדש ללייבל" cta="העלאה" primary />
-          <ActionCard icon="📅" title="סשן קרוב" body="פגישה עם Nagash" sub="03.07.2025 · 18:00" cta="פרטים" />
+          <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" cta="פרטים" />
+          <ActionCard icon="↑" title="להעלות סקיצה" body="שיתוף רעיון חדש להערות" cta="העלאה" primary />
         </div>
       </div>
 
@@ -256,22 +243,28 @@ function HomeDashboard() {
       <div className="rap-grid-a">
 
         {/* המוזיקה שלי */}
-        <SectionCard title="המוזיקה שלי" link="לכל המוזיקה שלי →">
-          <div style={{ padding: "10px 12px" }}>
+        <SectionCard title="המוזיקה שלי">
+          <div style={{ padding: "8px 12px 6px" }}>
             {SONGS.map(s => (
               <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 14px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
-                <Cover size={48} />
-                <button style={playBtn} aria-label="play">▶</button>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-                  <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{s.kind}</div>
+                style={{ display: "flex", alignItems: "center", gap: 11, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
+                {/* name + version (right) */}
+                <div style={{ textAlign: "start", minWidth: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{s.name}</div>
+                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{s.kind}</div>
                 </div>
-                <StatusBadge status={s.status} />
-                <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>{s.date}</span>
-                <button style={dotsBtn} aria-label="more">⋮</button>
+                {/* music-file icon + play */}
+                <button style={musicBtn} aria-label="file">♪</button>
+                <button style={playBtn} aria-label="play">▶</button>
+                {/* metadata pushed to the left edge */}
+                <div style={{ display: "flex", alignItems: "center", gap: 11, marginInlineStart: "auto" }}>
+                  <StatusBadge status={s.status} />
+                  <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap", direction: "ltr" }}>{s.date}</span>
+                  <button style={dotsBtn} aria-label="more">⋮</button>
+                </div>
               </div>
             ))}
+            <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>‹ לכל השירים והסקיצות</button>
           </div>
         </SectionCard>
 
@@ -320,58 +313,67 @@ function campChip(c: string): React.CSSProperties {
   return { fontSize: 11, fontWeight: 700, color: c, background: `${c}14`, border: `1px solid ${c}3D`, borderRadius: 8, padding: "5px 11px", whiteSpace: "nowrap" };
 }
 
+const weekArrow: React.CSSProperties = {
+  width: 30, height: 30, alignSelf: "center", flexShrink: 0, borderRadius: "50%",
+  background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2,
+  fontSize: 16, cursor: "pointer", fontFamily: "inherit",
+};
+
 function WeeklyCalendar() {
   return (
     <div style={panel}>
       {/* header + subtitle */}
       <div style={{ padding: "16px 22px", borderBottom: `1px solid ${BDR}` }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-            <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>יומן האמן</span>
-          </div>
-          <button style={linkBtn}>לכל הפעילויות →</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+          <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>יומן השבוע</span>
         </div>
-        <div style={{ fontSize: 12, color: TEXT2, marginTop: 5 }}>השבוע הקרוב · סשנים, סושיאל, הופעות ודדליינים</div>
+        <div style={{ fontSize: 12, color: TEXT2, marginTop: 5 }}>הצצה לפגישות, משימות ושידורים הקרובים שלך</div>
       </div>
 
-      {/* 7-day grid — horizontal scroll on narrow screens keeps the week intact */}
-      <div style={{ overflowX: "auto", padding: "14px 16px 6px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: 780 }}>
-          {WEEK.map(d => {
-            const has = d.events.length > 0;
-            return (
-              <div key={d.day} style={{
-                borderRadius: 14, minHeight: 138, display: "flex", flexDirection: "column",
-                border: `1px solid ${has ? "rgba(220,38,38,0.22)" : BDR}`,
-                background: has ? "linear-gradient(180deg, rgba(220,38,38,0.06), rgba(255,255,255,0.012))" : "rgba(255,255,255,0.012)",
-              }}>
-                {/* day header */}
-                <div style={{ textAlign: "center", padding: "9px 6px", borderBottom: `1px solid ${BDR}` }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: has ? "#fff" : TEXT2 }}>{d.day}</div>
-                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
-                </div>
-                {/* events */}
-                <div style={{ flex: 1, padding: "8px 7px", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {has ? d.events.map(ev => {
-                    const c = CAL_TYPE_COLOR[ev.type];
-                    return (
-                      <div key={ev.title} style={{ background: `${c}14`, border: `1px solid ${c}3D`, borderRadius: 9, padding: "7px 8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-                          <span style={{ fontSize: 10, color: c, fontWeight: 800, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</span>
-                          <span style={{ fontSize: 8.5, fontWeight: 800, color: c, background: `${c}26`, borderRadius: 5, padding: "1px 6px" }}>{ev.type}</span>
+      {/* week row with side arrows (decorative); ראשון on the right in RTL */}
+      <div style={{ display: "flex", alignItems: "stretch", gap: 8, padding: "16px 14px 8px" }}>
+        <button style={weekArrow} aria-label="שבוע קודם">›</button>
+        <div style={{ flex: 1, overflowX: "auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: 720 }}>
+            {WEEK.map(d => {
+              const has = d.events.length > 0;
+              const sel = d.selected;
+              return (
+                <div key={d.day} style={{
+                  borderRadius: 14, minHeight: 128, display: "flex", flexDirection: "column",
+                  border: `1px solid ${sel ? BRAND : (has ? "rgba(220,38,38,0.18)" : BDR)}`,
+                  background: sel ? "rgba(220,38,38,0.07)" : "rgba(255,255,255,0.012)",
+                  boxShadow: sel ? `0 0 16px rgba(220,38,38,0.18)` : "none",
+                }}>
+                  {/* day header */}
+                  <div style={{ textAlign: "center", padding: "10px 6px 8px" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: sel || has ? "#fff" : TEXT2 }}>{d.day}</div>
+                    <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
+                  </div>
+                  {/* events / empty */}
+                  <div style={{ flex: 1, padding: "0 9px 12px", display: "flex", flexDirection: "column", gap: 8, justifyContent: "center" }}>
+                    {has ? d.events.map(ev => {
+                      const c = CAL_TYPE_COLOR[ev.type];
+                      return (
+                        <div key={ev.title} style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: c, flexShrink: 0, boxShadow: `0 0 6px ${c}` }} />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{ev.title}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</div>
                         </div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: TEXT, marginTop: 4, lineHeight: 1.3 }}>{ev.title}</div>
-                      </div>
-                    );
-                  }) : (
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, color: MUTED }}>אין אירועים</div>
-                  )}
+                      );
+                    }) : (
+                      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: MUTED }}>---</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
+        <button style={weekArrow} aria-label="שבוע הבא">‹</button>
       </div>
 
       {/* campaign-of-the-week strip */}
@@ -569,12 +571,21 @@ function BalanceRow({ label, value, color, icon }: { label: string; value: strin
   );
 }
 
+// Play button — dark circle with a subtle red border + glow (per reference).
 const playBtn: React.CSSProperties = {
-  width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
-  background: "linear-gradient(180deg, rgba(220,38,38,0.28), rgba(220,38,38,0.14))",
-  border: `1px solid ${BRAND}66`, color: "#fff",
-  fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-  boxShadow: `0 2px 10px rgba(220,38,38,0.25)`,
+  width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+  background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.22), #150809 75%)",
+  border: `1px solid ${BRAND}55`, color: "#fff",
+  fontSize: 10.5, cursor: "pointer", fontFamily: "inherit",
+  boxShadow: `0 0 12px rgba(220,38,38,0.28)`,
+  display: "flex", alignItems: "center", justifyContent: "center",
+};
+// Music-file icon button — dark rounded square.
+const musicBtn: React.CSSProperties = {
+  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+  background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: "#FF6B6B",
+  fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+  display: "flex", alignItems: "center", justifyContent: "center",
 };
 const dotsBtn: React.CSSProperties = {
   background: "none", border: "none", color: MUTED, fontSize: 16, cursor: "pointer", flexShrink: 0, padding: "0 2px",
