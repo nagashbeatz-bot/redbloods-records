@@ -3,6 +3,19 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
+// Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
+// touch-friendly layout. UI only; no data/logic change.
+function useIsMobile() {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const check = () => setM(window.innerWidth <= 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return m;
+}
+
 // ── Redbloods design tokens (black / dark-grey / red / white — NO purple) ─────────
 const BDR    = "rgba(255,255,255,0.06)";
 const BDR2   = "rgba(255,255,255,0.10)";
@@ -147,11 +160,12 @@ function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
 // ── Page ─────────────────────────────────────────────────────────────────────────
 export default function ArtistPortalPage() {
   const [tab, setTab] = useState<Tab>("בית");
+  const isMobile = useIsMobile();
 
   return (
-    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "30px 24px 140px" }}>
+    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 120px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
-      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", width: "100%" }}>
 
         {/* Responsive grids: "המוזיקה שלי" gets priority width; everything stacks on small screens. */}
         <style>{`
@@ -173,7 +187,7 @@ export default function ArtistPortalPage() {
         `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: isMobile ? 8 : 10, flexWrap: "wrap", marginBottom: isMobile ? 18 : 24 }}>
           {TABS.map(tb => {
             const active = tb === tab;
             return (
@@ -181,8 +195,8 @@ export default function ArtistPortalPage() {
                 key={tb}
                 onClick={() => setTab(tb)}
                 style={{
-                  fontSize: 13.5, fontWeight: active ? 800 : 600, fontFamily: "inherit", cursor: "pointer",
-                  padding: "10px 20px", borderRadius: 12, whiteSpace: "nowrap",
+                  fontSize: isMobile ? 12.5 : 13.5, fontWeight: active ? 800 : 600, fontFamily: "inherit", cursor: "pointer",
+                  padding: isMobile ? "8px 14px" : "10px 20px", borderRadius: 12, whiteSpace: "nowrap",
                   background: active ? "linear-gradient(180deg, rgba(220,38,38,0.22), rgba(220,38,38,0.10))" : "#141415",
                   border: `1px solid ${active ? "rgba(220,38,38,0.55)" : BDR}`,
                   color: active ? "#FF6B6B" : TEXT2,
@@ -232,6 +246,7 @@ function Disc() {
 function MyMusicPage() {
   const [chip, setChip]   = useState("הכל");
   const [query, setQuery] = useState("");
+  const isMobile = useIsMobile();
 
   const active = MUSIC_CHIPS.find(c => c.label === chip) ?? MUSIC_CHIPS[0];
   const rows = LIBRARY.filter(t =>
@@ -265,26 +280,26 @@ function MyMusicPage() {
       }}>
         {/* top hairline glow */}
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 28, padding: "48px 44px" }}>
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 16 : 28, padding: isMobile ? "24px 18px" : "48px 44px" }}>
           {/* identity (right) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 240 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16, minWidth: isMobile ? 0 : 240 }}>
             <div style={{ padding: 3, borderRadius: "50%", flexShrink: 0, background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND})`, boxShadow: `0 0 32px ${BRAND}55` }}>
-              <div style={{ width: 70, height: 70, borderRadius: "50%", background: "linear-gradient(140deg, #2A0E0E, #140808)", border: "1px solid rgba(255,255,255,0.10)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, color: "#fff" }}>ש</div>
+              <div style={{ width: isMobile ? 52 : 70, height: isMobile ? 52 : 70, borderRadius: "50%", background: "linear-gradient(140deg, #2A0E0E, #140808)", border: "1px solid rgba(255,255,255,0.10)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isMobile ? 22 : 28, fontWeight: 900, color: "#fff" }}>ש</div>
             </div>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: "#fff" }}>שלו טסמה</div>
-              <div style={{ fontSize: 13, color: TEXT2, marginTop: 4 }}>אמן · Redbloods Records</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: "#fff" }}>שלו טסמה</div>
+              <div style={{ fontSize: isMobile ? 12 : 13, color: TEXT2, marginTop: 4 }}>אמן · Redbloods Records</div>
             </div>
           </div>
           {/* title (center / grows) */}
-          <div style={{ flex: 1, minWidth: 280, textAlign: "center" }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
-              <h1 style={{ fontSize: 40, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>המוזיקה שלי</h1>
-              <span style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}66`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 25, boxShadow: `0 0 24px rgba(220,38,38,0.35)` }}>♫</span>
+          <div style={{ flex: 1, minWidth: isMobile ? "100%" : 280, textAlign: isMobile ? "start" : "center" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 10 : 14 }}>
+              <h1 style={{ fontSize: isMobile ? 26 : 40, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>המוזיקה שלי</h1>
+              <span style={{ width: isMobile ? 42 : 56, height: isMobile ? 42 : 56, borderRadius: isMobile ? 13 : 16, flexShrink: 0, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}66`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isMobile ? 19 : 25, boxShadow: `0 0 24px rgba(220,38,38,0.35)` }}>♫</span>
             </div>
-            <div style={{ fontSize: 14, color: TEXT2, marginTop: 11 }}>כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד</div>
+            <div style={{ fontSize: isMobile ? 12.5 : 14, color: TEXT2, marginTop: isMobile ? 8 : 11 }}>כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד</div>
           </div>
-          <div style={{ minWidth: 240 }} />
+          {!isMobile && <div style={{ minWidth: 240 }} />}
         </div>
       </div>
 
@@ -343,41 +358,62 @@ function MyMusicPage() {
             <span style={{ fontSize: 12.5, color: MUTED }}>24 תוצאות</span>
           </div>
 
-          {/* column header — same grid + padding as rows */}
+          {/* column header — desktop only (mobile uses cards) */}
+          {!isMobile && (
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
             {heads.map((h, i) => (
               <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
+          )}
 
-          {/* rows — identical grid + padding so every column lines up under its header */}
-          <div style={{ padding: "6px 0 8px" }}>
+          {/* rows — desktop: shared grid (aligned columns); mobile: stacked cards */}
+          <div style={{ padding: isMobile ? "2px 0 6px" : "6px 0 8px" }}>
             {rows.length === 0 ? (
               <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא נמצאו שירים</div>
-            ) : rows.map(t => (
-              <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
-                {/* play (right column) */}
-                <div style={{ display: "flex", justifyContent: "center" }}>
+            ) : isMobile ? (
+              rows.map(t => (
+                <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  {/* play (rightmost in RTL) */}
                   <button style={playBtnLg} aria-label="play">▶</button>
+                  {/* name + meta + status (truncating, never overlaps) */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>
+                      {t.kind} · {t.date} · {t.dur}
+                    </div>
+                    <div style={{ marginTop: 7 }}><MusicStatus status={t.status} /></div>
+                  </div>
+                  {/* options (leftmost) */}
+                  <button style={dotsBtn} aria-label="more">⋯</button>
                 </div>
-                {/* name + version */}
-                <div style={{ minWidth: 0, textAlign: "start" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{t.name}</div>
-                  <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.kind}</div>
+              ))
+            ) : (
+              rows.map(t => (
+                <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                  {/* play (right column) */}
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <button style={playBtnLg} aria-label="play">▶</button>
+                  </div>
+                  {/* name + version */}
+                  <div style={{ minWidth: 0, textAlign: "start" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.kind}</div>
+                  </div>
+                  {/* type / version */}
+                  <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start" }}>{t.kind}</div>
+                  {/* status */}
+                  <div style={{ textAlign: "center" }}><MusicStatus status={t.status} /></div>
+                  {/* last updated */}
+                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center" }}>{t.date}</div>
+                  {/* duration */}
+                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
+                  {/* options */}
+                  <div style={{ textAlign: "center" }}><button style={dotsBtn} aria-label="more">⋯</button></div>
                 </div>
-                {/* type / version */}
-                <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start" }}>{t.kind}</div>
-                {/* status */}
-                <div style={{ textAlign: "center" }}><MusicStatus status={t.status} /></div>
-                {/* last updated */}
-                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center" }}>{t.date}</div>
-                {/* duration */}
-                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
-                {/* options */}
-                <div style={{ textAlign: "center" }}><button style={dotsBtn} aria-label="more">⋯</button></div>
-              </div>
-            ))}
+              ))
+            )}
             <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0 10px", fontWeight: 700 }}>הצג עוד ⌄</button>
           </div>
         </div>
@@ -407,40 +443,40 @@ function MyMusicPage() {
       </div>
 
       {/* ── bottom mock player bar (visual only — does NOT touch the global player) ── */}
-      <div style={{ ...panel, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap", padding: "22px 28px", marginTop: 4, marginBottom: 12 }}>
+      <div style={{ ...panel, display: "flex", alignItems: "center", justifyContent: isMobile ? "center" : undefined, gap: isMobile ? 14 : 22, flexWrap: "wrap", padding: isMobile ? "16px 16px" : "22px 28px", marginTop: 4, marginBottom: 12 }}>
         {/* now playing (right) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 250 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 11 : 14, minWidth: 0, flex: isMobile ? "1 1 100%" : "0 1 auto" }}>
           {/* mini waveform */}
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 2.5, height: 42 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 2.5, height: isMobile ? 32 : 42, flexShrink: 0 }}>
             {[14, 28, 18, 36, 22, 31, 15, 25, 34, 20, 30, 16].map((h, i) => (
-              <span key={i} style={{ width: 3, height: h, borderRadius: 2, background: BRAND, opacity: 0.85 }} />
+              <span key={i} style={{ width: 3, height: isMobile ? h * 0.78 : h, borderRadius: 2, background: BRAND, opacity: 0.85 }} />
             ))}
           </div>
-          <div style={{ width: 56, height: 56, borderRadius: 12, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 15.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>הסיפור שלי</div>
+          <div style={{ width: isMobile ? 46 : 56, height: isMobile ? 46 : 56, borderRadius: 12, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: isMobile ? 14.5 : 15.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>הסיפור שלי</div>
             <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>מיקס · 03:42</div>
           </div>
-          <span style={{ color: "#FF6B6B", fontSize: 17 }}>♥</span>
+          <span style={{ color: "#FF6B6B", fontSize: 17, flexShrink: 0 }}>♥</span>
         </div>
 
         {/* transport (center) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 20, marginInlineStart: "auto", marginInlineEnd: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 16 : 20, marginInlineStart: "auto", marginInlineEnd: "auto" }}>
           <span style={{ color: TEXT2, fontSize: 17, cursor: "pointer" }}>⇄</span>
           <span style={{ color: TEXT, fontSize: 19, cursor: "pointer" }}>⏮</span>
-          <button style={{ width: 58, height: 58, borderRadius: "50%", flexShrink: 0, background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.4), #150809 78%)", border: `1px solid ${BRAND}`, color: "#fff", fontSize: 18, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 0 22px rgba(220,38,38,0.45)` }}>▶</button>
+          <button style={{ width: isMobile ? 50 : 58, height: isMobile ? 50 : 58, borderRadius: "50%", flexShrink: 0, background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.4), #150809 78%)", border: `1px solid ${BRAND}`, color: "#fff", fontSize: isMobile ? 16 : 18, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 0 22px rgba(220,38,38,0.45)` }}>▶</button>
           <span style={{ color: TEXT, fontSize: 19, cursor: "pointer" }}>⏭</span>
           <span style={{ color: TEXT2, fontSize: 17, cursor: "pointer" }}>↻</span>
         </div>
 
         {/* volume + icons (left) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 220, justifyContent: "flex-end" }}>
-          <span style={{ color: TEXT2, fontSize: 16 }}>🔊</span>
-          <div style={{ width: 150, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.10)", position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 14, minWidth: 0, flex: isMobile ? "1 1 100%" : "0 1 auto", justifyContent: isMobile ? "center" : "flex-end" }}>
+          <span style={{ color: TEXT2, fontSize: 16, flexShrink: 0 }}>🔊</span>
+          <div style={{ width: isMobile ? 120 : 150, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.10)", position: "relative", flexShrink: 1 }}>
             <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "70%", background: BRAND, borderRadius: 3 }} />
           </div>
-          <span style={{ color: MUTED, fontSize: 16 }}>🖥</span>
-          <span style={{ color: MUTED, fontSize: 16 }}>☰</span>
+          <span style={{ color: MUTED, fontSize: 16, flexShrink: 0 }}>🖥</span>
+          <span style={{ color: MUTED, fontSize: 16, flexShrink: 0 }}>☰</span>
         </div>
       </div>
     </div>
@@ -449,6 +485,7 @@ function MyMusicPage() {
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
 function HomeDashboard() {
+  const isMobile = useIsMobile();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
@@ -468,15 +505,15 @@ function HomeDashboard() {
         {/* fine red top hairline glow */}
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
 
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 30, padding: "44px 44px" }}>
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 16 : 30, padding: isMobile ? "24px 18px" : "44px 44px" }}>
 
           {/* Identity (start / right in RTL) — name/avatar + "all updates" button */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 15, minWidth: 244 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 15, minWidth: isMobile ? "100%" : 244 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16 }}>
               <ArtistAvatar />
-              <div style={{ textAlign: "start" }}>
-                <div style={{ fontSize: 27, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
-                <div style={{ fontSize: 13.5, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
+              <div style={{ textAlign: "start", minWidth: 0 }}>
+                <div style={{ fontSize: isMobile ? 20 : 27, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
+                <div style={{ fontSize: isMobile ? 12.5 : 13.5, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 9, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
                   <span style={{ fontSize: 11.5, color: GREEN, fontWeight: 700 }}>פעיל</span>
@@ -489,15 +526,16 @@ function HomeDashboard() {
               background: "linear-gradient(180deg, #E5322F, #C01C1C)",
               fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
               boxShadow: `0 6px 20px rgba(220,38,38,0.4)`,
+              width: isMobile ? "100%" : undefined,
             }}>☰ לכל העדכונים</button>
           </div>
 
           {/* Greeting + live "latest updates" flash (grows, centered) */}
-          <div style={{ flex: 1, minWidth: 320, textAlign: "center" }}>
-            <h1 style={{ fontSize: 41, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
+          <div style={{ flex: 1, minWidth: isMobile ? "100%" : 320, textAlign: isMobile ? "start" : "center" }}>
+            <h1 style={{ fontSize: isMobile ? 27 : 41, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
               ברוך הבא, שליו <span style={{ WebkitTextFillColor: "initial" }}>👋</span>
             </h1>
-            <p style={{ fontSize: 14.5, color: "#C8C8CC", lineHeight: 1.7, margin: "13px auto 0", maxWidth: 520 }}>
+            <p style={{ fontSize: isMobile ? 13 : 14.5, color: "#C8C8CC", lineHeight: 1.7, margin: isMobile ? "11px 0 0" : "13px auto 0", maxWidth: 520 }}>
               זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.
             </p>
 
