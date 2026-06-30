@@ -53,6 +53,21 @@ const IcVolume   = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} 
 const IcList     = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3.5" y1="6" x2="3.5" y2="6" /><line x1="3.5" y1="12" x2="3.5" y2="12" /><line x1="3.5" y1="18" x2="3.5" y2="18" /></Svg>;
 const IcMonitor  = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></Svg>;
 
+// Single unified play button used in EVERY list across the portal (desktop +
+// mobile): dark circle, subtle red border + glow, clean white SVG play icon.
+function PlayButton({ size = 40 }: { size?: number }) {
+  return (
+    <button aria-label="נגן" style={{
+      width: size, height: size, borderRadius: "50%", flexShrink: 0, cursor: "pointer", fontFamily: "inherit",
+      background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.22), #150809 75%)",
+      border: `1px solid ${BRAND}55`, boxShadow: `0 0 14px rgba(220,38,38,0.3)`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <IcPlay size={Math.round(size * 0.42)} />
+    </button>
+  );
+}
+
 // ── Demo data (UI only — hardcoded, no DB) ───────────────────────────────────────
 type SongStatus = "ממתין לאישור" | "בבדיקה" | "מאושר" | "סקיצה";
 const STATUS_COLOR: Record<SongStatus, string> = {
@@ -180,7 +195,7 @@ export default function ArtistPortalPage() {
   const isMobile = useIsMobile();
 
   return (
-    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 120px" : "30px 24px 140px" }}>
+    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 140px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
       <div style={{ maxWidth: 1400, margin: "0 auto", width: "100%" }}>
 
@@ -392,7 +407,7 @@ function MyMusicPage() {
               rows.map(t => (
                 <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
                   {/* play (rightmost in RTL) */}
-                  <button style={playBtnLg} aria-label="play">▶</button>
+                  <PlayButton size={42} />
                   {/* name + meta + status (truncating, never overlaps) */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
@@ -411,7 +426,7 @@ function MyMusicPage() {
                   style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
                   {/* play (right column) */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
-                    <button style={playBtnLg} aria-label="play">▶</button>
+                    <PlayButton size={42} />
                   </div>
                   {/* name + version */}
                   <div style={{ minWidth: 0, textAlign: "start" }}>
@@ -445,7 +460,7 @@ function MyMusicPage() {
             {PENDING_TRACKS.map((p, i) => (
               <div key={p.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 10px", borderRadius: 14, border: "1px solid transparent", borderBottom: i === PENDING_TRACKS.length - 1 ? "1px solid transparent" : `1px solid ${BDR}`, transition: "all .14s" }}>
-                <button style={playBtnLg} aria-label="play">▶</button>
+                <PlayButton size={42} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>{p.kind} · עודכן {p.date}</div>
@@ -624,7 +639,7 @@ function HomeDashboard() {
               <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
                 {/* play (rightmost in RTL) */}
-                <button style={playBtn} aria-label="play">▶</button>
+                <PlayButton size={36} />
                 {/* name + version */}
                 <div style={{ textAlign: "start", minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{s.name}</div>
@@ -706,51 +721,82 @@ function WeeklyCalendar() {
         <div style={{ fontSize: 12, color: TEXT2, marginTop: 5 }}>הצצה לפגישות, משימות ושידורים הקרובים שלך</div>
       </div>
 
-      {/* week row — desktop: arrows + grid; mobile: clean snap scroll (no arrows) */}
-      <div style={{ display: "flex", alignItems: "stretch", gap: 8, padding: isMobile ? "14px 12px 8px" : "16px 14px 8px" }}>
-        {!isMobile && <button style={weekArrow} aria-label="שבוע קודם">›</button>}
-        <div style={{ flex: 1, overflowX: "auto", scrollSnapType: isMobile ? "x proximity" : undefined, WebkitOverflowScrolling: "touch" }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(7, 132px)" : "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: isMobile ? "max-content" : 720 }}>
-            {WEEK.map(d => {
-              const has = d.events.length > 0;
-              const sel = d.selected;
-              return (
-                <div key={d.day} style={{
-                  borderRadius: 14, minHeight: 128, display: "flex", flexDirection: "column",
-                  border: `1px solid ${sel ? BRAND : (has ? "rgba(220,38,38,0.18)" : BDR)}`,
-                  background: sel ? "rgba(220,38,38,0.07)" : "rgba(255,255,255,0.012)",
-                  boxShadow: sel ? `0 0 16px rgba(220,38,38,0.18)` : "none",
-                  scrollSnapAlign: isMobile ? "start" : undefined,
-                }}>
-                  {/* day header */}
-                  <div style={{ textAlign: "center", padding: "10px 6px 8px" }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: sel || has ? "#fff" : TEXT2 }}>{d.day}</div>
-                    <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
-                  </div>
-                  {/* events / empty */}
-                  <div style={{ flex: 1, padding: "0 9px 12px", display: "flex", flexDirection: "column", gap: 8, justifyContent: "center" }}>
-                    {has ? d.events.map(ev => {
-                      const c = CAL_TYPE_COLOR[ev.type];
-                      return (
-                        <div key={ev.title} style={{ textAlign: "center" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: c, flexShrink: 0, boxShadow: `0 0 6px ${c}` }} />
-                            <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{ev.title}</span>
-                          </div>
-                          <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</div>
-                        </div>
-                      );
-                    }) : (
-                      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: MUTED }}>---</div>
-                    )}
-                  </div>
+      {isMobile ? (
+        /* Mobile: clean vertical list — no horizontal scroll, nothing clipped */
+        <div style={{ padding: "8px 16px 12px", display: "flex", flexDirection: "column" }}>
+          {WEEK.map((d, i) => {
+            const has = d.events.length > 0;
+            const sel = d.selected;
+            return (
+              <div key={d.day} style={{ display: "flex", alignItems: "center", gap: 13, padding: "13px 2px", borderBottom: i === WEEK.length - 1 ? "none" : `1px solid ${BDR}` }}>
+                {/* date block (right) */}
+                <div style={{ width: 58, flexShrink: 0, textAlign: "center", padding: "7px 0", borderRadius: 11, background: sel ? "rgba(220,38,38,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${sel ? BRAND + "55" : BDR}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: sel || has ? "#fff" : TEXT2 }}>{d.day}</div>
+                  <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
                 </div>
-              );
-            })}
-          </div>
+                {/* content (grows) */}
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 7 }}>
+                  {has ? d.events.map(ev => {
+                    const c = CAL_TYPE_COLOR[ev.type];
+                    return (
+                      <div key={ev.title} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: c, flexShrink: 0, boxShadow: `0 0 6px ${c}` }} />
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
+                        <span style={{ marginInlineStart: "auto", fontSize: 11.5, color: TEXT2, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{ev.time}</span>
+                      </div>
+                    );
+                  }) : (
+                    <span style={{ fontSize: 12.5, color: MUTED }}>אין אירועים</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        {!isMobile && <button style={weekArrow} aria-label="שבוע הבא">‹</button>}
-      </div>
+      ) : (
+        /* Desktop: arrows + 7-day grid carousel */
+        <div style={{ display: "flex", alignItems: "stretch", gap: 8, padding: "16px 14px 8px" }}>
+          <button style={weekArrow} aria-label="שבוע קודם">›</button>
+          <div style={{ flex: 1, overflowX: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: 720 }}>
+              {WEEK.map(d => {
+                const has = d.events.length > 0;
+                const sel = d.selected;
+                return (
+                  <div key={d.day} style={{
+                    borderRadius: 14, minHeight: 128, display: "flex", flexDirection: "column",
+                    border: `1px solid ${sel ? BRAND : (has ? "rgba(220,38,38,0.18)" : BDR)}`,
+                    background: sel ? "rgba(220,38,38,0.07)" : "rgba(255,255,255,0.012)",
+                    boxShadow: sel ? `0 0 16px rgba(220,38,38,0.18)` : "none",
+                  }}>
+                    <div style={{ textAlign: "center", padding: "10px 6px 8px" }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: sel || has ? "#fff" : TEXT2 }}>{d.day}</div>
+                      <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
+                    </div>
+                    <div style={{ flex: 1, padding: "0 9px 12px", display: "flex", flexDirection: "column", gap: 8, justifyContent: "center" }}>
+                      {has ? d.events.map(ev => {
+                        const c = CAL_TYPE_COLOR[ev.type];
+                        return (
+                          <div key={ev.title} style={{ textAlign: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: c, flexShrink: 0, boxShadow: `0 0 6px ${c}` }} />
+                              <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{ev.title}</span>
+                            </div>
+                            <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</div>
+                          </div>
+                        );
+                      }) : (
+                        <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: MUTED }}>---</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <button style={weekArrow} aria-label="שבוע הבא">‹</button>
+        </div>
+      )}
 
       {/* campaign-of-the-week strip */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "14px 20px", borderTop: `1px solid ${BDR}`, background: "rgba(220,38,38,0.035)" }}>
@@ -947,24 +993,6 @@ function BalanceRow({ label, value, color, icon }: { label: string; value: strin
   );
 }
 
-// Play button — dark circle with a subtle red border + glow (per reference).
-const playBtn: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-  background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.22), #150809 75%)",
-  border: `1px solid ${BRAND}55`, color: "#fff",
-  fontSize: 10.5, cursor: "pointer", fontFamily: "inherit",
-  boxShadow: `0 0 12px rgba(220,38,38,0.28)`,
-  display: "flex", alignItems: "center", justifyContent: "center",
-};
-// Larger play button used across the "המוזיקה שלי" page (table + side card).
-const playBtnLg: React.CSSProperties = {
-  width: 42, height: 42, borderRadius: "50%", flexShrink: 0,
-  background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.26), #150809 75%)",
-  border: `1px solid ${BRAND}66`, color: "#fff",
-  fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-  boxShadow: `0 0 14px rgba(220,38,38,0.3)`,
-  display: "flex", alignItems: "center", justifyContent: "center",
-};
 const dotsBtn: React.CSSProperties = {
   background: "none", border: "none", color: MUTED, fontSize: 16, cursor: "pointer", flexShrink: 0, padding: "0 2px",
 };
