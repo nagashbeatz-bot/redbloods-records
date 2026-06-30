@@ -239,8 +239,18 @@ function MyMusicPage() {
     (query.trim() === "" || t.name.includes(query.trim()))
   );
 
-  // grid template shared by the library table header + rows (RTL: name on the right)
-  const cols = "minmax(0, 2.4fr) 0.9fr 1fr 1.1fr 0.7fr 0.6fr";
+  // grid template shared EXACTLY by the library header + every row (RTL: play on the
+  // right in its own fixed column, then name, then the technical columns).
+  const cols = "52px minmax(0, 2.3fr) 0.9fr 1fr 1.1fr 0.7fr 0.5fr";
+  const heads: { label: string; align: "start" | "center" }[] = [
+    { label: "",              align: "center" }, // play column (no header)
+    { label: "שם השיר",       align: "start"  },
+    { label: "סוג / גרסה",    align: "start"  },
+    { label: "סטטוס",         align: "center" },
+    { label: "עודכן לאחרונה", align: "center" },
+    { label: "משך",           align: "center" },
+    { label: "אפשרויות",      align: "center" },
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -331,33 +341,39 @@ function MyMusicPage() {
             <span style={{ fontSize: 12.5, color: MUTED }}>24 תוצאות</span>
           </div>
 
-          {/* column header */}
+          {/* column header — same grid + padding as rows */}
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
-            {["שם השיר", "סוג / גרסה", "סטטוס", "עודכן לאחרונה", "משך", "אפשרויות"].map(h => (
-              <div key={h} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: "start" }}>{h}</div>
+            {heads.map((h, i) => (
+              <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
 
-          {/* rows */}
-          <div style={{ padding: "6px 12px 8px" }}>
+          {/* rows — identical grid + padding so every column lines up under its header */}
+          <div style={{ padding: "6px 0 8px" }}>
             {rows.length === 0 ? (
               <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא נמצאו שירים</div>
             ) : rows.map(t => (
               <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "16px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
-                {/* name + play (right) */}
-                <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                {/* play (right column) */}
+                <div style={{ display: "flex", justifyContent: "center" }}>
                   <button style={playBtnLg} aria-label="play">▶</button>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.kind}</div>
-                  </div>
                 </div>
-                <div style={{ fontSize: 13, color: "#CFCFD6" }}>{t.kind}</div>
-                <div><MusicStatus status={t.status} /></div>
-                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start" }}>{t.date}</div>
-                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
-                <div><button style={dotsBtn} aria-label="more">⋯</button></div>
+                {/* name + version */}
+                <div style={{ minWidth: 0, textAlign: "start" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{t.name}</div>
+                  <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.kind}</div>
+                </div>
+                {/* type / version */}
+                <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start" }}>{t.kind}</div>
+                {/* status */}
+                <div style={{ textAlign: "center" }}><MusicStatus status={t.status} /></div>
+                {/* last updated */}
+                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center" }}>{t.date}</div>
+                {/* duration */}
+                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
+                {/* options */}
+                <div style={{ textAlign: "center" }}><button style={dotsBtn} aria-label="more">⋯</button></div>
               </div>
             ))}
             <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0 10px", fontWeight: 700 }}>הצג עוד ⌄</button>
