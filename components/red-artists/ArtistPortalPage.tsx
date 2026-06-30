@@ -113,6 +113,12 @@ const WEEK: { day: string; date: string; selected?: boolean; events: WeekEvent[]
 ];
 const CAMPAIGN = { name: "קמפיין פרנציפ", total: "3 תכנים השבוע", pending: "1 ממתין לאישור", scheduled: "2 מתוזמנים" };
 
+// Upcoming shows — demo (UI only, hardcoded like the rest of this portal).
+const SHOWS: { name: string; date: string; dow: string; doors: string }[] = [
+  { name: "פאצה, תל אביב", date: "27.06.2025", dow: "מוצ״ש", doors: "22:30" },
+  { name: "באנקר, חיפה",   date: "12.07.2025", dow: "שבת",   doors: "21:00" },
+];
+
 // ── "המוזיקה שלי" page (music tab) — demo library (UI only) ───────────────────────
 const MUSIC_STATUS_COLOR: Record<string, string> = {
   "מוכן":         "#34D399",
@@ -624,8 +630,12 @@ function HomeDashboard() {
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div className="rap-acts">
-          <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" cta="פרטים" />
-          <ActionCard icon="↑" title="להעלות סקיצה" body="שיתוף רעיון חדש להערות" cta="העלאה" primary />
+          <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" cta="פרטים" link="יומן מלא ←" />
+          {SHOWS.length > 0 ? (
+            <ActionCard icon="🎤" title="הופעות קרובות" body={SHOWS[0].name} sub={`${SHOWS[0].date} · ${SHOWS[0].dow} · ${SHOWS[0].doors}`} cta="פרטים" link={SHOWS.length > 1 ? "לכל ההופעות ←" : "יומן מלא ←"} />
+          ) : (
+            <ActionCard icon="🎤" title="הופעות קרובות" body="אין הופעות קרובות כרגע" cta="יומן מלא" />
+          )}
         </div>
       </div>
 
@@ -954,9 +964,17 @@ function NewsFlash() {
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────────
-function ActionCard({ icon, title, body, sub, tag, cta, primary }: {
-  icon: string; title: string; body: string; sub?: string; tag?: string; cta: string; primary?: boolean;
+function ActionCard({ icon, title, body, sub, tag, cta, link, primary }: {
+  icon: string; title: string; body: string; sub?: string; tag?: string; cta: string; link?: string; primary?: boolean;
 }) {
+  const ctaStyle: React.CSSProperties = primary ? {
+    borderRadius: 12, border: "none", color: "#fff",
+    background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+    fontSize: 13.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
+  } : {
+    borderRadius: 12, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`,
+    color: TEXT, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+  };
   return (
     <div
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.35)"; e.currentTarget.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.05), 0 18px 40px rgba(0,0,0,0.5)"; }}
@@ -969,14 +987,14 @@ function ActionCard({ icon, title, body, sub, tag, cta, primary }: {
         {sub && <div style={{ fontSize: 12, color: MUTED, marginTop: 5, direction: "ltr", textAlign: "right", fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
         {tag && <span style={{ display: "inline-block", marginTop: 10, fontSize: 11, fontWeight: 700, color: AMBER, background: `${AMBER}18`, border: `1px solid ${AMBER}40`, borderRadius: 7, padding: "3px 11px" }}>{tag}</span>}
       </div>
-      <button style={primary ? {
-        padding: "11px 0", borderRadius: 12, border: "none", color: "#fff",
-        background: "linear-gradient(180deg, #E5322F, #C01C1C)",
-        fontSize: 13.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
-      } : {
-        padding: "11px 0", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`,
-        color: TEXT, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-      }}>{cta}</button>
+      {link ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <button style={{ ...ctaStyle, padding: "11px 22px" }}>{cta}</button>
+          <button style={{ ...linkBtn, color: "#FF6B6B", fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap" }}>{link}</button>
+        </div>
+      ) : (
+        <button style={{ ...ctaStyle, padding: "11px 0" }}>{cta}</button>
+      )}
     </div>
   );
 }
