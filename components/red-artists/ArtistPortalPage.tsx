@@ -911,6 +911,7 @@ function ArtistAvatar() {
 function NewsFlash() {
   const [idx, setIdx]   = useState(0);
   const [show, setShow] = useState(true);
+  const isMobile = useIsMobile();
 
   function advance() {
     setShow(false);
@@ -924,6 +925,11 @@ function NewsFlash() {
 
   const cur = FLASH[idx];
   const fade: React.CSSProperties = { opacity: show ? 1 : 0, transition: "opacity .3s ease" };
+  // Mobile: clamp to 2 lines (readable, full sentence) with a stable height so
+  // the capsule doesn't jump between rotations. Desktop: single line + ellipsis.
+  const textStyle: React.CSSProperties = isMobile
+    ? { fontSize: 14, fontWeight: 700, color: "#fff", lineHeight: 1.35, minHeight: "2.7em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties
+    : { fontSize: 15.5, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
   return (
     <div style={{
@@ -932,13 +938,14 @@ function NewsFlash() {
       boxShadow: `0 0 28px rgba(220,38,38,0.13), inset 0 1px 0 rgba(255,255,255,0.05)`,
       backdropFilter: "blur(6px)",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "15px 16px" }}>
-        <span style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0, background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, boxShadow: `0 0 14px rgba(220,38,38,0.25)` }}>📡</span>
+      <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 11 : 14, padding: "15px 16px" }}>
+        <span style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0, alignSelf: isMobile ? "flex-start" : "center", background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, boxShadow: `0 0 14px rgba(220,38,38,0.25)` }}>📡</span>
         <div style={{ flex: 1, minWidth: 0, textAlign: "start", ...fade }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur.text}</div>
+          <div style={textStyle}>{cur.text}</div>
+          {isMobile && <div style={{ fontSize: 11, color: MUTED, marginTop: 4, ...fade }}>{cur.time}</div>}
         </div>
-        <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap", flexShrink: 0, ...fade }}>{cur.time}</span>
-        <button onClick={advance} aria-label="העדכון הבא" style={{ background: "none", border: "none", color: TEXT2, fontSize: 20, cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: "0 2px" }}>‹</button>
+        {!isMobile && <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap", flexShrink: 0, ...fade }}>{cur.time}</span>}
+        <button onClick={advance} aria-label="העדכון הבא" style={{ background: "none", border: "none", color: TEXT2, fontSize: 20, cursor: "pointer", flexShrink: 0, alignSelf: isMobile ? "flex-start" : "center", lineHeight: 1, padding: "0 2px" }}>‹</button>
       </div>
       {/* thin red progress bar (restarts each rotation) */}
       <div key={idx} style={{ position: "absolute", bottom: 0, insetInlineStart: 0, height: 2.5, background: BRAND, boxShadow: `0 0 8px ${BRAND}`, borderRadius: 2, animation: "rapProgress 4.6s linear" }} />
