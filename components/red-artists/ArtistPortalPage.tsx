@@ -72,10 +72,10 @@ type Tab = (typeof TABS)[number];
 function SectionCard({ title, link, children }: { title: string; link?: string; children: React.ReactNode }) {
   return (
     <div style={panel}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: `1px solid ${BDR}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${BDR}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-          <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>{title}</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>{title}</span>
         </div>
         {link && <button style={linkBtn}>{link}</button>}
       </div>
@@ -114,7 +114,7 @@ export default function ArtistPortalPage() {
   return (
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "30px 24px 100px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
-      <div style={{ maxWidth: 1300, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
 
         {/* Responsive grids: "המוזיקה שלי" gets priority width; everything stacks on small screens. */}
         <style>{`
@@ -184,7 +184,7 @@ function HomeDashboard() {
         {/* fine red top hairline glow */}
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
 
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 28, padding: "46px 42px" }}>
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 30, padding: "54px 48px" }}>
 
           {/* Identity (start / right in RTL) */}
           <div style={{ display: "flex", alignItems: "center", gap: 18, minWidth: 260 }}>
@@ -194,17 +194,17 @@ function HomeDashboard() {
               boxShadow: `0 0 34px ${BRAND}45`,
             }}>
               <div style={{
-                width: 74, height: 74, borderRadius: "50%",
+                width: 82, height: 82, borderRadius: "50%",
                 background: "linear-gradient(140deg, #2A0E0E, #140808)",
                 border: "1px solid rgba(255,255,255,0.10)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 30, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
+                fontSize: 33, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
                 boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5)",
               }}>ש</div>
             </div>
             <div>
-              <div style={{ fontSize: 25, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
-              <div style={{ fontSize: 13, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
+              <div style={{ fontSize: 27, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
+              <div style={{ fontSize: 13.5, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 9, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
                 <span style={{ fontSize: 11.5, color: GREEN, fontWeight: 700 }}>פעיל</span>
@@ -214,10 +214,10 @@ function HomeDashboard() {
 
           {/* Greeting + next step (grows, pushed to the left side) */}
           <div style={{ flex: 1, minWidth: 300, marginInlineStart: "auto", textAlign: "start" }}>
-            <h1 style={{ fontSize: 36, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
+            <h1 style={{ fontSize: 41, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
               ברוך הבא, שליו <span style={{ WebkitTextFillColor: "initial" }}>👋</span>
             </h1>
-            <p style={{ fontSize: 14, color: "#C8C8CC", lineHeight: 1.7, margin: "12px 0 0", maxWidth: 480 }}>
+            <p style={{ fontSize: 14.5, color: "#C8C8CC", lineHeight: 1.7, margin: "13px 0 0", maxWidth: 500 }}>
               זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.
             </p>
 
@@ -255,7 +255,7 @@ function HomeDashboard() {
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(262px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(282px, 1fr))", gap: 17 }}>
           <ActionCard icon="✓" title="לאשר מיקס" body="My Story - Mix v2" tag="ממתין לאישור" cta="לצפייה" />
           <ActionCard icon="♫" title="לבחור ביט" body="יש ביטים חדשים שמחכים לך" cta="לצפייה בביטים" />
           <ActionCard icon="↑" title="להעלות סקיצה" body="שתף רעיון חדש ללייבל" cta="העלאה" primary />
@@ -271,12 +271,12 @@ function HomeDashboard() {
           <div style={{ padding: "10px 12px" }}>
             {SONGS.map(s => (
               <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
-                <Cover />
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 14px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
+                <Cover size={48} />
                 <button style={playBtn} aria-label="play">▶</button>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{s.kind}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{s.kind}</div>
                 </div>
                 <StatusBadge status={s.status} />
                 <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>{s.date}</span>
@@ -291,13 +291,13 @@ function HomeDashboard() {
           <div style={{ padding: "10px 12px" }}>
             {BEATS.map(b => (
               <div key={b.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 10px", borderRadius: 12, border: "1px solid transparent", transition: "all .14s" }}>
+                style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 12px", borderRadius: 12, border: "1px solid transparent", transition: "all .14s" }}>
                 <div style={{ position: "relative" }}>
-                  <Cover size={46} />
+                  <Cover size={48} />
                   <Equalizer />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
                   <span style={{ display: "inline-block", marginTop: 5, fontSize: 10.5, fontWeight: 700, color: TEXT2, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, borderRadius: 7, padding: "2px 9px", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{b.bpm} · {b.key}</span>
                 </div>
                 <button style={ghostPill}>♥ אהבתי</button>
@@ -319,8 +319,8 @@ function HomeDashboard() {
               background: "linear-gradient(180deg, rgba(220,38,38,0.12), rgba(220,38,38,0.04))",
               border: `1px solid ${BRAND}44`,
             }}>
-              <span style={{ fontSize: 12.5, color: "#E8B7B7", fontWeight: 700 }}>מאזן נוכחי</span>
-              <span style={{ fontSize: 20, fontWeight: 900, color: "#FF6B6B", direction: "ltr" }}>₪8,320</span>
+              <span style={{ fontSize: 13, color: "#E8B7B7", fontWeight: 700 }}>מאזן נוכחי</span>
+              <span style={{ fontSize: 22, fontWeight: 900, color: "#FF6B6B", direction: "ltr" }}>₪8,320</span>
             </div>
             <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 12, background: "rgba(255,255,255,0.02)", border: `1px solid ${BDR}`, borderRadius: 10, padding: "10px 12px" }}>
               כאן מוצגות רק הכנסות והוצאות שמשויכות אליך וגלויות לך.
@@ -390,21 +390,21 @@ function ActionCard({ icon, title, body, sub, tag, cta, primary }: {
     <div
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.35)"; e.currentTarget.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.05), 0 18px 40px rgba(0,0,0,0.5)"; }}
       onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.borderColor = BDR2; e.currentTarget.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px rgba(0,0,0,0.4)"; }}
-      style={{ ...panel, padding: "22px 22px 20px", display: "flex", flexDirection: "column", gap: 13, minHeight: 190, transition: "transform .16s, border-color .16s, box-shadow .16s" }}>
-      <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21 }}>{icon}</div>
+      style={{ ...panel, padding: "24px 24px 22px", display: "flex", flexDirection: "column", gap: 14, minHeight: 210, transition: "transform .16s, border-color .16s, box-shadow .16s" }}>
+      <div style={{ width: 52, height: 52, borderRadius: 15, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23 }}>{icon}</div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 15.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>{title}</div>
-        <div style={{ fontSize: 13, color: TEXT2, marginTop: 6, lineHeight: 1.55 }}>{body}</div>
-        {sub && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, direction: "ltr", textAlign: "right", fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
-        {tag && <span style={{ display: "inline-block", marginTop: 9, fontSize: 10.5, fontWeight: 700, color: AMBER, background: `${AMBER}18`, border: `1px solid ${AMBER}40`, borderRadius: 7, padding: "3px 10px" }}>{tag}</span>}
+        <div style={{ fontSize: 16.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>{title}</div>
+        <div style={{ fontSize: 13.5, color: TEXT2, marginTop: 6, lineHeight: 1.55 }}>{body}</div>
+        {sub && <div style={{ fontSize: 12, color: MUTED, marginTop: 5, direction: "ltr", textAlign: "right", fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
+        {tag && <span style={{ display: "inline-block", marginTop: 10, fontSize: 11, fontWeight: 700, color: AMBER, background: `${AMBER}18`, border: `1px solid ${AMBER}40`, borderRadius: 7, padding: "3px 11px" }}>{tag}</span>}
       </div>
       <button style={primary ? {
-        padding: "9px 0", borderRadius: 11, border: "none", color: "#fff",
+        padding: "11px 0", borderRadius: 12, border: "none", color: "#fff",
         background: "linear-gradient(180deg, #E5322F, #C01C1C)",
-        fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
+        fontSize: 13.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
       } : {
-        padding: "9px 0", borderRadius: 11, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`,
-        color: TEXT, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+        padding: "11px 0", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`,
+        color: TEXT, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
       }}>{cta}</button>
     </div>
   );
@@ -422,9 +422,9 @@ function BalanceRow({ label, value, color, icon }: { label: string; value: strin
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 2px", borderBottom: `1px solid ${BDR}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: `${color}1A`, border: `1px solid ${color}40`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{icon}</span>
-        <span style={{ fontSize: 12.5, color: TEXT2 }}>{label}</span>
+        <span style={{ fontSize: 13, color: TEXT2 }}>{label}</span>
       </div>
-      <span style={{ fontSize: 17, fontWeight: 800, color, direction: "ltr" }}>{value}</span>
+      <span style={{ fontSize: 18.5, fontWeight: 800, color, direction: "ltr" }}>{value}</span>
     </div>
   );
 }
@@ -442,7 +442,7 @@ function Equalizer() {
 }
 
 const playBtn: React.CSSProperties = {
-  width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+  width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
   background: "linear-gradient(180deg, rgba(220,38,38,0.28), rgba(220,38,38,0.14))",
   border: `1px solid ${BRAND}66`, color: "#fff",
   fontSize: 11, cursor: "pointer", fontFamily: "inherit",
