@@ -46,31 +46,27 @@ const UPDATES: string[] = [
   "עודכן מאזן החודש",
 ];
 
-// ── Artist calendar (יומן האמן) — demo timeline ──────────────────────────────────
-type CalType   = "סשן" | "סושיאל" | "הופעה" | "צילום" | "דדליין";
-type CalStatus = "מתוכנן" | "ממתין לאישור" | "בוצע" | "מתוזמן";
+// ── Artist weekly calendar (יומן האמן) — demo week ───────────────────────────────
+type CalType = "סשן" | "סושיאל" | "צילום" | "הופעה" | "דדליין" | "פגישה";
 const CAL_TYPE_COLOR: Record<CalType, string> = {
   "סשן":   "#60A5FA",
   "סושיאל": "#EC4899",
   "צילום":  "#F59E0B",
   "הופעה":  "#FB7185",
   "דדליין": "#EF4444",
+  "פגישה":  "#2DD4BF",
 };
-const CAL_STATUS_COLOR: Record<CalStatus, string> = {
-  "מתוכנן":      "#9CA3AF",
-  "ממתין לאישור": "#F59E0B",
-  "בוצע":        "#34D399",
-  "מתוזמן":      "#60A5FA",
-};
-const CALENDAR: { day: string; month: string; time: string; type: CalType; title: string; desc: string; status: CalStatus }[] = [
-  { day: "01", month: "יולי", time: "16:00", type: "סשן",    title: "סשן אולפן",          desc: "הקלטת ווקאל ל-Heart of Time",     status: "מתוכנן" },
-  { day: "03", month: "יולי", time: "18:00", type: "סשן",    title: "פגישה עם Nagash",    desc: "תיאום שחרורים ולו״ז הוצאות",       status: "מתוכנן" },
-  { day: "05", month: "יולי", time: "12:00", type: "צילום",  title: "צילום תוכן",         desc: "סשן צילום לקאבר ולרילסים",         status: "מתוזמן" },
-  { day: "07", month: "יולי", time: "20:00", type: "סושיאל", title: "העלאת ריל",          desc: "ריל טיזר ל-My Story",             status: "מתוזמן" },
-  { day: "10", month: "יולי", time: "—",     type: "סושיאל", title: "קמפיין סושיאל",       desc: "קמפיין שחרור ל-Closer Part 2",     status: "מתוכנן" },
-  { day: "12", month: "יולי", time: "21:00", type: "הופעה",  title: "הופעה / אירוע",       desc: "הופעה במועדון · סט 40 דקות",        status: "מתוכנן" },
-  { day: "14", month: "יולי", time: "—",     type: "דדליין", title: "דדליין לאישור תוכן",  desc: "אישור סופי למאסטר של My Story",     status: "ממתין לאישור" },
+type WeekEvent = { time: string; title: string; type: CalType };
+const WEEK: { day: string; date: string; events: WeekEvent[] }[] = [
+  { day: "ראשון",  date: "01.07", events: [{ time: "16:00", title: "סשן אולפן",      type: "סשן" }] },
+  { day: "שני",    date: "02.07", events: [] },
+  { day: "שלישי",  date: "03.07", events: [{ time: "18:00", title: "צילום תוכן",     type: "צילום" }] },
+  { day: "רביעי",  date: "04.07", events: [{ time: "12:00", title: "העלאת ריל",      type: "סושיאל" }] },
+  { day: "חמישי",  date: "05.07", events: [{ time: "—",     title: "אישור טיזר",     type: "דדליין" }] },
+  { day: "שישי",   date: "06.07", events: [] },
+  { day: "שבת",    date: "07.07", events: [{ time: "21:00", title: "הופעה / אירוע",  type: "הופעה" }] },
 ];
+const CAMPAIGN = { name: "קמפיין פרנציפ", total: "3 תכנים השבוע", pending: "1 ממתין לאישור", scheduled: "2 מתוזמנים" };
 
 // Hero "latest updates" flash — hardcoded, rotates client-side.
 const FLASH: { text: string; time: string }[] = [
@@ -135,11 +131,9 @@ export default function ArtistPortalPage() {
 
         {/* Responsive grids: "המוזיקה שלי" gets priority width; everything stacks on small screens. */}
         <style>{`
-          .rap-grid-a, .rap-grid-b { display: grid; gap: 18px; align-items: start; }
-          .rap-grid-a { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
-          .rap-grid-b { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+          .rap-grid-a { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
           @media (max-width: 1040px) {
-            .rap-grid-a, .rap-grid-b { grid-template-columns: 1fr; }
+            .rap-grid-a { grid-template-columns: 1fr; }
           }
           @keyframes rapProgress { from { width: 0%; } to { width: 100%; } }
         `}</style>
@@ -303,55 +297,95 @@ function HomeDashboard() {
         </SectionCard>
       </div>
 
-      {/* ── 3. Main grid (row B) ── */}
-      <div className="rap-grid-b">
+      {/* ── 3. Weekly calendar (full width) ── */}
+      <WeeklyCalendar />
 
-        {/* יומן האמן — prominent timeline */}
-        <SectionCard title="יומן האמן" link="לכל הפעילויות →">
-          <div style={{ padding: "8px 14px 12px" }}>
-            {CALENDAR.map((ev, i) => {
-              const tc = CAL_TYPE_COLOR[ev.type];
-              const sc = CAL_STATUS_COLOR[ev.status];
-              return (
-                <div key={ev.title} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                  style={{ display: "flex", alignItems: "stretch", gap: 13, padding: "13px 10px", borderRadius: 13, border: "1px solid transparent", borderBottom: i === CALENDAR.length - 1 ? "1px solid transparent" : `1px solid ${BDR}`, transition: "all .14s" }}>
-                  {/* date block */}
-                  <div style={{ textAlign: "center", width: 52, flexShrink: 0, padding: "7px 0", borderRadius: 11, background: "rgba(220,38,38,0.08)", border: `1px solid ${BRAND}33`, alignSelf: "center" }}>
-                    <div style={{ fontSize: 19, fontWeight: 900, color: "#FF6B6B", lineHeight: 1 }}>{ev.day}</div>
-                    <div style={{ fontSize: 10, color: TEXT2, marginTop: 2 }}>{ev.month}</div>
-                  </div>
-                  {/* colored type accent line */}
-                  <div style={{ width: 3, borderRadius: 3, background: tc, flexShrink: 0, boxShadow: `0 0 8px ${tc}66` }} />
-                  {/* content */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{ev.title}</span>
-                      <span style={{ fontSize: 10, fontWeight: 800, color: tc, background: `${tc}1A`, border: `1px solid ${tc}45`, borderRadius: 6, padding: "2px 8px" }}>{ev.type}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.desc}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: sc, background: `${sc}18`, border: `1px solid ${sc}40`, borderRadius: 6, padding: "2px 9px" }}>{ev.status}</span>
-                      <span style={{ fontSize: 11.5, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</span>
-                    </div>
-                  </div>
+      {/* ── 4. עדכונים מהלייבל (full width) ── */}
+      <SectionCard title="עדכונים מהלייבל" link="לכל העדכונים →">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "0 28px", padding: "8px 18px 12px" }}>
+          {UPDATES.map(u => (
+            <div key={u} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 4px", borderBottom: `1px solid ${BDR}` }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: BRAND, marginTop: 6, flexShrink: 0, boxShadow: `0 0 7px ${BRAND}` }} />
+              <span style={{ fontSize: 12.5, color: "#C4C4C8", lineHeight: 1.55 }}>{u}</span>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+// ── Weekly calendar (יומן האמן) — 7-day premium week view ─────────────────────────
+function campChip(c: string): React.CSSProperties {
+  return { fontSize: 11, fontWeight: 700, color: c, background: `${c}14`, border: `1px solid ${c}3D`, borderRadius: 8, padding: "5px 11px", whiteSpace: "nowrap" };
+}
+
+function WeeklyCalendar() {
+  return (
+    <div style={panel}>
+      {/* header + subtitle */}
+      <div style={{ padding: "16px 22px", borderBottom: `1px solid ${BDR}` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+            <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>יומן האמן</span>
+          </div>
+          <button style={linkBtn}>לכל הפעילויות →</button>
+        </div>
+        <div style={{ fontSize: 12, color: TEXT2, marginTop: 5 }}>השבוע הקרוב · סשנים, סושיאל, הופעות ודדליינים</div>
+      </div>
+
+      {/* 7-day grid — horizontal scroll on narrow screens keeps the week intact */}
+      <div style={{ overflowX: "auto", padding: "14px 16px 6px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: 780 }}>
+          {WEEK.map(d => {
+            const has = d.events.length > 0;
+            return (
+              <div key={d.day} style={{
+                borderRadius: 14, minHeight: 138, display: "flex", flexDirection: "column",
+                border: `1px solid ${has ? "rgba(220,38,38,0.22)" : BDR}`,
+                background: has ? "linear-gradient(180deg, rgba(220,38,38,0.06), rgba(255,255,255,0.012))" : "rgba(255,255,255,0.012)",
+              }}>
+                {/* day header */}
+                <div style={{ textAlign: "center", padding: "9px 6px", borderBottom: `1px solid ${BDR}` }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: has ? "#fff" : TEXT2 }}>{d.day}</div>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
                 </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-
-        {/* עדכונים מהלייבל */}
-        <SectionCard title="עדכונים מהלייבל" link="לכל העדכונים →">
-          <div style={{ padding: "10px 16px" }}>
-            {UPDATES.map((u, i) => (
-              <div key={u} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 4px", borderBottom: i === UPDATES.length - 1 ? "none" : `1px solid ${BDR}` }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: BRAND, marginTop: 6, flexShrink: 0, boxShadow: `0 0 7px ${BRAND}` }} />
-                <span style={{ fontSize: 12.5, color: "#C4C4C8", lineHeight: 1.55 }}>{u}</span>
+                {/* events */}
+                <div style={{ flex: 1, padding: "8px 7px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {has ? d.events.map(ev => {
+                    const c = CAL_TYPE_COLOR[ev.type];
+                    return (
+                      <div key={ev.title} style={{ background: `${c}14`, border: `1px solid ${c}3D`, borderRadius: 9, padding: "7px 8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+                          <span style={{ fontSize: 10, color: c, fontWeight: 800, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</span>
+                          <span style={{ fontSize: 8.5, fontWeight: 800, color: c, background: `${c}26`, borderRadius: 5, padding: "1px 6px" }}>{ev.type}</span>
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: TEXT, marginTop: 4, lineHeight: 1.3 }}>{ev.title}</div>
+                      </div>
+                    );
+                  }) : (
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, color: MUTED }}>אין אירועים</div>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
-        </SectionCard>
+            );
+          })}
+        </div>
+      </div>
 
+      {/* campaign-of-the-week strip */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "14px 20px", borderTop: `1px solid ${BDR}`, background: "rgba(220,38,38,0.035)" }}>
+        <span style={{ width: 40, height: 40, borderRadius: 11, flexShrink: 0, background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>📣</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.03em" }}>קמפיין השבוע</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginTop: 2 }}>{CAMPAIGN.name}</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginInlineStart: "auto" }}>
+          <span style={campChip(TEXT2)}>{CAMPAIGN.total}</span>
+          <span style={campChip("#F59E0B")}>{CAMPAIGN.pending}</span>
+          <span style={campChip("#60A5FA")}>{CAMPAIGN.scheduled}</span>
+        </div>
       </div>
     </div>
   );
