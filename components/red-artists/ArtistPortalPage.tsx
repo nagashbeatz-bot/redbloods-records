@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ── Redbloods design tokens (black / dark-grey / red / white — NO purple) ─────────
 const CARD2  = "#1A1A1A";
@@ -65,6 +65,16 @@ const QUICK_LINKS: { label: string; icon: string }[] = [
   { label: "נהלי עבודה",  icon: "📋" },
 ];
 
+// Hero "latest updates" flash — hardcoded, rotates client-side.
+const FLASH: { text: string; time: string }[] = [
+  { text: "המיקס של My Story מוכן לאישור",          time: "לפני 4 דקות" },
+  { text: "נוסף ביט חדש של Nagash בשם Focus",        time: "לפני שעה" },
+  { text: "נקבע סשן אולפן ל־01.07 בשעה 16:00",       time: "לפני 3 שעות" },
+  { text: "עודכן מאזן החודש",                        time: "אתמול" },
+  { text: "הועלתה סקיצה חדשה לבדיקה",                 time: "לפני יומיים" },
+  { text: "נשלחה הודעה חדשה מהלייבל",                 time: "לפני 5 דקות" },
+];
+
 const TABS = ["בית", "המוזיקה שלי", "ביטים פנויים", "מאזן", "לו״ז ועדכונים"] as const;
 type Tab = (typeof TABS)[number];
 
@@ -124,6 +134,7 @@ export default function ArtistPortalPage() {
           @media (max-width: 1040px) {
             .rap-grid-a, .rap-grid-b { grid-template-columns: 1fr; }
           }
+          @keyframes rapProgress { from { width: 0%; } to { width: 100%; } }
         `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
@@ -174,77 +185,69 @@ function HomeDashboard() {
         position: "relative", overflow: "hidden", borderRadius: 24,
         border: `1px solid rgba(220,38,38,0.34)`,
         background: `
-          radial-gradient(140% 165% at 92% -18%, rgba(220,38,38,0.42) 0%, rgba(220,38,38,0.11) 36%, #120E0F 70%),
-          radial-gradient(90% 130% at 48% 130%, rgba(220,38,38,0.12) 0%, transparent 58%),
-          linear-gradient(180deg, #1A1314 0%, #0C0A0B 100%)`,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 95px rgba(220,38,38,0.15), 0 30px 72px rgba(0,0,0,0.55)`,
+          radial-gradient(70% 130% at 9% 22%, rgba(220,38,38,0.40) 0%, rgba(220,38,38,0.08) 40%, transparent 64%),
+          radial-gradient(130% 160% at 94% -16%, rgba(220,38,38,0.30) 0%, rgba(220,38,38,0.08) 38%, #120E0F 72%),
+          radial-gradient(90% 130% at 50% 132%, rgba(220,38,38,0.12) 0%, transparent 58%),
+          linear-gradient(180deg, #1A1314 0%, #0B0909 100%)`,
+        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 100px rgba(220,38,38,0.16), 0 30px 72px rgba(0,0,0,0.55)`,
       }}>
-        {/* subtle vignette toward the greeting side */}
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(10,10,11,0) 30%, rgba(10,10,11,0.7) 100%)", pointerEvents: "none" }} />
+        {/* soft inner vignette to seat the content over the glow */}
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(8,8,9,0.55) 100%)", pointerEvents: "none" }} />
         {/* fine red top hairline glow */}
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
 
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 30, padding: "54px 48px" }}>
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 30, padding: "44px 44px" }}>
 
-          {/* Identity (start / right in RTL) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 18, minWidth: 260 }}>
-            <div style={{
-              padding: 3, borderRadius: "50%", flexShrink: 0,
-              background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND}, #7A1414, ${BRAND})`,
-              boxShadow: `0 0 34px ${BRAND}45`,
-            }}>
+          {/* Identity (start / right in RTL) — name/avatar + "all updates" button */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 15, minWidth: 244 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{
-                width: 82, height: 82, borderRadius: "50%",
-                background: "linear-gradient(140deg, #2A0E0E, #140808)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 33, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
-                boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5)",
-              }}>ש</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 27, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
-              <div style={{ fontSize: 13.5, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 9, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
-                <span style={{ fontSize: 11.5, color: GREEN, fontWeight: 700 }}>פעיל</span>
+                padding: 3, borderRadius: "50%", flexShrink: 0,
+                background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND}, #7A1414, ${BRAND})`,
+                boxShadow: `0 0 38px ${BRAND}55`,
+              }}>
+                <div style={{
+                  width: 86, height: 86, borderRadius: "50%",
+                  background: "linear-gradient(140deg, #2A0E0E, #140808)",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
+                  boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5)",
+                }}>ש</div>
+              </div>
+              <div style={{ textAlign: "start" }}>
+                <div style={{ fontSize: 27, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
+                <div style={{ fontSize: 13.5, color: TEXT2, marginTop: 4 }}>אמן • Redbloods Records</div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 9, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
+                  <span style={{ fontSize: 11.5, color: GREEN, fontWeight: 700 }}>פעיל</span>
+                </div>
               </div>
             </div>
+            <button style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "11px 18px", borderRadius: 12, border: "none", color: "#fff",
+              background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+              fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
+              boxShadow: `0 6px 20px rgba(220,38,38,0.4)`,
+            }}>☰ לכל העדכונים</button>
           </div>
 
-          {/* Greeting + next step (grows, pushed to the left side) */}
-          <div style={{ flex: 1, minWidth: 300, marginInlineStart: "auto", textAlign: "start" }}>
+          {/* Greeting + live "latest updates" flash (grows, centered) */}
+          <div style={{ flex: 1, minWidth: 320, textAlign: "center" }}>
             <h1 style={{ fontSize: 41, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
               ברוך הבא, שליו <span style={{ WebkitTextFillColor: "initial" }}>👋</span>
             </h1>
-            <p style={{ fontSize: 14.5, color: "#C8C8CC", lineHeight: 1.7, margin: "13px 0 0", maxWidth: 500 }}>
+            <p style={{ fontSize: 14.5, color: "#C8C8CC", lineHeight: 1.7, margin: "13px auto 0", maxWidth: 520 }}>
               זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.
             </p>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 18 }}>
-              <button style={{
-                padding: "10px 20px", borderRadius: 12, border: "none", color: "#fff",
-                background: "linear-gradient(180deg, #E5322F, #C01C1C)",
-                fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
-                boxShadow: `0 6px 20px rgba(220,38,38,0.4)`,
-              }}>✎ עריכת פרופיל</button>
-
-              <div style={{
-                display: "inline-flex", alignItems: "center", gap: 12,
-                background: "rgba(255,255,255,0.045)", border: `1px solid ${BDR2}`,
-                borderRadius: 13, padding: "8px 8px 8px 15px",
-                backdropFilter: "blur(6px)",
-              }}>
-                <span style={{ fontSize: 12.5, color: TEXT2 }}>
-                  המשך במה שנשאר: <strong style={{ color: "#fff" }}>לאשר את המיקס My Story - Mix v2</strong>
-                </span>
-                <button style={{
-                  display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 15px", borderRadius: 10,
-                  background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}66`, color: "#FF6B6B",
-                  fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-                }}>▶ לצפייה</button>
-              </div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 18, marginBottom: 10 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
             </div>
+
+            <NewsFlash />
           </div>
         </div>
       </div>
@@ -378,6 +381,45 @@ function HomeDashboard() {
           </div>
         </SectionCard>
       </div>
+    </div>
+  );
+}
+
+// ── Hero "latest updates" flash — premium news capsule, auto-rotating ─────────────
+function NewsFlash() {
+  const [idx, setIdx]   = useState(0);
+  const [show, setShow] = useState(true);
+
+  function advance() {
+    setShow(false);
+    setTimeout(() => { setIdx(i => (i + 1) % FLASH.length); setShow(true); }, 300);
+  }
+
+  useEffect(() => {
+    const t = setInterval(advance, 4600);
+    return () => clearInterval(t);
+  }, []);
+
+  const cur = FLASH[idx];
+  const fade: React.CSSProperties = { opacity: show ? 1 : 0, transition: "opacity .3s ease" };
+
+  return (
+    <div style={{
+      position: "relative", overflow: "hidden", borderRadius: 16, maxWidth: 640, margin: "0 auto",
+      background: "rgba(8,6,7,0.62)", border: `1px solid ${BDR2}`,
+      boxShadow: `0 0 28px rgba(220,38,38,0.13), inset 0 1px 0 rgba(255,255,255,0.05)`,
+      backdropFilter: "blur(6px)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "15px 16px" }}>
+        <span style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0, background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, boxShadow: `0 0 14px rgba(220,38,38,0.25)` }}>📡</span>
+        <div style={{ flex: 1, minWidth: 0, textAlign: "start", ...fade }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur.text}</div>
+        </div>
+        <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap", flexShrink: 0, ...fade }}>{cur.time}</span>
+        <button onClick={advance} aria-label="העדכון הבא" style={{ background: "none", border: "none", color: TEXT2, fontSize: 20, cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: "0 2px" }}>‹</button>
+      </div>
+      {/* thin red progress bar (restarts each rotation) */}
+      <div key={idx} style={{ position: "absolute", bottom: 0, insetInlineStart: 0, height: 2.5, background: BRAND, boxShadow: `0 0 8px ${BRAND}`, borderRadius: 2, animation: "rapProgress 4.6s linear" }} />
     </div>
   );
 }
