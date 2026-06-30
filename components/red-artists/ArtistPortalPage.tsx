@@ -612,6 +612,10 @@ function HomeDashboard() {
 
             <NewsFlash />
           </div>
+
+          {/* Left spacer (desktop) — balances the right identity card so the
+              greeting + latest-update sit on the Hero's true center axis. */}
+          {!isMobile && <div style={{ minWidth: 232, flexShrink: 0 }} />}
         </div>
       </div>
 
