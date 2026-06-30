@@ -27,6 +27,19 @@ const WT_INPUT: React.CSSProperties = {
   outline: "none", boxSizing: "border-box",
 };
 
+// Mobile breakpoint (< 768px) — used to switch the page to a stacked,
+// touch-friendly layout. UI only; no behavior/data change.
+function useIsMobile() {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const check = () => setM(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return m;
+}
+
 function fmt(n: number, curr = "$") {
   return `${curr}${n.toLocaleString()}`;
 }
@@ -716,6 +729,7 @@ function VictorProjectDrawer({
   const router = useRouter();
   const t = useVictorT();
   const [lang] = useVictorLang();
+  const isMobile = useIsMobile();
   const [updating, setUpdating] = useState(false);
   const [notes, setNotes] = useState(work.notes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
@@ -1020,11 +1034,18 @@ function VictorProjectDrawer({
         aria-modal="true"
         onClick={e => e.stopPropagation()}
         style={{
-          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-          width: "min(1300px, 95vw)", maxHeight: "90vh", zIndex: 1001,
+          position: "fixed",
+          // Mobile: full-screen vertical sheet. Desktop: centered modal.
+          top: isMobile ? 0 : "50%",
+          left: isMobile ? 0 : "50%",
+          transform: isMobile ? "none" : "translate(-50%, -50%)",
+          width: isMobile ? "100vw" : "min(1300px, 95vw)",
+          height: isMobile ? "100dvh" : undefined,
+          maxHeight: isMobile ? "100dvh" : "90vh",
+          zIndex: 1001,
           background: "#090910",
-          border: `1px solid ${BDR2}`,
-          borderRadius: 20,
+          border: isMobile ? "none" : `1px solid ${BDR2}`,
+          borderRadius: isMobile ? 0 : 20,
           boxShadow: "0 24px 80px rgba(0,0,0,0.85)",
           display: "flex", flexDirection: "column",
           overflow: "hidden",
@@ -1131,7 +1152,7 @@ function VictorProjectDrawer({
         </div>
 
         {/* ── Scrollable body ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px 40px" : "18px 20px" }}>
           <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.9fr)_minmax(310px,0.7fr)]" style={{ gap: 18, alignItems: "start" }}>
 
             {/* ════ MAIN column: brief + references (what Victor must do) ════ */}
@@ -1599,6 +1620,7 @@ export default function VictorProfilePage() {
   const router = useRouter();
   const [lang] = useVictorLang();
   const t = useVictorT();
+  const isMobile = useIsMobile();
   // Project creation was removed from the Victor page entirely: it must NEVER
   // create a row in `projects`. New projects are created only in the Projects
   // page and linked to Victor via vendor_project_work ("שלח לויקטור" flow).
@@ -1750,14 +1772,22 @@ export default function VictorProfilePage() {
     <div style={{
       minHeight: "100%", background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
-      padding: "32px 28px 80px",
+      // Extra bottom padding on mobile so the last cards clear the bottom nav.
+      padding: isMobile ? "16px 14px 120px" : "32px 28px 80px",
     }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
         {/* ── Top bar: breadcrumb + month switcher ── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+        <div style={{
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: isMobile ? 12 : 0,
+          marginBottom: isMobile ? 16 : 28,
+        }}>
           {/* Left cluster: back (owner) + Victor-page language switcher (content-area only) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, order: isMobile ? 2 : 0 }}>
             {isOwner && (
               <button
                 onClick={() => router.push("/team")}
@@ -1777,9 +1807,9 @@ export default function VictorProfilePage() {
           </div>
 
           {/* Title */}
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>{t("header.breadcrumb")}</div>
-            <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>
+          <div style={{ textAlign: "center", order: isMobile ? 1 : 0 }}>
+            <div style={{ fontSize: isMobile ? 11 : 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>{t("header.breadcrumb")}</div>
+            <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>
               {t("header.supplierProfile")} <span style={{ color: PURPLE }}>Viktor</span>
             </h1>
           </div>
@@ -1788,7 +1818,7 @@ export default function VictorProfilePage() {
           <div style={{
             display: "flex", alignItems: "center", gap: 12,
             background: CARD, border: `1px solid ${BDR2}`, borderRadius: 14,
-            padding: "9px 18px",
+            padding: "9px 18px", order: isMobile ? 3 : 0,
           }}>
             <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>‹</button>
             <div style={{ minWidth: 150, textAlign: "center" }}>
@@ -1802,23 +1832,23 @@ export default function VictorProfilePage() {
         {/* ── Victor Info Card ── */}
         <div style={{
           background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
-          padding: "22px 28px", display: "flex", alignItems: "center",
-          gap: 24, marginBottom: 18,
+          padding: isMobile ? "16px 16px" : "22px 28px", display: "flex", alignItems: "center",
+          gap: isMobile ? 14 : 24, marginBottom: 18, flexWrap: isMobile ? "wrap" : "nowrap",
         }}>
           {/* Avatar */}
           <div style={{
-            width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
+            width: isMobile ? 54 : 76, height: isMobile ? 54 : 76, borderRadius: "50%", flexShrink: 0,
             background: `linear-gradient(135deg, ${PURPLE}44 0%, #1a1035 100%)`,
             border: `2px solid ${PURPLE}55`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 28, fontWeight: 900, color: PURPLE,
+            fontSize: isMobile ? 22 : 28, fontWeight: 900, color: PURPLE,
             boxShadow: `0 0 24px ${PURPLE}22`,
           }}>V</div>
 
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>Viktor</span>
+              <span style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: TEXT }}>Viktor</span>
               <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}33`, color: PURPLE, fontWeight: 700 }}>{t("profile.role")}</span>
             </div>
             <div style={{ fontSize: 13, color: TEXT2, marginTop: 5 }}>{t("profile.subtitle")}</div>
@@ -1848,7 +1878,8 @@ export default function VictorProfilePage() {
                 padding: "10px 22px", borderRadius: 12, flexShrink: 0,
                 background: `${PURPLE}14`, border: `1px solid ${PURPLE}33`,
                 color: PURPLE, fontSize: 13, fontWeight: 700,
-                cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7,
+                cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                width: isMobile ? "100%" : "auto",
               }}>
               {t("header.newVictorWork")}
             </button>
@@ -1856,7 +1887,7 @@ export default function VictorProfilePage() {
         </div>
 
         {/* ── KPI Row ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fit, minmax(150px, 1fr))", gap: isMobile ? 10 : 12, marginBottom: 18 }}>
           {[
             { id: "goal",      label: t("kpi.totalMonthly"), value: goal > 0 ? goal : "—", sub: t("kpi.inProgressSub"), color: TEXT,   icon: "🎯" },
             { id: "completed", label: t("kpi.completed"),    value: completed,              sub: t("kpi.completedOf", { goal }), color: PURPLE, icon: "✅" },
@@ -1873,15 +1904,16 @@ export default function VictorProfilePage() {
           ].filter((kpi) => isOwner || kpi.id !== "salary").map(({ id, label, value, sub, color, icon }) => (
             <div key={id} style={{
               background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
-              padding: "18px 20px", position: "relative", overflow: "hidden",
+              padding: isMobile ? "13px 14px" : "18px 20px", position: "relative", overflow: "hidden",
+              minWidth: 0,
             }}>
               <div style={{
                 position: "absolute", bottom: -8, left: -4,
                 fontSize: 56, opacity: 0.05, userSelect: "none", pointerEvents: "none", lineHeight: 1,
               }}>{icon}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
-              <div style={{ fontSize: 30, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
-              {sub && <div style={{ fontSize: 11, color: TEXT2, marginTop: 8 }}>{sub}</div>}
+              <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: isMobile ? 7 : 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+              <div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
+              {sub && <div style={{ fontSize: 11, color: TEXT2, marginTop: isMobile ? 6 : 8 }}>{sub}</div>}
             </div>
           ))}
         </div>
@@ -1893,10 +1925,12 @@ export default function VictorProfilePage() {
           // so use 2 tracks (otherwise the 3rd track is wasted empty space and the
           // Files/Capacity column is squished). minmax(0,…) keeps the table track
           // shrink-safe; the side tracks get a sensible min width.
-          gridTemplateColumns: isOwner
-            ? "minmax(0, 2fr) minmax(300px, 1fr) minmax(300px, 1fr)"
-            : "minmax(0, 2fr) minmax(340px, 1fr)",
-          gap: 16, alignItems: "start",
+          gridTemplateColumns: isMobile
+            ? "1fr"
+            : isOwner
+              ? "minmax(0, 2fr) minmax(300px, 1fr) minmax(300px, 1fr)"
+              : "minmax(0, 2fr) minmax(340px, 1fr)",
+          gap: isMobile ? 12 : 16, alignItems: "start",
         }}>
 
           {/* ── Col 1: Projects Table ── */}
@@ -1922,6 +1956,46 @@ export default function VictorProfilePage() {
               <div style={{ padding: 32, textAlign: "center" }}>
                 <div style={{ fontSize: 32, opacity: 0.2, marginBottom: 8 }}>📋</div>
                 <div style={{ fontSize: 13, color: MUTED }}>{t("projects.empty")}</div>
+              </div>
+            ) : isMobile ? (
+              <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {displayWork.map(w => (
+                  <div key={w.id} style={{ background: CARD2, border: `1px solid ${BDR}`, borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <span style={{ marginLeft: 4 }}>🎵</span>{w.projectName}
+                        </div>
+                        <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>
+                          {(w.artist || "—")}{w.internalDeadline ? ` · ${fmtDate(w.internalDeadline)}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ flexShrink: 0 }}>
+                        {isOwner ? (
+                          <WorkStatusDropdown
+                            workId={w.id}
+                            status={w.status}
+                            workProjectId={w.projectId}
+                            workProjectName={w.projectName}
+                            onUpdated={newStatus => setWork(prev => prev.map(item => item.id === w.id ? { ...item, status: newStatus as import("@/lib/types").VictorStatus } : item))}
+                          />
+                        ) : (
+                          <StatusChip status={w.status} />
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedWork(w)}
+                      style={{ ...btnStyle, width: "100%", marginTop: 12, fontSize: 12, fontWeight: 700, color: "#1A1A20", padding: "9px 0", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer" }}>
+                      {t("projects.open")}
+                    </button>
+                  </div>
+                ))}
+                {monthWork.length > 12 && (
+                  <div style={{ paddingTop: 4, textAlign: "center" }}>
+                    <span style={{ fontSize: 11, color: MUTED }}>{t("projects.more", { n: monthWork.length - 12 })}</span>
+                  </div>
+                )}
               </div>
             ) : (
               <>
