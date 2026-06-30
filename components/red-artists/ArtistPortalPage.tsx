@@ -149,7 +149,7 @@ export default function ArtistPortalPage() {
   const [tab, setTab] = useState<Tab>("בית");
 
   return (
-    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "30px 24px 100px" }}>
+    <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
 
@@ -215,7 +215,7 @@ function ComingSoon({ tab }: { tab: Tab }) {
 // ── "המוזיקה שלי" page ────────────────────────────────────────────────────────────
 function MusicStatus({ status }: { status: string }) {
   const c = MUSIC_STATUS_COLOR[status] ?? "#9CA3AF";
-  return <span style={{ fontSize: 10.5, fontWeight: 700, color: c, background: `${c}1A`, border: `1px solid ${c}40`, borderRadius: 7, padding: "3px 10px", whiteSpace: "nowrap" }}>{status}</span>;
+  return <span style={{ fontSize: 11, fontWeight: 800, color: c, background: `${c}24`, border: `1px solid ${c}5A`, borderRadius: 8, padding: "4px 11px", whiteSpace: "nowrap" }}>{status}</span>;
 }
 
 function Disc() {
@@ -247,11 +247,13 @@ function MyMusicPage() {
 
       {/* ── Header ── */}
       <div style={{
-        position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid rgba(220,38,38,0.28)`,
-        background: `radial-gradient(120% 150% at 50% -20%, rgba(220,38,38,0.26) 0%, rgba(220,38,38,0.05) 42%, #100E0F 74%), linear-gradient(180deg, #161213 0%, #0C0A0B 100%)`,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 90px rgba(220,38,38,0.12), 0 26px 64px rgba(0,0,0,0.5)`,
+        position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid rgba(220,38,38,0.34)`,
+        background: `radial-gradient(120% 150% at 50% -22%, rgba(220,38,38,0.36) 0%, rgba(220,38,38,0.08) 40%, #110E0F 74%), radial-gradient(80% 120% at 50% 130%, rgba(220,38,38,0.10) 0%, transparent 60%), linear-gradient(180deg, #1A1314 0%, #0B0909 100%)`,
+        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 110px rgba(220,38,38,0.18), 0 28px 70px rgba(0,0,0,0.55)`,
       }}>
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 28, padding: "44px 44px" }}>
+        {/* top hairline glow */}
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 28, padding: "48px 44px" }}>
           {/* identity (right) */}
           <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 240 }}>
             <div style={{ padding: 3, borderRadius: "50%", flexShrink: 0, background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND})`, boxShadow: `0 0 32px ${BRAND}55` }}>
@@ -265,8 +267,8 @@ function MyMusicPage() {
           {/* title (center / grows) */}
           <div style={{ flex: 1, minWidth: 280, textAlign: "center" }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
-              <h1 style={{ fontSize: 36, fontWeight: 900, margin: 0, letterSpacing: "-0.02em", color: "#fff" }}>המוזיקה שלי</h1>
-              <span style={{ width: 54, height: 54, borderRadius: 15, background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: `0 0 20px rgba(220,38,38,0.28)` }}>♫</span>
+              <h1 style={{ fontSize: 40, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>המוזיקה שלי</h1>
+              <span style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}66`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 25, boxShadow: `0 0 24px rgba(220,38,38,0.35)` }}>♫</span>
             </div>
             <div style={{ fontSize: 14, color: TEXT2, marginTop: 11 }}>כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד</div>
           </div>
@@ -290,15 +292,15 @@ function MyMusicPage() {
       {/* ── filters / search ── */}
       <div style={{ ...panel, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "14px 18px" }}>
         {/* sort (right) */}
-        <button style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 16px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>⇅ תאריך עדכון</button>
+        <button style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 18px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>⇅ תאריך עדכון</button>
         {/* chips */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
           {MUSIC_CHIPS.map(c => {
             const sel = c.label === chip;
             return (
               <button key={c.label} onClick={() => setChip(c.label)} style={{
-                display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 16px", borderRadius: 999,
-                fontSize: 13, fontWeight: sel ? 800 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                display: "inline-flex", alignItems: "center", gap: 7, padding: "11px 18px", borderRadius: 999,
+                fontSize: 13.5, fontWeight: sel ? 800 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
                 background: sel ? "rgba(220,38,38,0.16)" : "rgba(255,255,255,0.03)",
                 border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : BDR2}`,
                 color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
@@ -330,9 +332,9 @@ function MyMusicPage() {
           </div>
 
           {/* column header */}
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "13px 24px", borderBottom: `1px solid ${BDR}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
             {["שם השיר", "סוג / גרסה", "סטטוס", "עודכן לאחרונה", "משך", "אפשרויות"].map(h => (
-              <div key={h} style={{ fontSize: 11.5, fontWeight: 700, color: MUTED, letterSpacing: "0.04em", textAlign: "start" }}>{h}</div>
+              <div key={h} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: "start" }}>{h}</div>
             ))}
           </div>
 
@@ -347,14 +349,14 @@ function MyMusicPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
                   <button style={playBtnLg} aria-label="play">▶</button>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{t.kind}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.kind}</div>
                   </div>
                 </div>
-                <div style={{ fontSize: 13, color: TEXT2 }}>{t.kind}</div>
+                <div style={{ fontSize: 13, color: "#CFCFD6" }}>{t.kind}</div>
                 <div><MusicStatus status={t.status} /></div>
-                <div style={{ fontSize: 12.5, color: TEXT2, direction: "ltr", textAlign: "start" }}>{t.date}</div>
-                <div style={{ fontSize: 12.5, color: TEXT2, direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
+                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start" }}>{t.date}</div>
+                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
                 <div><button style={dotsBtn} aria-label="more">⋯</button></div>
               </div>
             ))}
@@ -368,15 +370,15 @@ function MyMusicPage() {
             <span style={{ fontSize: 16.5, fontWeight: 800, color: TEXT }}>ממתין לאישור</span>
             <span style={{ fontSize: 11.5, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, borderRadius: 99, padding: "3px 10px" }}>{PENDING_TRACKS.length}</span>
           </div>
-          <div style={{ padding: "12px 16px" }}>
-            {PENDING_TRACKS.map(p => (
+          <div style={{ padding: "8px 16px 14px" }}>
+            {PENDING_TRACKS.map((p, i) => (
               <div key={p.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 13, padding: "15px 10px", borderRadius: 14, border: "1px solid transparent", transition: "all .14s" }}>
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 10px", borderRadius: 14, border: "1px solid transparent", borderBottom: i === PENDING_TRACKS.length - 1 ? "1px solid transparent" : `1px solid ${BDR}`, transition: "all .14s" }}>
                 <button style={playBtnLg} aria-label="play">▶</button>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{p.kind} · עודכן {p.date}</div>
-                  <span style={{ display: "inline-block", marginTop: 7, fontSize: 10.5, fontWeight: 700, color: "#F59E0B", background: "rgba(245,158,11,0.14)", border: "1px solid rgba(245,158,11,0.4)", borderRadius: 6, padding: "2px 9px" }}>ממתין לאישור</span>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>{p.kind} · עודכן {p.date}</div>
+                  <span style={{ display: "inline-block", marginTop: 8, fontSize: 10.5, fontWeight: 800, color: "#F59E0B", background: "rgba(245,158,11,0.18)", border: "1px solid rgba(245,158,11,0.5)", borderRadius: 7, padding: "3px 10px" }}>ממתין לאישור</span>
                 </div>
                 <Disc />
               </div>
@@ -387,7 +389,7 @@ function MyMusicPage() {
       </div>
 
       {/* ── bottom mock player bar (visual only — does NOT touch the global player) ── */}
-      <div style={{ ...panel, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap", padding: "22px 28px" }}>
+      <div style={{ ...panel, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap", padding: "22px 28px", marginTop: 4, marginBottom: 12 }}>
         {/* now playing (right) */}
         <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 250 }}>
           {/* mini waveform */}
