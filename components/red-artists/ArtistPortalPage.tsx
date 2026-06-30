@@ -68,6 +68,43 @@ const WEEK: { day: string; date: string; selected?: boolean; events: WeekEvent[]
 ];
 const CAMPAIGN = { name: "קמפיין פרנציפ", total: "3 תכנים השבוע", pending: "1 ממתין לאישור", scheduled: "2 מתוזמנים" };
 
+// ── "המוזיקה שלי" page (music tab) — demo library (UI only) ───────────────────────
+const MUSIC_STATUS_COLOR: Record<string, string> = {
+  "מוכן":         "#34D399",
+  "ממתין לאישור":  "#F59E0B",
+  "סקיצה":        "#9CA3AF",
+  "בבחינה":       "#2DD4BF",
+  "בבדיקה":       "#60A5FA",
+};
+type LibTrack = { name: string; kind: string; status: string; date: string; dur: string };
+const LIBRARY: LibTrack[] = [
+  { name: "הסיפור שלי",   kind: "מיקס",  status: "מוכן",   date: "08.06.2025", dur: "03:42" },
+  { name: "לב של זמן",    kind: "סקיצה", status: "סקיצה",  date: "27.05.2025", dur: "02:58" },
+  { name: "קלוזר חלק 2",  kind: "מאסטר", status: "מוכן",   date: "26.05.2025", dur: "04:11" },
+  { name: "חיים אחרים",   kind: "סקיצה", status: "סקיצה",  date: "23.05.2025", dur: "03:09" },
+  { name: "תל אביב בלילה", kind: "דמו",   status: "בבחינה", date: "20.05.2025", dur: "02:37" },
+  { name: "עד שנפגש",     kind: "מיקס",  status: "מוכן",   date: "18.05.2025", dur: "03:55" },
+];
+const PENDING_TRACKS: { name: string; kind: string; date: string }[] = [
+  { name: "שבילי אור",     kind: "מיקס", date: "09.06.2025" },
+  { name: "לילות ללא סוף", kind: "מיקס", date: "07.06.2025" },
+  { name: "חלומות בגובה",  kind: "מיקס", date: "05.06.2025" },
+];
+const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
+  { label: "סה״כ שירים",   value: 24, icon: "♫" },
+  { label: "סקיצות",       value: 8,  icon: "✎" },
+  { label: "ממתין לאישור", value: 3,  icon: "◷" },
+  { label: "מאסטרים",      value: 6,  icon: "♬" },
+];
+// chip label → predicate over a track (null = match all)
+const MUSIC_CHIPS: { label: string; match: ((t: LibTrack) => boolean) | null; dot?: string }[] = [
+  { label: "הכל",          match: null },
+  { label: "סקיצות",       match: t => t.kind === "סקיצה",        dot: "#9CA3AF" },
+  { label: "מיקסים",       match: t => t.kind === "מיקס",         dot: "#60A5FA" },
+  { label: "מאסטרים",      match: t => t.kind === "מאסטר",        dot: "#34D399" },
+  { label: "ממתין לאישור", match: t => t.status === "ממתין לאישור", dot: "#F59E0B" },
+];
+
 // Hero "latest updates" flash — hardcoded, rotates client-side.
 const FLASH: { text: string; time: string }[] = [
   { text: "המיקס של My Story מוכן לאישור",          time: "לפני 4 דקות" },
@@ -120,8 +157,14 @@ export default function ArtistPortalPage() {
         <style>{`
           .rap-grid-a { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
           .rap-acts   { display: grid; gap: 17px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+          .rap-kpi    { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+          .rap-music  { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr); }
           @media (max-width: 1040px) {
             .rap-grid-a { grid-template-columns: 1fr; }
+            .rap-music  { grid-template-columns: 1fr; }
+          }
+          @media (max-width: 820px) {
+            .rap-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           }
           @media (max-width: 760px) {
             .rap-acts { grid-template-columns: 1fr; }
@@ -151,7 +194,9 @@ export default function ArtistPortalPage() {
           })}
         </div>
 
-        {tab === "בית" ? <HomeDashboard /> : <ComingSoon tab={tab} />}
+        {tab === "בית" ? <HomeDashboard />
+          : tab === "המוזיקה שלי" ? <MyMusicPage />
+          : <ComingSoon tab={tab} />}
       </div>
     </div>
   );
@@ -163,6 +208,221 @@ function ComingSoon({ tab }: { tab: Tab }) {
       <div style={{ fontSize: 42, marginBottom: 14, opacity: 0.5 }}>🚧</div>
       <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, marginBottom: 6 }}>{tab}</div>
       <div style={{ fontSize: 13, color: TEXT2 }}>האזור הזה יוצג בקרוב</div>
+    </div>
+  );
+}
+
+// ── "המוזיקה שלי" page ────────────────────────────────────────────────────────────
+function MusicStatus({ status }: { status: string }) {
+  const c = MUSIC_STATUS_COLOR[status] ?? "#9CA3AF";
+  return <span style={{ fontSize: 10.5, fontWeight: 700, color: c, background: `${c}1A`, border: `1px solid ${c}40`, borderRadius: 7, padding: "3px 10px", whiteSpace: "nowrap" }}>{status}</span>;
+}
+
+function Disc() {
+  return (
+    <span style={{
+      width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+      background: "radial-gradient(circle at 50% 50%, #2A2A30 0%, #141416 60%, #0C0C0E 100%)",
+      border: `1px solid ${BDR2}`, display: "flex", alignItems: "center", justifyContent: "center",
+      color: TEXT2, fontSize: 15,
+    }}>♫</span>
+  );
+}
+
+function MyMusicPage() {
+  const [chip, setChip]   = useState("הכל");
+  const [query, setQuery] = useState("");
+
+  const active = MUSIC_CHIPS.find(c => c.label === chip) ?? MUSIC_CHIPS[0];
+  const rows = LIBRARY.filter(t =>
+    (active.match ? active.match(t) : true) &&
+    (query.trim() === "" || t.name.includes(query.trim()))
+  );
+
+  // grid template shared by the library table header + rows (RTL: name on the right)
+  const cols = "minmax(0, 2.2fr) 0.9fr 1fr 1.1fr 0.7fr 0.7fr";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        position: "relative", overflow: "hidden", borderRadius: 22, border: `1px solid rgba(220,38,38,0.28)`,
+        background: `radial-gradient(120% 150% at 50% -20%, rgba(220,38,38,0.26) 0%, rgba(220,38,38,0.05) 42%, #100E0F 74%), linear-gradient(180deg, #161213 0%, #0C0A0B 100%)`,
+        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 80px rgba(220,38,38,0.10), 0 24px 60px rgba(0,0,0,0.5)`,
+      }}>
+        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 24, padding: "30px 34px" }}>
+          {/* identity (right) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 220 }}>
+            <div style={{ padding: 3, borderRadius: "50%", flexShrink: 0, background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND})`, boxShadow: `0 0 28px ${BRAND}55` }}>
+              <div style={{ width: 60, height: 60, borderRadius: "50%", background: "linear-gradient(140deg, #2A0E0E, #140808)", border: "1px solid rgba(255,255,255,0.10)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 900, color: "#fff" }}>ש</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 19, fontWeight: 900, color: "#fff" }}>שלו טסמה</div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>אמן · Redbloods Records</div>
+            </div>
+          </div>
+          {/* title (center / grows) */}
+          <div style={{ flex: 1, minWidth: 280, textAlign: "center" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+              <h1 style={{ fontSize: 30, fontWeight: 900, margin: 0, letterSpacing: "-0.02em", color: "#fff" }}>המוזיקה שלי</h1>
+              <span style={{ width: 46, height: 46, borderRadius: 13, background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, boxShadow: `0 0 18px rgba(220,38,38,0.25)` }}>♫</span>
+            </div>
+            <div style={{ fontSize: 13, color: TEXT2, marginTop: 8 }}>כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד</div>
+          </div>
+          <div style={{ minWidth: 220 }} />
+        </div>
+      </div>
+
+      {/* ── KPI row ── */}
+      <div className="rap-kpi">
+        {MUSIC_KPIS.map(k => (
+          <div key={k.label} style={{ ...panel, padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11.5, color: TEXT2, fontWeight: 600 }}>{k.label}</div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: TEXT, marginTop: 4 }}>{k.value}</div>
+            </div>
+            <span style={{ width: 42, height: 42, borderRadius: 12, flexShrink: 0, background: "rgba(220,38,38,0.13)", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{k.icon}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── filters / search ── */}
+      <div style={{ ...panel, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 16px" }}>
+        {/* sort (right) */}
+        <button style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 11, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>⇅ תאריך עדכון</button>
+        {/* chips */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {MUSIC_CHIPS.map(c => {
+            const sel = c.label === chip;
+            return (
+              <button key={c.label} onClick={() => setChip(c.label)} style={{
+                display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 999,
+                fontSize: 12.5, fontWeight: sel ? 800 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                background: sel ? "rgba(220,38,38,0.16)" : "rgba(255,255,255,0.03)",
+                border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : BDR2}`,
+                color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
+              }}>
+                {c.dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />}
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+        {/* search (pushed left) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginInlineStart: "auto", background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 11, padding: "8px 12px", minWidth: 220 }}>
+          <span style={{ color: MUTED, fontSize: 13 }}>⌕</span>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="חיפוש שיר או גרסה..." style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TEXT, fontSize: 12.5, fontFamily: "inherit" }} />
+        </div>
+      </div>
+
+      {/* ── main: library table + pending side ── */}
+      <div className="rap-music">
+
+        {/* library */}
+        <div style={panel}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "16px 20px", borderBottom: `1px solid ${BDR}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+              <span style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>ספריית השירים שלי</span>
+            </div>
+            <span style={{ fontSize: 11.5, color: MUTED }}>24 תוצאות</span>
+          </div>
+
+          {/* column header */}
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 18px", borderBottom: `1px solid ${BDR}` }}>
+            {["שם השיר", "סוג / גרסה", "סטטוס", "עודכן לאחרונה", "משך", "אפשרויות"].map(h => (
+              <div key={h} style={{ fontSize: 10.5, fontWeight: 700, color: MUTED, letterSpacing: "0.04em", textAlign: "start" }}>{h}</div>
+            ))}
+          </div>
+
+          {/* rows */}
+          <div style={{ padding: "4px 8px 6px" }}>
+            {rows.length === 0 ? (
+              <div style={{ padding: "40px 0", textAlign: "center", fontSize: 13, color: MUTED }}>לא נמצאו שירים</div>
+            ) : rows.map(t => (
+              <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 10px", borderRadius: 12, border: "1px solid transparent", transition: "all .14s" }}>
+                {/* name + play (right) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <button style={playBtn} aria-label="play">▶</button>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.kind}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12.5, color: TEXT2 }}>{t.kind}</div>
+                <div><MusicStatus status={t.status} /></div>
+                <div style={{ fontSize: 12, color: TEXT2, direction: "ltr", textAlign: "start" }}>{t.date}</div>
+                <div style={{ fontSize: 12, color: TEXT2, direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
+                <div><button style={dotsBtn} aria-label="more">⋯</button></div>
+              </div>
+            ))}
+            <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "12px 0 8px", fontWeight: 700 }}>הצג עוד ⌄</button>
+          </div>
+        </div>
+
+        {/* pending approval side */}
+        <div style={panel}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "16px 18px", borderBottom: `1px solid ${BDR}` }}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>ממתין לאישור</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, borderRadius: 99, padding: "2px 9px" }}>{PENDING_TRACKS.length}</span>
+          </div>
+          <div style={{ padding: "10px 14px" }}>
+            {PENDING_TRACKS.map(p => (
+              <div key={p.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 8px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
+                <button style={playBtn} aria-label="play">▶</button>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{p.kind} · עודכן {p.date}</div>
+                  <span style={{ display: "inline-block", marginTop: 6, fontSize: 10, fontWeight: 700, color: "#F59E0B", background: "rgba(245,158,11,0.14)", border: "1px solid rgba(245,158,11,0.4)", borderRadius: 6, padding: "2px 8px" }}>ממתין לאישור</span>
+                </div>
+                <Disc />
+              </div>
+            ))}
+            <button style={{ display: "block", width: "100%", textAlign: "center", marginTop: 8, padding: "11px 0", borderRadius: 11, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>הצג הכל</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── bottom mock player bar (visual only — does NOT touch the global player) ── */}
+      <div style={{ ...panel, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", padding: "16px 22px" }}>
+        {/* now playing (right) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 220 }}>
+          {/* mini waveform */}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 30 }}>
+            {[10, 20, 13, 26, 16, 22, 11, 18, 24, 14].map((h, i) => (
+              <span key={i} style={{ width: 2.5, height: h, borderRadius: 2, background: BRAND, opacity: 0.85 }} />
+            ))}
+          </div>
+          <div style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>הסיפור שלי</div>
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>מיקס · 03:42</div>
+          </div>
+          <span style={{ color: "#FF6B6B", fontSize: 15 }}>♥</span>
+        </div>
+
+        {/* transport (center) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginInlineStart: "auto", marginInlineEnd: "auto" }}>
+          <span style={{ color: TEXT2, fontSize: 15, cursor: "pointer" }}>⇄</span>
+          <span style={{ color: TEXT, fontSize: 16, cursor: "pointer" }}>⏮</span>
+          <button style={{ width: 48, height: 48, borderRadius: "50%", flexShrink: 0, background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.4), #150809 78%)", border: `1px solid ${BRAND}`, color: "#fff", fontSize: 15, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 0 18px rgba(220,38,38,0.4)` }}>▶</button>
+          <span style={{ color: TEXT, fontSize: 16, cursor: "pointer" }}>⏭</span>
+          <span style={{ color: TEXT2, fontSize: 15, cursor: "pointer" }}>↻</span>
+        </div>
+
+        {/* volume + icons (left) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 200, justifyContent: "flex-end" }}>
+          <span style={{ color: TEXT2, fontSize: 14 }}>🔊</span>
+          <div style={{ width: 110, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.10)", position: "relative" }}>
+            <div style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: "70%", background: BRAND, borderRadius: 2 }} />
+          </div>
+          <span style={{ color: MUTED, fontSize: 14 }}>🖥</span>
+          <span style={{ color: MUTED, fontSize: 14 }}>☰</span>
+        </div>
+      </div>
     </div>
   );
 }
