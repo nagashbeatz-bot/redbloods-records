@@ -220,13 +220,6 @@ export default function ArtistPortalPage() {
           @keyframes rapProgress { from { width: 0%; } to { width: 100%; } }
           .rap-tabs { scrollbar-width: none; -ms-overflow-style: none; }
           .rap-tabs::-webkit-scrollbar { display: none; }
-          /* Library internal scroll — thin, dark, premium. Only the song list
-             scrolls; the rest of the page stays put when "הצג עוד" reveals more. */
-          .rap-lib-scroll { scrollbar-width: thin; scrollbar-color: rgba(220,38,38,0.35) transparent; }
-          .rap-lib-scroll::-webkit-scrollbar { width: 8px; }
-          .rap-lib-scroll::-webkit-scrollbar-track { background: transparent; }
-          .rap-lib-scroll::-webkit-scrollbar-thumb { background: rgba(220,38,38,0.30); border-radius: 8px; }
-          .rap-lib-scroll::-webkit-scrollbar-thumb:hover { background: rgba(220,38,38,0.5); }
         `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
@@ -437,12 +430,10 @@ function MyMusicPage() {
             }}><IcUpload size={14} /> העלאת קובץ</button>
           </div>
 
-          {/* library scroll area — ONLY this scrolls; the page stays put when
-              "הצג עוד" reveals more. Desktop header is sticky so it stays aligned. */}
-          <div className="rap-lib-scroll" style={{ maxHeight: isMobile ? 520 : 468, overflowY: "auto" }}>
-          {/* column header — desktop only (mobile uses cards) */}
+          {/* column header — desktop only (mobile uses cards). No inner scroll:
+              the table renders inline and "הצג עוד" simply grows it in the page. */}
           {!isMobile && (
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "#151516", position: "sticky", top: 0, zIndex: 2 }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
             {heads.map((h, i) => (
               <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
@@ -493,79 +484,16 @@ function MyMusicPage() {
               ))
             )}
           </div>
-          </div>
-          {hasMore && (
+          {hasMore ? (
             <button onClick={showMore} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0", fontWeight: 700, borderTop: `1px solid ${BDR}` }}>הצג עוד ⌄</button>
+          ) : (
+            <div style={{ textAlign: "center", padding: "14px 0", fontSize: 12.5, color: MUTED, borderTop: `1px solid ${BDR}` }}>הוצגו כל השירים</div>
           )}
       </div>
 
-      {/* ── bottom mock player (visual only — does NOT touch the global player) ── */}
-      {isMobile ? (
-        /* Mobile: compact modern player — artwork+meta, wide progress, centered controls */
-        <div style={{ ...panel, padding: "14px 16px 16px", marginTop: 4, marginBottom: 12 }}>
-          {/* now playing */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>הסיפור שלי</div>
-              <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>מיקס · 03:42</div>
-            </div>
-            <button style={pbtn} aria-label="אהבתי"><IcHeart size={18} /></button>
-          </div>
-          {/* progress — LTR like any music player (elapsed left, total right) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 13, direction: "ltr" }}>
-            <span style={{ fontSize: 11, color: MUTED, fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>1:28</span>
-            <div style={{ flex: 1, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.12)", position: "relative" }}>
-              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "40%", background: BRAND, borderRadius: 3 }} />
-              <div style={{ position: "absolute", left: "calc(40% - 6px)", top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: "50%", background: "#fff", boxShadow: `0 0 8px ${BRAND}` }} />
-            </div>
-            <span style={{ fontSize: 11, color: MUTED, fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>3:42</span>
-          </div>
-          {/* controls — forced LTR so prev/next never flip: shuffle · prev · play · next · repeat */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 26, marginTop: 15, direction: "ltr" }}>
-            <button style={pbtn} aria-label="ערבוב"><IcShuffle size={18} /></button>
-            <button style={pbtn} aria-label="הקודם"><IcSkipBack size={22} /></button>
-            <button style={{ ...pbtn, width: 54, height: 54, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.42), #150809 78%)", border: `1px solid ${BRAND}`, boxShadow: `0 0 22px rgba(220,38,38,0.45)` }} aria-label="נגן"><IcPlay size={22} /></button>
-            <button style={pbtn} aria-label="הבא"><IcSkipFwd size={22} /></button>
-            <button style={pbtn} aria-label="חזרה"><IcRepeat size={18} /></button>
-          </div>
-        </div>
-      ) : (
-        /* Desktop: horizontal player */
-        <div style={{ ...panel, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap", padding: "22px 28px", marginTop: 4, marginBottom: 12 }}>
-          {/* now playing (right) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: "0 1 auto" }}>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 2.5, height: 42, flexShrink: 0 }}>
-              {[14, 28, 18, 36, 22, 31, 15, 25, 34, 20, 30, 16].map((h, i) => (
-                <span key={i} style={{ width: 3, height: h, borderRadius: 2, background: BRAND, opacity: 0.85 }} />
-              ))}
-            </div>
-            <div style={{ width: 56, height: 56, borderRadius: 12, flexShrink: 0, background: `linear-gradient(140deg, ${BRAND}66, #2A0E0E)`, border: `1px solid ${BDR2}` }} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 15.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>הסיפור שלי</div>
-              <div style={{ fontSize: 12.5, color: MUTED, marginTop: 3 }}>מיקס · 03:42</div>
-            </div>
-            <button style={pbtn} aria-label="אהבתי"><IcHeart size={18} /></button>
-          </div>
-          {/* transport (center) — forced LTR so prev/next never flip */}
-          <div style={{ display: "flex", alignItems: "center", gap: 18, marginInlineStart: "auto", marginInlineEnd: "auto", direction: "ltr" }}>
-            <button style={pbtn} aria-label="ערבוב"><IcShuffle size={18} /></button>
-            <button style={pbtn} aria-label="הקודם"><IcSkipBack size={22} /></button>
-            <button style={{ ...pbtn, width: 58, height: 58, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.4), #150809 78%)", border: `1px solid ${BRAND}`, boxShadow: `0 0 22px rgba(220,38,38,0.45)` }} aria-label="נגן"><IcPlay size={22} /></button>
-            <button style={pbtn} aria-label="הבא"><IcSkipFwd size={22} /></button>
-            <button style={pbtn} aria-label="חזרה"><IcRepeat size={18} /></button>
-          </div>
-          {/* volume + icons (left) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: "0 1 auto", justifyContent: "flex-end" }}>
-            <button style={pbtn} aria-label="עוצמה"><IcVolume size={18} /></button>
-            <div style={{ width: 150, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.10)", position: "relative", flexShrink: 1, direction: "ltr" }}>
-              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "70%", background: BRAND, borderRadius: 3 }} />
-            </div>
-            <button style={pbtn} aria-label="מסך"><IcMonitor size={18} /></button>
-            <button style={pbtn} aria-label="תור"><IcList size={18} /></button>
-          </div>
-        </div>
-      )}
+      {/* Internal mock player removed. TODO: wire row Play buttons to the app's
+          GLOBAL player (already synced across the system) instead of a portal-local
+          one — no extra player inside Red Artists. */}
 
       {/* upload modal + demo toast */}
       <UploadModal modal={modal} onClose={() => setModal(null)} onToast={setToast} />
