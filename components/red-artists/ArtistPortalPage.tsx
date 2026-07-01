@@ -139,8 +139,6 @@ const LIBRARY: LibTrack[] = [
   { name: "תל אביב בלילה", kind: "דמו",   status: "בבחינה",       date: "20.05.2025", dur: "02:37" },
   { name: "עד שנפגש",     kind: "מיקס",  status: "ממתין לאישור", date: "18.05.2025", dur: "03:55" },
 ];
-// File-type options for the upload modal (display-only labels; no new statuses).
-const FILE_KINDS = ["סקיצה", "ווקאל", "ביט", "מיקס", "אחר"] as const;
 const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "סה״כ שירים",   value: 24, icon: "♫" },
   { label: "סקיצות",       value: 8,  icon: "✎" },
@@ -1019,18 +1017,19 @@ function UploadModal({ modal, onClose, onToast }: {
   // "new" = סקיצה חדשה (create a new draft) · "update" = עדכון קובץ לשיר קיים.
   const [tab, setTab]           = useState<"new" | "update">("new");
   const [song, setSong]         = useState("");
-  const [kind, setKind]         = useState<string>("");
+  const [songOpen, setSongOpen] = useState(false);
   const [file, setFile]         = useState<File | null>(null);
   const [note, setNote]         = useState("");
   const [skitchName, setSkitch] = useState("");
   const [lyrics, setLyrics]     = useState("");
   const [drag, setDrag]         = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef  = useRef<HTMLInputElement>(null);
+  const songBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
       setTab(modal!.mode === "update" ? "update" : "new");
-      setSong(modal?.target ?? ""); setKind(""); setFile(null); setNote(""); setSkitch(""); setLyrics(""); setDrag(false);
+      setSong(modal?.target ?? ""); setSongOpen(false); setFile(null); setNote(""); setSkitch(""); setLyrics(""); setDrag(false);
     }
   }, [open, modal?.target, modal?.mode]);
 
@@ -1040,6 +1039,17 @@ function UploadModal({ modal, onClose, onToast }: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // Close the custom song dropdown on outside click (native <select> popups
+  // render an OS-white list that breaks the dark theme — so we use our own).
+  useEffect(() => {
+    if (!songOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (songBoxRef.current && !songBoxRef.current.contains(e.target as Node)) setSongOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [songOpen]);
 
   if (!open || typeof document === "undefined") return null;
   // Song target is locked only when the modal was opened from a row's "עדכן קובץ".
@@ -1060,30 +1070,10 @@ function UploadModal({ modal, onClose, onToast }: {
   const field: React.CSSProperties = {
     width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
     border: `1px solid ${BDR2}`, borderRadius: 11, color: TEXT, fontSize: 14,
-    fontFamily: "inherit", padding: "13px 14px", outline: "none",
+    fontFamily: "inherit", padding: "13px 14px", outline: "none", colorScheme: "dark",
   };
 
   // Shared blocks reused by both tabs.
-  const kindChips = (
-    <div style={{ marginBottom: 16 }}>
-      <div style={label}>סוג קובץ</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {FILE_KINDS.map(k => {
-          const sel = k === kind;
-          return (
-            <button key={k} onClick={() => setKind(sel ? "" : k)} style={{
-              padding: "9px 15px", borderRadius: 999, fontSize: 13, fontWeight: sel ? 800 : 600,
-              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-              background: sel ? "rgba(220,38,38,0.18)" : "rgba(255,255,255,0.03)",
-              border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : BDR2}`,
-              color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
-            }}>{k}</button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
   const filePicker = (
     <div style={{ marginBottom: 16 }}>
       <div style={label}>בחר קובץ</div>
@@ -1165,7 +1155,7 @@ function UploadModal({ modal, onClose, onToast }: {
             {/* שם סקיצה */}
             <div style={{ marginBottom: 16 }}>
               <div style={label}>שם סקיצה</div>
-              <input value={skitchName} onChange={e => setSkitch(e.target.value)} placeholder="לדוגמה: רעיון חדש לפזמון" style={field} />
+              <input value={skitchName} onChange={e => setSkitch(e.target.value)} placeholder="כתוב שם לסקיצה" style={field} />
             </div>
             {/* מילים / טקסט */}
             <div style={{ marginBottom: 16 }}>
@@ -1174,7 +1164,6 @@ function UploadModal({ modal, onClose, onToast }: {
                 style={{ ...field, resize: "none", lineHeight: 1.5 }} />
             </div>
             {noteBlock("הערות", "כתבו הערות, וייב, הפניות או הערות הפקה…")}
-            {kindChips}
             {filePicker}
           </>
         ) : (
@@ -1187,13 +1176,39 @@ function UploadModal({ modal, onClose, onToast }: {
                   <span style={{ color: "#FF6B6B", fontSize: 13 }}>♫</span>{song}
                 </div>
               ) : (
-                <select value={song} onChange={e => setSong(e.target.value)} style={{ ...field, cursor: "pointer", appearance: "none" }}>
-                  <option value="" disabled>בחר שיר / פרויקט…</option>
-                  {LIBRARY.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
-                </select>
+                <div ref={songBoxRef} style={{ position: "relative" }}>
+                  <button type="button" onClick={() => setSongOpen(o => !o)} style={{
+                    ...field, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "start",
+                    borderColor: songOpen ? "rgba(220,38,38,0.5)" : BDR2,
+                  }}>
+                    <span style={{ color: song ? TEXT : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song || "בחר שיר / פרויקט…"}</span>
+                    <span style={{ color: TEXT2, fontSize: 10, flexShrink: 0, transform: songOpen ? "rotate(180deg)" : "none", transition: "transform .14s" }}>▼</span>
+                  </button>
+                  {songOpen && (
+                    <div style={{
+                      position: "absolute", top: "calc(100% + 6px)", insetInlineStart: 0, insetInlineEnd: 0, zIndex: 5,
+                      background: "#161617", border: `1px solid ${BDR2}`, borderRadius: 11,
+                      boxShadow: "0 12px 34px rgba(0,0,0,0.6)", overflow: "hidden", maxHeight: 210, overflowY: "auto", padding: 5,
+                    }}>
+                      {LIBRARY.map(t => {
+                        const sel = t.name === song;
+                        return (
+                          <button key={t.name} type="button" onClick={() => { setSong(t.name); setSongOpen(false); }}
+                            onMouseEnter={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.22)" : "rgba(255,255,255,0.05)")}
+                            onMouseLeave={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.16)" : "transparent")}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "start",
+                              padding: "11px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+                              background: sel ? "rgba(220,38,38,0.16)" : "transparent",
+                              color: sel ? "#FF6B6B" : TEXT, fontSize: 13.5, fontWeight: sel ? 800 : 600, fontFamily: "inherit",
+                            }}><span style={{ fontSize: 12, color: "#FF6B6B" }}>♫</span>{t.name}</button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-            {kindChips}
             {filePicker}
             {noteBlock("הערה (אופציונלי)", "כתוב הערה קצרה על הקובץ…")}
           </>
