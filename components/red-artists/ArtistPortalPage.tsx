@@ -143,11 +143,6 @@ const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "ממתין לאישור", value: 3,  icon: "◷" },
   { label: "מאסטרים",      value: 6,  icon: "♬" },
 ];
-// Music-tab filter tabs. "מוכנים" = ready (status מוכן or a מאסטר version);
-// "סקיצות" = everything still in progress (סקיצה / בבחינה / ממתין לאישור / דמו).
-// Uses only existing status/kind values — no new statuses invented.
-const MUSIC_TABS = ["כל השירים", "סקיצות", "מוכנים"] as const;
-const isReadyTrack = (t: LibTrack) => t.status === "מוכן" || t.kind === "מאסטר";
 
 // Hero "latest updates" flash — hardcoded, rotates client-side.
 const FLASH: { text: string; time: string }[] = [
@@ -262,14 +257,9 @@ function MusicStatus({ status }: { status: string }) {
 }
 
 function MyMusicPage() {
-  const [tab, setTab]     = useState<string>("כל השירים");
-  const [query, setQuery] = useState("");
   const isMobile = useIsMobile();
 
-  const rows = LIBRARY.filter(t =>
-    (tab === "כל השירים" ? true : tab === "מוכנים" ? isReadyTrack(t) : !isReadyTrack(t)) &&
-    (query.trim() === "" || t.name.includes(query.trim()))
-  );
+  const rows = LIBRARY;
 
   // grid template shared EXACTLY by the library header + every row (RTL: play on the
   // right in its own fixed column, then name, then the technical columns).
@@ -333,46 +323,20 @@ function MyMusicPage() {
         ))}
       </div>
 
-      {/* ── controls: upload + 3 tabs + search ── */}
-      <div style={{ ...panel, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "14px 18px" }}>
-        {/* upload (primary) — UI only; not wired (no song-upload flow exists yet) */}
-        <button style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-          padding: "12px 20px", borderRadius: 12, border: "none", color: "#fff",
-          background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: 13.5, fontWeight: 800,
-          cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
-          width: isMobile ? "100%" : "auto",
-        }}><IcUpload size={17} /> העלאת קובץ</button>
-        {/* 3 filter tabs */}
-        <div style={{ display: "inline-flex", gap: 6, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 999, padding: 4, width: isMobile ? "100%" : "auto" }}>
-          {MUSIC_TABS.map(tb => {
-            const sel = tb === tab;
-            return (
-              <button key={tb} onClick={() => setTab(tb)} style={{
-                flex: isMobile ? 1 : undefined, padding: "9px 18px", borderRadius: 999,
-                fontSize: 13.5, fontWeight: sel ? 800 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-                background: sel ? "rgba(220,38,38,0.18)" : "transparent",
-                border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : "transparent"}`,
-                color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
-              }}>{tb}</button>
-            );
-          })}
-        </div>
-        {/* search (pushed left on desktop, full width on mobile) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 9, marginInlineStart: isMobile ? 0 : "auto", width: isMobile ? "100%" : undefined, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: "10px 14px", minWidth: isMobile ? 0 : 240 }}>
-          <span style={{ color: MUTED, fontSize: 14 }}>⌕</span>
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="חיפוש שיר או גרסה..." style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: TEXT, fontSize: 13, fontFamily: "inherit" }} />
-        </div>
-      </div>
-
       {/* ── library (full width) ── */}
       <div style={panel}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "18px 24px", borderBottom: `1px solid ${BDR}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-              <span style={{ fontSize: 17.5, fontWeight: 800, color: TEXT }}>ספריית השירים שלי</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+              <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ספריית השירים שלי</span>
             </div>
-            <span style={{ fontSize: 12.5, color: MUTED }}>{rows.length} תוצאות</span>
+            {/* upload (primary) — UI only; not wired (no song-upload flow exists yet) */}
+            <button style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0,
+              padding: isMobile ? "10px 14px" : "11px 18px", borderRadius: 11, border: "none", color: "#fff",
+              background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12.5 : 13.5, fontWeight: 800,
+              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
+            }}><IcUpload size={16} /> העלאת קובץ</button>
           </div>
 
           {/* column header — desktop only (mobile uses cards) */}
