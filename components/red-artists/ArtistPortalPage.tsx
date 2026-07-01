@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { getLatestAudioFile } from "@/components/PlayerProvider";
+import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
 import type { Project } from "@/lib/types";
 
 // Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
@@ -60,11 +60,11 @@ const IcCloud    = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} 
 
 // Single unified play button used in EVERY list across the portal (desktop +
 // mobile): dark circle, subtle red border + glow, clean white SVG play icon.
-// Visual only (no-op) for now — a later step wires it to the GLOBAL player.
-// `disabled` = the project has no playable audio file yet.
-function PlayButton({ size = 40, disabled = false }: { size?: number; disabled?: boolean }) {
+// Plays through the GLOBAL player when wired via onClick. `disabled` = the
+// project has no playable audio file.
+function PlayButton({ size = 40, disabled = false, onClick }: { size?: number; disabled?: boolean; onClick?: () => void }) {
   return (
-    <button aria-label="נגן" disabled={disabled} title={disabled ? "אין קובץ אודיו זמין" : undefined} style={{
+    <button aria-label="נגן" disabled={disabled} onClick={onClick} title={disabled ? "אין קובץ אודיו זמין" : undefined} style={{
       width: size, height: size, borderRadius: "50%", flexShrink: 0, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit",
       background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.22), #150809 75%)",
       border: `1px solid ${BRAND}55`, boxShadow: `0 0 14px rgba(220,38,38,0.3)`, opacity: disabled ? 0.35 : 1,
@@ -157,14 +157,8 @@ const LIBRARY: LibTrack[] = [
   { name: "בין השורות",    kind: "סקיצה", status: "סקיצה",        date: "02.05.2025", dur: "02:58", artists: "שליו טסמה, נגאש" },
   { name: "עד הבוקר",      kind: "מיקס",  status: "ממתין לאישור", date: "28.04.2025", dur: "03:37", artists: "שליו טסמה" },
 ];
-const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
-  { label: "סה״כ שירים",   value: 24, icon: "♫" },
-  { label: "סקיצות",       value: 8,  icon: "✎" },
-  { label: "ממתין לאישור", value: 3,  icon: "◷" },
-  { label: "מאסטרים",      value: 6,  icon: "♬" },
-];
 // Shorter labels for the compact mobile KPI strip.
-const KPI_SHORT: Record<string, string> = { "סה״כ שירים": "שירים", "ממתין לאישור": "לאישור" };
+const KPI_SHORT: Record<string, string> = { "סה״כ שירים": "שירים", "עם אודיו": "אודיו" };
 
 // Hero "latest updates" flash — hardcoded, rotates client-side.
 const FLASH: { text: string; time: string }[] = [
@@ -210,11 +204,13 @@ const normName = (s: string) => (s ?? "").trim().replace(/\s+/g, " ");
 function artistTokens(artist: string): string[] {
   return (artist ?? "").split(/[,،;]/).map(normName).filter(Boolean);
 }
-export type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean };
+type AudioFile = ReturnType<typeof getLatestAudioFile>; // { name; url; dropboxPath?; ... } | null
+export type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean; audio: AudioFile };
 function toLibRow(p: Project): LibRow {
+  const audio = getLatestAudioFile(p.files ?? []); // existing helper — real audio only, no stems/delivery
   return {
     id: p.id, name: p.name, artist: p.artist, status: p.status,
-    projectType: p.projectType, hasAudio: !!getLatestAudioFile(p.files ?? []),
+    projectType: p.projectType, hasAudio: !!audio, audio,
   };
 }
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
@@ -222,6 +218,18 @@ function getShalevMusicProjects(projects: Project[]): LibRow[] {
   return (Array.isArray(projects) ? projects : [])
     .filter(p => !p.isHidden && artistTokens(p.artist).includes(target))
     .map(toLibRow);
+}
+
+// Play a library row through the EXISTING global player (same call ProjectsTable
+// uses). No new player, no new audio element — PlayerProvider handles LISTEN/Radio.
+async function playLibRow(player: ReturnType<typeof usePlayerSafe>, t: LibRow, onError?: (m: string) => void) {
+  if (!t.audio || !player) return;
+  try {
+    const url = await getFreshPlayUrl(t.audio);
+    player.play({ projectId: t.id, projectName: t.name, artist: t.artist, fileName: t.audio.name, url });
+  } catch {
+    onError?.("לא ניתן להשמיע כרגע");
+  }
 }
 
 function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
@@ -646,6 +654,18 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
   const hasMore = visibleCount < rows.length;
   const showMore = () => setVisibleCount(c => (c < 10 ? 10 : rows.length));
 
+  const player = usePlayerSafe();
+
+  // Real KPIs from the shared library — no demo numbers. "—" until loaded; only
+  // metrics we can derive with confidence (count + audio + real ProjectStatus).
+  const ready = loadState === "ready";
+  const kpis: { label: string; value: string | number; icon: string }[] = [
+    { label: "סה״כ שירים", value: ready ? rows.length : "—", icon: "♫" },
+    { label: "עם אודיו",   value: ready ? rows.filter(r => r.hasAudio).length : "—", icon: "▶" },
+    { label: "בעבודה",     value: ready ? rows.filter(r => r.status === "בעבודה").length : "—", icon: "✎" },
+    { label: "הושלמו",     value: ready ? rows.filter(r => r.status === "הושלם").length : "—", icon: "✓" },
+  ];
+
   // grid template shared EXACTLY by the library header + every row (RTL: play on the
   // right in its own fixed column, then name, then the technical columns).
   // Play fixed · שם השיר wide (the focus) · type a touch narrower · status/date/
@@ -666,7 +686,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
       {/* ── KPI row (desktop: cards · mobile: compact 4-up strip, no icons) ── */}
       {isMobile ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-          {MUSIC_KPIS.map(k => (
+          {kpis.map(k => (
             <div key={k.label} style={{
               background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12,
               padding: "10px 6px", textAlign: "center", minWidth: 0,
@@ -678,7 +698,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
         </div>
       ) : (
         <div className="rap-kpi">
-          {MUSIC_KPIS.map(k => (
+          {kpis.map(k => (
             <div key={k.label} style={{ ...panel, padding: "22px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div>
                 <div style={{ fontSize: 12.5, color: TEXT2, fontWeight: 600 }}>{k.label}</div>
@@ -728,7 +748,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
               displayRows.map(t => (
                 <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
                   {/* play (rightmost in RTL) — visual only for now */}
-                  <PlayButton size={42} disabled={!t.hasAudio} />
+                  <PlayButton size={42} disabled={!t.hasAudio} onClick={() => playLibRow(player, t, setToast)} />
                   {/* name + type/note + artist + status */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
@@ -747,7 +767,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
                   style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
                   {/* play (right column — no header) — visual only for now */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
-                    <PlayButton size={42} disabled={!t.hasAudio} />
+                    <PlayButton size={42} disabled={!t.hasAudio} onClick={() => playLibRow(player, t, setToast)} />
                   </div>
                   {/* name + small type/note under it */}
                   <div style={{ minWidth: 0, textAlign: "start" }}>
@@ -800,6 +820,7 @@ const pbtn: React.CSSProperties = {
 // ── Home dashboard ───────────────────────────────────────────────────────────────
 function HomeDashboard({ onOpenMusic, musicRows, loadState }: { onOpenMusic: () => void; musicRows: LibRow[]; loadState: "loading" | "ready" | "error" }) {
   const isMobile = useIsMobile();
+  const player = usePlayerSafe();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
@@ -834,7 +855,7 @@ function HomeDashboard({ onOpenMusic, musicRows, loadState }: { onOpenMusic: () 
                 <div key={t.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
                   {/* play (rightmost in RTL) — visual only for now */}
-                  <PlayButton size={36} disabled={!t.hasAudio} />
+                  <PlayButton size={36} disabled={!t.hasAudio} onClick={() => playLibRow(player, t)} />
                   {/* name + artist */}
                   <div style={{ textAlign: "start", minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
