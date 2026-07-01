@@ -1090,16 +1090,23 @@ function UploadModal({ modal, onClose, onToast }: {
       : "היעד והקובץ נקלטו (הדגמה) — חיבור העלאה אמיתי ממתין לאישור");
   };
 
-  const label: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 8 };
+  // ── Shared "design system" so both modes render identically (esp. on mobile):
+  // same label spacing, same section gap, same control/textarea/dropzone height. ──
+  const sectionGap = isMobile ? 15 : 16;
+  const ctrlH      = isMobile ? 46 : undefined;   // input / dropdown / locked field
+  const taH        = isMobile ? 84 : undefined;   // every textarea
+  const label: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: isMobile ? 7 : 8 };
+  const section: React.CSSProperties = { marginBottom: sectionGap };
   const field: React.CSSProperties = {
     width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
     border: `1px solid ${BDR2}`, borderRadius: 11, color: TEXT, fontSize: 14,
-    fontFamily: "inherit", padding: "13px 14px", outline: "none", colorScheme: "dark",
+    fontFamily: "inherit", padding: "13px 14px", outline: "none", colorScheme: "dark", minHeight: ctrlH,
   };
+  const textareaStyle: React.CSSProperties = { ...field, minHeight: undefined, height: taH, resize: "none", lineHeight: 1.5 };
 
   // Shared blocks reused by both tabs.
   const filePicker = (
-    <div style={{ marginBottom: 16 }}>
+    <div style={section}>
       <div style={label}>בחר קובץ</div>
       <div
         onClick={() => fileRef.current?.click()}
@@ -1127,10 +1134,9 @@ function UploadModal({ modal, onClose, onToast }: {
   );
 
   const noteBlock = (labelText: string, ph: string) => (
-    <div style={{ marginBottom: 16 }}>
+    <div style={section}>
       <div style={label}>{labelText}</div>
-      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={ph} rows={2}
-        style={{ ...field, resize: "none", lineHeight: 1.5 }} />
+      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={ph} rows={2} style={textareaStyle} />
     </div>
   );
 
@@ -1177,15 +1183,14 @@ function UploadModal({ modal, onClose, onToast }: {
         {tab === "new" ? (
           <>
             {/* שם סקיצה */}
-            <div style={{ marginBottom: 16 }}>
+            <div style={section}>
               <div style={label}>שם סקיצה</div>
               <input value={skitchName} onChange={e => setSkitch(e.target.value)} placeholder="כתוב שם לסקיצה" style={field} />
             </div>
             {/* מילים / טקסט */}
-            <div style={{ marginBottom: 16 }}>
+            <div style={section}>
               <div style={label}>מילים / טקסט</div>
-              <textarea value={lyrics} onChange={e => setLyrics(e.target.value)} placeholder="כתוב כאן מילים, טקסט או רעיונות…" rows={3}
-                style={{ ...field, resize: "none", lineHeight: 1.5 }} />
+              <textarea value={lyrics} onChange={e => setLyrics(e.target.value)} placeholder="כתוב כאן מילים, טקסט או רעיונות…" rows={3} style={textareaStyle} />
             </div>
             {noteBlock("הערות", "כתבו הערות, וייב, הפניות או הערות הפקה…")}
             {filePicker}
@@ -1193,7 +1198,7 @@ function UploadModal({ modal, onClose, onToast }: {
         ) : (
           <>
             {/* בחר שיר / פרויקט */}
-            <div style={{ marginBottom: 16 }}>
+            <div style={section}>
               <div style={label}>בחר שיר / פרויקט</div>
               {lockedSong ? (
                 <div style={{ ...field, display: "flex", alignItems: "center", gap: 8, opacity: 0.85 }}>
