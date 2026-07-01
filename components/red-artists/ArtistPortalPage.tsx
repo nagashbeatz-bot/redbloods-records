@@ -252,12 +252,72 @@ export default function ArtistPortalPage() {
   );
 }
 
+// ── Unified top Hero — SAME shell/size/padding/glow/avatar across every tab so
+// switching tabs never makes the page jump. Only the title/subtitle/children
+// change. `badge` = a red rounded icon next to the title (e.g. ♫); `emoji` is
+// appended inside the title (e.g. 👋); `children` = extra content (home's news).
+function PortalHero({ title, emoji, badge, subtitle, children }: {
+  title: string; emoji?: string; badge?: string; subtitle?: string; children?: React.ReactNode;
+}) {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{
+      position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid rgba(220,38,38,0.34)`,
+      background: `
+        radial-gradient(70% 130% at 9% 22%, rgba(220,38,38,0.40) 0%, rgba(220,38,38,0.08) 40%, transparent 64%),
+        radial-gradient(130% 160% at 94% -16%, rgba(220,38,38,0.30) 0%, rgba(220,38,38,0.08) 38%, #120E0F 72%),
+        radial-gradient(90% 130% at 50% 132%, rgba(220,38,38,0.12) 0%, transparent 58%),
+        linear-gradient(180deg, #1A1314 0%, #0B0909 100%)`,
+      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 100px rgba(220,38,38,0.16), 0 30px 72px rgba(0,0,0,0.55)`,
+    }}>
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(8,8,9,0.55) 100%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
+
+      <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 14 : 24, padding: isMobile ? "18px 16px" : "26px 36px" }}>
+        {/* identity (right) — same avatar + name everywhere */}
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16, minWidth: isMobile ? "100%" : 232 }}>
+          <ArtistAvatar />
+          <div style={{ textAlign: "start", minWidth: 0 }}>
+            <div style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
+            <div style={{ fontSize: isMobile ? 12 : 13, color: TEXT2, marginTop: 3 }}>אמן • Redbloods Records</div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 7, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
+              <span style={{ fontSize: 11.5, color: GREEN, fontWeight: 700 }}>פעיל</span>
+            </div>
+          </div>
+        </div>
+
+        {/* title / subtitle / extra (center, grows) */}
+        <div style={{ flex: 1, minWidth: isMobile ? "100%" : 320, textAlign: isMobile ? "start" : "center" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 10 : 14 }}>
+            <h1 style={{ fontSize: isMobile ? 23 : 31, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
+              {title}{emoji ? <span style={{ WebkitTextFillColor: "initial" }}> {emoji}</span> : null}
+            </h1>
+            {badge ? (
+              <span style={{ width: isMobile ? 40 : 50, height: isMobile ? 40 : 50, borderRadius: isMobile ? 12 : 15, flexShrink: 0, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}66`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isMobile ? 18 : 23, boxShadow: `0 0 24px rgba(220,38,38,0.35)` }}>{badge}</span>
+            ) : null}
+          </div>
+          {subtitle ? (
+            <p style={{ fontSize: isMobile ? 12.5 : 13.5, color: "#C8C8CC", lineHeight: 1.6, margin: isMobile ? "6px 0 0" : "7px auto 0", maxWidth: 500 }}>{subtitle}</p>
+          ) : null}
+          {children}
+        </div>
+
+        {/* left spacer (desktop) keeps the title on the true center axis */}
+        {!isMobile && <div style={{ minWidth: 232, flexShrink: 0 }} />}
+      </div>
+    </div>
+  );
+}
+
 function ComingSoon({ tab }: { tab: Tab }) {
   return (
-    <div style={{ ...panel, padding: "80px 24px", textAlign: "center" }}>
-      <div style={{ fontSize: 42, marginBottom: 14, opacity: 0.5 }}>🚧</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: TEXT, marginBottom: 6 }}>{tab}</div>
-      <div style={{ fontSize: 13, color: TEXT2 }}>האזור הזה יוצג בקרוב</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <PortalHero title={tab} subtitle="האזור הזה יוצג בקרוב" />
+      <div style={{ ...panel, padding: "56px 24px", textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>🚧</div>
+        <div style={{ fontSize: 14, color: TEXT2 }}>האזור הזה עדיין בבנייה — יעודכן בקרוב</div>
+      </div>
     </div>
   );
 }
@@ -301,36 +361,8 @@ function MyMusicPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
-      {/* ── Header ── */}
-      <div style={{
-        position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid rgba(220,38,38,0.34)`,
-        background: `radial-gradient(120% 150% at 50% -22%, rgba(220,38,38,0.36) 0%, rgba(220,38,38,0.08) 40%, #110E0F 74%), radial-gradient(80% 120% at 50% 130%, rgba(220,38,38,0.10) 0%, transparent 60%), linear-gradient(180deg, #1A1314 0%, #0B0909 100%)`,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 110px rgba(220,38,38,0.18), 0 28px 70px rgba(0,0,0,0.55)`,
-      }}>
-        {/* top hairline glow */}
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 16 : 28, padding: isMobile ? "24px 18px" : "48px 44px" }}>
-          {/* identity (right) */}
-          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16, minWidth: isMobile ? 0 : 240 }}>
-            <div style={{ padding: 3, borderRadius: "50%", flexShrink: 0, background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND})`, boxShadow: `0 0 32px ${BRAND}55` }}>
-              <div style={{ width: isMobile ? 52 : 70, height: isMobile ? 52 : 70, borderRadius: "50%", background: "linear-gradient(140deg, #2A0E0E, #140808)", border: "1px solid rgba(255,255,255,0.10)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isMobile ? 22 : 28, fontWeight: 900, color: "#fff" }}>ש</div>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: "#fff" }}>שלו טסמה</div>
-              <div style={{ fontSize: isMobile ? 12 : 13, color: TEXT2, marginTop: 4 }}>אמן · Redbloods Records</div>
-            </div>
-          </div>
-          {/* title (center / grows) */}
-          <div style={{ flex: 1, minWidth: isMobile ? "100%" : 280, textAlign: isMobile ? "start" : "center" }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 10 : 14 }}>
-              <h1 style={{ fontSize: isMobile ? 26 : 40, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>המוזיקה שלי</h1>
-              <span style={{ width: isMobile ? 42 : 56, height: isMobile ? 42 : 56, borderRadius: isMobile ? 13 : 16, flexShrink: 0, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}66`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isMobile ? 19 : 25, boxShadow: `0 0 24px rgba(220,38,38,0.35)` }}>♫</span>
-            </div>
-            <div style={{ fontSize: isMobile ? 12.5 : 14, color: TEXT2, marginTop: isMobile ? 8 : 11 }}>כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד</div>
-          </div>
-          {!isMobile && <div style={{ minWidth: 240 }} />}
-        </div>
-      </div>
+      {/* ── Hero (shared shell — identical across all tabs) ── */}
+      <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
 
       {/* ── KPI row (desktop: cards · mobile: compact 4-up strip, no icons) ── */}
       {isMobile ? (
@@ -529,61 +561,14 @@ function HomeDashboard() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-      {/* ── 1. Hero ── */}
-      <div style={{
-        position: "relative", overflow: "hidden", borderRadius: 24,
-        border: `1px solid rgba(220,38,38,0.34)`,
-        background: `
-          radial-gradient(70% 130% at 9% 22%, rgba(220,38,38,0.40) 0%, rgba(220,38,38,0.08) 40%, transparent 64%),
-          radial-gradient(130% 160% at 94% -16%, rgba(220,38,38,0.30) 0%, rgba(220,38,38,0.08) 38%, #120E0F 72%),
-          radial-gradient(90% 130% at 50% 132%, rgba(220,38,38,0.12) 0%, transparent 58%),
-          linear-gradient(180deg, #1A1314 0%, #0B0909 100%)`,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 100px rgba(220,38,38,0.16), 0 30px 72px rgba(0,0,0,0.55)`,
-      }}>
-        {/* soft inner vignette to seat the content over the glow */}
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(8,8,9,0.55) 100%)", pointerEvents: "none" }} />
-        {/* fine red top hairline glow */}
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${BRAND}66, transparent)`, pointerEvents: "none" }} />
-
-        <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 14 : 24, padding: isMobile ? "18px 16px" : "26px 36px" }}>
-
-          {/* Identity (start / right in RTL) — name + avatar */}
-          <div style={{ display: "flex", flexDirection: "column", minWidth: isMobile ? "100%" : 232 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16 }}>
-              <ArtistAvatar />
-              <div style={{ textAlign: "start", minWidth: 0 }}>
-                <div style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
-                <div style={{ fontSize: isMobile ? 12 : 13, color: TEXT2, marginTop: 3 }}>אמן • Redbloods Records</div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 7, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
-                  <span style={{ fontSize: 11.5, color: GREEN, fontWeight: 700 }}>פעיל</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Greeting + live "latest updates" flash (grows, centered) */}
-          <div style={{ flex: 1, minWidth: isMobile ? "100%" : 320, textAlign: isMobile ? "start" : "center" }}>
-            <h1 style={{ fontSize: isMobile ? 23 : 32, fontWeight: 900, margin: 0, letterSpacing: "-0.03em", color: "#fff", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>
-              ברוך הבא, שליו <span style={{ WebkitTextFillColor: "initial" }}>👋</span>
-            </h1>
-            <p style={{ fontSize: isMobile ? 12.5 : 13.5, color: "#C8C8CC", lineHeight: 1.6, margin: isMobile ? "6px 0 0" : "7px auto 0", maxWidth: 500 }}>
-              זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.
-            </p>
-
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
-            </div>
-
-            <NewsFlash />
-          </div>
-
-          {/* Left spacer (desktop) — balances the right identity card so the
-              greeting + latest-update sit on the Hero's true center axis. */}
-          {!isMobile && <div style={{ minWidth: 232, flexShrink: 0 }} />}
+      {/* ── 1. Hero (shared shell — identical across all tabs) ── */}
+      <PortalHero title="ברוך הבא, שליו" emoji="👋" subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
         </div>
-      </div>
+        <NewsFlash />
+      </PortalHero>
 
       {/* ── 2. "מה מחכה לך עכשיו" ── */}
       <div>
