@@ -799,6 +799,9 @@ function ArtistAvatar() {
   const [hover, setHover] = useState(false);
   const [busy, setBusy]   = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Crop editor is opened BEFORE anything is uploaded. { url } = edit the existing
+  // image · { file } = a freshly picked file to crop. null = closed.
+  const [editing, setEditing] = useState<{ file?: File; url?: string } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -807,16 +810,22 @@ function ArtistAvatar() {
 
   function notify(m: string) { setToast(m); setTimeout(() => setToast(null), 2600); }
 
-  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+  // Picking a file no longer uploads immediately — it opens the crop editor.
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     if (!AVATAR_MIME.includes(file.type)) { notify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
     if (file.size > 5 * 1024 * 1024)      { notify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
+    setEditing({ file });
+  }
+
+  // Upload the cropped blob (from the editor's "שמירה") to the existing endpoint.
+  async function doUpload(blob: Blob) {
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", blob, "avatar.jpg");
       const res  = await fetch("/api/red-artists/profile-image", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) { notify(data.error ?? "ההעלאה נכשלה"); }
@@ -835,7 +844,7 @@ function ArtistAvatar() {
 
   return (
     <div
-      onClick={() => { if (!busy) inputRef.current?.click(); }}
+      onClick={() => { if (busy) return; if (path && src) setEditing({ url: src }); else inputRef.current?.click(); }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       title="עריכת תמונה"
@@ -867,6 +876,15 @@ function ArtistAvatar() {
           <span style={{ fontSize: 9.5, fontWeight: 700 }}>{busy ? "מעלה…" : (path ? "עריכת תמונה" : "העלאת תמונה")}</span>
         </div>
       </div>
+      {editing && (
+        <AvatarEditor
+          initialFile={editing.file}
+          initialUrl={editing.url}
+          onNotify={notify}
+          onCancel={() => setEditing(null)}
+          onSave={blob => { setEditing(null); doUpload(blob); }}
+        />
+      )}
       {toast && typeof document !== "undefined" && createPortal(
         <div style={{
           position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 100020,
@@ -876,6 +894,177 @@ function ArtistAvatar() {
         document.body,
       )}
     </div>
+  );
+}
+
+// ── Circular crop editor — pure client-side canvas (no external lib). Drag to
+// move, slider to zoom; exports a 512×512 JPEG blob only when the user saves. ──
+function clampAvatarOffset(o: { x: number; y: number }, img: HTMLImageElement, D: number, zoom: number) {
+  const eff = (D / Math.min(img.naturalWidth, img.naturalHeight)) * zoom;
+  const dw = img.naturalWidth * eff, dh = img.naturalHeight * eff;
+  const maxX = Math.max(0, (dw - D) / 2), maxY = Math.max(0, (dh - D) / 2);
+  return { x: Math.min(maxX, Math.max(-maxX, o.x)), y: Math.min(maxY, Math.max(-maxY, o.y)) };
+}
+function drawAvatar(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: number, D: number, zoom: number, offset: { x: number; y: number }) {
+  // "cover" the square at zoom=1, then apply zoom + the (display-space) offset scaled to `size`.
+  const eff = (size / Math.min(img.naturalWidth, img.naturalHeight)) * zoom;
+  const dw = img.naturalWidth * eff, dh = img.naturalHeight * eff;
+  const f = size / D;
+  const x = size / 2 - dw / 2 + offset.x * f;
+  const y = size / 2 - dh / 2 + offset.y * f;
+  ctx.clearRect(0, 0, size, size);
+  ctx.drawImage(img, x, y, dw, dh);
+}
+
+function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
+  initialFile?: File; initialUrl?: string;
+  onNotify: (m: string) => void; onCancel: () => void; onSave: (blob: Blob) => void;
+}) {
+  const isMobile = useIsMobile();
+  const D = isMobile ? 236 : 260;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef    = useRef<HTMLImageElement | null>(null);
+  const fileRef   = useRef<HTMLInputElement>(null);
+  const dragRef   = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  const [file, setFile]           = useState<File | null>(initialFile ?? null);
+  const [displaySrc, setDisplay]  = useState<string | null>(initialUrl ?? null);
+  const [loaded, setLoaded]       = useState(false);
+  const [zoom, setZoom]           = useState(1);
+  const [offset, setOffset]       = useState({ x: 0, y: 0 });
+
+  // A picked/replaced file → object URL (revoked on change/unmount).
+  useEffect(() => {
+    if (!file) return;
+    const u = URL.createObjectURL(file);
+    setDisplay(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+
+  // Load the current source into an <img> for the canvas.
+  useEffect(() => {
+    if (!displaySrc) return;
+    setLoaded(false);
+    const img = new Image();
+    img.onload  = () => { imgRef.current = img; setZoom(1); setOffset({ x: 0, y: 0 }); setLoaded(true); };
+    img.onerror = () => { imgRef.current = null; setLoaded(false); onNotify("טעינת התמונה נכשלה"); };
+    img.src = displaySrc;
+    return () => { img.onload = null; img.onerror = null; };
+    // onNotify intentionally omitted (identity changes each parent render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displaySrc]);
+
+  // Redraw the live preview.
+  useEffect(() => {
+    const c = canvasRef.current, img = imgRef.current;
+    if (!c || !img || !loaded) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (c.width !== D * dpr) { c.width = D * dpr; c.height = D * dpr; }
+    const ctx = c.getContext("2d"); if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawAvatar(ctx, img, D, D, zoom, offset);
+  }, [zoom, offset, loaded, D]);
+
+  // Esc = cancel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const onDown = (e: React.PointerEvent) => {
+    if (!loaded) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { px: e.clientX, py: e.clientY, ox: offset.x, oy: offset.y };
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const d = dragRef.current, img = imgRef.current; if (!d || !img) return;
+    setOffset(clampAvatarOffset({ x: d.ox + (e.clientX - d.px), y: d.oy + (e.clientY - d.py) }, img, D, zoom));
+  };
+  const onUp = () => { dragRef.current = null; };
+
+  const pickReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    if (!AVATAR_MIME.includes(f.type)) { onNotify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
+    if (f.size > 5 * 1024 * 1024)      { onNotify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
+    setFile(f);
+  };
+
+  const doSave = () => {
+    const img = imgRef.current; if (!img) { onNotify("אין תמונה לשמירה"); return; }
+    const out = document.createElement("canvas");
+    out.width = 512; out.height = 512;
+    const ctx = out.getContext("2d"); if (!ctx) return;
+    drawAvatar(ctx, img, 512, D, zoom, offset);
+    out.toBlob(b => { if (b) onSave(b); else onNotify("שמירה נכשלה"); }, "image/jpeg", 0.9);
+  };
+
+  if (typeof document === "undefined") return null;
+
+  const btnBase: React.CSSProperties = {
+    padding: "12px 0", borderRadius: 11, border: "none", cursor: "pointer",
+    fontFamily: "inherit", fontSize: 14, fontWeight: 800, boxSizing: "border-box",
+  };
+
+  return createPortal(
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100035, background: "rgba(0,0,0,0.72)",
+        backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16, fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      }}>
+      <div style={{
+        width: isMobile ? "100%" : 360, maxWidth: "100%", maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box",
+        background: "linear-gradient(180deg, #161617 0%, #111112 100%)", border: `1px solid ${BDR2}`,
+        borderRadius: 20, boxShadow: "0 24px 70px rgba(0,0,0,0.6)", padding: isMobile ? "18px 16px 20px" : "20px 22px 22px",
+      }}>
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: 17, fontWeight: 900, color: "#fff" }}>עריכת תמונת פרופיל</div>
+          <button onClick={onCancel} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><IcX size={20} /></button>
+        </div>
+
+        {/* circular preview */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+          <div
+            onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+            style={{
+              width: D, height: D, borderRadius: "50%", overflow: "hidden", position: "relative",
+              border: `2px solid ${BRAND}66`, boxShadow: `0 0 30px ${BRAND}40, inset 0 0 0 1px rgba(255,255,255,0.06)`,
+              cursor: loaded ? "grab" : "default", touchAction: "none", background: "#0C0A0B", flexShrink: 0,
+            }}>
+            <canvas ref={canvasRef} style={{ width: D, height: D, display: "block" }} />
+            {!loaded && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: TEXT2, fontSize: 13 }}>טוען…</div>}
+          </div>
+        </div>
+
+        {/* zoom slider */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+          <span style={{ color: TEXT2, fontSize: 12, flexShrink: 0 }}>הגדלה</span>
+          <input type="range" min={1} max={3} step={0.01} value={zoom} disabled={!loaded}
+            onChange={e => { const z = +e.target.value; setZoom(z); const img = imgRef.current; if (img) setOffset(o => clampAvatarOffset(o, img, D, z)); }}
+            style={{ flex: 1, accentColor: BRAND, cursor: loaded ? "pointer" : "default" }} />
+        </div>
+
+        {/* replace image */}
+        <button onClick={() => fileRef.current?.click()} style={{
+          ...btnBase, width: "100%", marginBottom: 10, fontWeight: 700,
+          background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT,
+        }}>החלף תמונה</button>
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={pickReplace} />
+
+        {/* cancel + save */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onCancel} style={{ ...btnBase, flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT, fontWeight: 700 }}>ביטול</button>
+          <button onClick={doSave} disabled={!loaded} style={{
+            ...btnBase, flex: 1, color: "#fff", opacity: loaded ? 1 : 0.5, cursor: loaded ? "pointer" : "not-allowed",
+            background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: loaded ? "0 4px 16px rgba(220,38,38,0.32)" : "none",
+          }}>שמירה</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
