@@ -53,6 +53,8 @@ const IcVolume   = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} 
 const IcList     = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3.5" y1="6" x2="3.5" y2="6" /><line x1="3.5" y1="12" x2="3.5" y2="12" /><line x1="3.5" y1="18" x2="3.5" y2="18" /></Svg>;
 const IcMonitor  = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></Svg>;
 const IcUpload   = ({ size = 18, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>;
+const IcX        = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Svg>;
+const IcCloud    = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M12 13v8" /><path d="m8 17 4-4 4 4" /><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" /></Svg>;
 
 // Single unified play button used in EVERY list across the portal (desktop +
 // mobile): dark circle, subtle red border + glow, clean white SVG play icon.
@@ -137,6 +139,8 @@ const LIBRARY: LibTrack[] = [
   { name: "תל אביב בלילה", kind: "דמו",   status: "בבחינה",       date: "20.05.2025", dur: "02:37" },
   { name: "עד שנפגש",     kind: "מיקס",  status: "ממתין לאישור", date: "18.05.2025", dur: "03:55" },
 ];
+// File-type options for the upload modal (display-only labels; no new statuses).
+const FILE_KINDS = ["סקיצה", "ווקאל", "מיקס", "מאסטר", "הערות", "אחר"] as const;
 const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "סה״כ שירים",   value: 24, icon: "♫" },
   { label: "סקיצות",       value: 8,  icon: "✎" },
@@ -259,6 +263,16 @@ function MusicStatus({ status }: { status: string }) {
 function MyMusicPage() {
   const isMobile = useIsMobile();
 
+  // Upload modal: {mode:"new"} = blank target (header button); {mode:"update"}
+  // = row action, target pre-selected & locked. UI-only (no backend wired yet).
+  const [modal, setModal] = useState<{ mode: "new" | "update"; target: string | null } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const rows = LIBRARY;
 
   // grid template shared EXACTLY by the library header + every row (RTL: play on the
@@ -330,8 +344,8 @@ function MyMusicPage() {
               <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
               <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ספריית השירים שלי</span>
             </div>
-            {/* upload — UI only; not wired (no song-upload flow exists yet). Compact header action. */}
-            <button style={{
+            {/* upload — opens the upload modal (blank target). Compact header action. */}
+            <button onClick={() => setModal({ mode: "new", target: null })} style={{
               display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0,
               padding: isMobile ? "8px 12px" : "7px 13px", borderRadius: 9, border: "none", color: "#fff",
               background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12 : 12.5, fontWeight: 700,
@@ -366,7 +380,7 @@ function MyMusicPage() {
                     <div style={{ marginTop: 7 }}><MusicStatus status={t.status} /></div>
                   </div>
                   {/* options (leftmost) */}
-                  <button style={dotsBtn} aria-label="more">⋯</button>
+                  <RowMenu onUpdateFile={() => setModal({ mode: "update", target: t.name })} />
                 </div>
               ))
             ) : (
@@ -391,7 +405,7 @@ function MyMusicPage() {
                   {/* duration */}
                   <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
                   {/* options */}
-                  <div style={{ textAlign: "center" }}><button style={dotsBtn} aria-label="more">⋯</button></div>
+                  <div style={{ display: "flex", justifyContent: "center" }}><RowMenu onUpdateFile={() => setModal({ mode: "update", target: t.name })} /></div>
                 </div>
               ))
             )}
@@ -465,6 +479,17 @@ function MyMusicPage() {
             <button style={pbtn} aria-label="תור"><IcList size={18} /></button>
           </div>
         </div>
+      )}
+
+      {/* upload modal + demo toast */}
+      <UploadModal modal={modal} onClose={() => setModal(null)} onToast={setToast} />
+      {toast && typeof document !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 100040,
+          background: "#1A1C22", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 13, fontWeight: 700,
+          padding: "11px 20px", borderRadius: 12, boxShadow: "0 8px 30px rgba(0,0,0,0.6)", fontFamily: "'Heebo', Arial, sans-serif", maxWidth: "90vw", textAlign: "center",
+        }}>{toast}</div>,
+        document.body,
       )}
     </div>
   );
@@ -936,3 +961,200 @@ function BalanceRow({ label, value, color, icon }: { label: string; value: strin
 const dotsBtn: React.CSSProperties = {
   background: "none", border: "none", color: MUTED, fontSize: 16, cursor: "pointer", flexShrink: 0, padding: "0 2px",
 };
+
+// ── Row "⋯" menu — only action is "עדכן קובץ" (opens the upload modal with the
+// track pre-selected). Rendered in a portal so the card's overflow doesn't clip it.
+function RowMenu({ onUpdateFile }: { onUpdateFile: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos]   = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const openMenu = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const W = 178;
+    const left = Math.max(8, Math.min(r.right - W, window.innerWidth - W - 8));
+    setPos({ top: r.bottom + 6, left });
+    setOpen(true);
+  };
+
+  return (
+    <>
+      <button ref={btnRef} onClick={openMenu} style={dotsBtn} aria-label="אפשרויות">⋯</button>
+      {open && pos && typeof document !== "undefined" && createPortal(
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 100025 }} />
+          <div style={{
+            position: "fixed", top: pos.top, left: pos.left, width: 178, zIndex: 100026,
+            background: "#161617", border: `1px solid ${BDR2}`, borderRadius: 12,
+            boxShadow: "0 12px 34px rgba(0,0,0,0.6)", overflow: "hidden", padding: 5,
+            fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+          }}>
+            <button onClick={() => { setOpen(false); onUpdateFile(); }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(220,38,38,0.14)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              style={{
+                display: "flex", alignItems: "center", gap: 9, width: "100%", textAlign: "start",
+                padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+                background: "transparent", color: TEXT, fontSize: 13.5, fontWeight: 700, fontFamily: "inherit",
+              }}><IcUpload size={15} color="#FF6B6B" /> עדכן קובץ</button>
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+// ── Upload modal (desktop: centered card · mobile: bottom sheet). UI ONLY —
+// no backend is wired for music-file uploads yet, so submit shows a demo toast.
+// A target song/project is REQUIRED; "update" mode locks it to the chosen track.
+function UploadModal({ modal, onClose, onToast }: {
+  modal: { mode: "new" | "update"; target: string | null } | null;
+  onClose: () => void;
+  onToast: (m: string) => void;
+}) {
+  const isMobile = useIsMobile();
+  const open = !!modal;
+  const [song, setSong] = useState("");
+  const [kind, setKind] = useState<string>("");
+  const [file, setFile] = useState<File | null>(null);
+  const [note, setNote] = useState("");
+  const [drag, setDrag] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) { setSong(modal?.target ?? ""); setKind(""); setFile(null); setNote(""); setDrag(false); }
+  }, [open, modal?.target, modal?.mode]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+  const locked    = modal!.mode === "update";
+  const canSubmit = song.trim() !== "" && !!file;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    onClose();
+    onToast("היעד והקובץ נקלטו (הדגמה) — חיבור העלאה אמיתי ממתין לאישור");
+  };
+
+  const label: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 8 };
+  const field: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${BDR2}`, borderRadius: 11, color: TEXT, fontSize: 14,
+    fontFamily: "inherit", padding: "13px 14px", outline: "none",
+  };
+
+  return createPortal(
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100030, background: "rgba(0,0,0,0.66)",
+        backdropFilter: "blur(3px)", display: "flex", justifyContent: "center",
+        alignItems: isMobile ? "flex-end" : "center", padding: isMobile ? 0 : 20,
+        fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      }}>
+      <div style={{
+        width: isMobile ? "100%" : 470, maxWidth: "100%", maxHeight: isMobile ? "92vh" : "88vh",
+        overflowY: "auto", boxSizing: "border-box", direction: "rtl",
+        background: "linear-gradient(180deg, #161617 0%, #111112 100%)",
+        border: `1px solid ${BDR2}`, borderRadius: isMobile ? "20px 20px 0 0" : 20,
+        boxShadow: "0 24px 70px rgba(0,0,0,0.6)", padding: isMobile ? "18px 16px 22px" : "22px 24px 24px",
+      }}>
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#fff" }}>{locked ? "עדכון קובץ לשיר" : "העלאת קובץ"}</div>
+            {locked && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, fontSize: 13, fontWeight: 700, color: "#FF6B6B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 13 }}>♫</span>{song}
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0, lineHeight: 0 }}><IcX size={20} /></button>
+        </div>
+
+        {/* 1 · target song / project */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={label}>בחר שיר / פרויקט</div>
+          {locked ? (
+            <div style={{ ...field, display: "flex", alignItems: "center", gap: 8, opacity: 0.85 }}>
+              <span style={{ color: "#FF6B6B", fontSize: 13 }}>♫</span>{song}
+            </div>
+          ) : (
+            <select value={song} onChange={e => setSong(e.target.value)} style={{ ...field, cursor: "pointer", appearance: "none" }}>
+              <option value="" disabled>בחר שיר / פרויקט…</option>
+              {LIBRARY.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+          )}
+        </div>
+
+        {/* 2 · file type */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={label}>סוג קובץ</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {FILE_KINDS.map(k => {
+              const sel = k === kind;
+              return (
+                <button key={k} onClick={() => setKind(sel ? "" : k)} style={{
+                  padding: "9px 15px", borderRadius: 999, fontSize: 13, fontWeight: sel ? 800 : 600,
+                  cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                  background: sel ? "rgba(220,38,38,0.18)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : BDR2}`,
+                  color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
+                }}>{k}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 3 · file picker (drag/drop on desktop, tap on mobile) */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={label}>בחר קובץ</div>
+          <div
+            onClick={() => fileRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={e => { e.preventDefault(); setDrag(false); setFile(e.dataTransfer.files?.[0] ?? null); }}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: isMobile ? "24px 14px" : "30px 14px", borderRadius: 13, cursor: "pointer", textAlign: "center",
+              border: `1.5px dashed ${drag ? BRAND : BDR2}`, background: drag ? "rgba(220,38,38,0.08)" : "rgba(255,255,255,0.02)",
+              transition: "all .14s",
+            }}>
+            <IcCloud size={26} color={drag ? "#FF6B6B" : TEXT2} />
+            {file ? (
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+            ) : (
+              <div style={{ fontSize: 13.5, color: TEXT2 }}>{isMobile ? "לחץ לבחירה" : "גרור קובץ לכאן או לחץ לבחירה"}</div>
+            )}
+          </div>
+          <input ref={fileRef} type="file" onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+        </div>
+
+        {/* 4 · optional note */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={label}>הערה (אופציונלי)</div>
+          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="כתוב הערה קצרה על הקובץ…" rows={2}
+            style={{ ...field, resize: "none", lineHeight: 1.5 }} />
+        </div>
+
+        {/* 5 · submit */}
+        <button onClick={submit} disabled={!canSubmit} style={{
+          width: "100%", boxSizing: "border-box", padding: "14px 0", borderRadius: 12, border: "none",
+          color: "#fff", fontSize: 14.5, fontWeight: 800, fontFamily: "inherit",
+          cursor: canSubmit ? "pointer" : "not-allowed", opacity: canSubmit ? 1 : 0.5,
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: canSubmit ? `0 4px 16px rgba(220,38,38,0.32)` : "none",
+        }}>העלה קובץ</button>
+        <div style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10 }}>מצב הדגמה — הקובץ עדיין לא נשלח לשרת</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
