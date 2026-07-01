@@ -351,21 +351,31 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
 // hardcoded demo + local toggle. Future step: artist updates it → owner sees it
 // → schedules a session → it flows back. No DB/API/Calendar wired here yet. ──
 type AvailDay = { day: string; date: string; available: boolean; from: string };
-// Default: every day starts "לא פנוי"; the artist opens a day and marks it.
-const NEXT_WEEK: AvailDay[] = [
-  { day: "ראשון",  date: "06.07", available: false, from: "" },
-  { day: "שני",    date: "07.07", available: false, from: "" },
-  { day: "שלישי",  date: "08.07", available: false, from: "" },
-  { day: "רביעי",  date: "09.07", available: false, from: "" },
-  { day: "חמישי",  date: "10.07", available: false, from: "" },
-  { day: "שישי",   date: "11.07", available: false, from: "" },
-  { day: "שבת",    date: "12.07", available: false, from: "" },
-];
-const AVAIL_TIMES = ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00"];
+const HEB_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+const AVAIL_TIMES = ["10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
+
+// Next Israeli week (ראשון→שבת): the Sunday AFTER the current week, + 6 days.
+// Every day defaults to "לא פנוי". Computed on the client (in an effect) to keep
+// the dates correct without risking an SSR/client hydration mismatch.
+function computeNextWeek(): AvailDay[] {
+  const today = new Date();
+  const nextSunday = new Date(today);
+  nextSunday.setDate(today.getDate() + (7 - today.getDay())); // day 0 = Sunday
+  return HEB_DAYS.map((day, i) => {
+    const d = new Date(nextSunday);
+    d.setDate(nextSunday.getDate() + i);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return { day, date: `${dd}.${mm}`, available: false, from: "" };
+  });
+}
 
 function AvailabilityPage() {
   const isMobile = useIsMobile();
-  const [days, setDays] = useState<AvailDay[]>(NEXT_WEEK);
+  // Start with day names + blank dates (identical on server & client → no
+  // hydration mismatch); fill the real dates after mount.
+  const [days, setDays] = useState<AvailDay[]>(() => HEB_DAYS.map(day => ({ day, date: "", available: false, from: "" })));
+  useEffect(() => { setDays(computeNextWeek()); }, []);
   const [sent, setSent] = useState(false);
   const [editIdx, setEditIdx] = useState<number | null>(null); // day being edited in the modal
 
