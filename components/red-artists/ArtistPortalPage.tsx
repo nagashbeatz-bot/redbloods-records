@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { getLatestAudioFile } from "@/components/PlayerProvider";
+import type { Project } from "@/lib/types";
 
 // Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
 // touch-friendly layout. UI only; no data/logic change.
@@ -58,12 +60,14 @@ const IcCloud    = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} 
 
 // Single unified play button used in EVERY list across the portal (desktop +
 // mobile): dark circle, subtle red border + glow, clean white SVG play icon.
-function PlayButton({ size = 40 }: { size?: number }) {
+// Visual only (no-op) for now — a later step wires it to the GLOBAL player.
+// `disabled` = the project has no playable audio file yet.
+function PlayButton({ size = 40, disabled = false }: { size?: number; disabled?: boolean }) {
   return (
-    <button aria-label="נגן" style={{
-      width: size, height: size, borderRadius: "50%", flexShrink: 0, cursor: "pointer", fontFamily: "inherit",
+    <button aria-label="נגן" disabled={disabled} title={disabled ? "אין קובץ אודיו זמין" : undefined} style={{
+      width: size, height: size, borderRadius: "50%", flexShrink: 0, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit",
       background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.22), #150809 75%)",
-      border: `1px solid ${BRAND}55`, boxShadow: `0 0 14px rgba(220,38,38,0.3)`,
+      border: `1px solid ${BRAND}55`, boxShadow: `0 0 14px rgba(220,38,38,0.3)`, opacity: disabled ? 0.35 : 1,
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       <IcPlay size={Math.round(size * 0.42)} />
@@ -124,11 +128,19 @@ const SHOWS: { name: string; date: string; dow: string; doors: string }[] = [
 
 // ── "המוזיקה שלי" page (music tab) — demo library (UI only) ───────────────────────
 const MUSIC_STATUS_COLOR: Record<string, string> = {
+  // demo values (kept for the upload modal)
   "מוכן":         "#34D399",
   "ממתין לאישור":  "#F59E0B",
   "סקיצה":        "#9CA3AF",
   "בבחינה":       "#2DD4BF",
   "בבדיקה":       "#60A5FA",
+  // real ProjectStatus values (no purple)
+  "בעבודה":       "#60A5FA",
+  "מחכה למיקס":    "#F59E0B",
+  "במיקס":        "#2DD4BF",
+  "הושלם":        "#34D399",
+  "בהשהייה":      "#9CA3AF",
+  "לא התחיל":     "#6B7280",
 };
 type LibTrack = { name: string; kind: string; status: string; date: string; dur: string; artists: string };
 const LIBRARY: LibTrack[] = [
@@ -586,8 +598,35 @@ function MyMusicPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const rows = LIBRARY;
-  // Show 6 first; "הצג עוד" reveals more (6 → 10 → all) inside the scroll area.
+  // ── Real library (step 1): pull owner's projects, keep only שליו טסמה's. No
+  // fake data — empty state when none. Play is visual-only for now; a later
+  // step wires it to the global player. Reuses GET /api/projects (owner-only). ──
+  type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean };
+  const [rows, setRows] = useState<LibRow[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let alive = true;
+    const norm = (s: string) => (s ?? "").trim().replace(/\s+/g, " ");
+    const target = norm("שליו טסמה");
+    fetch("/api/projects")
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((projects: Project[]) => {
+        if (!alive) return;
+        const mine = (Array.isArray(projects) ? projects : [])
+          .filter(p => !p.isHidden && norm(p.artist) === target)
+          .map(p => ({
+            id: p.id, name: p.name, artist: p.artist, status: p.status,
+            projectType: p.projectType, hasAudio: !!getLatestAudioFile(p.files ?? []),
+          }));
+        setRows(mine);
+        setLoadState("ready");
+      })
+      .catch(() => { if (alive) setLoadState("error"); });
+    return () => { alive = false; };
+  }, []);
+
+  // Show 6 first; "הצג עוד" reveals more (6 → 10 → all).
   const [visibleCount, setVisibleCount] = useState(6);
   const displayRows = rows.slice(0, visibleCount);
   const hasMore = visibleCount < rows.length;
@@ -665,52 +704,58 @@ function MyMusicPage() {
 
           {/* rows — desktop: shared grid (aligned columns); mobile: stacked cards */}
           <div style={{ padding: isMobile ? "2px 0 6px" : "6px 0 8px" }}>
-            {displayRows.length === 0 ? (
-              <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא נמצאו שירים</div>
+            {loadState === "loading" ? (
+              <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>טוען…</div>
+            ) : loadState === "error" ? (
+              <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא ניתן לטעון את הספרייה כרגע</div>
+            ) : rows.length === 0 ? (
+              <div style={{ padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא נמצאו פרויקטים שמקושרים לשליו טסמה</div>
             ) : isMobile ? (
               displayRows.map(t => (
-                <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
-                  {/* play (rightmost in RTL) */}
-                  <PlayButton size={42} />
-                  {/* name + kind + artists + status (truncating, never overlaps) */}
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  {/* play (rightmost in RTL) — visual only for now */}
+                  <PlayButton size={42} disabled={!t.hasAudio} />
+                  {/* name + type/note + artist + status */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
                     <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>
-                      {t.kind} · {t.artists}
+                      {(t.hasAudio ? t.projectType : "אין קובץ אודיו זמין") || t.artist}{t.hasAudio && t.projectType ? ` · ${t.artist}` : ""}
                     </div>
                     <div style={{ marginTop: 7 }}><MusicStatus status={t.status} /></div>
                   </div>
-                  {/* duration (leftmost) */}
-                  <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.dur}</span>
+                  {/* duration (leftmost) — none yet */}
+                  <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>—</span>
                 </div>
               ))
             ) : (
               displayRows.map(t => (
-                <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                <div key={t.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                   style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
-                  {/* play (right column — no header) */}
+                  {/* play (right column — no header) — visual only for now */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
-                    <PlayButton size={42} />
+                    <PlayButton size={42} disabled={!t.hasAudio} />
                   </div>
-                  {/* name + small kind under it */}
+                  {/* name + small type/note under it */}
                   <div style={{ minWidth: 0, textAlign: "start" }}>
                     <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.kind}</div>
+                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.hasAudio ? t.projectType : "אין קובץ אודיו זמין"}</div>
                   </div>
-                  {/* artists / collaborators */}
-                  <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artists}</div>
+                  {/* artist / participants */}
+                  <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artist}</div>
                   {/* status */}
                   <div style={{ textAlign: "center" }}><MusicStatus status={t.status} /></div>
-                  {/* duration */}
-                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
+                  {/* duration — none yet */}
+                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>—</div>
                 </div>
               ))
             )}
           </div>
-          {hasMore ? (
-            <button onClick={showMore} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0", fontWeight: 700, borderTop: `1px solid ${BDR}` }}>הצג עוד ⌄</button>
-          ) : (
-            <div style={{ textAlign: "center", padding: "14px 0", fontSize: 12.5, color: MUTED, borderTop: `1px solid ${BDR}` }}>הוצגו כל השירים</div>
+          {loadState === "ready" && rows.length > 0 && (
+            hasMore ? (
+              <button onClick={showMore} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0", fontWeight: 700, borderTop: `1px solid ${BDR}` }}>הצג עוד ⌄</button>
+            ) : (
+              <div style={{ textAlign: "center", padding: "14px 0", fontSize: 12.5, color: MUTED, borderTop: `1px solid ${BDR}` }}>הוצגו כל השירים</div>
+            )
           )}
       </div>
 
