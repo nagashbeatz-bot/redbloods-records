@@ -577,9 +577,10 @@ function AvailDayModal({ day, onCancel, onSave }: {
       }}>
       <div style={{
         width: isMobile ? "100%" : 380, maxWidth: "100%", boxSizing: "border-box", direction: "rtl",
+        maxHeight: isMobile ? "85vh" : "88vh", overflowY: "auto",
         background: "linear-gradient(180deg, #161617 0%, #111112 100%)", border: `1px solid ${BDR2}`,
         borderRadius: isMobile ? "20px 20px 0 0" : 20, boxShadow: "0 24px 70px rgba(0,0,0,0.6)",
-        padding: isMobile ? "18px 16px 22px" : "22px 24px 24px",
+        padding: isMobile ? "18px 16px calc(22px + env(safe-area-inset-bottom))" : "22px 24px 24px",
       }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
@@ -602,41 +603,60 @@ function AvailDayModal({ day, onCancel, onSave }: {
           })}
         </div>
 
-        {/* time (only when available) */}
+        {/* time (only when available). Mobile: in-flow chips (no floating dropdown
+            that leaks out of the bottom sheet). Desktop: the compact dark dropdown. */}
         {available && (
           <div style={{ marginBottom: 18 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>פנוי מ־</div>
-            <div ref={timeBoxRef} style={{ position: "relative" }}>
-              <button type="button" onClick={() => setTimeOpen(o => !o)} style={{
-                ...field, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "start",
-                borderColor: timeOpen ? "rgba(220,38,38,0.5)" : BDR2,
-              }}>
-                <span style={{ direction: "ltr" }}>{from}</span>
-                <span style={{ color: TEXT2, fontSize: 10, transform: timeOpen ? "rotate(180deg)" : "none", transition: "transform .14s" }}>▼</span>
-              </button>
-              {timeOpen && (
-                <div style={{
-                  position: "absolute", top: "calc(100% + 6px)", insetInlineStart: 0, insetInlineEnd: 0, zIndex: 5,
-                  background: "#161617", border: `1px solid ${BDR2}`, borderRadius: 11,
-                  boxShadow: "0 12px 34px rgba(0,0,0,0.6)", overflow: "hidden", maxHeight: 200, overflowY: "auto", padding: 5,
+            {isMobile ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                {AVAIL_TIMES.map(t => {
+                  const sel = t === from;
+                  return (
+                    <button key={t} type="button" onClick={() => setFrom(t)} style={{
+                      padding: "13px 0", borderRadius: 11, cursor: "pointer", fontFamily: "inherit",
+                      fontSize: 15, fontWeight: sel ? 800 : 600, direction: "ltr", boxSizing: "border-box",
+                      background: sel ? "rgba(52,211,153,0.14)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${sel ? "rgba(52,211,153,0.6)" : BDR2}`,
+                      color: sel ? GREEN : TEXT,
+                      boxShadow: sel ? "0 0 12px rgba(52,211,153,0.25)" : "none", transition: "all .14s",
+                    }}>{t}</button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div ref={timeBoxRef} style={{ position: "relative" }}>
+                <button type="button" onClick={() => setTimeOpen(o => !o)} style={{
+                  ...field, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "start",
+                  borderColor: timeOpen ? "rgba(220,38,38,0.5)" : BDR2,
                 }}>
-                  {AVAIL_TIMES.map(t => {
-                    const sel = t === from;
-                    return (
-                      <button key={t} type="button" onClick={() => { setFrom(t); setTimeOpen(false); }}
-                        onMouseEnter={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.22)" : "rgba(255,255,255,0.05)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.16)" : "transparent")}
-                        style={{
-                          display: "block", width: "100%", textAlign: "center", direction: "ltr",
-                          padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-                          background: sel ? "rgba(220,38,38,0.16)" : "transparent",
-                          color: sel ? "#FF6B6B" : TEXT, fontSize: 13.5, fontWeight: sel ? 800 : 600, fontFamily: "inherit",
-                        }}>{t}</button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                  <span style={{ direction: "ltr" }}>{from}</span>
+                  <span style={{ color: TEXT2, fontSize: 10, transform: timeOpen ? "rotate(180deg)" : "none", transition: "transform .14s" }}>▼</span>
+                </button>
+                {timeOpen && (
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 6px)", insetInlineStart: 0, insetInlineEnd: 0, zIndex: 5,
+                    background: "#161617", border: `1px solid ${BDR2}`, borderRadius: 11,
+                    boxShadow: "0 12px 34px rgba(0,0,0,0.6)", overflow: "hidden", maxHeight: 200, overflowY: "auto", padding: 5,
+                  }}>
+                    {AVAIL_TIMES.map(t => {
+                      const sel = t === from;
+                      return (
+                        <button key={t} type="button" onClick={() => { setFrom(t); setTimeOpen(false); }}
+                          onMouseEnter={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.22)" : "rgba(255,255,255,0.05)")}
+                          onMouseLeave={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.16)" : "transparent")}
+                          style={{
+                            display: "block", width: "100%", textAlign: "center", direction: "ltr",
+                            padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+                            background: sel ? "rgba(220,38,38,0.16)" : "transparent",
+                            color: sel ? "#FF6B6B" : TEXT, fontSize: 13.5, fontWeight: sel ? 800 : 600, fontFamily: "inherit",
+                          }}>{t}</button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
