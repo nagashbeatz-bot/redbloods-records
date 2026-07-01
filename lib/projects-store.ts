@@ -243,6 +243,48 @@ export async function updateFileShareUrl(
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Narrow, idempotent backfill of ONE file's audio length. Matches strictly by
+ * dropboxPath and sets ONLY durationSeconds, and ONLY when it is currently
+ * missing. No-op (returns false) when there is no match or it is already set.
+ * Deliberately does NOT bump updated_at or touch any other field/file — so the
+ * main project row is otherwise unchanged. Callers must scope authorization
+ * (e.g. Shalev-only) before calling this.
+ */
+export async function setFileDuration(
+  projectId: string,
+  dropboxPath: string,
+  seconds: number
+): Promise<boolean> {
+  const { data, error: readErr } = await supabase
+    .from("projects")
+    .select("files")
+    .eq("id", projectId)
+    .single();
+  if (readErr) throw new Error(readErr.message);
+
+  const current: { dropboxPath?: string; durationSeconds?: number; [key: string]: unknown }[] =
+    (data as { files: typeof current }).files || [];
+
+  let changed = false;
+  const updated = current.map((f) => {
+    if (!changed && f.dropboxPath === dropboxPath && f.durationSeconds == null) {
+      changed = true;
+      return { ...f, durationSeconds: seconds };
+    }
+    return f;
+  });
+
+  if (!changed) return false; // no match, or already set → no write
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ files: updated }) // ONLY files — no updated_at bump
+    .eq("id", projectId);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 /** Bump updated_at without changing any other field — call after sessions/transactions */
 export async function touchProject(id: string): Promise<void> {
   await supabase

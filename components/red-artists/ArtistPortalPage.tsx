@@ -214,13 +214,22 @@ function artistTokens(artist: string): string[] {
   return (artist ?? "").split(/[,،;]/).map(normName).filter(Boolean);
 }
 type AudioFile = ReturnType<typeof getLatestAudioFile>; // { name; url; dropboxPath?; ... } | null
-export type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean; audio: AudioFile };
+export type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean; audio: AudioFile; durationSeconds?: number };
 function toLibRow(p: Project): LibRow {
   const audio = getLatestAudioFile(p.files ?? []); // existing helper — real audio only, no stems/delivery
+  // Read the stored length (if any) off the real FileLink (typed → no cast).
+  const durationSeconds = audio?.dropboxPath
+    ? p.files?.find(f => f.dropboxPath === audio.dropboxPath)?.durationSeconds
+    : undefined;
   return {
     id: p.id, name: p.name, artist: p.artist, status: p.status,
-    projectType: p.projectType, hasAudio: !!audio, audio,
+    projectType: p.projectType, hasAudio: !!audio, audio, durationSeconds,
   };
+}
+function mmss(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
 }
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
   const target = normName(SHALEV_ARTIST);
@@ -240,6 +249,11 @@ async function playLibRow(player: ReturnType<typeof usePlayerSafe>, t: LibRow, o
     onError?.("לא ניתן להשמיע כרגע");
   }
 }
+
+// dropboxPaths whose duration we've already tried to persist this session — so
+// the learn-and-save effect fires AT MOST once per file (survives re-renders /
+// tab switches). Removed on failure so it can retry.
+const durationLearned = new Set<string>();
 
 // Derive a row's play button state ENTIRELY from the global player (no local
 // state → home and the tab stay in sync automatically). A row is "playing" when
@@ -283,6 +297,33 @@ export default function ArtistPortalPage() {
       .catch(() => { if (alive) setLibState("error"); });
     return () => { alive = false; };
   }, []);
+
+  // Learn-and-save duration: ONLY for Shalev's rows, ONLY after the global player
+  // has real duration for the currently-playing track, ONLY if that file has none
+  // yet, and AT MOST once per file (durationLearned). Narrow POST → updates local
+  // state on success. Does not touch the player, Dropbox, or other projects.
+  const player = usePlayerSafe();
+  const playingId = player?.track?.projectId;
+  const playerDuration = player?.duration ?? 0;
+  useEffect(() => {
+    if (!playingId || playerDuration <= 0) return;
+    const row = libRows.find(r => r.id === playingId);
+    if (!row || row.durationSeconds != null || !row.audio?.dropboxPath) return;
+    const seconds = Math.round(playerDuration);
+    if (!(seconds > 0 && seconds < 86400)) return;
+    const key = row.audio.dropboxPath;
+    if (durationLearned.has(key)) return;
+    durationLearned.add(key); // guard immediately against duplicate fires
+    fetch("/api/red-artists/track-duration", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: row.id, dropboxPath: key, durationSeconds: seconds }),
+    })
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(() => {
+        setLibRows(rows => rows.map(r => (r.id === row.id ? { ...r, durationSeconds: seconds } : r)));
+      })
+      .catch(() => { durationLearned.delete(key); }); // allow a later retry
+  }, [playingId, playerDuration, libRows]);
 
   return (
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
@@ -801,7 +842,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
                     <div style={{ marginTop: 7 }}><MusicStatus status={t.status} /></div>
                   </div>
                   {/* duration (leftmost) — none yet */}
-                  <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>—</span>
+                  <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.durationSeconds != null ? mmss(t.durationSeconds) : "—"}</span>
                 </div>
               ))
             ) : (
@@ -821,7 +862,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
                   {/* status */}
                   <div style={{ textAlign: "center" }}><MusicStatus status={t.status} /></div>
                   {/* duration — none yet */}
-                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>—</div>
+                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.durationSeconds != null ? mmss(t.durationSeconds) : "—"}</div>
                 </div>
               ))
             )}
