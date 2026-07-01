@@ -330,13 +330,13 @@ function MyMusicPage() {
               <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
               <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ספריית השירים שלי</span>
             </div>
-            {/* upload (primary) — UI only; not wired (no song-upload flow exists yet) */}
+            {/* upload — UI only; not wired (no song-upload flow exists yet). Compact header action. */}
             <button style={{
-              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0,
-              padding: isMobile ? "10px 14px" : "11px 18px", borderRadius: 11, border: "none", color: "#fff",
-              background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12.5 : 13.5, fontWeight: 800,
-              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
-            }}><IcUpload size={16} /> העלאת קובץ</button>
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0,
+              padding: isMobile ? "8px 12px" : "7px 13px", borderRadius: 9, border: "none", color: "#fff",
+              background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12 : 12.5, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: `0 2px 9px rgba(220,38,38,0.26)`,
+            }}><IcUpload size={14} /> העלאת קובץ</button>
           </div>
 
           {/* column header — desktop only (mobile uses cards) */}
