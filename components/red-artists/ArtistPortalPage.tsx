@@ -200,6 +200,30 @@ const linkBtn: React.CSSProperties = {
   cursor: "pointer", fontFamily: "inherit", padding: 0,
 };
 
+// ── Shalev's real music library — SINGLE SOURCE OF TRUTH (home + music tab) ──────
+// projects.artist is a multi-artist string split by /[,،;]/ across the whole app
+// (see ClientDrawer/ProjectsTable/InsightsPage). A project belongs to Shalev when
+// "שליו טסמה" is one of those tokens — this catches solo AND collaborations,
+// while still requiring the FULL name (never a loose "שליו" substring).
+const SHALEV_ARTIST = "שליו טסמה";
+const normName = (s: string) => (s ?? "").trim().replace(/\s+/g, " ");
+function artistTokens(artist: string): string[] {
+  return (artist ?? "").split(/[,،;]/).map(normName).filter(Boolean);
+}
+export type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean };
+function toLibRow(p: Project): LibRow {
+  return {
+    id: p.id, name: p.name, artist: p.artist, status: p.status,
+    projectType: p.projectType, hasAudio: !!getLatestAudioFile(p.files ?? []),
+  };
+}
+function getShalevMusicProjects(projects: Project[]): LibRow[] {
+  const target = normName(SHALEV_ARTIST);
+  return (Array.isArray(projects) ? projects : [])
+    .filter(p => !p.isHidden && artistTokens(p.artist).includes(target))
+    .map(toLibRow);
+}
+
 function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
   e.currentTarget.style.background = on ? "rgba(220,38,38,0.06)" : "transparent";
   e.currentTarget.style.borderColor = on ? "rgba(220,38,38,0.28)" : "transparent";
@@ -209,6 +233,23 @@ function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
 export default function ArtistPortalPage() {
   const [tab, setTab] = useState<Tab>("בית");
   const isMobile = useIsMobile();
+
+  // Single source of truth for Shalev's library — used by BOTH the home card and
+  // the "המוזיקה שלי" tab. Fetches the owner-only projects once; no demo data.
+  const [libRows, setLibRows] = useState<LibRow[]>([]);
+  const [libState, setLibState] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/projects")
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((projects: Project[]) => {
+        if (!alive) return;
+        setLibRows(getShalevMusicProjects(projects));
+        setLibState("ready");
+      })
+      .catch(() => { if (alive) setLibState("error"); });
+    return () => { alive = false; };
+  }, []);
 
   return (
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
@@ -282,8 +323,8 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} />
-            : tab === "המוזיקה שלי" ? <MyMusicPage />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} musicRows={libRows} loadState={libState} />
+            : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
             : tab === "לו״ז ועדכונים" ? <AvailabilityPage />
             : <ComingSoon tab={tab} />}
         </div>
@@ -585,7 +626,7 @@ function MusicStatus({ status }: { status: string }) {
   return <span style={{ fontSize: 11, fontWeight: 800, color: c, background: `${c}24`, border: `1px solid ${c}5A`, borderRadius: 8, padding: "4px 11px", whiteSpace: "nowrap" }}>{status}</span>;
 }
 
-function MyMusicPage() {
+function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading" | "ready" | "error" }) {
   const isMobile = useIsMobile();
 
   // Upload modal: {mode:"new"} = blank target (header button); {mode:"update"}
@@ -598,34 +639,7 @@ function MyMusicPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // ── Real library (step 1): pull owner's projects, keep only שליו טסמה's. No
-  // fake data — empty state when none. Play is visual-only for now; a later
-  // step wires it to the global player. Reuses GET /api/projects (owner-only). ──
-  type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean };
-  const [rows, setRows] = useState<LibRow[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    let alive = true;
-    const norm = (s: string) => (s ?? "").trim().replace(/\s+/g, " ");
-    const target = norm("שליו טסמה");
-    fetch("/api/projects")
-      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((projects: Project[]) => {
-        if (!alive) return;
-        const mine = (Array.isArray(projects) ? projects : [])
-          .filter(p => !p.isHidden && norm(p.artist) === target)
-          .map(p => ({
-            id: p.id, name: p.name, artist: p.artist, status: p.status,
-            projectType: p.projectType, hasAudio: !!getLatestAudioFile(p.files ?? []),
-          }));
-        setRows(mine);
-        setLoadState("ready");
-      })
-      .catch(() => { if (alive) setLoadState("error"); });
-    return () => { alive = false; };
-  }, []);
-
+  // rows + loadState come from the page-level single source (getShalevMusicProjects).
   // Show 6 first; "הצג עוד" reveals more (6 → 10 → all).
   const [visibleCount, setVisibleCount] = useState(6);
   const displayRows = rows.slice(0, visibleCount);
@@ -784,7 +798,7 @@ const pbtn: React.CSSProperties = {
 };
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic }: { onOpenMusic: () => void }) {
+function HomeDashboard({ onOpenMusic, musicRows, loadState }: { onOpenMusic: () => void; musicRows: LibRow[]; loadState: "loading" | "ready" | "error" }) {
   const isMobile = useIsMobile();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -808,27 +822,31 @@ function HomeDashboard({ onOpenMusic }: { onOpenMusic: () => void }) {
       {/* ── 3. Main grid (row A) — music-forward in RTL: המוזיקה שלי (right) → ביטים → מאזן ── */}
       <div className="rap-grid-a">
 
-        {/* המוזיקה שלי */}
+        {/* המוזיקה שלי — up to 4 real projects from the shared source (no demo) */}
         <SectionCard title="המוזיקה שלי">
           <div style={{ padding: "8px 12px 6px" }}>
-            {SONGS.slice(0, 4).map(s => (
-              <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
-                {/* play (rightmost in RTL) */}
-                <PlayButton size={36} />
-                {/* name + version */}
-                <div style={{ textAlign: "start", minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{s.name}</div>
-                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{s.kind}</div>
+            {loadState === "loading" ? (
+              <div style={{ padding: "22px 8px", textAlign: "center", fontSize: 12.5, color: MUTED }}>טוען…</div>
+            ) : musicRows.length === 0 ? (
+              <div style={{ padding: "22px 8px", textAlign: "center", fontSize: 12.5, color: MUTED }}>עדיין אין שירים אמיתיים בספרייה</div>
+            ) : (
+              musicRows.slice(0, 4).map(t => (
+                <div key={t.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
+                  {/* play (rightmost in RTL) — visual only for now */}
+                  <PlayButton size={36} disabled={!t.hasAudio} />
+                  {/* name + artist */}
+                  <div style={{ textAlign: "start", minWidth: 0 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artist}</div>
+                  </div>
+                  {/* status pushed to the left edge */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginInlineStart: "auto" }}>
+                    <MusicStatus status={t.status} />
+                  </div>
                 </div>
-                {/* metadata pushed to the left edge */}
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginInlineStart: "auto" }}>
-                  <StatusBadge status={s.status} />
-                  <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap", direction: "ltr" }}>{s.date}</span>
-                  <button style={dotsBtn} aria-label="more">⋮</button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
             <button onClick={onOpenMusic} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>לכל השירים והסקיצות ←</button>
           </div>
         </SectionCard>
