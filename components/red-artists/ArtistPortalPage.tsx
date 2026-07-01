@@ -263,6 +263,8 @@ export default function ArtistPortalPage() {
           </PortalHero>
         ) : tab === "המוזיקה שלי" ? (
           <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
+        ) : tab === "לו״ז ועדכונים" ? (
+          <PortalHero title="הזמינות שלי" subtitle="זמינות לשבוע הבא" />
         ) : (
           <PortalHero title={tab} subtitle="האזור הזה יוצג בקרוב" />
         )}
@@ -270,6 +272,7 @@ export default function ArtistPortalPage() {
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} />
             : tab === "המוזיקה שלי" ? <MyMusicPage />
+            : tab === "לו״ז ועדכונים" ? <AvailabilityPage />
             : <ComingSoon tab={tab} />}
         </div>
       </div>
@@ -340,6 +343,77 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
     <div style={{ ...panel, padding: "56px 24px", textAlign: "center" }}>
       <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>🚧</div>
       <div style={{ fontSize: 14, color: TEXT2 }}>האזור הזה עדיין בבנייה — יעודכן בקרוב</div>
+    </div>
+  );
+}
+
+// ── Availability (לו״ז ועדכונים tab) — simple next-week availability. UI ONLY,
+// hardcoded demo + local toggle. Future step: artist updates it → owner sees it
+// → schedules a session → it flows back. No DB/API/Calendar wired here yet. ──
+type AvailDay = { day: string; date: string; available: boolean; from: string };
+const NEXT_WEEK: AvailDay[] = [
+  { day: "ראשון",  date: "06.07", available: true,  from: "16:00" },
+  { day: "שני",    date: "07.07", available: false, from: ""      },
+  { day: "שלישי",  date: "08.07", available: true,  from: "18:00" },
+  { day: "רביעי",  date: "09.07", available: true,  from: ""      }, // פנוי כל היום
+  { day: "חמישי",  date: "10.07", available: true,  from: "14:00" },
+  { day: "שישי",   date: "11.07", available: false, from: ""      },
+  { day: "שבת",    date: "12.07", available: true,  from: "20:00" },
+];
+
+function AvailabilityPage() {
+  const isMobile = useIsMobile();
+  const [days, setDays] = useState<AvailDay[]>(NEXT_WEEK);
+  const [sent, setSent] = useState(false);
+
+  const toggle = (i: number) =>
+    setDays(ds => ds.map((d, j) => (j === i ? { ...d, available: !d.available } : d)));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* section header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+        <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>השבוע הבא</span>
+        <span style={{ fontSize: 12, color: MUTED, marginInlineStart: 4 }}>לחצו על יום כדי לסמן פנוי / לא פנוי</span>
+      </div>
+
+      {/* 7-day grid — desktop 7 across, mobile 2 cols */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)", gap: isMobile ? 10 : 12 }}>
+        {days.map((d, i) => {
+          const c = d.available ? GREEN : "#F87171";
+          return (
+            <button key={d.day} onClick={() => toggle(i)} style={{
+              ...panel, padding: isMobile ? "16px 10px" : "18px 12px", cursor: "pointer", fontFamily: "inherit",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center",
+              border: `1px solid ${d.available ? "rgba(52,211,153,0.28)" : BDR2}`, transition: "border-color .14s",
+            }}>
+              <div>
+                <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 800, color: TEXT }}>{d.day}</div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 3, direction: "ltr" }}>{d.date}</div>
+              </div>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: c, background: `${c}1A`, border: `1px solid ${c}55`, borderRadius: 999, padding: "4px 12px" }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: c, boxShadow: `0 0 7px ${c}` }} />
+                {d.available ? "פנוי" : "לא פנוי"}
+              </span>
+              <div style={{ fontSize: 12, color: TEXT2, minHeight: 16 }}>
+                {d.available ? (d.from ? `פנוי מ-${d.from}` : "פנוי כל היום") : ""}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* send */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 2 }}>
+        <button onClick={() => setSent(true)} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "14px 26px", borderRadius: 12, border: "none", color: "#fff", fontSize: 14.5, fontWeight: 800,
+          fontFamily: "inherit", cursor: "pointer", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)", width: isMobile ? "100%" : "auto",
+        }}>שלח זמינות לשבוע הבא</button>
+        {sent && <span style={{ fontSize: 13, fontWeight: 700, color: GREEN }}>✓ הזמינות נשלחה (הדגמה)</span>}
+      </div>
     </div>
   );
 }
