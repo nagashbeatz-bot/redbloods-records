@@ -644,9 +644,6 @@ function HomeDashboard() {
               <span style={{ fontSize: 13, color: "#E8B7B7", fontWeight: 700 }}>מאזן נוכחי</span>
               <span style={{ fontSize: 22, fontWeight: 900, color: "#FF6B6B", direction: "ltr" }}>₪8,320</span>
             </div>
-            <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 12, background: "rgba(255,255,255,0.02)", border: `1px solid ${BDR}`, borderRadius: 10, padding: "10px 12px" }}>
-              כאן מוצגות רק הכנסות והוצאות שמשויכות אליך וגלויות לך.
-            </div>
           </div>
         </SectionCard>
       </div>
