@@ -138,6 +138,12 @@ const LIBRARY: LibTrack[] = [
   { name: "חיים אחרים",   kind: "סקיצה", status: "ממתין לאישור", date: "23.05.2025", dur: "03:09" },
   { name: "תל אביב בלילה", kind: "דמו",   status: "בבחינה",       date: "20.05.2025", dur: "02:37" },
   { name: "עד שנפגש",     kind: "מיקס",  status: "ממתין לאישור", date: "18.05.2025", dur: "03:55" },
+  { name: "אורות בלילה",   kind: "סקיצה", status: "סקיצה",        date: "15.05.2025", dur: "03:21" },
+  { name: "רחוק מכאן",     kind: "מיקס",  status: "ממתין לאישור", date: "12.05.2025", dur: "02:49" },
+  { name: "סימנים",        kind: "מאסטר", status: "מוכן",         date: "09.05.2025", dur: "04:02" },
+  { name: "לא חוזר אחורה",  kind: "דמו",   status: "בבחינה",       date: "06.05.2025", dur: "03:12" },
+  { name: "בין השורות",    kind: "סקיצה", status: "סקיצה",        date: "02.05.2025", dur: "02:58" },
+  { name: "עד הבוקר",      kind: "מיקס",  status: "ממתין לאישור", date: "28.04.2025", dur: "03:37" },
 ];
 const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "סה״כ שירים",   value: 24, icon: "♫" },
@@ -214,6 +220,13 @@ export default function ArtistPortalPage() {
           @keyframes rapProgress { from { width: 0%; } to { width: 100%; } }
           .rap-tabs { scrollbar-width: none; -ms-overflow-style: none; }
           .rap-tabs::-webkit-scrollbar { display: none; }
+          /* Library internal scroll — thin, dark, premium. Only the song list
+             scrolls; the rest of the page stays put when "הצג עוד" reveals more. */
+          .rap-lib-scroll { scrollbar-width: thin; scrollbar-color: rgba(220,38,38,0.35) transparent; }
+          .rap-lib-scroll::-webkit-scrollbar { width: 8px; }
+          .rap-lib-scroll::-webkit-scrollbar-track { background: transparent; }
+          .rap-lib-scroll::-webkit-scrollbar-thumb { background: rgba(220,38,38,0.30); border-radius: 8px; }
+          .rap-lib-scroll::-webkit-scrollbar-thumb:hover { background: rgba(220,38,38,0.5); }
         `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
@@ -262,7 +275,7 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} />
             : tab === "המוזיקה שלי" ? <MyMusicPage />
             : <ComingSoon tab={tab} />}
         </div>
@@ -358,6 +371,11 @@ function MyMusicPage() {
   }, [toast]);
 
   const rows = LIBRARY;
+  // Show 6 first; "הצג עוד" reveals more (6 → 10 → all) inside the scroll area.
+  const [visibleCount, setVisibleCount] = useState(6);
+  const displayRows = rows.slice(0, visibleCount);
+  const hasMore = visibleCount < rows.length;
+  const showMore = () => setVisibleCount(c => (c < 10 ? 10 : rows.length));
 
   // grid template shared EXACTLY by the library header + every row (RTL: play on the
   // right in its own fixed column, then name, then the technical columns).
@@ -420,9 +438,12 @@ function MyMusicPage() {
             }}><IcUpload size={14} /> העלאת קובץ</button>
           </div>
 
+          {/* library scroll area — ONLY this scrolls; the page stays put when
+              "הצג עוד" reveals more. Desktop header is sticky so it stays aligned. */}
+          <div className="rap-lib-scroll" style={{ maxHeight: isMobile ? 520 : 468, overflowY: "auto" }}>
           {/* column header — desktop only (mobile uses cards) */}
           {!isMobile && (
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "#151516", position: "sticky", top: 0, zIndex: 2 }}>
             {heads.map((h, i) => (
               <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
@@ -431,10 +452,10 @@ function MyMusicPage() {
 
           {/* rows — desktop: shared grid (aligned columns); mobile: stacked cards */}
           <div style={{ padding: isMobile ? "2px 0 6px" : "6px 0 8px" }}>
-            {rows.length === 0 ? (
+            {displayRows.length === 0 ? (
               <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא נמצאו שירים</div>
             ) : isMobile ? (
-              rows.map(t => (
+              displayRows.map(t => (
                 <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
                   {/* play (rightmost in RTL) */}
                   <PlayButton size={42} />
@@ -451,7 +472,7 @@ function MyMusicPage() {
                 </div>
               ))
             ) : (
-              rows.map(t => (
+              displayRows.map(t => (
                 <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                   style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
                   {/* play (right column) */}
@@ -476,8 +497,11 @@ function MyMusicPage() {
                 </div>
               ))
             )}
-            <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0 10px", fontWeight: 700 }}>הצג עוד ⌄</button>
           </div>
+          </div>
+          {hasMore && (
+            <button onClick={showMore} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0", fontWeight: 700, borderTop: `1px solid ${BDR}` }}>הצג עוד ⌄</button>
+          )}
       </div>
 
       {/* ── bottom mock player (visual only — does NOT touch the global player) ── */}
@@ -569,7 +593,7 @@ const pbtn: React.CSSProperties = {
 };
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard() {
+function HomeDashboard({ onOpenMusic }: { onOpenMusic: () => void }) {
   const isMobile = useIsMobile();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -596,7 +620,7 @@ function HomeDashboard() {
         {/* המוזיקה שלי */}
         <SectionCard title="המוזיקה שלי">
           <div style={{ padding: "8px 12px 6px" }}>
-            {SONGS.map(s => (
+            {SONGS.slice(0, 4).map(s => (
               <div key={s.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
                 {/* play (rightmost in RTL) */}
@@ -614,7 +638,7 @@ function HomeDashboard() {
                 </div>
               </div>
             ))}
-            <button style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>לכל השירים והסקיצות ←</button>
+            <button onClick={onOpenMusic} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>לכל השירים והסקיצות ←</button>
           </div>
         </SectionCard>
 
