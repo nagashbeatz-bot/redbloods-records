@@ -145,6 +145,8 @@ const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "ממתין לאישור", value: 3,  icon: "◷" },
   { label: "מאסטרים",      value: 6,  icon: "♬" },
 ];
+// Shorter labels for the compact mobile KPI strip.
+const KPI_SHORT: Record<string, string> = { "סה״כ שירים": "שירים", "ממתין לאישור": "לאישור" };
 
 // Hero "latest updates" flash — hardcoded, rotates client-side.
 const FLASH: { text: string; time: string }[] = [
@@ -210,10 +212,18 @@ export default function ArtistPortalPage() {
             .rap-acts { grid-template-columns: 1fr; }
           }
           @keyframes rapProgress { from { width: 0%; } to { width: 100%; } }
+          .rap-tabs { scrollbar-width: none; -ms-overflow-style: none; }
+          .rap-tabs::-webkit-scrollbar { display: none; }
         `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
-        <div style={{ display: "flex", justifyContent: "center", gap: isMobile ? 8 : 10, flexWrap: "wrap", marginBottom: isMobile ? 18 : 24 }}>
+        {/* Mobile: single-line, compact, horizontally scrollable so tabs never wrap to a 2nd row. */}
+        <div className="rap-tabs" style={{
+          display: "flex", gap: isMobile ? 7 : 10, marginBottom: isMobile ? 16 : 24,
+          justifyContent: isMobile ? "flex-start" : "center",
+          flexWrap: isMobile ? "nowrap" : "wrap",
+          overflowX: isMobile ? "auto" : "visible", paddingBottom: isMobile ? 2 : 0,
+        }}>
           {TABS.map(tb => {
             const active = tb === tab;
             return (
@@ -221,8 +231,8 @@ export default function ArtistPortalPage() {
                 key={tb}
                 onClick={() => setTab(tb)}
                 style={{
-                  fontSize: isMobile ? 12.5 : 13.5, fontWeight: active ? 800 : 600, fontFamily: "inherit", cursor: "pointer",
-                  padding: isMobile ? "8px 14px" : "10px 20px", borderRadius: 12, whiteSpace: "nowrap",
+                  fontSize: isMobile ? 12.5 : 13.5, fontWeight: active ? 800 : 600, fontFamily: "inherit", cursor: "pointer", flexShrink: 0,
+                  padding: isMobile ? "7px 13px" : "10px 20px", borderRadius: isMobile ? 10 : 12, whiteSpace: "nowrap",
                   background: active ? "linear-gradient(180deg, rgba(220,38,38,0.22), rgba(220,38,38,0.10))" : "#141415",
                   border: `1px solid ${active ? "rgba(220,38,38,0.55)" : BDR}`,
                   color: active ? "#FF6B6B" : TEXT2,
@@ -322,18 +332,32 @@ function MyMusicPage() {
         </div>
       </div>
 
-      {/* ── KPI row ── */}
-      <div className="rap-kpi">
-        {MUSIC_KPIS.map(k => (
-          <div key={k.label} style={{ ...panel, padding: "22px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 12.5, color: TEXT2, fontWeight: 600 }}>{k.label}</div>
-              <div style={{ fontSize: 34, fontWeight: 900, color: TEXT, marginTop: 5 }}>{k.value}</div>
+      {/* ── KPI row (desktop: cards · mobile: compact 4-up strip, no icons) ── */}
+      {isMobile ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+          {MUSIC_KPIS.map(k => (
+            <div key={k.label} style={{
+              background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12,
+              padding: "10px 6px", textAlign: "center", minWidth: 0,
+            }}>
+              <div style={{ fontSize: 21, fontWeight: 900, color: TEXT, lineHeight: 1.1 }}>{k.value}</div>
+              <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{KPI_SHORT[k.label] ?? k.label}</div>
             </div>
-            <span style={{ width: 50, height: 50, borderRadius: 14, flexShrink: 0, background: "rgba(220,38,38,0.13)", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{k.icon}</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rap-kpi">
+          {MUSIC_KPIS.map(k => (
+            <div key={k.label} style={{ ...panel, padding: "22px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12.5, color: TEXT2, fontWeight: 600 }}>{k.label}</div>
+                <div style={{ fontSize: 34, fontWeight: 900, color: TEXT, marginTop: 5 }}>{k.value}</div>
+              </div>
+              <span style={{ width: 50, height: 50, borderRadius: 14, flexShrink: 0, background: "rgba(220,38,38,0.13)", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{k.icon}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── library (full width) ── */}
       <div style={panel}>
