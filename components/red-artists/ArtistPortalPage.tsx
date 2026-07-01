@@ -244,9 +244,28 @@ export default function ArtistPortalPage() {
           })}
         </div>
 
-        {tab === "בית" ? <HomeDashboard />
-          : tab === "המוזיקה שלי" ? <MyMusicPage />
-          : <ComingSoon tab={tab} />}
+        {/* Persistent hero — the ternary always yields <PortalHero> at THIS same
+            position, so React reuses the instance across tabs and the avatar
+            never remounts/reloads (no "ש" flash on tab switch). Content varies. */}
+        {tab === "בית" ? (
+          <PortalHero title="ברוך הבא, שליו" emoji="👋" subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
+            </div>
+            <NewsFlash />
+          </PortalHero>
+        ) : tab === "המוזיקה שלי" ? (
+          <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
+        ) : (
+          <PortalHero title={tab} subtitle="האזור הזה יוצג בקרוב" />
+        )}
+
+        <div style={{ marginTop: 20 }}>
+          {tab === "בית" ? <HomeDashboard />
+            : tab === "המוזיקה שלי" ? <MyMusicPage />
+            : <ComingSoon tab={tab} />}
+        </div>
       </div>
     </div>
   );
@@ -310,14 +329,11 @@ function PortalHero({ title, emoji, badge, subtitle, children }: {
   );
 }
 
-function ComingSoon({ tab }: { tab: Tab }) {
+function ComingSoon({ tab: _tab }: { tab: Tab }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <PortalHero title={tab} subtitle="האזור הזה יוצג בקרוב" />
-      <div style={{ ...panel, padding: "56px 24px", textAlign: "center" }}>
-        <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>🚧</div>
-        <div style={{ fontSize: 14, color: TEXT2 }}>האזור הזה עדיין בבנייה — יעודכן בקרוב</div>
-      </div>
+    <div style={{ ...panel, padding: "56px 24px", textAlign: "center" }}>
+      <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>🚧</div>
+      <div style={{ fontSize: 14, color: TEXT2 }}>האזור הזה עדיין בבנייה — יעודכן בקרוב</div>
     </div>
   );
 }
@@ -360,9 +376,6 @@ function MyMusicPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-
-      {/* ── Hero (shared shell — identical across all tabs) ── */}
-      <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
 
       {/* ── KPI row (desktop: cards · mobile: compact 4-up strip, no icons) ── */}
       {isMobile ? (
@@ -561,16 +574,7 @@ function HomeDashboard() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-      {/* ── 1. Hero (shared shell — identical across all tabs) ── */}
-      <PortalHero title="ברוך הבא, שליו" emoji="👋" subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
-        </div>
-        <NewsFlash />
-      </PortalHero>
-
-      {/* ── 2. "מה מחכה לך עכשיו" ── */}
+      {/* ── "מה מחכה לך עכשיו" ── */}
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
@@ -778,10 +782,15 @@ const AVATAR_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 // JPEG). Used as a cross-device fallback so ANY browser loads the same image
 // even without a localStorage entry; a 404 just falls back to the "ש" initial.
 const AVATAR_PATH = "/app/red-artists/shalev-tasama/profile-image/avatar.jpg";
+// Session-level cache so the avatar survives remounts / tab-switches without
+// flashing back to "ש" or refetching. Seeded with the deterministic path so the
+// FIRST render already has a src (no null→"ש" flash). Updated on upload / 404.
+let avatarPathCache: string | null = AVATAR_PATH;
+let avatarVerCache = 0;                            // 0 = stable URL; only bumped after a successful upload
 
 function ArtistAvatar() {
-  const [path, setPath]   = useState<string | null>(null);
-  const [ver, setVer]     = useState(0);          // cache-bust after re-upload (overwrites same path)
+  const [path, setPath]   = useState<string | null>(avatarPathCache);
+  const [ver, setVer]     = useState(avatarVerCache); // cache-bust after re-upload (overwrites same path)
   const [hover, setHover] = useState(false);
   const [busy, setBusy]   = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -791,12 +800,13 @@ function ArtistAvatar() {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    // Prefer the last-known path; else the deterministic path so other devices
-    // still show the image. Cache-bust each load so a refresh reflects the latest.
-    let p: string | null = null;
-    try { p = localStorage.getItem(AVATAR_KEY); } catch { /* ignore */ }
-    setPath(p ?? AVATAR_PATH);
-    setVer(Date.now());
+    // Pick up a stored path once (client only) and keep the module cache in sync.
+    // NO cache-bust here — the URL stays stable across mounts so the browser can
+    // reuse the image and we never flash back to "ש" on a tab switch / refresh.
+    try {
+      const p = localStorage.getItem(AVATAR_KEY);
+      if (p && p !== avatarPathCache) { avatarPathCache = p; setPath(p); }
+    } catch { /* ignore */ }
   }, []);
 
   function notify(m: string) { setToast(m); setTimeout(() => setToast(null), 2600); }
@@ -829,9 +839,13 @@ function ArtistAvatar() {
         return false;
       }
       const p = data.path as string;
+      // Diagnostic: confirms the real path_display vs AVATAR_PATH (cross-device sync).
+      console.info("[red-artists/avatar] saved path:", p, "| AVATAR_PATH:", AVATAR_PATH, "| match:", p === AVATAR_PATH);
+      avatarPathCache = p;
+      avatarVerCache  = Date.now();              // bump only on success → forces the overwritten image to reload
       try { localStorage.setItem(AVATAR_KEY, p); } catch { /* ignore */ }
       setPath(p);
-      setVer(Date.now());
+      setVer(avatarVerCache);
       notify("תמונת הפרופיל עודכנה");
       return true;
     } catch (e) {
@@ -873,7 +887,7 @@ function ArtistAvatar() {
         }}>
           {src ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={src} alt="תמונת פרופיל" onError={() => { setPath(null); try { localStorage.removeItem(AVATAR_KEY); } catch { /* ignore */ } }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={src} alt="תמונת פרופיל" onError={() => { avatarPathCache = null; setPath(null); try { localStorage.removeItem(AVATAR_KEY); } catch { /* ignore */ } }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           ) : "ש"}
           {/* hover / busy overlay */}
           <div style={{
