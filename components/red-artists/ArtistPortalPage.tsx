@@ -140,7 +140,7 @@ const LIBRARY: LibTrack[] = [
   { name: "עד שנפגש",     kind: "מיקס",  status: "ממתין לאישור", date: "18.05.2025", dur: "03:55" },
 ];
 // File-type options for the upload modal (display-only labels; no new statuses).
-const FILE_KINDS = ["סקיצה", "ווקאל", "מיקס", "מאסטר", "הערות", "אחר"] as const;
+const FILE_KINDS = ["סקיצה", "ווקאל", "ביט", "מיקס", "אחר"] as const;
 const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "סה״כ שירים",   value: 24, icon: "♫" },
   { label: "סקיצות",       value: 8,  icon: "✎" },
@@ -1016,15 +1016,22 @@ function UploadModal({ modal, onClose, onToast }: {
 }) {
   const isMobile = useIsMobile();
   const open = !!modal;
-  const [song, setSong] = useState("");
-  const [kind, setKind] = useState<string>("");
-  const [file, setFile] = useState<File | null>(null);
-  const [note, setNote] = useState("");
-  const [drag, setDrag] = useState(false);
+  // "new" = סקיצה חדשה (create a new draft) · "update" = עדכון קובץ לשיר קיים.
+  const [tab, setTab]           = useState<"new" | "update">("new");
+  const [song, setSong]         = useState("");
+  const [kind, setKind]         = useState<string>("");
+  const [file, setFile]         = useState<File | null>(null);
+  const [note, setNote]         = useState("");
+  const [skitchName, setSkitch] = useState("");
+  const [lyrics, setLyrics]     = useState("");
+  const [drag, setDrag]         = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) { setSong(modal?.target ?? ""); setKind(""); setFile(null); setNote(""); setDrag(false); }
+    if (open) {
+      setTab(modal!.mode === "update" ? "update" : "new");
+      setSong(modal?.target ?? ""); setKind(""); setFile(null); setNote(""); setSkitch(""); setLyrics(""); setDrag(false);
+    }
   }, [open, modal?.target, modal?.mode]);
 
   useEffect(() => {
@@ -1035,13 +1042,18 @@ function UploadModal({ modal, onClose, onToast }: {
   }, [open, onClose]);
 
   if (!open || typeof document === "undefined") return null;
-  const locked    = modal!.mode === "update";
-  const canSubmit = song.trim() !== "" && !!file;
+  // Song target is locked only when the modal was opened from a row's "עדכן קובץ".
+  const lockedSong = modal!.mode === "update";
+  const canSubmit  = tab === "new"
+    ? (skitchName.trim() !== "" && !!file)
+    : (song.trim() !== "" && !!file);
 
   const submit = () => {
     if (!canSubmit) return;
     onClose();
-    onToast("היעד והקובץ נקלטו (הדגמה) — חיבור העלאה אמיתי ממתין לאישור");
+    onToast(tab === "new"
+      ? "הסקיצה נקלטה (הדגמה) — חיבור העלאה אמיתי ממתין לאישור"
+      : "היעד והקובץ נקלטו (הדגמה) — חיבור העלאה אמיתי ממתין לאישור");
   };
 
   const label: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 8 };
@@ -1050,6 +1062,63 @@ function UploadModal({ modal, onClose, onToast }: {
     border: `1px solid ${BDR2}`, borderRadius: 11, color: TEXT, fontSize: 14,
     fontFamily: "inherit", padding: "13px 14px", outline: "none",
   };
+
+  // Shared blocks reused by both tabs.
+  const kindChips = (
+    <div style={{ marginBottom: 16 }}>
+      <div style={label}>סוג קובץ</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {FILE_KINDS.map(k => {
+          const sel = k === kind;
+          return (
+            <button key={k} onClick={() => setKind(sel ? "" : k)} style={{
+              padding: "9px 15px", borderRadius: 999, fontSize: 13, fontWeight: sel ? 800 : 600,
+              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+              background: sel ? "rgba(220,38,38,0.18)" : "rgba(255,255,255,0.03)",
+              border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : BDR2}`,
+              color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
+            }}>{k}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const filePicker = (
+    <div style={{ marginBottom: 16 }}>
+      <div style={label}>בחר קובץ</div>
+      <div
+        onClick={() => fileRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDrag(true); }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={e => { e.preventDefault(); setDrag(false); setFile(e.dataTransfer.files?.[0] ?? null); }}
+        style={{
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: isMobile ? "24px 14px" : "30px 14px", borderRadius: 13, cursor: "pointer", textAlign: "center",
+          border: `1.5px dashed ${drag ? BRAND : BDR2}`, background: drag ? "rgba(220,38,38,0.08)" : "rgba(255,255,255,0.02)",
+          transition: "all .14s",
+        }}>
+        <IcCloud size={26} color={drag ? "#FF6B6B" : TEXT2} />
+        {file ? (
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 13.5, color: TEXT2 }}>{isMobile ? "לחץ לבחירה" : "גרור קובץ לכאן או לחץ לבחירה"}</div>
+            <div style={{ fontSize: 11, color: MUTED, direction: "ltr" }}>MP3, WAV, AIFF, M4A עד 500MB</div>
+          </>
+        )}
+      </div>
+      <input ref={fileRef} type="file" onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+    </div>
+  );
+
+  const noteBlock = (labelText: string, ph: string) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={label}>{labelText}</div>
+      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={ph} rows={2}
+        style={{ ...field, resize: "none", lineHeight: 1.5 }} />
+    </div>
+  );
 
   return createPortal(
     <div
@@ -1068,90 +1137,75 @@ function UploadModal({ modal, onClose, onToast }: {
         boxShadow: "0 24px 70px rgba(0,0,0,0.6)", padding: isMobile ? "18px 16px 22px" : "22px 24px 24px",
       }}>
         {/* header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#fff" }}>{locked ? "עדכון קובץ לשיר" : "העלאת קובץ"}</div>
-            {locked && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, fontSize: 13, fontWeight: 700, color: "#FF6B6B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 13 }}>♫</span>{song}
-              </div>
-            )}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>♫</span>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#fff" }}>{tab === "new" ? "העלאת סקיצה" : "עדכון קובץ"}</div>
           </div>
           <button onClick={onClose} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0, lineHeight: 0 }}><IcX size={20} /></button>
         </div>
 
-        {/* 1 · target song / project */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={label}>בחר שיר / פרויקט</div>
-          {locked ? (
-            <div style={{ ...field, display: "flex", alignItems: "center", gap: 8, opacity: 0.85 }}>
-              <span style={{ color: "#FF6B6B", fontSize: 13 }}>♫</span>{song}
+        {/* mode toggle */}
+        <div style={{ display: "flex", gap: 6, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: 5, marginBottom: 18 }}>
+          {([["new", "סקיצה חדשה"], ["update", "עדכון קובץ"]] as const).map(([val, lbl]) => {
+            const sel = tab === val;
+            return (
+              <button key={val} onClick={() => setTab(val)} style={{
+                flex: 1, padding: "11px 0", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit",
+                fontSize: 13.5, fontWeight: sel ? 800 : 600, whiteSpace: "nowrap",
+                background: sel ? "linear-gradient(180deg, #E5322F, #C01C1C)" : "transparent",
+                color: sel ? "#fff" : TEXT2, boxShadow: sel ? "0 2px 10px rgba(220,38,38,0.3)" : "none", transition: "all .14s",
+              }}>{lbl}</button>
+            );
+          })}
+        </div>
+
+        {tab === "new" ? (
+          <>
+            {/* שם סקיצה */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={label}>שם סקיצה</div>
+              <input value={skitchName} onChange={e => setSkitch(e.target.value)} placeholder="לדוגמה: רעיון חדש לפזמון" style={field} />
             </div>
-          ) : (
-            <select value={song} onChange={e => setSong(e.target.value)} style={{ ...field, cursor: "pointer", appearance: "none" }}>
-              <option value="" disabled>בחר שיר / פרויקט…</option>
-              {LIBRARY.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
-          )}
-        </div>
+            {/* מילים / טקסט */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={label}>מילים / טקסט</div>
+              <textarea value={lyrics} onChange={e => setLyrics(e.target.value)} placeholder="כתוב כאן מילים, טקסט או רעיונות…" rows={3}
+                style={{ ...field, resize: "none", lineHeight: 1.5 }} />
+            </div>
+            {noteBlock("הערות", "כתבו הערות, וייב, הפניות או הערות הפקה…")}
+            {kindChips}
+            {filePicker}
+          </>
+        ) : (
+          <>
+            {/* בחר שיר / פרויקט */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={label}>בחר שיר / פרויקט</div>
+              {lockedSong ? (
+                <div style={{ ...field, display: "flex", alignItems: "center", gap: 8, opacity: 0.85 }}>
+                  <span style={{ color: "#FF6B6B", fontSize: 13 }}>♫</span>{song}
+                </div>
+              ) : (
+                <select value={song} onChange={e => setSong(e.target.value)} style={{ ...field, cursor: "pointer", appearance: "none" }}>
+                  <option value="" disabled>בחר שיר / פרויקט…</option>
+                  {LIBRARY.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+                </select>
+              )}
+            </div>
+            {kindChips}
+            {filePicker}
+            {noteBlock("הערה (אופציונלי)", "כתוב הערה קצרה על הקובץ…")}
+          </>
+        )}
 
-        {/* 2 · file type */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={label}>סוג קובץ</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {FILE_KINDS.map(k => {
-              const sel = k === kind;
-              return (
-                <button key={k} onClick={() => setKind(sel ? "" : k)} style={{
-                  padding: "9px 15px", borderRadius: 999, fontSize: 13, fontWeight: sel ? 800 : 600,
-                  cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-                  background: sel ? "rgba(220,38,38,0.18)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${sel ? "rgba(220,38,38,0.5)" : BDR2}`,
-                  color: sel ? "#FF6B6B" : TEXT2, transition: "all .14s",
-                }}>{k}</button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 3 · file picker (drag/drop on desktop, tap on mobile) */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={label}>בחר קובץ</div>
-          <div
-            onClick={() => fileRef.current?.click()}
-            onDragOver={e => { e.preventDefault(); setDrag(true); }}
-            onDragLeave={() => setDrag(false)}
-            onDrop={e => { e.preventDefault(); setDrag(false); setFile(e.dataTransfer.files?.[0] ?? null); }}
-            style={{
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: isMobile ? "24px 14px" : "30px 14px", borderRadius: 13, cursor: "pointer", textAlign: "center",
-              border: `1.5px dashed ${drag ? BRAND : BDR2}`, background: drag ? "rgba(220,38,38,0.08)" : "rgba(255,255,255,0.02)",
-              transition: "all .14s",
-            }}>
-            <IcCloud size={26} color={drag ? "#FF6B6B" : TEXT2} />
-            {file ? (
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
-            ) : (
-              <div style={{ fontSize: 13.5, color: TEXT2 }}>{isMobile ? "לחץ לבחירה" : "גרור קובץ לכאן או לחץ לבחירה"}</div>
-            )}
-          </div>
-          <input ref={fileRef} type="file" onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
-        </div>
-
-        {/* 4 · optional note */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={label}>הערה (אופציונלי)</div>
-          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="כתוב הערה קצרה על הקובץ…" rows={2}
-            style={{ ...field, resize: "none", lineHeight: 1.5 }} />
-        </div>
-
-        {/* 5 · submit */}
+        {/* submit */}
         <button onClick={submit} disabled={!canSubmit} style={{
-          width: "100%", boxSizing: "border-box", padding: "14px 0", borderRadius: 12, border: "none",
+          width: "100%", boxSizing: "border-box", padding: "14px 0", borderRadius: 12, border: "none", marginTop: 2,
           color: "#fff", fontSize: 14.5, fontWeight: 800, fontFamily: "inherit",
           cursor: canSubmit ? "pointer" : "not-allowed", opacity: canSubmit ? 1 : 0.5,
           background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: canSubmit ? `0 4px 16px rgba(220,38,38,0.32)` : "none",
-        }}>העלה קובץ</button>
+        }}>{tab === "new" ? "העלה סקיצה" : "העלה קובץ"}</button>
         <div style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10 }}>מצב הדגמה — הקובץ עדיין לא נשלח לשרת</div>
       </div>
     </div>,
