@@ -351,23 +351,28 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
 // hardcoded demo + local toggle. Future step: artist updates it → owner sees it
 // → schedules a session → it flows back. No DB/API/Calendar wired here yet. ──
 type AvailDay = { day: string; date: string; available: boolean; from: string };
+// Default: every day starts "לא פנוי"; the artist opens a day and marks it.
 const NEXT_WEEK: AvailDay[] = [
-  { day: "ראשון",  date: "06.07", available: true,  from: "16:00" },
-  { day: "שני",    date: "07.07", available: false, from: ""      },
-  { day: "שלישי",  date: "08.07", available: true,  from: "18:00" },
-  { day: "רביעי",  date: "09.07", available: true,  from: ""      }, // פנוי כל היום
-  { day: "חמישי",  date: "10.07", available: true,  from: "14:00" },
-  { day: "שישי",   date: "11.07", available: false, from: ""      },
-  { day: "שבת",    date: "12.07", available: true,  from: "20:00" },
+  { day: "ראשון",  date: "06.07", available: false, from: "" },
+  { day: "שני",    date: "07.07", available: false, from: "" },
+  { day: "שלישי",  date: "08.07", available: false, from: "" },
+  { day: "רביעי",  date: "09.07", available: false, from: "" },
+  { day: "חמישי",  date: "10.07", available: false, from: "" },
+  { day: "שישי",   date: "11.07", available: false, from: "" },
+  { day: "שבת",    date: "12.07", available: false, from: "" },
 ];
+const AVAIL_TIMES = ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00"];
 
 function AvailabilityPage() {
   const isMobile = useIsMobile();
   const [days, setDays] = useState<AvailDay[]>(NEXT_WEEK);
   const [sent, setSent] = useState(false);
+  const [editIdx, setEditIdx] = useState<number | null>(null); // day being edited in the modal
 
-  const toggle = (i: number) =>
-    setDays(ds => ds.map((d, j) => (j === i ? { ...d, available: !d.available } : d)));
+  const saveDay = (i: number, patch: { available: boolean; from: string }) => {
+    setDays(ds => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
+    setEditIdx(null);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -375,7 +380,7 @@ function AvailabilityPage() {
       <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
         <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
         <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>השבוע הבא</span>
-        <span style={{ fontSize: 12, color: MUTED, marginInlineStart: 4 }}>לחצו על יום כדי לסמן פנוי / לא פנוי</span>
+        <span style={{ fontSize: 12, color: MUTED, marginInlineStart: 4 }}>לחצו על יום כדי לעדכן זמינות</span>
       </div>
 
       {/* 7-day grid — desktop 7 across, mobile 2 cols */}
@@ -383,7 +388,7 @@ function AvailabilityPage() {
         {days.map((d, i) => {
           const c = d.available ? GREEN : "#F87171";
           return (
-            <button key={d.day} onClick={() => toggle(i)} style={{
+            <button key={d.day} onClick={() => setEditIdx(i)} style={{
               ...panel, padding: isMobile ? "16px 10px" : "18px 12px", cursor: "pointer", fontFamily: "inherit",
               display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center",
               border: `1px solid ${d.available ? "rgba(52,211,153,0.28)" : BDR2}`, transition: "border-color .14s",
@@ -414,7 +419,141 @@ function AvailabilityPage() {
         }}>שלח זמינות לשבוע הבא</button>
         {sent && <span style={{ fontSize: 13, fontWeight: 700, color: GREEN }}>✓ הזמינות נשלחה (הדגמה)</span>}
       </div>
+
+      {editIdx !== null && (
+        <AvailDayModal
+          day={days[editIdx]}
+          onCancel={() => setEditIdx(null)}
+          onSave={patch => saveDay(editIdx, patch)}
+        />
+      )}
     </div>
+  );
+}
+
+// Per-day availability editor (portal modal). UI-only local draft; commits to
+// the parent on "שמור". Time uses a custom dark dropdown (native <select> opens
+// an OS-white list that breaks the dark theme).
+function AvailDayModal({ day, onCancel, onSave }: {
+  day: AvailDay; onCancel: () => void; onSave: (patch: { available: boolean; from: string }) => void;
+}) {
+  const isMobile = useIsMobile();
+  const [available, setAvailable] = useState(day.available);
+  const [from, setFrom] = useState(day.from || "16:00");
+  const [timeOpen, setTimeOpen] = useState(false);
+  const timeBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  useEffect(() => {
+    if (!timeOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (timeBoxRef.current && !timeBoxRef.current.contains(e.target as Node)) setTimeOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [timeOpen]);
+
+  if (typeof document === "undefined") return null;
+
+  const field: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${BDR2}`, borderRadius: 11, color: TEXT, fontSize: 14,
+    fontFamily: "inherit", padding: "13px 14px", outline: "none", colorScheme: "dark",
+  };
+  const btnBase: React.CSSProperties = {
+    flex: 1, padding: "12px 0", borderRadius: 11, border: "none", cursor: "pointer",
+    fontFamily: "inherit", fontSize: 14, fontWeight: 800, boxSizing: "border-box",
+  };
+
+  return createPortal(
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100035, background: "rgba(0,0,0,0.66)",
+        backdropFilter: "blur(3px)", display: "flex", justifyContent: "center",
+        alignItems: isMobile ? "flex-end" : "center", padding: isMobile ? 0 : 20,
+        fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      }}>
+      <div style={{
+        width: isMobile ? "100%" : 380, maxWidth: "100%", boxSizing: "border-box", direction: "rtl",
+        background: "linear-gradient(180deg, #161617 0%, #111112 100%)", border: `1px solid ${BDR2}`,
+        borderRadius: isMobile ? "20px 20px 0 0" : 20, boxShadow: "0 24px 70px rgba(0,0,0,0.6)",
+        padding: isMobile ? "18px 16px 22px" : "22px 24px 24px",
+      }}>
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+          <div style={{ fontSize: 17, fontWeight: 900, color: "#fff" }}>{day.day} <span style={{ fontSize: 13, fontWeight: 700, color: TEXT2, direction: "ltr" }}>{day.date}</span></div>
+          <button type="button" onClick={onCancel} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><IcX size={20} /></button>
+        </div>
+
+        {/* status toggle */}
+        <div style={{ display: "flex", gap: 6, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: 5, marginBottom: 16 }}>
+          {([[true, "פנוי", GREEN], [false, "לא פנוי", "#F87171"]] as const).map(([val, lbl, col]) => {
+            const sel = available === val;
+            return (
+              <button key={lbl} type="button" onClick={() => setAvailable(val)} style={{
+                flex: 1, padding: "11px 0", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit",
+                fontSize: 13.5, fontWeight: sel ? 800 : 600, whiteSpace: "nowrap",
+                background: sel ? `${col}22` : "transparent", color: sel ? col : TEXT2,
+                boxShadow: sel ? `inset 0 0 0 1px ${col}66` : "none", transition: "all .14s",
+              }}>{lbl}</button>
+            );
+          })}
+        </div>
+
+        {/* time (only when available) */}
+        {available && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>פנוי מ־</div>
+            <div ref={timeBoxRef} style={{ position: "relative" }}>
+              <button type="button" onClick={() => setTimeOpen(o => !o)} style={{
+                ...field, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "start",
+                borderColor: timeOpen ? "rgba(220,38,38,0.5)" : BDR2,
+              }}>
+                <span style={{ direction: "ltr" }}>{from}</span>
+                <span style={{ color: TEXT2, fontSize: 10, transform: timeOpen ? "rotate(180deg)" : "none", transition: "transform .14s" }}>▼</span>
+              </button>
+              {timeOpen && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", insetInlineStart: 0, insetInlineEnd: 0, zIndex: 5,
+                  background: "#161617", border: `1px solid ${BDR2}`, borderRadius: 11,
+                  boxShadow: "0 12px 34px rgba(0,0,0,0.6)", overflow: "hidden", maxHeight: 200, overflowY: "auto", padding: 5,
+                }}>
+                  {AVAIL_TIMES.map(t => {
+                    const sel = t === from;
+                    return (
+                      <button key={t} type="button" onClick={() => { setFrom(t); setTimeOpen(false); }}
+                        onMouseEnter={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.22)" : "rgba(255,255,255,0.05)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.16)" : "transparent")}
+                        style={{
+                          display: "block", width: "100%", textAlign: "center", direction: "ltr",
+                          padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+                          background: sel ? "rgba(220,38,38,0.16)" : "transparent",
+                          color: sel ? "#FF6B6B" : TEXT, fontSize: 13.5, fontWeight: sel ? 800 : 600, fontFamily: "inherit",
+                        }}>{t}</button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* cancel + save */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={onCancel} style={{ ...btnBase, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT, fontWeight: 700 }}>ביטול</button>
+          <button type="button" onClick={() => onSave({ available, from: available ? from : "" })} style={{
+            ...btnBase, color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: "0 4px 16px rgba(220,38,38,0.32)",
+          }}>שמור</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
