@@ -789,6 +789,10 @@ function WeeklyCalendar() {
 //    The chosen path is remembered in localStorage (demo persistence — no DB).
 const AVATAR_KEY  = "rb_artist_avatar_path_shalev";
 const AVATAR_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+// Deterministic path the endpoint writes the cropped avatar to (editor exports
+// JPEG). Used as a cross-device fallback so ANY browser loads the same image
+// even without a localStorage entry; a 404 just falls back to the "ש" initial.
+const AVATAR_PATH = "/app/red-artists/shalev-tasama/profile-image/avatar.jpg";
 
 function ArtistAvatar() {
   const [path, setPath]   = useState<string | null>(null);
@@ -802,7 +806,12 @@ function ArtistAvatar() {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    try { const p = localStorage.getItem(AVATAR_KEY); if (p) setPath(p); } catch { /* ignore */ }
+    // Prefer the last-known path; else the deterministic path so other devices
+    // still show the image. Cache-bust each load so a refresh reflects the latest.
+    let p: string | null = null;
+    try { p = localStorage.getItem(AVATAR_KEY); } catch { /* ignore */ }
+    setPath(p ?? AVATAR_PATH);
+    setVer(Date.now());
   }, []);
 
   function notify(m: string) { setToast(m); setTimeout(() => setToast(null), 2600); }
@@ -839,38 +848,44 @@ function ArtistAvatar() {
 
   const src = path ? `/api/dropbox/stream?path=${encodeURIComponent(path)}${ver ? `&t=${ver}` : ""}` : null;
 
+  // NOTE: the editor + toast are portaled AND rendered as SIBLINGS of the
+  // clickable avatar (not children) — otherwise their clicks bubble through the
+  // React tree to the avatar's onClick and immediately re-open the editor,
+  // which made X / ביטול / שמירה appear dead.
   return (
-    <div
-      onClick={() => { if (busy) return; if (path && src) setEditing({ url: src }); else inputRef.current?.click(); }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      title="עריכת תמונה"
-      style={{
-        padding: 3, borderRadius: "50%", flexShrink: 0, position: "relative", cursor: busy ? "wait" : "pointer",
-        background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND}, #7A1414, ${BRAND})`,
-        boxShadow: `0 0 38px ${BRAND}55`,
-      }}
-    >
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={onPick} />
-      <div style={{
-        width: 86, height: 86, borderRadius: "50%", overflow: "hidden", position: "relative",
-        background: "linear-gradient(140deg, #2A0E0E, #140808)", border: "1px solid rgba(255,255,255,0.10)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
-        boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5)",
-      }}>
-        {src ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt="תמונת פרופיל" onError={() => { setPath(null); try { localStorage.removeItem(AVATAR_KEY); } catch { /* ignore */ } }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        ) : "ש"}
-        {/* hover / busy overlay */}
+    <>
+      <div
+        onClick={() => { if (busy) return; if (path && src) setEditing({ url: src }); else inputRef.current?.click(); }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title="עריכת תמונה"
+        style={{
+          padding: 3, borderRadius: "50%", flexShrink: 0, position: "relative", cursor: busy ? "wait" : "pointer",
+          background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND}, #7A1414, ${BRAND})`,
+          boxShadow: `0 0 38px ${BRAND}55`,
+        }}
+      >
+        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={onPick} />
         <div style={{
-          position: "absolute", inset: 0, borderRadius: "50%", display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center", gap: 2, background: "rgba(0,0,0,0.62)", color: "#fff",
-          opacity: hover || busy ? 1 : 0, transition: "opacity .15s", pointerEvents: "none",
+          width: 86, height: 86, borderRadius: "50%", overflow: "hidden", position: "relative",
+          background: "linear-gradient(140deg, #2A0E0E, #140808)", border: "1px solid rgba(255,255,255,0.10)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em",
+          boxShadow: "inset 0 2px 8px rgba(0,0,0,0.5)",
         }}>
-          <span style={{ fontSize: 16 }}>{busy ? "⏳" : "📷"}</span>
-          <span style={{ fontSize: 9.5, fontWeight: 700 }}>{busy ? "מעלה…" : (path ? "עריכת תמונה" : "העלאת תמונה")}</span>
+          {src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt="תמונת פרופיל" onError={() => { setPath(null); try { localStorage.removeItem(AVATAR_KEY); } catch { /* ignore */ } }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : "ש"}
+          {/* hover / busy overlay */}
+          <div style={{
+            position: "absolute", inset: 0, borderRadius: "50%", display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", gap: 2, background: "rgba(0,0,0,0.62)", color: "#fff",
+            opacity: hover || busy ? 1 : 0, transition: "opacity .15s", pointerEvents: "none",
+          }}>
+            <span style={{ fontSize: 16 }}>{busy ? "⏳" : "📷"}</span>
+            <span style={{ fontSize: 9.5, fontWeight: 700 }}>{busy ? "מעלה…" : (path ? "עריכת תמונה" : "העלאת תמונה")}</span>
+          </div>
         </div>
       </div>
       {editing && (
@@ -890,7 +905,7 @@ function ArtistAvatar() {
         }}>{toast}</div>,
         document.body,
       )}
-    </div>
+    </>
   );
 }
 
@@ -926,6 +941,7 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   const [file, setFile]           = useState<File | null>(initialFile ?? null);
   const [displaySrc, setDisplay]  = useState<string | null>(initialUrl ?? null);
   const [loaded, setLoaded]       = useState(false);
+  const [saving, setSaving]       = useState(false);
   const [zoom, setZoom]           = useState(1);
   const [offset, setOffset]       = useState({ x: 0, y: 0 });
 
@@ -988,12 +1004,18 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   };
 
   const doSave = () => {
+    if (saving) return;
     const img = imgRef.current; if (!img) { onNotify("אין תמונה לשמירה"); return; }
     const out = document.createElement("canvas");
     out.width = 512; out.height = 512;
     const ctx = out.getContext("2d"); if (!ctx) return;
-    drawAvatar(ctx, img, 512, D, zoom, offset);
-    out.toBlob(b => { if (b) onSave(b); else onNotify("שמירה נכשלה"); }, "image/jpeg", 0.9);
+    setSaving(true);
+    try { drawAvatar(ctx, img, 512, D, zoom, offset); }
+    catch { setSaving(false); onNotify("שמירה נכשלה"); return; }
+    out.toBlob(b => {
+      if (b) { onSave(b); }                    // parent closes the editor + uploads
+      else   { setSaving(false); onNotify("שמירה נכשלה"); }
+    }, "image/jpeg", 0.9);
   };
 
   if (typeof document === "undefined") return null;
@@ -1005,7 +1027,7 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
 
   return createPortal(
     <div
-      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}
+      onClick={e => { e.stopPropagation(); if (e.target === e.currentTarget && !saving) onCancel(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 100035, background: "rgba(0,0,0,0.72)",
         backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center",
@@ -1019,7 +1041,7 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
           <div style={{ fontSize: 17, fontWeight: 900, color: "#fff" }}>עריכת תמונת פרופיל</div>
-          <button onClick={onCancel} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><IcX size={20} /></button>
+          <button type="button" onClick={onCancel} disabled={saving} aria-label="סגור" style={{ background: "none", border: "none", cursor: saving ? "default" : "pointer", padding: 4, lineHeight: 0, opacity: saving ? 0.5 : 1 }}><IcX size={20} /></button>
         </div>
 
         {/* circular preview */}
@@ -1045,19 +1067,19 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
         </div>
 
         {/* replace image */}
-        <button onClick={() => fileRef.current?.click()} style={{
-          ...btnBase, width: "100%", marginBottom: 10, fontWeight: 700,
-          background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT,
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={saving} style={{
+          ...btnBase, width: "100%", marginBottom: 10, fontWeight: 700, opacity: saving ? 0.5 : 1,
+          background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT, cursor: saving ? "default" : "pointer",
         }}>החלף תמונה</button>
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={pickReplace} />
 
         {/* cancel + save */}
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onCancel} style={{ ...btnBase, flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT, fontWeight: 700 }}>ביטול</button>
-          <button onClick={doSave} disabled={!loaded} style={{
-            ...btnBase, flex: 1, color: "#fff", opacity: loaded ? 1 : 0.5, cursor: loaded ? "pointer" : "not-allowed",
-            background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: loaded ? "0 4px 16px rgba(220,38,38,0.32)" : "none",
-          }}>שמירה</button>
+          <button type="button" onClick={onCancel} disabled={saving} style={{ ...btnBase, flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT, fontWeight: 700, opacity: saving ? 0.5 : 1, cursor: saving ? "default" : "pointer" }}>ביטול</button>
+          <button type="button" onClick={doSave} disabled={!loaded || saving} style={{
+            ...btnBase, flex: 1, color: "#fff", opacity: (loaded && !saving) ? 1 : 0.6, cursor: (loaded && !saving) ? "pointer" : "not-allowed",
+            background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: (loaded && !saving) ? "0 4px 16px rgba(220,38,38,0.32)" : "none",
+          }}>{saving ? "שומר…" : "שמירה"}</button>
         </div>
       </div>
     </div>,
