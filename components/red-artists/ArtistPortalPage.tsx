@@ -827,23 +827,36 @@ function ArtistAvatar() {
   }
 
   // Upload the cropped blob (from the editor's "שמירה") to the existing endpoint.
-  async function doUpload(blob: Blob) {
+  // Returns true on success. Always resolves (30s abort timeout) so the editor
+  // can never hang on "שומר…". Real errors are logged to the console.
+  async function doUpload(blob: Blob): Promise<boolean> {
     setBusy(true);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 30000);
     try {
       const fd = new FormData();
       fd.append("file", blob, "avatar.jpg");
-      const res  = await fetch("/api/red-artists/profile-image", { method: "POST", body: fd });
+      const res  = await fetch("/api/red-artists/profile-image", { method: "POST", body: fd, signal: ctrl.signal });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) { notify(data.error ?? "ההעלאה נכשלה"); }
-      else {
-        const p = data.path as string;
-        try { localStorage.setItem(AVATAR_KEY, p); } catch { /* ignore */ }
-        setPath(p);
-        setVer(Date.now());
-        notify("תמונת הפרופיל עודכנה");
+      if (!res.ok || !data.ok) {
+        console.error("[red-artists/avatar] upload failed:", res.status, data);
+        notify(data.error ?? "השמירה נכשלה, נסה שוב");
+        return false;
       }
-    } catch { notify("ההעלאה נכשלה"); }
-    finally { setBusy(false); }
+      const p = data.path as string;
+      try { localStorage.setItem(AVATAR_KEY, p); } catch { /* ignore */ }
+      setPath(p);
+      setVer(Date.now());
+      notify("תמונת הפרופיל עודכנה");
+      return true;
+    } catch (e) {
+      console.error("[red-artists/avatar] upload error:", e);
+      notify(ctrl.signal.aborted ? "השמירה נכשלה (timeout), נסה שוב" : "השמירה נכשלה, נסה שוב");
+      return false;
+    } finally {
+      clearTimeout(to);
+      setBusy(false);
+    }
   }
 
   const src = path ? `/api/dropbox/stream?path=${encodeURIComponent(path)}${ver ? `&t=${ver}` : ""}` : null;
@@ -894,7 +907,7 @@ function ArtistAvatar() {
           initialUrl={editing.url}
           onNotify={notify}
           onCancel={() => setEditing(null)}
-          onSave={blob => { setEditing(null); doUpload(blob); }}
+          onSave={async blob => { const ok = await doUpload(blob); if (ok) setEditing(null); return ok; }}
         />
       )}
       {toast && typeof document !== "undefined" && createPortal(
@@ -930,7 +943,7 @@ function drawAvatar(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: 
 
 function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   initialFile?: File; initialUrl?: string;
-  onNotify: (m: string) => void; onCancel: () => void; onSave: (blob: Blob) => void;
+  onNotify: (m: string) => void; onCancel: () => void; onSave: (blob: Blob) => Promise<boolean>;
 }) {
   const isMobile = useIsMobile();
   const D = isMobile ? 236 : 260;
@@ -953,13 +966,17 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     return () => URL.revokeObjectURL(u);
   }, [file]);
 
-  // Load the current source into an <img> for the canvas.
+  // Load the current source into an <img> for the canvas. crossOrigin="anonymous"
+  // keeps the canvas UN-tainted when the source is the cross-origin Dropbox CDN
+  // (the stream endpoint 302-redirects there) so canvas.toBlob() won't throw.
+  // Blob object-URLs (freshly picked files) are same-origin, so this is a no-op.
   useEffect(() => {
     if (!displaySrc) return;
     setLoaded(false);
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload  = () => { imgRef.current = img; setZoom(1); setOffset({ x: 0, y: 0 }); setLoaded(true); };
-    img.onerror = () => { imgRef.current = null; setLoaded(false); onNotify("טעינת התמונה נכשלה"); };
+    img.onerror = () => { imgRef.current = null; setLoaded(false); onNotify("טעינת התמונה נכשלה — נסה להעלות תמונה חדשה"); };
     img.src = displaySrc;
     return () => { img.onload = null; img.onerror = null; };
     // onNotify intentionally omitted (identity changes each parent render).
@@ -1003,19 +1020,37 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     setFile(f);
   };
 
-  const doSave = () => {
+  // Render the crop to a 512×512 JPEG blob. Rejects (rather than throwing
+  // synchronously) on a null blob or a tainted-canvas SecurityError from toBlob.
+  const renderBlob = (img: HTMLImageElement): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      try {
+        const out = document.createElement("canvas");
+        out.width = 512; out.height = 512;
+        const ctx = out.getContext("2d");
+        if (!ctx) { reject(new Error("no 2d context")); return; }
+        drawAvatar(ctx, img, 512, D, zoom, offset);
+        out.toBlob(b => (b ? resolve(b) : reject(new Error("toBlob returned null"))), "image/jpeg", 0.9);
+      } catch (e) { reject(e); } // e.g. SecurityError on a tainted canvas
+    });
+
+  // Bulletproof save: whatever happens, `saving` is always released in finally,
+  // so the button can never get stuck on "שומר…".
+  const doSave = async () => {
     if (saving) return;
-    const img = imgRef.current; if (!img) { onNotify("אין תמונה לשמירה"); return; }
-    const out = document.createElement("canvas");
-    out.width = 512; out.height = 512;
-    const ctx = out.getContext("2d"); if (!ctx) return;
+    const img = imgRef.current;
+    if (!img) { onNotify("אין תמונה לשמירה"); return; }
     setSaving(true);
-    try { drawAvatar(ctx, img, 512, D, zoom, offset); }
-    catch { setSaving(false); onNotify("שמירה נכשלה"); return; }
-    out.toBlob(b => {
-      if (b) { onSave(b); }                    // parent closes the editor + uploads
-      else   { setSaving(false); onNotify("שמירה נכשלה"); }
-    }, "image/jpeg", 0.9);
+    try {
+      const blob = await renderBlob(img);
+      const ok = await onSave(blob);          // parent uploads; closes the editor on success
+      if (!ok) onNotify("השמירה נכשלה, נסה שוב");
+    } catch (e) {
+      console.error("[avatar-editor] save failed:", e);
+      onNotify("השמירה נכשלה, נסה שוב");
+    } finally {
+      setSaving(false);                        // no-op if already unmounted on success
+    }
   };
 
   if (typeof document === "undefined") return null;
