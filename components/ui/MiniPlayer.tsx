@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import UploadButton from "@/components/ui/UploadButton";
@@ -54,12 +55,25 @@ function WaveformBars({ playing }: { playing: boolean }) {
 export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
   const player = usePlayerSafe();
   const { projects } = useProjects();
+  // Refs for the mobile scrub bar (hooks must run before the early return).
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
   if (!player || !player.track) return null;
 
   const { track, playing, currentTime, duration, volume, pause, resume, stop, seek, skip, setVolume } = player;
   const project = projects.find((p) => p.id === track.projectId);
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const canPlay = track.url !== "#" && track.url !== "";
+
+  // Seek to the point under a horizontal position (used by tap AND drag on mobile).
+  // Uses the physical left edge, so progress stays left→right like desktop (RTL-safe).
+  const seekFromClientX = (clientX: number) => {
+    const el = barRef.current;
+    if (!el || !duration) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    seek(ratio * duration);
+  };
 
   // ── Mobile 2-row card layout ───────────────────────────────────────────────
   if (mobile) {
@@ -95,20 +109,37 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
           >{playing ? <PauseIcon size={16} /> : <PlayIcon size={16} />}</button>
           <button onClick={stop} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 22, flexShrink: 0, padding: "0 2px" }}>×</button>
         </div>
-        {/* Row 2: progress bar */}
+        {/* Row 2: progress bar — tap OR drag to seek. The touch area is tall
+            (~24px) even though the line is thin; touchAction:none so a horizontal
+            drag on the bar scrubs instead of scrolling the page. */}
         <div
-          style={{ marginTop: 8, height: 3, background: "#2A2A2A", borderRadius: 2, cursor: "pointer", position: "relative" }}
-          onClick={e => {
+          ref={barRef}
+          onPointerDown={e => {
             if (!duration) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            seek(((e.clientX - rect.left) / rect.width) * duration);
+            try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+            draggingRef.current = true;
+            seekFromClientX(e.clientX);
           }}
+          onPointerMove={e => { if (draggingRef.current) seekFromClientX(e.clientX); }}
+          onPointerUp={e => {
+            draggingRef.current = false;
+            try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+          }}
+          onPointerCancel={() => { draggingRef.current = false; }}
+          style={{ marginTop: 4, padding: "10px 0", cursor: "pointer", position: "relative", touchAction: "none" }}
         >
-          <div style={{
-            position: "absolute", left: 0, top: 0, bottom: 0,
-            width: `${progress}%`, background: BRAND, borderRadius: 2,
-            transition: "width 0.1s linear",
-          }} />
+          <div style={{ height: 3, background: "#2A2A2A", borderRadius: 2, position: "relative" }}>
+            <div style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: `${progress}%`, background: BRAND, borderRadius: 2,
+              transition: "width 0.1s linear",
+            }} />
+            <div style={{
+              position: "absolute", left: `${progress}%`, top: "50%", transform: "translate(-50%, -50%)",
+              width: 12, height: 12, borderRadius: "50%", background: "#fff",
+              boxShadow: `0 0 8px ${BRAND}`, pointerEvents: "none",
+            }} />
+          </div>
         </div>
       </div>
     );
