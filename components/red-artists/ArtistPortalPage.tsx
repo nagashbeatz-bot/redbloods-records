@@ -774,12 +774,10 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
                 <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
                   {/* play (rightmost in RTL) — visual only for now */}
                   <LibRowPlay size={42} player={player} row={t} onError={setToast} />
-                  {/* name + type/note + artist + status */}
+                  {/* name + artist + status (no "שיר"/type subtitle) */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>
-                      {(t.hasAudio ? t.projectType : "אין קובץ אודיו זמין") || t.artist}{t.hasAudio && t.projectType ? ` · ${t.artist}` : ""}
-                    </div>
+                    <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artist}</div>
                     <div style={{ marginTop: 7 }}><MusicStatus status={t.status} /></div>
                   </div>
                   {/* duration (leftmost) — none yet */}
@@ -794,10 +792,9 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <LibRowPlay size={42} player={player} row={t} onError={setToast} />
                   </div>
-                  {/* name + small type/note under it */}
+                  {/* name only (no "שיר"/type subtitle in the music tab) */}
                   <div style={{ minWidth: 0, textAlign: "start" }}>
                     <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.hasAudio ? t.projectType : "אין קובץ אודיו זמין"}</div>
                   </div>
                   {/* artist / participants */}
                   <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artist}</div>
