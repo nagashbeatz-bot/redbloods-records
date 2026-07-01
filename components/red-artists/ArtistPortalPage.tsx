@@ -46,6 +46,7 @@ function Svg({ size, color, fill, children }: { size: number; color: string; fil
   );
 }
 const IcPlay     = ({ size = 20, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill={color}><polygon points="6 4 20 12 6 20 6 4" /></Svg>;
+const IcPause    = ({ size = 20, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill={color}><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></Svg>;
 const IcSkipFwd  = ({ size = 20, color = TEXT }: IcoProps)  => <Svg size={size} color={color} fill="none"><polygon points="5 4 15 12 5 20 5 4" /><line x1="19" y1="5" x2="19" y2="19" /></Svg>;
 const IcSkipBack = ({ size = 20, color = TEXT }: IcoProps)  => <Svg size={size} color={color} fill="none"><polygon points="19 20 9 12 19 4 19 20" /><line x1="5" y1="19" x2="5" y2="5" /></Svg>;
 const IcShuffle  = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="M4 4l5 5" /></Svg>;
@@ -60,19 +61,27 @@ const IcCloud    = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} 
 
 // Single unified play button used in EVERY list across the portal (desktop +
 // mobile): dark circle, subtle red border + glow, clean white SVG play icon.
-// Plays through the GLOBAL player when wired via onClick. `disabled` = the
-// project has no playable audio file.
-function PlayButton({ size = 40, disabled = false, onClick }: { size?: number; disabled?: boolean; onClick?: () => void }) {
+// Reflects the GLOBAL player: `playing` = this row's track is currently playing
+// → shows ❚❚. `disabled` = no playable audio file.
+function PlayButton({ size = 40, disabled = false, playing = false, onClick }: { size?: number; disabled?: boolean; playing?: boolean; onClick?: () => void }) {
   return (
-    <button aria-label="נגן" disabled={disabled} onClick={onClick} title={disabled ? "אין קובץ אודיו זמין" : undefined} style={{
+    <button aria-label={playing ? "השהה" : "נגן"} disabled={disabled} onClick={onClick} title={disabled ? "אין קובץ אודיו זמין" : undefined} style={{
       width: size, height: size, borderRadius: "50%", flexShrink: 0, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit",
       background: "radial-gradient(circle at 50% 35%, rgba(220,38,38,0.22), #150809 75%)",
       border: `1px solid ${BRAND}55`, boxShadow: `0 0 14px rgba(220,38,38,0.3)`, opacity: disabled ? 0.35 : 1,
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
-      <IcPlay size={Math.round(size * 0.42)} />
+      {playing ? <IcPause size={Math.round(size * 0.42)} /> : <IcPlay size={Math.round(size * 0.42)} />}
     </button>
   );
+}
+
+// Library row Play/Pause — driven by the global player (same in home + tab).
+function LibRowPlay({ size, player, row, onError }: {
+  size: number; player: ReturnType<typeof usePlayerSafe>; row: LibRow; onError?: (m: string) => void;
+}) {
+  const { isPlaying, onClick } = libRowPlay(player, row, onError);
+  return <PlayButton size={size} disabled={!row.hasAudio} playing={isPlaying} onClick={onClick} />;
 }
 
 // ── Demo data (UI only — hardcoded, no DB) ───────────────────────────────────────
@@ -230,6 +239,22 @@ async function playLibRow(player: ReturnType<typeof usePlayerSafe>, t: LibRow, o
   } catch {
     onError?.("לא ניתן להשמיע כרגע");
   }
+}
+
+// Derive a row's play button state ENTIRELY from the global player (no local
+// state → home and the tab stay in sync automatically). A row is "playing" when
+// the global track is this project AND the player is playing. Clicking toggles
+// pause/resume for the current track, or starts this row otherwise.
+function libRowPlay(player: ReturnType<typeof usePlayerSafe>, t: LibRow, onError?: (m: string) => void) {
+  const isCurrent = !!player?.track && player.track.projectId === t.id;
+  const isPlaying = isCurrent && !!player?.playing;
+  const onClick = () => {
+    if (!t.hasAudio || !player) return;
+    if (isPlaying) player.pause();
+    else if (isCurrent) player.resume();
+    else void playLibRow(player, t, onError);
+  };
+  return { isPlaying, onClick };
 }
 
 function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
@@ -748,7 +773,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
               displayRows.map(t => (
                 <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
                   {/* play (rightmost in RTL) — visual only for now */}
-                  <PlayButton size={42} disabled={!t.hasAudio} onClick={() => playLibRow(player, t, setToast)} />
+                  <LibRowPlay size={42} player={player} row={t} onError={setToast} />
                   {/* name + type/note + artist + status */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
@@ -767,7 +792,7 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
                   style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
                   {/* play (right column — no header) — visual only for now */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
-                    <PlayButton size={42} disabled={!t.hasAudio} onClick={() => playLibRow(player, t, setToast)} />
+                    <LibRowPlay size={42} player={player} row={t} onError={setToast} />
                   </div>
                   {/* name + small type/note under it */}
                   <div style={{ minWidth: 0, textAlign: "start" }}>
@@ -855,7 +880,7 @@ function HomeDashboard({ onOpenMusic, musicRows, loadState }: { onOpenMusic: () 
                 <div key={t.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
                   {/* play (rightmost in RTL) — visual only for now */}
-                  <PlayButton size={36} disabled={!t.hasAudio} onClick={() => playLibRow(player, t)} />
+                  <LibRowPlay size={36} player={player} row={t} />
                   {/* name + artist */}
                   <div style={{ textAlign: "start", minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
