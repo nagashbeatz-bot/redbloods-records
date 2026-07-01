@@ -130,20 +130,20 @@ const MUSIC_STATUS_COLOR: Record<string, string> = {
   "בבחינה":       "#2DD4BF",
   "בבדיקה":       "#60A5FA",
 };
-type LibTrack = { name: string; kind: string; status: string; date: string; dur: string };
+type LibTrack = { name: string; kind: string; status: string; date: string; dur: string; artists: string };
 const LIBRARY: LibTrack[] = [
-  { name: "הסיפור שלי",   kind: "מיקס",  status: "ממתין לאישור", date: "08.06.2025", dur: "03:42" },
-  { name: "לב של זמן",    kind: "סקיצה", status: "סקיצה",        date: "27.05.2025", dur: "02:58" },
-  { name: "קלוזר חלק 2",  kind: "מאסטר", status: "מוכן",         date: "26.05.2025", dur: "04:11" },
-  { name: "חיים אחרים",   kind: "סקיצה", status: "ממתין לאישור", date: "23.05.2025", dur: "03:09" },
-  { name: "תל אביב בלילה", kind: "דמו",   status: "בבחינה",       date: "20.05.2025", dur: "02:37" },
-  { name: "עד שנפגש",     kind: "מיקס",  status: "ממתין לאישור", date: "18.05.2025", dur: "03:55" },
-  { name: "אורות בלילה",   kind: "סקיצה", status: "סקיצה",        date: "15.05.2025", dur: "03:21" },
-  { name: "רחוק מכאן",     kind: "מיקס",  status: "ממתין לאישור", date: "12.05.2025", dur: "02:49" },
-  { name: "סימנים",        kind: "מאסטר", status: "מוכן",         date: "09.05.2025", dur: "04:02" },
-  { name: "לא חוזר אחורה",  kind: "דמו",   status: "בבחינה",       date: "06.05.2025", dur: "03:12" },
-  { name: "בין השורות",    kind: "סקיצה", status: "סקיצה",        date: "02.05.2025", dur: "02:58" },
-  { name: "עד הבוקר",      kind: "מיקס",  status: "ממתין לאישור", date: "28.04.2025", dur: "03:37" },
+  { name: "הסיפור שלי",   kind: "מיקס",  status: "ממתין לאישור", date: "08.06.2025", dur: "03:42", artists: "שליו טסמה" },
+  { name: "לב של זמן",    kind: "סקיצה", status: "סקיצה",        date: "27.05.2025", dur: "02:58", artists: "שליו טסמה" },
+  { name: "קלוזר חלק 2",  kind: "מאסטר", status: "מוכן",         date: "26.05.2025", dur: "04:11", artists: "שליו טסמה, אבי מולה" },
+  { name: "חיים אחרים",   kind: "סקיצה", status: "ממתין לאישור", date: "23.05.2025", dur: "03:09", artists: "שליו טסמה" },
+  { name: "תל אביב בלילה", kind: "דמו",   status: "בבחינה",       date: "20.05.2025", dur: "02:37", artists: "שליו טסמה, נגאש" },
+  { name: "עד שנפגש",     kind: "מיקס",  status: "ממתין לאישור", date: "18.05.2025", dur: "03:55", artists: "שליו טסמה" },
+  { name: "אורות בלילה",   kind: "סקיצה", status: "סקיצה",        date: "15.05.2025", dur: "03:21", artists: "שליו טסמה" },
+  { name: "רחוק מכאן",     kind: "מיקס",  status: "ממתין לאישור", date: "12.05.2025", dur: "02:49", artists: "שליו טסמה, ליאור נרקיס" },
+  { name: "סימנים",        kind: "מאסטר", status: "מוכן",         date: "09.05.2025", dur: "04:02", artists: "שליו טסמה" },
+  { name: "לא חוזר אחורה",  kind: "דמו",   status: "בבחינה",       date: "06.05.2025", dur: "03:12", artists: "שליו טסמה" },
+  { name: "בין השורות",    kind: "סקיצה", status: "סקיצה",        date: "02.05.2025", dur: "02:58", artists: "שליו טסמה, נגאש" },
+  { name: "עד הבוקר",      kind: "מיקס",  status: "ממתין לאישור", date: "28.04.2025", dur: "03:37", artists: "שליו טסמה" },
 ];
 const MUSIC_KPIS: { label: string; value: number; icon: string }[] = [
   { label: "סה״כ שירים",   value: 24, icon: "♫" },
@@ -381,15 +381,14 @@ function MyMusicPage() {
   // right in its own fixed column, then name, then the technical columns).
   // Play fixed · שם השיר wide (the focus) · type a touch narrower · status/date/
   // duration/options fixed & snug so columns sit tight under their headers.
-  const cols = "52px minmax(0, 1.8fr) minmax(0, 0.8fr) 118px 116px 66px 46px";
+  // Play (fixed, no header) · שם השיר (wide) · אמן/משתתפים · סטטוס · משך.
+  const cols = "52px minmax(0, 1.7fr) minmax(0, 1.1fr) 130px 72px";
   const heads: { label: string; align: "start" | "center" }[] = [
     { label: "",              align: "center" }, // play column (no header)
     { label: "שם השיר",       align: "start"  },
-    { label: "סוג / גרסה",    align: "start"  },
+    { label: "אמן / משתתפים", align: "start"  },
     { label: "סטטוס",         align: "center" },
-    { label: "עודכן לאחרונה", align: "center" },
     { label: "משך",           align: "center" },
-    { label: "אפשרויות",      align: "center" },
   ];
 
   return (
@@ -459,41 +458,37 @@ function MyMusicPage() {
                 <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
                   {/* play (rightmost in RTL) */}
                   <PlayButton size={42} />
-                  {/* name + meta + status (truncating, never overlaps) */}
+                  {/* name + kind + artists + status (truncating, never overlaps) */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
                     <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>
-                      {t.kind} · {t.date} · {t.dur}
+                      {t.kind} · {t.artists}
                     </div>
                     <div style={{ marginTop: 7 }}><MusicStatus status={t.status} /></div>
                   </div>
-                  {/* options (leftmost) */}
-                  <RowMenu onUpdateFile={() => setModal({ mode: "update", target: t.name })} />
+                  {/* duration (leftmost) */}
+                  <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.dur}</span>
                 </div>
               ))
             ) : (
               displayRows.map(t => (
                 <div key={t.name} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                   style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
-                  {/* play (right column) */}
+                  {/* play (right column — no header) */}
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <PlayButton size={42} />
                   </div>
-                  {/* name + version */}
+                  {/* name + small kind under it */}
                   <div style={{ minWidth: 0, textAlign: "start" }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
                     <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.kind}</div>
                   </div>
-                  {/* type / version */}
-                  <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start" }}>{t.kind}</div>
+                  {/* artists / collaborators */}
+                  <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artists}</div>
                   {/* status */}
                   <div style={{ textAlign: "center" }}><MusicStatus status={t.status} /></div>
-                  {/* last updated */}
-                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center" }}>{t.date}</div>
                   {/* duration */}
                   <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
-                  {/* options */}
-                  <div style={{ display: "flex", justifyContent: "center" }}><RowMenu onUpdateFile={() => setModal({ mode: "update", target: t.name })} /></div>
                 </div>
               ))
             )}
@@ -1249,50 +1244,6 @@ function BalanceRow({ label, value, color, icon }: { label: string; value: strin
 const dotsBtn: React.CSSProperties = {
   background: "none", border: "none", color: MUTED, fontSize: 16, cursor: "pointer", flexShrink: 0, padding: "0 2px",
 };
-
-// ── Row "⋯" menu — only action is "עדכן קובץ" (opens the upload modal with the
-// track pre-selected). Rendered in a portal so the card's overflow doesn't clip it.
-function RowMenu({ onUpdateFile }: { onUpdateFile: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos]   = useState<{ top: number; left: number } | null>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-
-  const openMenu = () => {
-    const r = btnRef.current?.getBoundingClientRect();
-    if (!r) return;
-    const W = 178;
-    const left = Math.max(8, Math.min(r.right - W, window.innerWidth - W - 8));
-    setPos({ top: r.bottom + 6, left });
-    setOpen(true);
-  };
-
-  return (
-    <>
-      <button ref={btnRef} onClick={openMenu} style={dotsBtn} aria-label="אפשרויות">⋯</button>
-      {open && pos && typeof document !== "undefined" && createPortal(
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 100025 }} />
-          <div style={{
-            position: "fixed", top: pos.top, left: pos.left, width: 178, zIndex: 100026,
-            background: "#161617", border: `1px solid ${BDR2}`, borderRadius: 12,
-            boxShadow: "0 12px 34px rgba(0,0,0,0.6)", overflow: "hidden", padding: 5,
-            fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
-          }}>
-            <button onClick={() => { setOpen(false); onUpdateFile(); }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(220,38,38,0.14)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              style={{
-                display: "flex", alignItems: "center", gap: 9, width: "100%", textAlign: "start",
-                padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-                background: "transparent", color: TEXT, fontSize: 13.5, fontWeight: 700, fontFamily: "inherit",
-              }}><IcUpload size={15} color="#FF6B6B" /> עדכן קובץ</button>
-          </div>
-        </>,
-        document.body,
-      )}
-    </>
-  );
-}
 
 // ── Upload modal (desktop: centered card · mobile: bottom sheet). UI ONLY —
 // no backend is wired for music-file uploads yet, so submit shows a demo toast.
