@@ -7,6 +7,34 @@ import type { FileLink } from "@/lib/types";
 
 const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
 
+// Read an audio file's length LOCALLY (object URL — no network, no Dropbox).
+// Resolves whole seconds, or null on failure/timeout so it NEVER blocks upload.
+function readAudioDurationSeconds(file: File): Promise<number | null> {
+  return new Promise(resolve => {
+    if (typeof document === "undefined") { resolve(null); return; }
+    let done = false;
+    let url = "";
+    const audio = document.createElement("audio");
+    const finish = (v: number | null) => {
+      if (done) return; done = true;
+      try { audio.removeAttribute("src"); audio.load(); } catch { /* ignore */ }
+      if (url) { try { URL.revokeObjectURL(url); } catch { /* ignore */ } }
+      resolve(v);
+    };
+    try {
+      url = URL.createObjectURL(file);
+      audio.preload = "metadata";
+      audio.onloadedmetadata = () => {
+        const d = Math.round(audio.duration);
+        finish(Number.isFinite(d) && d > 0 ? d : null);
+      };
+      audio.onerror = () => finish(null);
+      setTimeout(() => finish(null), 4000); // safety cap — don't stall the upload
+      audio.src = url;
+    } catch { finish(null); }
+  });
+}
+
 // SVG ring geometry for sm button (26×26)
 const SM_R    = 10;
 const SM_CIRC = 2 * Math.PI * SM_R; // ≈62.8
@@ -125,6 +153,9 @@ export default function UploadButton({
     setState("uploading");
     setProgress(0);
 
+    // Capture audio length locally (audio files only) — non-blocking; failure = skip.
+    const durationSeconds = AUDIO_EXTS.includes(`.${ext}`) ? await readAudioDurationSeconds(file) : null;
+
     const body = new FormData();
     body.append("file", file, newName);
     body.append("projectId", projectId);
@@ -132,6 +163,7 @@ export default function UploadButton({
     if (trackId)      body.append("trackId",      trackId);
     if (versionLabel) body.append("versionLabel", versionLabel);
     if (subfolder)    body.append("subfolder",    subfolder);
+    if (durationSeconds != null) body.append("durationSeconds", String(durationSeconds));
 
     // Warn for very large files (>150MB) — may take a minute
     if (file.size > 150 * 1024 * 1024) {

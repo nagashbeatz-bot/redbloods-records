@@ -52,6 +52,11 @@ export async function POST(req: NextRequest) {
     const trackId      = formData.get("trackId")      as string | null;
     const versionLabel = formData.get("versionLabel") as string | null;
     const subfolder    = formData.get("subfolder")    as string | null;
+    // Optional audio length (metadata only) — computed client-side. Accept only a
+    // finite positive number; never trust it beyond storing as metadata.
+    const durationRaw    = formData.get("durationSeconds") as string | null;
+    const durationParsed = durationRaw != null ? Number(durationRaw) : NaN;
+    const durationSeconds = Number.isFinite(durationParsed) && durationParsed > 0 ? Math.round(durationParsed) : undefined;
 
     if (!file || !projectId || !newName) {
       return NextResponse.json({ error: "חסרים פרמטרים" }, { status: 400 });
@@ -139,8 +144,9 @@ export async function POST(req: NextRequest) {
       url:             fileUrl,
       dropboxPath:     finalPath,
       dropboxShareUrl: shareUrl,
-      ...(trackId      ? { trackId }      : {}),
-      ...(versionLabel ? { versionLabel } : {}),
+      ...(trackId         ? { trackId }         : {}),
+      ...(versionLabel    ? { versionLabel }    : {}),
+      ...(durationSeconds ? { durationSeconds } : {}),
     });
 
     return NextResponse.json({ ok: true, shareUrl, shareLinkError, file: { name: newName, url: fileUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl } });
