@@ -519,11 +519,15 @@ function AudioPlayer({
           disabled={!hasUrl}
           title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{
-            background: "none", border: "none", cursor: hasUrl ? "pointer" : "not-allowed",
-            color: hasUrl ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
-            flexShrink: 0, outline: "none",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 30, height: 30, borderRadius: 9,
+            background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent",
+            border: `1px solid ${hasUrl ? BDR2 : "transparent"}`,
+            cursor: hasUrl ? "pointer" : "not-allowed",
+            color: hasUrl ? TEXT2 : `${MUTED}55`, fontSize: 16, padding: 0,
+            flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >⬇</button>
+        >↓</button>
         {/* Delete button (owner only) */}
         {canDelete && (
         <button
@@ -601,11 +605,15 @@ function FileRow({
           disabled={!hasUrl}
           title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{
-            background: "none", border: "none", cursor: hasUrl ? "pointer" : "not-allowed",
-            color: hasUrl ? MUTED : `${MUTED}55`, fontSize: 14, padding: "2px 4px",
-            flexShrink: 0, outline: "none",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 30, height: 30, borderRadius: 9,
+            background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent",
+            border: `1px solid ${hasUrl ? BDR2 : "transparent"}`,
+            cursor: hasUrl ? "pointer" : "not-allowed",
+            color: hasUrl ? TEXT2 : `${MUTED}55`, fontSize: 16, padding: 0,
+            flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >⬇</button>
+        >↓</button>
         {/* Delete button (owner only) */}
         {canDelete && (
         <button
@@ -1154,8 +1162,9 @@ function VictorProjectDrawer({
                 <div style={{ fontSize: 11.5, color: TEXT2, marginBottom: 6 }}>{t("drawer.linkedProject")}: {work.projectName}</div>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, color: TEXT2, fontWeight: 500 }}>{work.artist || "—"}</span>
-                <span style={{ color: BDR2, fontSize: 10 }}>·</span>
+                {/* Artist/Client is owner-only — Victor never sees who the artist is. */}
+                {isOwner && <span style={{ fontSize: 12, color: TEXT2, fontWeight: 500 }}>{work.artist || "—"}</span>}
+                {isOwner && <span style={{ color: BDR2, fontSize: 10 }}>·</span>}
                 <span style={{
                   fontSize: 10, padding: "2px 8px", borderRadius: 6,
                   background: `${PURPLE}20`, color: PURPLE, fontWeight: 800, letterSpacing: "0.04em",
@@ -1495,11 +1504,11 @@ function VictorProjectDrawer({
                 placeholder={t("drawer.notesPlaceholder")}
                 rows={2}
                 style={{
-                  width: "100%", padding: "9px 12px", borderRadius: 10, fontSize: 12,
+                  width: "100%", padding: "9px 12px", borderRadius: 10, fontSize: isMobile ? 16 : 13,
                   background: CARD2, border: `1px solid ${BDR}`,
                   color: TEXT2, outline: "none", fontFamily: "inherit",
                   resize: "vertical", lineHeight: 1.5, boxSizing: "border-box",
-                  direction: "rtl",
+                  textAlign: "start", unicodeBidi: "plaintext",
                 }}
               />
             </div>
