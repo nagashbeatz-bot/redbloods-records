@@ -241,9 +241,13 @@ function fmtMoney(n: number, curr = "₪"): string {
 // Shalev's artist-fee ("שכר אמן") transactions. Empty/"—" when no real source.
 export type PortalShow = { id: string; name: string; date: string | null; startTime: string | null; location: string; status: string };
 export type PortalPayment = { id: string; date: string | null; description: string; amount: number; currency: string };
+export type WeeklyItem = { type: string; title: string; date: string | null; startTime: string | null; endTime?: string | null; location?: string | null };
+export type PortalUpdate = { type: string; title: string; description: string; date: string | null };
 export type ShalevSummary = {
   shows: { upcoming: PortalShow[]; done: PortalShow[] };
   balance: { paidTotal: number; expectedTotal: number; currency: string; payments: PortalPayment[]; hasData: boolean };
+  weekly: WeeklyItem[];
+  updates: PortalUpdate[];
 };
 type LoadState = "loading" | "ready" | "error";
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
@@ -323,7 +327,7 @@ export default function ArtistPortalPage() {
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
         if (!alive) return;
-        if (d?.ok) { setSummary({ shows: d.shows, balance: d.balance }); setSummaryState("ready"); }
+        if (d?.ok) { setSummary({ shows: d.shows, balance: d.balance, weekly: d.weekly ?? [], updates: d.updates ?? [] }); setSummaryState("ready"); }
         else setSummaryState("error");
       })
       .catch(() => { if (alive) setSummaryState("error"); });
@@ -436,7 +440,7 @@ export default function ArtistPortalPage() {
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} musicRows={libRows} loadState={libState} summary={summary} summaryState={summaryState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
-            : tab === "לו״ז ועדכונים" ? <SchedulePage />
+            : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
             : tab === "מאזן" ? <BalancePage summary={summary} loadState={summaryState} />
             : <ComingSoon tab={tab} />}
         </div>
@@ -771,21 +775,96 @@ function SchedEmpty({ text }: { text: string }) {
   return <div style={{ padding: "40px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>{text}</div>;
 }
 
-function SchedulePage() {
+// Event/update type colors (no purple): הופעה red · סשן blue · צילום קליפ amber · פגישה green.
+const SCHED_TYPE_COLOR: Record<string, string> = {
+  "הופעה":     "#FF6B6B",
+  "סשן":       BLUE,
+  "צילום קליפ": AMBER,
+  "פגישה":     GREEN,
+};
+
+function SchedTypePill({ type }: { type: string }) {
+  const col = SCHED_TYPE_COLOR[type] ?? TEXT2;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "3px 11px", whiteSpace: "nowrap" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 6px ${col}` }} />
+      {type}
+    </span>
+  );
+}
+
+// Weekly schedule list — real sessions + shows for the next 7 days (no money).
+function WeeklyList({ items }: { items: WeeklyItem[] }) {
+  return (
+    <div style={{ padding: "4px 0 6px" }}>
+      {items.map((ev, i) => {
+        const time = ev.startTime ? (ev.endTime ? `${ev.startTime}–${ev.endTime}` : ev.startTime) : null;
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 20px", borderBottom: i < items.length - 1 ? `1px solid ${BDR}` : "none" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                <SchedTypePill type={ev.type} />
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
+              </div>
+              {ev.location && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5 }}>{ev.location}</div>}
+            </div>
+            <div style={{ textAlign: "start", flexShrink: 0 }}>
+              <div style={{ fontSize: 13, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(ev.date)}</div>
+              {time && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, direction: "ltr" }}>{time}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Updates list — derived only from real approved shows + scheduled sessions.
+function UpdatesList({ items }: { items: PortalUpdate[] }) {
+  return (
+    <div style={{ padding: "4px 0 6px" }}>
+      {items.map((u, i) => {
+        const col = SCHED_TYPE_COLOR[u.type] ?? BRAND;
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "13px 20px", borderBottom: i < items.length - 1 ? `1px solid ${BDR}` : "none" }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: col, marginTop: 6, flexShrink: 0, boxShadow: `0 0 7px ${col}` }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{u.title}</div>
+              {u.description && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{u.description}</div>}
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, direction: "ltr", flexShrink: 0, fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(u.date)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SchedulePage({ summary, loadState }: { summary: ShalevSummary | null; loadState: LoadState }) {
   const isMobile = useIsMobile();
+  const weekly  = summary?.weekly  ?? [];
+  const updates = summary?.updates ?? [];
+  const loading = loadState === "loading";
+  const error   = loadState === "error";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
       {/* 1) availability — Shalev marks when he's free (existing logic, untouched) */}
       <SchedSection title="הזמינות שלי" subtitle="בחר מתי אתה פנוי לשבוע הקרוב">
         <AvailabilityBody />
       </SchedSection>
-      {/* 2) weekly calendar — what's already scheduled for him (no source of truth yet) */}
+      {/* 2) weekly calendar — Shalev's REAL sessions + shows for the next 7 days */}
       <SchedSection title="היומן השבועי שלי" subtitle="כל מה שכבר נקבע לך השבוע">
-        <SchedEmpty text="אין אירועים מתוכננים השבוע" />
+        {loading ? <SchedEmpty text="טוען…" />
+          : error ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+          : weekly.length === 0 ? <SchedEmpty text="אין אירועים מתוכננים השבוע" />
+          : <WeeklyList items={weekly} />}
       </SchedSection>
-      {/* 3) label updates (no source of truth yet) */}
+      {/* 3) label updates — derived from real shows/sessions only */}
       <SchedSection title="עדכונים מהלייבל">
-        <SchedEmpty text="עדיין אין עדכונים חדשים" />
+        {loading ? <SchedEmpty text="טוען…" />
+          : error ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+          : updates.length === 0 ? <SchedEmpty text="עדיין אין עדכונים חדשים" />
+          : <UpdatesList items={updates} />}
       </SchedSection>
     </div>
   );
