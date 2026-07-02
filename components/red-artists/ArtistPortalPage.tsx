@@ -493,10 +493,15 @@ const BAL_HISTORY: { date: string; item: string; income: boolean; amount: string
   { date: "02.06.2026", item: "תמלוגים / השמעות",    income: true,  amount: "₪1,100", done: true },
 ];
 
+const BAL_CURRENT = 8320; // demo current balance (positive/negative/0 → green/red/grey)
+
 function BalancePage() {
   const isMobile = useIsMobile();
   const histCols = "110px minmax(0, 1.6fr) 90px 100px 96px";
   const histHeads = ["תאריך", "פריט", "סוג", "סכום", "סטטוס"];
+
+  const balColor = BAL_CURRENT > 0 ? GREEN : BAL_CURRENT < 0 ? "#F87171" : "#E5E5EA";
+  const balText = `${BAL_CURRENT < 0 ? "-" : ""}₪${Math.abs(BAL_CURRENT).toLocaleString("en-US")}`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
@@ -508,8 +513,7 @@ function BalancePage() {
         border: `1px solid rgba(220,38,38,0.30)`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 60px rgba(220,38,38,0.12), 0 14px 34px rgba(0,0,0,0.4)`,
       }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT2 }}>מאזן נוכחי</div>
-        <div style={{ fontSize: isMobile ? 40 : 52, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", margin: "6px 0 4px", textShadow: "0 2px 22px rgba(220,38,38,0.35)" }}>₪8,320</div>
-        <div style={{ fontSize: 12.5, color: MUTED }}>הסכום זמין בחשבונך</div>
+        <div style={{ fontSize: isMobile ? 40 : 52, fontWeight: 900, color: balColor, letterSpacing: "-0.03em", marginTop: 6, direction: "ltr", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>{balText}</div>
       </div>
 
       {/* 4 summary cards — income on the right (RTL) */}
