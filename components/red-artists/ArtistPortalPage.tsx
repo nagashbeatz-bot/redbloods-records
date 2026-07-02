@@ -135,16 +135,6 @@ const LIBRARY: LibTrack[] = [
 // Shorter labels for the compact mobile KPI strip.
 const KPI_SHORT: Record<string, string> = { "סה״כ שירים": "שירים", "עם אודיו": "אודיו" };
 
-// Hero "latest updates" flash — hardcoded, rotates client-side.
-const FLASH: { text: string; time: string }[] = [
-  { text: "המיקס של My Story מוכן לאישור",          time: "לפני 4 דקות" },
-  { text: "נוסף ביט חדש של Nagash בשם Focus",        time: "לפני שעה" },
-  { text: "נקבע סשן אולפן ל־01.07 בשעה 16:00",       time: "לפני 3 שעות" },
-  { text: "עודכן מאזן החודש",                        time: "אתמול" },
-  { text: "הועלתה סקיצה חדשה לבדיקה",                 time: "לפני יומיים" },
-  { text: "נשלחה הודעה חדשה מהלייבל",                 time: "לפני 5 דקות" },
-];
-
 const TABS = ["בית", "המוזיקה שלי", "ההופעות שלי", "מאזן", "ביטים פנויים", "לו״ז ועדכונים"] as const;
 type Tab = (typeof TABS)[number];
 
@@ -393,7 +383,7 @@ export default function ArtistPortalPage() {
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
               <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
             </div>
-            <NewsFlash />
+            <NewsFlash items={summary?.updates ?? []} />
           </PortalHero>
         ) : tab === "המוזיקה שלי" ? (
           <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
@@ -1743,28 +1733,42 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
 }
 
 // ── Hero "latest updates" flash — premium news capsule, auto-rotating ─────────────
-function NewsFlash() {
+// Hero ticker — rotates through the REAL summary.updates (same source as the
+// home "עדכונים מהלייבל" section + the לו״ז tab). No mock. Empty → a neutral
+// capsule "אין עדכונים חדשים כרגע" so the area never looks broken.
+function NewsFlash({ items }: { items: PortalUpdate[] }) {
   const [idx, setIdx]   = useState(0);
   const [show, setShow] = useState(true);
   const isMobile = useIsMobile();
+  const count = items.length;
 
   function advance() {
+    if (count <= 1) return;
     setShow(false);
-    setTimeout(() => { setIdx(i => (i + 1) % FLASH.length); setShow(true); }, 300);
+    setTimeout(() => { setIdx(i => (i + 1) % count); setShow(true); }, 300);
   }
 
+  // Auto-rotate only when there's more than one update. Depends on `count` only,
+  // so it isn't reset on every render.
   useEffect(() => {
-    const t = setInterval(advance, 4600);
+    if (count <= 1) return;
+    const t = setInterval(() => {
+      setShow(false);
+      setTimeout(() => { setIdx(i => (i + 1) % count); setShow(true); }, 300);
+    }, 4600);
     return () => clearInterval(t);
-  }, []);
+  }, [count]);
 
-  const cur = FLASH[idx];
+  const cur      = count ? items[idx % count] : null;
+  const mainText = cur ? cur.title : "אין עדכונים חדשים כרגע";
+  const subText  = cur ? (cur.description || fmtShowDate(cur.date)) : "";
+
   const fade: React.CSSProperties = { opacity: show ? 1 : 0, transition: "opacity .3s ease" };
-  // Mobile: clamp to 2 lines (readable, full sentence) with a stable height so
-  // the capsule doesn't jump between rotations. Desktop: single line + ellipsis.
+  // Mobile: clamp to 2 lines (readable) with a stable height so the capsule
+  // doesn't jump between rotations. Desktop: single line + ellipsis.
   const textStyle: React.CSSProperties = isMobile
-    ? { fontSize: 14, fontWeight: 700, color: "#fff", lineHeight: 1.35, minHeight: "2.7em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties
-    : { fontSize: 15.5, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+    ? { fontSize: 14, fontWeight: 700, color: cur ? "#fff" : TEXT2, lineHeight: 1.35, minHeight: "2.7em", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties
+    : { fontSize: 15.5, fontWeight: 700, color: cur ? "#fff" : TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
   return (
     <div style={{
@@ -1776,14 +1780,14 @@ function NewsFlash() {
       <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 11 : 14, padding: "15px 16px" }}>
         <span style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0, alignSelf: isMobile ? "flex-start" : "center", background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, boxShadow: `0 0 14px rgba(220,38,38,0.25)` }}>📡</span>
         <div style={{ flex: 1, minWidth: 0, textAlign: "start", ...fade }}>
-          <div style={textStyle}>{cur.text}</div>
-          {isMobile && <div style={{ fontSize: 11, color: MUTED, marginTop: 4, ...fade }}>{cur.time}</div>}
+          <div style={textStyle}>{mainText}</div>
+          {isMobile && subText && <div style={{ fontSize: 11, color: MUTED, marginTop: 4, ...fade }}>{subText}</div>}
         </div>
-        {!isMobile && <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap", flexShrink: 0, ...fade }}>{cur.time}</span>}
-        <button onClick={advance} aria-label="העדכון הבא" style={{ background: "none", border: "none", color: TEXT2, fontSize: 20, cursor: "pointer", flexShrink: 0, alignSelf: isMobile ? "flex-start" : "center", lineHeight: 1, padding: "0 2px" }}>‹</button>
+        {!isMobile && subText && <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap", flexShrink: 0, ...fade }}>{subText}</span>}
+        {count > 1 && <button onClick={advance} aria-label="העדכון הבא" style={{ background: "none", border: "none", color: TEXT2, fontSize: 20, cursor: "pointer", flexShrink: 0, alignSelf: isMobile ? "flex-start" : "center", lineHeight: 1, padding: "0 2px" }}>‹</button>}
       </div>
-      {/* thin red progress bar (restarts each rotation) */}
-      <div key={idx} style={{ position: "absolute", bottom: 0, insetInlineStart: 0, height: 2.5, background: BRAND, boxShadow: `0 0 8px ${BRAND}`, borderRadius: 2, animation: "rapProgress 4.6s linear" }} />
+      {/* thin red progress bar (restarts each rotation) — only while rotating */}
+      {count > 1 && <div key={idx} style={{ position: "absolute", bottom: 0, insetInlineStart: 0, height: 2.5, background: BRAND, boxShadow: `0 0 8px ${BRAND}`, borderRadius: 2, animation: "rapProgress 4.6s linear" }} />}
     </div>
   );
 }
