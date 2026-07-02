@@ -617,7 +617,7 @@ const SHOW_STATUS_COLOR: Record<string, string> = {
 function ShowStatusPill({ status }: { status: string }) {
   const col = SHOW_STATUS_COLOR[status] ?? TEXT2;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "4px 12px", whiteSpace: "nowrap" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "5px 13px", whiteSpace: "nowrap" }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 7px ${col}` }} />
       {status}
     </span>
@@ -654,15 +654,15 @@ function ShowsSection({ title, shows, isMobile }: { title: string; shows: Show[]
         <>
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
             {heads.map((h, i) => (
-              <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 0 ? "start" : "center" }}>{h}</div>
+              <div key={i} style={{ fontSize: 13, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.03em", textTransform: "uppercase", textAlign: i === 0 ? "start" : "center" }}>{h}</div>
             ))}
           </div>
           {shows.map((s, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none" }}>
-              <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-              <div style={{ fontSize: 13, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.date}</div>
-              <div style={{ fontSize: 13, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
-              <div style={{ fontSize: 13.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
+            <div key={i} style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "17px 24px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none" }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+              <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.date}</div>
+              <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
+              <div style={{ fontSize: 14.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
               <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>
             </div>
           ))}
