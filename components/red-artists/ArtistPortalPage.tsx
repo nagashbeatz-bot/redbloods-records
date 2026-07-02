@@ -179,7 +179,7 @@ const FLASH: { text: string; time: string }[] = [
   { text: "נשלחה הודעה חדשה מהלייבל",                 time: "לפני 5 דקות" },
 ];
 
-const TABS = ["בית", "המוזיקה שלי", "ביטים פנויים", "מאזן", "לו״ז ועדכונים"] as const;
+const TABS = ["בית", "המוזיקה שלי", "ההופעות שלי", "מאזן", "ביטים פנויים", "לו״ז ועדכונים"] as const;
 type Tab = (typeof TABS)[number];
 
 // ── Small shared building blocks ─────────────────────────────────────────────────
@@ -392,6 +392,8 @@ export default function ArtistPortalPage() {
           <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
         ) : tab === "לו״ז ועדכונים" ? (
           <PortalHero title="הזמינות שלי" subtitle="זמינות לשבוע הבא" />
+        ) : tab === "ההופעות שלי" ? (
+          <PortalHero title="ההופעות שלי" subtitle="כל ההופעות הקרובות וההופעות שבוצעו במקום אחד" />
         ) : tab === "מאזן" ? (
           <PortalHero title="מאזן" subtitle="הכנסות, הוצאות והיסטוריית תשלומים" />
         ) : (
@@ -401,6 +403,7 @@ export default function ArtistPortalPage() {
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} musicRows={libRows} loadState={libState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
+            : tab === "ההופעות שלי" ? <ShowsPage />
             : tab === "לו״ז ועדכונים" ? <AvailabilityPage />
             : tab === "מאזן" ? <BalancePage />
             : <ComingSoon tab={tab} />}
@@ -581,6 +584,100 @@ function BalancePage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── ההופעות שלי (shows tab) — upcoming + past shows. UI ONLY, hardcoded demo. ──
+// STRICT: NO money on this page. No fee / income / expense / balance / expected —
+// financials live ONLY in the מאזן tab. Read-only view: Shalev never creates,
+// edits or deletes a show from here (Red Artists is view-only toward the main
+// system — see [[redbloods-red-artists-boundary]]). Columns/shape are ready to
+// wire to a real READ-ONLY shows source later (a GET endpoint + owner approval);
+// until one exists safely, this is a clean mock like the מאזן / זמינות tabs.
+type Show = { name: string; date: string; time: string; location: string; status: string };
+const SHOWS_UPCOMING: Show[] = [
+  { name: "לילה אדום - תל אביב", date: "28.05.2025", time: "21:00", location: "הבארבי, תל אביב",        status: "קרוב" },
+  { name: "רד בניץ׳ - חיפה",     date: "05.06.2025", time: "20:30", location: "מועדון גריי, חיפה",      status: "מאושר" },
+  { name: "שישי בעיר - ירושלים", date: "14.06.2025", time: "22:00", location: "מועדון הפרגית, ירושלים", status: "ממתין" },
+];
+const SHOWS_DONE: Show[] = [
+  { name: "פתיחת קיץ - תל אביב", date: "10.05.2025", time: "22:30", location: "האנגר 11, תל אביב", status: "בוצע" },
+  { name: "לילות בנמל - חיפה",   date: "02.05.2025", time: "21:30", location: "נמל חיפה",          status: "בוצע" },
+  { name: "אורבני - ירושלים",    date: "18.04.2025", time: "20:00", location: "בית העם, ירושלים",  status: "בוצע" },
+];
+// Status → color (no purple): קרוב green, מאושר blue, ממתין amber, בוצע grey.
+const SHOW_STATUS_COLOR: Record<string, string> = {
+  "קרוב":  GREEN,
+  "מאושר": BLUE,
+  "ממתין": AMBER,
+  "בוצע":  "#9CA3AF",
+};
+
+function ShowStatusPill({ status }: { status: string }) {
+  const col = SHOW_STATUS_COLOR[status] ?? TEXT2;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "4px 12px", whiteSpace: "nowrap" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 7px ${col}` }} />
+      {status}
+    </span>
+  );
+}
+
+// One shows section (הופעות קרובות / הופעות שבוצעו). Desktop = clean grid table,
+// mobile = stacked cards (name / date · time / location / status). NO amounts.
+function ShowsSection({ title, shows, isMobile }: { title: string; shows: Show[]; isMobile: boolean }) {
+  const cols = "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
+  const heads = ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
+  return (
+    <div style={panel}>
+      {/* section header — title (right, RTL) + red dot to its left */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+        <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>{title}</span>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+      </div>
+
+      {shows.length === 0 ? (
+        <div style={{ padding: "34px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין הופעות להצגה כרגע</div>
+      ) : isMobile ? (
+        <div style={{ padding: "2px 0 6px" }}>
+          {shows.map((s, i) => (
+            <div key={i} style={{ padding: "14px 16px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none" }}>
+              <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>{s.name}</div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, direction: "ltr", textAlign: "start" }}>{s.date} · {s.time}</div>
+              <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{s.location}</div>
+              <div style={{ marginTop: 9 }}><ShowStatusPill status={s.status} /></div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
+            {heads.map((h, i) => (
+              <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 0 ? "start" : "center" }}>{h}</div>
+            ))}
+          </div>
+          {shows.map((s, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none" }}>
+              <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+              <div style={{ fontSize: 13, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.date}</div>
+              <div style={{ fontSize: 13, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
+              <div style={{ fontSize: 13.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
+              <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ShowsPage() {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
+      <ShowsSection title="הופעות קרובות" shows={SHOWS_UPCOMING} isMobile={isMobile} />
+      <ShowsSection title="הופעות שבוצעו" shows={SHOWS_DONE} isMobile={isMobile} />
     </div>
   );
 }
