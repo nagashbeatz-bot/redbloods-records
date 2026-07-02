@@ -381,7 +381,7 @@ export default function ArtistPortalPage() {
             position, so React reuses the instance across tabs and the avatar
             never remounts/reloads (no "ש" flash on tab switch). Content varies. */}
         {tab === "בית" ? (
-          <PortalHero title="ברוך הבא, שליו" emoji="👋" subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
+          <PortalHero title="ברוך הבא, שליו" emoji="👋" canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
               <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
@@ -417,8 +417,8 @@ export default function ArtistPortalPage() {
 // switching tabs never makes the page jump. Only the title/subtitle/children
 // change. `badge` = a red rounded icon next to the title (e.g. ♫); `emoji` is
 // appended inside the title (e.g. 👋); `children` = extra content (home's news).
-function PortalHero({ title, emoji, badge, subtitle, children }: {
-  title: string; emoji?: string; badge?: string; subtitle?: string; children?: React.ReactNode;
+function PortalHero({ title, emoji, badge, subtitle, canEditAvatar, children }: {
+  title: string; emoji?: string; badge?: string; subtitle?: string; canEditAvatar?: boolean; children?: React.ReactNode;
 }) {
   const isMobile = useIsMobile();
   return (
@@ -437,7 +437,7 @@ function PortalHero({ title, emoji, badge, subtitle, children }: {
       <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 14 : 24, padding: isMobile ? "18px 16px" : "26px 36px" }}>
         {/* identity (right) — same avatar + name everywhere */}
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16, minWidth: isMobile ? "100%" : 232 }}>
-          <ArtistAvatar />
+          <ArtistAvatar canEdit={!!canEditAvatar} />
           <div style={{ textAlign: "start", minWidth: 0 }}>
             <div style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
             <div style={{ fontSize: isMobile ? 12 : 13, color: TEXT2, marginTop: 3 }}>אמן • Redbloods Records</div>
@@ -1283,7 +1283,25 @@ const AVATAR_PATH = "/app/red-artists/shalev-tasama/profile-image/avatar.jpg";
 let avatarPathCache: string | null = AVATAR_PATH;
 let avatarVerCache = 0;                            // 0 = stable URL; only bumped after a successful upload
 
-function ArtistAvatar() {
+// Last crop-editor state (zoom + pan) for the avatar — remembered so reopening
+// the editor on the SAME image starts where the user left off, not from scratch.
+// This is METADATA ONLY (localStorage, no DB); it never replaces the image itself.
+const AVATAR_EDIT_KEY = "red-artists:shalev-tasama:profile-image-editor";
+type AvatarEdit = { zoom: number; position: { x: number; y: number } };
+function loadAvatarEdit(): AvatarEdit | null {
+  try {
+    const raw = localStorage.getItem(AVATAR_EDIT_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as AvatarEdit;
+    if (typeof v?.zoom === "number" && typeof v?.position?.x === "number" && typeof v?.position?.y === "number") return v;
+  } catch { /* ignore */ }
+  return null;
+}
+function saveAvatarEdit(zoom: number, offset: { x: number; y: number }) {
+  try { localStorage.setItem(AVATAR_EDIT_KEY, JSON.stringify({ zoom, position: offset })); } catch { /* ignore */ }
+}
+
+function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
   const [path, setPath]   = useState<string | null>(avatarPathCache);
   const [ver, setVer]     = useState(avatarVerCache); // cache-bust after re-upload (overwrites same path)
   const [hover, setHover] = useState(false);
@@ -1303,6 +1321,10 @@ function ArtistAvatar() {
       if (p && p !== avatarPathCache) { avatarPathCache = p; setPath(p); }
     } catch { /* ignore */ }
   }, []);
+
+  // Editing is only allowed from the home tab. If the tab changes while the
+  // editor is open (canEdit → false), close it so it can't linger elsewhere.
+  useEffect(() => { if (!canEdit) setEditing(null); }, [canEdit]);
 
   function notify(m: string) { setToast(m); setTimeout(() => setToast(null), 2600); }
 
@@ -1362,12 +1384,12 @@ function ArtistAvatar() {
   return (
     <>
       <div
-        onClick={() => { if (busy) return; if (path && src) setEditing({ url: src }); else inputRef.current?.click(); }}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        title="עריכת תמונה"
+        onClick={canEdit ? () => { if (busy) return; if (path && src) setEditing({ url: src }); else inputRef.current?.click(); } : undefined}
+        onMouseEnter={canEdit ? () => setHover(true) : undefined}
+        onMouseLeave={canEdit ? () => setHover(false) : undefined}
+        title={canEdit ? "עריכת תמונה" : undefined}
         style={{
-          padding: 3, borderRadius: "50%", flexShrink: 0, position: "relative", cursor: busy ? "wait" : "pointer",
+          padding: 3, borderRadius: "50%", flexShrink: 0, position: "relative", cursor: canEdit ? (busy ? "wait" : "pointer") : "default",
           background: `conic-gradient(from 150deg, ${BRAND}, #7A1414, ${BRAND}, #7A1414, ${BRAND})`,
           boxShadow: `0 0 38px ${BRAND}55`,
         }}
@@ -1388,7 +1410,7 @@ function ArtistAvatar() {
           <div style={{
             position: "absolute", inset: 0, borderRadius: "50%", display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center", gap: 2, background: "rgba(0,0,0,0.62)", color: "#fff",
-            opacity: hover || busy ? 1 : 0, transition: "opacity .15s", pointerEvents: "none",
+            opacity: canEdit && (hover || busy) ? 1 : 0, transition: "opacity .15s", pointerEvents: "none",
           }}>
             <span style={{ fontSize: 16 }}>{busy ? "⏳" : "📷"}</span>
             <span style={{ fontSize: 9.5, fontWeight: 700 }}>{busy ? "מעלה…" : (path ? "עריכת תמונה" : "העלאת תמונה")}</span>
@@ -1445,6 +1467,10 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   const imgRef    = useRef<HTMLImageElement | null>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
   const dragRef   = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  // Restore the saved zoom/pan ONLY on the first load of an EXISTING image
+  // (opened via initialUrl, no picked file). A freshly picked/replaced file
+  // always starts from defaults.
+  const applySavedRef = useRef(!initialFile);
   const [file, setFile]           = useState<File | null>(initialFile ?? null);
   const [displaySrc, setDisplay]  = useState<string | null>(initialUrl ?? null);
   const [loaded, setLoaded]       = useState(false);
@@ -1469,7 +1495,15 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     setLoaded(false);
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.onload  = () => { imgRef.current = img; setZoom(1); setOffset({ x: 0, y: 0 }); setLoaded(true); };
+    img.onload  = () => {
+      imgRef.current = img;
+      // Existing-image first load → restore last saved zoom/pan; otherwise defaults.
+      const saved = applySavedRef.current ? loadAvatarEdit() : null;
+      applySavedRef.current = false;
+      if (saved) { setZoom(saved.zoom); setOffset(clampAvatarOffset(saved.position, img, D, saved.zoom)); }
+      else       { setZoom(1); setOffset({ x: 0, y: 0 }); }
+      setLoaded(true);
+    };
     img.onerror = () => { imgRef.current = null; setLoaded(false); onNotify("טעינת התמונה נכשלה — נסה להעלות תמונה חדשה"); };
     img.src = displaySrc;
     return () => { img.onload = null; img.onerror = null; };
@@ -1511,6 +1545,7 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     if (!f) return;
     if (!AVATAR_MIME.includes(f.type)) { onNotify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
     if (f.size > 5 * 1024 * 1024)      { onNotify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
+    applySavedRef.current = false; // a new/replaced image opens at defaults, not the old crop
     setFile(f);
   };
 
@@ -1538,7 +1573,8 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     try {
       const blob = await renderBlob(img);
       const ok = await onSave(blob);          // parent uploads; closes the editor on success
-      if (!ok) onNotify("השמירה נכשלה, נסה שוב");
+      if (ok) saveAvatarEdit(zoom, offset);   // remember this zoom/pan for the next open (localStorage, no DB)
+      else onNotify("השמירה נכשלה, נסה שוב");
     } catch (e) {
       console.error("[avatar-editor] save failed:", e);
       onNotify("השמירה נכשלה, נסה שוב");
