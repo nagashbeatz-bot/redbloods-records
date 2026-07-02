@@ -365,7 +365,7 @@ export default function ArtistPortalPage() {
         {/* Responsive grids: "המוזיקה שלי" gets priority width; everything stacks on small screens. */}
         <style>{`
           .rap-grid-a { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
-          .rap-acts   { display: grid; gap: 17px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+          .rap-acts   { display: grid; gap: 17px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
           .rap-kpi    { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
           @media (max-width: 1040px) {
             .rap-grid-a { grid-template-columns: 1fr; }
@@ -433,7 +433,7 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} musicRows={libRows} loadState={libState} summary={summary} summaryState={summaryState} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} musicRows={libRows} loadState={libState} summary={summary} summaryState={summaryState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage />
@@ -1142,7 +1142,7 @@ const pbtn: React.CSSProperties = {
 };
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, musicRows, loadState, summary, summaryState }: { onOpenMusic: () => void; musicRows: LibRow[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, musicRows, loadState, summary, summaryState }: { onOpenMusic: () => void; onOpenShows: () => void; musicRows: LibRow[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
@@ -1155,14 +1155,13 @@ function HomeDashboard({ onOpenMusic, musicRows, loadState, summary, summaryStat
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div className="rap-acts">
-          <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" cta="פרטים" link="יומן מלא ←" />
+          <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" />
           {(() => {
-            const next  = summary?.shows.upcoming?.[0];
-            const total = summary?.shows.upcoming?.length ?? 0;
+            const next = summary?.shows.upcoming?.[0];
             return next ? (
-              <ActionCard icon="🎤" title="הופעות קרובות" body={next.name} sub={[fmtShowDate(next.date), next.startTime, next.location].filter(Boolean).join(" · ")} cta="פרטים" link={total > 1 ? "לכל ההופעות ←" : "יומן מלא ←"} />
+              <ActionCard icon="🎤" title="הופעות קרובות" body={next.name} sub={[fmtShowDate(next.date), next.startTime, next.location].filter(Boolean).join(" · ")} link="לכל ההופעות →" onLink={onOpenShows} />
             ) : (
-              <ActionCard icon="🎤" title="הופעות קרובות" body={summaryState === "loading" ? "טוען…" : "אין הופעות קרובות כרגע"} cta="יומן מלא" />
+              <ActionCard icon="🎤" title="הופעות קרובות" body={summaryState === "loading" ? "טוען…" : "אין הופעות קרובות כרגע"} link="לכל ההופעות →" onLink={onOpenShows} />
             );
           })()}
         </div>
@@ -1857,36 +1856,25 @@ function NewsFlash() {
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────────
-function ActionCard({ icon, title, body, sub, tag, cta, link, primary }: {
-  icon: string; title: string; body: string; sub?: string; tag?: string; cta: string; link?: string; primary?: boolean;
+function ActionCard({ icon, title, body, sub, link, onLink }: {
+  icon: string; title: string; body: string; sub?: string; link?: string; onLink?: () => void;
 }) {
-  const ctaStyle: React.CSSProperties = primary ? {
-    borderRadius: 12, border: "none", color: "#fff",
-    background: "linear-gradient(180deg, #E5322F, #C01C1C)",
-    fontSize: 13.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
-  } : {
-    borderRadius: 12, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`,
-    color: TEXT, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-  };
   return (
     <div
       onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.35)"; e.currentTarget.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.05), 0 18px 40px rgba(0,0,0,0.5)"; }}
       onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.borderColor = BDR2; e.currentTarget.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px rgba(0,0,0,0.4)"; }}
-      style={{ ...panel, padding: "24px 24px 22px", display: "flex", flexDirection: "column", gap: 14, minHeight: 210, transition: "transform .16s, border-color .16s, box-shadow .16s" }}>
-      <div style={{ width: 52, height: 52, borderRadius: 15, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23 }}>{icon}</div>
-      <div style={{ flex: 1 }}>
+      style={{ ...panel, padding: "22px 24px 18px", display: "flex", flexDirection: "column", gap: 12, transition: "transform .16s, border-color .16s, box-shadow .16s" }}>
+      <div style={{ width: 50, height: 50, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{icon}</div>
+      <div>
         <div style={{ fontSize: 16.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>{title}</div>
         <div style={{ fontSize: 13.5, color: TEXT2, marginTop: 6, lineHeight: 1.55 }}>{body}</div>
         {sub && <div style={{ fontSize: 12, color: MUTED, marginTop: 5, direction: "ltr", textAlign: "right", fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
-        {tag && <span style={{ display: "inline-block", marginTop: 10, fontSize: 11, fontWeight: 700, color: AMBER, background: `${AMBER}18`, border: `1px solid ${AMBER}40`, borderRadius: 7, padding: "3px 11px" }}>{tag}</span>}
       </div>
-      {link ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <button style={{ ...ctaStyle, padding: "11px 22px" }}>{cta}</button>
-          <button style={{ ...linkBtn, color: "#FF6B6B", fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap" }}>{link}</button>
-        </div>
-      ) : (
-        <button style={{ ...ctaStyle, padding: "11px 0" }}>{cta}</button>
+      {link && (
+        <button
+          onClick={onLink}
+          style={{ ...linkBtn, color: "#FF6B6B", fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", textAlign: "start", alignSelf: "flex-start", padding: "6px 2px 0", cursor: onLink ? "pointer" : "default" }}
+        >{link}</button>
       )}
     </div>
   );
