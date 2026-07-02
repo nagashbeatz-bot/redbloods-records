@@ -100,35 +100,6 @@ const SONGS: { name: string; kind: string; status: SongStatus; date: string }[] 
   { name: "חיים אחרים",  kind: "סקיצה", status: "סקיצה",        date: "25.05.2025" },
 ];
 
-const UPDATES: string[] = [
-  "נוסף ביט חדש של Nagash בשם Focus",
-  "המיקס של My Story מוכן לאישור",
-  "נקבע סשן אולפן חדש",
-  "עודכן מאזן החודש",
-];
-
-// ── Artist weekly calendar (יומן האמן) — demo week ───────────────────────────────
-type CalType = "סשן" | "סושיאל" | "צילום" | "הופעה" | "דדליין" | "פגישה";
-const CAL_TYPE_COLOR: Record<CalType, string> = {
-  "סשן":   "#60A5FA",
-  "סושיאל": "#EC4899",
-  "צילום":  "#F59E0B",
-  "הופעה":  "#FB7185",
-  "דדליין": "#EF4444",
-  "פגישה":  "#2DD4BF",
-};
-type WeekEvent = { time: string; title: string; type: CalType };
-const WEEK: { day: string; date: string; selected?: boolean; events: WeekEvent[] }[] = [
-  { day: "ראשון",  date: "08.06", events: [{ time: "18:00", title: "סשן אמן והפקה", type: "סשן" }] },
-  { day: "שני",    date: "09.06", events: [{ time: "15:00", title: "סקירת סקיצות",  type: "סשן" }] },
-  { day: "שלישי",  date: "10.06", events: [{ time: "12:00", title: "ישיבת צוות",    type: "פגישה" }] },
-  { day: "רביעי",  date: "11.06", events: [{ time: "20:00", title: "שידור לייב",    type: "סושיאל" }] },
-  { day: "חמישי",  date: "12.06", events: [{ time: "16:00", title: "גרירת מיקס",    type: "צילום" }] },
-  { day: "שישי",   date: "13.06", events: [{ time: "11:00", title: "מעקב פרויקטים", type: "פגישה" }] },
-  { day: "שבת",    date: "14.06", selected: true, events: [] },
-];
-const CAMPAIGN = { name: "קמפיין פרנציפ", total: "3 תכנים השבוע", pending: "1 ממתין לאישור", scheduled: "2 מתוזמנים" };
-
 
 // ── "המוזיקה שלי" page (music tab) — demo library (UI only) ───────────────────────
 const MUSIC_STATUS_COLOR: Record<string, string> = {
@@ -1305,138 +1276,21 @@ function HomeDashboard({ onOpenMusic, onOpenShows, musicRows, loadState, summary
         </SectionCard>
       </div>
 
-      {/* ── 3. Weekly calendar (full width) ── */}
-      <WeeklyCalendar />
+      {/* ── 3. Weekly calendar — REAL data, SAME source as the לו״ז tab (summary.weekly) ── */}
+      <SchedSection title="יומן השבוע" subtitle="כל מה שכבר נקבע לך השבוע">
+        {summaryState === "loading" ? <SchedEmpty text="טוען…" />
+          : summaryState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+          : (summary?.weekly?.length ?? 0) === 0 ? <SchedEmpty text="אין אירועים מתוכננים השבוע" />
+          : <WeeklyList items={summary!.weekly} />}
+      </SchedSection>
 
-      {/* ── 4. עדכונים מהלייבל (full width) ── */}
-      <SectionCard title="עדכונים מהלייבל" link="לכל העדכונים ←">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "0 28px", padding: "8px 18px 12px" }}>
-          {UPDATES.map(u => (
-            <div key={u} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 4px", borderBottom: `1px solid ${BDR}` }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: BRAND, marginTop: 6, flexShrink: 0, boxShadow: `0 0 7px ${BRAND}` }} />
-              <span style={{ fontSize: 12.5, color: "#C4C4C8", lineHeight: 1.55 }}>{u}</span>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-    </div>
-  );
-}
-
-// ── Weekly calendar (יומן האמן) — 7-day premium week view ─────────────────────────
-function campChip(c: string): React.CSSProperties {
-  return { fontSize: 11, fontWeight: 700, color: c, background: `${c}14`, border: `1px solid ${c}3D`, borderRadius: 8, padding: "5px 11px", whiteSpace: "nowrap" };
-}
-
-const weekArrow: React.CSSProperties = {
-  width: 30, height: 30, alignSelf: "center", flexShrink: 0, borderRadius: "50%",
-  background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2,
-  fontSize: 16, cursor: "pointer", fontFamily: "inherit",
-};
-
-function WeeklyCalendar() {
-  const isMobile = useIsMobile();
-  return (
-    <div style={panel}>
-      {/* header + subtitle */}
-      <div style={{ padding: "16px 22px", borderBottom: `1px solid ${BDR}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-          <span style={{ fontSize: 16, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>יומן השבוע</span>
-        </div>
-        <div style={{ fontSize: 12, color: TEXT2, marginTop: 5 }}>הצצה לפגישות, משימות ושידורים הקרובים שלך</div>
-      </div>
-
-      {isMobile ? (
-        /* Mobile: clean vertical list — no horizontal scroll, nothing clipped */
-        <div style={{ padding: "8px 16px 12px", display: "flex", flexDirection: "column" }}>
-          {WEEK.map((d, i) => {
-            const has = d.events.length > 0;
-            const sel = d.selected;
-            return (
-              <div key={d.day} style={{ display: "flex", alignItems: "center", gap: 13, padding: "13px 2px", borderBottom: i === WEEK.length - 1 ? "none" : `1px solid ${BDR}` }}>
-                {/* date block (right) */}
-                <div style={{ width: 58, flexShrink: 0, textAlign: "center", padding: "7px 0", borderRadius: 11, background: sel ? "rgba(220,38,38,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${sel ? BRAND + "55" : BDR}` }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: sel || has ? "#fff" : TEXT2 }}>{d.day}</div>
-                  <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
-                </div>
-                {/* content (grows) */}
-                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 7 }}>
-                  {has ? d.events.map(ev => {
-                    const c = CAL_TYPE_COLOR[ev.type];
-                    return (
-                      <div key={ev.title} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: c, flexShrink: 0, boxShadow: `0 0 6px ${c}` }} />
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
-                        <span style={{ marginInlineStart: "auto", fontSize: 11.5, color: TEXT2, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{ev.time}</span>
-                      </div>
-                    );
-                  }) : (
-                    <span style={{ fontSize: 12.5, color: MUTED }}>אין אירועים</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* Desktop: arrows + 7-day grid carousel */
-        <div style={{ display: "flex", alignItems: "stretch", gap: 8, padding: "16px 14px 8px" }}>
-          <button style={weekArrow} aria-label="שבוע קודם">›</button>
-          <div style={{ flex: 1, overflowX: "auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10, minWidth: 720 }}>
-              {WEEK.map(d => {
-                const has = d.events.length > 0;
-                const sel = d.selected;
-                return (
-                  <div key={d.day} style={{
-                    borderRadius: 14, minHeight: 128, display: "flex", flexDirection: "column",
-                    border: `1px solid ${sel ? BRAND : (has ? "rgba(220,38,38,0.18)" : BDR)}`,
-                    background: sel ? "rgba(220,38,38,0.07)" : "rgba(255,255,255,0.012)",
-                    boxShadow: sel ? `0 0 16px rgba(220,38,38,0.18)` : "none",
-                  }}>
-                    <div style={{ textAlign: "center", padding: "10px 6px 8px" }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: sel || has ? "#fff" : TEXT2 }}>{d.day}</div>
-                      <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, direction: "ltr" }}>{d.date}</div>
-                    </div>
-                    <div style={{ flex: 1, padding: "0 9px 12px", display: "flex", flexDirection: "column", gap: 8, justifyContent: "center" }}>
-                      {has ? d.events.map(ev => {
-                        const c = CAL_TYPE_COLOR[ev.type];
-                        return (
-                          <div key={ev.title} style={{ textAlign: "center" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: c, flexShrink: 0, boxShadow: `0 0 6px ${c}` }} />
-                              <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{ev.title}</span>
-                            </div>
-                            <div style={{ fontSize: 11, color: TEXT2, marginTop: 3, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{ev.time}</div>
-                          </div>
-                        );
-                      }) : (
-                        <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: MUTED }}>---</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <button style={weekArrow} aria-label="שבוע הבא">‹</button>
-        </div>
-      )}
-
-      {/* campaign-of-the-week strip */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "14px 20px", borderTop: `1px solid ${BDR}`, background: "rgba(220,38,38,0.035)" }}>
-        <span style={{ width: 40, height: 40, borderRadius: 11, flexShrink: 0, background: "rgba(220,38,38,0.14)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>📣</span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.03em" }}>קמפיין השבוע</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginTop: 2 }}>{CAMPAIGN.name}</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginInlineStart: "auto" }}>
-          <span style={campChip(TEXT2)}>{CAMPAIGN.total}</span>
-          <span style={campChip("#F59E0B")}>{CAMPAIGN.pending}</span>
-          <span style={campChip("#60A5FA")}>{CAMPAIGN.scheduled}</span>
-        </div>
-      </div>
+      {/* ── 4. עדכונים מהלייבל — REAL data (summary.updates) ── */}
+      <SchedSection title="עדכונים מהלייבל">
+        {summaryState === "loading" ? <SchedEmpty text="טוען…" />
+          : summaryState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+          : (summary?.updates?.length ?? 0) === 0 ? <SchedEmpty text="עדיין אין עדכונים חדשים" />
+          : <UpdatesList items={summary!.updates} />}
+      </SchedSection>
     </div>
   );
 }
