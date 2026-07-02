@@ -1152,7 +1152,7 @@ function VictorProjectDrawer({
         </div>
 
         {/* ── Scrollable body ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px 40px" : "18px 20px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px calc(40px + env(safe-area-inset-bottom))" : "18px 20px" }}>
           <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.9fr)_minmax(310px,0.7fr)]" style={{ gap: 18, alignItems: "start" }}>
 
             {/* ════ MAIN column: brief + references (what Victor must do) ════ */}
@@ -1181,7 +1181,7 @@ function VictorProjectDrawer({
                         rows={10}
                         autoFocus
                         placeholder={t("drawer.briefPlaceholder")}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.7, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", resize: "vertical", direction: "rtl", boxSizing: "border-box" }}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 10, fontSize: isMobile ? 16 : 12.5, lineHeight: 1.7, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", resize: "vertical", direction: "rtl", boxSizing: "border-box" }}
                       />
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
                         <span style={{ fontSize: 10, color: MUTED }}>{briefDraft.length} {t("drawer.chars")}</span>
@@ -1219,9 +1219,9 @@ function VictorProjectDrawer({
                 <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
                   {isOwner && refForm.open && (
                     <div style={{ padding: 12, borderRadius: 12, background: CARD2, border: `1px solid ${PURPLE}33`, display: "flex", flexDirection: "column", gap: 8 }}>
-                      <input value={refForm.url} onChange={e => setRefForm(f => ({ ...f, url: e.target.value }))} placeholder={t("drawer.refUrlPlaceholder")} dir="ltr" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                      <input value={refForm.title} onChange={e => setRefForm(f => ({ ...f, title: e.target.value }))} placeholder={t("drawer.refTitlePlaceholder")} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", direction: "rtl", boxSizing: "border-box" }} />
-                      <textarea value={refForm.note} onChange={e => setRefForm(f => ({ ...f, note: e.target.value }))} placeholder={t("drawer.refNotePlaceholder")} rows={2} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", direction: "rtl", resize: "vertical", boxSizing: "border-box" }} />
+                      <input value={refForm.url} onChange={e => setRefForm(f => ({ ...f, url: e.target.value }))} placeholder={t("drawer.refUrlPlaceholder")} dir="ltr" style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: isMobile ? 16 : 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                      <input value={refForm.title} onChange={e => setRefForm(f => ({ ...f, title: e.target.value }))} placeholder={t("drawer.refTitlePlaceholder")} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: isMobile ? 16 : 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", direction: "rtl", boxSizing: "border-box" }} />
+                      <textarea value={refForm.note} onChange={e => setRefForm(f => ({ ...f, note: e.target.value }))} placeholder={t("drawer.refNotePlaceholder")} rows={2} style={{ width: "100%", padding: "8px 11px", borderRadius: 9, fontSize: isMobile ? 16 : 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", direction: "rtl", resize: "vertical", boxSizing: "border-box" }} />
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                         <button onClick={() => setRefForm({ open: false, editId: null, url: "", title: "", note: "" })} disabled={savingRef} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: savingRef ? "default" : "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
                         <button onClick={saveReference} disabled={savingRef || !refForm.url.trim()} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: (savingRef || !refForm.url.trim()) ? MUTED : PURPLE, border: "none", color: "#fff", cursor: (savingRef || !refForm.url.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>{savingRef ? t("drawer.saving") : refForm.editId ? t("drawer.refUpdate") : t("drawer.refAdd")}</button>
@@ -1800,7 +1800,7 @@ export default function VictorProfilePage() {
               value={lang}
               onChange={e => setVictorLang(e.target.value as VictorLang)}
               title={t("lang.label")}
-              style={{ background: CARD, color: TEXT2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: "7px 10px", fontSize: 12, fontFamily: "inherit", cursor: "pointer", outline: "none" }}
+              style={{ background: CARD, color: TEXT2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: isMobile ? "9px 12px" : "7px 10px", fontSize: isMobile ? 16 : 12, fontFamily: "inherit", cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", MozAppearance: "none", boxSizing: "border-box", minHeight: isMobile ? 42 : undefined }}
             >
               {VICTOR_LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
             </select>
@@ -1905,7 +1905,7 @@ export default function VictorProfilePage() {
             <div key={id} style={{
               background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16,
               padding: isMobile ? "13px 14px" : "18px 20px", position: "relative", overflow: "hidden",
-              minWidth: 0,
+              minWidth: 0, gridColumn: isMobile && id === "salary" ? "1 / -1" : undefined,
             }}>
               <div style={{
                 position: "absolute", bottom: -8, left: -4,
@@ -1985,8 +1985,16 @@ export default function VictorProfilePage() {
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => setSelectedWork(w)}
-                      style={{ ...btnStyle, width: "100%", marginTop: 12, fontSize: 12, fontWeight: 700, color: "#1A1A20", padding: "9px 0", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer" }}>
+                      style={{
+                        ...btnStyle, width: "100%", maxWidth: "100%", marginTop: 12,
+                        fontSize: 14, fontWeight: 700, color: "#EDE9FE",
+                        padding: "12px 0", borderRadius: 10, boxSizing: "border-box",
+                        border: `1px solid ${PURPLE}66`, background: `${PURPLE}22`,
+                        cursor: "pointer", appearance: "none", WebkitAppearance: "none",
+                        WebkitTapHighlightColor: "transparent", transition: "background .14s",
+                      }}>
                       {t("projects.open")}
                     </button>
                   </div>
@@ -2287,10 +2295,16 @@ export default function VictorProfilePage() {
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 998 }}
         />
         <div style={{
-          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-          zIndex: 999, width: 420, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto",
+          position: "fixed",
+          top: isMobile ? 10 : "50%", left: "50%",
+          transform: isMobile ? "translateX(-50%)" : "translate(-50%,-50%)",
+          zIndex: 999,
+          width: isMobile ? "calc(100vw - 20px)" : 420, maxWidth: isMobile ? "100%" : "94vw",
+          maxHeight: isMobile ? "calc(100dvh - 20px)" : "90vh", overflowY: "auto",
           background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
-          boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.85)",
+          padding: isMobile ? "20px 18px calc(24px + env(safe-area-inset-bottom))" : 24,
+          direction: "rtl", boxSizing: "border-box",
         }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{t("newwork.title")}</div>
           <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{t("newwork.subtitle")}</div>
@@ -2299,19 +2313,19 @@ export default function VictorProfilePage() {
 
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("newwork.nameLabel")}</div>
-            <input value={wtTitle} onChange={e => setWtTitle(e.target.value)} autoFocus style={WT_INPUT} />
+            <input value={wtTitle} onChange={e => setWtTitle(e.target.value)} autoFocus style={{ ...WT_INPUT, fontSize: isMobile ? 16 : 13 }} />
           </div>
 
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("newwork.status")}</div>
-            <select value={wtStatus} onChange={e => setWtStatus(e.target.value)} style={{ ...WT_INPUT, cursor: "pointer" }}>
+            <select value={wtStatus} onChange={e => setWtStatus(e.target.value)} style={{ ...WT_INPUT, cursor: "pointer", fontSize: isMobile ? 16 : 13, appearance: "none", WebkitAppearance: "none", MozAppearance: "none" }}>
               {VICTOR_WORK_STATUSES.map(s => <option key={s} value={s}>{statusLabel(lang, s)}</option>)}
             </select>
           </div>
 
           <div style={{ marginBottom: 22 }}>
             <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("newwork.notesLabel")}</div>
-            <textarea value={wtNotes} onChange={e => setWtNotes(e.target.value)} rows={3} style={{ ...WT_INPUT, resize: "vertical", lineHeight: 1.5 }} />
+            <textarea value={wtNotes} onChange={e => setWtNotes(e.target.value)} rows={3} style={{ ...WT_INPUT, resize: "vertical", lineHeight: 1.5, fontSize: isMobile ? 16 : 13 }} />
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
@@ -2336,10 +2350,16 @@ export default function VictorProfilePage() {
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 998 }}
         />
         <div style={{
-          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-          zIndex: 999, width: 380, maxWidth: "92vw",
+          position: "fixed",
+          top: isMobile ? 10 : "50%", left: "50%",
+          transform: isMobile ? "translateX(-50%)" : "translate(-50%,-50%)",
+          zIndex: 999,
+          width: isMobile ? "calc(100vw - 20px)" : 380, maxWidth: isMobile ? "100%" : "92vw",
+          maxHeight: isMobile ? "calc(100dvh - 20px)" : undefined, overflowY: isMobile ? "auto" : undefined,
           background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18,
-          boxShadow: "0 24px 80px rgba(0,0,0,0.85)", padding: 24, direction: "rtl",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.85)",
+          padding: isMobile ? "20px 18px calc(24px + env(safe-area-inset-bottom))" : 24,
+          direction: "rtl", boxSizing: "border-box",
         }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{t("salaryModal.title")}</div>
           <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{monthLabel(month)}</div>
@@ -2354,7 +2374,7 @@ export default function VictorProfilePage() {
                 onChange={e => setSalaryDraftAmount(e.target.value)}
                 style={{
                   flex: 1, padding: "9px 12px", borderRadius: 10, border: `1px solid ${BDR2}`,
-                  background: CARD2, color: TEXT, fontSize: 14, fontFamily: "inherit",
+                  background: CARD2, color: TEXT, fontSize: isMobile ? 16 : 14, fontFamily: "inherit",
                   outline: "none", boxSizing: "border-box",
                 }}
               />
