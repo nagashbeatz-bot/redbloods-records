@@ -1713,13 +1713,20 @@ export default function VictorProfilePage() {
   const completed    = stats?.completed ?? 0;
   const active       = stats?.active ?? 0;
   const stuck        = stats?.stuck ?? 0;
-  const pct          = goal > 0 ? Math.min(100, Math.round((completed / goal) * 100)) : 0;
 
   // Only work attributed to the selected month — same helper the KPIs/salary use
   // (inMonth: sent_date, else created_at), so the table stays consistent with them.
   // Victor-only items (project_id=null) carry a sent_date on creation, so they filter too.
   const monthWork   = work.filter((w) => inMonth(w, month));
   const displayWork = monthWork.slice(0, 12);
+
+  // Monthly capacity = work actually handled in the selected month (active +
+  // completed, excluding cancelled), taken from the SAME monthWork array the
+  // table renders — so the gauge, the table and the KPIs can't disagree.
+  // Previously the gauge counted `completed` only, so a month with active-but-
+  // not-yet-completed work read 0/goal even though the table showed rows.
+  const capacityUsed = monthWork.filter((w) => w.status !== "בוטל").length;
+  const pct          = goal > 0 ? Math.min(100, Math.round((capacityUsed / goal) * 100)) : 0;
 
   const allFiles = work.flatMap(w => [
     ...(w.filesReceived ?? []).map(f => ({ ...f, dir: "in",  project: w.projectName })),
@@ -2092,7 +2099,7 @@ export default function VictorProfilePage() {
 
               {/* Big counter */}
               <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4, direction: "ltr" }}>
-                <span style={{ fontSize: 40, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{completed}</span>
+                <span style={{ fontSize: 40, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{capacityUsed}</span>
                 <span style={{ fontSize: 20, fontWeight: 700, color: MUTED }}>/ {goal}</span>
               </div>
               <div style={{ fontSize: 12, color: TEXT2, marginBottom: 14 }}>{t("capacity.completed")}</div>

@@ -338,6 +338,9 @@ export default function StevenProfilePage() {
   }
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
+  // Open = not completed and not cancelled (same "open" rule as the Victor page /
+  // the /team dashboard). Previously "עבודות פתוחות" showed the TOTAL job count.
+  const open    = works.filter(w => w.status !== "הושלם" && w.status !== "בוטל").length;
   const active  = works.filter(w => w.status === "פעיל").length;
   const done    = works.filter(w => w.status === "הושלם").length;
   const debt    = works.reduce((s, w) => s + Math.max(0, w.price - w.amountPaid), 0);
@@ -407,7 +410,7 @@ export default function StevenProfilePage() {
 
         {/* ── KPI row (5 cards) ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <KpiCard label={t.kpiOpen}      value={works.length} icon="📁" />
+          <KpiCard label={t.kpiOpen}      value={open}         icon="📁" />
           <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={GREEN} />
           <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={BLUE} />
           <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
