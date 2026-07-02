@@ -129,11 +129,6 @@ const WEEK: { day: string; date: string; selected?: boolean; events: WeekEvent[]
 ];
 const CAMPAIGN = { name: "קמפיין פרנציפ", total: "3 תכנים השבוע", pending: "1 ממתין לאישור", scheduled: "2 מתוזמנים" };
 
-// Upcoming shows — demo (UI only, hardcoded like the rest of this portal).
-const SHOWS: { name: string; date: string; dow: string; doors: string }[] = [
-  { name: "פאצה, תל אביב", date: "27.06.2025", dow: "מוצ״ש", doors: "22:30" },
-  { name: "באנקר, חיפה",   date: "12.07.2025", dow: "שבת",   doors: "21:00" },
-];
 
 // ── "המוזיקה שלי" page (music tab) — demo library (UI only) ───────────────────────
 const MUSIC_STATUS_COLOR: Record<string, string> = {
@@ -231,6 +226,26 @@ function mmss(s: number): string {
   const sec = Math.round(s % 60);
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
+// DB date "YYYY-MM-DD" → "DD.MM.YYYY" (or "—" when missing).
+function fmtShowDate(d: string | null): string {
+  if (!d) return "—";
+  const [y, m, day] = d.split("-");
+  return (y && m && day) ? `${day}.${m}.${y}` : d;
+}
+function fmtMoney(n: number, curr = "₪"): string {
+  return `${curr}${Math.round(n).toLocaleString("en-US")}`;
+}
+
+// ── Real Shalev summary (server-scoped, owner-only, READ-ONLY) ────────────────────
+// From GET /api/red-artists/shalev-summary. Shows carry NO money; balance is only
+// Shalev's artist-fee ("שכר אמן") transactions. Empty/"—" when no real source.
+export type PortalShow = { id: string; name: string; date: string | null; startTime: string | null; location: string; status: string };
+export type PortalPayment = { id: string; date: string | null; description: string; amount: number; currency: string };
+export type ShalevSummary = {
+  shows: { upcoming: PortalShow[]; done: PortalShow[] };
+  balance: { paidTotal: number; expectedTotal: number; currency: string; payments: PortalPayment[]; hasData: boolean };
+};
+type LoadState = "loading" | "ready" | "error";
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
   const target = normName(SHALEV_ARTIST);
   return (Array.isArray(projects) ? projects : [])
@@ -295,6 +310,23 @@ export default function ArtistPortalPage() {
         setLibState("ready");
       })
       .catch(() => { if (alive) setLibState("error"); });
+    return () => { alive = false; };
+  }, []);
+
+  // Real shows + balance for Shalev — server-scoped endpoint (owner-only, READ-
+  // ONLY, filtered server-side to "שליו טסמה"; no other artist / no label money).
+  const [summary, setSummary] = useState<ShalevSummary | null>(null);
+  const [summaryState, setSummaryState] = useState<LoadState>("loading");
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/red-artists/shalev-summary")
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d) => {
+        if (!alive) return;
+        if (d?.ok) { setSummary({ shows: d.shows, balance: d.balance }); setSummaryState("ready"); }
+        else setSummaryState("error");
+      })
+      .catch(() => { if (alive) setSummaryState("error"); });
     return () => { alive = false; };
   }, []);
 
@@ -401,11 +433,11 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} musicRows={libRows} loadState={libState} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} musicRows={libRows} loadState={libState} summary={summary} summaryState={summaryState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
-            : tab === "ההופעות שלי" ? <ShowsPage />
+            : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <AvailabilityPage />
-            : tab === "מאזן" ? <BalancePage />
+            : tab === "מאזן" ? <BalancePage summary={summary} loadState={summaryState} />
             : <ComingSoon tab={tab} />}
         </div>
       </div>
@@ -480,107 +512,111 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
   );
 }
 
-// ── מאזן (balance tab) — simple artist finance summary. UI ONLY, hardcoded demo.
+// ── מאזן (balance tab) — REAL artist finance (Shalev's "שכר אמן" show fees only).
+// No mock: numbers come from GET /api/red-artists/shalev-summary (server-scoped).
+// Income = artist-fee transactions (שולם/צפוי). Expenses have NO trusted source
+// yet → shown as "—", never invented. See [[redbloods-red-artists-boundary]].
 const BAL_INCOME_RED = "#F87171";
-const BAL_SUMMARY: { label: string; sub: string; amount: string; income: boolean }[] = [
-  { label: "הכנסות שהתקבלו", sub: "סה״כ התקבלו",   amount: "₪10,450", income: true  },
-  { label: "הוצאות ששולמו",  sub: "סה״כ שולמו",     amount: "₪2,130",  income: false },
-  { label: "הכנסות צפויות",   sub: "צפויות להתקבל",  amount: "₪3,600",  income: true  },
-  { label: "הוצאות צפויות",   sub: "צפויות לתשלום",  amount: "₪1,200",  income: false },
-];
-const BAL_HISTORY: { date: string; item: string; income: boolean; amount: string; done: boolean }[] = [
-  { date: "27.06.2026", item: "הופעה בלבונטין",     income: true,  amount: "₪2,500", done: true },
-  { date: "21.06.2026", item: "קליפ \"פתריוך\"",     income: false, amount: "₪1,400", done: true },
-  { date: "15.06.2026", item: "הכנסה מדיגיטל",       income: true,  amount: "₪850",   done: true },
-  { date: "09.06.2026", item: "ציוד / אולפן",        income: false, amount: "₪730",   done: true },
-  { date: "02.06.2026", item: "תמלוגים / השמעות",    income: true,  amount: "₪1,100", done: true },
-];
 
-const BAL_CURRENT = 8320; // demo current balance (positive/negative/0 → green/red/grey)
-
-function BalancePage() {
+function BalancePage({ summary, loadState }: { summary: ShalevSummary | null; loadState: LoadState }) {
   const isMobile = useIsMobile();
-  const histCols = "110px minmax(0, 1.6fr) 90px 100px 96px";
-  const histHeads = ["תאריך", "פריט", "סוג", "סכום", "סטטוס"];
 
-  const balColor = BAL_CURRENT > 0 ? GREEN : BAL_CURRENT < 0 ? "#F87171" : "#E5E5EA";
-  const balText = `${BAL_CURRENT < 0 ? "-" : ""}₪${Math.abs(BAL_CURRENT).toLocaleString("en-US")}`;
+  if (loadState === "loading") {
+    return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
+  }
+  if (loadState === "error") {
+    return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון נתונים כספיים כרגע</div>;
+  }
+  const bal = summary?.balance;
+  if (!bal || !bal.hasData) {
+    return (
+      <div style={{ ...panel, padding: "52px 24px", textAlign: "center" }}>
+        <div style={{ fontSize: 30, opacity: 0.3, marginBottom: 10 }}>₪</div>
+        <div style={{ fontSize: 14, color: TEXT2 }}>אין עדיין נתונים כספיים זמינים</div>
+      </div>
+    );
+  }
+
+  const curr     = bal.currency || "₪";
+  const paid     = bal.paidTotal;
+  const expected = bal.expectedTotal;
+  const balColor = paid > 0 ? GREEN : paid < 0 ? BAL_INCOME_RED : "#E5E5EA";
+
+  // Income cards are real; expense cards have no trusted source → "—" + note.
+  const cards: { label: string; value: string; sub: string; color: string }[] = [
+    { label: "שולם לי",       value: fmtMoney(paid, curr),     sub: "התקבל בפועל",             color: GREEN },
+    { label: "צפוי לי",        value: fmtMoney(expected, curr), sub: "מאושר, טרם התקבל",        color: AMBER },
+    { label: "הוצאות ששולמו", value: "—",                      sub: "עדיין לא חובר למקור אמת", color: TEXT2 },
+    { label: "הוצאות צפויות",  value: "—",                      sub: "עדיין לא חובר למקור אמת", color: TEXT2 },
+  ];
+
+  const histCols = "120px minmax(0, 1.8fr) 120px";
+  const histHeads = ["תאריך", "הופעה", "סכום"];
+  const payments = bal.payments;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
 
-      {/* current balance */}
+      {/* current balance = money actually paid to Shalev */}
       <div style={{
         ...panel, padding: isMobile ? "26px 18px" : "34px 24px", textAlign: "center",
         background: `radial-gradient(120% 140% at 50% -10%, rgba(220,38,38,0.20) 0%, rgba(220,38,38,0.05) 42%, #121012 74%), linear-gradient(180deg, #161617 0%, #111112 100%)`,
         border: `1px solid rgba(220,38,38,0.30)`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 60px rgba(220,38,38,0.12), 0 14px 34px rgba(0,0,0,0.4)`,
       }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT2 }}>מאזן נוכחי</div>
-        <div style={{ fontSize: isMobile ? 40 : 52, fontWeight: 900, color: balColor, letterSpacing: "-0.03em", marginTop: 6, direction: "ltr", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>{balText}</div>
+        <div style={{ fontSize: isMobile ? 40 : 52, fontWeight: 900, color: balColor, letterSpacing: "-0.03em", marginTop: 6, direction: "ltr", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>{fmtMoney(paid, curr)}</div>
+        <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>סה״כ שולם לך עד כה</div>
       </div>
 
-      {/* 4 summary cards — income on the right (RTL) */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(2, 1fr)", gap: isMobile ? 10 : 16 }}>
-        {BAL_SUMMARY.map(c => {
-          const col = c.income ? GREEN : BAL_INCOME_RED;
-          return (
-            <div key={c.label} style={{ ...panel, padding: isMobile ? "16px 14px" : "20px 22px" }}>
-              <div style={{ fontSize: isMobile ? 13 : 14.5, fontWeight: 800, color: TEXT }}>{c.label}</div>
-              <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: col, direction: "ltr", textAlign: "start", marginTop: 8 }}>{c.amount}</div>
-              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>{c.sub}</div>
-            </div>
-          );
-        })}
+      {/* 4 summary cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: isMobile ? 10 : 16 }}>
+        {cards.map(c => (
+          <div key={c.label} style={{ ...panel, padding: isMobile ? "16px 14px" : "20px 22px" }}>
+            <div style={{ fontSize: isMobile ? 13 : 14.5, fontWeight: 800, color: TEXT }}>{c.label}</div>
+            <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: c.color, direction: "ltr", textAlign: "start", marginTop: 8 }}>{c.value}</div>
+            <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>{c.sub}</div>
+          </div>
+        ))}
       </div>
 
-      {/* payment history */}
+      {/* payment history — real "שולם" transactions only */}
       <div style={panel}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
           <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>היסטוריית תשלומים</span>
         </div>
 
-        {isMobile ? (
+        {payments.length === 0 ? (
+          <div style={{ padding: "34px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין עדיין תשלומים שהתקבלו</div>
+        ) : isMobile ? (
           <div style={{ padding: "2px 0 6px" }}>
-            {BAL_HISTORY.map((h, i) => {
-              const col = h.income ? GREEN : BAL_INCOME_RED;
-              return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.item}</div>
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{h.date} · {h.income ? "הכנסה" : "הוצאה"}</div>
-                  </div>
-                  <div style={{ textAlign: "start", flexShrink: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 900, color: col, direction: "ltr" }}>{h.amount}</div>
-                    <div style={{ fontSize: 10.5, color: col, marginTop: 3 }}>{h.income ? "התקבל" : "שולם"}</div>
-                  </div>
+            {payments.map((h, i) => (
+              <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: i < payments.length - 1 ? `1px solid ${BDR}` : "none" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.description}</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{fmtShowDate(h.date)}</div>
                 </div>
-              );
-            })}
+                <div style={{ textAlign: "start", flexShrink: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 900, color: GREEN, direction: "ltr" }}>{fmtMoney(h.amount, h.currency)}</div>
+                  <div style={{ fontSize: 10.5, color: GREEN, marginTop: 3 }}>התקבל</div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <>
             <div style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
               {histHeads.map((h, i) => (
-                <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 0 || i === 1 ? "start" : "center" }}>{h}</div>
+                <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 2 ? "center" : "start" }}>{h}</div>
               ))}
             </div>
-            {BAL_HISTORY.map((h, i) => {
-              const col = h.income ? GREEN : BAL_INCOME_RED;
-              return (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, alignItems: "center", padding: "14px 24px", borderBottom: i < BAL_HISTORY.length - 1 ? `1px solid ${BDR}` : "none" }}>
-                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{h.date}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.item}</div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: col, textAlign: "center" }}>{h.income ? "הכנסה" : "הוצאה"}</div>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: col, direction: "ltr", textAlign: "center" }}>{h.amount}</div>
-                  <div style={{ textAlign: "center" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "4px 11px" }}>
-                      <span style={{ fontSize: 11 }}>✓</span>{h.income ? "התקבל" : "שולם"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            {payments.map((h, i) => (
+              <div key={h.id} style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, alignItems: "center", padding: "14px 24px", borderBottom: i < payments.length - 1 ? `1px solid ${BDR}` : "none" }}>
+                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(h.date)}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.description}</div>
+                <div style={{ fontSize: 14, fontWeight: 900, color: GREEN, direction: "ltr", textAlign: "center" }}>{fmtMoney(h.amount, h.currency)}</div>
+              </div>
+            ))}
           </>
         )}
       </div>
@@ -588,29 +624,17 @@ function BalancePage() {
   );
 }
 
-// ── ההופעות שלי (shows tab) — upcoming + past shows. UI ONLY, hardcoded demo. ──
-// STRICT: NO money on this page. No fee / income / expense / balance / expected —
+// ── ההופעות שלי (shows tab) — REAL shows from the main shows module. ─────────────
+// Data via GET /api/red-artists/shalev-summary (server-scoped to Shalev, only
+// אושרה/נסגר/בוצע, money stripped server-side). STRICT: NO money on this page —
 // financials live ONLY in the מאזן tab. Read-only view: Shalev never creates,
-// edits or deletes a show from here (Red Artists is view-only toward the main
-// system — see [[redbloods-red-artists-boundary]]). Columns/shape are ready to
-// wire to a real READ-ONLY shows source later (a GET endpoint + owner approval);
-// until one exists safely, this is a clean mock like the מאזן / זמינות tabs.
+// edits or deletes a show here (Red Artists is view-only — see
+// [[redbloods-red-artists-boundary]]).
 type Show = { name: string; date: string; time: string; location: string; status: string };
-const SHOWS_UPCOMING: Show[] = [
-  { name: "לילה אדום - תל אביב", date: "28.05.2025", time: "21:00", location: "הבארבי, תל אביב",        status: "קרוב" },
-  { name: "רד בניץ׳ - חיפה",     date: "05.06.2025", time: "20:30", location: "מועדון גריי, חיפה",      status: "מאושר" },
-  { name: "שישי בעיר - ירושלים", date: "14.06.2025", time: "22:00", location: "מועדון הפרגית, ירושלים", status: "ממתין" },
-];
-const SHOWS_DONE: Show[] = [
-  { name: "פתיחת קיץ - תל אביב", date: "10.05.2025", time: "22:30", location: "האנגר 11, תל אביב", status: "בוצע" },
-  { name: "לילות בנמל - חיפה",   date: "02.05.2025", time: "21:30", location: "נמל חיפה",          status: "בוצע" },
-  { name: "אורבני - ירושלים",    date: "18.04.2025", time: "20:00", location: "בית העם, ירושלים",  status: "בוצע" },
-];
-// Status → color (no purple): קרוב green, מאושר blue, ממתין amber, בוצע grey.
+// Real show statuses (no purple): אושרה=approved green, נסגר=booked blue, בוצע=done grey.
 const SHOW_STATUS_COLOR: Record<string, string> = {
-  "קרוב":  GREEN,
-  "מאושר": BLUE,
-  "ממתין": AMBER,
+  "אושרה": GREEN,
+  "נסגר":  BLUE,
   "בוצע":  "#9CA3AF",
 };
 
@@ -626,7 +650,7 @@ function ShowStatusPill({ status }: { status: string }) {
 
 // One shows section (הופעות קרובות / הופעות שבוצעו). Desktop = clean grid table,
 // mobile = stacked cards (name / date · time / location / status). NO amounts.
-function ShowsSection({ title, shows, isMobile }: { title: string; shows: Show[]; isMobile: boolean }) {
+function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות להצגה כרגע" }: { title: string; shows: Show[]; isMobile: boolean; emptyText?: string }) {
   const cols = "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
   const heads = ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
   return (
@@ -638,7 +662,7 @@ function ShowsSection({ title, shows, isMobile }: { title: string; shows: Show[]
       </div>
 
       {shows.length === 0 ? (
-        <div style={{ padding: "34px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין הופעות להצגה כרגע</div>
+        <div style={{ padding: "34px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>{emptyText}</div>
       ) : isMobile ? (
         <div style={{ padding: "2px 0 6px" }}>
           {shows.map((s, i) => (
@@ -672,12 +696,29 @@ function ShowsSection({ title, shows, isMobile }: { title: string; shows: Show[]
   );
 }
 
-function ShowsPage() {
+// Map a server PortalShow (no money) → the display row. Date formatted, time/
+// location fall back to "—".
+function toShowRow(s: PortalShow): Show {
+  return { name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status };
+}
+
+function ShowsPage({ summary, loadState }: { summary: ShalevSummary | null; loadState: LoadState }) {
   const isMobile = useIsMobile();
+
+  if (loadState === "loading") {
+    return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
+  }
+  if (loadState === "error") {
+    return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון הופעות כרגע</div>;
+  }
+
+  const upcoming = (summary?.shows.upcoming ?? []).map(toShowRow);
+  const done     = (summary?.shows.done ?? []).map(toShowRow);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
-      <ShowsSection title="הופעות קרובות" shows={SHOWS_UPCOMING} isMobile={isMobile} />
-      <ShowsSection title="הופעות שבוצעו" shows={SHOWS_DONE} isMobile={isMobile} />
+      <ShowsSection title="הופעות קרובות" shows={upcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" />
+      <ShowsSection title="הופעות שבוצעו" shows={done} isMobile={isMobile} emptyText="אין עדיין הופעות שבוצעו" />
     </div>
   );
 }
@@ -1059,7 +1100,7 @@ const pbtn: React.CSSProperties = {
 };
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, musicRows, loadState }: { onOpenMusic: () => void; musicRows: LibRow[]; loadState: "loading" | "ready" | "error" }) {
+function HomeDashboard({ onOpenMusic, musicRows, loadState, summary, summaryState }: { onOpenMusic: () => void; musicRows: LibRow[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
@@ -1073,11 +1114,15 @@ function HomeDashboard({ onOpenMusic, musicRows, loadState }: { onOpenMusic: () 
         </div>
         <div className="rap-acts">
           <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" cta="פרטים" link="יומן מלא ←" />
-          {SHOWS.length > 0 ? (
-            <ActionCard icon="🎤" title="הופעות קרובות" body={SHOWS[0].name} sub={`${SHOWS[0].date} · ${SHOWS[0].dow} · ${SHOWS[0].doors}`} cta="פרטים" link={SHOWS.length > 1 ? "לכל ההופעות ←" : "יומן מלא ←"} />
-          ) : (
-            <ActionCard icon="🎤" title="הופעות קרובות" body="אין הופעות קרובות כרגע" cta="יומן מלא" />
-          )}
+          {(() => {
+            const next  = summary?.shows.upcoming?.[0];
+            const total = summary?.shows.upcoming?.length ?? 0;
+            return next ? (
+              <ActionCard icon="🎤" title="הופעות קרובות" body={next.name} sub={[fmtShowDate(next.date), next.startTime, next.location].filter(Boolean).join(" · ")} cta="פרטים" link={total > 1 ? "לכל ההופעות ←" : "יומן מלא ←"} />
+            ) : (
+              <ActionCard icon="🎤" title="הופעות קרובות" body={summaryState === "loading" ? "טוען…" : "אין הופעות קרובות כרגע"} cta="יומן מלא" />
+            );
+          })()}
         </div>
       </div>
 
@@ -1113,21 +1158,29 @@ function HomeDashboard({ onOpenMusic, musicRows, loadState }: { onOpenMusic: () 
           </div>
         </SectionCard>
 
-        {/* מאזן (artist-only: income / expenses / balance — NO split, NO debt) */}
-        <SectionCard title="מאזן" link="לכל הדוחות הפיננסיים ←">
+        {/* מאזן (artist-only, REAL: paid/expected show fees — NO split, NO expenses source) */}
+        <SectionCard title="מאזן">
           <div style={{ padding: "14px 18px 18px" }}>
-            <BalanceRow label="הכנסות שלי" value="₪10,450" color={GREEN} icon="↑" />
-            <BalanceRow label="הוצאות שלי" value="₪2,130"  color={TEXT}  icon="↓" />
-            {/* Net balance — highlighted */}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 12,
-              padding: "13px 14px", borderRadius: 13,
-              background: "linear-gradient(180deg, rgba(220,38,38,0.12), rgba(220,38,38,0.04))",
-              border: `1px solid ${BRAND}44`,
-            }}>
-              <span style={{ fontSize: 13, color: "#E8B7B7", fontWeight: 700 }}>מאזן נוכחי</span>
-              <span style={{ fontSize: 22, fontWeight: 900, color: "#FF6B6B", direction: "ltr" }}>₪8,320</span>
-            </div>
+            {summaryState !== "ready" || !summary?.balance?.hasData ? (
+              <div style={{ padding: "18px 4px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>
+                {summaryState === "loading" ? "טוען…" : "אין עדיין נתונים כספיים"}
+              </div>
+            ) : (
+              <>
+                <BalanceRow label="שולם לי" value={fmtMoney(summary.balance.paidTotal, summary.balance.currency)} color={GREEN} icon="↑" />
+                <BalanceRow label="צפוי לי" value={fmtMoney(summary.balance.expectedTotal, summary.balance.currency)} color={TEXT} icon="↓" />
+                {/* Net balance = money actually received — highlighted */}
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 12,
+                  padding: "13px 14px", borderRadius: 13,
+                  background: "linear-gradient(180deg, rgba(220,38,38,0.12), rgba(220,38,38,0.04))",
+                  border: `1px solid ${BRAND}44`,
+                }}>
+                  <span style={{ fontSize: 13, color: "#E8B7B7", fontWeight: 700 }}>מאזן נוכחי</span>
+                  <span style={{ fontSize: 22, fontWeight: 900, color: "#FF6B6B", direction: "ltr" }}>{fmtMoney(summary.balance.paidTotal, summary.balance.currency)}</span>
+                </div>
+              </>
+            )}
           </div>
         </SectionCard>
       </div>
