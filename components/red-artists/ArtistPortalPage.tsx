@@ -1357,30 +1357,10 @@ function clearAvatarEdit() {
   try { localStorage.removeItem(AVATAR_EDIT_KEY); } catch { /* ignore */ }
 }
 
-// The ORIGINAL (pre-crop) image, kept in the browser ONLY (localStorage — no DB,
-// no Dropbox, no endpoint change). Re-opening the editor edits THIS original at
-// the saved zoom/pan, so the saved crop is applied to the true source instead of
-// to the already-cropped avatar (which would double-crop). Guarded for the ~5MB
-// quota: an over-large original is skipped and the editor falls back to the
-// avatar image (the pre-existing behaviour). No SSR access (client handlers only).
-const AVATAR_ORIG_KEY = "red-artists:shalev-tasama:profile-image-original";
-function loadAvatarOriginal(): string | null {
-  try { return localStorage.getItem(AVATAR_ORIG_KEY); } catch { return null; }
-}
-function saveAvatarOriginal(dataUrl: string) {
-  try {
-    if (dataUrl.length > 3_800_000) { localStorage.removeItem(AVATAR_ORIG_KEY); return; }
-    localStorage.setItem(AVATAR_ORIG_KEY, dataUrl);
-  } catch { /* quota / disabled — fall back to no stored original */ }
-}
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload  = () => resolve(String(fr.result));
-    fr.onerror = () => reject(fr.error);
-    fr.readAsDataURL(file);
-  });
-}
+// What the editor hands back on save: the crop params for the exported avatar,
+// plus (only for a freshly picked image) the untouched original File to store in
+// Dropbox as the re-editing source. Re-crop of an existing image → originalFile null.
+type SaveMeta = { zoom: number; offset: { x: number; y: number }; originalFile: File | null; originalFileName: string | null };
 
 function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
   const [path, setPath]   = useState<string | null>(avatarPathCache);
@@ -1416,23 +1396,31 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
     if (!file) return;
     if (!AVATAR_MIME.includes(file.type)) { notify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
     if (file.size > 5 * 1024 * 1024)      { notify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
-    // New image → its own crop: forget the previous crop and remember this
-    // original so a later re-open edits the true source (not the baked crop).
+    // New image → its own crop (defaults). The untouched original is uploaded to
+    // Dropbox on save, so a later re-open (any device) edits the true source.
     clearAvatarEdit();
-    void readFileAsDataUrl(file).then(saveAvatarOriginal).catch(() => {});
     setEditing({ file });
   }
 
   // Upload the cropped blob (from the editor's "שמירה") to the existing endpoint.
   // Returns true on success. Always resolves (30s abort timeout) so the editor
   // can never hang on "שומר…". Real errors are logged to the console.
-  async function doUpload(blob: Blob): Promise<boolean> {
+  async function doUpload(blob: Blob, meta: SaveMeta): Promise<boolean> {
     setBusy(true);
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 30000);
+    const to = setTimeout(() => ctrl.abort(), 45000); // two uploads (avatar + maybe the original)
     try {
       const fd = new FormData();
-      fd.append("file", blob, "avatar.jpg");
+      fd.append("avatar", blob, "avatar.jpg");
+      fd.append("zoom", String(meta.zoom));
+      fd.append("posX", String(meta.offset.x));
+      fd.append("posY", String(meta.offset.y));
+      // Only a freshly picked/replaced image ships the original (server keeps the
+      // existing original on a plain re-crop).
+      if (meta.originalFile) {
+        fd.append("original", meta.originalFile, meta.originalFileName ?? meta.originalFile.name);
+        if (meta.originalFileName) fd.append("originalFileName", meta.originalFileName);
+      }
       const res  = await fetch("/api/red-artists/profile-image", { method: "POST", body: fd, signal: ctrl.signal });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
@@ -1508,7 +1496,7 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
           initialUrl={editing.url}
           onNotify={notify}
           onCancel={() => setEditing(null)}
-          onSave={async blob => { const ok = await doUpload(blob); if (ok) setEditing(null); return ok; }}
+          onSave={async (blob, meta) => { const ok = await doUpload(blob, meta); if (ok) setEditing(null); return ok; }}
         />
       )}
       {toast && typeof document !== "undefined" && createPortal(
@@ -1544,7 +1532,7 @@ function drawAvatar(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: 
 
 function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   initialFile?: File; initialUrl?: string;
-  onNotify: (m: string) => void; onCancel: () => void; onSave: (blob: Blob) => Promise<boolean>;
+  onNotify: (m: string) => void; onCancel: () => void; onSave: (blob: Blob, meta: SaveMeta) => Promise<boolean>;
 }) {
   const isMobile = useIsMobile();
   const D = isMobile ? 236 : 260;
@@ -1552,14 +1540,16 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   const imgRef    = useRef<HTMLImageElement | null>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
   const dragRef   = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
-  // Restore the saved zoom/pan ONLY on the first load of an EXISTING image
-  // (opened via initialUrl, no picked file). A freshly picked/replaced file
-  // always starts from defaults.
-  const applySavedRef = useRef(!initialFile);
-  // Existing-image edit: prefer the stored ORIGINAL so the saved crop is applied
-  // to the true source (no double-crop). Fall back to the avatar URL when no
-  // original was stored (an avatar uploaded before this feature existed).
-  const initialSrc = initialFile ? null : (loadAvatarOriginal() ?? initialUrl ?? null);
+  // The crop to apply when the NEXT image finishes loading (null = defaults).
+  // Seeded from the localStorage cache for an instant open; the Dropbox GET below
+  // then overrides it with the source-of-truth crop + the true original image, so
+  // re-editing works from ANY device (localStorage is only a cache).
+  const cropToApplyRef = useRef<{ zoom: number; position: { x: number; y: number } } | null>(
+    initialFile ? null : loadAvatarEdit()
+  );
+  // Instant fallback source = the current avatar (always fresh). The Dropbox GET
+  // below swaps in the true ORIGINAL for editing (source of truth, any device).
+  const initialSrc = initialFile ? null : (initialUrl ?? null);
   const [file, setFile]           = useState<File | null>(initialFile ?? null);
   const [displaySrc, setDisplay]  = useState<string | null>(initialSrc);
   const [loaded, setLoaded]       = useState(false);
@@ -1586,19 +1576,53 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     img.crossOrigin = "anonymous";
     img.onload  = () => {
       imgRef.current = img;
-      // Existing-image first load → restore last saved zoom/pan; otherwise defaults.
-      const saved = applySavedRef.current ? loadAvatarEdit() : null;
-      applySavedRef.current = false;
-      if (saved) { setZoom(saved.zoom); setOffset(clampAvatarOffset(saved.position, img, D, saved.zoom)); }
-      else       { setZoom(1); setOffset({ x: 0, y: 0 }); }
+      // Apply the pending crop (localStorage cache or the Dropbox truth); else defaults.
+      const crop = cropToApplyRef.current;
+      cropToApplyRef.current = null; // consume once
+      if (crop) { setZoom(crop.zoom); setOffset(clampAvatarOffset(crop.position, img, D, crop.zoom)); }
+      else      { setZoom(1); setOffset({ x: 0, y: 0 }); }
       setLoaded(true);
     };
-    img.onerror = () => { imgRef.current = null; setLoaded(false); onNotify("טעינת התמונה נכשלה — נסה להעלות תמונה חדשה"); };
+    img.onerror = () => {
+      // A stored original that no longer exists → fall back to the avatar image once.
+      if (initialUrl && displaySrc !== initialUrl) { cropToApplyRef.current = null; setDisplay(initialUrl); return; }
+      imgRef.current = null; setLoaded(false); onNotify("טעינת התמונה נכשלה — נסה להעלות תמונה חדשה");
+    };
     img.src = displaySrc;
     return () => { img.onload = null; img.onerror = null; };
     // onNotify intentionally omitted (identity changes each parent render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displaySrc]);
+
+  // Source of truth = Dropbox (works from any device). For an existing-image
+  // edit, load the real ORIGINAL + last crop from the server and apply them —
+  // overriding the instant localStorage cache. READ-ONLY GET; no writes.
+  useEffect(() => {
+    if (initialFile) return; // a freshly picked file has no remote source
+    let alive = true;
+    fetch("/api/red-artists/profile-image")
+      .then(r => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.ok) return;
+        const crop = (d.editor && typeof d.editor.zoom === "number" && d.editor.position)
+          ? { zoom: d.editor.zoom as number, position: d.editor.position as { x: number; y: number } }
+          : null;
+        if (crop) { try { saveAvatarEdit(crop.zoom, crop.position); } catch { /* ignore */ } } // refresh cache
+        if (d.original?.url) {
+          // Switch to the true original → the load effect re-applies the crop on load.
+          cropToApplyRef.current = crop;
+          setDisplay(d.original.url as string);
+        } else if (crop) {
+          // No stored original (legacy) but we have a crop → apply to the current image.
+          const img = imgRef.current;
+          if (img) { setZoom(crop.zoom); setOffset(clampAvatarOffset(crop.position, img, D, crop.zoom)); }
+          else cropToApplyRef.current = crop;
+        }
+      })
+      .catch(() => { /* keep the instant local/avatar fallback */ });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Redraw the live preview.
   useEffect(() => {
@@ -1634,9 +1658,8 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     if (!f) return;
     if (!AVATAR_MIME.includes(f.type)) { onNotify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
     if (f.size > 5 * 1024 * 1024)      { onNotify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
-    applySavedRef.current = false; // a new/replaced image opens at defaults, not the old crop
+    cropToApplyRef.current = null; // a new/replaced image opens at defaults, not the old crop
     clearAvatarEdit();
-    void readFileAsDataUrl(f).then(saveAvatarOriginal).catch(() => {});
     setFile(f);
   };
 
@@ -1663,8 +1686,10 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     setSaving(true);
     try {
       const blob = await renderBlob(img);
-      const ok = await onSave(blob);          // parent uploads; closes the editor on success
-      if (ok) saveAvatarEdit(zoom, offset);   // remember this zoom/pan for the next open (localStorage, no DB)
+      // originalFile only for a freshly picked/replaced image → the server stores
+      // it as the re-editing source; a plain re-crop keeps the existing original.
+      const ok = await onSave(blob, { zoom, offset, originalFile: file, originalFileName: file?.name ?? null });
+      if (ok) saveAvatarEdit(zoom, offset);   // refresh the localStorage cache (Dropbox is the source of truth)
       else onNotify("השמירה נכשלה, נסה שוב");
     } catch (e) {
       console.error("[avatar-editor] save failed:", e);
