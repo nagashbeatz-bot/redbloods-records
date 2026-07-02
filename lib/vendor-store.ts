@@ -175,6 +175,7 @@ export async function createVictorWork(
 export async function updateVictorWork(
   id: string,
   fields: Partial<{
+    title:            string | null;
     status:           VictorStatus;
     workState:        VictorWorkState | null;
     outcome:          VictorOutcome   | null;
@@ -192,6 +193,9 @@ export async function updateVictorWork(
   }>
 ): Promise<void> {
   const dbFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  // Victor-facing work title (owner-only edit). Blank → null so display falls
+  // back to the linked project's name. Never touches projects.name / project_id.
+  if ("title" in fields) dbFields.title = (fields.title ?? "").toString().trim() || null;
   if ("status" in fields) {
     dbFields.status = fields.status;
     // Keep completion date in sync with status (single source of truth):

@@ -70,6 +70,12 @@ function currentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+// Victor-facing work name: the separate work title if set, else the linked
+// project's name (display only — never changes projects.name).
+function victorWorkName(w: { title?: string | null; projectName: string }): string {
+  return (w.title && w.title.trim()) ? w.title : w.projectName;
+}
+
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   "פעיל":         { bg: "rgba(245,158,11,0.12)",  color: AMBER  },
   "הושלם":        { bg: "rgba(16,185,129,0.12)",  color: GREEN  },
@@ -733,6 +739,12 @@ function VictorProjectDrawer({
   const [updating, setUpdating] = useState(false);
   const [notes, setNotes] = useState(work.notes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
+  // Victor-facing work title — owner-only edit; local copy so the drawer updates
+  // instantly. Blank falls back to the project name for display.
+  const [effectiveTitle, setEffectiveTitle] = useState<string>(work.title ?? "");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [effectiveFolder, setEffectiveFolder] = useState<string | null>(work.dropboxFolder ?? null);
@@ -784,6 +796,21 @@ function VictorProjectDrawer({
       onRefresh?.();
     } finally {
       setUpdating(false);
+    }
+  }
+
+  // Owner-only: save the Victor-facing work title (blank → null → falls back to
+  // the project name). Never touches projects.name / project_id.
+  async function saveTitle() {
+    if (savingTitle) return;
+    setSavingTitle(true);
+    const next = titleDraft.trim();
+    try {
+      await patchWork({ title: next || null });
+      setEffectiveTitle(next);
+      setEditingTitle(false);
+    } finally {
+      setSavingTitle(false);
     }
   }
 
@@ -1069,21 +1096,25 @@ function VictorProjectDrawer({
               color: TEXT2, fontSize: 13, lineHeight: 1, fontFamily: "inherit",
               fontWeight: 700,
             }}>✕</button>
-            {work.projectId ? (
-              <button
-                onClick={() => router.push(`/projects?open=${work.projectId}`)}
-                style={{
-                  background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`,
-                  color: PURPLE, fontSize: 11, fontWeight: 800,
-                  padding: "6px 14px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
-                  letterSpacing: "0.03em",
-                }}
-              >
-                {t("drawer.openInProjects")}
-              </button>
-            ) : (
-              <span style={{ fontSize: 11, color: MUTED }}>{t("drawer.noLinkedProject")}</span>
-            )}
+            {/* Project link is OWNER-only — Victor never gets a way into the
+                original project, just the clean work name. */}
+            {isOwner ? (
+              work.projectId ? (
+                <button
+                  onClick={() => router.push(`/projects?open=${work.projectId}`)}
+                  style={{
+                    background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`,
+                    color: PURPLE, fontSize: 11, fontWeight: 800,
+                    padding: "6px 14px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  {t("drawer.openInProjects")}
+                </button>
+              ) : (
+                <span style={{ fontSize: 11, color: MUTED }}>{t("drawer.noLinkedProject")}</span>
+              )
+            ) : null}
           </div>
 
           {/* Row 2: music icon + project name */}
@@ -1096,13 +1127,37 @@ function VictorProjectDrawer({
               fontSize: 20,
             }}>🎵</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: 20, fontWeight: 900, color: TEXT,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                letterSpacing: "-0.02em", lineHeight: 1.15, marginBottom: 4,
-              }}>
-                {work.projectName}
-              </div>
+              {editingTitle ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <input
+                    autoFocus
+                    value={titleDraft}
+                    onChange={e => setTitleDraft(e.target.value)}
+                    placeholder={work.projectName}
+                    onKeyDown={e => { if (e.key === "Enter") saveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
+                    style={{ ...WT_INPUT, flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700 }}
+                  />
+                  <button onClick={saveTitle} disabled={savingTitle} title={t("drawer.confirm")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: "none", background: savingTitle ? MUTED : GREEN, color: "#fff", fontSize: 14, cursor: savingTitle ? "default" : "pointer", fontFamily: "inherit" }}>✓</button>
+                  <button onClick={() => setEditingTitle(false)} disabled={savingTitle} title={t("drawer.cancel")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.05)", color: TEXT2, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <div style={{
+                    fontSize: 20, fontWeight: 900, color: TEXT,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    letterSpacing: "-0.02em", lineHeight: 1.15, minWidth: 0,
+                  }}>
+                    {effectiveTitle.trim() || work.projectName}
+                  </div>
+                  {isOwner && (
+                    <button onClick={() => { setTitleDraft(effectiveTitle); setEditingTitle(true); }} title={t("drawer.editTitle")} style={{ flexShrink: 0, background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", padding: 2, lineHeight: 1 }}>✎</button>
+                  )}
+                </div>
+              )}
+              {/* Owner sees the linked project explicitly; Victor does not. */}
+              {isOwner && effectiveTitle.trim() && work.projectId && (
+                <div style={{ fontSize: 11.5, color: TEXT2, marginBottom: 6 }}>{t("drawer.linkedProject")}: {work.projectName}</div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, color: TEXT2, fontWeight: 500 }}>{work.artist || "—"}</span>
                 <span style={{ color: BDR2, fontSize: 10 }}>·</span>
@@ -1971,7 +2026,7 @@ export default function VictorProfilePage() {
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          <span style={{ marginLeft: 4 }}>🎵</span>{w.projectName}
+                          <span style={{ marginLeft: 4 }}>🎵</span>{victorWorkName(w)}
                         </div>
                         <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>
                           {(w.artist || "—")}{w.internalDeadline ? ` · ${fmtDate(w.internalDeadline)}` : ""}
@@ -2038,7 +2093,7 @@ export default function VictorProfilePage() {
                           padding: "11px 14px", fontSize: 13, fontWeight: 600, color: TEXT,
                           maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
-                          <span style={{ marginLeft: 4 }}>🎵</span>{w.projectName}
+                          <span style={{ marginLeft: 4 }}>🎵</span>{victorWorkName(w)}
                         </td>
                         <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>
                           {w.artist || "—"}

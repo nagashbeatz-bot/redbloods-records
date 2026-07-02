@@ -213,8 +213,10 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
   const [saving,     setSaving]    = useState(false);
   const [error,      setError]     = useState<string | null>(null);
   const [deadline,   setDeadline]  = useState<string>("");
+  // Victor-only work title (display name at Victor); does NOT change the project.
+  const [victorTitle, setVictorTitle] = useState<string>("");
 
-  function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); setDeadline(""); }
+  function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); setDeadline(""); setVictorTitle(""); }
 
   function buildPayload() {
     const base = { projectId, actionType: "sent", actionDate: new Date().toISOString().slice(0, 10) };
@@ -258,14 +260,24 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
           const workGet = await fetch(`/api/vendor/victor/work?projectId=${projectId}`);
           const workData = await workGet.json() as { ok: boolean; work: { id: string } | null };
 
+          const vTitle = victorTitle.trim();
           if (workData.ok && workData.work) {
             linkedWorkId = workData.work.id;
+            // Re-send with a name → update the Victor-only title on the existing work.
+            if (vTitle) {
+              await fetch(`/api/vendor/victor/work/${linkedWorkId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: vTitle }),
+              });
+            }
           } else {
             const workPost = await fetch("/api/vendor/victor/work", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 projectId,
+                title: vTitle || undefined,   // Victor-only display name; empty → falls back to project name
                 workState: "נשלח לויקטור",
                 sentDate: new Date().toISOString().split("T")[0],
                 status: "פעיל",
@@ -449,23 +461,45 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
             <ChoiceCard label="ויקטור" selected={selection === "ויקטור"} onClick={() => setSelection("ויקטור")} />
             {selection === "ויקטור" && (
-              <div style={{ marginTop: 4 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em" }}>
-                  דדליין פנימי (אופציונלי)
-                </label>
-                <input
-                  type="date"
-                  value={deadline}
-                  onChange={e => setDeadline(e.target.value)}
-                  style={{
-                    width: "100%", padding: "9px 12px", borderRadius: 10,
-                    background: "#0D0D10", border: `1px solid ${deadline ? PURPLE : "#2A2A35"}`,
-                    color: deadline ? "#C4B5FD" : MUTED,
-                    fontSize: 13, fontFamily: "inherit", outline: "none",
-                    boxSizing: "border-box" as const,
-                    colorScheme: "dark",
-                  }}
-                />
+              <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                    שם העבודה אצל Victor (אופציונלי)
+                  </label>
+                  <input
+                    type="text"
+                    value={victorTitle}
+                    onChange={e => setVictorTitle(e.target.value)}
+                    placeholder="לדוגמה: Michtav - Afro Drill 95BPM"
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 10,
+                      background: "#0D0D10", border: `1px solid ${victorTitle.trim() ? PURPLE : "#2A2A35"}`,
+                      color: "#EDE9FE", fontSize: 13, fontFamily: "inherit", outline: "none",
+                      boxSizing: "border-box" as const,
+                    }}
+                  />
+                  <div style={{ fontSize: 10.5, color: MUTED, marginTop: 5, lineHeight: 1.5 }}>
+                    השם הזה יוצג ל-Victor בלבד. הפרויקט המקורי יישאר מקושר ולא ישתנה.
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                    דדליין פנימי (אופציונלי)
+                  </label>
+                  <input
+                    type="date"
+                    value={deadline}
+                    onChange={e => setDeadline(e.target.value)}
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 10,
+                      background: "#0D0D10", border: `1px solid ${deadline ? PURPLE : "#2A2A35"}`,
+                      color: deadline ? "#C4B5FD" : MUTED,
+                      fontSize: 13, fontFamily: "inherit", outline: "none",
+                      boxSizing: "border-box" as const,
+                      colorScheme: "dark",
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>
