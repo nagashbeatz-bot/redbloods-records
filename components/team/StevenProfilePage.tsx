@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import type { SoundEngineerWork } from "@/lib/types";
@@ -272,17 +272,16 @@ export default function StevenProfilePage() {
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }
 
-  // Load Steven's real work records from the existing API.
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/sound-engineer?engineer=Steven")
-      .then(r => r.json())
-      .then((d: { ok: boolean; works?: SoundEngineerWork[] }) => {
-        if (alive && d.ok && d.works) setWorks(d.works.map(mapRecord));
-      })
-      .catch(() => {});
-    return () => { alive = false; };
+  // Load Steven's real work records from the existing API (also called after a
+  // create so a new job is shown from the SERVER truth, never a local phantom).
+  const reloadWorks = useCallback(async () => {
+    try {
+      const r = await fetch("/api/sound-engineer?engineer=Steven");
+      const d = (await r.json()) as { ok: boolean; works?: SoundEngineerWork[] };
+      if (d.ok && d.works) setWorks(d.works.map(mapRecord));
+    } catch { /* silent */ }
   }, []);
+  useEffect(() => { void reloadWorks(); }, [reloadWorks]);
 
   const openWork = works.find(w => w.id === openId) ?? null;
 
@@ -316,8 +315,6 @@ export default function StevenProfilePage() {
       notify(rtl ? "השמירה נכשלה" : "Save failed");
     }
   }
-  const addWork = (w: Work) => setWorks(prev => [w, ...prev]);
-
   // Delete a job: optimistic remove + close, then DELETE for DB-backed rows.
   // Local-only rows ("+ עבודה חדשה") are just dropped from state. Removes ONLY
   // sound_engineer_work here — the linked project_action is not touched (no action
@@ -471,7 +468,7 @@ export default function StevenProfilePage() {
       </div>
 
       {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} notify={notify} lang={lang} t={t} />}
-      {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onAdd={w => { addWork(w); notify(t.tJobAdded); }} lang={lang} t={t} />}
+      {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
     </div>
   );
@@ -661,8 +658,10 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
 }
 
 // ── "New Work for Steven" modal ──────────────────────────────────────────────────
-function NewWorkModal({ onClose, onAdd, lang, t }: { onClose: () => void; onAdd: (w: Work) => void; lang: Lang; t: T }) {
-  const [project, setProject]   = useState("");
+type ProjOpt = { id: string; name: string; artist: string };
+function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; onCreated: () => void; lang: Lang; t: T }) {
+  const [projects, setProjects]   = useState<ProjOpt[]>([]);
+  const [projectId, setProjectId] = useState("");
   const [workType, setWorkType] = useState<WorkType>("מיקס מאסטרינג");
   const [status, setStatus]     = useState<WorkStatus>("פעיל");
   const [startDate, setStartDate] = useState(() => isoDay(0));
@@ -670,6 +669,7 @@ function NewWorkModal({ onClose, onAdd, lang, t }: { onClose: () => void; onAdd:
   const [price, setPrice]       = useState("200");
   const [pay, setPay]           = useState<PayStatus>("לא שולם");
   const [err, setErr]           = useState<string | null>(null);
+  const [saving, setSaving]     = useState(false);
   const rtl = lang === "he";
 
   useEffect(() => {
@@ -678,16 +678,49 @@ function NewWorkModal({ onClose, onAdd, lang, t }: { onClose: () => void; onAdd:
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
 
-  function save() {
-    if (!project.trim()) { setErr(t.required); return; }
-    onAdd({
-      id: (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
-      project: project.trim(), workType, status,
-      startDate: startDate.trim() || "—", deadline: deadline.trim() || "—",
-      price: Number(price) || 0, pay,
-      amountPaid: pay === "שולם" ? Number(price) || 0 : 0, currency: "$", dbBacked: false,
-    });
-    onClose();
+  // Existing projects only — a sound_engineer_work row MUST link to a real
+  // project (the table has no free-text title; the display name comes from the
+  // linked project). So the picker never creates a projects row.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/projects")
+      .then(r => (r.ok ? r.json() : []))
+      .then((arr: ProjOpt[]) => { if (alive && Array.isArray(arr)) setProjects(arr.map(p => ({ id: p.id, name: p.name, artist: p.artist }))); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Persist to sound_engineer_work via the existing API, then let the parent
+  // refetch from the SERVER (no local phantom). engineer is always Steven; no
+  // Finance sync; never touches Viktor's vendor_project_work.
+  async function save() {
+    if (saving) return;
+    if (!projectId) { setErr(rtl ? "יש לבחור פרויקט קיים" : "Please select an existing project"); return; }
+    setErr(null); setSaving(true);
+    try {
+      const res = await fetch("/api/sound-engineer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          engineerName:     "Steven",
+          workType:         uiWorkTypeToDb(workType),
+          status:           uiStatusToDb(status),
+          agreedPrice:      Number(price) || 0,
+          amountPaid:       pay === "שולם" ? (Number(price) || 0) : 0,
+          sentDate:         startDate.trim() || null,
+          internalDeadline: deadline.trim() || null,
+          skipFinanceSync:  true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) { setErr((data as { error?: string }).error || (rtl ? "השמירה נכשלה" : "Save failed")); setSaving(false); return; }
+      onCreated();
+      onClose();
+    } catch {
+      setErr(rtl ? "השמירה נכשלה" : "Save failed");
+      setSaving(false);
+    }
   }
 
   const row = (label: string, node: React.ReactNode) => (
@@ -705,7 +738,18 @@ function NewWorkModal({ onClose, onAdd, lang, t }: { onClose: () => void; onAdd:
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {row(t.project, <StyledInput value={project} onChange={setProject} placeholder={t.projectName} />)}
+          {row(t.project, (
+            <select
+              value={projectId}
+              onChange={e => setProjectId(e.target.value)}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${BDR2}`, background: CARD2, color: TEXT, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", colorScheme: "dark", cursor: "pointer" }}
+            >
+              <option value="">{rtl ? "בחר פרויקט…" : "Select a project…"}</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}{p.artist ? ` — ${p.artist}` : ""}</option>
+              ))}
+            </select>
+          ))}
           {row(t.workType, <PillGroup value={workType} options={WORK_TYPES} labelFor={o => wtLabel(o, lang)} onChange={setWorkType} />)}
           {row(t.status, <PillGroup value={status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={setStatus} />)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -721,7 +765,7 @@ function NewWorkModal({ onClose, onAdd, lang, t }: { onClose: () => void; onAdd:
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={onClose} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.cancel}</button>
-          <button onClick={save} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>{t.save}</button>
+          <button onClick={save} disabled={saving} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1, fontFamily: "inherit", boxShadow: "0 2px 14px rgba(220,38,38,0.4)" }}>{saving ? "…" : t.save}</button>
         </div>
       </div>
     </div>
