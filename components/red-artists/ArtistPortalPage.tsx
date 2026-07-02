@@ -423,7 +423,7 @@ export default function ArtistPortalPage() {
         ) : tab === "המוזיקה שלי" ? (
           <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
         ) : tab === "לו״ז ועדכונים" ? (
-          <PortalHero title="הזמינות שלי" subtitle="זמינות לשבוע הבא" />
+          <PortalHero title="לו״ז ועדכונים" subtitle="הזמינות שלך, היומן השבועי ועדכוני הלייבל — במקום אחד" />
         ) : tab === "ההופעות שלי" ? (
           <PortalHero title="ההופעות שלי" subtitle="כל ההופעות הקרובות וההופעות שבוצעו במקום אחד" />
         ) : tab === "מאזן" ? (
@@ -436,7 +436,7 @@ export default function ArtistPortalPage() {
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} musicRows={libRows} loadState={libState} summary={summary} summaryState={summaryState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
-            : tab === "לו״ז ועדכונים" ? <AvailabilityPage />
+            : tab === "לו״ז ועדכונים" ? <SchedulePage />
             : tab === "מאזן" ? <BalancePage summary={summary} loadState={summaryState} />
             : <ComingSoon tab={tab} />}
         </div>
@@ -746,7 +746,54 @@ function computeNextWeek(): AvailDay[] {
   });
 }
 
-function AvailabilityPage() {
+// ── לו״ז ועדכונים tab — three clearly separated sections (UI only, no writes):
+//   1) הזמינות שלי — what Shalev SENDS us (existing local demo logic, unchanged)
+//   2) היומן השבועי שלי — what's already SCHEDULED for him (empty until a source)
+//   3) עדכונים מהלייבל — messages FROM the label (empty until a source)
+// These are three DIFFERENT things and are never mixed. No DB / API / Calendar.
+function SchedSection({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  const isMobile = useIsMobile();
+  return (
+    <div style={panel}>
+      <div style={{ padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+          <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>{title}</span>
+        </div>
+        {subtitle && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5, marginInlineStart: 16 }}>{subtitle}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SchedEmpty({ text }: { text: string }) {
+  return <div style={{ padding: "40px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>{text}</div>;
+}
+
+function SchedulePage() {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
+      {/* 1) availability — Shalev marks when he's free (existing logic, untouched) */}
+      <SchedSection title="הזמינות שלי" subtitle="בחר מתי אתה פנוי לשבוע הקרוב">
+        <AvailabilityBody />
+      </SchedSection>
+      {/* 2) weekly calendar — what's already scheduled for him (no source of truth yet) */}
+      <SchedSection title="היומן השבועי שלי" subtitle="כל מה שכבר נקבע לך השבוע">
+        <SchedEmpty text="אין אירועים מתוכננים השבוע" />
+      </SchedSection>
+      {/* 3) label updates (no source of truth yet) */}
+      <SchedSection title="עדכונים מהלייבל">
+        <SchedEmpty text="עדיין אין עדכונים חדשים" />
+      </SchedSection>
+    </div>
+  );
+}
+
+// Availability picker (7 days + send). UI-only local draft; "שמור" commits to
+// local state, "שלח" is a demo confirmation. No DB / no Calendar — logic unchanged.
+function AvailabilityBody() {
   const isMobile = useIsMobile();
   // Start with day names + blank dates (identical on server & client → no
   // hydration mismatch); fill the real dates after mount.
@@ -761,13 +808,8 @@ function AvailabilityPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* section header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-        <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-        <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>השבוע הבא</span>
-        <span style={{ fontSize: 12, color: MUTED, marginInlineStart: 4 }}>לחצו על יום כדי לעדכן זמינות</span>
-      </div>
+    <div style={{ padding: isMobile ? "14px 14px 16px" : "16px 22px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 12, color: MUTED }}>לחצו על יום כדי לעדכן זמינות</div>
 
       {/* 7-day grid — desktop 7 across, mobile 2 cols */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)", gap: isMobile ? 10 : 12 }}>
