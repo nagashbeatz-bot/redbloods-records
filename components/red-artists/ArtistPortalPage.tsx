@@ -1353,6 +1353,34 @@ function loadAvatarEdit(): AvatarEdit | null {
 function saveAvatarEdit(zoom: number, offset: { x: number; y: number }) {
   try { localStorage.setItem(AVATAR_EDIT_KEY, JSON.stringify({ zoom, position: offset })); } catch { /* ignore */ }
 }
+function clearAvatarEdit() {
+  try { localStorage.removeItem(AVATAR_EDIT_KEY); } catch { /* ignore */ }
+}
+
+// The ORIGINAL (pre-crop) image, kept in the browser ONLY (localStorage — no DB,
+// no Dropbox, no endpoint change). Re-opening the editor edits THIS original at
+// the saved zoom/pan, so the saved crop is applied to the true source instead of
+// to the already-cropped avatar (which would double-crop). Guarded for the ~5MB
+// quota: an over-large original is skipped and the editor falls back to the
+// avatar image (the pre-existing behaviour). No SSR access (client handlers only).
+const AVATAR_ORIG_KEY = "red-artists:shalev-tasama:profile-image-original";
+function loadAvatarOriginal(): string | null {
+  try { return localStorage.getItem(AVATAR_ORIG_KEY); } catch { return null; }
+}
+function saveAvatarOriginal(dataUrl: string) {
+  try {
+    if (dataUrl.length > 3_800_000) { localStorage.removeItem(AVATAR_ORIG_KEY); return; }
+    localStorage.setItem(AVATAR_ORIG_KEY, dataUrl);
+  } catch { /* quota / disabled — fall back to no stored original */ }
+}
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload  = () => resolve(String(fr.result));
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(file);
+  });
+}
 
 function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
   const [path, setPath]   = useState<string | null>(avatarPathCache);
@@ -1388,6 +1416,10 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
     if (!file) return;
     if (!AVATAR_MIME.includes(file.type)) { notify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
     if (file.size > 5 * 1024 * 1024)      { notify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
+    // New image → its own crop: forget the previous crop and remember this
+    // original so a later re-open edits the true source (not the baked crop).
+    clearAvatarEdit();
+    void readFileAsDataUrl(file).then(saveAvatarOriginal).catch(() => {});
     setEditing({ file });
   }
 
@@ -1524,8 +1556,12 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   // (opened via initialUrl, no picked file). A freshly picked/replaced file
   // always starts from defaults.
   const applySavedRef = useRef(!initialFile);
+  // Existing-image edit: prefer the stored ORIGINAL so the saved crop is applied
+  // to the true source (no double-crop). Fall back to the avatar URL when no
+  // original was stored (an avatar uploaded before this feature existed).
+  const initialSrc = initialFile ? null : (loadAvatarOriginal() ?? initialUrl ?? null);
   const [file, setFile]           = useState<File | null>(initialFile ?? null);
-  const [displaySrc, setDisplay]  = useState<string | null>(initialUrl ?? null);
+  const [displaySrc, setDisplay]  = useState<string | null>(initialSrc);
   const [loaded, setLoaded]       = useState(false);
   const [saving, setSaving]       = useState(false);
   const [zoom, setZoom]           = useState(1);
@@ -1599,6 +1635,8 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     if (!AVATAR_MIME.includes(f.type)) { onNotify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
     if (f.size > 5 * 1024 * 1024)      { onNotify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
     applySavedRef.current = false; // a new/replaced image opens at defaults, not the old crop
+    clearAvatarEdit();
+    void readFileAsDataUrl(f).then(saveAvatarOriginal).catch(() => {});
     setFile(f);
   };
 
