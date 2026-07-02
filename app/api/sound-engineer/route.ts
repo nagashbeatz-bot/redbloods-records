@@ -46,8 +46,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
-      projectId:        string;
-      engineerName:     string;
+      projectId?:       string | null;
+      workTitle?:       string | null;
+      title?:           string | null;
+      engineerName?:    string;
       workType?:        SoundEngineerWorkType;
       status?:          SoundEngineerStatus;
       agreedPrice?:     number;
@@ -60,11 +62,23 @@ export async function POST(req: NextRequest) {
       skipFinanceSync?: boolean;
     };
 
-    if (!body.projectId)    return NextResponse.json({ ok: false, error: "projectId חסר" },    { status: 400 });
-    if (!body.engineerName) return NextResponse.json({ ok: false, error: "engineerName חסר" }, { status: 400 });
+    // Hardening: engineerName must be a real, non-empty string (never trusted
+    // blindly). NOTE: this route legitimately serves multiple engineers —
+    // Steven, Bill and custom ("אחר") names from ProjectDrawer / MixSetupModal —
+    // so a hard [Steven,Bill] allowlist would break custom-engineer creation.
+    const engineerName = typeof body.engineerName === "string" ? body.engineerName.trim() : "";
+    if (!engineerName) return NextResponse.json({ ok: false, error: "engineerName חסר" }, { status: 400 });
 
-    const work = await createSoundEngineerWork(body.projectId, {
-      engineerName:     body.engineerName,
+    // A work is EITHER linked to an existing project OR standalone (free title).
+    const projectId = body.projectId || null;
+    const workTitle = (body.workTitle ?? body.title ?? "").trim();
+    if (!projectId && !workTitle) {
+      return NextResponse.json({ ok: false, error: "יש לבחור פרויקט קיים או להזין שם עבודה" }, { status: 400 });
+    }
+
+    const work = await createSoundEngineerWork(projectId, {
+      engineerName,
+      workTitle:        workTitle || null,
       workType:         body.workType,
       status:           body.status,
       agreedPrice:      body.agreedPrice,

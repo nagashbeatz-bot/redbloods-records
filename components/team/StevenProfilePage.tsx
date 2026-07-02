@@ -78,7 +78,7 @@ function fmtDbDate(d: string | null): string {
 function mapRecord(r: SoundEngineerWork): Work {
   return {
     id:         r.id,
-    project:    r.projectName,
+    project:    r.projectName || r.workTitle || "—",
     workType:   dbWorkTypeToUi(r.workType),
     status:     dbStatusToUi(r.status),
     startDate:  fmtDbDate(r.sentDate),
@@ -660,8 +660,10 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
 // ── "New Work for Steven" modal ──────────────────────────────────────────────────
 type ProjOpt = { id: string; name: string; artist: string };
 function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; onCreated: () => void; lang: Lang; t: T }) {
+  const [mode, setMode]           = useState<"linked" | "standalone">("linked");
   const [projects, setProjects]   = useState<ProjOpt[]>([]);
   const [projectId, setProjectId] = useState("");
+  const [workTitle, setWorkTitle] = useState("");
   const [workType, setWorkType] = useState<WorkType>("מיקס מאסטרינג");
   const [status, setStatus]     = useState<WorkStatus>("פעיל");
   const [startDate, setStartDate] = useState(() => isoDay(0));
@@ -678,9 +680,8 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
 
-  // Existing projects only — a sound_engineer_work row MUST link to a real
-  // project (the table has no free-text title; the display name comes from the
-  // linked project). So the picker never creates a projects row.
+  // Existing projects for the "linked" mode picker (owner-only endpoint). Never
+  // creates a projects row — a standalone work carries its own free-text title.
   useEffect(() => {
     let alive = true;
     fetch("/api/projects")
@@ -692,17 +693,19 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
 
   // Persist to sound_engineer_work via the existing API, then let the parent
   // refetch from the SERVER (no local phantom). engineer is always Steven; no
-  // Finance sync; never touches Viktor's vendor_project_work.
+  // Finance sync; never creates a project; never touches Viktor's vendor_project_work.
   async function save() {
     if (saving) return;
-    if (!projectId) { setErr(rtl ? "יש לבחור פרויקט קיים" : "Please select an existing project"); return; }
+    if (mode === "linked" && !projectId) { setErr(rtl ? "יש לבחור פרויקט קיים" : "Please select an existing project"); return; }
+    if (mode === "standalone" && !workTitle.trim()) { setErr(rtl ? "יש להזין שם עבודה" : "Please enter a work name"); return; }
     setErr(null); setSaving(true);
     try {
       const res = await fetch("/api/sound-engineer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId,
+          projectId:        mode === "linked" ? projectId : null,
+          workTitle:        mode === "standalone" ? workTitle.trim() : null,
           engineerName:     "Steven",
           workType:         uiWorkTypeToDb(workType),
           status:           uiStatusToDb(status),
@@ -738,18 +741,35 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {row(t.project, (
-            <select
-              value={projectId}
-              onChange={e => setProjectId(e.target.value)}
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${BDR2}`, background: CARD2, color: TEXT, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", colorScheme: "dark", cursor: "pointer" }}
-            >
-              <option value="">{rtl ? "בחר פרויקט…" : "Select a project…"}</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name}{p.artist ? ` — ${p.artist}` : ""}</option>
+          {/* mode: link to an existing project OR a standalone (project-less) work */}
+          <div style={{ display: "flex", gap: 6, background: CARD2, border: `1px solid ${BDR2}`, borderRadius: 12, padding: 4 }}>
+            {([["linked", rtl ? "קישור לפרויקט קיים" : "Link to project"], ["standalone", rtl ? "עבודה עצמאית" : "Standalone"]] as const).map(([m, lbl]) => {
+              const active = mode === m;
+              return (
+                <button key={m} type="button" onClick={() => { setMode(m); setErr(null); }} style={{
+                  flex: 1, padding: "8px 0", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 12.5, fontWeight: 800, background: active ? BRAND : "transparent", color: active ? "#fff" : TEXT2,
+                }}>{lbl}</button>
+              );
+            })}
+          </div>
+
+          {mode === "linked"
+            ? row(t.project, (
+                <select
+                  value={projectId}
+                  onChange={e => setProjectId(e.target.value)}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${BDR2}`, background: CARD2, color: TEXT, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", colorScheme: "dark", cursor: "pointer" }}
+                >
+                  <option value="">{rtl ? "בחר פרויקט…" : "Select a project…"}</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}{p.artist ? ` — ${p.artist}` : ""}</option>
+                  ))}
+                </select>
+              ))
+            : row(rtl ? "שם העבודה" : "Work name", (
+                <StyledInput value={workTitle} onChange={setWorkTitle} placeholder={rtl ? "לדוגמה: מיקס לסינגל" : "e.g. Mix for a single"} />
               ))}
-            </select>
-          ))}
           {row(t.workType, <PillGroup value={workType} options={WORK_TYPES} labelFor={o => wtLabel(o, lang)} onChange={setWorkType} />)}
           {row(t.status, <PillGroup value={status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={setStatus} />)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

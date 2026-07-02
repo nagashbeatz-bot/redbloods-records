@@ -37,14 +37,18 @@ function mapRow(
   row: Record<string, unknown>,
   projectMap: Map<string, { name: string; artist: string }>
 ): SoundEngineerWork {
-  const proj      = projectMap.get(row.project_id as string);
+  const projectId = (row.project_id as string | null) ?? null;
+  const workTitle = (row.work_title as string | null) ?? null;
+  const proj      = projectId ? projectMap.get(projectId) : undefined;
   const agreed    = Number(row.agreed_price ?? 0);
   const paid      = Number(row.amount_paid  ?? 0);
 
   return {
     id:                   row.id                    as string,
-    projectId:            row.project_id            as string,
-    projectName:          proj?.name   ?? "פרויקט לא ידוע",
+    projectId,
+    // Linked → project name; standalone → the free-text title.
+    projectName:          projectId ? (proj?.name ?? "פרויקט לא ידוע") : (workTitle ?? "עבודה עצמאית"),
+    workTitle,
     artist:               proj?.artist ?? "",
     engineerName:         row.engineer_name         as string,
     workType:             (row.work_type            as SoundEngineerWorkType) ?? "מיקס",
@@ -171,11 +175,17 @@ export async function listEngineerNames(): Promise<string[]> {
   return names.sort();
 }
 
-/** Create a new sound engineer work record (one per project). */
+/**
+ * Create a sound engineer work record — EITHER linked to an existing project
+ * (projectId) OR standalone with a free-text title (workTitle, project_id=null).
+ * Never creates a projects row. Finance sync happens ONLY for project-linked
+ * works (a standalone work never touches Finance).
+ */
 export async function createSoundEngineerWork(
-  projectId: string,
+  projectId: string | null,
   fields: {
     engineerName:     string;
+    workTitle?:       string | null;
     workType?:        SoundEngineerWorkType;
     status?:          SoundEngineerStatus;
     agreedPrice?:     number;
@@ -190,35 +200,47 @@ export async function createSoundEngineerWork(
     skipFinanceSync?: boolean;
   }
 ): Promise<SoundEngineerWork> {
-  // Get artist for transaction
-  const { data: proj } = await supabase
-    .from("projects")
-    .select("artist")
-    .eq("id", projectId)
-    .single();
+  const workTitle = (fields.workTitle ?? "").trim();
+  // Must link to a project OR carry a standalone title (never both empty).
+  if (!projectId && !workTitle) throw new Error("projectId או workTitle נדרש");
 
-  const artist      = (proj?.artist as string) ?? "";
+  // Artist only exists for project-linked works.
+  let artist = "";
+  if (projectId) {
+    const { data: proj } = await supabase
+      .from("projects")
+      .select("artist")
+      .eq("id", projectId)
+      .single();
+    artist = (proj?.artist as string) ?? "";
+  }
+
   const agreedPrice = fields.agreedPrice ?? 0;
   const amountPaid  = fields.amountPaid  ?? 0;
   const currency    = fields.currency    ?? "$";
   const workType    = fields.workType    ?? "מיקס";
 
+  // Build the insert; only add work_title for a standalone work so a plain
+  // project-linked insert stays valid even before the column migration runs.
+  const insertRow: Record<string, unknown> = {
+    project_id:        projectId ?? null,
+    engineer_name:     fields.engineerName,
+    work_type:         workType,
+    status:            fields.status          ?? "לא נשלח",
+    agreed_price:      agreedPrice,
+    currency,
+    amount_paid:       amountPaid,
+    sent_date:         fields.sentDate        ?? null,
+    internal_deadline: fields.internalDeadline ?? null,
+    files_link:        fields.filesLink        ?? null,
+    notes:             fields.notes            ?? "",
+    linked_transaction_id: null,
+  };
+  if (!projectId) insertRow.work_title = workTitle;
+
   const { data, error } = await supabase
     .from("sound_engineer_work")
-    .insert({
-      project_id:        projectId,
-      engineer_name:     fields.engineerName,
-      work_type:         workType,
-      status:            fields.status         ?? "לא נשלח",
-      agreed_price:      agreedPrice,
-      currency,
-      amount_paid:       amountPaid,
-      sent_date:         fields.sentDate        ?? null,
-      internal_deadline: fields.internalDeadline ?? null,
-      files_link:        fields.filesLink        ?? null,
-      notes:             fields.notes            ?? "",
-      linked_transaction_id: null,
-    })
+    .insert(insertRow)
     .select()
     .single();
 
@@ -227,8 +249,8 @@ export async function createSoundEngineerWork(
   const row = data as Record<string, unknown>;
   let linkedTransactionId: string | null = null;
 
-  // Sync expense transaction if price is set (unless caller opted out of Finance)
-  if (!fields.skipFinanceSync && agreedPrice > 0) {
+  // Finance sync ONLY for project-linked works (standalone never touches Finance).
+  if (projectId && !fields.skipFinanceSync && agreedPrice > 0) {
     linkedTransactionId = await syncTransaction({
       projectId,
       artist,
@@ -249,7 +271,7 @@ export async function createSoundEngineerWork(
     }
   }
 
-  const projectMap = new Map([[projectId, { name: "", artist }]]);
+  const projectMap = projectId ? new Map([[projectId, { name: "", artist }]]) : new Map<string, { name: string; artist: string }>();
   return mapRow(row, projectMap);
 }
 

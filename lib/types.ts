@@ -365,9 +365,10 @@ export const SOUND_ENGINEER_WORK_TYPES: SoundEngineerWorkType[] = [
 
 export interface SoundEngineerWork {
   id: string;
-  projectId: string;
-  projectName: string;           // joined from projects
-  artist: string;                // joined from projects
+  projectId: string | null;      // null for a standalone (project-less) work
+  projectName: string;           // linked project's name, else the standalone workTitle
+  workTitle: string | null;      // free-text title for a standalone work (project_id = null)
+  artist: string;                // joined from projects (empty for standalone)
   engineerName: string;          // "Bill" | "Steven" | custom
   workType: SoundEngineerWorkType;
   status: SoundEngineerStatus;
