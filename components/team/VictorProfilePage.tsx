@@ -2028,9 +2028,13 @@ export default function VictorProfilePage() {
                         <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           <span style={{ marginLeft: 4 }}>🎵</span>{victorWorkName(w)}
                         </div>
-                        <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>
-                          {(w.artist || "—")}{w.internalDeadline ? ` · ${fmtDate(w.internalDeadline)}` : ""}
-                        </div>
+                        {(isOwner || w.internalDeadline) && (
+                          <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>
+                            {isOwner
+                              ? `${w.artist || "—"}${w.internalDeadline ? ` · ${fmtDate(w.internalDeadline)}` : ""}`
+                              : fmtDate(w.internalDeadline)}
+                          </div>
+                        )}
                       </div>
                       <div style={{ flexShrink: 0 }}>
                         {isOwner ? (
@@ -2073,7 +2077,7 @@ export default function VictorProfilePage() {
                 <table style={{ width: "100%", minWidth: 540, borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: CARD2 }}>
-                      {[t("projects.colName"), t("projects.colArtist"), t("projects.colDeadline"), t("projects.colStatus"), t("projects.colAction")].map(h => (
+                      {[t("projects.colName"), ...(isOwner ? [t("projects.colArtist")] : []), t("projects.colDeadline"), t("projects.colStatus"), t("projects.colAction")].map(h => (
                         <th key={h} style={{
                           padding: "10px 14px", textAlign: "right",
                           fontSize: 10, fontWeight: 700, color: MUTED,
@@ -2095,9 +2099,11 @@ export default function VictorProfilePage() {
                         }}>
                           <span style={{ marginLeft: 4 }}>🎵</span>{victorWorkName(w)}
                         </td>
-                        <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>
-                          {w.artist || "—"}
-                        </td>
+                        {isOwner && (
+                          <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>
+                            {w.artist || "—"}
+                          </td>
+                        )}
                         <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
                           {fmtDate(w.internalDeadline)}
                         </td>
@@ -2198,7 +2204,8 @@ export default function VictorProfilePage() {
               )}
             </div>
 
-            {/* Files Card */}
+            {/* Files Card — owner-only overview; Victor still sees per-work files inside the drawer */}
+            {isOwner && (
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("files.title")}</span>
@@ -2239,6 +2246,7 @@ export default function VictorProfilePage() {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* ── Col 3: Salary (owner only — hidden from Victor in Phase 2A) ── */}
