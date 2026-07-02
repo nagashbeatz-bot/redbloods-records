@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
-import { useVictorLang, useVictorT, statusLabel, setVictorLang, VICTOR_LANGS, type VictorLang } from "@/lib/victor-i18n";
+import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
 
 const BRAND   = "#DC2626";
 const CARD    = "#111318";
@@ -48,12 +48,6 @@ function fmtDate(d: string | null) {
   try {
     return new Date(d).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" });
   } catch { return d; }
-}
-function monthLabel(ym: string) {
-  try {
-    const [y, m] = ym.split("-");
-    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("he-IL", { month: "long", year: "numeric" });
-  } catch { return ym; }
 }
 function prevMonth(ym: string) {
   const [y, m] = ym.split("-").map(Number);
@@ -1695,7 +1689,12 @@ export default function VictorProfilePage() {
   useEffect(() => {
     fetch("/api/me")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.role === "owner" || d?.role === "victor") setMyRole(d.role); })
+      .then((d) => {
+        if (d?.role === "owner" || d?.role === "victor") {
+          setMyRole(d.role);
+          rememberVictorRole(d.role); // cache role + coerce Victor off Hebrew (→ en)
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -1865,7 +1864,7 @@ export default function VictorProfilePage() {
               title={t("lang.label")}
               style={{ background: CARD, color: TEXT2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: isMobile ? "9px 12px" : "7px 10px", fontSize: isMobile ? 16 : 12, fontFamily: "inherit", cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", MozAppearance: "none", boxSizing: "border-box", minHeight: isMobile ? 42 : undefined }}
             >
-              {VICTOR_LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+              {allowedVictorLangs(myRole).map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
             </select>
           </div>
 
@@ -1885,7 +1884,7 @@ export default function VictorProfilePage() {
           }}>
             <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>‹</button>
             <div style={{ minWidth: 150, textAlign: "center" }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{monthLabel(month)}</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{victorMonthYear(month, lang)}</div>
               {loading && <div style={{ fontSize: 9, color: MUTED }}>{t("common.loading")}</div>}
             </div>
             <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>›</button>
@@ -2006,7 +2005,7 @@ export default function VictorProfilePage() {
                 <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{t("projects.title")}</span>
                 <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 7, background: `${PURPLE}18`, color: PURPLE, fontWeight: 700 }}>{work.length}</span>
               </div>
-              <span style={{ fontSize: 12, color: MUTED }}>{t("projects.in")}{monthLabel(month)}</span>
+              <span style={{ fontSize: 12, color: MUTED }}>{t("projects.in")}{victorMonthYear(month, lang)}</span>
             </div>
 
             {loading ? (
@@ -2254,7 +2253,7 @@ export default function VictorProfilePage() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>
-                  {t("salary.title")} {monthLabel(month)}
+                  {t("salary.title")} {victorMonthYear(month, lang)}
                 </div>
                 <span style={{ fontSize: 12, color: MUTED }}>✎</span>
               </div>
@@ -2314,7 +2313,7 @@ export default function VictorProfilePage() {
                         background: CARD2, border: `1px solid ${BDR}`,
                       }}>
                         <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{monthLabel(s.workMonth)}</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{victorMonthYear(s.workMonth, lang)}</div>
                           <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fmtDate(s.dueDate)}</div>
                         </div>
                         <div style={{ textAlign: "left" }}>
@@ -2425,7 +2424,7 @@ export default function VictorProfilePage() {
           direction: "rtl", boxSizing: "border-box",
         }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{t("salaryModal.title")}</div>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{monthLabel(month)}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{victorMonthYear(month, lang)}</div>
 
           {/* Amount */}
           <div style={{ marginBottom: 18 }}>

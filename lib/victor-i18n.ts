@@ -19,16 +19,54 @@ export const VICTOR_LANGS: { id: VictorLang; label: string }[] = [
 ];
 
 const KEY = "rb_victor_lang";
+const ROLE_KEY = "rb_victor_role"; // cached role so read() can pick the right default before paint
 const EVENT = "rb:victor-lang";
 const useIso = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
+// Victor's experience is English/Russian only (never Hebrew). Owner: he/en/ru.
 function read(): VictorLang {
   try {
     const v = localStorage.getItem(KEY);
-    return v === "en" || v === "ru" ? v : "he";
+    if (v === "en" || v === "ru") return v;
+    // "he" or absent → he for owner/unknown, en for Victor.
+    return localStorage.getItem(ROLE_KEY) === "victor" ? "en" : "he";
   } catch {
     return "he";
   }
+}
+
+/** Default language for a role: Victor → en, owner/unknown → he. */
+export function victorDefaultLang(role?: string | null): VictorLang {
+  return role === "victor" ? "en" : "he";
+}
+
+/** Languages the role may choose: Victor → en/ru only (no Hebrew), owner → all. */
+export function allowedVictorLangs(role?: string | null): { id: VictorLang; label: string }[] {
+  return role === "victor" ? VICTOR_LANGS.filter((l) => l.id !== "he") : VICTOR_LANGS;
+}
+
+/** Cache the role and, for Victor, coerce a Hebrew/blank saved language to en. */
+export function rememberVictorRole(role: "owner" | "victor"): void {
+  try {
+    localStorage.setItem(ROLE_KEY, role);
+    if (role === "victor") {
+      const v = localStorage.getItem(KEY);
+      if (v !== "en" && v !== "ru") setVictorLang("en"); // he or absent → en
+    }
+  } catch { /* ignore */ }
+}
+
+// Month names per language (Victor never sees Hebrew months).
+const MONTHS: Record<VictorLang, string[]> = {
+  he: ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"],
+  en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+  ru: ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
+};
+/** "YYYY-MM" → localized "Month YYYY". */
+export function victorMonthYear(ym: string, lang: VictorLang): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) return ym;
+  return `${MONTHS[lang][m - 1]} ${y}`;
 }
 
 export function setVictorLang(l: VictorLang): void {
@@ -136,6 +174,9 @@ const HE: Dict = {
   "drawer.openInProjects": "פתח בפרויקטים ↗",
   "drawer.linkedProject": "מקושר לפרויקט",
   "drawer.editTitle": "עריכת שם העבודה",
+  "common.signOut": "יציאה",
+  "common.supplier": "ספק",
+  "nav.main": "ראשי",
   "drawer.noLinkedProject": "אין פרויקט מקושר",
   "drawer.deadlineLabel": "📅 דד-ליין:",
   "drawer.noDeadline": "אין דד-ליין מוגדר",
@@ -305,6 +346,9 @@ const EN: Dict = {
   "drawer.openInProjects": "Open in Projects ↗",
   "drawer.linkedProject": "Linked project",
   "drawer.editTitle": "Edit work name",
+  "common.signOut": "Sign out",
+  "common.supplier": "Supplier",
+  "nav.main": "Main",
   "drawer.noLinkedProject": "No linked project",
   "drawer.deadlineLabel": "📅 Deadline:",
   "drawer.noDeadline": "No deadline set",
@@ -463,6 +507,9 @@ const RU: Dict = {
   "drawer.openInProjects": "Открыть в Проектах ↗",
   "drawer.linkedProject": "Связанный проект",
   "drawer.editTitle": "Изменить название работы",
+  "common.signOut": "Выйти",
+  "common.supplier": "Поставщик",
+  "nav.main": "Главная",
   "drawer.noLinkedProject": "Нет связанного проекта",
   "drawer.deadlineLabel": "📅 Дедлайн:",
   "drawer.noDeadline": "Дедлайн не задан",

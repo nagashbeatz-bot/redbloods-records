@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
+import { useVictorT } from "@/lib/victor-i18n";
 
 const MOBILE_TABS = [
   { href: "/dashboard",      label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
@@ -142,6 +143,7 @@ export default function MobileNav({
 }) {
   const pathname = usePathname();
   const role = useRole();
+  const vt = useVictorT(); // Victor sees his language; owner keeps Hebrew via role gates
   const [moreOpen, setMoreOpen] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
 
@@ -236,7 +238,7 @@ export default function MobileNav({
             }}
           >
             <span style={{ fontSize: 22, lineHeight: 1 }}>🚪</span>
-            יציאה
+            {vt("common.signOut")}
           </button>
         )}
       </nav>

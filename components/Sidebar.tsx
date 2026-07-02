@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { type ClientRole } from "@/lib/use-role";
 import { usePrivacyMode } from "@/lib/use-privacy";
+import { useVictorT } from "@/lib/victor-i18n";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -116,9 +117,13 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
   const [privacyHidden, togglePrivacy] = usePrivacyMode();
 
+  // Victor's chrome follows his language (en/ru); owner stays Hebrew.
+  const vt = useVictorT();
+  const isVictor = role === "victor";
+
   // Friendly display name by role (no DB / no profiles system).
   const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : "Redbloods";
-  const displaySub  = role === "owner" ? "מנהל מערכת" : role === "victor" ? "ספק" : "";
+  const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : "";
 
   // Full nav ONLY for owner; victor → minimal (his page); null/unknown → none.
   // role comes pre-hydrated from AppShell (cached before paint) so the owner's
@@ -180,7 +185,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
           fontSize: 9, fontWeight: 800, color: DIM,
           letterSpacing: "0.1em", textTransform: "uppercase",
           padding: "0 8px 10px",
-        }}>ראשי</div>
+        }}>{isVictor ? vt("nav.main") : "ראשי"}</div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {navMain.map(({ href, label, icon, iconColor }) => (
@@ -263,7 +268,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
         )}
         <button
           onClick={signOutAndRedirect}
-          title="יציאה"
+          title={isVictor ? vt("common.signOut") : "יציאה"}
           style={{
             fontSize: 9, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
             background: "rgba(255,255,255,0.05)",
@@ -271,7 +276,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
             color: SUB, fontWeight: 700, flexShrink: 0,
           }}
         >
-          יציאה
+          {isVictor ? vt("common.signOut") : "יציאה"}
         </button>
       </div>
     </aside>
