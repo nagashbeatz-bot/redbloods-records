@@ -501,7 +501,7 @@ function AudioPlayer({
           {playing ? "⏸" : "▶"}
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
             {name}
           </div>
           {/* Progress bar — click or drag to seek (larger hit area via padding) */}
@@ -598,7 +598,7 @@ function FileRow({
       >
         <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
           <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fileExt(name)}</div>
         </div>
         {/* Download button */}
@@ -698,9 +698,9 @@ function ReferenceCard({
           <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, padding: "2px 9px", borderRadius: 6, background: `${PURPLE}1F`, color: PURPLE }}>{t("ref.n", { n: index })}</span>
           <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(239,68,68,0.12)", color: "#F87171" }}>YouTube</span>
         </div>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || t("ref.n", { n: index })}</div>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refItem.title || t("ref.n", { n: index })}</div>
         <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", fontSize: 10.5, color: MUTED, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{refItem.url}</a>
-        {refItem.note && <div style={{ fontSize: 12, color: TEXT2, marginTop: 9, lineHeight: 1.85, whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" }}>{refItem.note}</div>}
+        {refItem.note && <div style={{ fontSize: 14, color: "#CFCFD6", marginTop: 9, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", textAlign: "start", unicodeBidi: "plaintext" }}>{refItem.note}</div>}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9, flexWrap: "wrap" }}>
           {vid ? (
             <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{t("ref.play")}</button>
@@ -1135,7 +1135,7 @@ function VictorProjectDrawer({
                     onChange={e => setTitleDraft(e.target.value)}
                     placeholder={work.projectName}
                     onKeyDown={e => { if (e.key === "Enter") saveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
-                    style={{ ...WT_INPUT, flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700 }}
+                    style={{ ...WT_INPUT, flex: 1, minWidth: 0, fontSize: isMobile ? 16 : 15, fontWeight: 700 }}
                   />
                   <button onClick={saveTitle} disabled={savingTitle} title={t("drawer.confirm")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: "none", background: savingTitle ? MUTED : GREEN, color: "#fff", fontSize: 14, cursor: savingTitle ? "default" : "pointer", fontFamily: "inherit" }}>✓</button>
                   <button onClick={() => setEditingTitle(false)} disabled={savingTitle} title={t("drawer.cancel")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.05)", color: TEXT2, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
@@ -1144,8 +1144,9 @@ function VictorProjectDrawer({
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <div style={{
                     fontSize: 20, fontWeight: 900, color: TEXT,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    letterSpacing: "-0.02em", lineHeight: 1.15, minWidth: 0,
+                    letterSpacing: "-0.02em", lineHeight: 1.2, minWidth: 0,
+                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                    overflow: "hidden", overflowWrap: "anywhere",
                   }}>
                     {effectiveTitle.trim() || work.projectName}
                   </div>
@@ -1236,7 +1237,7 @@ function VictorProjectDrawer({
                         rows={10}
                         autoFocus
                         placeholder={t("drawer.briefPlaceholder")}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 10, fontSize: isMobile ? 16 : 12.5, lineHeight: 1.7, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2, outline: "none", fontFamily: "inherit", resize: "vertical", direction: "rtl", boxSizing: "border-box" }}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 10, fontSize: isMobile ? 16 : 14, lineHeight: 1.6, background: CARD2, border: `1px solid ${BDR}`, color: TEXT, outline: "none", fontFamily: "inherit", resize: "vertical", textAlign: "start", unicodeBidi: "plaintext", boxSizing: "border-box" }}
                       />
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
                         <span style={{ fontSize: 10, color: MUTED }}>{briefDraft.length} {t("drawer.chars")}</span>
@@ -1248,7 +1249,7 @@ function VictorProjectDrawer({
                     </>
                   ) : (
                     effectiveBrief.trim() ? (
-                      <div style={{ fontSize: 13, lineHeight: 1.9, color: TEXT2, whiteSpace: "pre-wrap", maxHeight: 360, overflowY: "auto", direction: "rtl" }}>{effectiveBrief}</div>
+                      <div style={{ fontSize: isMobile ? 14.5 : 15, lineHeight: 1.65, color: "#DCDCE2", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 360, overflowY: "auto", textAlign: "start", unicodeBidi: "plaintext" }}>{effectiveBrief}</div>
                     ) : (
                       <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "28px 0", lineHeight: 1.7 }}>{isOwner ? t("drawer.briefEmptyOwner") : t("drawer.briefEmptyViewer")}</div>
                     )
