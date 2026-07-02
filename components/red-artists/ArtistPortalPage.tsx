@@ -392,6 +392,8 @@ export default function ArtistPortalPage() {
           <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
         ) : tab === "לו״ז ועדכונים" ? (
           <PortalHero title="הזמינות שלי" subtitle="זמינות לשבוע הבא" />
+        ) : tab === "מאזן" ? (
+          <PortalHero title="מאזן" subtitle="הכנסות, הוצאות והיסטוריית תשלומים" />
         ) : (
           <PortalHero title={tab} subtitle="האזור הזה יוצג בקרוב" />
         )}
@@ -400,6 +402,7 @@ export default function ArtistPortalPage() {
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} musicRows={libRows} loadState={libState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
             : tab === "לו״ז ועדכונים" ? <AvailabilityPage />
+            : tab === "מאזן" ? <BalancePage />
             : <ComingSoon tab={tab} />}
         </div>
       </div>
@@ -470,6 +473,110 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
     <div style={{ ...panel, padding: "56px 24px", textAlign: "center" }}>
       <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>🚧</div>
       <div style={{ fontSize: 14, color: TEXT2 }}>האזור הזה עדיין בבנייה — יעודכן בקרוב</div>
+    </div>
+  );
+}
+
+// ── מאזן (balance tab) — simple artist finance summary. UI ONLY, hardcoded demo.
+const BAL_INCOME_RED = "#F87171";
+const BAL_SUMMARY: { label: string; sub: string; amount: string; income: boolean }[] = [
+  { label: "הכנסות שהתקבלו", sub: "סה״כ התקבלו",   amount: "₪10,450", income: true  },
+  { label: "הוצאות ששולמו",  sub: "סה״כ שולמו",     amount: "₪2,130",  income: false },
+  { label: "הכנסות צפויות",   sub: "צפויות להתקבל",  amount: "₪3,600",  income: true  },
+  { label: "הוצאות צפויות",   sub: "צפויות לתשלום",  amount: "₪1,200",  income: false },
+];
+const BAL_HISTORY: { date: string; item: string; income: boolean; amount: string; done: boolean }[] = [
+  { date: "27.06.2026", item: "הופעה בלבונטין",     income: true,  amount: "₪2,500", done: true },
+  { date: "21.06.2026", item: "קליפ \"פתריוך\"",     income: false, amount: "₪1,400", done: true },
+  { date: "15.06.2026", item: "הכנסה מדיגיטל",       income: true,  amount: "₪850",   done: true },
+  { date: "09.06.2026", item: "ציוד / אולפן",        income: false, amount: "₪730",   done: true },
+  { date: "02.06.2026", item: "תמלוגים / השמעות",    income: true,  amount: "₪1,100", done: true },
+];
+
+function BalancePage() {
+  const isMobile = useIsMobile();
+  const histCols = "110px minmax(0, 1.6fr) 90px 100px 96px";
+  const histHeads = ["תאריך", "פריט", "סוג", "סכום", "סטטוס"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
+
+      {/* current balance */}
+      <div style={{
+        ...panel, padding: isMobile ? "26px 18px" : "34px 24px", textAlign: "center",
+        background: `radial-gradient(120% 140% at 50% -10%, rgba(220,38,38,0.20) 0%, rgba(220,38,38,0.05) 42%, #121012 74%), linear-gradient(180deg, #161617 0%, #111112 100%)`,
+        border: `1px solid rgba(220,38,38,0.30)`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 60px rgba(220,38,38,0.12), 0 14px 34px rgba(0,0,0,0.4)`,
+      }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT2 }}>מאזן נוכחי</div>
+        <div style={{ fontSize: isMobile ? 40 : 52, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", margin: "6px 0 4px", textShadow: "0 2px 22px rgba(220,38,38,0.35)" }}>₪8,320</div>
+        <div style={{ fontSize: 12.5, color: MUTED }}>הסכום זמין בחשבונך</div>
+      </div>
+
+      {/* 4 summary cards — income on the right (RTL) */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(2, 1fr)", gap: isMobile ? 10 : 16 }}>
+        {BAL_SUMMARY.map(c => {
+          const col = c.income ? GREEN : BAL_INCOME_RED;
+          return (
+            <div key={c.label} style={{ ...panel, padding: isMobile ? "16px 14px" : "20px 22px" }}>
+              <div style={{ fontSize: isMobile ? 13 : 14.5, fontWeight: 800, color: TEXT }}>{c.label}</div>
+              <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: col, direction: "ltr", textAlign: "start", marginTop: 8 }}>{c.amount}</div>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>{c.sub}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* payment history */}
+      <div style={panel}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+          <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>היסטוריית תשלומים</span>
+        </div>
+
+        {isMobile ? (
+          <div style={{ padding: "2px 0 6px" }}>
+            {BAL_HISTORY.map((h, i) => {
+              const col = h.income ? GREEN : BAL_INCOME_RED;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.item}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{h.date} · {h.income ? "הכנסה" : "הוצאה"}</div>
+                  </div>
+                  <div style={{ textAlign: "start", flexShrink: 0 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 900, color: col, direction: "ltr" }}>{h.amount}</div>
+                    <div style={{ fontSize: 10.5, color: col, marginTop: 3 }}>{h.income ? "התקבל" : "שולם"}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
+              {histHeads.map((h, i) => (
+                <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 0 || i === 1 ? "start" : "center" }}>{h}</div>
+              ))}
+            </div>
+            {BAL_HISTORY.map((h, i) => {
+              const col = h.income ? GREEN : BAL_INCOME_RED;
+              return (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, alignItems: "center", padding: "14px 24px", borderBottom: i < BAL_HISTORY.length - 1 ? `1px solid ${BDR}` : "none" }}>
+                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{h.date}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.item}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: col, textAlign: "center" }}>{h.income ? "הכנסה" : "הוצאה"}</div>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: col, direction: "ltr", textAlign: "center" }}>{h.amount}</div>
+                  <div style={{ textAlign: "center" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "4px 11px" }}>
+                      <span style={{ fontSize: 11 }}>✓</span>{h.income ? "התקבל" : "שולם"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
     </div>
   );
 }
