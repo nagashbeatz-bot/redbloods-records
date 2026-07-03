@@ -77,26 +77,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const dot       = file.name.lastIndexOf(".");
     const ext       = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : ""; // only the original extension is reused
 
-    // Label: use the provided one; if empty, auto "Mix N" from the existing
-    // version count. NEVER fall back to the original uploaded filename.
+    // Existing labels for this work — reject duplicates; pick the next free
+    // "Mix N" when no label was given. NEVER fall back to the uploaded filename.
+    const { data: existingRows } = await supabase
+      .from("mix_versions").select("label").eq("sound_engineer_work_id", workId);
+    const existingLabels = new Set((existingRows ?? []).map(r => (r.label as string)));
+
     let effectiveLabel = label;
     if (!effectiveLabel) {
-      const { count } = await supabase
-        .from("mix_versions")
-        .select("id", { count: "exact", head: true })
-        .eq("sound_engineer_work_id", workId);
-      effectiveLabel = `Mix ${(count ?? 0) + 1}`;
+      let n = 1;
+      while (existingLabels.has(`Mix ${n}`)) n++;
+      effectiveLabel = `Mix ${n}`;
+    } else if (existingLabels.has(effectiveLabel)) {
+      return NextResponse.json({ ok: false, error: "כבר קיימת גרסה בשם הזה" }, { status: 409 });
     }
 
-    // Clean physical name from the ORIGINAL project (PRIMARY artist) + label —
-    // never the uploaded filename, never work_title. Standalone works drop the
-    // empty artist/project parts.
-    const cleanBase = [primaryArtist(artist), projectName, effectiveLabel]
-      .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || "Mix";
+    // Clean, readable physical name (NO versionId): "{primaryArtist} - {project}
+    // - {label}.{ext}" — never the uploaded filename, never work_title. Standalone
+    // works drop the empty artist/project parts. Each label gets its own subfolder
+    // so names never collide across versions.
+    const safeLabel     = sanitizeFolder(effectiveLabel) || "Mix";
+    const cleanBase     = [primaryArtist(artist), projectName, effectiveLabel]
+      .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || safeLabel;
     const cleanFileName = ext ? `${cleanBase}.${ext}` : cleanBase;
 
     const folder      = mixVersionsFolder({ projectId, artist, projectName, workId });
-    const dropboxPath = `${folder}/${versionId}-${cleanFileName}`;
+    const dropboxPath = `${folder}/${safeLabel}/${cleanFileName}`;
 
     // ── Upload to Dropbox (token server-side; no share link) ──────────────────
     const { getDropboxToken } = await import("@/lib/dropbox-token");
@@ -107,7 +113,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       headers: {
         Authorization:     `Bearer ${token}`,
         "Content-Type":    "application/octet-stream",
-        "Dropbox-API-Arg": dropboxArg({ path: dropboxPath, mode: "add", autorename: true, mute: false }),
+        "Dropbox-API-Arg": dropboxArg({ path: dropboxPath, mode: "add", autorename: false, mute: false }),
       },
       body: buffer,
     });
