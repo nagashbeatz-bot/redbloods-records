@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
@@ -409,9 +409,9 @@ function NotesEditor({ value, placeholder, saveLabel, onSave }: {
         onFocus={() => setFocus(true)}
         onBlur={() => { setFocus(false); commit(); }}
         placeholder={placeholder}
-        rows={8}
+        rows={5}
         style={{
-          width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 210,
+          width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 128,
           background: CARD, color: TEXT, border: `1px solid ${focus ? BRAND : BDR2}`, borderRadius: 12,
           padding: "14px 16px", fontSize: 14, lineHeight: 1.8, fontFamily: "inherit", outline: "none",
           transition: "border-color .12s",
@@ -743,8 +743,8 @@ type VersionPlayerHandle = {
   seek: (sec: number) => void;
   playFrom: (sec: number) => void;
 };
-const VersionPlayer = forwardRef<VersionPlayerHandle, { url: string; title: string; shouldPlay: number; t: T }>(
-function VersionPlayer({ url, title, shouldPlay, t }, ref) {
+const VersionPlayer = forwardRef<VersionPlayerHandle, { url: string; title: string; shouldPlay: number; comments: MixComment[]; t: T }>(
+function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -753,39 +753,34 @@ function VersionPlayer({ url, title, shouldPlay, t }, ref) {
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [vol, setVol]           = useState(1);
 
   const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
 
-  // Imperative API for the parent (add comment at current time / jump to a time).
+  // Decorative waveform bars — a static visual motif, NOT real audio analysis.
+  const bars = useMemo(() => Array.from({ length: 76 }, (_, i) =>
+    0.2 + 0.8 * Math.abs(Math.sin(i * 0.7) * 0.6 + Math.sin(i * 0.23 + 1) * 0.4)
+  ), []);
+  const playedBars = Math.round((pct / 100) * bars.length);
+
   useImperativeHandle(ref, () => ({
     getCurrentTime: () => audioRef.current?.currentTime ?? 0,
     seek: (sec: number) => { const a = audioRef.current; if (a) { a.currentTime = sec; setCur(sec); } },
     playFrom: (sec: number) => { const a = audioRef.current; if (!a) return; a.currentTime = sec; setCur(sec); a.play().catch(() => setErr(true)); },
   }), []);
 
-  // Play when the parent bumps shouldPlay (>0). Runs on mount for a play-click
-  // selection, and on later bumps for replaying the same version.
-  useEffect(() => {
-    if (shouldPlay > 0) audioRef.current?.play().catch(() => setErr(true));
-  }, [shouldPlay]);
-
-  // Stop playback if this player unmounts (e.g. switching versions / closing).
+  useEffect(() => { if (shouldPlay > 0) audioRef.current?.play().catch(() => setErr(true)); }, [shouldPlay]);
   useEffect(() => { const a = audioRef.current; return () => { a?.pause(); }; }, []);
+  useEffect(() => { if (audioRef.current) audioRef.current.volume = vol; }, [vol]);
 
-  function toggle() {
-    const a = audioRef.current; if (!a || err) return;
-    if (a.paused) a.play().catch(() => setErr(true)); else a.pause();
-  }
-  function seekAt(clientX: number) {
-    const bar = barRef.current, a = audioRef.current;
-    if (!bar || !a || !dur) return;
-    const rect = bar.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    a.currentTime = ratio * dur; setCur(a.currentTime);
-  }
+  function toggle() { const a = audioRef.current; if (!a || err) return; if (a.paused) a.play().catch(() => setErr(true)); else a.pause(); }
+  function seekTo(sec: number) { const a = audioRef.current; if (!a || !dur) return; const s = Math.min(dur, Math.max(0, sec)); a.currentTime = s; setCur(s); }
+  function seekAt(clientX: number) { const bar = barRef.current; if (!bar || !dur) return; const rect = bar.getBoundingClientRect(); const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)); seekTo(ratio * dur); }
+
+  const tBtn: React.CSSProperties = { width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" };
 
   return (
-    <div style={{ padding: "16px 18px 18px" }}>
+    <div style={{ padding: "18px 20px 20px" }}>
       <audio
         ref={audioRef} src={url} preload="metadata"
         onLoadedMetadata={e => { setDur(e.currentTarget.duration || 0); setLoading(false); }}
@@ -796,48 +791,57 @@ function VersionPlayer({ url, title, shouldPlay, t }, ref) {
         onEnded={() => setPlaying(false)}
         onError={() => { setErr(true); setLoading(false); }}
       />
-      {/* Title + transport */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", borderRadius: 14,
-        background: `linear-gradient(135deg, ${BRAND}14 0%, rgba(255,255,255,0.02) 60%)`,
-        border: `1px solid ${BRAND}33`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04)`,
-      }}>
-        <button
-          onClick={toggle} disabled={err}
-          title={playing ? "Pause" : t.vPlay}
-          style={{
-            width: 46, height: 46, borderRadius: "50%", flexShrink: 0, border: "none",
-            background: err ? "#3A3A44" : `linear-gradient(145deg, ${BRAND}, #B91C1C)`,
-            color: "#fff", cursor: err ? "default" : "pointer",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            boxShadow: err ? "none" : `0 6px 18px ${BRAND}55`, transition: "transform .1s",
-          }}
-        >
-          {playing
-            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg>
-            : <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" style={{ marginInlineStart: 2 }}><path d="M8 5v14l11-7z"/></svg>}
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div title={title} style={{ fontSize: 14, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-          <div style={{ fontSize: 11, color: err ? RED : MUTED, marginTop: 2 }}>
-            {err ? t.vAudioError : loading ? t.vAudioLoading : "Steven"}
-          </div>
-        </div>
+
+      {/* Title */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+        <div title={title} style={{ fontSize: 19, fontWeight: 900, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ fontSize: 11, color: err ? RED : MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>{err ? t.vAudioError : loading ? t.vAudioLoading : ""}</div>
       </div>
-      {/* Progress */}
-      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, direction: "ltr" }}>
-        <span style={{ fontSize: 11, color: MUTED, fontVariantNumeric: "tabular-nums", minWidth: 32 }}>{fmtTime(cur)}</span>
+
+      {/* Waveform + comment markers (LTR) */}
+      <div style={{ direction: "ltr", position: "relative", marginTop: 14 }}>
         <div
           ref={barRef}
           onPointerDown={e => { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); setDragging(true); seekAt(e.clientX); }}
           onPointerMove={e => { if (dragging) seekAt(e.clientX); }}
           onPointerUp={e => { setDragging(false); try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch {} }}
-          style={{ flex: 1, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.08)", position: "relative", cursor: "pointer", touchAction: "none" }}
+          style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 84, cursor: "pointer", touchAction: "none" }}
         >
-          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, borderRadius: 999, background: `linear-gradient(90deg, ${BRAND}, #F87171)` }} />
-          <div style={{ position: "absolute", left: `${pct}%`, top: "50%", transform: "translate(-50%, -50%)", width: 14, height: 14, borderRadius: "50%", background: "#fff", boxShadow: `0 0 0 3px ${BRAND}66`, pointerEvents: "none" }} />
+          {bars.map((h, i) => (
+            <div key={i} style={{ flex: 1, minWidth: 2, height: `${Math.round(h * 100)}%`, borderRadius: 2, background: i < playedBars ? `linear-gradient(180deg, #F87171, ${BRAND})` : "rgba(255,255,255,0.12)" }} />
+          ))}
         </div>
-        <span style={{ fontSize: 11, color: MUTED, fontVariantNumeric: "tabular-nums", minWidth: 32, textAlign: "right" }}>{fmtTime(dur)}</span>
+        {dur > 0 && <div style={{ position: "absolute", top: -2, bottom: 0, left: `${pct}%`, width: 2, background: "#fff", opacity: 0.55, pointerEvents: "none" }} />}
+        {dur > 0 && comments.map((c, i) => {
+          const col  = COMMENT_COLORS[i % COMMENT_COLORS.length];
+          const left = Math.min(100, Math.max(0, (c.timestampSeconds / dur) * 100));
+          return (
+            <button key={c.id} title={`${fmtTime(c.timestampSeconds)} · ${c.commentText}`} onClick={() => seekTo(c.timestampSeconds)}
+              style={{ position: "absolute", top: -9, left: `${left}%`, transform: "translateX(-50%)", width: 20, height: 20, borderRadius: "50%", background: col, color: "#fff", border: `2px solid ${CARD}`, fontSize: 10, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>{i + 1}</button>
+          );
+        })}
+      </div>
+
+      {/* Transport: time · controls · volume */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16, direction: "ltr" }}>
+        <span style={{ fontSize: 12, color: TEXT2, fontVariantNumeric: "tabular-nums", minWidth: 92, whiteSpace: "nowrap" }}>{fmtTime(cur)} <span style={{ color: MUTED }}>/ {fmtTime(dur)}</span></span>
+
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <button onClick={() => seekTo(0)} title="Restart" style={tBtn}><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7a5 5 0 11-5 5H5a7 7 0 107-7z"/></svg></button>
+          <button onClick={() => seekTo(cur - 10)} title="-10s" style={tBtn}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6l-9 6 9 6z"/></svg></button>
+          <button onClick={toggle} disabled={err} title={playing ? "Pause" : t.vPlay}
+            style={{ width: 58, height: 58, borderRadius: "50%", flexShrink: 0, border: "none", background: err ? "#3A3A44" : `linear-gradient(145deg, ${BRAND}, #B91C1C)`, color: "#fff", cursor: err ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: err ? "none" : `0 8px 22px ${BRAND}66` }}>
+            {playing
+              ? <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4.4" height="14" rx="1.3"/><rect x="13.6" y="5" width="4.4" height="14" rx="1.3"/></svg>
+              : <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" style={{ marginInlineStart: 2 }}><path d="M8 5v14l11-7z"/></svg>}
+          </button>
+          <button onClick={() => seekTo(cur + 10)} title="+10s" style={tBtn}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l9 6-9 6z"/></svg></button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 92 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={MUTED}><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0014 8v8a4.5 4.5 0 002.5-4z"/></svg>
+          <input type="range" min={0} max={1} step={0.01} value={vol} onChange={e => setVol(Number(e.target.value))} style={{ width: 72, accentColor: BRAND, cursor: "pointer" }} />
+        </div>
       </div>
     </div>
   );
@@ -1006,7 +1010,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{
-        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(960px, 96vw)", maxHeight: "92vh",
+        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1160px, 96vw)", maxHeight: "92vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
         {/* Header */}
@@ -1077,20 +1081,20 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             </div>
           </div>
 
-          {/* MIDDLE: Mix versions — real upload + table (metadata in mix_versions only) */}
-          <div style={subCard}>
-            <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          {/* WORKBOARD: player+comments (main, right) | versions+upload (side, left) */}
+          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0, 1.7fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+
+          {/* SIDE: Mix versions + upload */}
+          <div style={{ ...subCard, gridColumn: narrow ? undefined : "2" }}>
+            <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <span>🎵 {t.mixVersions}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {work.filesLink && (
-                  <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
-                )}
-                <button
-                  onClick={() => { if (!uploading) versionInputRef.current?.click(); }}
-                  disabled={uploading}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: uploading ? 0.6 : 1 }}
-                >{t.uploadVersion}</button>
-              </div>
+              {work.filesLink && (
+                <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
+              )}
+            </div>
+            <div style={{ padding: "12px 14px 8px" }}>
+              <button onClick={() => { if (!uploading) versionInputRef.current?.click(); }} disabled={uploading}
+                style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "9px 12px", borderRadius: 10, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", opacity: uploading ? 0.6 : 1 }}>{t.uploadVersion}</button>
             </div>
 
             <input ref={versionInputRef} type="file" accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip" style={{ display: "none" }} onChange={e => uploadVersionFile(e.target.files)} />
@@ -1118,74 +1122,40 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             ) : versions.length === 0 ? (
               <div style={{ padding: "4px 16px 20px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
             ) : (
-              <div style={{ padding: "2px 12px 14px", overflowX: "auto" }}>
-                <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", minWidth: 560 }}>
-                  <colgroup>
-                    <col />
-                    <col style={{ width: 66 }} />
-                    <col style={{ width: 88 }} />
-                    <col style={{ width: 118 }} />
-                    <col style={{ width: 120 }} />
-                    <col style={{ width: 50 }} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      {[t.vColVersion, t.vColType, t.vColSize, t.vColDate, t.vColStatus, t.vColActions].map((h, i) => (
-                        <th key={h} style={{ padding: "8px 10px", textAlign: i === 5 ? "center" : (rtl ? "right" : "left"), fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap", borderBottom: `1px solid ${BDR}` }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {versions.map(v => {
-                      const label = stripId(v.label, v.id);
-                      // Single, clean display line: Steven-facing title + mix label
-                      // (e.g. "Paparazi - Mix 1"). No secondary/metadata line.
-                      const primary = `${work.project} - ${label}`;
-                      const isSel = sel === v.id;
-                      return (
-                      <tr key={v.id} onClick={() => setSel(v.id)}
-                        style={{ borderBottom: `1px solid ${BDR}`, cursor: "pointer", background: isSel ? `${BRAND}12` : "transparent", transition: "background .12s" }}>
-                        <td style={{ padding: "10px", minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                            <button
-                              onClick={e => { e.stopPropagation(); setSel(v.id); setPlayReq(p => ({ id: v.id, nonce: (p?.nonce ?? 0) + 1 })); }}
-                              title={t.vPlay}
-                              style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}
-                            >
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
-                            </button>
-                            <div title={primary} style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
-                          </div>
-                        </td>
-                        <td style={{ padding: "9px 10px", fontSize: 11.5, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v.fileType || "—").toUpperCase()}</td>
-                        <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtBytes(v.fileSize)}</td>
-                        <td style={{ padding: "9px 10px", fontSize: 11, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtDateTime(v.uploadedAt)}</td>
-                        <td style={{ padding: "9px 10px" }} onClick={e => e.stopPropagation()}>
-                          <InlineSelect<string>
-                            value={v.status}
-                            display={vStatusLabel(v.status, lang)}
-                            color={vStatusColor(v.status)}
-                            options={VSTATUS_OPTIONS.map(s => ({ value: s as string, label: vStatusLabel(s, lang), color: VSTATUS_COLOR[s] }))}
-                            onChange={s => setVersionStatus(v, s)}
-                          />
-                        </td>
-                        <td style={{ padding: "9px 6px", textAlign: "center" }}>
-                          <button onClick={e => { e.stopPropagation(); setDelVersion(v); }} title={t.vDelYes}
-                            style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 14, cursor: "pointer" }}
-                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div style={{ padding: "2px 12px 8px", maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+                {versions.map(v => {
+                  const primary = `${work.project} - ${stripId(v.label, v.id)}`;
+                  const isSel = sel === v.id;
+                  return (
+                    <div key={v.id} onClick={() => setSel(v.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10, cursor: "pointer", background: isSel ? `${BRAND}12` : "transparent", border: `1px solid ${isSel ? BRAND + "55" : "transparent"}`, transition: "background .12s" }}>
+                      <button onClick={e => { e.stopPropagation(); setSel(v.id); setPlayReq(p => ({ id: v.id, nonce: (p?.nonce ?? 0) + 1 })); }} title={t.vPlay}
+                        style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                      </button>
+                      <div title={primary} style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
+                      <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+                        <InlineSelect<string>
+                          value={v.status}
+                          display={vStatusLabel(v.status, lang)}
+                          color={vStatusColor(v.status)}
+                          options={VSTATUS_OPTIONS.map(s => ({ value: s as string, label: vStatusLabel(s, lang), color: VSTATUS_COLOR[s] }))}
+                          onChange={s => setVersionStatus(v, s)}
+                        />
+                      </div>
+                      <button onClick={e => { e.stopPropagation(); setDelVersion(v); }} title={t.vDelYes}
+                        style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                        onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* BOTTOM: local player + timestamp comments for the selected version */}
-          <div style={subCard}>
-            <div style={innerHead}>💬 {t.playerSection}</div>
+          {/* MAIN: local player + timestamp comments for the selected version */}
+          <div style={{ ...subCard, gridColumn: narrow ? undefined : "1" }}>
+            <div style={innerHead}>🎧 {t.playerSection}</div>
             {selected ? (
               <>
                 <VersionPlayer
@@ -1194,6 +1164,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                   url={selected.url}
                   title={`${work.project} - ${stripId(selected.label, selected.id)}`}
                   shouldPlay={playReq?.id === selected.id ? playReq.nonce : 0}
+                  comments={comments ?? []}
                   t={t}
                 />
 
@@ -1275,6 +1246,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             ) : (
               <EmptyZone icon="🎧" title={t.playerEmptyTitle} subtitle={t.vSelectToPlay} />
             )}
+          </div>
           </div>
         </div>
 
