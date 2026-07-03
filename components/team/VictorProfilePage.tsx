@@ -1293,21 +1293,16 @@ function VictorProjectDrawer({
     }
   }
 
-  // Review block shown inside each Version card. Owner edits status + notes;
-  // Victor sees it read-only (+ an "upload next version" CTA on needs_revision).
-  // Hidden entirely until there's something to show (notes, a meaningful status,
-  // or the owner opening the editor) — no empty "waiting" card.
+  // Feedback block shown inside each Version card (Latest + Older). Owner writes
+  // notes; Victor reads them. NO status is shown in the UI (any legacy status in
+  // data is ignored). Hidden until there are notes or the owner is editing.
   function renderReview(key: string) {
     const r = effectiveReviews[key];
-    const status: VersionReviewStatus = r?.status ?? "waiting";
     const editing = editingReviewKey === key;
     const hasNotes = !!(r?.notes && r.notes.trim());
-    const meaningful = status === "needs_revision" || status === "approved" || status === "replaced";
-    const sc = REVIEW_STATUS_COLOR[status];
 
-    // Nothing worth showing yet → owner sees a small "Add feedback" CTA; Victor
-    // sees nothing (no empty block, no "Waiting for review").
-    if (!editing && !hasNotes && !meaningful) {
+    // No feedback yet → owner sees a small "Add feedback" CTA; Victor sees nothing.
+    if (!editing && !hasNotes) {
       if (!isOwner) return null;
       return (
         <button onClick={() => openReviewEditor(key)}
@@ -1317,16 +1312,16 @@ function VictorProjectDrawer({
       );
     }
 
-    // Subtle tinted surface so the review reads as its own unit inside the card.
-    const tint = meaningful ? sc : PURPLE;
+    // Recessed, purple-bordered "box" so the feedback reads as its own unit —
+    // consistent across every version, standing out against both the tinted
+    // Latest card and the darker Older cards.
     return (
-      <div style={{ marginTop: 6, padding: "10px 12px", borderRadius: 10, background: `${tint}0D`, border: `1px solid ${tint}33` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ marginTop: 8, padding: "11px 13px", borderRadius: 11, background: "rgba(0,0,0,0.22)", border: `1px solid ${PURPLE}3D`, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 10.5, fontWeight: 800, color: TEXT2 }}>📝 {t("vreview.title")}</span>
-          {meaningful && <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${sc}22`, color: sc, border: `1px solid ${sc}44`, whiteSpace: "nowrap" }}>{t(`vstatus.${status}`)}</span>}
           <span style={{ flex: 1 }} />
           {isOwner && !editing && (
-            <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{t("vreview.edit")}</button>
+            <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}20`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{t("vreview.edit")}</button>
           )}
         </div>
         {editing ? (
@@ -1339,14 +1334,9 @@ function VictorProjectDrawer({
             </div>
           </div>
         ) : (
-          <>
-            {hasNotes && (
-              <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r!.notes}</div>
-            )}
-            {!isOwner && status === "needs_revision" && (
-              <button onClick={() => fileInputRef.current?.click()} style={{ marginTop: 9, fontSize: 11, fontWeight: 800, padding: "6px 14px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>⬆ {t("vreview.uploadNext")}</button>
-            )}
-          </>
+          hasNotes && (
+            <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r!.notes}</div>
+          )
         )}
       </div>
     );
