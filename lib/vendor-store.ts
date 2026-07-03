@@ -76,6 +76,7 @@ function mapRow(
     isStuck,
     daysSinceSent,
     linkedTaskId:     (row.linked_task_id as string | null) ?? null,
+    versionReviews:   (row.version_reviews as VendorWork["versionReviews"] | null) ?? {},
     createdAt:        (row.created_at as string) ?? "",
     updatedAt:        (row.updated_at as string) ?? "",
   };
@@ -190,6 +191,7 @@ export async function updateVictorWork(
     filesSent:        VendorWork["filesSent"];
     filesReceived:    VendorWork["filesReceived"];
     linkedTaskId:     string | null;
+    versionReviews:   VendorWork["versionReviews"];
   }>
 ): Promise<void> {
   const dbFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -219,6 +221,7 @@ export async function updateVictorWork(
   if ("filesSent"        in fields) dbFields.files_sent         = fields.filesSent;
   if ("filesReceived"    in fields) dbFields.files_received     = fields.filesReceived;
   if ("linkedTaskId"     in fields) dbFields.linked_task_id     = fields.linkedTaskId;
+  if ("versionReviews"   in fields) dbFields.version_reviews    = fields.versionReviews;
 
   await supabase.from("vendor_project_work").update(dbFields).eq("id", id);
 }

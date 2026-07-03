@@ -244,6 +244,17 @@ export const VICTOR_OUTCOMES: VictorOutcome[] = [
   "אושר", "נכנס לפרויקט בפועל", "חלקית", "לא נכנס לפרויקט", "נדחה",
 ];
 
+/** Owner's review of a single Victor version (keyed by versionLabel, e.g. "V2").
+ *  Phase 1C — stored in vendor_project_work.version_reviews (jsonb). Owner writes,
+ *  Victor reads. Does NOT touch work status / project / finance. */
+export type VersionReviewStatus = "waiting" | "needs_revision" | "approved" | "replaced";
+export interface VersionReview {
+  status: VersionReviewStatus;
+  notes: string;
+  reviewedAt: string;   // ISO
+  reviewedBy: string;   // label only, e.g. "owner"
+}
+
 export interface VendorWork {
   id: string;
   vendorName: string;
@@ -267,6 +278,7 @@ export interface VendorWork {
   isStuck: boolean;                  // computed: פעיל + daysSinceSent > stuckAfterDays
   daysSinceSent: number | null;      // computed
   linkedTaskId: string | null;       // FK → tasks(id), set when internalDeadline synced
+  versionReviews: Record<string, VersionReview>; // owner review per versionLabel (Phase 1C)
   createdAt: string;
   updatedAt: string;
 }

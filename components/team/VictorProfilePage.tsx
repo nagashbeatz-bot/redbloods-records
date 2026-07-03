@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
 
@@ -393,6 +393,10 @@ function downloadFile(file: FileLink) {
 type FileRole = "vocals" | "instrumental" | "stems" | "other";
 const ROLE_COLOR: Record<FileRole, string> = {
   vocals: "#8B5CF6", instrumental: "#3B82F6", stems: "#F59E0B", other: "#6B7280",
+};
+// Per-version review status → accent color.
+const REVIEW_STATUS_COLOR: Record<VersionReviewStatus, string> = {
+  waiting: "#8B8B99", needs_revision: "#F59E0B", approved: "#10B981", replaced: "#6B7280",
 };
 // Detect a file's role from its intake category first, then filename/extension.
 // "no vocals"/instrumental is checked BEFORE "vocals" so it can't be misread.
@@ -1143,6 +1147,12 @@ function VictorProjectDrawer({
   const playerAudioRef = useRef<HTMLAudioElement | null>(null);
   const pBarRef = useRef<HTMLDivElement | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({}); // per-group collapse override
+  // ── Per-version review (Phase 1C) — owner writes, Victor reads. Keyed by group key (versionLabel).
+  const [effectiveReviews, setEffectiveReviews] = useState<Record<string, VersionReview>>(work.versionReviews ?? {});
+  const [editingReviewKey, setEditingReviewKey] = useState<string | null>(null);
+  const [reviewDraftNotes, setReviewDraftNotes] = useState("");
+  const [reviewDraftStatus, setReviewDraftStatus] = useState<VersionReviewStatus>("waiting");
+  const [savingReview, setSavingReview] = useState(false);
   const npIdx = playlist.findIndex(p => fileId(p.file) === npKey);
   const npItem = npIdx >= 0 ? playlist[npIdx] : null;
 
@@ -1255,6 +1265,79 @@ function VictorProjectDrawer({
             <button onClick={() => { setDeleteConfirmIdx(sentIdx); setDeleteError(false); }} title={t("file.delete")}
               style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "4px 8px", flexShrink: 0, fontFamily: "inherit" }}>{t("file.deleteBtn")}</button>
           )
+        )}
+      </div>
+    );
+  }
+
+  // ── Version review handlers (owner-only write; Victor PATCH is 403 via route whitelist) ──
+  function openReviewEditor(key: string) {
+    const r = effectiveReviews[key];
+    setReviewDraftNotes(r?.notes ?? "");
+    setReviewDraftStatus(r?.status ?? "waiting");
+    setEditingReviewKey(key);
+  }
+  async function saveReview(key: string) {
+    setSavingReview(true);
+    const next: VersionReview = { status: reviewDraftStatus, notes: reviewDraftNotes.trim(), reviewedAt: new Date().toISOString(), reviewedBy: "owner" };
+    const prev = effectiveReviews;
+    const nextMap = { ...effectiveReviews, [key]: next };
+    setEffectiveReviews(nextMap);
+    setEditingReviewKey(null);
+    try {
+      await patchWork({ versionReviews: nextMap });
+    } catch {
+      setEffectiveReviews(prev); // revert on failure
+    } finally {
+      setSavingReview(false);
+    }
+  }
+
+  // Review block shown inside each Version card. Owner edits status + notes;
+  // Victor sees it read-only (+ an "upload next version" CTA on needs_revision).
+  function renderReview(key: string) {
+    const r = effectiveReviews[key];
+    const status: VersionReviewStatus = r?.status ?? "waiting";
+    const sc = REVIEW_STATUS_COLOR[status];
+    const editing = editingReviewKey === key;
+    return (
+      <div style={{ marginTop: 6, padding: "10px 12px", borderRadius: 10, background: "rgba(255,255,255,0.025)", border: `1px solid ${BDR}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: TEXT2 }}>📝 {t("vreview.title")}</span>
+          <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${sc}22`, color: sc, border: `1px solid ${sc}44`, whiteSpace: "nowrap" }}>{t(`vstatus.${status}`)}</span>
+          <span style={{ flex: 1 }} />
+          {isOwner && !editing && (
+            <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{r ? t("vreview.edit") : t("vreview.add")}</button>
+          )}
+        </div>
+        {editing ? (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {(["waiting", "needs_revision", "approved", "replaced"] as VersionReviewStatus[]).map(s => {
+                const on = reviewDraftStatus === s; const c = REVIEW_STATUS_COLOR[s];
+                return (
+                  <button key={s} onClick={() => setReviewDraftStatus(s)} style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 9px", borderRadius: 7, background: on ? `${c}26` : "transparent", border: `1px solid ${on ? c + "77" : BDR2}`, color: on ? c : TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t(`vstatus.${s}`)}</button>
+                );
+              })}
+            </div>
+            <textarea value={reviewDraftNotes} onChange={e => setReviewDraftNotes(e.target.value)} rows={3} placeholder={t("vreview.placeholder")}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 9, fontSize: isMobile ? 16 : 12.5, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT, outline: "none", fontFamily: "inherit", resize: "vertical", textAlign: "start", unicodeBidi: "plaintext", boxSizing: "border-box" }} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <button onClick={() => setEditingReviewKey(null)} disabled={savingReview} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+              <button onClick={() => saveReview(key)} disabled={savingReview} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: savingReview ? MUTED : PURPLE, border: "none", color: "#fff", cursor: savingReview ? "default" : "pointer", fontFamily: "inherit" }}>{savingReview ? t("drawer.saving") : t("vreview.save")}</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {r?.notes ? (
+              <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r.notes}</div>
+            ) : (
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>{t("vreview.empty")}</div>
+            )}
+            {!isOwner && status === "needs_revision" && (
+              <button onClick={() => fileInputRef.current?.click()} style={{ marginTop: 9, fontSize: 11, fontWeight: 800, padding: "6px 14px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>⬆ {t("vreview.uploadNext")}</button>
+            )}
+          </>
         )}
       </div>
     );
@@ -1668,6 +1751,7 @@ function VictorProjectDrawer({
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: isMobile ? "12px" : "12px 16px 16px" }}>
                           {g.files.map(f => renderFileRow(f, true))}
                           {errNode}
+                          {g.key !== "__untagged__" && renderReview(g.key)}
                         </div>
                       )}
                     </div>
@@ -1686,6 +1770,7 @@ function VictorProjectDrawer({
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 12px 12px" }}>
                           {g.files.map(f => renderFileRow(f, false))}
                           {errNode}
+                          {g.key !== "__untagged__" && renderReview(g.key)}
                         </div>
                       )}
                     </div>
