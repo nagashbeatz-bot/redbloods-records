@@ -367,6 +367,16 @@ function toDirectUrl(url: string): string {
     .replace("?dl=0", "").replace("&dl=0", "");
 }
 
+// Audio src for a Victor file. Prefer the scoped, ownership-checked streaming
+// route (works for both owner and Victor — /api/dropbox/stream is owner-only via
+// the gate, which is why Victor couldn't play). Falls back to an existing public
+// share link, then the stored url.
+function playbackSrc(file: FileLink): string {
+  if (file.dropboxPath) return `/api/vendor/victor/stream?path=${encodeURIComponent(file.dropboxPath)}`;
+  if (file.dropboxShareUrl) return toDirectUrl(file.dropboxShareUrl);
+  return toDirectUrl(file.url || "");
+}
+
 function fileExt(name: string): string {
   return (name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
 }
@@ -472,7 +482,7 @@ function AudioPlayer({
   // drawer closes, the project changes, or the file is deleted.
   useEffect(() => {
     if (!url) return;
-    const a = new Audio(toDirectUrl(url));
+    const a = new Audio(playbackSrc(file));
     a.preload = "metadata";
     audioRef.current = a;
     const onTime  = () => { if (a.duration && !isNaN(a.duration)) setProgress((a.currentTime / a.duration) * 100); };
@@ -1158,7 +1168,7 @@ function VictorProjectDrawer({
 
   function playTrackByFile(file: FileLink) {
     const a = playerAudioRef.current; if (!a) return;
-    const url = toDirectUrl(file.dropboxShareUrl || file.url || "");
+    const url = playbackSrc(file);
     if (!url) return;
     const id = fileId(file);
     if (npKey !== id) { a.src = url; setPCur(0); setPDur(0); }
