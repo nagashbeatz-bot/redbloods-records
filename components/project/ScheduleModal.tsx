@@ -92,22 +92,42 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   const [sendToArtist,   setSendToArtist]   = useState(false);
   const [artistEmail,    setArtistEmail]    = useState("");
   const [emailFromClients,setEmailFromClients] = useState(false);
+  // Auto-fill diagnostics: how many recipients matched + which artist names had
+  // no client email (for the "לא נמצא מייל ל:" hint).
+  const [autoFill,       setAutoFill]       = useState<{ matched: number; missing: string[] }>({ matched: 0, missing: [] });
   const [publicTitle,    setPublicTitle]    = useState(`${action.calPrefix} ${artist} ונגש ביטס`);
 
-  // Auto-fill artist email from clients list
+  // Auto-fill artist email(s) from clients list.
+  // project.artist can be a compound "A, B, C" string (collaborations) — split it
+  // by the app-wide separator and match EACH artist token against clients, then
+  // collect every matched email so multi-artist projects invite all recipients.
   useEffect(() => {
     if (!artist) return;
+    const names = artist.split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
+    if (names.length === 0) return;
     fetch("/api/clients")
       .then((r) => r.json())
       .then((d) => {
         if (!d.clients) return;
-        const match = (d.clients as { name: string; email: string }[]).find(
-          (c) => c.name.trim().toLowerCase() === artist.trim().toLowerCase()
-        );
-        if (match?.email) {
-          setArtistEmail(match.email);
+        const clients = d.clients as { name: string; email: string }[];
+        const emails: string[] = [];
+        const missing: string[] = [];
+        for (const nm of names) {
+          const match = clients.find(
+            (c) => c.name.trim().toLowerCase() === nm.toLowerCase()
+          );
+          const email = match?.email?.trim();
+          if (email) {
+            if (!emails.includes(email)) emails.push(email);
+          } else {
+            missing.push(nm);
+          }
+        }
+        if (emails.length > 0) {
+          setArtistEmail(emails.join(", "));
           setEmailFromClients(true);
         }
+        setAutoFill({ matched: emails.length, missing });
       })
       .catch(() => {});
   }, [artist]);
@@ -714,6 +734,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             artistEmail={artistEmail}
             setArtistEmail={(v) => { setArtistEmail(v); setEmailFromClients(false); }}
             emailFromClients={emailFromClients}
+            autoFill={autoFill}
             publicTitle={publicTitle}
             onBack={() => { setSelectedStart(null); setPhase("idle"); }}
             onCreate={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
@@ -913,7 +934,7 @@ function ManualPicker({
 
 function ConfirmPanel({
   data, action, artist, projectName, editMode = false,
-  sendToArtist, setSendToArtist, artistEmail, setArtistEmail, emailFromClients,
+  sendToArtist, setSendToArtist, artistEmail, setArtistEmail, emailFromClients, autoFill,
   publicTitle, onBack, onCreate, onForce,
 }: {
   data: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean };
@@ -921,11 +942,15 @@ function ConfirmPanel({
   sendToArtist: boolean; setSendToArtist: (v: boolean) => void;
   artistEmail: string; setArtistEmail: (v: string) => void;
   emailFromClients: boolean;
+  autoFill: { matched: number; missing: string[] };
   publicTitle: string;
   onBack: () => void; onCreate: () => void; onForce: () => void;
 }) {
   const hasWarning = data.hardConflict || data.bufferWarning;
-  const emailValid = !sendToArtist || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(artistEmail.trim());
+  // Support one OR several comma/semicolon-separated recipients (multi-artist).
+  const emailList  = artistEmail.split(/[,;]/).map((e) => e.trim()).filter(Boolean);
+  const emailValid = !sendToArtist ||
+    (emailList.length > 0 && emailList.every((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)));
   const canCreate  = emailValid;
 
   return (
@@ -973,16 +998,16 @@ function ConfirmPanel({
 
         {sendToArtist && (
           <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Artist email */}
+            {/* Artist email(s) — one address, or several separated by commas */}
             <div>
               <div style={{ fontSize: 10, color: "#666", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
-                אימייל האמן
+                {emailList.length > 1 ? "אימייל הנמענים" : "אימייל האמן"}
               </div>
               <input
-                type="email"
+                type="text"
                 value={artistEmail}
                 onChange={(e) => setArtistEmail(e.target.value)}
-                placeholder="artist@example.com"
+                placeholder="הזן כתובת אימייל"
                 dir="ltr"
                 style={{
                   width: "100%", padding: "8px 12px", borderRadius: 9,
@@ -994,8 +1019,17 @@ function ConfirmPanel({
               {artistEmail && !emailValid && (
                 <div style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>כתובת מייל לא תקינה</div>
               )}
-              {emailFromClients && artistEmail && emailValid && (
-                <div style={{ fontSize: 11, color: "#34D399", marginTop: 4 }}>✓ מולא אוטומטית מרשימת הלקוחות</div>
+              {emailFromClients && emailValid && emailList.length > 0 && (
+                <div style={{ fontSize: 11, color: "#34D399", marginTop: 4 }}>
+                  {emailList.length > 1
+                    ? `✓ נמצאו ${emailList.length} נמענים להזמנה`
+                    : "✓ מולא אוטומטית מרשימת הלקוחות"}
+                </div>
+              )}
+              {autoFill.missing.length > 0 && (
+                <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 4 }}>
+                  לא נמצא מייל ל: {autoFill.missing.join(", ")} — ניתן להוסיף מייל ידנית
+                </div>
               )}
             </div>
 

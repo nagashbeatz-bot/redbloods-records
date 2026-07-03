@@ -16,6 +16,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "summary / start / end חסרים" }, { status: 400 });
     }
 
+    // artistEmail may carry ONE address or several separated by commas/semicolons
+    // (multi-artist projects). Split, dedupe, and keep only valid addresses so we
+    // never send an invite to a placeholder / malformed value.
+    const emails = Array.from(new Set(
+      (artistEmail ?? "")
+        .split(/[,;]/)
+        .map((e) => e.trim())
+        .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+    ));
+
     const { isConnected, createCalendarEvent } = await import("@/lib/google-calendar");
 
     if (!await isConnected()) {
@@ -23,11 +33,11 @@ export async function POST(req: NextRequest) {
     }
 
     const event = await createCalendarEvent(summary, start, end, {
-      attendees:   artistEmail ? [{ email: artistEmail }] : undefined,
+      attendees:   emails.length ? emails.map((email) => ({ email })) : undefined,
       description: publicDescription,
       allDay,
     });
-    return NextResponse.json({ ok: true, event, inviteSent: !!artistEmail });
+    return NextResponse.json({ ok: true, event, inviteSent: emails.length > 0 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     const needsReauth =
