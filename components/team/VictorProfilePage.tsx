@@ -1295,19 +1295,38 @@ function VictorProjectDrawer({
 
   // Review block shown inside each Version card. Owner edits status + notes;
   // Victor sees it read-only (+ an "upload next version" CTA on needs_revision).
+  // Hidden entirely until there's something to show (notes, a meaningful status,
+  // or the owner opening the editor) — no empty "waiting" card.
   function renderReview(key: string) {
     const r = effectiveReviews[key];
     const status: VersionReviewStatus = r?.status ?? "waiting";
-    const sc = REVIEW_STATUS_COLOR[status];
     const editing = editingReviewKey === key;
+    const hasNotes = !!(r?.notes && r.notes.trim());
+    const meaningful = status === "needs_revision" || status === "approved" || status === "replaced";
+    const sc = REVIEW_STATUS_COLOR[status];
+
+    // Nothing worth showing yet → owner sees a small "Add feedback" CTA; Victor
+    // sees nothing (no empty block, no "Waiting for review").
+    if (!editing && !hasNotes && !meaningful) {
+      if (!isOwner) return null;
+      return (
+        <button onClick={() => openReviewEditor(key)}
+          style={{ marginTop: 4, alignSelf: "flex-start", fontSize: 10.5, fontWeight: 700, padding: "5px 12px", borderRadius: 8, background: `${PURPLE}12`, border: `1px dashed ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5 }}>
+          📝 {t("vreview.add")}
+        </button>
+      );
+    }
+
+    // Subtle tinted surface so the review reads as its own unit inside the card.
+    const tint = meaningful ? sc : PURPLE;
     return (
-      <div style={{ marginTop: 6, padding: "10px 12px", borderRadius: 10, background: "rgba(255,255,255,0.025)", border: `1px solid ${BDR}` }}>
+      <div style={{ marginTop: 6, padding: "10px 12px", borderRadius: 10, background: `${tint}0D`, border: `1px solid ${tint}33` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 10.5, fontWeight: 800, color: TEXT2 }}>📝 {t("vreview.title")}</span>
-          <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${sc}22`, color: sc, border: `1px solid ${sc}44`, whiteSpace: "nowrap" }}>{t(`vstatus.${status}`)}</span>
+          {meaningful && <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${sc}22`, color: sc, border: `1px solid ${sc}44`, whiteSpace: "nowrap" }}>{t(`vstatus.${status}`)}</span>}
           <span style={{ flex: 1 }} />
           {isOwner && !editing && (
-            <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{r ? t("vreview.edit") : t("vreview.add")}</button>
+            <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{t("vreview.edit")}</button>
           )}
         </div>
         {editing ? (
@@ -1329,10 +1348,8 @@ function VictorProjectDrawer({
           </div>
         ) : (
           <>
-            {r?.notes ? (
-              <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r.notes}</div>
-            ) : (
-              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>{t("vreview.empty")}</div>
+            {hasNotes && (
+              <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r!.notes}</div>
             )}
             {!isOwner && status === "needs_revision" && (
               <button onClick={() => fileInputRef.current?.click()} style={{ marginTop: 9, fontSize: 11, fontWeight: 800, padding: "6px 14px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>⬆ {t("vreview.uploadNext")}</button>
