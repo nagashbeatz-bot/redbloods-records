@@ -912,22 +912,38 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
               <div style={{ padding: "4px 16px 20px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
             ) : (
               <div style={{ padding: "2px 12px 14px", overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+                <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", minWidth: 560 }}>
+                  <colgroup>
+                    <col />
+                    <col style={{ width: 66 }} />
+                    <col style={{ width: 88 }} />
+                    <col style={{ width: 118 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 50 }} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      {[t.vColVersion, t.vColFile, t.vColType, t.vColSize, t.vColDate, t.vColStatus, t.vColActions].map(h => (
-                        <th key={h} style={{ padding: "8px 10px", textAlign: rtl ? "right" : "left", fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap", borderBottom: `1px solid ${BDR}` }}>{h}</th>
+                      {[t.vColVersion, t.vColType, t.vColSize, t.vColDate, t.vColStatus, t.vColActions].map((h, i) => (
+                        <th key={h} style={{ padding: "8px 10px", textAlign: i === 5 ? "center" : (rtl ? "right" : "left"), fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap", borderBottom: `1px solid ${BDR}` }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {versions.map(v => (
+                    {versions.map(v => {
+                      // Auto-defaulted label/file names carry the "{versionId}-" prefix;
+                      // strip it for display only (the stored value/path are unchanged).
+                      const clean = (s: string) => (s.startsWith(`${v.id}-`) ? s.slice(v.id.length + 1) : s);
+                      const label = clean(v.label);
+                      const fname = clean(v.fileName);
+                      return (
                       <tr key={v.id} style={{ borderBottom: `1px solid ${BDR}` }}>
-                        <td style={{ padding: "9px 10px", fontSize: 12.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{v.label}</td>
-                        <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.fileName}</td>
-                        <td style={{ padding: "9px 10px", fontSize: 11.5, color: TEXT2, whiteSpace: "nowrap" }}>{(v.fileType || "—").toUpperCase()}</td>
-                        <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtBytes(v.fileSize)}</td>
-                        <td style={{ padding: "9px 10px", fontSize: 11.5, color: MUTED, whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtDateTime(v.uploadedAt)}</td>
+                        <td style={{ padding: "9px 10px", minWidth: 0 }}>
+                          <div title={label} style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+                          <div title={fname} dir="ltr" style={{ fontSize: 10.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, textAlign: rtl ? "right" : "left" }}>{fname}</div>
+                        </td>
+                        <td style={{ padding: "9px 10px", fontSize: 11.5, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v.fileType || "—").toUpperCase()}</td>
+                        <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtBytes(v.fileSize)}</td>
+                        <td style={{ padding: "9px 10px", fontSize: 11, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtDateTime(v.uploadedAt)}</td>
                         <td style={{ padding: "9px 10px" }}>
                           <InlineSelect<string>
                             value={v.status}
@@ -937,13 +953,14 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                             onChange={s => setVersionStatus(v, s)}
                           />
                         </td>
-                        <td style={{ padding: "9px 10px" }}>
+                        <td style={{ padding: "9px 6px", textAlign: "center" }}>
                           <button onClick={() => setDelVersion(v)} title={t.vDelYes}
                             style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 14, cursor: "pointer" }}
                             onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -977,7 +994,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${RED}44`, borderRadius: 16, width: "min(420px, 92vw)", padding: "22px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
               <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, marginBottom: 10 }}>{t.vDelTitle}</div>
               <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 8 }}>{t.vDelBody}</div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, marginBottom: 16, direction: "ltr", textAlign: rtl ? "right" : "left" }}>{delVersion.label} · {delVersion.fileName}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, marginBottom: 16, direction: "ltr", textAlign: rtl ? "right" : "left" }}>{delVersion.label.startsWith(`${delVersion.id}-`) ? delVersion.label.slice(delVersion.id.length + 1) : delVersion.label}</div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => setDelVersion(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
                 <button onClick={confirmDeleteVersion} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.vDelYes}</button>
