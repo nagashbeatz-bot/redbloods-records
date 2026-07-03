@@ -22,16 +22,18 @@ const RED    = "#EF4444";
 // ── Types + options (UI-only; no DB). State stays Hebrew-canonical; English is
 //    a display-only translation via mappers below. ────────────────────────────────
 type WorkStatus = "פעיל" | "הושלם" | "בוטל";
-type PayStatus  = "שולם" | "לא שולם";
+// "חלקי" is DISPLAY-ONLY (derived when 0 < amountPaid < agreedPrice); it is NOT
+// a selectable option (no payment_status column — a real 3-state needs SQL).
+type PayStatus  = "שולם" | "חלקי" | "לא שולם";
 type WorkType   = "מיקס מאסטרינג" | "מאסטרינג";
 type Lang       = "he" | "en";
 
 const WORK_TYPES: WorkType[]       = ["מיקס מאסטרינג", "מאסטרינג"];
 const STATUS_OPTIONS: WorkStatus[] = ["פעיל", "הושלם", "בוטל"];
-const PAY_OPTIONS: PayStatus[]     = ["שולם", "לא שולם"];
+const PAY_OPTIONS: PayStatus[]     = ["שולם", "לא שולם"];   // selectable (חלקי is display-only)
 
 const STATUS_EN: Record<WorkStatus, string> = { "פעיל": "Active", "הושלם": "Completed", "בוטל": "Canceled" };
-const PAY_EN:    Record<PayStatus, string>  = { "שולם": "Paid", "לא שולם": "Unpaid" };
+const PAY_EN:    Record<PayStatus, string>  = { "שולם": "Paid", "חלקי": "Partial", "לא שולם": "Unpaid" };
 const WT_EN:     Record<WorkType, string>   = { "מיקס מאסטרינג": "Mix & Mastering", "מאסטרינג": "Mastering" };
 const statusLabel = (s: WorkStatus, lang: Lang) => (lang === "en" ? STATUS_EN[s] : s);
 const payLabel    = (p: PayStatus, lang: Lang)  => (lang === "en" ? PAY_EN[p] : p);
@@ -65,9 +67,12 @@ function dbWorkTypeToUi(w: string): WorkType {
 function uiWorkTypeToDb(w: WorkType): string {
   return w === "מאסטרינג" ? "מאסטר" : "מיקס + מאסטר";
 }
-// Pay status is display-only, derived from amounts (no payment_status column on this table).
+// Pay status is derived from amounts (no payment_status column on this table).
+// 3-state for DISPLAY (שולם / חלקי / לא שולם); only שולם & לא שולם are selectable.
 function payFromAmounts(agreed: number, paid: number): PayStatus {
-  return agreed > 0 && paid >= agreed ? "שולם" : "לא שולם";
+  if (agreed > 0 && paid >= agreed) return "שולם";
+  if (paid > 0)                     return "חלקי";
+  return "לא שולם";
 }
 // DB dates are ISO (yyyy-mm-dd); UI shows DD.MM.YY.
 function fmtDbDate(d: string | null): string {
@@ -142,13 +147,108 @@ type T = (typeof TR)["he"];
 
 // ── Chips ───────────────────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<WorkStatus, string> = { "פעיל": GREEN, "הושלם": BLUE, "בוטל": RED };
+const PAY_COLOR:    Record<PayStatus, string>  = { "שולם": GREEN, "חלקי": "#F59E0B", "לא שולם": RED };
 function StatusChip({ status, lang }: { status: WorkStatus; lang: Lang }) {
   const c = STATUS_COLOR[status];
   return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}1A`, border: `1px solid ${c}40`, color: c }}>{statusLabel(status, lang)}</span>;
 }
 function PayChip({ pay, lang }: { pay: PayStatus; lang: Lang }) {
-  const c = pay === "שולם" ? GREEN : MUTED;
-  return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}40`, color: pay === "שולם" ? GREEN : TEXT2 }}>{payLabel(pay, lang)}</span>;
+  const c = PAY_COLOR[pay];
+  return <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${c}14`, border: `1px solid ${c}40`, color: c }}>{payLabel(pay, lang)}</span>;
+}
+
+// ── Inline badge-dropdown (modern pill trigger + dark RTL popover via portal) ─────
+//    Used in the table to change work status / payment status without a modal.
+//    `display`/`color` reflect the CURRENT state (which may be a display-only
+//    value like חלקי/בוטל not present in `options`); `options` = the selectable set.
+function InlineSelect<V extends string>({
+  value, display, color, options, onChange,
+}: {
+  value: V;
+  display: string;
+  color: string;
+  options: { value: V; label: string; color: string }[];
+  onChange: (v: V) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos]   = useState<{ top: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  function openMenu() {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={openMenu}
+        title="לחץ לשינוי"
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 8,
+          whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit",
+          background: `${color}1A`, border: `1px solid ${color}40`, color,
+          transition: "all .12s",
+        }}
+      >
+        {display}
+        <span style={{ fontSize: 8, opacity: 0.75, transform: open ? "rotate(180deg)" : "none", transition: "transform .12s" }}>▾</span>
+      </button>
+      {open && pos && createPortal(
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 200000 }} />
+          <div dir="rtl" style={{
+            position: "fixed", top: pos.top, right: pos.right, zIndex: 200001,
+            background: "#14141A", border: `1px solid ${BDR2}`, borderRadius: 12,
+            padding: 6, minWidth: 152, boxShadow: "0 14px 36px rgba(0,0,0,0.65)",
+            display: "flex", flexDirection: "column", gap: 3,
+          }}>
+            {options.map(o => {
+              const sel = o.value === value;
+              return (
+                <button
+                  key={o.value}
+                  onClick={() => { setOpen(false); if (o.value !== value) onChange(o.value); }}
+                  onMouseEnter={e => { if (!sel) e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                  onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "transparent"; }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 9, width: "100%",
+                    padding: "8px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+                    fontSize: 12.5, fontWeight: 700, textAlign: "start",
+                    background: sel ? `${o.color}18` : "transparent",
+                    border: `1px solid ${sel ? o.color + "55" : "transparent"}`,
+                    color: sel ? o.color : TEXT, transition: "background .1s",
+                  }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: o.color, flexShrink: 0 }} />
+                  {o.label}
+                  {sel && <span style={{ marginInlineStart: "auto", color: o.color, fontSize: 12 }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        </>,
+        document.body
+      )}
+    </>
+  );
 }
 
 // ── Modern pill / segmented control ──────────────────────────────────────────────
@@ -293,6 +393,12 @@ export default function StevenProfilePage() {
     setWorks(prev => prev.map(w => {
       if (w.id !== id) return w;
       const next = { ...w, ...patch };
+      // Payment status has no column — a pay choice is stored as amountPaid
+      // (שולם → full price, לא שולם → 0). Keep the derived label in sync.
+      if (patch.pay !== undefined) {
+        next.amountPaid = patch.pay === "שולם" ? w.price : 0;
+        next.pay = payFromAmounts(w.price, next.amountPaid);
+      }
       if (patch.price !== undefined) next.pay = payFromAmounts(next.price, next.amountPaid);
       return next;
     }));
@@ -303,6 +409,7 @@ export default function StevenProfilePage() {
     if (patch.workType !== undefined) body.workType    = uiWorkTypeToDb(patch.workType);
     if (patch.status   !== undefined) body.status      = uiStatusToDb(patch.status);
     if (patch.price    !== undefined) body.agreedPrice = patch.price;
+    if (patch.pay      !== undefined) body.amountPaid  = patch.pay === "שולם" ? target.price : 0;
     if (Object.keys(body).length === 1) return; // only the flag → nothing actually changed
 
     try {
@@ -311,8 +418,12 @@ export default function StevenProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) notify(rtl ? "השמירה נכשלה" : "Save failed");
+      if (!res.ok) {
+        setWorks(prev => prev.map(w => (w.id === id ? target : w))); // revert on failure
+        notify(rtl ? "השמירה נכשלה" : "Save failed");
+      }
     } catch {
+      setWorks(prev => prev.map(w => (w.id === id ? target : w))); // revert on failure
       notify(rtl ? "השמירה נכשלה" : "Save failed");
     }
   }
@@ -436,11 +547,33 @@ export default function StevenProfilePage() {
                     <tr key={w.id} style={{ borderTop: `1px solid ${BDR}`, background: i % 2 ? "rgba(255,255,255,0.01)" : "transparent" }}>
                       <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}><span style={{ marginInlineEnd: 5 }}>🎵</span>{w.project}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{wtLabel(w.workType, lang)}</td>
-                      <td style={{ padding: "11px 14px" }}><StatusChip status={w.status} lang={lang} /></td>
+                      <td style={{ padding: "11px 14px" }}>
+                        <InlineSelect
+                          value={w.status}
+                          display={statusLabel(w.status, lang)}
+                          color={STATUS_COLOR[w.status]}
+                          options={[
+                            { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
+                            { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
+                          ]}
+                          onChange={v => updateWork(w.id, { status: v })}
+                        />
+                      </td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.startDate}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>
-                      <td style={{ padding: "11px 14px" }}><PayChip pay={w.pay} lang={lang} /></td>
+                      <td style={{ padding: "11px 14px" }}>
+                        <InlineSelect
+                          value={w.pay}
+                          display={payLabel(w.pay, lang)}
+                          color={PAY_COLOR[w.pay]}
+                          options={[
+                            { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
+                            { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
+                          ]}
+                          onChange={v => updateWork(w.id, { pay: v })}
+                        />
+                      </td>
                       <td style={{ padding: "11px 14px" }}>
                         <button onClick={() => setOpenId(w.id)}
                           onMouseEnter={e => { e.currentTarget.style.background = "#E4E4EA"; e.currentTarget.style.boxShadow = "0 0 8px rgba(255,255,255,0.16)"; }}
