@@ -162,7 +162,7 @@ const TR = {
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
-    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
+    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", openMixFolder: "📦 פתח ב-Dropbox", openingFolder: "פותח…", vFolderPending: "התיקייה תיווצר אחרי העלאת גרסה ראשונה", vFolderOpenFail: "לא ניתן לפתוח את תיקיית Dropbox", vFolderClickHere: "לחץ כאן לפתיחה →", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
     uploadVersion: "+ העלה גרסה / קובץ עבודה", phase2Tag: "פאזה 2", uploadComing: "העלאת גרסאות אמיתית ל-Dropbox תתווסף בפאזה הבאה",
     vLabelPh: "שם גרסה, למשל Mix 1", vChooseFile: "בחר קובץ", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "מעלה קובץ…", vUploaded: "הגרסה הועלתה", vUploadFailed: "העלאת הגרסה נכשלה", vDeleted: "הגרסה נמחקה", vLoadFailed: "טעינת הגרסאות נכשלה",
@@ -192,7 +192,7 @@ const TR = {
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
-    mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
+    mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", openMixFolder: "📦 Open in Dropbox", openingFolder: "Opening…", vFolderPending: "The folder is created after the first version upload", vFolderOpenFail: "Couldn't open the Dropbox folder", vFolderClickHere: "Click here to open →", noFilesLink: "No Dropbox folder linked to this job yet",
     uploadVersion: "+ Upload version / work file", phase2Tag: "Phase 2", uploadComing: "Real Dropbox version upload is coming in the next phase",
     vLabelPh: "Version name, e.g. Mix 1", vChooseFile: "Choose file", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "Uploading…", vUploaded: "Version uploaded", vUploadFailed: "Version upload failed", vDeleted: "Version deleted", vLoadFailed: "Failed to load versions",
@@ -961,6 +961,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
   const versionInputRef = useRef<HTMLInputElement | null>(null);
+  const [openingFolder, setOpeningFolder] = useState(false);      // Dropbox folder-open in flight
+  const [folderFallback, setFolderFallback] = useState<string | null>(null); // popup-blocked link
 
   // ── Timestamp comments for the selected version ──────────────────────────────
   const [comments, setComments]   = useState<MixComment[] | null>(null); // null = loading
@@ -1110,6 +1112,36 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   // Currently-selected version for the local player (null when it no longer exists).
   const selected = versions?.find(v => v.id === sel) ?? null;
 
+  // Mix Versions folder = the directory the versions physically live in. Every
+  // version is stored DIRECTLY under it, so the parent dir of any version's
+  // dropboxPath IS the folder. null until at least one version exists (the
+  // folder is only created on the first upload).
+  const anyVer = versions && versions.length > 0 ? versions[0] : null;
+  const mixFolderPath = anyVer?.dropboxPath && anyVer.dropboxPath.lastIndexOf("/") > 0
+    ? anyVer.dropboxPath.slice(0, anyVer.dropboxPath.lastIndexOf("/"))
+    : null;
+
+  // Open the Mix Versions folder in Dropbox. Reuses the existing owner-only
+  // /api/dropbox/folder-link endpoint (get-or-create share link) — no new route,
+  // no projects.files write. Opens a blank tab first so a popup blocker can't
+  // swallow the async result; falls back to a manual link if it does.
+  async function openMixFolder() {
+    if (!mixFolderPath || openingFolder) return;
+    setOpeningFolder(true); setFolderFallback(null);
+    try {
+      const res = await fetch("/api/dropbox/folder-link", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: mixFolderPath }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.ok || !d.shareLink) throw new Error(d.error || "no-link");
+      const w = window.open(d.shareLink, "_blank", "noopener,noreferrer");
+      if (!w) setFolderFallback(d.shareLink); // popup blocked → show a manual link
+    } catch {
+      notify(t.vFolderOpenFail);
+    } finally { setOpeningFolder(false); }
+  }
+
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
   const detailRow = (label: string, node: React.ReactNode) => (
@@ -1140,13 +1172,11 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             </div>
             <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 18, cursor: "pointer", flexShrink: 0, lineHeight: 1 }}>×</button>
           </div>
-          {/* Meta + live status */}
+          {/* Meta — supplier + work type only. Status & payment live in "job details"
+              below (no duplicate chips in the header). */}
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 14, flexWrap: "wrap" }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, color: TEXT2, padding: "4px 11px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}>🎧 Steven</span>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT2 }}>{wtLabel(work.workType, lang)}</span>
-            <span style={{ width: 4, height: 4, borderRadius: 999, background: MUTED, flexShrink: 0 }} />
-            <StatusChip status={work.status} lang={lang} />
-            <PayChip pay={work.pay} lang={lang} />
           </div>
         </div>
 
@@ -1258,6 +1288,30 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 })}
               </div>
             )}
+
+            {/* Open the Mix Versions folder in Dropbox — pinned to the card bottom.
+                Enabled once a folder exists (≥1 version); otherwise disabled. */}
+            <div style={{ marginTop: "auto", padding: "10px 14px 14px", borderTop: `1px solid ${BDR}` }}>
+              <button
+                onClick={openMixFolder}
+                disabled={!mixFolderPath || openingFolder}
+                title={mixFolderPath ? undefined : t.vFolderPending}
+                style={{
+                  width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  fontSize: 11.5, fontWeight: 700, padding: "8px 12px", borderRadius: 10, fontFamily: "inherit",
+                  background: mixFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${mixFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`,
+                  color: mixFolderPath ? "#4A9EFF" : MUTED,
+                  cursor: mixFolderPath && !openingFolder ? "pointer" : "default",
+                  opacity: openingFolder ? 0.6 : 1,
+                }}>
+                {openingFolder ? t.openingFolder : t.openMixFolder}
+              </button>
+              {folderFallback && (
+                <a href={folderFallback} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "block", marginTop: 7, fontSize: 11, color: "#4A9EFF", textAlign: "center", textDecoration: "none" }}>{t.vFolderClickHere}</a>
+              )}
+            </div>
           </div>
 
           {/* MAIN: local player + timestamp comments (fills the remaining width) */}
