@@ -935,10 +935,12 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                       const clean = (s: string) => (s.startsWith(`${v.id}-`) ? s.slice(v.id.length + 1) : s);
                       const label = clean(v.label);
                       const fname = clean(v.fileName);
+                      // Primary display = Steven-facing title + mix label (e.g. "Paparazi - Mix 1").
+                      const primary = `${work.project} - ${label}`;
                       return (
                       <tr key={v.id} style={{ borderBottom: `1px solid ${BDR}` }}>
                         <td style={{ padding: "9px 10px", minWidth: 0 }}>
-                          <div title={label} style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+                          <div title={primary} style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
                           <div title={fname} dir="ltr" style={{ fontSize: 10.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, textAlign: rtl ? "right" : "left" }}>{fname}</div>
                         </td>
                         <td style={{ padding: "9px 10px", fontSize: 11.5, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v.fileType || "—").toUpperCase()}</td>

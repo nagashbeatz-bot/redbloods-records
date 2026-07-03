@@ -68,10 +68,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       projectName = project?.name ?? "";
     }
 
+    // Clean, organized physical name: "{artist} - {project} - {label}.{ext}".
+    // NEVER the original uploaded filename, NEVER work_title. Standalone works
+    // (no project) drop the empty artist/project parts. The DB file_name is this
+    // clean name WITHOUT the prefix; dropbox_path keeps a {versionId}- prefix to
+    // avoid collisions. If no label was given, fall back to the original base name.
+    const versionId      = crypto.randomUUID();
+    const dot            = file.name.lastIndexOf(".");
+    const ext            = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : "";
+    const originalBase   = dot >= 0 ? file.name.slice(0, dot) : file.name;
+    const effectiveLabel = label || originalBase;
+    const cleanBase      = [artist, projectName, effectiveLabel]
+      .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || "Mix";
+    const cleanFileName  = ext ? `${cleanBase}.${ext}` : cleanBase;
+
     const folder      = mixVersionsFolder({ projectId, artist, projectName, workId });
-    const versionId   = crypto.randomUUID();
-    const safeName    = sanitizeFolder(file.name) || "file";
-    const dropboxPath = `${folder}/${versionId}-${safeName}`;
+    const dropboxPath = `${folder}/${versionId}-${cleanFileName}`;
 
     // ── Upload to Dropbox (token server-side; no share link) ──────────────────
     const { getDropboxToken } = await import("@/lib/dropbox-token");
@@ -94,7 +106,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const uploaded  = (await uploadRes.json()) as { path_display: string; name: string };
     const finalPath = uploaded.path_display;
 
-    const ext = (file.name.split(".").pop() || "").toLowerCase();
     const fileType = ["wav", "mp3", "m4a", "aiff", "aif", "flac", "ogg"].includes(ext)
       ? ext : (ext === "zip" ? "zip" : "other");
 
@@ -104,8 +115,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         id:                  versionId,
         soundEngineerWorkId: workId,
         projectId,
-        label:               label || uploaded.name,
-        fileName:            uploaded.name,
+        label:               effectiveLabel,   // clean label, e.g. "Mix 1"
+        fileName:            cleanFileName,     // clean, no versionId prefix
         dropboxPath:         finalPath,
         fileSize:            file.size,
         fileType,
