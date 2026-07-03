@@ -676,7 +676,8 @@ export async function createCalendarEvent(
       start: startField,
       end:   endField,
       attendees:                opts?.attendees,
-      guestsCanSeeOtherGuests:  false,
+      // Let invited artists/clients see the other guests on the session invite.
+      guestsCanSeeOtherGuests:  true,
     },
   });
 
