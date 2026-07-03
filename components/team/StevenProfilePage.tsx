@@ -109,11 +109,11 @@ const TR = {
     payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם",
     noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולה", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
-    job: "עבודה:", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
+    job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
-    mixInstructions: "הוראות למיקס", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
-    mixVersions: "גרסאות למיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקייה בדרופבוקס", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
-    playerSection: "נגן והערות", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
+    mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
+    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקייה בדרופבוקס", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
+    playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     newWorkTitle: "עבודה חדשה ל-Steven", projectName: "שם הפרויקט", priceLabel: "מחיר ($)", save: "שמור", cancel: "ביטול", required: "יש להזין שם פרויקט",
     tAdded: "הקבצים נוספו לעבודה", tRemoved: "הקובץ הוסר", tNoPlay: "אין קובץ לניגון כרגע", tNoDownload: "אין קובץ להורדה כרגע", tNoDropbox: "אין עדיין קישור Dropbox לעבודה הזו",
     tJobAdded: "עבודה חדשה נוספה", tViewAllPay: "היסטוריית תשלומים מלאה תהיה זמינה בקרוב", tViewAllFiles: "רשימת הקבצים המלאה תהיה זמינה בקרוב",
@@ -129,11 +129,11 @@ const TR = {
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid",
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Action", openJob: "Open Job", noJobs: "No Steven jobs yet",
-    job: "Job:", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
+    job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
-    mixInstructions: "Mix Instructions", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
-    mixVersions: "Mix Versions", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
-    playerSection: "Player & Comments", playerEmpty: "A player and time-stamped comments will be added soon",
+    mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
+    mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
+    playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     newWorkTitle: "New Work for Steven", projectName: "Project name", priceLabel: "Price ($)", save: "Save", cancel: "Cancel", required: "Project name is required",
     tAdded: "Files added to job", tRemoved: "File removed", tNoPlay: "No playable file yet", tNoDownload: "No downloadable file yet", tNoDropbox: "No Dropbox link for this job yet",
     tJobAdded: "Job added", tViewAllPay: "Full payment history coming soon", tViewAllFiles: "Full file list coming soon",
@@ -311,7 +311,7 @@ function PriceInput({ value, currency = "$", onCommit, onInvalid }: { value: num
         onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
         onFocus={() => setFocus(true)}
         onBlur={() => { setFocus(false); commit(); }}
-        style={{ width: 58, background: "transparent", color: GREEN, border: "none", padding: 0, fontSize: 13, fontWeight: 800, fontFamily: "inherit", outline: "none", textAlign: "left" }}
+        style={{ width: `${Math.max(3, str.length + 1)}ch`, minWidth: 34, maxWidth: 120, background: "transparent", color: GREEN, border: "none", padding: 0, fontSize: 13, fontWeight: 800, fontFamily: "inherit", outline: "none", textAlign: "left" }}
       />
     </div>
   );
@@ -341,11 +341,11 @@ function NotesEditor({ value, placeholder, saveLabel, onSave }: {
         onFocus={() => setFocus(true)}
         onBlur={() => { setFocus(false); commit(); }}
         placeholder={placeholder}
-        rows={5}
+        rows={8}
         style={{
-          width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 116,
+          width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 210,
           background: CARD, color: TEXT, border: `1px solid ${focus ? BRAND : BDR2}`, borderRadius: 12,
-          padding: "12px 14px", fontSize: 13.5, lineHeight: 1.75, fontFamily: "inherit", outline: "none",
+          padding: "14px 16px", fontSize: 14, lineHeight: 1.8, fontFamily: "inherit", outline: "none",
           transition: "border-color .12s",
         }}
       />
@@ -645,6 +645,17 @@ export default function StevenProfilePage() {
   );
 }
 
+// ── Empty "ready work area" (versions / player) — structured, not tiny text ──────
+function EmptyZone({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
+  return (
+    <div style={{ margin: "14px 16px 16px", padding: "28px 20px", borderRadius: 14, border: `1.5px dashed ${BDR2}`, background: "rgba(255,255,255,0.015)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 9 }}>
+      <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${BRAND}12`, border: `1px solid ${BRAND}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{icon}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: TEXT2 }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 12, color: MUTED, maxWidth: 360, lineHeight: 1.65 }}>{subtitle}</div>}
+    </div>
+  );
+}
+
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
 function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -659,27 +670,32 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
   const detailRow = (label: string, node: React.ReactNode) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0", borderBottom: `1px solid ${BDR}` }}>
-      <span style={{ fontSize: 12.5, color: MUTED }}>{label}</span>{node}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minHeight: 44, padding: "8px 0", borderBottom: `1px solid ${BDR}` }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: MUTED, flexShrink: 0 }}>{label}</span>
+      <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 0 }}>{node}</div>
     </div>
   );
 
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{
-        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1080px, 96vw)", maxHeight: "92vh",
+        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(960px, 96vw)", maxHeight: "92vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
         {/* Header */}
-        <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
+        <div style={{ padding: "20px 24px 18px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>{t.job} {work.project}</div>
-              <div style={{ fontSize: 13, color: TEXT2, marginTop: 4 }}>Steven • {wtLabel(work.workType, lang)}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: 5 }}>{t.jobEyebrow}</div>
+              <div style={{ fontSize: 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{work.project}</div>
             </div>
             <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 18, cursor: "pointer", flexShrink: 0, lineHeight: 1 }}>×</button>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          {/* Meta + live status */}
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 14, flexWrap: "wrap" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, color: TEXT2, padding: "4px 11px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}>🎧 Steven</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT2 }}>{wtLabel(work.workType, lang)}</span>
+            <span style={{ width: 4, height: 4, borderRadius: 999, background: MUTED, flexShrink: 0 }} />
             <StatusChip status={work.status} lang={lang} />
             <PayChip pay={work.pay} lang={lang} />
           </div>
@@ -689,11 +705,14 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* TOP: Mix instructions (real notes) + Work details */}
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(260px, 1fr)", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
 
             {/* Mix instructions — prominent, backed by real sound_engineer_work.notes */}
             <div style={subCard}>
-              <div style={innerHead}>🎚 {t.mixInstructions}</div>
+              <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
+                <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎚 {t.mixInstructions}</div>
+                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.mixInstructionsSub}</div>
+              </div>
               <div style={{ padding: "14px 16px" }}>
                 <NotesEditor
                   value={work.notes}
@@ -718,13 +737,13 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                   <span style={{ fontSize: 12.5, color: MUTED }}>{t.payment}</span>
                   <PayChip pay={work.pay} lang={lang} />
                 </div>
-                {/* Danger zone — delete this job (subtle, not primary) */}
-                <div style={{ paddingTop: 12, marginTop: 2, borderTop: `1px solid ${BDR}`, display: "flex", justifyContent: "flex-start" }}>
+                {/* Danger zone — delete this job (subtle, full-width) */}
+                <div style={{ paddingTop: 14, marginTop: 4, borderTop: `1px solid ${BDR}` }}>
                   <button
                     onClick={() => setConfirmOpen(true)}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#3A1212"; e.currentTarget.style.borderColor = RED; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = `${RED}55`; }}
-                    style={{ fontSize: 12, fontWeight: 700, padding: "7px 14px", borderRadius: 9, background: "transparent", border: `1px solid ${RED}55`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${RED}12`; e.currentTarget.style.borderColor = `${RED}80`; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = `${RED}44`; }}
+                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 700, padding: "9px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
                   >🗑 {t.deleteWork}</button>
                 </div>
               </div>
@@ -739,20 +758,13 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
               )}
             </div>
-            <div style={{ padding: "34px 16px", textAlign: "center" }}>
-              <div style={{ fontSize: 26, opacity: 0.4, marginBottom: 8 }}>🎚</div>
-              <div style={{ fontSize: 13, color: TEXT2, fontWeight: 600 }}>{t.mixVersionsEmpty}</div>
-              {!work.filesLink && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>{t.noFilesLink}</div>}
-            </div>
+            <EmptyZone icon="🎚" title={t.versionsEmptyTitle} subtitle={work.filesLink ? t.mixVersionsEmpty : t.noFilesLink} />
           </div>
 
           {/* BOTTOM: Player + time-stamped comments — coming in phase 2 (real DB) */}
           <div style={subCard}>
             <div style={innerHead}>💬 {t.playerSection}</div>
-            <div style={{ padding: "30px 16px", textAlign: "center" }}>
-              <div style={{ fontSize: 24, opacity: 0.4, marginBottom: 8 }}>🎧</div>
-              <div style={{ fontSize: 12.5, color: MUTED }}>{t.playerEmpty}</div>
-            </div>
+            <EmptyZone icon="🎧" title={t.playerEmptyTitle} subtitle={t.playerEmpty} />
           </div>
         </div>
 
