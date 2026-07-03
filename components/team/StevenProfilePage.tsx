@@ -168,6 +168,7 @@ const TR = {
     vUploading: "מעלה קובץ…", vUploaded: "הגרסה הועלתה", vUploadFailed: "העלאת הגרסה נכשלה", vDeleted: "הגרסה נמחקה", vLoadFailed: "טעינת הגרסאות נכשלה",
     vLoading: "טוען גרסאות…", vEmpty: "עדיין אין גרסאות — העלה קובץ ראשון עם הכפתור למעלה",
     vSelectToPlay: "בחר גרסה מהרשימה כדי לנגן", vAudioLoading: "טוען קובץ…", vAudioError: "טעינת הקובץ נכשלה", vPlay: "נגן",
+    pNoVersionsTitle: "עדיין אין גרסאות לניגון", pNoVersionsSub: "העלה גרסה ראשונה כדי להפעיל את הנגן", detailsAndInstructions: "פרטי עבודה והוראות למיקס",
     vColVersion: "שם גרסה", vColFile: "קובץ", vColType: "סוג", vColSize: "גודל", vColDate: "הועלה", vColStatus: "סטטוס", vColActions: "פעולות",
     vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה",
     cSection: "הערות בזמן", cAdd: "הוסף הערה", cEmpty: "אין הערות לגרסה הזו עדיין", cPlaceholder: "כתוב הערה על הנקודה הזו…", cAtTime: "בזמן",
@@ -197,6 +198,7 @@ const TR = {
     vUploading: "Uploading…", vUploaded: "Version uploaded", vUploadFailed: "Version upload failed", vDeleted: "Version deleted", vLoadFailed: "Failed to load versions",
     vLoading: "Loading versions…", vEmpty: "No versions yet — upload the first file with the button above",
     vSelectToPlay: "Select a version to play", vAudioLoading: "Loading file…", vAudioError: "Failed to load the file", vPlay: "Play",
+    pNoVersionsTitle: "No versions to play yet", pNoVersionsSub: "Upload the first version to start the player", detailsAndInstructions: "Job details & mix instructions",
     vColVersion: "Version", vColFile: "File", vColType: "Type", vColSize: "Size", vColDate: "Uploaded", vColStatus: "Status", vColActions: "Actions",
     vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download",
     cSection: "Timestamp comments", cAdd: "Add comment", cEmpty: "No comments on this version yet", cPlaceholder: "Write a note about this point…", cAtTime: "at",
@@ -852,6 +854,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
   const narrow = useIsNarrow(760);
+  const [topOpen, setTopOpen] = useState(false); // details+instructions accordion (collapsed by default)
 
   // ── Mix versions (Phase 2) — real data from /api/sound-engineer/{workId}/versions
   const [versions, setVersions]   = useState<MixVersion[] | null>(null); // null = loading
@@ -940,7 +943,15 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
     setVersions(null); setVLoadErr(false);
     fetch(`/api/sound-engineer/${work.id}/versions`)
       .then(r => r.json())
-      .then(d => { if (!alive) return; if (d.ok) setVersions(d.versions ?? []); else setVLoadErr(true); })
+      .then(d => {
+        if (!alive) return;
+        if (d.ok) {
+          const list = (d.versions ?? []) as MixVersion[]; // server order = created_at desc → [0] is latest
+          setVersions(list);
+          // Auto-select the latest version so the player is always ready (no click needed).
+          if (list.length > 0) setSel(cur => (cur && list.some(v => v.id === cur) ? cur : list[0].id));
+        } else setVLoadErr(true);
+      })
       .catch(() => { if (alive) setVLoadErr(true); });
     return () => { alive = false; };
   }, [work.id]);
@@ -957,6 +968,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
       .then(d => {
         if (d.ok && d.version) {
           setVersions(prev => [d.version as MixVersion, ...(prev ?? [])]);
+          setSel((d.version as MixVersion).id); // new upload becomes the selected version (player ready)
           notify(t.vUploaded);
         } else {
           notify(d.error || t.vUploadFailed);
@@ -980,7 +992,11 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   function confirmDeleteVersion() {
     const v = delVersion; if (!v) return;
     setDelVersion(null);
-    if (sel === v.id) setSel(null); // deleting the playing version → back to empty state
+    if (sel === v.id) {
+      // Deleting the selected version → jump to the latest remaining, or empty if none.
+      const rest = (versions ?? []).filter(x => x.id !== v.id);
+      setSel(rest.length > 0 ? rest[0].id : null);
+    }
     const prev = versions;
     setVersions(cur => cur?.filter(x => x.id !== v.id) ?? null);
     fetch(`/api/sound-engineer/versions/${v.id}`, { method: "DELETE" })
@@ -1035,8 +1051,15 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
         {/* Body — workboard: instructions (top) / details / versions (middle) / player (bottom) */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-          {/* TOP: Work details (side) + Mix instructions (wide, central) — per reference */}
-          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(280px, 1fr) minmax(0, 1.55fr)", gap: 16, alignItems: "start" }}>
+          {/* TOP (collapsible, closed by default): job details + mix instructions */}
+          <div>
+            <button onClick={() => setTopOpen(o => !o)}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 15px", borderRadius: 12, background: CARD2, border: `1px solid ${BDR}`, color: TEXT, cursor: "pointer", fontFamily: "inherit" }}>
+              <span style={{ fontSize: 12.5, fontWeight: 800 }}>📋 {t.detailsAndInstructions}</span>
+              <span style={{ fontSize: 11, color: MUTED, transform: topOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
+            </button>
+            {topOpen && (
+            <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(280px, 1fr) minmax(0, 1.55fr)", gap: 16, alignItems: "start", marginTop: 12 }}>
 
             {/* Work details — narrower side card */}
             <div style={subCard}>
@@ -1080,6 +1103,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
               </div>
             </div>
           </div>
+            )}
+          </div>
 
           {/* WORKBOARD: player+comments (main, right) | versions+upload (side, left) */}
           <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: 16, alignItems: "stretch", minHeight: narrow ? undefined : 420 }}>
@@ -1106,11 +1131,11 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
                 onDragLeave={e => { e.preventDefault(); setDrag(false); }}
                 onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadVersionFile(e.dataTransfer.files); }}
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, textAlign: "center", padding: "20px 16px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "13px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
               >
-                <div style={{ fontSize: 24, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
-                <div style={{ fontSize: 10.5, color: MUTED }}>{t.vFileHint}</div>
+                <div style={{ fontSize: 19, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
+                <div style={{ fontSize: 10, color: MUTED }}>{t.vFileHint}</div>
               </div>
             </div>
 
@@ -1208,8 +1233,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                         const col = COMMENT_COLORS[i % COMMENT_COLORS.length];
                         const isEditing = editingId === c.id;
                         return (
-                          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
-                            <span style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}` }}>
+                            <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
                             <button onClick={() => playerRef.current?.playFrom(c.timestampSeconds)} title={t.vPlay}
                               style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
@@ -1225,7 +1250,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                               />
                             ) : (
                               <div onClick={() => playerRef.current?.seek(c.timestampSeconds)} title={c.commentText}
-                                style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
+                                style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
                             )}
                             <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
                             {!isEditing && (
@@ -1244,7 +1269,9 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 </div>
               </>
             ) : (
-              <EmptyZone icon="🎧" title={t.playerEmptyTitle} subtitle={t.vSelectToPlay} />
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <EmptyZone icon="🎧" title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} />
+              </div>
             )}
           </div>
           </div>
