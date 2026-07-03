@@ -94,15 +94,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Clean, readable physical name (NO versionId): "{primaryArtist} - {project}
     // - {label}.{ext}" — never the uploaded filename, never work_title. Standalone
-    // works drop the empty artist/project parts. Each label gets its own subfolder
-    // so names never collide across versions.
+    // works drop the empty artist/project parts. The file lives DIRECTLY under
+    // Mix Versions (no per-label subfolder); uniqueness comes from the unique
+    // label baked into the file name.
     const safeLabel     = sanitizeFolder(effectiveLabel) || "Mix";
     const cleanBase     = [primaryArtist(artist), projectName, effectiveLabel]
       .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || safeLabel;
     const cleanFileName = ext ? `${cleanBase}.${ext}` : cleanBase;
 
     const folder      = mixVersionsFolder({ projectId, artist, projectName, workId });
-    const dropboxPath = `${folder}/${safeLabel}/${cleanFileName}`;
+    const dropboxPath = `${folder}/${cleanFileName}`;
 
     // ── Upload to Dropbox (token server-side; no share link) ──────────────────
     const { getDropboxToken } = await import("@/lib/dropbox-token");
