@@ -1179,6 +1179,48 @@ function VictorProjectDrawer({
   // Volume changes apply live.
   useEffect(() => { const a = playerAudioRef.current; if (a) a.volume = pVol; }, [pVol]);
 
+  // Shared file-row renderer for a version's files (big = Latest card, else compact).
+  function renderFileRow(item: { file: FileLink; sentIdx: number; role: FileRole }, big: boolean) {
+    const { file, sentIdx, role } = item;
+    const rc = ROLE_COLOR[role];
+    const audio = isAudioFile(file.name);
+    const nowPlaying = npKey === fileId(file);
+    const hasUrl = !!(file.dropboxShareUrl || file.url);
+    return (
+      <div key={sentIdx} style={{ display: "flex", alignItems: "center", gap: big ? 12 : 9, padding: big ? "10px 12px" : "8px 10px", borderRadius: 10, background: nowPlaying ? `${PURPLE}1A` : "rgba(255,255,255,0.02)", border: `1px solid ${nowPlaying ? PURPLE + "66" : BDR}`, minWidth: 0 }}>
+        {audio ? (
+          <button onClick={() => (nowPlaying ? togglePlayer() : playTrackByFile(file))} title={nowPlaying && pPlaying ? t("player.pause") : t("player.play")}
+            style={{ width: big ? 36 : 30, height: big ? 36 : 30, borderRadius: "50%", flexShrink: 0, background: nowPlaying && pPlaying ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: big ? 13 : 11, fontFamily: "inherit" }}>
+            {nowPlaying && pPlaying ? "⏸" : "▶"}
+          </button>
+        ) : (
+          <span style={{ fontSize: big ? 20 : 16, flexShrink: 0, width: big ? 36 : 30, textAlign: "center" }}>{/\.(zip|rar|7z)$/i.test(file.name) ? "🗜" : "📄"}</span>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div title={file.name} style={{ fontSize: big ? 13.5 : 12.5, fontWeight: 600, color: TEXT, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere", lineHeight: 1.3 } as React.CSSProperties}>{file.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 8px", borderRadius: 5, background: `${rc}22`, color: rc, border: `1px solid ${rc}44`, whiteSpace: "nowrap" }}>{t(`role.${role}`)}</span>
+            <span style={{ fontSize: 9.5, color: MUTED }}>{fileExt(file.name)}</span>
+            {typeof file.durationSeconds === "number" && file.durationSeconds > 0 && <span style={{ fontSize: 9.5, color: MUTED }}>· {fmtDur(file.durationSeconds)}</span>}
+          </div>
+        </div>
+        <button onClick={() => downloadFile(file)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
+          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 15, padding: 0, fontFamily: "inherit" }}>↓</button>
+        {isOwner && (
+          deleteConfirmIdx === sentIdx ? (
+            <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+              <button onClick={() => handleDeleteFile(file, sentIdx)} disabled={deletingIdx === sentIdx} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: deletingIdx === sentIdx ? MUTED : RED, border: "none", color: "#fff", cursor: deletingIdx === sentIdx ? "default" : "pointer", fontFamily: "inherit" }}>{deletingIdx === sentIdx ? "…" : t("drawer.confirm")}</button>
+              <button onClick={() => { setDeleteConfirmIdx(null); setDeleteError(false); }} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+            </div>
+          ) : (
+            <button onClick={() => { setDeleteConfirmIdx(sentIdx); setDeleteError(false); }} title={t("file.delete")}
+              style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "4px 8px", flexShrink: 0, fontFamily: "inherit" }}>{t("file.deleteBtn")}</button>
+          )
+        )}
+      </div>
+    );
+  }
+
   const days = daysFromNow(work.internalDeadline);
 
   const tasks: {
@@ -1373,10 +1415,11 @@ function VictorProjectDrawer({
 
         {/* ── Scrollable body ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px calc(40px + env(safe-area-inset-bottom))" : "18px 20px" }}>
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.9fr)_minmax(310px,0.7fr)]" style={{ gap: 18, alignItems: "start" }}>
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(230px,0.85fr)_minmax(0,2fr)_minmax(300px,0.95fr)]" style={{ gap: 18, alignItems: "start" }}>
 
-            {/* ════ MAIN column: brief + references (what Victor must do) ════ */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+            {/* ════ RIGHT column: brief + references (was MAIN). order maps it to
+                 the rightmost desktop track; on mobile it stacks 2nd (after Versions). ════ */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, order: isMobile ? 2 : 3 }}>
 
               {/* ── קרא אותי קודם ── */}
               <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
@@ -1468,16 +1511,17 @@ function VictorProjectDrawer({
 
             </div>
 
-            {/* ════ SIDE column: files + progress ════ */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+            {/* ════ CENTER column: Versions — the prominent main area. order 2 on
+                 desktop (middle track), order 1 on mobile (stacks first). ════ */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, order: isMobile ? 1 : 2 }}>
 
-          {/* Files card */}
-          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden", minWidth: 0 }}>
+          {/* Versions card */}
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, overflow: "hidden", minWidth: 0 }}>
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
               gap: 8, flexWrap: "wrap",
               padding: "12px 16px",
-              borderBottom: files.length > 0 ? `1px solid ${BDR}` : "none",
+              borderBottom: effectiveFiles.length > 0 ? `1px solid ${BDR}` : "none",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 <span style={{ fontSize: 14, flexShrink: 0 }}>🎵</span>
@@ -1538,9 +1582,9 @@ function VictorProjectDrawer({
                 )}
                 <span style={{
                   fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
-                  background: files.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
-                  color: files.length > 0 ? GREEN : MUTED, whiteSpace: "nowrap", flexShrink: 0,
-                }}>{files.length} {t("files.count")}</span>
+                  background: effectiveFiles.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
+                  color: effectiveFiles.length > 0 ? GREEN : MUTED, whiteSpace: "nowrap", flexShrink: 0,
+                }}>{effectiveFiles.length} {t("files.count")}</span>
               </div>
             </div>
 
@@ -1548,102 +1592,72 @@ function VictorProjectDrawer({
               <div style={{ fontSize: 11, color: "#EF4444", padding: "4px 16px 2px", fontWeight: 600 }}>{uploadError}</div>
             )}
 
-            {effectiveFiles.length === 0 && receivedFiles.length === 0 ? (
-              <div style={{ padding: "28px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 32, marginBottom: 10, opacity: 0.25 }}>📂</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, marginBottom: 4 }}>{t("files.empty")}</div>
-                <div style={{ fontSize: 11, color: MUTED }}>{t("files.emptySub")}</div>
+            {effectiveFiles.length === 0 ? (
+              <div style={{ padding: "44px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.22 }}>🎵</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: TEXT2, marginBottom: 4 }}>{t("files.empty")}</div>
+                <div style={{ fontSize: 12, color: MUTED }}>{t("files.emptySub")}</div>
               </div>
             ) : (
-              <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
-                {/* ── Versions: Victor's sent deliverables, newest round on top ── */}
+              <div style={{ padding: isMobile ? "12px" : "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
                 {versionGroups.map((g, gi) => {
-                  const open = openGroups[g.key] ?? (gi === 0);
                   const isLatest = gi === 0;
-                  const groupTitle = g.label
-                    ? (/^V\d/.test(g.label) ? `${t("versions.round")} ${g.label.slice(1)}` : g.label)
-                    : t("versions.round");
-                  return (
-                    <div key={g.key} style={{ borderRadius: 12, background: isLatest ? `${PURPLE}0D` : CARD2, border: `1px solid ${isLatest ? PURPLE + "44" : BDR}`, overflow: "hidden" }}>
-                      <button
-                        onClick={() => setOpenGroups(s => ({ ...s, [g.key]: !open }))}
-                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "start" }}
-                      >
-                        <span style={{ fontSize: 12.5, fontWeight: 800, color: TEXT }}>{groupTitle}</span>
-                        {isLatest && <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 6, background: `${PURPLE}22`, color: PURPLE, border: `1px solid ${PURPLE}44`, whiteSpace: "nowrap" }}>★ {t("versions.latest")}</span>}
+                  const open = openGroups[g.key] ?? isLatest; // Latest open by default
+                  const num = /^V\d/.test(g.label) ? g.label.slice(1) : null;
+                  const title = num ? `${t("versions.round")} ${num}` : (g.label || t("versions.round"));
+                  const badge = num ? `V${num}` : "♪";
+                  const errNode = deleteError && deletingIdx !== null && g.files.some(x => x.sentIdx === deletingIdx)
+                    ? <div style={{ fontSize: 10, color: RED, padding: "0 4px" }}>{t("file.retryError")}</div> : null;
+                  return isLatest ? (
+                    /* ── Latest Version — large, prominent card ── */
+                    <div key={g.key} style={{ borderRadius: 16, background: `linear-gradient(160deg, ${PURPLE}16 0%, ${PURPLE}05 100%)`, border: `1px solid ${PURPLE}55`, boxShadow: `0 8px 30px ${PURPLE}14`, overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "13px 14px" : "16px 18px", borderBottom: open ? `1px solid ${PURPLE}22` : "none" }}>
+                        <div style={{ width: 42, height: 42, borderRadius: 11, background: `${PURPLE}26`, border: `1px solid ${PURPLE}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: PURPLE, flexShrink: 0 }}>{badge}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>{title}</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}26`, color: PURPLE, border: `1px solid ${PURPLE}55`, whiteSpace: "nowrap" }}>★ {t("versions.latest")}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{g.files.length} {t("files.count")}</div>
+                        </div>
+                        <button onClick={() => setOpenGroups(s => ({ ...s, [g.key]: !open }))} title={title}
+                          style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 15, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s", fontFamily: "inherit", flexShrink: 0 }}>▾</button>
+                      </div>
+                      {open && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: isMobile ? "12px" : "12px 16px 16px" }}>
+                          {g.files.map(f => renderFileRow(f, true))}
+                          {errNode}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* ── Older version — compact collapsible row ── */
+                    <div key={g.key} style={{ borderRadius: 12, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
+                      <button onClick={() => setOpenGroups(s => ({ ...s, [g.key]: !open }))}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "11px 14px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "start" }}>
+                        <span style={{ width: 32, height: 32, borderRadius: 8, background: `${PURPLE}18`, color: PURPLE, fontWeight: 900, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{badge}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{title}</span>
                         <span style={{ flex: 1 }} />
                         <span style={{ fontSize: 10, color: MUTED }}>{g.files.length}</span>
-                        <span style={{ fontSize: 11, color: MUTED, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
+                        <span style={{ fontSize: 12, color: MUTED, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
                       </button>
                       {open && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 10px 10px" }}>
-                          {g.files.map(({ file, sentIdx, role }) => {
-                            const rc = ROLE_COLOR[role];
-                            const audio = isAudioFile(file.name);
-                            const nowPlaying = npKey === fileId(file);
-                            const hasUrl = !!(file.dropboxShareUrl || file.url);
-                            return (
-                              <div key={sentIdx} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: nowPlaying ? `${PURPLE}14` : "rgba(255,255,255,0.02)", border: `1px solid ${nowPlaying ? PURPLE + "55" : BDR}`, minWidth: 0 }}>
-                                {audio ? (
-                                  <button onClick={() => (nowPlaying ? togglePlayer() : playTrackByFile(file))} title={nowPlaying && pPlaying ? t("player.pause") : t("player.play")}
-                                    style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: nowPlaying && pPlaying ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontFamily: "inherit" }}>
-                                    {nowPlaying && pPlaying ? "⏸" : "▶"}
-                                  </button>
-                                ) : (
-                                  <span style={{ fontSize: 16, flexShrink: 0, width: 30, textAlign: "center" }}>{/\.(zip|rar|7z)$/i.test(file.name) ? "🗜" : "📄"}</span>
-                                )}
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div title={file.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere", lineHeight: 1.3 } as React.CSSProperties}>{file.name}</div>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4, flexWrap: "wrap" }}>
-                                    <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 7px", borderRadius: 5, background: `${rc}22`, color: rc, border: `1px solid ${rc}44`, whiteSpace: "nowrap" }}>{t(`role.${role}`)}</span>
-                                    <span style={{ fontSize: 9.5, color: MUTED }}>{fileExt(file.name)}</span>
-                                    {typeof file.durationSeconds === "number" && file.durationSeconds > 0 && <span style={{ fontSize: 9.5, color: MUTED }}>· {fmtDur(file.durationSeconds)}</span>}
-                                  </div>
-                                </div>
-                                <button onClick={() => downloadFile(file)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
-                                  style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 15, padding: 0, fontFamily: "inherit" }}>↓</button>
-                                {isOwner && (
-                                  deleteConfirmIdx === sentIdx ? (
-                                    <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                                      <button onClick={() => handleDeleteFile(file, sentIdx)} disabled={deletingIdx === sentIdx} style={{ padding: "3px 8px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: deletingIdx === sentIdx ? MUTED : RED, border: "none", color: "#fff", cursor: deletingIdx === sentIdx ? "default" : "pointer", fontFamily: "inherit" }}>{deletingIdx === sentIdx ? "…" : t("drawer.confirm")}</button>
-                                      <button onClick={() => { setDeleteConfirmIdx(null); setDeleteError(false); }} style={{ padding: "3px 8px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
-                                    </div>
-                                  ) : (
-                                    <button onClick={() => { setDeleteConfirmIdx(sentIdx); setDeleteError(false); }} title={t("file.delete")}
-                                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "3px 7px", flexShrink: 0, fontFamily: "inherit" }}>{t("file.deleteBtn")}</button>
-                                  )
-                                )}
-                              </div>
-                            );
-                          })}
-                          {deleteError && deletingIdx !== null && g.files.some(x => x.sentIdx === deletingIdx) && (
-                            <div style={{ fontSize: 10, color: RED, padding: "0 4px" }}>{t("file.retryError")}</div>
-                          )}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 12px 12px" }}>
+                          {g.files.map(f => renderFileRow(f, false))}
+                          {errNode}
                         </div>
                       )}
                     </div>
                   );
                 })}
-
-                {/* ── Source files (received from owner) — separate, not part of Versions ── */}
-                {receivedFiles.length > 0 && (
-                  <div style={{ marginTop: 2 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.05em", padding: "4px 4px 6px" }}>{t("versions.sourceTitle")}</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {receivedFiles.map((f, i) => {
-                        const props = {
-                          file: f, onDownload: () => downloadFile(f),
-                          deleteConfirm: false, onDeleteConfirm: () => {}, onDeleteCancel: () => {}, onDelete: () => {},
-                          deleting: false, deleteError: false, canDelete: false,
-                        };
-                        return isAudioFile(f.name) ? <AudioPlayer key={`r${i}`} {...props} /> : <FileRow key={`r${i}`} {...props} />;
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
-          </div>
+          </div>{/* versions card */}
+          </div>{/* center column */}
+
+          {/* ════ LEFT column: progress / tracking / deadline / source / end.
+               order 1 desktop (leftmost track), order 3 mobile (stacks last). ════ */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, order: isMobile ? 3 : 1 }}>
 
           {/* Tasks card */}
           <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
@@ -1781,6 +1795,28 @@ function VictorProjectDrawer({
 
           </div>
 
+          {/* Source files (received from owner) — small, separate, not part of Versions */}
+          {receivedFiles.length > 0 && (
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14 }}>📥</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("versions.sourceTitle")}</span>
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 10, color: MUTED }}>{receivedFiles.length}</span>
+              </div>
+              <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+                {receivedFiles.map((f, i) => {
+                  const props = {
+                    file: f, onDownload: () => downloadFile(f),
+                    deleteConfirm: false, onDeleteConfirm: () => {}, onDeleteCancel: () => {}, onDelete: () => {},
+                    deleting: false, deleteError: false, canDelete: false,
+                  };
+                  return isAudioFile(f.name) ? <AudioPlayer key={`r${i}`} {...props} /> : <FileRow key={`r${i}`} {...props} />;
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ── Remove from Victor board (owner only) ── */}
           {isOwner && (!confirmRemove ? (
             <button
@@ -1872,40 +1908,46 @@ function VictorProjectDrawer({
             app's global PlayerProvider — its own <audio>, own currentVictorAudio). */}
         <audio ref={playerAudioRef} preload="metadata" style={{ display: "none" }} />
         {npItem && (
-          <div style={{ flexShrink: 0, borderTop: `1px solid ${BDR2}`, background: "linear-gradient(0deg, #0B0B12 0%, #0F0F18 100%)", padding: isMobile ? "10px 12px calc(10px + env(safe-area-inset-bottom))" : "12px 18px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 9 : 14, minWidth: 0 }}>
-              {/* now-playing info */}
-              <div style={{ minWidth: 0, flexShrink: 1, flexBasis: isMobile ? "38%" : 220, maxWidth: isMobile ? 150 : 260 }}>
-                <div title={npItem.file.name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npItem.file.name}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
-                  {npItem.versionLabel && <span style={{ fontSize: 9, fontWeight: 800, color: PURPLE, whiteSpace: "nowrap" }}>{/^V\d/.test(npItem.versionLabel) ? npItem.versionLabel : t("versions.round")}</span>}
-                  <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 5, background: `${ROLE_COLOR[npItem.role]}22`, color: ROLE_COLOR[npItem.role], whiteSpace: "nowrap" }}>{t(`role.${npItem.role}`)}</span>
+          <div style={{ flexShrink: 0, borderTop: `1px solid ${PURPLE}33`, background: "linear-gradient(0deg, #0A0A12 0%, #12121C 100%)", padding: isMobile ? "10px 12px calc(12px + env(safe-area-inset-bottom))" : "14px 22px", boxShadow: "0 -6px 24px rgba(0,0,0,0.4)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 18, minWidth: 0 }}>
+              {/* cover + now-playing info */}
+              <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flexShrink: 1, flexBasis: isMobile ? "44%" : 250, maxWidth: isMobile ? 168 : 320 }}>
+                <div style={{ width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 11, flexShrink: 0, background: `linear-gradient(145deg, ${PURPLE}44, ${PURPLE}18)`, border: `1px solid ${PURPLE}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 0 16px ${PURPLE}22` }}>🎵</div>
+                <div style={{ minWidth: 0 }}>
+                  <div title={npItem.file.name} style={{ fontSize: isMobile ? 12.5 : 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npItem.file.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                    {npItem.versionLabel && /^V\d/.test(npItem.versionLabel) && <span style={{ fontSize: 9, fontWeight: 900, padding: "1px 7px", borderRadius: 5, background: `${PURPLE}26`, color: PURPLE, border: `1px solid ${PURPLE}55`, whiteSpace: "nowrap" }}>{npItem.versionLabel}</span>}
+                    <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 7px", borderRadius: 5, background: `${ROLE_COLOR[npItem.role]}22`, color: ROLE_COLOR[npItem.role], whiteSpace: "nowrap" }}>{t(`role.${npItem.role}`)}</span>
+                  </div>
                 </div>
               </div>
               {/* transport */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                <button onClick={() => playerStep(-1)} disabled={npIdx <= 0} title={t("player.prev")} style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: npIdx <= 0 ? "default" : "pointer", opacity: npIdx <= 0 ? 0.4 : 1, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏮</button>
-                <button onClick={togglePlayer} title={pPlaying ? t("player.pause") : t("player.play")} style={{ width: 40, height: 40, borderRadius: "50%", background: PURPLE, border: "none", color: "#fff", cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>{pPlaying ? "⏸" : "▶"}</button>
-                <button onClick={() => playerStep(1)} disabled={npIdx < 0 || npIdx >= playlist.length - 1} title={t("player.next")} style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: (npIdx < 0 || npIdx >= playlist.length - 1) ? "default" : "pointer", opacity: (npIdx < 0 || npIdx >= playlist.length - 1) ? 0.4 : 1, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏭</button>
+              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexShrink: 0 }}>
+                <button onClick={() => playerStep(-1)} disabled={npIdx <= 0} title={t("player.prev")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: npIdx <= 0 ? "default" : "pointer", opacity: npIdx <= 0 ? 0.35 : 1, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏮</button>
+                <button onClick={togglePlayer} title={pPlaying ? t("player.pause") : t("player.play")} style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: "50%", background: `linear-gradient(145deg, ${PURPLE}, #6D28D9)`, border: "none", color: "#fff", cursor: "pointer", fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0, boxShadow: `0 4px 16px ${PURPLE}55` }}>{pPlaying ? "⏸" : "▶"}</button>
+                <button onClick={() => playerStep(1)} disabled={npIdx < 0 || npIdx >= playlist.length - 1} title={t("player.next")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: (npIdx < 0 || npIdx >= playlist.length - 1) ? "default" : "pointer", opacity: (npIdx < 0 || npIdx >= playlist.length - 1) ? 0.35 : 1, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏭</button>
               </div>
               {/* progress + time */}
-              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, minWidth: 0 }}>
-                <span style={{ fontSize: 10, color: MUTED, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>{fmtDur(pCur)}</span>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 7 : 12, minWidth: 0 }}>
+                <span style={{ fontSize: 10.5, color: TEXT2, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>{fmtDur(pCur)}</span>
                 <div ref={pBarRef}
                   onPointerDown={e => { try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ } playerSeek(e.clientX); }}
                   onPointerMove={e => { if (e.buttons === 1) playerSeek(e.clientX); }}
-                  style={{ flex: 1, minWidth: 36, padding: "7px 0", cursor: "pointer", touchAction: "none" }}>
-                  <div style={{ height: 6, background: "rgba(255,255,255,0.12)", borderRadius: 4, position: "relative", overflow: "hidden" }}>
-                    <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pDur > 0 ? (pCur / pDur) * 100 : 0}%`, background: PURPLE, borderRadius: 4 }} />
+                  style={{ flex: 1, minWidth: 40, padding: "8px 0", cursor: "pointer", touchAction: "none" }}>
+                  <div style={{ height: 7, background: "rgba(255,255,255,0.12)", borderRadius: 4, position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pDur > 0 ? (pCur / pDur) * 100 : 0}%`, background: `linear-gradient(90deg, ${PURPLE}, #A855F7)`, borderRadius: 4 }} />
                   </div>
                 </div>
-                <span style={{ fontSize: 10, color: MUTED, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>{pDur > 0 ? fmtDur(pDur) : "—"}</span>
+                <span style={{ fontSize: 10.5, color: TEXT2, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>{pDur > 0 ? fmtDur(pDur) : "—"}</span>
               </div>
               {/* volume (desktop) + download */}
               {!isMobile && (
-                <input type="range" min={0} max={1} step={0.01} value={pVol} onChange={e => setPVol(Number(e.target.value))} title="Volume" style={{ width: 68, accentColor: PURPLE, cursor: "pointer", flexShrink: 0 }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+                  <span style={{ fontSize: 13, color: MUTED }}>🔊</span>
+                  <input type="range" min={0} max={1} step={0.01} value={pVol} onChange={e => setPVol(Number(e.target.value))} title="Volume" style={{ width: 84, accentColor: PURPLE, cursor: "pointer" }} />
+                </div>
               )}
-              <button onClick={() => downloadFile(npItem.file)} title={t("file.download")} style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>↓</button>
+              <button onClick={() => downloadFile(npItem.file)} title={t("file.download")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>↓</button>
             </div>
           </div>
         )}
