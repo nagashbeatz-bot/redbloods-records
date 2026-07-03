@@ -854,7 +854,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
   const narrow = useIsNarrow(760);
-  const [topOpen, setTopOpen] = useState(false); // details+instructions accordion (collapsed by default)
+  const [topOpen, setTopOpen] = useState(true); // details+instructions accordion (open by default, compact)
 
   // ── Mix versions (Phase 2) — real data from /api/sound-engineer/{workId}/versions
   const [versions, setVersions]   = useState<MixVersion[] | null>(null); // null = loading
@@ -1022,6 +1022,12 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
       <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 0 }}>{node}</div>
     </div>
   );
+  // Compact 2-column "field" cell (label above value) for the job-details card.
+  const fieldCol: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 3, minWidth: 0 };
+  const fieldLbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.04em" };
+  const field = (label: string, node: React.ReactNode) => (
+    <div style={fieldCol}><span style={fieldLbl}>{label}</span><div style={{ minWidth: 0, display: "flex" }}>{node}</div></div>
+  );
 
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -1064,24 +1070,22 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             {/* Work details — narrower side card */}
             <div style={subCard}>
               <div style={innerHead}>{t.jobDetails}</div>
-              <div style={{ padding: "6px 16px 12px" }}>
-                {detailRow(t.project, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.project}</span>)}
-                {detailRow(t.workType, <PillGroup value={work.workType} options={WORK_TYPES} labelFor={o => wtLabel(o, lang)} onChange={v => onChange({ workType: v })} />)}
-                {detailRow(t.status, <PillGroup value={work.status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={v => onChange({ status: v })} />)}
-                {detailRow(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
-                {detailRow(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
-                {detailRow(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 44, padding: "8px 0" }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>{t.payment}</span>
-                  <PayChip pay={work.pay} lang={lang} />
+              <div style={{ padding: "10px 16px 12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px", alignItems: "start" }}>
+                  {field(t.project, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{work.project}</span>)}
+                  {field(t.workType, <InlineSelect<WorkType> value={work.workType} display={wtLabel(work.workType, lang)} color={TEXT2} options={WORK_TYPES.map(o => ({ value: o, label: wtLabel(o, lang), color: TEXT2 }))} onChange={v => onChange({ workType: v })} />)}
+                  {field(t.status, <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))} onChange={v => onChange({ status: v })} />)}
+                  {field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
+                  {field(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
+                  {field(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
+                  {field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
                 </div>
-                {/* Danger zone — delete this job (subtle, full-width) */}
-                <div style={{ paddingTop: 14, marginTop: 4, borderTop: `1px solid ${BDR}` }}>
+                <div style={{ paddingTop: 12, marginTop: 10, borderTop: `1px solid ${BDR}` }}>
                   <button
                     onClick={() => setConfirmOpen(true)}
                     onMouseEnter={e => { e.currentTarget.style.background = `${RED}12`; e.currentTarget.style.borderColor = `${RED}80`; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = `${RED}44`; }}
-                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 700, padding: "9px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
+                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
                   >🗑 {t.deleteWork}</button>
                 </div>
               </div>
