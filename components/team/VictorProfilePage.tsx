@@ -2164,6 +2164,7 @@ export default function VictorProfilePage() {
   const [selectedWork, setSelectedWork] = useState<VendorWork | null>(null);
   // Phase 2A: Victor (supplier) must not see salary. Owner sees it as before.
   const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
+  const [roleChecked, setRoleChecked] = useState(false); // /api/me settled (success or fail)
   const isOwner = myRole === "owner";
   const roleLoading = myRole === null; // true only until role is known (cache or /api/me)
 
@@ -2185,7 +2186,8 @@ export default function VictorProfilePage() {
           rememberVictorRole(d.role); // cache role + coerce Victor off Hebrew (→ en)
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setRoleChecked(true)); // lift the loader gate even if /api/me failed
   }, []);
 
   const fetchMonth = useCallback(async (m: string) => {
@@ -2318,6 +2320,23 @@ export default function VictorProfilePage() {
     background: "none", border: "none", outline: "none",
     fontFamily: "inherit", cursor: "pointer", padding: 0,
   };
+
+  // Until the role is known, render a neutral, LANGUAGE-AGNOSTIC loader (no
+  // localized text) so Victor never sees a flash of Hebrew before it resolves to
+  // English. A returning session commits the cached role before paint (useIso),
+  // so this only shows on a first visit / cleared storage. By the time it clears,
+  // rememberVictorRole has already coerced a Victor session to English.
+  if (myRole === null && !roleChecked) {
+    return (
+      <div style={{ minHeight: "100%", background: BG, display: "flex", alignItems: "center", justifyContent: "center", direction: "ltr", padding: 40 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 38 }} aria-label="Loading">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} style={{ width: 6, height: "100%", borderRadius: 3, background: PURPLE, transformOrigin: "bottom", animation: `eq${i} 0.9s ease-in-out infinite` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

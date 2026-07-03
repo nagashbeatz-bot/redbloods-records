@@ -185,7 +185,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
           fontSize: 9, fontWeight: 800, color: DIM,
           letterSpacing: "0.1em", textTransform: "uppercase",
           padding: "0 8px 10px",
-        }}>{isVictor ? vt("nav.main") : "ראשי"}</div>
+        }}>{role === "owner" ? "ראשי" : isVictor ? vt("nav.main") : ""}</div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {navMain.map(({ href, label, icon, iconColor }) => (
