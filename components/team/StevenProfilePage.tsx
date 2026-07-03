@@ -854,7 +854,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
   const narrow = useIsNarrow(760);
-  const [topOpen, setTopOpen] = useState(true); // details+instructions accordion (open by default, compact)
 
   // ── Mix versions (Phase 2) — real data from /api/sound-engineer/{workId}/versions
   const [versions, setVersions]   = useState<MixVersion[] | null>(null); // null = loading
@@ -1057,15 +1056,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
         {/* Body — workboard: instructions (top) / details / versions (middle) / player (bottom) */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-          {/* TOP (collapsible, closed by default): job details + mix instructions */}
-          <div>
-            <button onClick={() => setTopOpen(o => !o)}
-              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 15px", borderRadius: 12, background: CARD2, border: `1px solid ${BDR}`, color: TEXT, cursor: "pointer", fontFamily: "inherit" }}>
-              <span style={{ fontSize: 12.5, fontWeight: 800 }}>📋 {t.detailsAndInstructions}</span>
-              <span style={{ fontSize: 11, color: MUTED, transform: topOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
-            </button>
-            {topOpen && (
-            <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(280px, 1fr) minmax(0, 1.55fr)", gap: 16, alignItems: "start", marginTop: 12 }}>
+          {/* TOP: job details + mix instructions (shown directly — no accordion) */}
+          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(280px, 1fr) minmax(0, 1.55fr)", gap: 16, alignItems: "start" }}>
 
             {/* Work details — narrower side card */}
             <div style={subCard}>
@@ -1106,8 +1098,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 />
               </div>
             </div>
-          </div>
-            )}
           </div>
 
           {/* WORKBOARD: player+comments (main, right) | versions+upload (side, left) */}
@@ -1163,15 +1153,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
                       </button>
                       <div title={primary} style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
-                      <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
-                        <InlineSelect<string>
-                          value={v.status}
-                          display={vStatusLabel(v.status, lang)}
-                          color={vStatusColor(v.status)}
-                          options={VSTATUS_OPTIONS.map(s => ({ value: s as string, label: vStatusLabel(s, lang), color: VSTATUS_COLOR[s] }))}
-                          onChange={s => setVersionStatus(v, s)}
-                        />
-                      </div>
                       <button onClick={e => { e.stopPropagation(); setDelVersion(v); }} title={t.vDelYes}
                         style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
                         onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
