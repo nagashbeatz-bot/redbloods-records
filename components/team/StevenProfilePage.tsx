@@ -821,7 +821,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [versions, setVersions]   = useState<MixVersion[] | null>(null); // null = loading
   const [vLoadErr, setVLoadErr]   = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadLabel, setUploadLabel] = useState("");
   const [drag, setDrag]           = useState(false);
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
@@ -844,13 +843,12 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
     setUploading(true);
     const fd = new FormData();
     fd.append("file", file);
-    if (uploadLabel.trim()) fd.append("label", uploadLabel.trim());
+    // No manual label — the server auto-assigns the next free "Mix N".
     fetch(`/api/sound-engineer/${work.id}/versions`, { method: "POST", body: fd })
       .then(r => r.json())
       .then(d => {
         if (d.ok && d.version) {
           setVersions(prev => [d.version as MixVersion, ...(prev ?? [])]);
-          setUploadLabel("");
           notify(t.vUploaded);
         } else {
           notify(d.error || t.vUploadFailed);
@@ -1005,13 +1003,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 <div style={{ fontSize: 24, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
                 <div style={{ fontSize: 10.5, color: MUTED }}>{t.vFileHint}</div>
-                <input
-                  value={uploadLabel}
-                  onChange={e => setUploadLabel(e.target.value)}
-                  onClick={e => e.stopPropagation()}
-                  placeholder={t.vLabelPh}
-                  style={{ marginTop: 8, width: "min(240px, 100%)", boxSizing: "border-box", padding: "6px 10px", borderRadius: 8, background: CARD, color: TEXT, border: `1px solid ${BDR2}`, fontSize: 11.5, fontFamily: "inherit", outline: "none", textAlign: "center" }}
-                />
               </div>
             </div>
 
