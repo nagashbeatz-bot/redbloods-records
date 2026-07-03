@@ -756,6 +756,8 @@ function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
   const [err, setErr]           = useState(false);
   const [dragging, setDragging] = useState(false);
   const [vol, setVol]           = useState(1);
+  const [hoveredC, setHoveredC] = useState<string | null>(null); // marker under cursor
+  const [pinnedC, setPinnedC]   = useState<string | null>(null); // marker clicked → bubble stays open
 
   const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
 
@@ -817,9 +819,28 @@ function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
         {dur > 0 && comments.map((c, i) => {
           const col  = COMMENT_COLORS[i % COMMENT_COLORS.length];
           const left = Math.min(100, Math.max(0, (c.timestampSeconds / dur) * 100));
+          const show = hoveredC === c.id || pinnedC === c.id;
           return (
-            <button key={c.id} title={`${fmtTime(c.timestampSeconds)} · ${c.commentText}`} onClick={() => seekTo(c.timestampSeconds)}
-              style={{ position: "absolute", top: -9, left: `${left}%`, transform: "translateX(-50%)", width: 20, height: 20, borderRadius: "50%", background: col, color: "#fff", border: `2px solid ${CARD}`, fontSize: 10, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>{i + 1}</button>
+            <div key={c.id} style={{ position: "absolute", top: -9, left: `${left}%`, transform: "translateX(-50%)", zIndex: show ? 6 : 2 }}>
+              {/* Floating comment bubble — appears on hover / when pinned; does not affect layout */}
+              {show && (
+                <div style={{
+                  position: "absolute", bottom: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)",
+                  maxWidth: 190, padding: "5px 9px", borderRadius: 9, background: col, color: "#fff",
+                  fontSize: 11, fontWeight: 700, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  border: "1px solid rgba(255,255,255,0.22)", boxShadow: `0 7px 20px ${col}66, 0 2px 8px rgba(0,0,0,0.55)`,
+                  pointerEvents: "none", unicodeBidi: "plaintext",
+                }}>
+                  {c.commentText}
+                  {/* downward tail pointing at the marker */}
+                  <span style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: `6px solid ${col}` }} />
+                </div>
+              )}
+              <button title={`${fmtTime(c.timestampSeconds)} · ${c.commentText}`}
+                onClick={() => { seekTo(c.timestampSeconds); setPinnedC(c.id); }}
+                onMouseEnter={() => setHoveredC(c.id)} onMouseLeave={() => setHoveredC(cur => (cur === c.id ? null : cur))}
+                style={{ display: "block", width: 20, height: 20, borderRadius: "50%", background: col, color: "#fff", border: `2px solid ${CARD}`, fontSize: 10, fontWeight: 800, cursor: "pointer", lineHeight: "16px", textAlign: "center", boxShadow: show ? `0 0 0 3px ${col}44` : "none", transition: "box-shadow .12s ease" }}>{i + 1}</button>
+            </div>
           );
         })}
       </div>
