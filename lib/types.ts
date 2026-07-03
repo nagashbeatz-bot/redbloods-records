@@ -57,6 +57,29 @@ export interface FileLink {
   durationSeconds?: number;  // audio length in whole seconds — captured client-side at upload (optional; older files lack it)
 }
 
+/**
+ * A Steven/Bill mix version (Phase 2). Physical file lives in the ORIGINAL
+ * project's Dropbox folder under /Mix Versions/; metadata lives ONLY here in
+ * mix_versions (never in projects.files). `url` is a computed stream URL.
+ */
+export interface MixVersion {
+  id:                  string;
+  soundEngineerWorkId: string;
+  projectId:           string | null;
+  label:               string;
+  fileName:            string;
+  dropboxPath:         string;
+  url:                 string;          // computed: /api/dropbox/stream?path=...
+  fileSize:            number | null;
+  fileType:            string | null;
+  status:              string;          // בבדיקה | מוכן | מאושר | נדחה
+  uploadedBy:          string | null;
+  durationSeconds:     number | null;
+  uploadedAt:          string;
+  createdAt:           string;
+  updatedAt:           string;
+}
+
 /** A YouTube reference attached to a Victor work ("רפרנסים"). */
 export interface VictorReference {
   id: string;

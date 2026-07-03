@@ -31,3 +31,22 @@ export function projectBaseFolder(artist: string, projectName: string, projectId
 export function deliveryFolder(artist: string, projectName: string, projectId: string): string {
   return `${projectBaseFolder(artist, projectName, projectId)}/Delivery`;
 }
+
+/**
+ * Steven/Bill mix-versions folder (Phase 2). Physically inside the ORIGINAL
+ * project's folder, in a dedicated "Mix Versions" subfolder (separate from
+ * Delivery). NEVER uses sound_engineer_work.work_title — that is display-only,
+ * so renaming a Steven work never moves the files. Standalone works (no project)
+ * fall back to a workId-scoped folder so the path is rename-proof.
+ */
+export function mixVersionsFolder(opts: {
+  projectId: string | null;
+  artist?: string;
+  projectName?: string;
+  workId: string;
+}): string {
+  if (opts.projectId) {
+    return `${projectBaseFolder(opts.artist ?? "", opts.projectName ?? "", opts.projectId)}/Mix Versions`;
+  }
+  return `/Sound Engineer/${opts.workId}/Mix Versions`;
+}
