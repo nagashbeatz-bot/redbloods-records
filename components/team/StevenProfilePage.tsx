@@ -962,7 +962,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
   const versionInputRef = useRef<HTMLInputElement | null>(null);
   const [openingFolder, setOpeningFolder] = useState(false);      // Dropbox folder-open in flight
-  const [folderFallback, setFolderFallback] = useState<string | null>(null); // popup-blocked link
 
   // ── Timestamp comments for the selected version ──────────────────────────────
   const [comments, setComments]   = useState<MixComment[] | null>(null); // null = loading
@@ -1123,11 +1122,13 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
 
   // Open the Mix Versions folder in Dropbox. Reuses the existing owner-only
   // /api/dropbox/folder-link endpoint (get-or-create share link) — no new route,
-  // no projects.files write. Opens a blank tab first so a popup blocker can't
-  // swallow the async result; falls back to a manual link if it does.
+  // no projects.files write. Pre-opens a blank tab in the click gesture so a
+  // popup blocker can't swallow the async result; a blocked/failed open just
+  // shows a small toast (no persistent link UI under the button).
   async function openMixFolder() {
     if (!mixFolderPath || openingFolder) return;
-    setOpeningFolder(true); setFolderFallback(null);
+    setOpeningFolder(true);
+    const tab = window.open("", "_blank", "noopener,noreferrer"); // reserve tab within the gesture
     try {
       const res = await fetch("/api/dropbox/folder-link", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1135,9 +1136,10 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
       });
       const d = await res.json();
       if (!res.ok || !d.ok || !d.shareLink) throw new Error(d.error || "no-link");
-      const w = window.open(d.shareLink, "_blank", "noopener,noreferrer");
-      if (!w) setFolderFallback(d.shareLink); // popup blocked → show a manual link
+      if (tab) tab.location.href = d.shareLink; // popup allowed → navigate the reserved tab
+      else notify(t.vFolderOpenFail);           // popup blocked → toast only, no extra UI
     } catch {
+      tab?.close();
       notify(t.vFolderOpenFail);
     } finally { setOpeningFolder(false); }
   }
@@ -1307,10 +1309,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 }}>
                 {openingFolder ? t.openingFolder : t.openMixFolder}
               </button>
-              {folderFallback && (
-                <a href={folderFallback} target="_blank" rel="noopener noreferrer"
-                  style={{ display: "block", marginTop: 7, fontSize: 11, color: "#4A9EFF", textAlign: "center", textDecoration: "none" }}>{t.vFolderClickHere}</a>
-              )}
             </div>
           </div>
 
