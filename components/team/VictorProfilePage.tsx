@@ -1272,9 +1272,9 @@ function VictorProjectDrawer({
           top: isMobile ? 0 : "50%",
           left: isMobile ? 0 : "50%",
           transform: isMobile ? "none" : "translate(-50%, -50%)",
-          width: isMobile ? "100vw" : "min(1300px, 95vw)",
-          height: isMobile ? "100dvh" : undefined,
-          maxHeight: isMobile ? "100dvh" : "90vh",
+          width: isMobile ? "100vw" : "min(1600px, 92vw)",
+          height: isMobile ? "100dvh" : "calc(100vh - 72px)",
+          maxHeight: isMobile ? "100dvh" : "calc(100vh - 72px)",
           zIndex: 1001,
           background: "#090910",
           border: isMobile ? "none" : `1px solid ${BDR2}`,
@@ -1416,7 +1416,7 @@ function VictorProjectDrawer({
 
         {/* ── Scrollable body ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px calc(40px + env(safe-area-inset-bottom))" : "18px 20px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(240px, 0.75fr) minmax(520px, 1.7fr) minmax(340px, 1fr)", gap: 18, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(250px, 0.8fr) minmax(520px, 1.85fr) minmax(360px, 1fr)", gap: 20, alignItems: "start" }}>
 
             {/* ════ RIGHT column: brief + references (was MAIN). order maps it to
                  the rightmost desktop track; on mobile it stacks 2nd (after Versions). ════ */}
@@ -1909,8 +1909,8 @@ function VictorProjectDrawer({
             app's global PlayerProvider — its own <audio>, own currentVictorAudio). */}
         <audio ref={playerAudioRef} preload="metadata" style={{ display: "none" }} />
         {npItem && (
-          <div style={{ flexShrink: 0, borderTop: `1px solid ${PURPLE}33`, background: "linear-gradient(0deg, #0A0A12 0%, #12121C 100%)", padding: isMobile ? "10px 12px calc(12px + env(safe-area-inset-bottom))" : "14px 22px", boxShadow: "0 -6px 24px rgba(0,0,0,0.4)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 18, minWidth: 0 }}>
+          <div style={{ flexShrink: 0, minHeight: isMobile ? undefined : 80, display: "flex", alignItems: "center", borderTop: `1px solid ${PURPLE}33`, background: "linear-gradient(0deg, #0A0A12 0%, #12121C 100%)", padding: isMobile ? "10px 12px calc(12px + env(safe-area-inset-bottom))" : "14px 26px", boxShadow: "0 -6px 24px rgba(0,0,0,0.4)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 18, minWidth: 0, width: "100%" }}>
               {/* cover + now-playing info */}
               <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flexShrink: 1, flexBasis: isMobile ? "44%" : 250, maxWidth: isMobile ? 168 : 320 }}>
                 <div style={{ width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 11, flexShrink: 0, background: `linear-gradient(145deg, ${PURPLE}44, ${PURPLE}18)`, border: `1px solid ${PURPLE}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 0 16px ${PURPLE}22` }}>🎵</div>
