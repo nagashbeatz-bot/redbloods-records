@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { mixVersionsFolder, sanitizeFolder } from "@/lib/project-paths";
+import { mixVersionsFolder, sanitizeFolder, primaryArtist } from "@/lib/project-paths";
 import { listMixVersions, createMixVersion } from "@/lib/mix-versions-store";
 
 // Large audio files (WAV/FLAC/stems) can take a while.
@@ -73,14 +73,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // (no project) drop the empty artist/project parts. The DB file_name is this
     // clean name WITHOUT the prefix; dropbox_path keeps a {versionId}- prefix to
     // avoid collisions. If no label was given, fall back to the original base name.
-    const versionId      = crypto.randomUUID();
-    const dot            = file.name.lastIndexOf(".");
-    const ext            = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : "";
-    const originalBase   = dot >= 0 ? file.name.slice(0, dot) : file.name;
-    const effectiveLabel = label || originalBase;
-    const cleanBase      = [artist, projectName, effectiveLabel]
+    const versionId = crypto.randomUUID();
+    const dot       = file.name.lastIndexOf(".");
+    const ext       = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : ""; // only the original extension is reused
+
+    // Label: use the provided one; if empty, auto "Mix N" from the existing
+    // version count. NEVER fall back to the original uploaded filename.
+    let effectiveLabel = label;
+    if (!effectiveLabel) {
+      const { count } = await supabase
+        .from("mix_versions")
+        .select("id", { count: "exact", head: true })
+        .eq("sound_engineer_work_id", workId);
+      effectiveLabel = `Mix ${(count ?? 0) + 1}`;
+    }
+
+    // Clean physical name from the ORIGINAL project (PRIMARY artist) + label —
+    // never the uploaded filename, never work_title. Standalone works drop the
+    // empty artist/project parts.
+    const cleanBase = [primaryArtist(artist), projectName, effectiveLabel]
       .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || "Mix";
-    const cleanFileName  = ext ? `${cleanBase}.${ext}` : cleanBase;
+    const cleanFileName = ext ? `${cleanBase}.${ext}` : cleanBase;
 
     const folder      = mixVersionsFolder({ projectId, artist, projectName, workId });
     const dropboxPath = `${folder}/${versionId}-${cleanFileName}`;
