@@ -464,6 +464,7 @@ function isoDay(offset = 0): string {
 export default function StevenProfilePage() {
   const router = useRouter();
   const [works, setWorks]   = useState<Work[]>([]);
+  const [loading, setLoading] = useState(true); // initial page load only — never re-armed after create
   const [openId, setOpenId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [lang, setLang]     = useState<Lang>("he");
@@ -487,6 +488,7 @@ export default function StevenProfilePage() {
       const d = (await r.json()) as { ok: boolean; works?: SoundEngineerWork[] };
       if (d.ok && d.works) setWorks(d.works.map(mapRecord));
     } catch { /* silent */ }
+    finally { setLoading(false); }
   }, []);
   useEffect(() => { void reloadWorks(); }, [reloadWorks]);
 
@@ -626,11 +628,22 @@ export default function StevenProfilePage() {
 
         {/* ── KPI row (5 cards) ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <KpiCard label={t.kpiOpen}      value={open}         icon="📁" />
-          <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={GREEN} />
-          <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={BLUE} />
-          <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
-          <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "18px 20px 16px", minWidth: 0 }}>
+                <Shimmer w="62%" h={10} r={5} style={{ marginBottom: 13 }} />
+                <Shimmer w={64} h={30} r={8} />
+              </div>
+            ))
+          ) : (
+            <>
+              <KpiCard label={t.kpiOpen}      value={open}         icon="📁" />
+              <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={GREEN} />
+              <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={BLUE} />
+              <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
+              <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
+            </>
+          )}
         </div>
 
         {/* ── Main grid ── */}
@@ -648,7 +661,19 @@ export default function StevenProfilePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {works.length === 0 ? (
+                  {loading ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={i} style={{ borderTop: `1px solid ${BDR}` }}>
+                        <td colSpan={8} style={{ padding: "0 14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 20, height: 45 }}>
+                            <Shimmer w={140} h={13} /><Shimmer w={88} h={12} /><Shimmer w={64} h={22} r={999} />
+                            <Shimmer w={62} h={12} /><Shimmer w={62} h={12} /><Shimmer w={50} h={12} />
+                            <Shimmer w={64} h={22} r={999} /><div style={{ flex: 1 }} /><Shimmer w={70} h={24} r={10} />
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : works.length === 0 ? (
                     <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
                   ) : works.map((w, i) => (
                     <tr key={w.id} style={{ borderTop: `1px solid ${BDR}`, background: i % 2 ? "rgba(255,255,255,0.01)" : "transparent" }}>
@@ -698,11 +723,15 @@ export default function StevenProfilePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={sectionCard}>
               <div style={cardHead}>{t.payHistory}</div>
-              <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noPayments}</div>
+              {loading
+                ? <RowsSkeleton rows={3} height={38} pad="14px 18px" />
+                : <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noPayments}</div>}
             </div>
             <div style={sectionCard}>
               <div style={cardHead}>{t.recentFiles}</div>
-              <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noRecentFiles}</div>
+              {loading
+                ? <RowsSkeleton rows={3} height={38} pad="14px 18px" />
+                : <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noRecentFiles}</div>}
             </div>
           </div>
         </div>
