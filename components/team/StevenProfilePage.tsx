@@ -64,6 +64,15 @@ function fmtDateTime(iso: string): string {
   const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
   return `${date.replace(/\//g, ".")} ${time}`;
 }
+/** Seconds → "M:SS". */
+function fmtTime(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+/** Strip a legacy "{id}-" prefix from an auto-generated label/name (display only). */
+const stripId = (s: string, id: string) => (s.startsWith(`${id}-`) ? s.slice(id.length + 1) : s);
 
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
@@ -143,6 +152,7 @@ const TR = {
     vLabelPh: "שם גרסה, למשל Mix 1", vChooseFile: "בחר קובץ", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "מעלה קובץ…", vUploaded: "הגרסה הועלתה", vUploadFailed: "העלאת הגרסה נכשלה", vDeleted: "הגרסה נמחקה", vLoadFailed: "טעינת הגרסאות נכשלה",
     vLoading: "טוען גרסאות…", vEmpty: "עדיין אין גרסאות — העלה קובץ ראשון עם הכפתור למעלה",
+    vSelectToPlay: "בחר גרסה מהרשימה כדי לנגן", vAudioLoading: "טוען קובץ…", vAudioError: "טעינת הקובץ נכשלה", vPlay: "נגן",
     vColVersion: "שם גרסה", vColFile: "קובץ", vColType: "סוג", vColSize: "גודל", vColDate: "הועלה", vColStatus: "סטטוס", vColActions: "פעולות",
     vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
@@ -169,6 +179,7 @@ const TR = {
     vLabelPh: "Version name, e.g. Mix 1", vChooseFile: "Choose file", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "Uploading…", vUploaded: "Version uploaded", vUploadFailed: "Version upload failed", vDeleted: "Version deleted", vLoadFailed: "Failed to load versions",
     vLoading: "Loading versions…", vEmpty: "No versions yet — upload the first file with the button above",
+    vSelectToPlay: "Select a version to play", vAudioLoading: "Loading file…", vAudioError: "Failed to load the file", vPlay: "Play",
     vColVersion: "Version", vColFile: "File", vColType: "Type", vColSize: "Size", vColDate: "Uploaded", vColStatus: "Status", vColActions: "Actions",
     vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
@@ -706,6 +717,100 @@ function EmptyZone({ icon, title, subtitle }: { icon: string; title: string; sub
   );
 }
 
+// ── Local mix-version player (premium dark card) — never touches the global
+//    project player; streams the selected version via /api/dropbox/stream. ────────
+function VersionPlayer({ url, title, shouldPlay, t }: { url: string; title: string; shouldPlay: number; t: T }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const barRef   = useRef<HTMLDivElement | null>(null);
+  const [playing, setPlaying]   = useState(false);
+  const [cur, setCur]           = useState(0);
+  const [dur, setDur]           = useState(0);
+  const [loading, setLoading]   = useState(true);
+  const [err, setErr]           = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+
+  // Play when the parent bumps shouldPlay (>0). Runs on mount for a play-click
+  // selection, and on later bumps for replaying the same version.
+  useEffect(() => {
+    if (shouldPlay > 0) audioRef.current?.play().catch(() => setErr(true));
+  }, [shouldPlay]);
+
+  // Stop playback if this player unmounts (e.g. switching versions / closing).
+  useEffect(() => { const a = audioRef.current; return () => { a?.pause(); }; }, []);
+
+  function toggle() {
+    const a = audioRef.current; if (!a || err) return;
+    if (a.paused) a.play().catch(() => setErr(true)); else a.pause();
+  }
+  function seekAt(clientX: number) {
+    const bar = barRef.current, a = audioRef.current;
+    if (!bar || !a || !dur) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    a.currentTime = ratio * dur; setCur(a.currentTime);
+  }
+
+  return (
+    <div style={{ padding: "16px 18px 18px" }}>
+      <audio
+        ref={audioRef} src={url} preload="metadata"
+        onLoadedMetadata={e => { setDur(e.currentTarget.duration || 0); setLoading(false); }}
+        onCanPlay={() => setLoading(false)}
+        onTimeUpdate={e => setCur(e.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        onError={() => { setErr(true); setLoading(false); }}
+      />
+      {/* Title + transport */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", borderRadius: 14,
+        background: `linear-gradient(135deg, ${BRAND}14 0%, rgba(255,255,255,0.02) 60%)`,
+        border: `1px solid ${BRAND}33`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04)`,
+      }}>
+        <button
+          onClick={toggle} disabled={err}
+          title={playing ? "Pause" : t.vPlay}
+          style={{
+            width: 46, height: 46, borderRadius: "50%", flexShrink: 0, border: "none",
+            background: err ? "#3A3A44" : `linear-gradient(145deg, ${BRAND}, #B91C1C)`,
+            color: "#fff", cursor: err ? "default" : "pointer",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            boxShadow: err ? "none" : `0 6px 18px ${BRAND}55`, transition: "transform .1s",
+          }}
+        >
+          {playing
+            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg>
+            : <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" style={{ marginInlineStart: 2 }}><path d="M8 5v14l11-7z"/></svg>}
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div title={title} style={{ fontSize: 14, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+          <div style={{ fontSize: 11, color: err ? RED : MUTED, marginTop: 2 }}>
+            {err ? t.vAudioError : loading ? t.vAudioLoading : "Steven"}
+          </div>
+        </div>
+      </div>
+      {/* Progress */}
+      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, direction: "ltr" }}>
+        <span style={{ fontSize: 11, color: MUTED, fontVariantNumeric: "tabular-nums", minWidth: 32 }}>{fmtTime(cur)}</span>
+        <div
+          ref={barRef}
+          onPointerDown={e => { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); setDragging(true); seekAt(e.clientX); }}
+          onPointerMove={e => { if (dragging) seekAt(e.clientX); }}
+          onPointerUp={e => { setDragging(false); try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch {} }}
+          style={{ flex: 1, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.08)", position: "relative", cursor: "pointer", touchAction: "none" }}
+        >
+          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, borderRadius: 999, background: `linear-gradient(90deg, ${BRAND}, #F87171)` }} />
+          <div style={{ position: "absolute", left: `${pct}%`, top: "50%", transform: "translate(-50%, -50%)", width: 14, height: 14, borderRadius: "50%", background: "#fff", boxShadow: `0 0 0 3px ${BRAND}66`, pointerEvents: "none" }} />
+        </div>
+        <span style={{ fontSize: 11, color: MUTED, fontVariantNumeric: "tabular-nums", minWidth: 32, textAlign: "right" }}>{fmtTime(dur)}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
 function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -719,6 +824,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [uploadLabel, setUploadLabel] = useState("");
   const [drag, setDrag]           = useState(false);
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
+  const [sel, setSel]             = useState<string | null>(null);                        // selected version id
+  const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
   const versionInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -767,6 +874,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   function confirmDeleteVersion() {
     const v = delVersion; if (!v) return;
     setDelVersion(null);
+    if (sel === v.id) setSel(null); // deleting the playing version → back to empty state
     const prev = versions;
     setVersions(cur => cur?.filter(x => x.id !== v.id) ?? null);
     fetch(`/api/sound-engineer/versions/${v.id}`, { method: "DELETE" })
@@ -780,6 +888,9 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
+
+  // Currently-selected version for the local player (null when it no longer exists).
+  const selected = versions?.find(v => v.id === sel) ?? null;
 
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
@@ -931,22 +1042,30 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                   </thead>
                   <tbody>
                     {versions.map(v => {
-                      // Auto-defaulted labels can carry a legacy "{versionId}-" prefix;
-                      // strip it for display only (stored value/path unchanged).
-                      const clean = (s: string) => (s.startsWith(`${v.id}-`) ? s.slice(v.id.length + 1) : s);
-                      const label = clean(v.label);
+                      const label = stripId(v.label, v.id);
                       // Single, clean display line: Steven-facing title + mix label
                       // (e.g. "Paparazi - Mix 1"). No secondary/metadata line.
                       const primary = `${work.project} - ${label}`;
+                      const isSel = sel === v.id;
                       return (
-                      <tr key={v.id} style={{ borderBottom: `1px solid ${BDR}` }}>
+                      <tr key={v.id} onClick={() => setSel(v.id)}
+                        style={{ borderBottom: `1px solid ${BDR}`, cursor: "pointer", background: isSel ? `${BRAND}12` : "transparent", transition: "background .12s" }}>
                         <td style={{ padding: "10px", minWidth: 0 }}>
-                          <div title={primary} style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <button
+                              onClick={e => { e.stopPropagation(); setSel(v.id); setPlayReq(p => ({ id: v.id, nonce: (p?.nonce ?? 0) + 1 })); }}
+                              title={t.vPlay}
+                              style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                            </button>
+                            <div title={primary} style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
+                          </div>
                         </td>
                         <td style={{ padding: "9px 10px", fontSize: 11.5, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v.fileType || "—").toUpperCase()}</td>
                         <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtBytes(v.fileSize)}</td>
                         <td style={{ padding: "9px 10px", fontSize: 11, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtDateTime(v.uploadedAt)}</td>
-                        <td style={{ padding: "9px 10px" }}>
+                        <td style={{ padding: "9px 10px" }} onClick={e => e.stopPropagation()}>
                           <InlineSelect<string>
                             value={v.status}
                             display={vStatusLabel(v.status, lang)}
@@ -956,7 +1075,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                           />
                         </td>
                         <td style={{ padding: "9px 6px", textAlign: "center" }}>
-                          <button onClick={() => setDelVersion(v)} title={t.vDelYes}
+                          <button onClick={e => { e.stopPropagation(); setDelVersion(v); }} title={t.vDelYes}
                             style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 14, cursor: "pointer" }}
                             onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
                         </td>
@@ -969,10 +1088,20 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             )}
           </div>
 
-          {/* BOTTOM: Player + time-stamped comments — coming in phase 2 (real DB) */}
+          {/* BOTTOM: local player for the selected mix version (timestamp comments = phase 4) */}
           <div style={subCard}>
             <div style={innerHead}>💬 {t.playerSection}</div>
-            <EmptyZone icon="🎧" title={t.playerEmptyTitle} subtitle={t.playerEmpty} />
+            {selected ? (
+              <VersionPlayer
+                key={selected.id}
+                url={selected.url}
+                title={`${work.project} - ${stripId(selected.label, selected.id)}`}
+                shouldPlay={playReq?.id === selected.id ? playReq.nonce : 0}
+                t={t}
+              />
+            ) : (
+              <EmptyZone icon="🎧" title={t.playerEmptyTitle} subtitle={t.vSelectToPlay} />
+            )}
           </div>
         </div>
 
