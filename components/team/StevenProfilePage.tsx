@@ -112,7 +112,8 @@ const TR = {
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
-    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקייה בדרופבוקס", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
+    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
+    uploadVersion: "+ העלה גרסה / קובץ עבודה", phase2Tag: "פאזה 2", uploadComing: "העלאת גרסאות אמיתית ל-Dropbox תתווסף בפאזה הבאה",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     newWorkTitle: "עבודה חדשה ל-Steven", projectName: "שם הפרויקט", priceLabel: "מחיר ($)", save: "שמור", cancel: "ביטול", required: "יש להזין שם פרויקט",
     tAdded: "הקבצים נוספו לעבודה", tRemoved: "הקובץ הוסר", tNoPlay: "אין קובץ לניגון כרגע", tNoDownload: "אין קובץ להורדה כרגע", tNoDropbox: "אין עדיין קישור Dropbox לעבודה הזו",
@@ -133,6 +134,7 @@ const TR = {
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
     mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
+    uploadVersion: "+ Upload version / work file", phase2Tag: "Phase 2", uploadComing: "Real Dropbox version upload is coming in the next phase",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     newWorkTitle: "New Work for Steven", projectName: "Project name", priceLabel: "Price ($)", save: "Save", cancel: "Cancel", required: "Project name is required",
     tAdded: "Files added to job", tRemoved: "File removed", tNoPlay: "No playable file yet", tNoDownload: "No downloadable file yet", tNoDropbox: "No Dropbox link for this job yet",
@@ -645,6 +647,18 @@ export default function StevenProfilePage() {
   );
 }
 
+// ── Narrow-viewport hook — lets the modal stack its top row on mobile ────────────
+function useIsNarrow(max = 760): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const check = () => setNarrow(window.innerWidth <= max);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [max]);
+  return narrow;
+}
+
 // ── Empty "ready work area" (versions / player) — structured, not tiny text ──────
 function EmptyZone({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
   return (
@@ -660,6 +674,7 @@ function EmptyZone({ icon, title, subtitle }: { icon: string; title: string; sub
 function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
+  const narrow = useIsNarrow(760);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -704,10 +719,36 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
         {/* Body — workboard: instructions (top) / details / versions (middle) / player (bottom) */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-          {/* TOP: Mix instructions (real notes) + Work details */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
+          {/* TOP: Work details (side) + Mix instructions (wide, central) — per reference */}
+          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(280px, 1fr) minmax(0, 1.55fr)", gap: 16, alignItems: "start" }}>
 
-            {/* Mix instructions — prominent, backed by real sound_engineer_work.notes */}
+            {/* Work details — narrower side card */}
+            <div style={subCard}>
+              <div style={innerHead}>{t.jobDetails}</div>
+              <div style={{ padding: "6px 16px 12px" }}>
+                {detailRow(t.project, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.project}</span>)}
+                {detailRow(t.workType, <PillGroup value={work.workType} options={WORK_TYPES} labelFor={o => wtLabel(o, lang)} onChange={v => onChange({ workType: v })} />)}
+                {detailRow(t.status, <PillGroup value={work.status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={v => onChange({ status: v })} />)}
+                {detailRow(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
+                {detailRow(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
+                {detailRow(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 44, padding: "8px 0" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>{t.payment}</span>
+                  <PayChip pay={work.pay} lang={lang} />
+                </div>
+                {/* Danger zone — delete this job (subtle, full-width) */}
+                <div style={{ paddingTop: 14, marginTop: 4, borderTop: `1px solid ${BDR}` }}>
+                  <button
+                    onClick={() => setConfirmOpen(true)}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${RED}12`; e.currentTarget.style.borderColor = `${RED}80`; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = `${RED}44`; }}
+                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 700, padding: "9px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
+                  >🗑 {t.deleteWork}</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Mix instructions — wide, central work area, backed by real notes */}
             <div style={subCard}>
               <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
                 <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎚 {t.mixInstructions}</div>
@@ -722,43 +763,28 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 />
               </div>
             </div>
-
-            {/* Work details */}
-            <div style={subCard}>
-              <div style={innerHead}>{t.jobDetails}</div>
-              <div style={{ padding: "6px 16px 12px" }}>
-                {detailRow(t.project, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.project}</span>)}
-                {detailRow(t.workType, <PillGroup value={work.workType} options={WORK_TYPES} labelFor={o => wtLabel(o, lang)} onChange={v => onChange({ workType: v })} />)}
-                {detailRow(t.status, <PillGroup value={work.status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={v => onChange({ status: v })} />)}
-                {detailRow(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
-                {detailRow(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
-                {detailRow(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0" }}>
-                  <span style={{ fontSize: 12.5, color: MUTED }}>{t.payment}</span>
-                  <PayChip pay={work.pay} lang={lang} />
-                </div>
-                {/* Danger zone — delete this job (subtle, full-width) */}
-                <div style={{ paddingTop: 14, marginTop: 4, borderTop: `1px solid ${BDR}` }}>
-                  <button
-                    onClick={() => setConfirmOpen(true)}
-                    onMouseEnter={e => { e.currentTarget.style.background = `${RED}12`; e.currentTarget.style.borderColor = `${RED}80`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = `${RED}44`; }}
-                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 700, padding: "9px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
-                  >🗑 {t.deleteWork}</button>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* MIDDLE: Mix versions — honest empty state (+ real Dropbox folder link if present) */}
+          {/* MIDDLE: Mix versions — upload placeholder (phase 2) + real Dropbox link */}
           <div style={subCard}>
-            <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <span>🎵 {t.mixVersions}</span>
-              {work.filesLink && (
-                <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {work.filesLink && (
+                  <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
+                )}
+                {/* Upload button — visible placeholder, disabled until phase 2 (no fake upload) */}
+                <button
+                  disabled
+                  title={t.uploadComing}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "not-allowed", fontFamily: "inherit", whiteSpace: "nowrap", opacity: 0.85 }}
+                >
+                  {t.uploadVersion}
+                  <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 999, background: `${BRAND}18`, border: `1px solid ${BRAND}40`, color: BRAND }}>{t.phase2Tag}</span>
+                </button>
+              </div>
             </div>
-            <EmptyZone icon="🎚" title={t.versionsEmptyTitle} subtitle={work.filesLink ? t.mixVersionsEmpty : t.noFilesLink} />
+            <EmptyZone icon="☁️" title={t.versionsEmptyTitle} subtitle={work.filesLink ? t.mixVersionsEmpty : t.uploadComing} />
           </div>
 
           {/* BOTTOM: Player + time-stamped comments — coming in phase 2 (real DB) */}
