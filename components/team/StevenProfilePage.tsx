@@ -43,8 +43,8 @@ interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
   startDate: string; deadline: string; price: number; pay: PayStatus;
   amountPaid: number; currency: string; dbBacked: boolean;
+  notes: string; filesLink: string | null;   // real fields from sound_engineer_work
 }
-interface WorkFile { id: string; name: string; time: string; size?: number; url?: string }
 
 // ── DB ↔ UI mapping (the page UI has fewer enum values than the DB) ───────────────
 //   DB SoundEngineerStatus:   לא נשלח | נשלח | בתהליך | חזר | אושר | בוטל
@@ -94,15 +94,10 @@ function mapRecord(r: SoundEngineerWork): Work {
     amountPaid: r.amountPaid,
     currency:   r.currency || "$",
     dbBacked:   true,
+    notes:      r.notes || "",
+    filesLink:  r.filesLink ?? null,
   };
 }
-
-const INITIAL_FILES: WorkFile[] = [
-  { id: "f1", name: "stems.zip",           time: "02.06.26 09:10" },
-  { id: "f2", name: "rough mix.wav",       time: "02.06.26 09:12" },
-  { id: "f3", name: "My Story Mix v1.wav", time: "31.05.26 09:17" },
-  { id: "f4", name: "My Story Mix v2.wav", time: "02.06.26 10:24" },
-];
 
 // ── Local translations (page-scoped, NOT global i18n) ────────────────────────────
 const TR = {
@@ -115,8 +110,10 @@ const TR = {
     noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולה", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
     job: "עבודה:", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
-    openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם", briefNotes: "הערות לבריף",
-    brief: ["ווקאל קדמי ונקי", "לשמור על האנרגיה בפזמון", "Reference: Drake / PARTYNEXTDOOR vibe", "מאסטר מוכן לסטרימינג"],
+    openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
+    mixInstructions: "הוראות למיקס", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
+    mixVersions: "גרסאות למיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקייה בדרופבוקס", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
+    playerSection: "נגן והערות", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     newWorkTitle: "עבודה חדשה ל-Steven", projectName: "שם הפרויקט", priceLabel: "מחיר ($)", save: "שמור", cancel: "ביטול", required: "יש להזין שם פרויקט",
     tAdded: "הקבצים נוספו לעבודה", tRemoved: "הקובץ הוסר", tNoPlay: "אין קובץ לניגון כרגע", tNoDownload: "אין קובץ להורדה כרגע", tNoDropbox: "אין עדיין קישור Dropbox לעבודה הזו",
     tJobAdded: "עבודה חדשה נוספה", tViewAllPay: "היסטוריית תשלומים מלאה תהיה זמינה בקרוב", tViewAllFiles: "רשימת הקבצים המלאה תהיה זמינה בקרוב",
@@ -133,8 +130,10 @@ const TR = {
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Action", openJob: "Open Job", noJobs: "No Steven jobs yet",
     job: "Job:", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
-    openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price", briefNotes: "Brief Notes",
-    brief: ["Clean upfront vocal", "Keep the chorus energy", "Reference: Drake / PARTYNEXTDOOR vibe", "Streaming-ready master"],
+    openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
+    mixInstructions: "Mix Instructions", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
+    mixVersions: "Mix Versions", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
+    playerSection: "Player & Comments", playerEmpty: "A player and time-stamped comments will be added soon",
     newWorkTitle: "New Work for Steven", projectName: "Project name", priceLabel: "Price ($)", save: "Save", cancel: "Cancel", required: "Project name is required",
     tAdded: "Files added to job", tRemoved: "File removed", tNoPlay: "No playable file yet", tNoDownload: "No downloadable file yet", tNoDropbox: "No Dropbox link for this job yet",
     tJobAdded: "Job added", tViewAllPay: "Full payment history coming soon", tViewAllFiles: "Full file list coming soon",
@@ -279,8 +278,9 @@ function StyledInput({ value, onChange, placeholder, type = "text", inputMode }:
 
 // ── Editable price field (no spinner / inner icon; red focus) ────────────────────
 //    Commits ONLY on Enter or blur — never per keystroke. Empty/non-numeric reverts.
-function PriceInput({ value, onCommit, onInvalid }: { value: number; onCommit: (n: number) => void; onInvalid: () => void }) {
+function PriceInput({ value, currency = "$", onCommit, onInvalid }: { value: number; currency?: string; onCommit: (n: number) => void; onInvalid: () => void }) {
   const [str, setStr] = useState(String(value));
+  const [focus, setFocus] = useState(false);
   useEffect(() => { setStr(String(value)); }, [value]);
 
   function commit() {
@@ -295,19 +295,66 @@ function PriceInput({ value, onCommit, onInvalid }: { value: number; onCommit: (
     onCommit(n);
   }
 
+  // Unified box: currency glyph + number share one bordered field so the symbol
+  // can never "escape" outside the box. Whole box highlights on focus.
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, direction: "ltr" }}>
-      <span style={{ color: GREEN, fontWeight: 800, fontSize: 12.5 }}>$</span>
+    <div style={{
+      display: "inline-flex", alignItems: "center", gap: 6, direction: "ltr",
+      background: CARD, border: `1px solid ${focus ? BRAND : BDR2}`, borderRadius: 10,
+      padding: "5px 12px", transition: "border-color .12s",
+    }}>
+      <span style={{ color: GREEN, fontWeight: 800, fontSize: 13 }}>{currency}</span>
       <input
         value={str}
         inputMode="numeric"
         onChange={e => setStr(e.target.value.replace(/[^\d]/g, ""))}
         onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
-        onFocus={e => (e.currentTarget.style.borderColor = BRAND)}
-        onBlur={e => { e.currentTarget.style.borderColor = BDR2; commit(); }}
-        style={{ width: 72, background: CARD, color: GREEN, border: `1px solid ${BDR2}`, borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", outline: "none", textAlign: "left" }}
+        onFocus={() => setFocus(true)}
+        onBlur={() => { setFocus(false); commit(); }}
+        style={{ width: 58, background: "transparent", color: GREEN, border: "none", padding: 0, fontSize: 13, fontWeight: 800, fontFamily: "inherit", outline: "none", textAlign: "left" }}
       />
-    </span>
+    </div>
+  );
+}
+
+// ── Editable mix instructions (real sound_engineer_work.notes) ───────────────────
+//    Local draft; commits on blur or the explicit save button (only when changed).
+function NotesEditor({ value, placeholder, saveLabel, onSave }: {
+  value: string; placeholder: string; saveLabel: string; onSave: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => { setDraft(value); }, [value]);
+  const dirty = draft.trim() !== (value ?? "").trim();
+  const [focus, setFocus] = useState(false);
+
+  function commit() {
+    const v = draft.trim();
+    if (v === (value ?? "").trim()) return; // unchanged → no save
+    onSave(v);
+  }
+
+  return (
+    <div>
+      <textarea
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onFocus={() => setFocus(true)}
+        onBlur={() => { setFocus(false); commit(); }}
+        placeholder={placeholder}
+        rows={5}
+        style={{
+          width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 116,
+          background: CARD, color: TEXT, border: `1px solid ${focus ? BRAND : BDR2}`, borderRadius: 12,
+          padding: "12px 14px", fontSize: 13.5, lineHeight: 1.75, fontFamily: "inherit", outline: "none",
+          transition: "border-color .12s",
+        }}
+      />
+      {dirty && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+          <button onClick={commit} style={{ fontSize: 12, fontWeight: 800, padding: "7px 16px", borderRadius: 9, background: `${BRAND}18`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", fontFamily: "inherit" }}>{saveLabel}</button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -337,22 +384,11 @@ const sectionCard: React.CSSProperties = { background: CARD, border: `1px solid 
 const cardHead: React.CSSProperties = { padding: "14px 20px", borderBottom: `1px solid ${BDR}`, fontSize: 14, fontWeight: 800, color: TEXT };
 const ghostBtn: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" };
 
-function nowStamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 function isoDay(offset = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + offset);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-function fmtSize(b?: number): string {
-  if (!b) return "";
-  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB`;
-  if (b >= 1e3) return `${Math.round(b / 1e3)} KB`;
-  return `${b} B`;
 }
 
 export default function StevenProfilePage() {
@@ -410,6 +446,7 @@ export default function StevenProfilePage() {
     if (patch.status   !== undefined) body.status      = uiStatusToDb(patch.status);
     if (patch.price    !== undefined) body.agreedPrice = patch.price;
     if (patch.pay      !== undefined) body.amountPaid  = patch.pay === "שולם" ? target.price : 0;
+    if (patch.notes    !== undefined) body.notes       = patch.notes;
     if (Object.keys(body).length === 1) return; // only the flag → nothing actually changed
 
     try {
@@ -608,43 +645,16 @@ export default function StevenProfilePage() {
   );
 }
 
-// ── "Open Job" modal — single screen, one Drag & Drop file zone ──────────────────
+// ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
 function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
-  const [files, setFiles] = useState<WorkFile[]>(INITIAL_FILES);
-  const [drag, setDrag] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const rtl = lang === "he";
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
-    return () => { document.removeEventListener("keydown", h); audioRef.current?.pause(); };
+    return () => document.removeEventListener("keydown", h);
   }, [onClose]);
-
-  function addFiles(list: FileList | null) {
-    const picked = Array.from(list ?? []);
-    if (!picked.length) return;
-    setFiles(prev => [...prev, ...picked.map((f, i) => ({ id: `${Date.now()}_${i}`, name: f.name, time: nowStamp(), size: f.size, url: URL.createObjectURL(f) }))]);
-    notify(t.tAdded);
-  }
-  function removeFile(f: WorkFile) {
-    if (f.url) URL.revokeObjectURL(f.url);
-    setFiles(prev => prev.filter(x => x.id !== f.id));
-    notify(t.tRemoved);
-  }
-  function playFile(f: WorkFile) {
-    if (!f.url) { notify(t.tNoPlay); return; }
-    audioRef.current?.pause();
-    const a = new Audio(f.url); audioRef.current = a;
-    a.play().catch(() => notify(t.tNoPlay));
-  }
-  function downloadFile(f: WorkFile) {
-    if (!f.url) { notify(t.tNoDownload); return; }
-    const a = document.createElement("a"); a.href = f.url; a.download = f.name;
-    document.body.appendChild(a); a.click(); a.remove();
-  }
 
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
@@ -660,8 +670,6 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
         background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1080px, 96vw)", maxHeight: "92vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
-        <input ref={inputRef} type="file" multiple style={{ display: "none" }} onChange={e => { addFiles(e.target.files); if (e.target) e.target.value = ""; }} />
-
         {/* Header */}
         <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
@@ -677,9 +685,24 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
           </div>
         </div>
 
-        {/* Body — no tabs */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) minmax(0, 1.6fr)", gap: 16, alignItems: "start" }}>
+        {/* Body — workboard: instructions (top) / details / versions (middle) / player (bottom) */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* TOP: Mix instructions (real notes) + Work details */}
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(260px, 1fr)", gap: 16, alignItems: "start" }}>
+
+            {/* Mix instructions — prominent, backed by real sound_engineer_work.notes */}
+            <div style={subCard}>
+              <div style={innerHead}>🎚 {t.mixInstructions}</div>
+              <div style={{ padding: "14px 16px" }}>
+                <NotesEditor
+                  value={work.notes}
+                  placeholder={t.mixInstructionsPh}
+                  saveLabel={t.saveInstructions}
+                  onSave={v => { onChange({ notes: v }); notify(t.instructionsSaved); }}
+                />
+              </div>
+            </div>
 
             {/* Work details */}
             <div style={subCard}>
@@ -690,7 +713,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 {detailRow(t.status, <PillGroup value={work.status} options={STATUS_OPTIONS} colorFor={o => STATUS_COLOR[o]} labelFor={o => statusLabel(o, lang)} onChange={v => onChange({ status: v })} />)}
                 {detailRow(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
                 {detailRow(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
-                {detailRow(t.agreedPrice, <PriceInput value={work.price} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
+                {detailRow(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 0" }}>
                   <span style={{ fontSize: 12.5, color: MUTED }}>{t.payment}</span>
                   <PayChip pay={work.pay} lang={lang} />
@@ -706,67 +729,29 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Files */}
-            <div style={subCard}>
-              <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <span>{t.workFiles} <span style={{ color: MUTED, fontWeight: 700 }}>({files.length})</span></span>
-                <button onClick={() => notify(t.tNoDropbox)} style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.openDropbox}</button>
-              </div>
-              <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-                <div
-                  onClick={() => inputRef.current?.click()}
-                  onDragOver={e => { e.preventDefault(); if (!drag) setDrag(true); }}
-                  onDragLeave={e => { e.preventDefault(); setDrag(false); }}
-                  onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
-                  style={{
-                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
-                    textAlign: "center", padding: "26px 16px", borderRadius: 14, cursor: "pointer",
-                    border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)",
-                    boxShadow: drag ? `0 0 22px ${BRAND}33` : "none", transition: "all .15s",
-                  }}
-                >
-                  <div style={{ fontSize: 30, lineHeight: 1, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{t.dragHere}</div>
-                  <div style={{ fontSize: 12, color: TEXT2 }}>{t.orClick}</div>
-                  <div style={{ fontSize: 10.5, color: MUTED }}>{t.fileHint}</div>
-                  <button onClick={e => { e.stopPropagation(); inputRef.current?.click(); }} style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, padding: "7px 16px", borderRadius: 9, background: `${BRAND}14`, border: `1px solid ${BRAND}40`, color: BRAND, cursor: "pointer", fontFamily: "inherit" }}>{t.chooseFiles}</button>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-                  {files.length ? files.map(f => {
-                    const isAudio = /\.(wav|mp3|m4a|flac|aiff?)$/i.test(f.name);
-                    const sz = fmtSize(f.size);
-                    return (
-                      <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD, border: `1px solid ${BDR}` }}>
-                        <span style={{ fontSize: 14, color: isAudio ? BRAND : TEXT2, flexShrink: 0 }}>{isAudio ? "〰" : "🗎"}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                          <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{f.time}{sz ? ` · ${sz}` : ""}</div>
-                        </div>
-                        {isAudio && <button onClick={() => playFile(f)} title="play" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}22`, border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>▶</button>}
-                        <button onClick={() => downloadFile(f)} title="download" style={{ background: "none", border: "none", color: MUTED, fontSize: 14, cursor: "pointer", flexShrink: 0 }}>⬇</button>
-                        <button onClick={() => removeFile(f)} title="remove" style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                          onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
-                      </div>
-                    );
-                  }) : (
-                    <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.noFiles}</div>
-                  )}
-                </div>
-              </div>
+          {/* MIDDLE: Mix versions — honest empty state (+ real Dropbox folder link if present) */}
+          <div style={subCard}>
+            <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span>🎵 {t.mixVersions}</span>
+              {work.filesLink && (
+                <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
+              )}
+            </div>
+            <div style={{ padding: "34px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 26, opacity: 0.4, marginBottom: 8 }}>🎚</div>
+              <div style={{ fontSize: 13, color: TEXT2, fontWeight: 600 }}>{t.mixVersionsEmpty}</div>
+              {!work.filesLink && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>{t.noFilesLink}</div>}
             </div>
           </div>
 
-          {/* Brief notes */}
-          <div style={{ ...subCard, marginTop: 16 }}>
-            <div style={innerHead}>{t.briefNotes}</div>
-            <div style={{ padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: "10px 18px" }}>
-              {t.brief.map(b => (
-                <div key={b} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: TEXT2 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, flexShrink: 0 }} />{b}
-                </div>
-              ))}
+          {/* BOTTOM: Player + time-stamped comments — coming in phase 2 (real DB) */}
+          <div style={subCard}>
+            <div style={innerHead}>💬 {t.playerSection}</div>
+            <div style={{ padding: "30px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 24, opacity: 0.4, marginBottom: 8 }}>🎧</div>
+              <div style={{ fontSize: 12.5, color: MUTED }}>{t.playerEmpty}</div>
             </div>
           </div>
         </div>
