@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import type { SoundEngineerWork, MixVersion } from "@/lib/types";
+import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -73,6 +73,21 @@ function fmtTime(s: number): string {
 }
 /** Strip a legacy "{id}-" prefix from an auto-generated label/name (display only). */
 const stripId = (s: string, id: string) => (s.startsWith(`${id}-`) ? s.slice(id.length + 1) : s);
+/** Relative "time ago" for a comment's created_at. */
+function fmtRelative(iso: string, lang: Lang): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const m = Math.floor(Math.max(0, Date.now() - then) / 60000);
+  if (m < 1)  return lang === "en" ? "just now" : "עכשיו";
+  if (m < 60) return lang === "en" ? `${m}m ago` : `לפני ${m} דק׳`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return lang === "en" ? `${h}h ago` : `לפני ${h} שע׳`;
+  const d = Math.floor(h / 24);
+  return lang === "en" ? `${d}d ago` : `לפני ${d} ימים`;
+}
+/** Cycling accent colors for comment index badges. */
+const COMMENT_COLORS = ["#EF4444", "#A855F7", "#F59E0B", "#3B82F6", "#10B981"];
 
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
@@ -155,6 +170,8 @@ const TR = {
     vSelectToPlay: "בחר גרסה מהרשימה כדי לנגן", vAudioLoading: "טוען קובץ…", vAudioError: "טעינת הקובץ נכשלה", vPlay: "נגן",
     vColVersion: "שם גרסה", vColFile: "קובץ", vColType: "סוג", vColSize: "גודל", vColDate: "הועלה", vColStatus: "סטטוס", vColActions: "פעולות",
     vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה",
+    cSection: "הערות בזמן", cAdd: "הוסף הערה", cEmpty: "אין הערות לגרסה הזו עדיין", cPlaceholder: "כתוב הערה על הנקודה הזו…", cAtTime: "בזמן",
+    cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     newWorkTitle: "עבודה חדשה ל-Steven", projectName: "שם הפרויקט", priceLabel: "מחיר ($)", save: "שמור", cancel: "ביטול", required: "יש להזין שם פרויקט",
     tAdded: "הקבצים נוספו לעבודה", tRemoved: "הקובץ הוסר", tNoPlay: "אין קובץ לניגון כרגע", tNoDownload: "אין קובץ להורדה כרגע", tNoDropbox: "אין עדיין קישור Dropbox לעבודה הזו",
@@ -182,6 +199,8 @@ const TR = {
     vSelectToPlay: "Select a version to play", vAudioLoading: "Loading file…", vAudioError: "Failed to load the file", vPlay: "Play",
     vColVersion: "Version", vColFile: "File", vColType: "Type", vColSize: "Size", vColDate: "Uploaded", vColStatus: "Status", vColActions: "Actions",
     vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download",
+    cSection: "Timestamp comments", cAdd: "Add comment", cEmpty: "No comments on this version yet", cPlaceholder: "Write a note about this point…", cAtTime: "at",
+    cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     newWorkTitle: "New Work for Steven", projectName: "Project name", priceLabel: "Price ($)", save: "Save", cancel: "Cancel", required: "Project name is required",
     tAdded: "Files added to job", tRemoved: "File removed", tNoPlay: "No playable file yet", tNoDownload: "No downloadable file yet", tNoDropbox: "No Dropbox link for this job yet",
@@ -719,7 +738,13 @@ function EmptyZone({ icon, title, subtitle }: { icon: string; title: string; sub
 
 // ── Local mix-version player (premium dark card) — never touches the global
 //    project player; streams the selected version via /api/dropbox/stream. ────────
-function VersionPlayer({ url, title, shouldPlay, t }: { url: string; title: string; shouldPlay: number; t: T }) {
+type VersionPlayerHandle = {
+  getCurrentTime: () => number;
+  seek: (sec: number) => void;
+  playFrom: (sec: number) => void;
+};
+const VersionPlayer = forwardRef<VersionPlayerHandle, { url: string; title: string; shouldPlay: number; t: T }>(
+function VersionPlayer({ url, title, shouldPlay, t }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -730,6 +755,13 @@ function VersionPlayer({ url, title, shouldPlay, t }: { url: string; title: stri
   const [dragging, setDragging] = useState(false);
 
   const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+
+  // Imperative API for the parent (add comment at current time / jump to a time).
+  useImperativeHandle(ref, () => ({
+    getCurrentTime: () => audioRef.current?.currentTime ?? 0,
+    seek: (sec: number) => { const a = audioRef.current; if (a) { a.currentTime = sec; setCur(sec); } },
+    playFrom: (sec: number) => { const a = audioRef.current; if (!a) return; a.currentTime = sec; setCur(sec); a.play().catch(() => setErr(true)); },
+  }), []);
 
   // Play when the parent bumps shouldPlay (>0). Runs on mount for a play-click
   // selection, and on later bumps for replaying the same version.
@@ -809,7 +841,7 @@ function VersionPlayer({ url, title, shouldPlay, t }: { url: string; title: stri
       </div>
     </div>
   );
-}
+});
 
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
 function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
@@ -826,6 +858,78 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
   const versionInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ── Timestamp comments for the selected version ──────────────────────────────
+  const [comments, setComments]   = useState<MixComment[] | null>(null); // null = loading
+  const [cLoadErr, setCLoadErr]   = useState(false);
+  const [adding, setAdding]       = useState(false);
+  const [addTs, setAddTs]         = useState(0);
+  const [newText, setNewText]     = useState("");
+  const [savingC, setSavingC]     = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText]   = useState("");
+  const [delC, setDelC]           = useState<MixComment | null>(null);
+  const playerRef = useRef<VersionPlayerHandle | null>(null);
+  const byTs = (a: MixComment, b: MixComment) => a.timestampSeconds - b.timestampSeconds;
+
+  // Load the selected version's comments (per-version; never the whole work).
+  useEffect(() => {
+    if (!sel) { setComments(null); return; }
+    let alive = true;
+    setComments(null); setCLoadErr(false); setAdding(false); setEditingId(null);
+    fetch(`/api/sound-engineer/versions/${sel}/comments`)
+      .then(r => r.json())
+      .then(d => { if (!alive) return; if (d.ok) setComments((d.comments ?? []).slice().sort(byTs)); else setCLoadErr(true); })
+      .catch(() => { if (alive) setCLoadErr(true); });
+    return () => { alive = false; };
+  }, [sel]);
+
+  function openAddComment() {
+    const ts = Math.max(0, Math.floor(playerRef.current?.getCurrentTime() ?? 0));
+    setAddTs(ts); setNewText(""); setAdding(true);
+  }
+  function saveNewComment() {
+    const text = newText.trim();
+    if (!text || !sel || savingC) return;
+    setSavingC(true);
+    fetch(`/api/sound-engineer/versions/${sel}/comments`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ timestampSeconds: addTs, commentText: text }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok && d.comment) {
+          setComments(prev => [...(prev ?? []), d.comment as MixComment].sort(byTs));
+          setAdding(false); setNewText("");
+        } else notify(d.error || (rtl ? "שמירת ההערה נכשלה" : "Failed to save comment"));
+      })
+      .catch(() => notify(rtl ? "שמירת ההערה נכשלה" : "Failed to save comment"))
+      .finally(() => setSavingC(false));
+  }
+  function saveEditComment(c: MixComment) {
+    const text = editText.trim();
+    if (!text) { setEditingId(null); return; }
+    if (text === c.commentText) { setEditingId(null); return; }
+    const prev = comments;
+    setComments(cur => cur?.map(x => (x.id === c.id ? { ...x, commentText: text } : x)) ?? null);
+    setEditingId(null);
+    fetch(`/api/sound-engineer/comments/${c.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commentText: text }),
+    })
+      .then(r => r.json())
+      .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "השמירה נכשלה" : "Save failed"); } })
+      .catch(() => { setComments(prev); notify(rtl ? "השמירה נכשלה" : "Save failed"); });
+  }
+  function confirmDeleteComment() {
+    const c = delC; if (!c) return;
+    setDelC(null);
+    const prev = comments;
+    setComments(cur => cur?.filter(x => x.id !== c.id) ?? null);
+    fetch(`/api/sound-engineer/comments/${c.id}`, { method: "DELETE" })
+      .then(r => r.json())
+      .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); } })
+      .catch(() => { setComments(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); });
+  }
 
   useEffect(() => {
     let alive = true;
@@ -1079,17 +1183,95 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             )}
           </div>
 
-          {/* BOTTOM: local player for the selected mix version (timestamp comments = phase 4) */}
+          {/* BOTTOM: local player + timestamp comments for the selected version */}
           <div style={subCard}>
             <div style={innerHead}>💬 {t.playerSection}</div>
             {selected ? (
-              <VersionPlayer
-                key={selected.id}
-                url={selected.url}
-                title={`${work.project} - ${stripId(selected.label, selected.id)}`}
-                shouldPlay={playReq?.id === selected.id ? playReq.nonce : 0}
-                t={t}
-              />
+              <>
+                <VersionPlayer
+                  ref={playerRef}
+                  key={selected.id}
+                  url={selected.url}
+                  title={`${work.project} - ${stripId(selected.label, selected.id)}`}
+                  shouldPlay={playReq?.id === selected.id ? playReq.nonce : 0}
+                  t={t}
+                />
+
+                {/* Timestamp comments */}
+                <div style={{ padding: "4px 16px 18px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>💬 {t.cSection}</span>
+                    <button
+                      onClick={openAddComment}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, padding: "5px 12px", borderRadius: 8, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: "pointer", fontFamily: "inherit" }}
+                    >+ {t.cAdd}</button>
+                  </div>
+
+                  {/* Add row */}
+                  {adding && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t.cAtTime} {fmtTime(addTs)}</span>
+                      <input
+                        autoFocus value={newText} onChange={e => setNewText(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
+                        placeholder={t.cPlaceholder}
+                        style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }}
+                      />
+                      <button onClick={saveNewComment} disabled={!newText.trim() || savingC}
+                        style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC ? 1 : 0.5, fontFamily: "inherit" }}>{t.save}</button>
+                      <button onClick={() => setAdding(false)}
+                        style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
+                    </div>
+                  )}
+
+                  {/* List */}
+                  {cLoadErr ? (
+                    <div style={{ fontSize: 12, color: RED, padding: "6px 2px" }}>{t.cLoadFail}</div>
+                  ) : comments === null ? (
+                    <div style={{ fontSize: 12, color: MUTED, padding: "6px 2px" }}>{t.cLoading}</div>
+                  ) : comments.length === 0 ? (
+                    !adding && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {comments.map((c, i) => {
+                        const col = COMMENT_COLORS[i % COMMENT_COLORS.length];
+                        const isEditing = editingId === c.id;
+                        return (
+                          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
+                            <span style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                            <button onClick={() => playerRef.current?.playFrom(c.timestampSeconds)} title={t.vPlay}
+                              style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                            </button>
+                            <button onClick={() => playerRef.current?.seek(c.timestampSeconds)}
+                              style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds)}</button>
+                            {isEditing ? (
+                              <input
+                                autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
+                                onBlur={() => saveEditComment(c)}
+                                style={{ flex: 1, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }}
+                              />
+                            ) : (
+                              <div onClick={() => playerRef.current?.seek(c.timestampSeconds)} title={c.commentText}
+                                style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
+                            )}
+                            <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
+                            {!isEditing && (
+                              <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
+                                style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                                onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
+                            )}
+                            <button onClick={() => setDelC(c)} title={t.cDelete}
+                              style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                              onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
               <EmptyZone icon="🎧" title={t.playerEmptyTitle} subtitle={t.vSelectToPlay} />
             )}
@@ -1120,6 +1302,21 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => setDelVersion(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
                 <button onClick={confirmDeleteVersion} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.vDelYes}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete-comment confirmation */}
+        {delC && (
+          <div onClick={() => setDelC(null)} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${RED}44`, borderRadius: 16, width: "min(420px, 92vw)", padding: "22px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, marginBottom: 10 }}>{t.cDelTitle}</div>
+              <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 8 }}>{t.cDelBody}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, marginBottom: 16 }}>{fmtTime(delC.timestampSeconds)} · {delC.commentText}</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setDelC(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
+                <button onClick={confirmDeleteComment} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.cDelete}</button>
               </div>
             </div>
           </div>
