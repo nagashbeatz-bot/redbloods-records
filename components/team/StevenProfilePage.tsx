@@ -140,7 +140,7 @@ const TR = {
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
     mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
     uploadVersion: "+ העלה גרסה / קובץ עבודה", phase2Tag: "פאזה 2", uploadComing: "העלאת גרסאות אמיתית ל-Dropbox תתווסף בפאזה הבאה",
-    vLabelPh: "שם גרסה (אופציונלי) — למשל Mix 1", vChooseFile: "בחר קובץ", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
+    vLabelPh: "שם גרסה, למשל Mix 1", vChooseFile: "בחר קובץ", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "מעלה קובץ…", vUploaded: "הגרסה הועלתה", vUploadFailed: "העלאת הגרסה נכשלה", vDeleted: "הגרסה נמחקה", vLoadFailed: "טעינת הגרסאות נכשלה",
     vLoading: "טוען גרסאות…", vEmpty: "עדיין אין גרסאות — העלה קובץ ראשון עם הכפתור למעלה",
     vColVersion: "שם גרסה", vColFile: "קובץ", vColType: "סוג", vColSize: "גודל", vColDate: "הועלה", vColStatus: "סטטוס", vColActions: "פעולות",
@@ -166,7 +166,7 @@ const TR = {
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
     mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
     uploadVersion: "+ Upload version / work file", phase2Tag: "Phase 2", uploadComing: "Real Dropbox version upload is coming in the next phase",
-    vLabelPh: "Version name (optional) — e.g. Mix 1", vChooseFile: "Choose file", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
+    vLabelPh: "Version name, e.g. Mix 1", vChooseFile: "Choose file", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "Uploading…", vUploaded: "Version uploaded", vUploadFailed: "Version upload failed", vDeleted: "Version deleted", vLoadFailed: "Failed to load versions",
     vLoading: "Loading versions…", vEmpty: "No versions yet — upload the first file with the button above",
     vColVersion: "Version", vColFile: "File", vColType: "Type", vColSize: "Size", vColDate: "Uploaded", vColStatus: "Status", vColActions: "Actions",
@@ -882,24 +882,25 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
 
             <input ref={versionInputRef} type="file" accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip" style={{ display: "none" }} onChange={e => uploadVersionFile(e.target.files)} />
 
-            {/* Upload zone: optional label + drag & drop / click */}
-            <div style={{ padding: "14px 16px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <input
-                value={uploadLabel}
-                onChange={e => setUploadLabel(e.target.value)}
-                placeholder={t.vLabelPh}
-                style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, background: CARD, color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }}
-              />
+            {/* Upload zone: dropzone with a small, subtle optional-label input inside */}
+            <div style={{ padding: "14px 16px 8px" }}>
               <div
                 onClick={() => { if (!uploading) versionInputRef.current?.click(); }}
                 onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
                 onDragLeave={e => { e.preventDefault(); setDrag(false); }}
                 onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadVersionFile(e.dataTransfer.files); }}
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, textAlign: "center", padding: "20px 16px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, textAlign: "center", padding: "20px 16px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
               >
                 <div style={{ fontSize: 24, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
                 <div style={{ fontSize: 10.5, color: MUTED }}>{t.vFileHint}</div>
+                <input
+                  value={uploadLabel}
+                  onChange={e => setUploadLabel(e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  placeholder={t.vLabelPh}
+                  style={{ marginTop: 8, width: "min(240px, 100%)", boxSizing: "border-box", padding: "6px 10px", borderRadius: 8, background: CARD, color: TEXT, border: `1px solid ${BDR2}`, fontSize: 11.5, fontFamily: "inherit", outline: "none", textAlign: "center" }}
+                />
               </div>
             </div>
 
@@ -930,18 +931,17 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                   </thead>
                   <tbody>
                     {versions.map(v => {
-                      // Auto-defaulted label/file names carry the "{versionId}-" prefix;
-                      // strip it for display only (the stored value/path are unchanged).
+                      // Auto-defaulted labels can carry a legacy "{versionId}-" prefix;
+                      // strip it for display only (stored value/path unchanged).
                       const clean = (s: string) => (s.startsWith(`${v.id}-`) ? s.slice(v.id.length + 1) : s);
                       const label = clean(v.label);
-                      const fname = clean(v.fileName);
-                      // Primary display = Steven-facing title + mix label (e.g. "Paparazi - Mix 1").
+                      // Single, clean display line: Steven-facing title + mix label
+                      // (e.g. "Paparazi - Mix 1"). No secondary/metadata line.
                       const primary = `${work.project} - ${label}`;
                       return (
                       <tr key={v.id} style={{ borderBottom: `1px solid ${BDR}` }}>
-                        <td style={{ padding: "9px 10px", minWidth: 0 }}>
+                        <td style={{ padding: "10px", minWidth: 0 }}>
                           <div title={primary} style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
-                          <div title={fname} dir="ltr" style={{ fontSize: 10.5, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, textAlign: rtl ? "right" : "left" }}>{fname}</div>
                         </td>
                         <td style={{ padding: "9px 10px", fontSize: 11.5, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v.fileType || "—").toUpperCase()}</td>
                         <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtBytes(v.fileSize)}</td>
