@@ -409,9 +409,9 @@ function NotesEditor({ value, placeholder, saveLabel, onSave }: {
         onFocus={() => setFocus(true)}
         onBlur={() => { setFocus(false); commit(); }}
         placeholder={placeholder}
-        rows={5}
+        rows={4}
         style={{
-          width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 128,
+          width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: 96,
           background: CARD, color: TEXT, border: `1px solid ${focus ? BRAND : BDR2}`, borderRadius: 12,
           padding: "14px 16px", fontSize: 14, lineHeight: 1.8, fontFamily: "inherit", outline: "none",
           transition: "border-color .12s",
@@ -1001,8 +1001,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
   const detailRow = (label: string, node: React.ReactNode) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minHeight: 44, padding: "8px 0", borderBottom: `1px solid ${BDR}` }}>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: MUTED, flexShrink: 0 }}>{label}</span>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minHeight: 33, padding: "4px 0", borderBottom: `1px solid ${BDR}` }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, flexShrink: 0 }}>{label}</span>
       <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 0 }}>{node}</div>
     </div>
   );
@@ -1010,7 +1010,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{
-        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1160px, 96vw)", maxHeight: "92vh",
+        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1240px, 96vw)", maxHeight: "92vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
         {/* Header */}
@@ -1082,10 +1082,10 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
           </div>
 
           {/* WORKBOARD: player+comments (main, right) | versions+upload (side, left) */}
-          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0, 1.7fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: 16, alignItems: "stretch", minHeight: narrow ? undefined : 420 }}>
 
-          {/* SIDE: Mix versions + upload */}
-          <div style={{ ...subCard, gridColumn: narrow ? undefined : "2" }}>
+          {/* SIDE: Mix versions + upload (fixed-width column, full height) */}
+          <div style={{ ...subCard, order: narrow ? 1 : 2, width: narrow ? "auto" : 344, flexShrink: 0, display: "flex", flexDirection: "column" }}>
             <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <span>🎵 {t.mixVersions}</span>
               {work.filesLink && (
@@ -1122,7 +1122,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             ) : versions.length === 0 ? (
               <div style={{ padding: "4px 16px 20px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
             ) : (
-              <div style={{ padding: "2px 12px 8px", maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{ padding: "2px 12px 12px", flex: 1, minHeight: 60, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
                 {versions.map(v => {
                   const primary = `${work.project} - ${stripId(v.label, v.id)}`;
                   const isSel = sel === v.id;
@@ -1153,8 +1153,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             )}
           </div>
 
-          {/* MAIN: local player + timestamp comments for the selected version */}
-          <div style={{ ...subCard, gridColumn: narrow ? undefined : "1" }}>
+          {/* MAIN: local player + timestamp comments (fills the remaining width) */}
+          <div style={{ ...subCard, order: narrow ? 2 : 1, flex: narrow ? "none" : "1 1 0", minWidth: 0, display: "flex", flexDirection: "column" }}>
             <div style={innerHead}>🎧 {t.playerSection}</div>
             {selected ? (
               <>
