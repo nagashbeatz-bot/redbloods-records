@@ -1331,14 +1331,6 @@ function VictorProjectDrawer({
         </div>
         {editing ? (
           <div style={{ marginTop: 8 }}>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-              {(["waiting", "needs_revision", "approved", "replaced"] as VersionReviewStatus[]).map(s => {
-                const on = reviewDraftStatus === s; const c = REVIEW_STATUS_COLOR[s];
-                return (
-                  <button key={s} onClick={() => setReviewDraftStatus(s)} style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 9px", borderRadius: 7, background: on ? `${c}26` : "transparent", border: `1px solid ${on ? c + "77" : BDR2}`, color: on ? c : TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t(`vstatus.${s}`)}</button>
-                );
-              })}
-            </div>
             <textarea value={reviewDraftNotes} onChange={e => setReviewDraftNotes(e.target.value)} rows={3} placeholder={t("vreview.placeholder")}
               style={{ width: "100%", padding: "8px 10px", borderRadius: 9, fontSize: isMobile ? 16 : 12.5, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT, outline: "none", fontFamily: "inherit", resize: "vertical", textAlign: "start", unicodeBidi: "plaintext", boxSizing: "border-box" }} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
