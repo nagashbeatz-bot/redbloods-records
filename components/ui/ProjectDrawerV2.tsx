@@ -329,8 +329,13 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
               skipFinanceSync:  true,             // do NOT create a Finance expense for Steven
             }),
           });
-          const workData = await workPost.json() as { ok: boolean; work: { id: string } | null };
-          if (workData.ok && workData.work) linkedWorkId = workData.work.id;
+          // The work is created and will show for the engineer on /team/steven
+          // (and Bill's listing). We intentionally do NOT link its id to the
+          // project_action: project_actions.linked_work_id is FK-bound to
+          // vendor_project_work(id) ONLY, so a sound_engineer_work id would
+          // violate project_actions_linked_work_id_fkey. The action is saved
+          // without a link (linkedWorkId stays null for the sound-engineer case).
+          await workPost.json().catch(() => ({}));
         } catch {
           // Work creation failure is non-fatal — continue to save the action
         }
