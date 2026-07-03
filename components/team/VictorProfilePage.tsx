@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
-import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
+import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
+
+// Run before paint on the client (falls back to useEffect on the server) so
+// cached role / skeletons settle without a visible flash.
+const useIso = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 const BRAND   = "#DC2626";
 const CARD    = "#111318";
@@ -26,6 +30,16 @@ const WT_INPUT: React.CSSProperties = {
   background: CARD2, color: TEXT, fontSize: 13, fontFamily: "inherit",
   outline: "none", boxSizing: "border-box",
 };
+
+// Dark-premium shimmer bar (reuses the global skeleton-sweep keyframe) — keeps
+// loading placeholders on-brand and layout-stable, matching the Steven page.
+function VShimmer({ w, h = 12, r = 7, style }: { w: number | string; h?: number; r?: number; style?: React.CSSProperties }) {
+  return (
+    <div style={{ width: w, height: h, borderRadius: r, background: "rgba(255,255,255,0.05)", position: "relative", overflow: "hidden", flexShrink: 0, ...style }}>
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%)", animation: "skeleton-sweep 1.6s ease-in-out infinite" }} />
+    </div>
+  );
+}
 
 // Mobile breakpoint (< 768px) — used to switch the page to a stacked,
 // touch-friendly layout. UI only; no behavior/data change.
@@ -1694,6 +1708,16 @@ export default function VictorProfilePage() {
   // Phase 2A: Victor (supplier) must not see salary. Owner sees it as before.
   const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
   const isOwner = myRole === "owner";
+  const roleLoading = myRole === null; // true only until role is known (cache or /api/me)
+
+  // Restore the last-known role from cache BEFORE paint so the owner shell (or
+  // the Victor shell) is committed immediately — no owner-only areas flashing
+  // in/out during the async /api/me round-trip. Each browser only ever caches
+  // its own role, so this never leaks owner chrome to a Victor session.
+  useIso(() => {
+    const cached = getCachedVictorRole();
+    if (cached) setMyRole(cached);
+  }, []);
 
   useEffect(() => {
     fetch("/api/me")
@@ -1959,7 +1983,17 @@ export default function VictorProfilePage() {
 
         {/* ── KPI Row ── */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fit, minmax(150px, 1fr))", gap: isMobile ? 10 : 12, marginBottom: 18 }}>
-          {[
+          {(loading || roleLoading) ? (
+            // Skeleton until BOTH the month data and the role are known — never
+            // flash 0/— values. Default to 5 cards (owner); known-Victor shows 4.
+            Array.from({ length: myRole === "victor" ? 4 : 5 }).map((_, i) => (
+              <div key={i} style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: isMobile ? "13px 14px" : "18px 20px", minWidth: 0, gridColumn: isMobile && myRole !== "victor" && i === 4 ? "1 / -1" : undefined }}>
+                <VShimmer w="60%" h={9} r={5} style={{ marginBottom: isMobile ? 10 : 13 }} />
+                <VShimmer w={64} h={isMobile ? 22 : 28} r={8} />
+                <VShimmer w="45%" h={9} r={5} style={{ marginTop: isMobile ? 8 : 10 }} />
+              </div>
+            ))
+          ) : [
             { id: "goal",      label: t("kpi.totalMonthly"), value: goal > 0 ? goal : "—", sub: t("kpi.inProgressSub"), color: TEXT,   icon: "🎯" },
             { id: "completed", label: t("kpi.completed"),    value: completed,              sub: t("kpi.completedOf", { goal }), color: PURPLE, icon: "✅" },
             { id: "active",    label: t("kpi.inProgress"),   value: active,                 sub: t("kpi.inProgressSub"), color: AMBER,  icon: "🔄" },
@@ -2167,31 +2201,45 @@ export default function VictorProfilePage() {
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 16 }}>{t("capacity.title")}</div>
 
-              {/* Big counter */}
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4, direction: "ltr" }}>
-                <span style={{ fontSize: 40, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{capacityUsed}</span>
-                <span style={{ fontSize: 20, fontWeight: 700, color: MUTED }}>/ {goal}</span>
-              </div>
-              <div style={{ fontSize: 12, color: TEXT2, marginBottom: 14 }}>{t("capacity.completed")}</div>
+              {loading ? (
+                // Skeleton counter + bar — no fake 0/0 or 0% before the fetch.
+                <>
+                  <div style={{ marginBottom: 4 }}><VShimmer w={110} h={38} r={9} /></div>
+                  <div style={{ marginBottom: 14 }}><VShimmer w={130} h={11} /></div>
+                  <VShimmer w="100%" h={11} r={6} style={{ marginBottom: 7 }} />
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+                    <VShimmer w={70} h={10} /><VShimmer w={54} h={10} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Big counter */}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4, direction: "ltr" }}>
+                    <span style={{ fontSize: 40, fontWeight: 900, color: PURPLE, letterSpacing: "-0.04em" }}>{capacityUsed}</span>
+                    <span style={{ fontSize: 20, fontWeight: 700, color: MUTED }}>/ {goal}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: TEXT2, marginBottom: 14 }}>{t("capacity.completed")}</div>
 
-              {/* Progress bar */}
-              <div style={{ height: 11, background: CARD2, borderRadius: 6, overflow: "hidden", marginBottom: 7 }}>
-                <div style={{
-                  height: "100%", borderRadius: 6,
-                  width: `${pct}%`,
-                  background: `linear-gradient(90deg, ${PURPLE} 0%, #A855F7 100%)`,
-                  transition: "width 0.4s ease",
-                }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 16 }}>
-                <span>{t("capacity.ofGoal", { pct })}</span>
-                {pct >= 60
-                  ? <span style={{ color: GREEN, fontWeight: 700 }}>{t("capacity.onTrack")}</span>
-                  : pct > 0
-                    ? <span style={{ color: AMBER, fontWeight: 700 }}>{t("capacity.behind")}</span>
-                    : null
-                }
-              </div>
+                  {/* Progress bar */}
+                  <div style={{ height: 11, background: CARD2, borderRadius: 6, overflow: "hidden", marginBottom: 7 }}>
+                    <div style={{
+                      height: "100%", borderRadius: 6,
+                      width: `${pct}%`,
+                      background: `linear-gradient(90deg, ${PURPLE} 0%, #A855F7 100%)`,
+                      transition: "width 0.4s ease",
+                    }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 16 }}>
+                    <span>{t("capacity.ofGoal", { pct })}</span>
+                    {pct >= 60
+                      ? <span style={{ color: GREEN, fontWeight: 700 }}>{t("capacity.onTrack")}</span>
+                      : pct > 0
+                        ? <span style={{ color: AMBER, fontWeight: 700 }}>{t("capacity.behind")}</span>
+                        : null
+                    }
+                  </div>
+                </>
+              )}
 
               {/* Stats */}
               {stats && (
@@ -2276,19 +2324,27 @@ export default function VictorProfilePage() {
               </div>
 
               {/* Salary amount */}
-              <div style={{
-                fontSize: 36, fontWeight: 900, letterSpacing: "-0.04em",
-                color: currentSalaryRec ? GREEN : (salary > 0 ? GREEN : MUTED),
-                marginBottom: 4,
-              }}>
-                {currentSalaryRec
-                  ? fmt(currentSalaryRec.amount, currentSalaryRec.currency)
-                  : salary > 0 ? fmt(salary, currency) : "—"}
-              </div>
+              {(loading || salaryLoading) ? (
+                <div style={{ marginBottom: 4 }}><VShimmer w={130} h={34} r={9} /></div>
+              ) : (
+                <div style={{
+                  fontSize: 36, fontWeight: 900, letterSpacing: "-0.04em",
+                  color: currentSalaryRec ? GREEN : (salary > 0 ? GREEN : MUTED),
+                  marginBottom: 4,
+                }}>
+                  {currentSalaryRec
+                    ? fmt(currentSalaryRec.amount, currentSalaryRec.currency)
+                    : salary > 0 ? fmt(salary, currency) : "—"}
+                </div>
+              )}
               <div style={{ fontSize: 11, color: MUTED, marginBottom: 16 }}>{t("salary.totalMonthly")}</div>
 
               {/* Salary details */}
-              {currentSalaryRec ? (
+              {(loading || salaryLoading) ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
+                  <VShimmer w="100%" h={12} /><VShimmer w="65%" h={12} />
+                </div>
+              ) : currentSalaryRec ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9, borderTop: `1px solid ${BDR}`, paddingTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: MUTED }}>{t("salary.payStatus")}</span>

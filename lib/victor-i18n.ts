@@ -45,6 +45,18 @@ export function allowedVictorLangs(role?: string | null): { id: VictorLang; labe
   return role === "victor" ? VICTOR_LANGS.filter((l) => l.id !== "he") : VICTOR_LANGS;
 }
 
+/** Synchronously read the last-known role from cache (null if unknown / SSR).
+ *  Lets the page restore the owner/Victor shell before paint so no owner-only
+ *  areas flash in/out during the async /api/me round-trip. */
+export function getCachedVictorRole(): "owner" | "victor" | null {
+  try {
+    const r = localStorage.getItem(ROLE_KEY);
+    return r === "owner" || r === "victor" ? r : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Cache the role and, for Victor, coerce a Hebrew/blank saved language to en. */
 export function rememberVictorRole(role: "owner" | "victor"): void {
   try {
