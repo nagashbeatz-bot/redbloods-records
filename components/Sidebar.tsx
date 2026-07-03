@@ -116,6 +116,10 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
   const [privacyHidden, togglePrivacy] = usePrivacyMode();
+  // Global maintenance lock (owner only) — DB-backed, read from the settings flag.
+  const [maintOn, setMaintOn] = useState(false);
+  const [maintConfirm, setMaintConfirm] = useState<null | "enable" | "disable">(null);
+  const [maintBusy, setMaintBusy] = useState(false);
 
   // Victor's chrome follows his language (en/ru); owner stays Hebrew.
   const vt = useVictorT();
@@ -149,6 +153,36 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
       .then((d) => setUnreadAlerts(d.count ?? 0))
       .catch(() => {});
   }, [role]);
+
+  // Read the current maintenance state (owner only) so the lock + badge reflect
+  // the global DB flag, not local guesswork.
+  useEffect(() => {
+    if (role !== "owner") return;
+    let alive = true;
+    fetch("/api/maintenance/status")
+      .then((r) => r.json())
+      .then((d) => { if (alive) setMaintOn(d?.enabled === true); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [role]);
+
+  // Owner toggles the global lock; re-read right after so the lock/badge update
+  // immediately (don't wait for the proxy's 15s cache).
+  async function applyMaintenance(enabled: boolean) {
+    if (maintBusy) return;
+    setMaintBusy(true);
+    try {
+      const res = await fetch("/api/maintenance", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const d = await res.json().catch(() => null);
+      if (res.ok) setMaintOn(d?.enabled === true);
+      // revalidate from the source of truth
+      fetch("/api/maintenance/status").then((r) => r.json()).then((s) => setMaintOn(s?.enabled === true)).catch(() => {});
+    } catch { /* keep prior state */ }
+    finally { setMaintBusy(false); setMaintConfirm(null); }
+  }
 
   return (
     <aside
@@ -230,6 +264,18 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
         )}
       </div>
 
+      {/* Maintenance-active banner — owner only, when the global lock is on. */}
+      {role === "owner" && maintOn && (
+        <div style={{
+          margin: "0 14px 4px", padding: "8px 12px", borderRadius: 10,
+          background: "rgba(220,38,38,0.12)", border: "1px solid rgba(220,38,38,0.45)",
+          color: "#F87171", fontSize: 11, fontWeight: 800, display: "flex",
+          alignItems: "center", gap: 7, boxShadow: "0 0 10px rgba(220,38,38,0.15)",
+        }}>
+          <span style={{ fontSize: 13 }}>🔒</span>תחזוקה פעילה
+        </div>
+      )}
+
       {/* Footer */}
       <div style={{
         padding: "14px 16px 18px",
@@ -266,6 +312,24 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
             }}
           >👁</button>
         )}
+        {/* Maintenance lock — owner only, same 32×32 family as the eye. Closed +
+            red = system locked; open = normal. */}
+        {role === "owner" && (
+          <button
+            onClick={() => setMaintConfirm(maintOn ? "disable" : "enable")}
+            title={maintOn ? "תחזוקה פעילה — לחץ לשחרור" : "הפעל מצב תחזוקה"}
+            style={{
+              width: 32, height: 32, flexShrink: 0, borderRadius: "50%",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", fontFamily: "inherit", fontSize: 14, lineHeight: 1,
+              background: maintOn ? "rgba(220,38,38,0.14)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${maintOn ? "rgba(220,38,38,0.5)" : "rgba(255,255,255,0.1)"}`,
+              color: maintOn ? "#F87171" : SUB,
+              boxShadow: maintOn ? "0 0 8px rgba(220,38,38,0.25)" : "none",
+              transition: "color 0.15s, background 0.15s, box-shadow 0.15s, border-color 0.15s",
+            }}
+          >{maintOn ? "🔒" : "🔓"}</button>
+        )}
         <button
           onClick={signOutAndRedirect}
           title={isVictor ? vt("common.signOut") : "יציאה"}
@@ -279,6 +343,37 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
           {isVictor ? vt("common.signOut") : "יציאה"}
         </button>
       </div>
+
+      {/* Maintenance confirm dialog (owner only) */}
+      {role === "owner" && maintConfirm && (
+        <div
+          onClick={() => !maintBusy && setMaintConfirm(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 100050, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} dir="rtl" style={{ width: "min(420px, 92vw)", background: "#111318", border: "1px solid rgba(255,255,255,0.11)", borderRadius: 18, padding: "24px 26px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#F2F2F2", marginBottom: 10 }}>
+              {maintConfirm === "enable" ? "להפעיל מצב תחזוקה?" : "לשחרר את המערכת?"}
+            </div>
+            <div style={{ fontSize: 13.5, color: "#A0A0B0", lineHeight: 1.65, marginBottom: 20 }}>
+              {maintConfirm === "enable"
+                ? "כל המשתמשים ייחסמו זמנית מהמערכת עד שתשחרר את המנעול."
+                : "המשתמשים יוכלו לחזור להשתמש במערכת."}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setMaintConfirm(null)}
+                disabled={maintBusy}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "#A0A0B0", fontSize: 13, fontWeight: 700, cursor: maintBusy ? "default" : "pointer", fontFamily: "inherit" }}
+              >ביטול</button>
+              <button
+                onClick={() => applyMaintenance(maintConfirm === "enable")}
+                disabled={maintBusy}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: maintBusy ? "default" : "pointer", fontFamily: "inherit", background: maintBusy ? "#52526A" : maintConfirm === "enable" ? "#DC2626" : "#10B981" }}
+              >{maintBusy ? "…" : maintConfirm === "enable" ? "הפעל תחזוקה" : "שחרר מערכת"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

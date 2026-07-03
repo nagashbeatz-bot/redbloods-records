@@ -14,7 +14,27 @@ const PUBLIC_BYPASS = [
   "/api/agent/snapshot",
   "/api/sessions/calendar-pull",
   "/api/push/cron",
+  "/api/maintenance/status", // boolean lock state only — read by this proxy (self-fetch)
 ];
+
+// Global maintenance flag, read via a cached self-fetch to the public status
+// endpoint (the proxy uses the anon key and can't read the RLS-locked settings
+// table directly). 15s TTL; owner requests never reach this. Fail-open on error
+// so a read failure can never lock the whole system out.
+let maintCache: { on: boolean; ts: number } | null = null;
+async function isMaintenanceOn(request: NextRequest): Promise<boolean> {
+  const now = Date.now();
+  if (maintCache && now - maintCache.ts < 15000) return maintCache.on;
+  try {
+    const res = await fetch(new URL("/api/maintenance/status", request.url), { headers: { "cache-control": "no-store" }, signal: AbortSignal.timeout(3000) });
+    const on = res.ok ? ((await res.json())?.enabled === true) : false;
+    maintCache = { on, ts: now };
+    return on;
+  } catch (e) {
+    console.error("[proxy] maintenance flag read failed (fail-open):", e);
+    return false;
+  }
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -22,6 +42,10 @@ export async function proxy(request: NextRequest) {
   if (PUBLIC_BYPASS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next();
   }
+
+  // The maintenance screen is always reachable (static, no data) so blocked
+  // users actually land on it.
+  if (pathname === "/maintenance") return NextResponse.next();
 
   // Read the session from cookies (anon key — never the service key).
   let response = NextResponse.next({ request });
@@ -60,6 +84,16 @@ export async function proxy(request: NextRequest) {
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   };
+
+  // ── Maintenance lock ──────────────────────────────────────────────────────
+  // Owner ALWAYS bypasses (role is resolved server-side from the session, never
+  // the client). Everyone else — signed in or not — is held on the maintenance
+  // screen (pages) / a clean 503 (api). /login stays open so the owner can sign
+  // in; /maintenance and PUBLIC_BYPASS were already allowed above.
+  if (role !== "owner" && pathname !== "/login" && (await isMaintenanceOn(request))) {
+    if (isApi) return NextResponse.json({ maintenance: true }, { status: 503 });
+    return NextResponse.redirect(new URL("/maintenance", request.url));
+  }
 
   // Login page: signed-in users go to their home; anon/unknown see the form.
   if (pathname === "/login") {
