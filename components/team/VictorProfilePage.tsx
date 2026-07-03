@@ -953,35 +953,53 @@ function VictorProjectDrawer({
     }
   }
 
-  async function handleUpload(file: File) {
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadError(null);
-    try {
-      // Auto-create the Dropbox folder on first upload (no manual button).
-      const folder = await ensureDropboxFolder();
-      if (!folder) { setUploading(false); return; }
+  // Upload ONE file, tagged with the batch's version label. Progress reflects
+  // the whole batch ((completed + this-file-fraction) / total).
+  function uploadOne(file: File, folder: string, versionLabel: string, idx: number, total: number): Promise<void> {
+    return new Promise((resolve, reject) => {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("workId", work.id);
       fd.append("dropboxFolder", folder);
       fd.append("subFolder", "Production");
-      const responseText = await new Promise<string>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/dropbox/vendor-upload");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100));
-        };
-        xhr.onload = () => xhr.status === 200 ? resolve(xhr.responseText) : reject(new Error(xhr.responseText));
-        xhr.onerror = () => reject(new Error(t("err.network")));
-        xhr.send(fd);
-      });
-      try {
-        const data = JSON.parse(responseText) as { ok: boolean; file?: FileLink };
-        if (data.ok && data.file) {
-          setEffectiveFiles(prev => [...prev, data.file!]);
-        }
-      } catch {}
+      fd.append("versionLabel", versionLabel);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/dropbox/vendor-upload");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round(((idx + e.loaded / e.total) / total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          try {
+            const data = JSON.parse(xhr.responseText) as { ok: boolean; file?: FileLink };
+            if (data.ok && data.file) setEffectiveFiles(prev => [...prev, data.file!]);
+          } catch { /* ignore parse error; server still saved it */ }
+          resolve();
+        } else reject(new Error(xhr.responseText));
+      };
+      xhr.onerror = () => reject(new Error(t("err.network")));
+      xhr.send(fd);
+    });
+  }
+
+  // One upload batch (a single file-picker selection or drop) = ONE new version.
+  // All files in the batch share "V{next}". After it, the new (latest) version
+  // opens and older ones collapse (openGroups reset → group defaults apply).
+  async function handleUploadBatch(fileList: FileList | null) {
+    const files = fileList ? Array.from(fileList) : [];
+    if (files.length === 0 || uploading) return;
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadError(null);
+    const versionLabel = `V${nextVersionNumber()}`;
+    try {
+      // Auto-create the Dropbox folder on first upload (no manual button).
+      const folder = await ensureDropboxFolder();
+      if (!folder) { setUploading(false); return; }
+      for (let i = 0; i < files.length; i++) {
+        await uploadOne(files[i], folder, versionLabel, i, files.length);
+      }
+      setOpenGroups({}); // new version = latest = open by default; older collapse
       onRefresh?.();
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("err.upload");
@@ -1074,7 +1092,11 @@ function VictorProjectDrawer({
   // ── Versions (Phase 1): group Victor's SENT files into rounds, newest on top.
   //    sentIdx = index in effectiveFiles (exactly what handleDeleteFile expects).
   //    Ordering uses append order (approved heuristic — no per-file timestamp). ──
-  const sentEnriched = effectiveFiles.map((f, i) => ({ file: f, sentIdx: i, role: detectRole(f), vkey: parseVersionKey(f.name) }));
+  const sentEnriched = effectiveFiles.map((f, i) => ({
+    file: f, sentIdx: i, role: detectRole(f),
+    // Prefer the stored batch label ("V3"); fall back to filename parsing.
+    vkey: (f.versionLabel && /^V\d+$/i.test(f.versionLabel)) ? f.versionLabel.toUpperCase() : parseVersionKey(f.name),
+  }));
   const anyVKey = sentEnriched.some(e => e.vkey);
   const roleOrder: FileRole[] = ["vocals", "instrumental", "stems", "other"];
   const sortByRole = (arr: typeof sentEnriched) =>
@@ -1088,9 +1110,25 @@ function VictorProjectDrawer({
       const cur = map.get(k); if (cur) cur.push(e); else map.set(k, [e]);
     }
     return [...map.entries()]
-      .map(([key, fs]) => ({ key, label: key === "__untagged__" ? "" : key, files: sortByRole(fs), rank: Math.max(...fs.map(f => f.sentIdx)) }))
+      .map(([key, fs]) => ({
+        key, label: key === "__untagged__" ? "" : key, files: sortByRole(fs),
+        // Untagged legacy files always sink to the bottom ("Older files").
+        rank: key === "__untagged__" ? -1 : Math.max(...fs.map(f => f.sentIdx)),
+      }))
       .sort((a, b) => b.rank - a.rank); // newest round on top
   })();
+
+  // Next version number for a NEW upload batch = max seen (stored label OR
+  // parsed filename) + 1; starts at V1 when there are none.
+  function nextVersionNumber(): number {
+    let max = 0;
+    for (const f of effectiveFiles) {
+      const src = (f.versionLabel && /^V\d+$/i.test(f.versionLabel)) ? f.versionLabel : (parseVersionKey(f.name) ?? "");
+      const m = /^V(\d+)$/i.exec(src);
+      if (m) max = Math.max(max, Number(m[1]));
+    }
+    return max + 1;
+  }
 
   // Flat audio playlist in display order (Latest group first) → prev/next.
   const playlist = versionGroups.flatMap(g =>
@@ -1532,8 +1570,9 @@ function VictorProjectDrawer({
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   style={{ display: "none" }}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
+                  onChange={e => handleUploadBatch(e.target.files)}
                 />
                 {/* Single upload button — the Dropbox folder is created
                     automatically on first upload (no manual "create folder"). */}
@@ -1604,9 +1643,10 @@ function VictorProjectDrawer({
                 {versionGroups.map((g, gi) => {
                   const isLatest = gi === 0;
                   const open = openGroups[g.key] ?? isLatest; // Latest open by default
+                  const isOlder = g.key === "__untagged__";
                   const num = /^V\d/.test(g.label) ? g.label.slice(1) : null;
-                  const title = num ? `${t("versions.round")} ${num}` : (g.label || t("versions.round"));
-                  const badge = num ? `V${num}` : "♪";
+                  const title = num ? `${t("versions.round")} ${num}` : isOlder ? t("versions.olderFiles") : (g.label || t("versions.round"));
+                  const badge = num ? `V${num}` : isOlder ? "🗂" : "♪";
                   const errNode = deleteError && deletingIdx !== null && g.files.some(x => x.sentIdx === deletingIdx)
                     ? <div style={{ fontSize: 10, color: RED, padding: "0 4px" }}>{t("file.retryError")}</div> : null;
                   return isLatest ? (

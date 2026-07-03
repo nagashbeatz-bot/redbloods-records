@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
     const workId      = formData.get("workId")       as string | null;
     const dropboxFolder = formData.get("dropboxFolder") as string | null;
     const subFolder   = (formData.get("subFolder") as string | null) ?? "01_From_Redbloods";
+    // Optional version tag (e.g. "V3") — one upload batch shares one label so the
+    // UI can group a round together. Additive only: absent → behaves as before.
+    const versionLabel = (formData.get("versionLabel") as string | null) || undefined;
 
     if (!file || !workId || !dropboxFolder) {
       return NextResponse.json({ error: "׳—׳¡׳¨׳™׳ ׳₪׳¨׳׳˜׳¨׳™׳: file, workId, dropboxFolder" }, { status: 400 });
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl };
+    const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl, ...(versionLabel ? { versionLabel } : {}) };
 
     // Update vendor_project_work.files_sent
     const { updateVictorWork, getVictorWorkForProject } = await import("@/lib/vendor-store");
