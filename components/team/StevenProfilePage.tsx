@@ -78,7 +78,8 @@ function fmtDbDate(d: string | null): string {
 function mapRecord(r: SoundEngineerWork): Work {
   return {
     id:         r.id,
-    project:    r.projectName || r.workTitle || "—",
+    // Prefer the Steven/Bill-facing work title; fall back to the project name.
+    project:    r.workTitle || r.projectName || "—",
     workType:   dbWorkTypeToUi(r.workType),
     status:     dbStatusToUi(r.status),
     startDate:  fmtDbDate(r.sentDate),

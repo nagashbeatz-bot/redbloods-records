@@ -220,8 +220,10 @@ export async function createSoundEngineerWork(
   const currency    = fields.currency    ?? "$";
   const workType    = fields.workType    ?? "מיקס";
 
-  // Build the insert; only add work_title for a standalone work so a plain
-  // project-linked insert stays valid even before the column migration runs.
+  // Build the insert; add work_title whenever a title was provided (linked OR
+  // standalone) so a project-linked work can carry a Steven/Bill-facing name,
+  // like the Victor flow. A plain linked insert with no title omits the column
+  // entirely, staying valid even if the column migration hasn't run.
   const insertRow: Record<string, unknown> = {
     project_id:        projectId ?? null,
     engineer_name:     fields.engineerName,
@@ -236,7 +238,7 @@ export async function createSoundEngineerWork(
     notes:             fields.notes            ?? "",
     linked_transaction_id: null,
   };
-  if (!projectId) insertRow.work_title = workTitle;
+  if (workTitle) insertRow.work_title = workTitle;
 
   const { data, error } = await supabase
     .from("sound_engineer_work")

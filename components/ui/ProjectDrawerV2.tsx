@@ -201,12 +201,13 @@ const PURPLE = "#8B5CF6";
 
 interface SendModalProps {
   projectId:     string;
+  projectName:   string;
   artistName:    string;
   onClose:       () => void;
   onActionSent?: (action: ProjectAction) => void;
 }
 
-function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalProps) {
+function SendModal({ projectId, projectName, artistName, onClose, onActionSent }: SendModalProps) {
   const [step,       setStep]      = useState<1 | 2>(1);
   const [dest,       setDest]      = useState<SendDestination | null>(null);
   const [selection,  setSelection] = useState<string | null>(null);
@@ -215,8 +216,10 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
   const [deadline,   setDeadline]  = useState<string>("");
   // Victor-only work title (display name at Victor); does NOT change the project.
   const [victorTitle, setVictorTitle] = useState<string>("");
+  // Sound-engineer-facing work title (Steven/Bill); does NOT change the project.
+  const [engineerTitle, setEngineerTitle] = useState<string>("");
 
-  function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); setDeadline(""); setVictorTitle(""); }
+  function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); setDeadline(""); setVictorTitle(""); setEngineerTitle(""); }
 
   function buildPayload() {
     const base = { projectId, actionType: "sent", actionDate: new Date().toISOString().slice(0, 10) };
@@ -318,6 +321,9 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               projectId,
+              // Optional Steven/Bill-facing work title; empty → falls back to the
+              // project name on /team/steven. Never changes the project itself.
+              workTitle:        engineerTitle.trim() || undefined,
               engineerName:     selection,        // "Steven" | "Bill"
               workType:         "מיקס + מאסטר",   // no mix/master selector in send → default combined
               status:           "נשלח",           // supported equivalent of "just sent"
@@ -511,10 +517,34 @@ function SendModal({ projectId, artistName, onClose, onActionSent }: SendModalPr
         )}
 
         {step === 2 && dest === "מיקס / מאסטר" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {["Bill", "Steven"].map(name => (
-              <ChoiceCard key={name} label={name} selected={selection === name} onClick={() => setSelection(name)} />
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {["Bill", "Steven"].map(name => (
+                <ChoiceCard key={name} label={name} selected={selection === name} onClick={() => setSelection(name)} />
+              ))}
+            </div>
+            {selection && (
+              <div style={{ marginTop: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                  שם העבודה אצל {selection} (אופציונלי)
+                </label>
+                <input
+                  type="text"
+                  value={engineerTitle}
+                  onChange={e => setEngineerTitle(e.target.value)}
+                  placeholder={projectName}
+                  style={{
+                    width: "100%", padding: "9px 12px", borderRadius: 10,
+                    background: "#0D0D10", border: `1px solid ${engineerTitle.trim() ? PURPLE : "#2A2A35"}`,
+                    color: "#EDE9FE", fontSize: 13, fontFamily: "inherit", outline: "none",
+                    boxSizing: "border-box" as const,
+                  }}
+                />
+                <div style={{ fontSize: 10.5, color: MUTED, marginTop: 5, lineHeight: 1.5 }}>
+                  השם הזה יוצג ל-{selection} בלבד. הפרויקט המקורי יישאר מקושר ולא ישתנה. אם ריק — יוצג שם הפרויקט.
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1450,6 +1480,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
       {showSendModal && (
         <SendModal
           projectId={projectId}
+          projectName={project.name}
           artistName={project.artist}
           onClose={() => setShowSendModal(false)}
           onActionSent={action => setProjectActions(prev => [action, ...prev])}
