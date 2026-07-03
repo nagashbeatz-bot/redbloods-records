@@ -80,6 +80,17 @@ export interface MixVersion {
   updatedAt:           string;
 }
 
+/** A time-stamped comment on a mix version (Phase 2 stage 4). */
+export interface MixComment {
+  id:               string;
+  mixVersionId:     string;
+  timestampSeconds: number;
+  commentText:      string;
+  author:           string | null;
+  createdAt:        string;
+  updatedAt:        string;
+}
+
 /** A YouTube reference attached to a Victor work ("רפרנסים"). */
 export interface VictorReference {
   id: string;
