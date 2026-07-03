@@ -389,6 +389,43 @@ function downloadFile(file: FileLink) {
   document.body.removeChild(a);
 }
 
+// ── Versions workflow helpers (Phase 1 — pure, derived client-side; no DB) ──────
+type FileRole = "vocals" | "instrumental" | "stems" | "other";
+const ROLE_COLOR: Record<FileRole, string> = {
+  vocals: "#8B5CF6", instrumental: "#3B82F6", stems: "#F59E0B", other: "#6B7280",
+};
+// Detect a file's role from its intake category first, then filename/extension.
+// "no vocals"/instrumental is checked BEFORE "vocals" so it can't be misread.
+function detectRole(file: FileLink): FileRole {
+  const cat = (file.category ?? "");
+  if (cat.includes("אינסטרומנטל")) return "instrumental";
+  if (cat.includes("אקפלה"))       return "vocals";
+  if (cat.includes("ערוצים"))      return "stems";
+  const n = file.name.toLowerCase();
+  if (/\.(zip|rar|7z)$/i.test(file.name) || /\bstems?\b|multitrack|ערוצים/.test(n)) return "stems";
+  if (/instrumental|\binst\b|no[\s._-]?vocals?|\bbeat\b|אינסטרומנטל/.test(n))        return "instrumental";
+  if (/with[\s._-]?vocals?|\bvocals?\b|\bvox\b|acapella|אקפלה|ווקאל/.test(n))         return "vocals";
+  return "other";
+}
+// Parse a version token from a filename (V3 / version 3 / מיקס 3 / final / fix).
+// Returns a stable grouping key, or null when nothing matches.
+function parseVersionKey(name: string): string | null {
+  const n = name.toLowerCase();
+  let m = n.match(/\bv[\s._-]?(\d{1,3})\b/) || n.match(/version[\s._-]?(\d{1,3})/) || n.match(/מיקס[\s._-]?(\d{1,3})/);
+  if (m) return `V${Number(m[1])}`;
+  if (/\bfinal\b|פיינל/.test(n)) return "FINAL";
+  if (/\bfix\b/.test(n))         return "FIX";
+  return null;
+}
+// Stable per-file id for tracking the now-playing track across re-renders/deletes.
+function fileId(f: FileLink): string {
+  return f.dropboxPath || f.dropboxShareUrl || f.url || f.name;
+}
+function fmtDur(sec: number): string {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 // Single active Victor-drawer audio — playing one file pauses any other (each
 // row's own "pause" event then resets its UI). Drawer-local; does NOT touch the
 // app's global PlayerProvider.
@@ -1031,6 +1068,116 @@ function VictorProjectDrawer({
     ...(work.filesReceived ?? []).map(f => ({ ...f, dir: "in" as const })),
     ...(effectiveFiles).map(f => ({ ...f, dir: "out" as const })),
   ];
+  const receivedFiles = (work.filesReceived ?? []);
+
+  // ── Versions (Phase 1): group Victor's SENT files into rounds, newest on top.
+  //    sentIdx = index in effectiveFiles (exactly what handleDeleteFile expects).
+  //    Ordering uses append order (approved heuristic — no per-file timestamp). ──
+  const sentEnriched = effectiveFiles.map((f, i) => ({ file: f, sentIdx: i, role: detectRole(f), vkey: parseVersionKey(f.name) }));
+  const anyVKey = sentEnriched.some(e => e.vkey);
+  const roleOrder: FileRole[] = ["vocals", "instrumental", "stems", "other"];
+  const sortByRole = (arr: typeof sentEnriched) =>
+    arr.slice().sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role) || a.sentIdx - b.sentIdx);
+  const versionGroups: { key: string; label: string; files: typeof sentEnriched; rank: number }[] = (() => {
+    if (sentEnriched.length === 0) return [];
+    if (!anyVKey) return [{ key: "all", label: "", files: sortByRole(sentEnriched), rank: sentEnriched.length - 1 }];
+    const map = new Map<string, typeof sentEnriched>();
+    for (const e of sentEnriched) {
+      const k = e.vkey ?? "__untagged__";
+      const cur = map.get(k); if (cur) cur.push(e); else map.set(k, [e]);
+    }
+    return [...map.entries()]
+      .map(([key, fs]) => ({ key, label: key === "__untagged__" ? "" : key, files: sortByRole(fs), rank: Math.max(...fs.map(f => f.sentIdx)) }))
+      .sort((a, b) => b.rank - a.rank); // newest round on top
+  })();
+
+  // Flat audio playlist in display order (Latest group first) → prev/next.
+  const playlist = versionGroups.flatMap(g =>
+    g.files.filter(x => isAudioFile(x.file.name)).map(x => ({ file: x.file, role: x.role, versionLabel: g.label })));
+
+  // ── Drawer-local fixed player: ONE <audio>, isolated from PlayerProvider ──
+  const [npKey, setNpKey] = useState<string | null>(null); // now-playing file id (stable across re-renders)
+  const [pPlaying, setPPlaying] = useState(false);
+  const [pCur, setPCur] = useState(0);
+  const [pDur, setPDur] = useState(0);
+  const [pVol, setPVol] = useState(1);
+  const playerAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pBarRef = useRef<HTMLDivElement | null>(null);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({}); // per-group collapse override
+  const npIdx = playlist.findIndex(p => fileId(p.file) === npKey);
+  const npItem = npIdx >= 0 ? playlist[npIdx] : null;
+
+  function playTrackByFile(file: FileLink) {
+    const a = playerAudioRef.current; if (!a) return;
+    const url = toDirectUrl(file.dropboxShareUrl || file.url || "");
+    if (!url) return;
+    const id = fileId(file);
+    if (npKey !== id) { a.src = url; setPCur(0); setPDur(0); }
+    setNpKey(id);
+    if (currentVictorAudio && currentVictorAudio !== a) currentVictorAudio.pause(); // single active
+    currentVictorAudio = a;
+    a.volume = pVol;
+    a.play().catch(() => {});
+  }
+  function togglePlayer() {
+    const a = playerAudioRef.current; if (!a || !npItem) return;
+    if (a.paused) {
+      if (currentVictorAudio && currentVictorAudio !== a) currentVictorAudio.pause();
+      currentVictorAudio = a;
+      a.play().catch(() => {});
+    } else a.pause();
+  }
+  function playerStep(delta: number) {
+    if (npIdx < 0) return;
+    const next = npIdx + delta;
+    if (next < 0 || next >= playlist.length) return;
+    playTrackByFile(playlist[next].file);
+  }
+  function playerSeek(clientX: number) {
+    const a = playerAudioRef.current, bar = pBarRef.current;
+    if (!a || !bar || !a.duration || isNaN(a.duration)) return;
+    const rect = bar.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    a.currentTime = frac * a.duration; setPCur(a.currentTime);
+  }
+
+  // Wire the single <audio> element's media events → UI state.
+  useEffect(() => {
+    const a = playerAudioRef.current; if (!a) return;
+    const onTime = () => setPCur(a.currentTime || 0);
+    const onMeta = () => setPDur(a.duration && !isNaN(a.duration) ? a.duration : 0);
+    const onPlay = () => setPPlaying(true);
+    const onPause = () => setPPlaying(false);
+    const onEnded = () => { setPPlaying(false); setPCur(0); };
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("loadedmetadata", onMeta);
+    a.addEventListener("durationchange", onMeta);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onEnded);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onMeta);
+      a.removeEventListener("durationchange", onMeta);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onEnded);
+    };
+  }, []);
+  // Stop + tear down on unmount (drawer close / project change).
+  useEffect(() => () => {
+    const a = playerAudioRef.current;
+    if (a) { a.pause(); if (currentVictorAudio === a) currentVictorAudio = null; a.src = ""; }
+  }, []);
+  // If the now-playing file was deleted, stop the player.
+  useEffect(() => {
+    if (npKey && !playlist.some(p => fileId(p.file) === npKey)) {
+      playerAudioRef.current?.pause();
+      setNpKey(null); setPPlaying(false);
+    }
+  }, [npKey, playlist]);
+  // Volume changes apply live.
+  useEffect(() => { const a = playerAudioRef.current; if (a) a.volume = pVol; }, [pVol]);
 
   const days = daysFromNow(work.internalDeadline);
 
@@ -1333,8 +1480,8 @@ function VictorProjectDrawer({
               borderBottom: files.length > 0 ? `1px solid ${BDR}` : "none",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <span style={{ fontSize: 14, flexShrink: 0 }}>📁</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("files.title")}</span>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>🎵</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("versions.title")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
                 <input
@@ -1401,38 +1548,99 @@ function VictorProjectDrawer({
               <div style={{ fontSize: 11, color: "#EF4444", padding: "4px 16px 2px", fontWeight: 600 }}>{uploadError}</div>
             )}
 
-            {files.length === 0 ? (
+            {effectiveFiles.length === 0 && receivedFiles.length === 0 ? (
               <div style={{ padding: "28px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 32, marginBottom: 10, opacity: 0.25 }}>📂</div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2, marginBottom: 4 }}>{t("files.empty")}</div>
                 <div style={{ fontSize: 11, color: MUTED }}>{t("files.emptySub")}</div>
               </div>
             ) : (
-              <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
-                {(() => {
-                  let outIdx = -1;
-                  return files.map((f, i) => {
-                    const isSent = f.dir === "out";
-                    if (isSent) outIdx++;
-                    const idx = outIdx;
-                    const props = {
-                      file: f,
-                      onDownload: () => downloadFile(f),
-                      deleteConfirm: isSent && deleteConfirmIdx === idx,
-                      onDeleteConfirm: isSent ? () => { setDeleteConfirmIdx(idx); setDeleteError(false); } : () => {},
-                      onDeleteCancel: () => { setDeleteConfirmIdx(null); setDeleteError(false); },
-                      onDelete: isSent ? () => handleDeleteFile(f, idx) : () => {},
-                      deleting: isSent && deletingIdx === idx,
-                      deleteError: deleteError && deletingIdx === idx,
-                      canDelete: isOwner,
-                    };
-                    return isAudioFile(f.name) ? (
-                      <AudioPlayer key={i} {...props} />
-                    ) : (
-                      <FileRow key={i} {...props} />
-                    );
-                  });
-                })()}
+              <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* ── Versions: Victor's sent deliverables, newest round on top ── */}
+                {versionGroups.map((g, gi) => {
+                  const open = openGroups[g.key] ?? (gi === 0);
+                  const isLatest = gi === 0;
+                  const groupTitle = g.label
+                    ? (/^V\d/.test(g.label) ? `${t("versions.round")} ${g.label.slice(1)}` : g.label)
+                    : t("versions.round");
+                  return (
+                    <div key={g.key} style={{ borderRadius: 12, background: isLatest ? `${PURPLE}0D` : CARD2, border: `1px solid ${isLatest ? PURPLE + "44" : BDR}`, overflow: "hidden" }}>
+                      <button
+                        onClick={() => setOpenGroups(s => ({ ...s, [g.key]: !open }))}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "start" }}
+                      >
+                        <span style={{ fontSize: 12.5, fontWeight: 800, color: TEXT }}>{groupTitle}</span>
+                        {isLatest && <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 6, background: `${PURPLE}22`, color: PURPLE, border: `1px solid ${PURPLE}44`, whiteSpace: "nowrap" }}>★ {t("versions.latest")}</span>}
+                        <span style={{ flex: 1 }} />
+                        <span style={{ fontSize: 10, color: MUTED }}>{g.files.length}</span>
+                        <span style={{ fontSize: 11, color: MUTED, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
+                      </button>
+                      {open && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 10px 10px" }}>
+                          {g.files.map(({ file, sentIdx, role }) => {
+                            const rc = ROLE_COLOR[role];
+                            const audio = isAudioFile(file.name);
+                            const nowPlaying = npKey === fileId(file);
+                            const hasUrl = !!(file.dropboxShareUrl || file.url);
+                            return (
+                              <div key={sentIdx} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: nowPlaying ? `${PURPLE}14` : "rgba(255,255,255,0.02)", border: `1px solid ${nowPlaying ? PURPLE + "55" : BDR}`, minWidth: 0 }}>
+                                {audio ? (
+                                  <button onClick={() => (nowPlaying ? togglePlayer() : playTrackByFile(file))} title={nowPlaying && pPlaying ? t("player.pause") : t("player.play")}
+                                    style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: nowPlaying && pPlaying ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontFamily: "inherit" }}>
+                                    {nowPlaying && pPlaying ? "⏸" : "▶"}
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: 16, flexShrink: 0, width: 30, textAlign: "center" }}>{/\.(zip|rar|7z)$/i.test(file.name) ? "🗜" : "📄"}</span>
+                                )}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div title={file.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere", lineHeight: 1.3 } as React.CSSProperties}>{file.name}</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 7px", borderRadius: 5, background: `${rc}22`, color: rc, border: `1px solid ${rc}44`, whiteSpace: "nowrap" }}>{t(`role.${role}`)}</span>
+                                    <span style={{ fontSize: 9.5, color: MUTED }}>{fileExt(file.name)}</span>
+                                    {typeof file.durationSeconds === "number" && file.durationSeconds > 0 && <span style={{ fontSize: 9.5, color: MUTED }}>· {fmtDur(file.durationSeconds)}</span>}
+                                  </div>
+                                </div>
+                                <button onClick={() => downloadFile(file)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
+                                  style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 15, padding: 0, fontFamily: "inherit" }}>↓</button>
+                                {isOwner && (
+                                  deleteConfirmIdx === sentIdx ? (
+                                    <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                                      <button onClick={() => handleDeleteFile(file, sentIdx)} disabled={deletingIdx === sentIdx} style={{ padding: "3px 8px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: deletingIdx === sentIdx ? MUTED : RED, border: "none", color: "#fff", cursor: deletingIdx === sentIdx ? "default" : "pointer", fontFamily: "inherit" }}>{deletingIdx === sentIdx ? "…" : t("drawer.confirm")}</button>
+                                      <button onClick={() => { setDeleteConfirmIdx(null); setDeleteError(false); }} style={{ padding: "3px 8px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => { setDeleteConfirmIdx(sentIdx); setDeleteError(false); }} title={t("file.delete")}
+                                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "3px 7px", flexShrink: 0, fontFamily: "inherit" }}>{t("file.deleteBtn")}</button>
+                                  )
+                                )}
+                              </div>
+                            );
+                          })}
+                          {deleteError && deletingIdx !== null && g.files.some(x => x.sentIdx === deletingIdx) && (
+                            <div style={{ fontSize: 10, color: RED, padding: "0 4px" }}>{t("file.retryError")}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* ── Source files (received from owner) — separate, not part of Versions ── */}
+                {receivedFiles.length > 0 && (
+                  <div style={{ marginTop: 2 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, textTransform: "uppercase", letterSpacing: "0.05em", padding: "4px 4px 6px" }}>{t("versions.sourceTitle")}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {receivedFiles.map((f, i) => {
+                        const props = {
+                          file: f, onDownload: () => downloadFile(f),
+                          deleteConfirm: false, onDeleteConfirm: () => {}, onDeleteCancel: () => {}, onDelete: () => {},
+                          deleting: false, deleteError: false, canDelete: false,
+                        };
+                        return isAudioFile(f.name) ? <AudioPlayer key={`r${i}`} {...props} /> : <FileRow key={`r${i}`} {...props} />;
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1658,7 +1866,49 @@ function VictorProjectDrawer({
 
             </div>{/* side column */}
           </div>{/* grid */}
-        </div>
+        </div>{/* scrollable body */}
+
+        {/* Always-mounted audio + drawer-local fixed player (isolated from the
+            app's global PlayerProvider — its own <audio>, own currentVictorAudio). */}
+        <audio ref={playerAudioRef} preload="metadata" style={{ display: "none" }} />
+        {npItem && (
+          <div style={{ flexShrink: 0, borderTop: `1px solid ${BDR2}`, background: "linear-gradient(0deg, #0B0B12 0%, #0F0F18 100%)", padding: isMobile ? "10px 12px calc(10px + env(safe-area-inset-bottom))" : "12px 18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 9 : 14, minWidth: 0 }}>
+              {/* now-playing info */}
+              <div style={{ minWidth: 0, flexShrink: 1, flexBasis: isMobile ? "38%" : 220, maxWidth: isMobile ? 150 : 260 }}>
+                <div title={npItem.file.name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npItem.file.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                  {npItem.versionLabel && <span style={{ fontSize: 9, fontWeight: 800, color: PURPLE, whiteSpace: "nowrap" }}>{/^V\d/.test(npItem.versionLabel) ? npItem.versionLabel : t("versions.round")}</span>}
+                  <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 5, background: `${ROLE_COLOR[npItem.role]}22`, color: ROLE_COLOR[npItem.role], whiteSpace: "nowrap" }}>{t(`role.${npItem.role}`)}</span>
+                </div>
+              </div>
+              {/* transport */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <button onClick={() => playerStep(-1)} disabled={npIdx <= 0} title={t("player.prev")} style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: npIdx <= 0 ? "default" : "pointer", opacity: npIdx <= 0 ? 0.4 : 1, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏮</button>
+                <button onClick={togglePlayer} title={pPlaying ? t("player.pause") : t("player.play")} style={{ width: 40, height: 40, borderRadius: "50%", background: PURPLE, border: "none", color: "#fff", cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>{pPlaying ? "⏸" : "▶"}</button>
+                <button onClick={() => playerStep(1)} disabled={npIdx < 0 || npIdx >= playlist.length - 1} title={t("player.next")} style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: (npIdx < 0 || npIdx >= playlist.length - 1) ? "default" : "pointer", opacity: (npIdx < 0 || npIdx >= playlist.length - 1) ? 0.4 : 1, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏭</button>
+              </div>
+              {/* progress + time */}
+              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, minWidth: 0 }}>
+                <span style={{ fontSize: 10, color: MUTED, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>{fmtDur(pCur)}</span>
+                <div ref={pBarRef}
+                  onPointerDown={e => { try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ } playerSeek(e.clientX); }}
+                  onPointerMove={e => { if (e.buttons === 1) playerSeek(e.clientX); }}
+                  style={{ flex: 1, minWidth: 36, padding: "7px 0", cursor: "pointer", touchAction: "none" }}>
+                  <div style={{ height: 6, background: "rgba(255,255,255,0.12)", borderRadius: 4, position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pDur > 0 ? (pCur / pDur) * 100 : 0}%`, background: PURPLE, borderRadius: 4 }} />
+                  </div>
+                </div>
+                <span style={{ fontSize: 10, color: MUTED, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>{pDur > 0 ? fmtDur(pDur) : "—"}</span>
+              </div>
+              {/* volume (desktop) + download */}
+              {!isMobile && (
+                <input type="range" min={0} max={1} step={0.01} value={pVol} onChange={e => setPVol(Number(e.target.value))} title="Volume" style={{ width: 68, accentColor: PURPLE, cursor: "pointer", flexShrink: 0 }} />
+              )}
+              <button onClick={() => downloadFile(npItem.file)} title={t("file.download")} style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>↓</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* In-app YouTube player — iframe mounts only while open, so closing it
