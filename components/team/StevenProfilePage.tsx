@@ -738,6 +738,53 @@ function EmptyZone({ icon, title, subtitle }: { icon: string; title: string; sub
   );
 }
 
+// ── Loading skeletons (dark premium, subtle shimmer) — keep the modal's height
+//    stable so nothing jumps when real data swaps in. Reuse global skeleton-sweep.
+function Shimmer({ w, h = 12, r = 7, style }: { w: number | string; h?: number; r?: number; style?: React.CSSProperties }) {
+  return (
+    <div style={{ width: w, height: h, borderRadius: r, background: "rgba(255,255,255,0.05)", position: "relative", overflow: "hidden", flexShrink: 0, ...style }}>
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%)", animation: "skeleton-sweep 1.6s ease-in-out infinite" }} />
+    </div>
+  );
+}
+// Player placeholder — mirrors VersionPlayer's shape (title · waveform · transport).
+function PlayerSkeleton() {
+  const bars = Array.from({ length: 76 }, (_, i) => 0.2 + 0.8 * Math.abs(Math.sin(i * 0.7) * 0.6 + Math.sin(i * 0.23 + 1) * 0.4));
+  return (
+    <div style={{ padding: "18px 20px 20px" }}>
+      <div style={{ marginBottom: 16 }}><Shimmer w={170} h={19} r={6} /></div>
+      <div style={{ position: "relative", marginTop: 14, overflow: "hidden", borderRadius: 4 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 84 }}>
+          {bars.map((h, i) => <div key={i} style={{ flex: 1, minWidth: 2, height: `${Math.round(h * 100)}%`, borderRadius: 2, background: "rgba(255,255,255,0.06)" }} />)}
+        </div>
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%)", animation: "skeleton-sweep 1.6s ease-in-out infinite", pointerEvents: "none" }} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+        <Shimmer w={82} h={12} />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <Shimmer w={38} h={38} r={19} /><Shimmer w={38} h={38} r={19} /><Shimmer w={58} h={58} r={29} /><Shimmer w={38} h={38} r={19} />
+        </div>
+        <Shimmer w={82} h={12} />
+      </div>
+    </div>
+  );
+}
+// A few placeholder rows (comments / versions list).
+function RowsSkeleton({ rows, height, pad }: { rows: number; height: number; pad: string }) {
+  return (
+    <div style={{ padding: pad, display: "flex", flexDirection: "column", gap: 7 }}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, height, padding: "0 4px" }}>
+          <Shimmer w={23} h={23} r={999} />
+          <Shimmer w={`${55 - i * 8}%`} h={12} />
+          <div style={{ flex: 1 }} />
+          <Shimmer w={40} h={11} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Local mix-version player (premium dark card) — never touches the global
 //    project player; streams the selected version via /api/dropbox/stream. ────────
 type VersionPlayerHandle = {
@@ -1158,7 +1205,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             {vLoadErr ? (
               <div style={{ padding: "8px 16px 18px", fontSize: 12.5, color: RED }}>{t.vLoadFailed}</div>
             ) : versions === null ? (
-              <div style={{ padding: "8px 16px 18px", fontSize: 12.5, color: MUTED }}>{t.vLoading}</div>
+              <RowsSkeleton rows={3} height={30} pad="2px 12px 12px" />
             ) : versions.length === 0 ? (
               <div style={{ padding: "4px 16px 20px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
             ) : (
@@ -1187,7 +1234,15 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
           {/* MAIN: local player + timestamp comments (fills the remaining width) */}
           <div style={{ ...subCard, order: narrow ? 2 : 1, flex: narrow ? "none" : "1 1 0", minWidth: 0, display: "flex", flexDirection: "column" }}>
             <div style={innerHead}>🎧 {t.playerSection}</div>
-            {selected ? (
+            {vLoadErr ? (
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 16px", fontSize: 12.5, color: RED, textAlign: "center" }}>{t.vLoadFailed}</div>
+            ) : (versions === null || (versions.length > 0 && !selected)) ? (
+              /* Still loading versions (or auto-select settling) — never flash the empty state. */
+              <>
+                <PlayerSkeleton />
+                <RowsSkeleton rows={2} height={44} pad="4px 16px 18px" />
+              </>
+            ) : selected ? (
               <>
                 <VersionPlayer
                   ref={playerRef}
@@ -1230,7 +1285,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                   {cLoadErr ? (
                     <div style={{ fontSize: 12, color: RED, padding: "6px 2px" }}>{t.cLoadFail}</div>
                   ) : comments === null ? (
-                    <div style={{ fontSize: 12, color: MUTED, padding: "6px 2px" }}>{t.cLoading}</div>
+                    <RowsSkeleton rows={2} height={44} pad="0" />
                   ) : comments.length === 0 ? (
                     !adding && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
                   ) : (
