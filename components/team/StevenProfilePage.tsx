@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import type { SoundEngineerWork } from "@/lib/types";
+import type { SoundEngineerWork, MixVersion } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -38,6 +38,32 @@ const WT_EN:     Record<WorkType, string>   = { "מיקס מאסטרינג": "Mi
 const statusLabel = (s: WorkStatus, lang: Lang) => (lang === "en" ? STATUS_EN[s] : s);
 const payLabel    = (p: PayStatus, lang: Lang)  => (lang === "en" ? PAY_EN[p] : p);
 const wtLabel     = (w: WorkType, lang: Lang)   => (lang === "en" ? WT_EN[w] : w);
+
+// ── Mix-version status (Phase 2) — canonical Hebrew, EN display-only ─────────────
+type VStatus = "בבדיקה" | "מוכן" | "מאושר" | "נדחה";
+const VSTATUS_OPTIONS: VStatus[] = ["בבדיקה", "מוכן", "מאושר", "נדחה"];
+const VSTATUS_COLOR: Record<VStatus, string> = { "בבדיקה": "#F59E0B", "מוכן": GREEN, "מאושר": BLUE, "נדחה": RED };
+const VSTATUS_EN:    Record<VStatus, string> = { "בבדיקה": "In review", "מוכן": "Ready", "מאושר": "Approved", "נדחה": "Rejected" };
+const vStatusLabel = (s: string, lang: Lang) => (lang === "en" && (s in VSTATUS_EN) ? VSTATUS_EN[s as VStatus] : s);
+const vStatusColor = (s: string) => (s in VSTATUS_COLOR ? VSTATUS_COLOR[s as VStatus] : MUTED);
+
+/** Human file size. */
+function fmtBytes(b: number | null): string {
+  if (b == null) return "—";
+  if (b >= 1e9) return `${(b / 1e9).toFixed(1)} GB`;
+  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB`;
+  if (b >= 1e3) return `${Math.round(b / 1e3)} KB`;
+  return `${b} B`;
+}
+/** ISO → "DD.MM.YY HH:MM" in Israel time (empty → "—"). */
+function fmtDateTime(iso: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const date = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", year: "2-digit" }).format(d);
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  return `${date.replace(/\//g, ".")} ${time}`;
+}
 
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
@@ -114,6 +140,11 @@ const TR = {
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
     mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
     uploadVersion: "+ העלה גרסה / קובץ עבודה", phase2Tag: "פאזה 2", uploadComing: "העלאת גרסאות אמיתית ל-Dropbox תתווסף בפאזה הבאה",
+    vLabelPh: "שם גרסה (אופציונלי) — למשל Mix 1", vChooseFile: "בחר קובץ", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
+    vUploading: "מעלה קובץ…", vUploaded: "הגרסה הועלתה", vUploadFailed: "העלאת הגרסה נכשלה", vDeleted: "הגרסה נמחקה", vLoadFailed: "טעינת הגרסאות נכשלה",
+    vLoading: "טוען גרסאות…", vEmpty: "עדיין אין גרסאות — העלה קובץ ראשון עם הכפתור למעלה",
+    vColVersion: "שם גרסה", vColFile: "קובץ", vColType: "סוג", vColSize: "גודל", vColDate: "הועלה", vColStatus: "סטטוס", vColActions: "פעולות",
+    vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     newWorkTitle: "עבודה חדשה ל-Steven", projectName: "שם הפרויקט", priceLabel: "מחיר ($)", save: "שמור", cancel: "ביטול", required: "יש להזין שם פרויקט",
     tAdded: "הקבצים נוספו לעבודה", tRemoved: "הקובץ הוסר", tNoPlay: "אין קובץ לניגון כרגע", tNoDownload: "אין קובץ להורדה כרגע", tNoDropbox: "אין עדיין קישור Dropbox לעבודה הזו",
@@ -135,6 +166,11 @@ const TR = {
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
     mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
     uploadVersion: "+ Upload version / work file", phase2Tag: "Phase 2", uploadComing: "Real Dropbox version upload is coming in the next phase",
+    vLabelPh: "Version name (optional) — e.g. Mix 1", vChooseFile: "Choose file", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
+    vUploading: "Uploading…", vUploaded: "Version uploaded", vUploadFailed: "Version upload failed", vDeleted: "Version deleted", vLoadFailed: "Failed to load versions",
+    vLoading: "Loading versions…", vEmpty: "No versions yet — upload the first file with the button above",
+    vColVersion: "Version", vColFile: "File", vColType: "Type", vColSize: "Size", vColDate: "Uploaded", vColStatus: "Status", vColActions: "Actions",
+    vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     newWorkTitle: "New Work for Steven", projectName: "Project name", priceLabel: "Price ($)", save: "Save", cancel: "Cancel", required: "Project name is required",
     tAdded: "Files added to job", tRemoved: "File removed", tNoPlay: "No playable file yet", tNoDownload: "No downloadable file yet", tNoDropbox: "No Dropbox link for this job yet",
@@ -676,6 +712,69 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const rtl = lang === "he";
   const narrow = useIsNarrow(760);
 
+  // ── Mix versions (Phase 2) — real data from /api/sound-engineer/{workId}/versions
+  const [versions, setVersions]   = useState<MixVersion[] | null>(null); // null = loading
+  const [vLoadErr, setVLoadErr]   = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadLabel, setUploadLabel] = useState("");
+  const [drag, setDrag]           = useState(false);
+  const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
+  const versionInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setVersions(null); setVLoadErr(false);
+    fetch(`/api/sound-engineer/${work.id}/versions`)
+      .then(r => r.json())
+      .then(d => { if (!alive) return; if (d.ok) setVersions(d.versions ?? []); else setVLoadErr(true); })
+      .catch(() => { if (alive) setVLoadErr(true); });
+    return () => { alive = false; };
+  }, [work.id]);
+
+  function uploadVersionFile(list: FileList | null) {
+    const file = list?.[0];
+    if (!file || uploading) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    if (uploadLabel.trim()) fd.append("label", uploadLabel.trim());
+    fetch(`/api/sound-engineer/${work.id}/versions`, { method: "POST", body: fd })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok && d.version) {
+          setVersions(prev => [d.version as MixVersion, ...(prev ?? [])]);
+          setUploadLabel("");
+          notify(t.vUploaded);
+        } else {
+          notify(d.error || t.vUploadFailed);
+        }
+      })
+      .catch(() => notify(t.vUploadFailed))
+      .finally(() => { setUploading(false); if (versionInputRef.current) versionInputRef.current.value = ""; });
+  }
+
+  function setVersionStatus(v: MixVersion, status: string) {
+    const prev = versions;
+    setVersions(cur => cur?.map(x => (x.id === v.id ? { ...x, status } : x)) ?? null);
+    fetch(`/api/sound-engineer/versions/${v.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    })
+      .then(r => r.json())
+      .then(d => { if (!d.ok) { setVersions(prev); notify(rtl ? "השמירה נכשלה" : "Save failed"); } })
+      .catch(() => { setVersions(prev); notify(rtl ? "השמירה נכשלה" : "Save failed"); });
+  }
+
+  function confirmDeleteVersion() {
+    const v = delVersion; if (!v) return;
+    setDelVersion(null);
+    const prev = versions;
+    setVersions(cur => cur?.filter(x => x.id !== v.id) ?? null);
+    fetch(`/api/sound-engineer/versions/${v.id}`, { method: "DELETE" })
+      .then(r => r.json())
+      .then(d => { if (d.ok) notify(t.vDeleted); else { setVersions(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); } })
+      .catch(() => { setVersions(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); });
+  }
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
@@ -765,7 +864,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
             </div>
           </div>
 
-          {/* MIDDLE: Mix versions — upload placeholder (phase 2) + real Dropbox link */}
+          {/* MIDDLE: Mix versions — real upload + table (metadata in mix_versions only) */}
           <div style={subCard}>
             <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <span>🎵 {t.mixVersions}</span>
@@ -773,18 +872,82 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 {work.filesLink && (
                   <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
                 )}
-                {/* Upload button — visible placeholder, disabled until phase 2 (no fake upload) */}
                 <button
-                  disabled
-                  title={t.uploadComing}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "not-allowed", fontFamily: "inherit", whiteSpace: "nowrap", opacity: 0.85 }}
-                >
-                  {t.uploadVersion}
-                  <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 999, background: `${BRAND}18`, border: `1px solid ${BRAND}40`, color: BRAND }}>{t.phase2Tag}</span>
-                </button>
+                  onClick={() => { if (!uploading) versionInputRef.current?.click(); }}
+                  disabled={uploading}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: uploading ? 0.6 : 1 }}
+                >{t.uploadVersion}</button>
               </div>
             </div>
-            <EmptyZone icon="☁️" title={t.versionsEmptyTitle} subtitle={work.filesLink ? t.mixVersionsEmpty : t.uploadComing} />
+
+            <input ref={versionInputRef} type="file" accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip" style={{ display: "none" }} onChange={e => uploadVersionFile(e.target.files)} />
+
+            {/* Upload zone: optional label + drag & drop / click */}
+            <div style={{ padding: "14px 16px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <input
+                value={uploadLabel}
+                onChange={e => setUploadLabel(e.target.value)}
+                placeholder={t.vLabelPh}
+                style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, background: CARD, color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }}
+              />
+              <div
+                onClick={() => { if (!uploading) versionInputRef.current?.click(); }}
+                onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
+                onDragLeave={e => { e.preventDefault(); setDrag(false); }}
+                onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadVersionFile(e.dataTransfer.files); }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, textAlign: "center", padding: "20px 16px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
+              >
+                <div style={{ fontSize: 24, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
+                <div style={{ fontSize: 10.5, color: MUTED }}>{t.vFileHint}</div>
+              </div>
+            </div>
+
+            {/* List / empty / loading */}
+            {vLoadErr ? (
+              <div style={{ padding: "8px 16px 18px", fontSize: 12.5, color: RED }}>{t.vLoadFailed}</div>
+            ) : versions === null ? (
+              <div style={{ padding: "8px 16px 18px", fontSize: 12.5, color: MUTED }}>{t.vLoading}</div>
+            ) : versions.length === 0 ? (
+              <div style={{ padding: "4px 16px 20px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
+            ) : (
+              <div style={{ padding: "2px 12px 14px", overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+                  <thead>
+                    <tr>
+                      {[t.vColVersion, t.vColFile, t.vColType, t.vColSize, t.vColDate, t.vColStatus, t.vColActions].map(h => (
+                        <th key={h} style={{ padding: "8px 10px", textAlign: rtl ? "right" : "left", fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap", borderBottom: `1px solid ${BDR}` }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {versions.map(v => (
+                      <tr key={v.id} style={{ borderBottom: `1px solid ${BDR}` }}>
+                        <td style={{ padding: "9px 10px", fontSize: 12.5, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{v.label}</td>
+                        <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.fileName}</td>
+                        <td style={{ padding: "9px 10px", fontSize: 11.5, color: TEXT2, whiteSpace: "nowrap" }}>{(v.fileType || "—").toUpperCase()}</td>
+                        <td style={{ padding: "9px 10px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtBytes(v.fileSize)}</td>
+                        <td style={{ padding: "9px 10px", fontSize: 11.5, color: MUTED, whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left" }}>{fmtDateTime(v.uploadedAt)}</td>
+                        <td style={{ padding: "9px 10px" }}>
+                          <InlineSelect<string>
+                            value={v.status}
+                            display={vStatusLabel(v.status, lang)}
+                            color={vStatusColor(v.status)}
+                            options={VSTATUS_OPTIONS.map(s => ({ value: s as string, label: vStatusLabel(s, lang), color: VSTATUS_COLOR[s] }))}
+                            onChange={s => setVersionStatus(v, s)}
+                          />
+                        </td>
+                        <td style={{ padding: "9px 10px" }}>
+                          <button onClick={() => setDelVersion(v)} title={t.vDelYes}
+                            style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 14, cursor: "pointer" }}
+                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* BOTTOM: Player + time-stamped comments — coming in phase 2 (real DB) */}
@@ -803,6 +966,21 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => setConfirmOpen(false)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
                 <button onClick={() => { setConfirmOpen(false); onDelete(); }} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.confirmYes}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete-version confirmation */}
+        {delVersion && (
+          <div onClick={() => setDelVersion(null)} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${RED}44`, borderRadius: 16, width: "min(420px, 92vw)", padding: "22px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, marginBottom: 10 }}>{t.vDelTitle}</div>
+              <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 8 }}>{t.vDelBody}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, marginBottom: 16, direction: "ltr", textAlign: rtl ? "right" : "left" }}>{delVersion.label} · {delVersion.fileName}</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setDelVersion(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
+                <button onClick={confirmDeleteVersion} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.vDelYes}</button>
               </div>
             </div>
           </div>
