@@ -19,6 +19,15 @@ const GREEN  = "#10B981";
 const BLUE   = "#3B82F6"; // calm "completed" accent
 const RED    = "#EF4444";
 
+// Dropbox is an App-Folder-scoped app, so every dropboxPath ("/Projects/…") is
+// RELATIVE to the app folder. In the owner's own Dropbox that app folder lives
+// under this prefix. We use it only to build a plain web deep-link
+// (https://www.dropbox.com/home/<full path>) that opens the folder for the
+// logged-in owner — NO API call, NO token, NO shared link is created. If the
+// folder doesn't open at the right place, this single string is the only thing
+// to adjust (e.g. localized "Apps", or a different app-folder name).
+const DROPBOX_APP_ROOT = "/Apps/redbloods-records";
+
 // ── Types + options (UI-only; no DB). State stays Hebrew-canonical; English is
 //    a display-only translation via mappers below. ────────────────────────────────
 type WorkStatus = "פעיל" | "הושלם" | "בוטל";
@@ -162,7 +171,7 @@ const TR = {
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
-    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
+    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", openMixFolder: "📦 פתח ב-Dropbox", vFolderPending: "התיקייה תיווצר אחרי העלאת גרסה ראשונה", vFolderOpenFail: "לא ניתן לפתוח את תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו",
     uploadVersion: "+ העלה גרסה / קובץ עבודה", phase2Tag: "פאזה 2", uploadComing: "העלאת גרסאות אמיתית ל-Dropbox תתווסף בפאזה הבאה",
     vLabelPh: "שם גרסה, למשל Mix 1", vChooseFile: "בחר קובץ", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "מעלה קובץ…", vUploaded: "הגרסה הועלתה", vUploadFailed: "העלאת הגרסה נכשלה", vDeleted: "הגרסה נמחקה", vLoadFailed: "טעינת הגרסאות נכשלה",
@@ -192,7 +201,7 @@ const TR = {
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
-    mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
+    mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", openMixFolder: "📦 Open in Dropbox", vFolderPending: "The folder is created after the first version upload", vFolderOpenFail: "Couldn't open the Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet",
     uploadVersion: "+ Upload version / work file", phase2Tag: "Phase 2", uploadComing: "Real Dropbox version upload is coming in the next phase",
     vLabelPh: "Version name, e.g. Mix 1", vChooseFile: "Choose file", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "Uploading…", vUploaded: "Version uploaded", vUploadFailed: "Version upload failed", vDeleted: "Version deleted", vLoadFailed: "Failed to load versions",
@@ -1110,6 +1119,26 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   // Currently-selected version for the local player (null when it no longer exists).
   const selected = versions?.find(v => v.id === sel) ?? null;
 
+  // Mix Versions folder = the directory the versions physically live in. Every
+  // version is stored DIRECTLY under it, so the parent dir of any version's
+  // (app-relative) dropboxPath IS the folder. null until ≥1 version exists (the
+  // folder is only created on first upload).
+  const anyVer = versions && versions.length > 0 ? versions[0] : null;
+  const mixFolderPath = anyVer?.dropboxPath && anyVer.dropboxPath.lastIndexOf("/") > 0
+    ? anyVer.dropboxPath.slice(0, anyVer.dropboxPath.lastIndexOf("/"))
+    : null;
+
+  // Open the folder in Dropbox via a plain web deep-link — client-only, NO API,
+  // NO token, NO shared link. window.open runs INSIDE the click gesture with a
+  // real URL, so there's no pre-opened blank tab and no popup-blocker race; a
+  // blocked open just toasts.
+  function openMixFolder() {
+    if (!mixFolderPath) return;
+    const url = "https://www.dropbox.com/home" + encodeURI(DROPBOX_APP_ROOT + mixFolderPath);
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (!w) notify(t.vFolderOpenFail);
+  }
+
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
   const detailRow = (label: string, node: React.ReactNode) => (
@@ -1256,6 +1285,25 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 })}
               </div>
             )}
+
+            {/* Open the Mix Versions folder in Dropbox (web deep-link, no share).
+                Pinned to the card bottom; disabled until a folder exists. */}
+            <div style={{ marginTop: "auto", padding: "10px 14px 14px", borderTop: `1px solid ${BDR}` }}>
+              <button
+                onClick={openMixFolder}
+                disabled={!mixFolderPath}
+                title={mixFolderPath ? undefined : t.vFolderPending}
+                style={{
+                  width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  fontSize: 11.5, fontWeight: 700, padding: "8px 12px", borderRadius: 10, fontFamily: "inherit",
+                  background: mixFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${mixFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`,
+                  color: mixFolderPath ? "#4A9EFF" : MUTED,
+                  cursor: mixFolderPath ? "pointer" : "default",
+                }}>
+                {t.openMixFolder}
+              </button>
+            </div>
           </div>
 
           {/* MAIN: local player + timestamp comments (fills the remaining width) */}
