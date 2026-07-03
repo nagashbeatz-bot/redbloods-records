@@ -725,13 +725,14 @@ function ReferenceCard({
   const thumb = vid ? `https://img.youtube.com/vi/${vid}/hqdefault.jpg` : null;
   const t = useVictorT();
   return (
-    <div style={{ display: "flex", gap: 16, padding: 15, borderRadius: 14, background: CARD2, border: `1px solid ${BDR}` }}>
-      {/* Thumbnail → plays in-app (does NOT leave the page) */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14, borderRadius: 14, background: CARD2, border: `1px solid ${BDR}`, minWidth: 0 }}>
+      {/* Thumbnail → plays in-app (does NOT leave the page). Full-width, stacked
+          above the text so it never squeezes the note into a 1-word column. */}
       <button
         onClick={() => { if (vid) onPlay(vid); }}
         disabled={!vid}
         title={vid ? t("ref.playHere") : t("ref.noVideo")}
-        style={{ position: "relative", flexShrink: 0, width: 180, aspectRatio: "16 / 9", borderRadius: 10, overflow: "hidden", background: "#000", border: "none", padding: 0, cursor: vid ? "pointer" : "default", display: "block" }}
+        style={{ position: "relative", width: "100%", maxWidth: 360, aspectRatio: "16 / 9", borderRadius: 10, overflow: "hidden", background: "#000", border: "none", padding: 0, cursor: vid ? "pointer" : "default", display: "block", alignSelf: "center" }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {thumb ? (
@@ -746,7 +747,7 @@ function ReferenceCard({
         )}
       </button>
       {/* Body */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, padding: "2px 9px", borderRadius: 6, background: `${PURPLE}1F`, color: PURPLE }}>{t("ref.n", { n: index })}</span>
           <span style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(239,68,68,0.12)", color: "#F87171" }}>YouTube</span>
@@ -1415,7 +1416,7 @@ function VictorProjectDrawer({
 
         {/* ── Scrollable body ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px calc(40px + env(safe-area-inset-bottom))" : "18px 20px" }}>
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(230px,0.85fr)_minmax(0,2fr)_minmax(300px,0.95fr)]" style={{ gap: 18, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(240px, 0.75fr) minmax(520px, 1.7fr) minmax(340px, 1fr)", gap: 18, alignItems: "start" }}>
 
             {/* ════ RIGHT column: brief + references (was MAIN). order maps it to
                  the rightmost desktop track; on mobile it stacks 2nd (after Versions). ════ */}
