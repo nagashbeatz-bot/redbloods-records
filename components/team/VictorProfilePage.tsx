@@ -917,6 +917,10 @@ function VictorProjectDrawer({
     if (!file || briefUploading) return;
     setBriefUploading(true); setBriefErr(false);
     try {
+      // Brief files land in the work's own Dropbox folder (…/00_Brief). That base
+      // folder is created lazily, so make sure it exists (and dropbox_folder is
+      // persisted) before uploading — otherwise the server refuses (409).
+      await ensureDropboxFolder();
       const fd = new FormData(); fd.append("file", file);
       const res = await fetch(`/api/vendor/victor/work/${work.id}/brief`, { method: "POST", body: fd });
       const d = await res.json().catch(() => null);
