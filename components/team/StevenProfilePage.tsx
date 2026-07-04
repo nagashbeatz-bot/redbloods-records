@@ -80,22 +80,24 @@ function detectRole(name: string): FileRole {
   return "mix";
 }
 
-// Display role: prefer the EXPLICIT " - {RoleEn} - " segment we write on upload
-// (the earliest one wins — it sits before the original filename), so the user's
-// pick is authoritative and keywords in the original name can't override it.
-// Falls back to filename inference for older files without the segment.
+// Display role — read from the role written into the name, so the user's pick
+// wins over any keyword in the (no-longer-stored) original filename:
+//   NEW clean format  "… - {RoleEn}[ n].{ext}"     → the trailing role segment.
+//   OLD format        "… - {RoleEn} - {original}"  → the earliest role segment.
+//   older / Hebrew                                 → detectRole fallback.
 function roleOfFile(name: string): FileRole {
   const n = name || "";
-  const segs: [RegExp, FileRole][] = [
-    [/ - Mix - /i, "mix"], [/ - Acapella - /i, "acapella"],
-    [/ - Instrumental - /i, "instrumental"], [/ - Stems - /i, "stems"],
+  const noExt = n.replace(/\.[^.]+$/, "");
+  const tail = noExt.match(/ - (mix|acapella|instrumental|stems)(?: \d+)?$/i);
+  if (tail) return tail[1].toLowerCase() as FileRole;
+  const segs: [FileRole, string][] = [
+    ["mix", " - mix - "], ["acapella", " - acapella - "],
+    ["instrumental", " - instrumental - "], ["stems", " - stems - "],
   ];
+  const low = n.toLowerCase();
   let bestIdx = Infinity;
   let bestRole: FileRole | null = null;
-  for (const [re, role] of segs) {
-    const m = n.match(re);
-    if (m && m.index !== undefined && m.index < bestIdx) { bestIdx = m.index; bestRole = role; }
-  }
+  for (const [role, seg] of segs) { const i = low.indexOf(seg); if (i >= 0 && i < bestIdx) { bestIdx = i; bestRole = role; } }
   return bestRole ?? detectRole(n);
 }
 

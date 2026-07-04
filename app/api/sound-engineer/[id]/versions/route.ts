@@ -104,8 +104,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Existing labels for this work — reject duplicates; pick the next free
     // "Mix N" when no label was given. NEVER fall back to the uploaded filename.
     const { data: existingRows } = await supabase
-      .from("mix_versions").select("label").eq("sound_engineer_work_id", workId);
+      .from("mix_versions").select("label, file_name").eq("sound_engineer_work_id", workId);
     const existingLabels = new Set((existingRows ?? []).map(r => (r.label as string)));
+    const existingNames  = new Set((existingRows ?? []).map(r => (r.file_name as string)));
 
     let effectiveLabel = label;
     if (!effectiveLabel) {
@@ -123,19 +124,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Mix Versions (no per-label subfolder); uniqueness comes from the unique
     // label baked into the file name.
     const safeLabel     = sanitizeFolder(effectiveLabel) || "Mix";
-    // Name: "{versionLabel} - {roleEn} - {originalFileName}". Role comes from the
-    // user's pick (validated), else inferred from the filename. The role word +
-    // original name let the UI re-detect the role and keep several files under one
-    // label; autorename below is the safety net for identical names.
-    // Name: "{projectName} - {versionLabel} - {roleEn} - {originalFileName}".
+    // Clean, uniform name: "{projectName} - {versionLabel} - {roleEn}.{ext}". The
+    // ORIGINAL uploaded filename is NEVER included (only its extension is reused).
     // projectName is the ORIGINAL project (never work_title / Steven display);
     // filter(Boolean) drops it for standalone works so there's no leading " - ".
+    // Same role+ext already in this version → append " 2"/" 3" (autorename is the
+    // extra safety net). The role picker's choice drives roleEn.
     const roleEn        = resolveRoleEn(roleParam, file.name);
-    const origDot       = file.name.lastIndexOf(".");
-    const origBase      = origDot >= 0 ? file.name.slice(0, origDot) : file.name;
-    const cleanBase     = [projectName, effectiveLabel, roleEn, origBase]
+    const roleBase      = [projectName, effectiveLabel, roleEn]
       .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || safeLabel;
-    const cleanFileName = ext ? `${cleanBase}.${ext}` : cleanBase;
+    let cleanFileName   = ext ? `${roleBase}.${ext}` : roleBase;
+    for (let n = 2; existingNames.has(cleanFileName); n++) {
+      cleanFileName = ext ? `${roleBase} ${n}.${ext}` : `${roleBase} ${n}`;
+    }
 
     const folder      = mixVersionsFolder({ projectId, artist, projectName, workId });
     const dropboxPath = `${folder}/${cleanFileName}`;
