@@ -96,6 +96,18 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [albumProject, drawerProjectId, pathname]);
 
+  // Close the project drawer/album when navigating to a supplier page (/team/*) —
+  // e.g. after a successful "send" that routes to /team/steven or /team/victor —
+  // so the global overlay never stays stuck over the destination page. The URL-sync
+  // effect above is guarded to /projects, so it never fights this.
+  useEffect(() => {
+    if (pathname.startsWith("/team/") && (drawerProjectId || albumProject)) {
+      setDrawerProjectId(null);
+      setAlbumProject(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   // Keep albumProject in sync after file uploads (UploadButton calls refresh() → projects updates)
   useEffect(() => {
     if (!albumProject) return;

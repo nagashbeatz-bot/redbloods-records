@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
@@ -598,6 +599,7 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
 export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const { projects, refresh, updateProjectField } = useProjects();
   const player = usePlayerSafe();
+  const router = useRouter();
 
   const [isMobile,     setIsMobile]     = useState(false);
   const [privacyHidden] = usePrivacyMode();
@@ -1490,6 +1492,16 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           projectName={project.name}
           artistName={project.artist}
           onClose={() => setShowSendModal(false)}
+          onSuccess={({ dest, selection }) => {
+            // After a successful send, go to the recipient's page. Only navigate —
+            // the global drawer auto-closes when the path becomes /team/* (see
+            // GlobalProjectDrawer), which avoids racing its /projects URL-sync.
+            // Bill (no page) / client → stay put.
+            const target = dest === "הפקה" ? "/team/victor"
+              : (dest === "מיקס / מאסטר" && selection === "Steven") ? "/team/steven"
+              : null;
+            if (target) router.push(target);
+          }}
           onActionSent={action => setProjectActions(prev => [action, ...prev])}
         />
       )}
