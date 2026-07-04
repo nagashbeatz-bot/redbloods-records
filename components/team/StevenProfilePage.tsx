@@ -302,6 +302,7 @@ const TR = {
     confirmYes: "מחק", confirmNo: "ביטול", tDeleted: "העבודה נמחקה", priceSaved: "המחיר נשמר", priceInvalid: "מחיר לא תקין",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "חומרי עבודה", wmTitle: "חומרי עבודה", wmSubtitle: "מה ששלחנו ל-Steven כדי לעבוד", wmReadOnly: "תצוגת Steven — קריאה בלבד",
+    wmOpenWork: "פתח עבודה", wmOpenFolder: "📦 פתח תיקייה ב-Dropbox", wmFolderPending: "התיקייה תיווצר אחרי ההעלאה הראשונה", wmFolderFail: "לא ניתן לפתוח את תיקיית Dropbox",
     wmNoProject: "לעבודה זו אין פרויקט מקושר — חומרי עבודה זמינים רק לעבודה עם פרויקט.",
     wmLoadFail: "טעינת חומרי העבודה נכשלה",
     wmInstructions: "הוראות עבודה", wmBpm: "BPM", wmKey: "סולם / Key", wmNotes: "הערות חשובות למיקס",
@@ -357,6 +358,7 @@ const TR = {
     confirmYes: "Delete", confirmNo: "Cancel", tDeleted: "Job deleted", priceSaved: "Price saved", priceInvalid: "Invalid price",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "Work Materials", wmTitle: "Work Materials", wmSubtitle: "What we sent you to work with", wmReadOnly: "Read only",
+    wmOpenWork: "Open Work", wmOpenFolder: "📦 Open Dropbox Folder", wmFolderPending: "The folder is created after the first upload", wmFolderFail: "Couldn't open the Dropbox folder",
     wmNoProject: "This job has no linked project — work materials require a project.",
     wmLoadFail: "Failed to load work materials",
     wmInstructions: "Work Instructions", wmBpm: "BPM", wmKey: "Key", wmNotes: "Important mix notes",
@@ -907,7 +909,7 @@ export default function StevenProfilePage() {
       </div>
 
       {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} notify={notify} lang={lang} t={t} />}
-      {materialsWork && <WorkMaterialsModal work={materialsWork} onClose={() => setOpenMaterialsId(null)} notify={notify} lang={lang} t={t} />}
+      {materialsWork && <WorkMaterialsModal work={materialsWork} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
     </div>
@@ -1868,7 +1870,7 @@ function WMFileRow({ icon, name, meta, readOnly, onDownload, onDelete, t, rtl }:
   );
 }
 
-function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { work: Work; onClose: () => void; onOpenWork: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const rtl = lang === "he";
   const readOnly = lang === "en"; // "Steven view" is a read-only preview (owner-only page; no Steven login yet)
   const narrow = useIsNarrow(760);
@@ -2022,6 +2024,17 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   const docs       = materials.filter(m => m.materialType === "doc");
   const roughAudio = rough.find(m => m.kind === "audio") ?? null;
 
+  // Instructions folder path — derived from any material's dropboxPath parent (the
+  // folder only exists once at least one file was uploaded). Same client-only
+  // deep-link as the mix folder: NO API, NO token, NO shared link.
+  const anyMat = materials.find(m => m.dropboxPath && m.dropboxPath.lastIndexOf("/") > 0) ?? null;
+  const instrFolderPath = anyMat ? anyMat.dropboxPath.slice(0, anyMat.dropboxPath.lastIndexOf("/")) : null;
+  function openInstrFolder() {
+    if (!instrFolderPath) return;
+    const w = window.open("https://www.dropbox.com/home" + encodeURI(DROPBOX_APP_ROOT + instrFolderPath), "_blank", "noopener,noreferrer");
+    if (!w) notify(t.wmFolderFail);
+  }
+
   // Build the row elements for a card from its materials (audio → player row,
   // archive/doc → download row). idx/count drive the display numbering.
   function rowsFor(list: WMMaterial[], mt: string) {
@@ -2089,12 +2102,18 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
         )}
 
         {/* Header */}
-        <div style={{ position: "sticky", top: 0, zIndex: 2, background: CARD, borderBottom: `1px solid ${BDR}`, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div>
+        <div style={{ position: "sticky", top: 0, zIndex: 2, background: CARD, borderBottom: `1px solid ${BDR}`, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.01em" }}>🎚 {t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></div>
             <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.wmSubtitle}{readOnly && <span style={{ marginInlineStart: 8, fontSize: 10.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 7, padding: "1px 7px" }}>👁 {t.wmReadOnly}</span>}</div>
           </div>
-          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <button type="button" onClick={onOpenWork}
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>↗ {t.wmOpenWork}</button>
+            <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>
+            <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0, marginInlineStart: 2 }}>✕</button>
+          </div>
         </div>
 
         <div style={{ padding: "18px 20px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
