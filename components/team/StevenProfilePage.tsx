@@ -308,7 +308,7 @@ const TR = {
     wmNotesPh: "דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג, מה חשוב…", wmSaveMeta: "שמור הוראות", wmMetaSaved: "ההוראות נשמרו", wmMetaFail: "השמירה נכשלה",
     wmRough: "Rough Mix", wmReferences: "רפרנסים", wmStems: "Stems / ערוצים", wmDocs: "מסמכים",
     wmCompare: "השוואה מהירה", wmCompareRough: "Rough Mix (המקורי ששלחנו)", wmCompareLatest: "Latest Mix (הגרסה האחרונה של Steven)",
-    wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה",
+    wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה", wmSyncNote: "השוואה לפי זמן ניגון",
     wmUploadRough: "+ העלה Rough Mix", wmUploadRef: "+ הוסף רפרנס", wmUploadStems: "+ העלה Stems", wmUploadDoc: "+ הוסף מסמך",
     wmEmpty: "אין עדיין", wmDownload: "הורדה", wmDelete: "מחק",
     wmUploading: "מעלה…", wmUploaded: "הקובץ הועלה", wmUploadFail: "ההעלאה נכשלה", wmDeleted: "הקובץ נמחק", wmDeleteFail: "המחיקה נכשלה",
@@ -360,7 +360,7 @@ const TR = {
     wmNotesPh: "Vocal/chorus focus, streaming-ready master, what matters…", wmSaveMeta: "Save instructions", wmMetaSaved: "Instructions saved", wmMetaFail: "Save failed",
     wmRough: "Rough Mix", wmReferences: "References", wmStems: "Stems", wmDocs: "Documents",
     wmCompare: "Quick compare", wmCompareRough: "Rough Mix (what we sent)", wmCompareLatest: "Latest Mix (Steven's latest)",
-    wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare",
+    wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare", wmSyncNote: "A/B by playback time",
     wmUploadRough: "+ Upload Rough Mix", wmUploadRef: "+ Add reference", wmUploadStems: "+ Upload Stems", wmUploadDoc: "+ Add document",
     wmEmpty: "Nothing yet", wmDownload: "Download", wmDelete: "Delete",
     wmUploading: "Uploading…", wmUploaded: "File uploaded", wmUploadFail: "Upload failed", wmDeleted: "File removed", wmDeleteFail: "Delete failed",
@@ -587,7 +587,7 @@ function NotesEditor({ value, placeholder, saveLabel, onSave }: {
 function Toast({ msg }: { msg: string | null }) {
   if (!msg || typeof document === "undefined") return null;
   return createPortal(
-    <div style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 100002,
+    <div style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 200003,
       background: "#1A1C22", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 13, fontWeight: 700,
       padding: "11px 20px", borderRadius: 12, boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
       fontFamily: "'Heebo', Arial, sans-serif", pointerEvents: "none" }}>{msg}</div>,
@@ -988,8 +988,11 @@ type VersionPlayerHandle = {
 const VersionPlayer = forwardRef<VersionPlayerHandle, {
   url: string; title: string; roleLabel: string; roleColor: string; compact?: boolean;
   shouldPlay: number; comments: MixComment[]; onDownload?: () => void; t: T;
+  // Optional A/B-compare hooks (Work Materials). onPlayStart fires when this player
+  // begins playing; onTime reports currentTime on every tick. Both no-ops elsewhere.
+  onPlayStart?: () => void; onTime?: (sec: number) => void;
 }>(
-function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t }, ref) {
+function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -1041,8 +1044,8 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
         ref={audioRef} src={url} preload="metadata"
         onLoadedMetadata={e => { setDur(e.currentTarget.duration || 0); setLoading(false); }}
         onCanPlay={() => setLoading(false)}
-        onTimeUpdate={e => setCur(e.currentTarget.currentTime)}
-        onPlay={() => setPlaying(true)}
+        onTimeUpdate={e => { setCur(e.currentTarget.currentTime); onTime?.(e.currentTarget.currentTime); }}
+        onPlay={() => { setPlaying(true); onPlayStart?.(); }}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onError={() => { setErr(true); setLoading(false); }}
@@ -1794,17 +1797,30 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   const [data, setData]         = useState<WMData | null>(null); // null = loading
   const [loadErr, setLoadErr]   = useState(false);
   const [bpm, setBpm]           = useState("");
-  const [keyv, setKeyv]         = useState("");
   const [instr, setInstr]       = useState("");
   const [savingMeta, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null); // materialType being uploaded
   const [delTarget, setDelTarget] = useState<WMMaterial | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [err, setErr] = useState<string | null>(null); // inline error banner (visible above the modal's z-index)
 
   const roughRef = useRef<HTMLInputElement | null>(null);
   const refRef   = useRef<HTMLInputElement | null>(null);
   const stemsRef = useRef<HTMLInputElement | null>(null);
   const docRef   = useRef<HTMLInputElement | null>(null);
+
+  // A/B compare — last playback time shared between the two compare players. When
+  // one starts playing it jumps to this time, so switching Rough↔Latest keeps the
+  // same position. Single-active (activeStevenAudio) still prevents overlap.
+  const cmpTimeRef   = useRef(0);
+  const cmpRoughRef  = useRef<VersionPlayerHandle | null>(null);
+  const cmpLatestRef = useRef<VersionPlayerHandle | null>(null);
+  function syncTo(ref: React.MutableRefObject<VersionPlayerHandle | null>) {
+    const api = ref.current;
+    if (!api) return;
+    const target = cmpTimeRef.current;
+    if (Math.abs(api.getCurrentTime() - target) > 1) api.seek(target);
+  }
 
   const url = `/api/sound-engineer/${work.id}/work-materials`;
 
@@ -1818,7 +1834,7 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
         if (d.ok) {
           const wd: WMData = { projectLinked: !!d.projectLinked, materials: d.materials ?? [], meta: d.meta ?? {}, latestMix: d.latestMix ?? null };
           setData(wd);
-          setBpm(wd.meta.bpm ?? ""); setKeyv(wd.meta.key ?? ""); setInstr(wd.meta.instructions ?? "");
+          setBpm(wd.meta.bpm ?? ""); setInstr(wd.meta.instructions ?? "");
         } else setLoadErr(true);
       })
       .catch(() => { if (alive) setLoadErr(true); });
@@ -1834,24 +1850,25 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
 
   async function saveMeta() {
     if (savingMeta || readOnly) return;
-    setSaving(true);
+    setSaving(true); setErr(null);
     try {
-      const d = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bpm, key: keyv, instructions: instr }) }).then(r => r.json());
-      notify(d.ok ? t.wmMetaSaved : (d.error || t.wmMetaFail));
-    } catch { notify(t.wmMetaFail); }
+      const d = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bpm, instructions: instr }) }).then(r => r.json());
+      if (d.ok) notify(t.wmMetaSaved);
+      else setErr(d.error || t.wmMetaFail);
+    } catch { setErr(t.wmMetaFail); }
     finally { setSaving(false); }
   }
 
   async function doUpload(file: File, materialType: string) {
-    setUploading(materialType);
+    setUploading(materialType); setErr(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("materialType", materialType);
       const d = await fetch(url, { method: "POST", body: fd }).then(r => r.json());
       if (d.ok) { await reload(); notify(t.wmUploaded); }
-      else notify(d.error || t.wmUploadFail);
-    } catch { notify(t.wmUploadFail); }
+      else setErr(d.error || t.wmUploadFail);
+    } catch { setErr(t.wmUploadFail); }
     finally { setUploading(null); }
   }
   function onPick(e: React.ChangeEvent<HTMLInputElement>, materialType: string) {
@@ -1867,8 +1884,8 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
     try {
       const d = await fetch(`${url}?path=${encodeURIComponent(m.dropboxPath)}`, { method: "DELETE" }).then(r => r.json());
       if (d.ok) { setData(cur => (cur ? { ...cur, materials: cur.materials.filter(x => x.dropboxPath !== m.dropboxPath) } : cur)); notify(t.wmDeleted); }
-      else notify(d.error || t.wmDeleteFail);
-    } catch { notify(t.wmDeleteFail); }
+      else setErr(d.error || t.wmDeleteFail);
+    } catch { setErr(t.wmDeleteFail); }
     finally { setDeleting(false); setDelTarget(null); }
   }
 
@@ -1938,7 +1955,7 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   const roughAudio = rough.find(m => m.kind === "audio") ?? null;
 
   const modal = (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
       <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
         style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(980px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
 
@@ -1952,6 +1969,12 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
         </div>
 
         <div style={{ padding: "18px 20px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {err && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12.5, fontWeight: 600, color: "#FCA5A5", background: "rgba(239,68,68,0.1)", border: `1px solid ${RED}44`, borderRadius: 10, padding: "9px 12px" }}>
+              <span>⚠ {err}</span>
+              <button onClick={() => setErr(null)} style={{ background: "none", border: "none", color: "#FCA5A5", cursor: "pointer", fontSize: 15, lineHeight: 1, flexShrink: 0 }}>✕</button>
+            </div>
+          )}
           {loadErr ? (
             <div style={{ padding: "34px 0", textAlign: "center", fontSize: 13, color: RED }}>{t.wmLoadFail}</div>
           ) : data === null ? (
@@ -1962,20 +1985,14 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
             <EmptyZone icon="🔗" title={t.wmNoProject} />
           ) : (
             <>
-              {/* 1. Instructions (BPM / Key / notes) */}
+              {/* 1. Instructions (BPM + notes) */}
               <div style={sec}>
                 <div style={secHead}><span>📝 {t.wmInstructions}</span></div>
-                <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr 1fr" : "120px 1fr", gap: 12, alignItems: "start" }}>
-                  <div>
-                    <label style={lbl}>{t.wmBpm}</label>
-                    <input value={bpm} onChange={e => setBpm(e.target.value)} readOnly={readOnly} placeholder="—" style={{ ...inp, direction: "ltr", textAlign: "start" }} />
-                  </div>
-                  <div>
-                    <label style={lbl}>{t.wmKey}</label>
-                    <input value={keyv} onChange={e => setKeyv(e.target.value)} readOnly={readOnly} placeholder="—" style={{ ...inp, direction: "ltr", textAlign: "start" }} />
-                  </div>
+                <div style={{ width: 130, marginBottom: 12 }}>
+                  <label style={lbl}>{t.wmBpm}</label>
+                  <input value={bpm} onChange={e => setBpm(e.target.value)} readOnly={readOnly} inputMode="numeric" placeholder="—" style={{ ...inp, direction: "ltr", textAlign: "start" }} />
                 </div>
-                <div style={{ marginTop: 12 }}>
+                <div>
                   <label style={lbl}>{t.wmNotes}</label>
                   <textarea value={instr} onChange={e => setInstr(e.target.value)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={4} style={{ ...inp, resize: "vertical", lineHeight: 1.6 }} />
                 </div>
@@ -2039,18 +2056,23 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
                 </div>
               )}
 
-              {/* 6. Quick compare — Rough vs Latest Mix */}
+              {/* 6. Quick compare — Rough vs Latest Mix (A/B by playback time) */}
               <div style={{ ...sec, border: `1px solid ${BRAND}40` }}>
-                <div style={secHead}><span>⚖ {t.wmCompare}</span></div>
+                <div style={secHead}>
+                  <span>⚖ {t.wmCompare}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: BRAND, border: `1px solid ${BRAND}45`, background: `${BRAND}14`, borderRadius: 7, padding: "2px 9px", whiteSpace: "nowrap" }}>⏱ {t.wmSyncNote}</span>
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 12 }}>
                   <div>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareRough}</div>
-                    {roughAudio ? audioPlayer(roughAudio, t.wmRough, ROLE_C.rough) : emptyLine(t.wmEmpty)}
+                    {roughAudio
+                      ? <VersionPlayer ref={cmpRoughRef} url={roughAudio.url} title={roughAudio.name} roleLabel={t.wmRough} roleColor={ROLE_C.rough} shouldPlay={0} comments={[]} onDownload={() => window.open(roughAudio.url, "_blank", "noopener,noreferrer")} onPlayStart={() => syncTo(cmpRoughRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
+                      : emptyLine(t.wmEmpty)}
                   </div>
                   <div>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareLatest}</div>
                     {data.latestMix
-                      ? <VersionPlayer url={data.latestMix.url} title={data.latestMix.fileName} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => window.open(data.latestMix!.url, "_blank", "noopener,noreferrer")} t={t} />
+                      ? <VersionPlayer ref={cmpLatestRef} url={data.latestMix.url} title={data.latestMix.fileName} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => window.open(data.latestMix!.url, "_blank", "noopener,noreferrer")} onPlayStart={() => syncTo(cmpLatestRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
                       : emptyLine(t.wmNoLatest)}
                   </div>
                 </div>
