@@ -1458,8 +1458,9 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 )}
               </div>
 
-              {/* Upload — new version (dropzone) + add-to-selected-version */}
-              <div style={subCard}>
+              {/* Upload — new version (dropzone). Distinct amber accent so the
+                  action area reads apart from the static info cards. */}
+              <div style={{ ...subCard, border: "1px solid rgba(245,158,11,0.28)" }}>
                 <div style={innerHead}>⬆ {t.uploadFiles}</div>
                 <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
                   <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("new", e.target.files)} />
@@ -1470,9 +1471,9 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                     onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
                     onDragLeave={e => { e.preventDefault(); setDrag(false); }}
                     onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("new", e.dataTransfer.files); }}
-                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "16px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "16px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? "#F59E0B" : "rgba(245,158,11,0.42)"}`, background: drag ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.05)", transition: "all .15s" }}
                   >
-                    <div style={{ fontSize: 22, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
+                    <div style={{ fontSize: 22, opacity: 0.9, color: drag ? "#F59E0B" : "#D89A3A" }}>☁️</div>
                     <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.uploadNewVersionBtn}</div>
                     <div style={{ fontSize: 10, color: MUTED }}>{t.uploadHint}</div>
                   </div>
@@ -1481,20 +1482,6 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                       upload). The hidden addFileInputRef input stays here. */}
                 </div>
               </div>
-
-              {/* Work Materials shortcut — jump to what we SENT the engineer
-                  (Rough/References/Stems/Instructions) for the same job. */}
-              <button type="button" onClick={onOpenMaterials}
-                style={{ width: "100%", textAlign: rtl ? "right" : "left", display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 12, fontFamily: "inherit", cursor: "pointer", background: `${BRAND}12`, border: `1px solid ${BRAND}40` }}
-                onMouseEnter={e => { e.currentTarget.style.background = `${BRAND}20`; e.currentTarget.style.borderColor = `${BRAND}66`; }}
-                onMouseLeave={e => { e.currentTarget.style.background = `${BRAND}12`; e.currentTarget.style.borderColor = `${BRAND}40`; }}>
-                <span style={{ fontSize: 18, flexShrink: 0 }}>🎚</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 800, color: BRAND }}>{t.wmButton}</span>
-                  <span style={{ display: "block", fontSize: 10.5, color: MUTED, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.wmMatSub}</span>
-                </span>
-                <span style={{ fontSize: 15, color: BRAND, flexShrink: 0 }}>↗</span>
-              </button>
 
               {/* Project files (files of the selected version) */}
               <div style={subCard}>
@@ -1521,6 +1508,20 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 </div>
               </div>
 
+              {/* Work Materials shortcut — neutral secondary card (below project
+                  files, above Dropbox). Jumps to what we SENT the engineer. */}
+              <button type="button" onClick={onOpenMaterials}
+                style={{ width: "100%", textAlign: rtl ? "right" : "left", display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 12, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = BDR2; }}>
+                <span style={{ fontSize: 17, flexShrink: 0, opacity: 0.9 }}>🎚</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: TEXT }}>{t.wmButton}</span>
+                  <span style={{ display: "block", fontSize: 10.5, color: MUTED, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.wmMatSub}</span>
+                </span>
+                <span style={{ fontSize: 15, color: TEXT2, flexShrink: 0 }}>↗</span>
+              </button>
+
               {/* Dropbox */}
               <button onClick={openMixFolder} disabled={!mixFolderPath} title={mixFolderPath ? undefined : t.vFolderPending}
                 style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "10px 12px", borderRadius: 12, fontFamily: "inherit", background: mixFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${mixFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: mixFolderPath ? "#4A9EFF" : MUTED, cursor: mixFolderPath ? "pointer" : "default" }}>
@@ -1532,20 +1533,9 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
             <div style={{ ...colWrap, order: narrow ? 1 : 2 }}>
               {/* Version files — up to 3 stacked players */}
               <div style={subCard}>
-                <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
-                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
-                  </div>
-                  {selectedGroup && (
-                    <button
-                      onClick={() => { if (!uploading) addFileInputRef.current?.click(); }}
-                      disabled={uploading}
-                      title={selectedGroup.label}
-                      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 800, padding: "7px 12px", borderRadius: 9, fontFamily: "inherit", cursor: uploading ? "default" : "pointer", background: `${BRAND}14`, border: `1px solid ${BRAND}45`, color: BRAND, whiteSpace: "nowrap", opacity: uploading ? 0.6 : 1 }}>
-                      {t.addToVersionBtn}
-                    </button>
-                  )}
+                <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
+                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
                 </div>
                 <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
                   {vLoadErr ? (
@@ -1591,16 +1581,32 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 </div>
               </div>
 
+              {/* Version actions — add a file to THIS version · add a timestamp comment.
+                  Both act on the selected version, so they sit with the version content. */}
+              {selectedGroup && (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => { if (!uploading) addFileInputRef.current?.click(); }}
+                    disabled={uploading}
+                    title={selectedGroup.label}
+                    style={{ flex: "1 1 200px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: uploading ? "default" : "pointer", background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, opacity: uploading ? 0.6 : 1 }}>
+                    {t.addToVersionBtn}: {selectedGroup.label}
+                  </button>
+                  <button onClick={openAddComment}
+                    style={{ flex: "1 1 200px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.color = TEXT; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = TEXT2; }}>
+                    💬 {t.cAdd}
+                  </button>
+                </div>
+              )}
+
               {/* Shared comments for the version */}
               {selectedGroup && (
                 <div style={subCard}>
-                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {t.sharedComments}</div>
-                      <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
-                    </div>
-                    <button onClick={openAddComment}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>+ {t.cAdd}</button>
+                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {t.sharedComments}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
                   </div>
                   <div style={{ padding: "12px 16px 16px" }}>
                     {adding && (
