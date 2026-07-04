@@ -2282,7 +2282,9 @@ function VictorProjectDrawer({
                 >
                   {uploading ? `${uploadProgress}%` : t("files.upload")}
                 </button>
-                {effectiveShareLink && (
+                {/* Owner-only: never expose the Dropbox folder link or the total
+                    file count to Victor — he only needs Upload. */}
+                {isOwner && effectiveShareLink && (
                   dbxFallback ? (
                     <a
                       href={dbxFallback}
@@ -2311,11 +2313,13 @@ function VictorProjectDrawer({
                     </button>
                   )
                 )}
-                <span style={{
-                  fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
-                  background: effectiveFiles.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
-                  color: effectiveFiles.length > 0 ? GREEN : MUTED, whiteSpace: "nowrap", flexShrink: 0,
-                }}>{effectiveFiles.length} {t("files.count")}</span>
+                {isOwner && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                    background: effectiveFiles.length > 0 ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.06)",
+                    color: effectiveFiles.length > 0 ? GREEN : MUTED, whiteSpace: "nowrap", flexShrink: 0,
+                  }}>{effectiveFiles.length} {t("files.count")}</span>
+                )}
               </div>
             </div>
 
