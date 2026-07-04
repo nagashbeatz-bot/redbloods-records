@@ -371,7 +371,9 @@ function toDirectUrl(url: string): string {
 // route (works for both owner and Victor — /api/dropbox/stream is owner-only via
 // the gate, which is why Victor couldn't play). Falls back to an existing public
 // share link, then the stored url.
-function playbackSrc(file: FileLink): string {
+function playbackSrc(file: FileLink, workId?: string): string {
+  // Victor (path-free): opaque fileRef + workId → scoped stream route.
+  if (file.fileRef && workId) return `/api/vendor/victor/stream?workId=${encodeURIComponent(workId)}&fileRef=${encodeURIComponent(file.fileRef)}`;
   if (file.dropboxPath) return `/api/vendor/victor/stream?path=${encodeURIComponent(file.dropboxPath)}`;
   if (file.dropboxShareUrl) return toDirectUrl(file.dropboxShareUrl);
   return toDirectUrl(file.url || "");
@@ -381,7 +383,18 @@ function fileExt(name: string): string {
   return (name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
 }
 
-function downloadFile(file: FileLink) {
+function downloadFile(file: FileLink, workId?: string) {
+  // Victor (path-free): scoped download route via fileRef — no public link.
+  if (file.fileRef && workId) {
+    const a = document.createElement("a");
+    a.href = `/api/vendor/victor/download?workId=${encodeURIComponent(workId)}&fileRef=${encodeURIComponent(file.fileRef)}`;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
   const rawUrl = file.dropboxShareUrl || file.url || "";
   if (!rawUrl) return;
   // Force direct download via ?dl=1
@@ -444,7 +457,7 @@ function versionKeysOf(files: FileLink[]): Set<string> {
 }
 // Stable per-file id for tracking the now-playing track across re-renders/deletes.
 function fileId(f: FileLink): string {
-  return f.dropboxPath || f.dropboxShareUrl || f.url || f.name;
+  return f.fileRef || f.dropboxPath || f.dropboxShareUrl || f.url || f.name;
 }
 function fmtDur(sec: number): string {
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
@@ -458,6 +471,7 @@ let currentVictorAudio: HTMLAudioElement | null = null;
 
 function AudioPlayer({
   file,
+  workId,
   onDownload,
   onDelete,
   deleteConfirm,
@@ -468,6 +482,7 @@ function AudioPlayer({
   canDelete,
 }: {
   file: FileLink;
+  workId?: string;
   onDownload: () => void;
   onDelete: () => void;
   deleteConfirm: boolean;
@@ -478,8 +493,10 @@ function AudioPlayer({
   canDelete: boolean;
 }) {
   const { name } = file;
-  const url = file.dropboxShareUrl || file.url || "";
-  const hasUrl = !!url;
+  // src is fileRef-based for Victor (no path), share/url for owner. hasUrl drives
+  // both play and download gating so it must count fileRef too.
+  const src = playbackSrc(file, workId);
+  const hasUrl = !!src;
   const t = useVictorT();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
@@ -492,8 +509,8 @@ function AudioPlayer({
   // too. Cleanup pauses + tears down on unmount → no audio left playing after the
   // drawer closes, the project changes, or the file is deleted.
   useEffect(() => {
-    if (!url) return;
-    const a = new Audio(playbackSrc(file));
+    if (!src) return;
+    const a = new Audio(src);
     a.preload = "metadata";
     audioRef.current = a;
     const onTime  = () => { if (a.duration && !isNaN(a.duration)) setProgress((a.currentTime / a.duration) * 100); };
@@ -519,7 +536,7 @@ function AudioPlayer({
       a.src = "";
       if (audioRef.current === a) audioRef.current = null;
     };
-  }, [url]);
+  }, [src]);
 
   function togglePlay(e: React.MouseEvent) {
     e.stopPropagation();
@@ -733,10 +750,11 @@ function IconMusic() { return (<svg {...SVG_BASE} width={11} height={11}><path d
 // Its own <audio>, guarded by the shared currentVictorAudio so it never plays
 // alongside a version. Segments persist via onSaveSegments (owner-only route).
 function BriefSegmentPlayer({
-  file, isOwner, onSaveSegments, onDownload, onDelete,
+  file, workId, isOwner, onSaveSegments, onDownload, onDelete,
   deleteConfirm, onDeleteConfirm, onDeleteCancel, deleting, deleteError,
 }: {
   file: FileLink;
+  workId?: string;
   isOwner: boolean;
   onSaveSegments: (segments: BriefSegment[]) => Promise<boolean>;
   onDownload: () => void;
@@ -751,8 +769,9 @@ function BriefSegmentPlayer({
   const [lang] = useVictorLang();
   const isMobile = useIsMobile();
   const { name } = file;
-  const url = file.dropboxShareUrl || file.url || "";
-  const hasUrl = !!url;
+  // fileRef-based src for Victor (no path); share/url for owner.
+  const src = playbackSrc(file, workId);
+  const hasUrl = !!src;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -768,8 +787,8 @@ function BriefSegmentPlayer({
   const segsRef = useRef(segs); segsRef.current = segs;
   const formDir: React.CSSProperties["direction"] = lang === "he" ? "rtl" : "ltr";
 
-  // Re-seed when switching to a different brief file (dropboxPath identity).
-  useEffect(() => { setSegs(normalizeSegs(file.segments ?? [], file.durationSeconds ?? 0)); setActiveId(null); }, [file.dropboxPath]);
+  // Re-seed when switching to a different brief file (fileRef for Victor, path for owner).
+  useEffect(() => { setSegs(normalizeSegs(file.segments ?? [], file.durationSeconds ?? 0)); setActiveId(null); }, [file.fileRef, file.dropboxPath]);
 
   // Track the lane's pixel width so each block can pick full / short / dot label
   // by how much room it actually has (browser ResizeObserver — no library).
@@ -785,8 +804,8 @@ function BriefSegmentPlayer({
   // One stable <audio>; same single-active guard as the version player, so
   // brief audio and version audio can never play at the same time.
   useEffect(() => {
-    if (!url) return;
-    const a = new Audio(playbackSrc(file));
+    if (!src) return;
+    const a = new Audio(src);
     a.preload = "metadata";
     audioRef.current = a;
     const onTime = () => setCur(a.currentTime || 0);
@@ -813,7 +832,7 @@ function BriefSegmentPlayer({
       if (audioRef.current === a) audioRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [src]);
 
   function togglePlay(e: React.MouseEvent) {
     e.stopPropagation();
@@ -1093,6 +1112,7 @@ function FileRow({
   canDelete,
 }: {
   file: FileLink;
+  workId?: string;   // accepted from the shared props spread; download goes via onDownload
   onDownload: () => void;
   onDelete: () => void;
   deleteConfirm: boolean;
@@ -1103,7 +1123,7 @@ function FileRow({
   canDelete: boolean;
 }) {
   const { name } = file;
-  const hasUrl = !!(file.dropboxShareUrl || file.url);
+  const hasUrl = !!(file.fileRef || file.dropboxShareUrl || file.url);
   const t = useVictorT();
 
   return (
@@ -1700,7 +1720,7 @@ function VictorProjectDrawer({
 
   function playTrackByFile(file: FileLink) {
     const a = playerAudioRef.current; if (!a) return;
-    const url = playbackSrc(file);
+    const url = playbackSrc(file, work.id);
     if (!url) return;
     const id = fileId(file);
     if (npKey !== id) { a.src = url; setPCur(0); setPDur(0); }
@@ -1776,7 +1796,7 @@ function VictorProjectDrawer({
     const rc = ROLE_COLOR[role];
     const audio = isAudioFile(file.name);
     const nowPlaying = npKey === fileId(file);
-    const hasUrl = !!(file.dropboxShareUrl || file.url);
+    const hasUrl = !!(file.fileRef || file.dropboxShareUrl || file.url);
     return (
       <div key={sentIdx} style={{ display: "flex", alignItems: "center", gap: big ? 12 : 9, padding: big ? "10px 12px" : "8px 10px", borderRadius: 10, background: nowPlaying ? `${PURPLE}1A` : "rgba(255,255,255,0.02)", border: `1px solid ${nowPlaying ? PURPLE + "66" : BDR}`, minWidth: 0 }}>
         {audio ? (
@@ -1795,7 +1815,7 @@ function VictorProjectDrawer({
             {typeof file.durationSeconds === "number" && file.durationSeconds > 0 && <span style={{ fontSize: 9.5, color: MUTED }}>· {fmtDur(file.durationSeconds)}</span>}
           </div>
         </div>
-        <button onClick={() => downloadFile(file)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
+        <button onClick={() => downloadFile(file, work.id)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 15, padding: 0, fontFamily: "inherit" }}>↓</button>
         {isOwner && (
           deleteConfirmIdx === sentIdx ? (
@@ -2150,11 +2170,12 @@ function VictorProjectDrawer({
                             if (isAudioFile(f.name)) {
                               return (
                                 <BriefSegmentPlayer
-                                  key={f.dropboxPath ?? i}
+                                  key={f.fileRef ?? f.dropboxPath ?? i}
                                   file={f}
+                                  workId={work.id}
                                   isOwner={isOwner}
                                   onSaveSegments={(segments) => f.dropboxPath ? saveBriefSegments(f.dropboxPath, segments) : Promise.resolve(false)}
-                                  onDownload={() => downloadFile(f)}
+                                  onDownload={() => downloadFile(f, work.id)}
                                   onDelete={() => f.dropboxPath && deleteBriefFile(f.dropboxPath)}
                                   deleteConfirm={briefDelPath === f.dropboxPath}
                                   onDeleteConfirm={() => setBriefDelPath(f.dropboxPath ?? null)}
@@ -2164,17 +2185,17 @@ function VictorProjectDrawer({
                                 />
                               );
                             }
-                            const hasUrl = !!(f.dropboxShareUrl || f.url);
+                            const hasUrl = !!(f.fileRef || f.dropboxShareUrl || f.url);
                             const ext = (f.name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
                             const sz = f.size ? (f.size > 1048576 ? `${(f.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1024))} KB`) : "";
                             return (
-                              <div key={f.dropboxPath ?? i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}`, minWidth: 0 }}>
+                              <div key={f.fileRef ?? f.dropboxPath ?? i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}`, minWidth: 0 }}>
                                 <span style={{ fontSize: 15, flexShrink: 0 }}>📄</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div title={f.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{f.name}</div>
                                   <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>{ext}{sz ? ` · ${sz}` : ""}</div>
                                 </div>
-                                <button onClick={() => downloadFile(f)} disabled={!hasUrl} title={t("file.download")}
+                                <button onClick={() => downloadFile(f, work.id)} disabled={!hasUrl} title={t("file.download")}
                                   style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 14, padding: 0, fontFamily: "inherit" }}>↓</button>
                                 {isOwner && (
                                   briefDelPath === f.dropboxPath ? (
@@ -2467,7 +2488,8 @@ function VictorProjectDrawer({
               ))}
             </div>
 
-            {/* Notes */}
+            {/* Notes — owner-internal only (never shown to Victor). */}
+            {isOwner && (
             <div style={{ margin: "0 16px 14px" }}>
               {work.outcome && (
                 <div style={{ fontSize: 11, color: PURPLE, fontWeight: 800, marginBottom: 6 }}>
@@ -2489,6 +2511,7 @@ function VictorProjectDrawer({
                 }}
               />
             </div>
+            )}
           </div>
 
           {/* Bottom 2 cards */}
@@ -2548,7 +2571,7 @@ function VictorProjectDrawer({
               <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
                 {receivedFiles.map((f, i) => {
                   const props = {
-                    file: f, onDownload: () => downloadFile(f),
+                    file: f, workId: work.id, onDownload: () => downloadFile(f, work.id),
                     deleteConfirm: false, onDeleteConfirm: () => {}, onDeleteCancel: () => {}, onDelete: () => {},
                     deleting: false, deleteError: false, canDelete: false,
                   };
@@ -2689,7 +2712,7 @@ function VictorProjectDrawer({
                   <input type="range" min={0} max={1} step={0.01} value={pVol} onChange={e => setPVol(Number(e.target.value))} title="Volume" style={{ width: 84, accentColor: PURPLE, cursor: "pointer" }} />
                 </div>
               )}
-              <button onClick={() => downloadFile(npItem.file)} title={t("file.download")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>↓</button>
+              <button onClick={() => downloadFile(npItem.file, work.id)} title={t("file.download")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>↓</button>
             </div>
           ) : (
             /* ── Empty state — no track selected. Controls muted/disabled, no download. ── */

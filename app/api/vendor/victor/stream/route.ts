@@ -18,21 +18,32 @@ import { requireVictorAccess } from "@/lib/require-auth";
 export async function GET(req: NextRequest) {
   const denied = await requireVictorAccess(); if (denied) return denied;
 
-  const path = req.nextUrl.searchParams.get("path");
-  if (!path) return NextResponse.json({ error: "path נדרש" }, { status: 400 });
+  const sp = req.nextUrl.searchParams;
+  const path = sp.get("path");
+  const workId = sp.get("workId");
+  const fileRef = sp.get("fileRef");
 
-  // Ownership check — path must be one of Victor's own work files.
-  const { getVictorWork } = await import("@/lib/vendor-store");
-  const works = await getVictorWork();
-  const owned = new Set<string>();
-  for (const w of works) {
-    // briefFiles included so brief AUDIO can play inline — still scoped to
-    // Victor's own works (same ownership boundary as filesSent/filesReceived).
-    for (const f of [...(w.filesSent ?? []), ...(w.filesReceived ?? []), ...(w.briefFiles ?? [])]) {
-      if (f.dropboxPath) owned.add(f.dropboxPath);
+  // Resolve the real Dropbox path server-side. Two accepted forms:
+  //   • workId + fileRef  → opaque handle (Victor never holds a path). Resolved
+  //     ONLY against that work's own files, so it can't reach anything else.
+  //   • path              → legacy form, still scoped to Victor's own files.
+  let target: string | null = null;
+  if (fileRef && workId) {
+    const { getVictorWorkById } = await import("@/lib/vendor-store");
+    const { resolveVictorFileRef } = await import("@/lib/victor-files");
+    const work = await getVictorWorkById(workId);
+    if (work && work.vendorName === "victor") target = resolveVictorFileRef(work, fileRef);
+  } else if (path) {
+    const { getVictorWork } = await import("@/lib/vendor-store");
+    const works = await getVictorWork();
+    for (const w of works) {
+      for (const f of [...(w.filesSent ?? []), ...(w.filesReceived ?? []), ...(w.briefFiles ?? [])]) {
+        if (f.dropboxPath === path) { target = path; break; }
+      }
+      if (target) break;
     }
   }
-  if (!owned.has(path)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!target) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   let token: string;
   try {
@@ -45,7 +56,7 @@ export async function GET(req: NextRequest) {
   const res = await fetch("https://api.dropboxapi.com/2/files/get_temporary_link", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ path: target }),
   });
   if (!res.ok) {
     console.error("[vendor/victor/stream]", await res.text());

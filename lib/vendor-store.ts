@@ -10,6 +10,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { segmentVictorWork } from "@/lib/victor-segments";
+import { fileRefOf } from "@/lib/victor-files";
 import type {
   VendorWork,
   VendorSettings,
@@ -20,6 +21,7 @@ import type {
   VictorSalaryMonth,
   SalaryStatus,
   VictorReference,
+  FileLink,
 } from "@/lib/types";
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -99,6 +101,26 @@ export function sanitizeWorkForVictor(w: VendorWork): VendorWork {
     projectId:        null,
     dropboxFolder:    null,
     dropboxShareLink: null,
+    notes:            "", // owner-internal notes — never shown to Victor
+    filesSent:        (w.filesSent     ?? []).map(fileForVictor),
+    filesReceived:    (w.filesReceived ?? []).map(fileForVictor),
+    briefFiles:       (w.briefFiles    ?? []).map(fileForVictor),
+  };
+}
+
+// Path-free file object for Victor: drop dropboxPath/url/dropboxShareUrl (all
+// carry /Projects/{artist}/{project}/…) and hand back an opaque fileRef that the
+// stream/download routes resolve server-side. Keep only what the UI needs.
+function fileForVictor(f: FileLink): FileLink {
+  return {
+    name:            f.name,
+    url:             "", // required by the type; the client uses fileRef instead
+    ...(f.versionLabel    !== undefined ? { versionLabel: f.versionLabel } : {}),
+    ...(f.category        !== undefined ? { category: f.category } : {}),
+    ...(f.durationSeconds !== undefined ? { durationSeconds: f.durationSeconds } : {}),
+    ...(f.size            !== undefined ? { size: f.size } : {}),
+    ...(f.segments        !== undefined ? { segments: f.segments } : {}),
+    ...(f.dropboxPath ? { fileRef: fileRefOf(f.dropboxPath) } : {}),
   };
 }
 

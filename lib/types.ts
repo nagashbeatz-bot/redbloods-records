@@ -57,6 +57,7 @@ export interface FileLink {
   durationSeconds?: number;  // audio length in whole seconds — captured client-side at upload (optional; older files lack it)
   size?: number;             // file size in bytes (optional; e.g. brief files)
   segments?: BriefSegment[]; // structure markers — ONLY on brief audio files (owner-authored, Victor read-only). Never on versions.
+  fileRef?: string;          // opaque, path-free handle sent to Victor INSTEAD of dropboxPath/url/shareUrl (see sanitizeWorkForVictor). Resolved server-side per work.
 }
 
 /** Canonical song-structure type. Stored (not the display label) so the Victor
