@@ -1644,9 +1644,20 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
             <div style={{ ...colWrap, order: narrow ? 1 : 2 }}>
               {/* Version files — up to 3 stacked players */}
               <div style={subCard}>
-                <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
-                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
+                <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
+                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
+                  </div>
+                  {selectedGroup && (
+                    <button
+                      onClick={() => { if (!uploading) addFileInputRef.current?.click(); }}
+                      disabled={uploading}
+                      title={selectedGroup.label}
+                      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 11.5, fontWeight: 800, padding: "7px 13px", borderRadius: 10, fontFamily: "inherit", cursor: uploading ? "default" : "pointer", background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, opacity: uploading ? 0.6 : 1, whiteSpace: "nowrap" }}>
+                      {t.addToVersionBtn}: {selectedGroup.label}
+                    </button>
+                  )}
                 </div>
                 <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
                   {vLoadErr ? (
@@ -1692,17 +1703,10 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 </div>
               </div>
 
-              {/* Version actions — add a file to THIS version · add a timestamp comment.
-                  Both act on the selected version, so they sit with the version content. */}
+              {/* Add-a-comment action — acts on the selected version; the add-file
+                  action now lives in the version-files card header above. */}
               {selectedGroup && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    onClick={() => { if (!uploading) addFileInputRef.current?.click(); }}
-                    disabled={uploading}
-                    title={selectedGroup.label}
-                    style={{ flex: "1 1 200px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: uploading ? "default" : "pointer", background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, opacity: uploading ? 0.6 : 1 }}>
-                    {t.addToVersionBtn}: {selectedGroup.label}
-                  </button>
                   <button onClick={openAddComment}
                     style={{ flex: "1 1 200px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2 }}
                     onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.color = TEXT; }}
