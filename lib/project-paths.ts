@@ -33,6 +33,15 @@ export function deliveryFolder(artist: string, projectName: string, projectId: s
 }
 
 /**
+ * Work-materials subfolder under the canonical project folder: …/Instructions.
+ * This is what Redbloods SENDS to the sound engineer (Rough Mix, References,
+ * Stems, Instructions) — separate from …/Delivery and …/Mix Versions.
+ */
+export function instructionsFolder(artist: string, projectName: string, projectId: string): string {
+  return `${projectBaseFolder(artist, projectName, projectId)}/Instructions`;
+}
+
+/**
  * Steven/Bill mix-versions folder (Phase 2). Physically inside the ORIGINAL
  * project's folder, in a dedicated "Mix Versions" subfolder (separate from
  * Delivery). NEVER uses sound_engineer_work.work_title — that is display-only,

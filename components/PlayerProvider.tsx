@@ -221,13 +221,24 @@ export function isDeliveryFile(f: { dropboxPath?: string; category?: string }): 
   return false;
 }
 
+// Work-materials (Rough Mix / References / Stems we SEND to the engineer) live in
+// projects.files under …/Instructions with category "חומרי עבודה". They belong to
+// the project (and show in the files tab) but are NOT the project's preview track,
+// so they must never feed the list/drawer player.
+export function isWorkMaterial(f: { dropboxPath?: string; category?: string }): boolean {
+  if (f.category === "חומרי עבודה") return true;
+  if (f.dropboxPath && /\/Instructions\//i.test(f.dropboxPath)) return true;
+  return false;
+}
+
 export function getLatestAudioFile(
   files: { name: string; url: string; assetId?: number; dropboxPath?: string; dropboxShareUrl?: string; category?: string }[]
 ): { name: string; url: string; assetId?: number; dropboxPath?: string; dropboxShareUrl?: string } | null {
-  // Only Dropbox files are playable — skip legacy Monday entries (no dropboxPath)
-  // and delivery files (master/acapella/stems/… — never the project's preview track).
+  // Only Dropbox files are playable — skip legacy Monday entries (no dropboxPath),
+  // delivery files (master/acapella/stems/…) and work-materials (Rough/References
+  // we sent the engineer) — never the project's preview track.
   const audioFiles = files.filter((f) =>
-    f.dropboxPath && !isDeliveryFile(f) && AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
+    f.dropboxPath && !isDeliveryFile(f) && !isWorkMaterial(f) && AUDIO_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
   );
   return audioFiles.length > 0 ? audioFiles[audioFiles.length - 1] : null;
 }

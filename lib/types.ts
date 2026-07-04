@@ -190,6 +190,16 @@ export interface Project {
   parentProject: string;       // שייך ל
   isHidden: boolean;           // הסתרה — לא מופיע בתצוגה הפעילה
   updatedAt: string;           // ISO timestamp of last meaningful change
+  // Work-materials text metadata (BPM / Key / instructions) sent to the sound
+  // engineer. Files live in `files` (category "חומרי עבודה"); this is the text only.
+  workMaterials?: WorkMaterialsMeta;
+}
+
+/** Free-text work-materials metadata shown to Steven/Bill (stored in projects.work_materials jsonb). */
+export interface WorkMaterialsMeta {
+  bpm?: string;
+  key?: string;
+  instructions?: string;
 }
 
 export interface ChatMessage {

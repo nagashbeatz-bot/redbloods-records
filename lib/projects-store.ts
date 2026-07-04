@@ -1,6 +1,6 @@
 import "server-only";
 import { supabase } from "./supabase";
-import type { Project, ProjectStatus, ProjectType, FileLink } from "./types";
+import type { Project, ProjectStatus, ProjectType, FileLink, WorkMaterialsMeta } from "./types";
 import { isOverdue, isDueSoon } from "./utils";
 
 // ─── DB row shape ──────────────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ interface DbProject {
   parent_project: string;
   is_hidden:      boolean;
   files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number }[];
+  work_materials: WorkMaterialsMeta | null;
   created_at:     string;
   updated_at:     string;
 }
@@ -52,6 +53,7 @@ function dbToProject(db: DbProject): Project {
     parentProject: db.parent_project,
     isHidden:      db.is_hidden ?? false,
     updatedAt:     db.updated_at ?? db.created_at ?? "",
+    workMaterials: db.work_materials ?? {},
   };
 }
 
@@ -213,6 +215,32 @@ export async function removeFileFromProject(
     })
     .eq("id", id);
 
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Merge-update the work-materials text metadata (BPM / Key / instructions).
+ * Only the provided keys are changed; others are preserved. Files are NOT touched
+ * here — they live in the `files` JSONB with category "חומרי עבודה".
+ */
+export async function updateProjectWorkMaterials(
+  id: string,
+  patch: WorkMaterialsMeta
+): Promise<void> {
+  const { data, error: readErr } = await supabase
+    .from("projects")
+    .select("work_materials")
+    .eq("id", id)
+    .single();
+  if (readErr) throw new Error(readErr.message);
+
+  const current = ((data as { work_materials: WorkMaterialsMeta | null }).work_materials) ?? {};
+  const next: WorkMaterialsMeta = { ...current, ...patch };
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ work_materials: next, updated_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) throw new Error(error.message);
 }
 

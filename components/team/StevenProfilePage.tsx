@@ -300,6 +300,19 @@ const TR = {
     langHe: "השפה הוחלפה לעברית", langEn: "השפה הוחלפה לאנגלית",
     deleteWork: "מחק עבודה", confirmTitle: "למחוק את העבודה של Steven?", confirmBody: "הפעולה תסיר את העבודה מעמוד Steven. היא לא תמחק פרויקט, קבצים או כספים.",
     confirmYes: "מחק", confirmNo: "ביטול", tDeleted: "העבודה נמחקה", priceSaved: "המחיר נשמר", priceInvalid: "מחיר לא תקין",
+    // Work Materials (what Redbloods sends to the engineer)
+    wmButton: "חומרי עבודה", wmTitle: "חומרי עבודה", wmSubtitle: "מה ששלחנו ל-Steven כדי לעבוד", wmReadOnly: "תצוגת Steven — קריאה בלבד",
+    wmNoProject: "לעבודה זו אין פרויקט מקושר — חומרי עבודה זמינים רק לעבודה עם פרויקט.",
+    wmLoadFail: "טעינת חומרי העבודה נכשלה",
+    wmInstructions: "הוראות עבודה", wmBpm: "BPM", wmKey: "סולם / Key", wmNotes: "הערות חשובות למיקס",
+    wmNotesPh: "דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג, מה חשוב…", wmSaveMeta: "שמור הוראות", wmMetaSaved: "ההוראות נשמרו", wmMetaFail: "השמירה נכשלה",
+    wmRough: "Rough Mix", wmReferences: "רפרנסים", wmStems: "Stems / ערוצים", wmDocs: "מסמכים",
+    wmCompare: "השוואה מהירה", wmCompareRough: "Rough Mix (המקורי ששלחנו)", wmCompareLatest: "Latest Mix (הגרסה האחרונה של Steven)",
+    wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה",
+    wmUploadRough: "+ העלה Rough Mix", wmUploadRef: "+ הוסף רפרנס", wmUploadStems: "+ העלה Stems", wmUploadDoc: "+ הוסף מסמך",
+    wmEmpty: "אין עדיין", wmDownload: "הורדה", wmDelete: "מחק",
+    wmUploading: "מעלה…", wmUploaded: "הקובץ הועלה", wmUploadFail: "ההעלאה נכשלה", wmDeleted: "הקובץ נמחק", wmDeleteFail: "המחיקה נכשלה",
+    wmDelTitle: "למחוק את הקובץ?", wmDelBody: "הקובץ יימחק מ-Dropbox ומחומרי העבודה. פעולה בלתי הפיכה.",
   },
   en: {
     breadcrumb: "Team / Suppliers", profileTitle: "Supplier Profile —", role: "Sound Engineer / Mix & Master", active: "Active",
@@ -339,6 +352,19 @@ const TR = {
     langHe: "Language switched to Hebrew", langEn: "Language switched to English",
     deleteWork: "Delete job", confirmTitle: "Delete Steven's job?", confirmBody: "This removes the job from Steven's page. It will not delete the project, files or finances.",
     confirmYes: "Delete", confirmNo: "Cancel", tDeleted: "Job deleted", priceSaved: "Price saved", priceInvalid: "Invalid price",
+    // Work Materials (what Redbloods sends to the engineer)
+    wmButton: "Work Materials", wmTitle: "Work Materials", wmSubtitle: "What we sent you to work with", wmReadOnly: "Read only",
+    wmNoProject: "This job has no linked project — work materials require a project.",
+    wmLoadFail: "Failed to load work materials",
+    wmInstructions: "Work Instructions", wmBpm: "BPM", wmKey: "Key", wmNotes: "Important mix notes",
+    wmNotesPh: "Vocal/chorus focus, streaming-ready master, what matters…", wmSaveMeta: "Save instructions", wmMetaSaved: "Instructions saved", wmMetaFail: "Save failed",
+    wmRough: "Rough Mix", wmReferences: "References", wmStems: "Stems", wmDocs: "Documents",
+    wmCompare: "Quick compare", wmCompareRough: "Rough Mix (what we sent)", wmCompareLatest: "Latest Mix (Steven's latest)",
+    wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare",
+    wmUploadRough: "+ Upload Rough Mix", wmUploadRef: "+ Add reference", wmUploadStems: "+ Upload Stems", wmUploadDoc: "+ Add document",
+    wmEmpty: "Nothing yet", wmDownload: "Download", wmDelete: "Delete",
+    wmUploading: "Uploading…", wmUploaded: "File uploaded", wmUploadFail: "Upload failed", wmDeleted: "File removed", wmDeleteFail: "Delete failed",
+    wmDelTitle: "Delete this file?", wmDelBody: "The file will be removed from Dropbox and work materials. This cannot be undone.",
   },
 };
 type T = (typeof TR)["he"];
@@ -595,6 +621,7 @@ export default function StevenProfilePage() {
   const [works, setWorks]   = useState<Work[]>([]);
   const [loading, setLoading] = useState(true); // initial page load only — never re-armed after create
   const [openId, setOpenId] = useState<string | null>(null);
+  const [openMaterialsId, setOpenMaterialsId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [lang, setLang]     = useState<Lang>("he");
   const [toast, setToast]   = useState<string | null>(null);
@@ -622,6 +649,7 @@ export default function StevenProfilePage() {
   useEffect(() => { void reloadWorks(); }, [reloadWorks]);
 
   const openWork = works.find(w => w.id === openId) ?? null;
+  const materialsWork = works.find(w => w.id === openMaterialsId) ?? null;
 
   // Edit a work: optimistic local update + PATCH to the existing API for DB-backed rows.
   // Persisted fields: work_type, status, agreed_price. (pay/dates stay display-only here.)
@@ -836,10 +864,16 @@ export default function StevenProfilePage() {
                         />
                       </td>
                       <td style={{ padding: "11px 14px" }}>
-                        <button onClick={() => setOpenId(w.id)}
-                          onMouseEnter={e => { e.currentTarget.style.background = "#E4E4EA"; e.currentTarget.style.boxShadow = "0 0 8px rgba(255,255,255,0.16)"; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.boxShadow = "none"; }}
-                          style={{ fontSize: 11, fontWeight: 700, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s" }}>{t.openJob}</button>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                          <button onClick={() => setOpenId(w.id)}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#E4E4EA"; e.currentTarget.style.boxShadow = "0 0 8px rgba(255,255,255,0.16)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.boxShadow = "none"; }}
+                            style={{ fontSize: 11, fontWeight: 700, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s" }}>{t.openJob}</button>
+                          <button onClick={() => setOpenMaterialsId(w.id)} title={t.wmTitle}
+                            onMouseEnter={e => { e.currentTarget.style.background = `${BRAND}26`; e.currentTarget.style.borderColor = `${BRAND}70`; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = `${BRAND}14`; e.currentTarget.style.borderColor = `${BRAND}45`; }}
+                            style={{ fontSize: 11, fontWeight: 700, color: BRAND, padding: "5px 13px", borderRadius: 10, border: `1px solid ${BRAND}45`, background: `${BRAND}14`, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>🎚 {t.wmButton}</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -867,6 +901,7 @@ export default function StevenProfilePage() {
       </div>
 
       {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} notify={notify} lang={lang} t={t} />}
+      {materialsWork && <WorkMaterialsModal work={materialsWork} onClose={() => setOpenMaterialsId(null)} notify={notify} lang={lang} t={t} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
     </div>
@@ -1729,6 +1764,327 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
           </div>
         )}
       </div>
+    </div>
+  );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : null;
+}
+
+// ── "Work Materials" modal — what Redbloods SENDS to the engineer ────────────────
+//    (Rough Mix / References / Stems / instructions text + a quick Rough↔Latest
+//    compare). Files live in projects.files (category "חומרי עבודה"); text in
+//    projects.work_materials. Owner (he) = full; "Steven view" (en) = read-only.
+type WMMaterial = {
+  name: string; url: string; dropboxPath: string;
+  materialType: "rough" | "reference" | "stems" | "doc";
+  kind: "audio" | "archive" | "doc"; durationSeconds: number | null; size: number | null;
+};
+type WMData = {
+  projectLinked: boolean;
+  materials: WMMaterial[];
+  meta: { bpm?: string; key?: string; instructions?: string };
+  latestMix: { url: string; fileName: string; label: string; durationSeconds: number | null } | null;
+};
+
+function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+  const rtl = lang === "he";
+  const readOnly = lang === "en"; // "Steven view" is a read-only preview (owner-only page; no Steven login yet)
+  const narrow = useIsNarrow(760);
+
+  const [data, setData]         = useState<WMData | null>(null); // null = loading
+  const [loadErr, setLoadErr]   = useState(false);
+  const [bpm, setBpm]           = useState("");
+  const [keyv, setKeyv]         = useState("");
+  const [instr, setInstr]       = useState("");
+  const [savingMeta, setSaving] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null); // materialType being uploaded
+  const [delTarget, setDelTarget] = useState<WMMaterial | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const roughRef = useRef<HTMLInputElement | null>(null);
+  const refRef   = useRef<HTMLInputElement | null>(null);
+  const stemsRef = useRef<HTMLInputElement | null>(null);
+  const docRef   = useRef<HTMLInputElement | null>(null);
+
+  const url = `/api/sound-engineer/${work.id}/work-materials`;
+
+  useEffect(() => {
+    let alive = true;
+    setData(null); setLoadErr(false);
+    fetch(url)
+      .then(r => r.json())
+      .then(d => {
+        if (!alive) return;
+        if (d.ok) {
+          const wd: WMData = { projectLinked: !!d.projectLinked, materials: d.materials ?? [], meta: d.meta ?? {}, latestMix: d.latestMix ?? null };
+          setData(wd);
+          setBpm(wd.meta.bpm ?? ""); setKeyv(wd.meta.key ?? ""); setInstr(wd.meta.instructions ?? "");
+        } else setLoadErr(true);
+      })
+      .catch(() => { if (alive) setLoadErr(true); });
+    return () => { alive = false; };
+  }, [url]);
+
+  async function reload() {
+    try {
+      const d = await fetch(url).then(r => r.json());
+      if (d.ok) setData(cur => (cur ? { ...cur, materials: d.materials ?? [], latestMix: d.latestMix ?? null } : cur));
+    } catch { /* silent */ }
+  }
+
+  async function saveMeta() {
+    if (savingMeta || readOnly) return;
+    setSaving(true);
+    try {
+      const d = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bpm, key: keyv, instructions: instr }) }).then(r => r.json());
+      notify(d.ok ? t.wmMetaSaved : (d.error || t.wmMetaFail));
+    } catch { notify(t.wmMetaFail); }
+    finally { setSaving(false); }
+  }
+
+  async function doUpload(file: File, materialType: string) {
+    setUploading(materialType);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("materialType", materialType);
+      const d = await fetch(url, { method: "POST", body: fd }).then(r => r.json());
+      if (d.ok) { await reload(); notify(t.wmUploaded); }
+      else notify(d.error || t.wmUploadFail);
+    } catch { notify(t.wmUploadFail); }
+    finally { setUploading(null); }
+  }
+  function onPick(e: React.ChangeEvent<HTMLInputElement>, materialType: string) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) void doUpload(f, materialType);
+  }
+
+  async function confirmDelete() {
+    const m = delTarget;
+    if (!m || deleting) return;
+    setDeleting(true);
+    try {
+      const d = await fetch(`${url}?path=${encodeURIComponent(m.dropboxPath)}`, { method: "DELETE" }).then(r => r.json());
+      if (d.ok) { setData(cur => (cur ? { ...cur, materials: cur.materials.filter(x => x.dropboxPath !== m.dropboxPath) } : cur)); notify(t.wmDeleted); }
+      else notify(d.error || t.wmDeleteFail);
+    } catch { notify(t.wmDeleteFail); }
+    finally { setDeleting(false); setDelTarget(null); }
+  }
+
+  // ── styles ──
+  const sec: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" };
+  const secHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
+  const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", background: "#0D0D12", border: `1px solid ${BDR2}`, borderRadius: 10, color: TEXT, colorScheme: "dark", fontSize: 13, padding: "9px 12px", outline: "none", fontFamily: "inherit" };
+  const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5 };
+  function upBtn(label: string, mt: string, onClick: () => void): React.ReactNode {
+    return (
+      <button onClick={onClick} disabled={uploading !== null}
+        style={{ fontSize: 11.5, fontWeight: 800, padding: "6px 12px", borderRadius: 9, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: uploading && uploading !== mt ? 0.5 : 1 }}>
+        {uploading === mt ? t.wmUploading : label}
+      </button>
+    );
+  }
+  const ROLE_C: Record<string, string> = { rough: BRAND, reference: BLUE, stems: "#F59E0B", doc: MUTED, latest: GREEN };
+
+  function audioPlayer(m: WMMaterial, label: string, color: string) {
+    return (
+      <VersionPlayer key={m.dropboxPath} url={m.url} title={m.name} roleLabel={label} roleColor={color}
+        shouldPlay={0} comments={[]} onDownload={() => window.open(m.url, "_blank", "noopener,noreferrer")} t={t} />
+    );
+  }
+  function downloadRow(m: WMMaterial) {
+    return (
+      <div key={m.dropboxPath} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11 }}>
+        <span style={{ fontSize: 16, flexShrink: 0 }}>{m.kind === "archive" ? "📦" : "📄"}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div title={m.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{m.name}</div>
+          <div style={{ fontSize: 11, color: MUTED }}>{fmtBytes(m.size)}</div>
+        </div>
+        <button onClick={() => window.open(m.url, "_blank", "noopener,noreferrer")} title={t.wmDownload}
+          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3L16.7 12 12 16.7 7.3 12l1.4-1.7L12 13.6V3zM5 19h14v2H5z"/></svg>
+        </button>
+        {!readOnly && (
+          <button onClick={() => setDelTarget(m)} title={t.wmDelete}
+            style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: "rgba(239,68,68,0.08)", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>🗑</button>
+        )}
+      </div>
+    );
+  }
+  function emptyLine(label: string) {
+    return <div style={{ padding: "14px 0", textAlign: "center", fontSize: 12, color: MUTED }}>{label}</div>;
+  }
+  // Audio material rendered with an inline delete button beneath the player (owner only).
+  function audioBlock(m: WMMaterial, label: string, color: string) {
+    return (
+      <div key={m.dropboxPath}>
+        {audioPlayer(m, label, color)}
+        {!readOnly && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+            <button onClick={() => setDelTarget(m)}
+              style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.wmDelete}</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const materials = data?.materials ?? [];
+  const rough      = materials.filter(m => m.materialType === "rough");
+  const references = materials.filter(m => m.materialType === "reference");
+  const stems      = materials.filter(m => m.materialType === "stems");
+  const docs       = materials.filter(m => m.materialType === "doc");
+  const roughAudio = rough.find(m => m.kind === "audio") ?? null;
+
+  const modal = (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
+      <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
+        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(980px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+
+        {/* Header */}
+        <div style={{ position: "sticky", top: 0, zIndex: 2, background: CARD, borderBottom: `1px solid ${BDR}`, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.01em" }}>🎚 {t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></div>
+            <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.wmSubtitle}{readOnly && <span style={{ marginInlineStart: 8, fontSize: 10.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 7, padding: "1px 7px" }}>👁 {t.wmReadOnly}</span>}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+        </div>
+
+        <div style={{ padding: "18px 20px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {loadErr ? (
+            <div style={{ padding: "34px 0", textAlign: "center", fontSize: 13, color: RED }}>{t.wmLoadFail}</div>
+          ) : data === null ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <Shimmer w="100%" h={120} r={14} /><Shimmer w="100%" h={90} r={14} /><Shimmer w="100%" h={90} r={14} />
+            </div>
+          ) : !data.projectLinked ? (
+            <EmptyZone icon="🔗" title={t.wmNoProject} />
+          ) : (
+            <>
+              {/* 1. Instructions (BPM / Key / notes) */}
+              <div style={sec}>
+                <div style={secHead}><span>📝 {t.wmInstructions}</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr 1fr" : "120px 1fr", gap: 12, alignItems: "start" }}>
+                  <div>
+                    <label style={lbl}>{t.wmBpm}</label>
+                    <input value={bpm} onChange={e => setBpm(e.target.value)} readOnly={readOnly} placeholder="—" style={{ ...inp, direction: "ltr", textAlign: "start" }} />
+                  </div>
+                  <div>
+                    <label style={lbl}>{t.wmKey}</label>
+                    <input value={keyv} onChange={e => setKeyv(e.target.value)} readOnly={readOnly} placeholder="—" style={{ ...inp, direction: "ltr", textAlign: "start" }} />
+                  </div>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <label style={lbl}>{t.wmNotes}</label>
+                  <textarea value={instr} onChange={e => setInstr(e.target.value)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={4} style={{ ...inp, resize: "vertical", lineHeight: 1.6 }} />
+                </div>
+                {!readOnly && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                    <button onClick={saveMeta} disabled={savingMeta}
+                      style={{ fontSize: 12.5, fontWeight: 800, padding: "8px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", cursor: savingMeta ? "wait" : "pointer", fontFamily: "inherit", opacity: savingMeta ? 0.7 : 1 }}>
+                      {t.wmSaveMeta}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Rough Mix */}
+              <div style={sec}>
+                <div style={secHead}>
+                  <span>🎵 {t.wmRough}</span>
+                  {!readOnly && upBtn(t.wmUploadRough, "rough", () => roughRef.current?.click())}
+                </div>
+                {rough.length === 0 ? emptyLine(t.wmEmpty) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {rough.map(m => m.kind === "audio" ? audioBlock(m, t.wmRough, ROLE_C.rough) : downloadRow(m))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. References */}
+              <div style={sec}>
+                <div style={secHead}>
+                  <span>🎧 {t.wmReferences}</span>
+                  {!readOnly && upBtn(t.wmUploadRef, "reference", () => refRef.current?.click())}
+                </div>
+                {references.length === 0 ? emptyLine(t.wmEmpty) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {references.map(m => m.kind === "audio" ? audioBlock(m, t.wmReferences, ROLE_C.reference) : downloadRow(m))}
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Stems */}
+              <div style={sec}>
+                <div style={secHead}>
+                  <span>📦 {t.wmStems}</span>
+                  {!readOnly && upBtn(t.wmUploadStems, "stems", () => stemsRef.current?.click())}
+                </div>
+                {stems.length === 0 ? emptyLine(t.wmEmpty) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{stems.map(downloadRow)}</div>
+                )}
+              </div>
+
+              {/* 5. Documents (optional) */}
+              {(docs.length > 0 || !readOnly) && (
+                <div style={sec}>
+                  <div style={secHead}>
+                    <span>📄 {t.wmDocs}</span>
+                    {!readOnly && upBtn(t.wmUploadDoc, "doc", () => docRef.current?.click())}
+                  </div>
+                  {docs.length === 0 ? emptyLine(t.wmEmpty) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{docs.map(downloadRow)}</div>
+                  )}
+                </div>
+              )}
+
+              {/* 6. Quick compare — Rough vs Latest Mix */}
+              <div style={{ ...sec, border: `1px solid ${BRAND}40` }}>
+                <div style={secHead}><span>⚖ {t.wmCompare}</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareRough}</div>
+                    {roughAudio ? audioPlayer(roughAudio, t.wmRough, ROLE_C.rough) : emptyLine(t.wmEmpty)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareLatest}</div>
+                    {data.latestMix
+                      ? <VersionPlayer url={data.latestMix.url} title={data.latestMix.fileName} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => window.open(data.latestMix!.url, "_blank", "noopener,noreferrer")} t={t} />
+                      : emptyLine(t.wmNoLatest)}
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10 }}>{t.wmCompareHint}</div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Hidden file inputs (owner only) */}
+      {!readOnly && (
+        <>
+          <input ref={roughRef} type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "rough")} />
+          <input ref={refRef}   type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "reference")} />
+          <input ref={stemsRef} type="file" accept=".zip,.rar,.7z" style={{ display: "none" }} onChange={e => onPick(e, "stems")} />
+          <input ref={docRef}   type="file" style={{ display: "none" }} onChange={e => onPick(e, "doc")} />
+        </>
+      )}
+
+      {/* Delete confirm */}
+      {delTarget && (
+        <div onClick={e => { e.stopPropagation(); if (!deleting) setDelTarget(null); }} style={{ position: "fixed", inset: 0, zIndex: 200001, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+          <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()} style={{ background: "#161616", border: `1px solid ${BDR2}`, borderRadius: 16, padding: "22px 24px", width: 360, textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.9)" }}>
+            <div style={{ fontSize: 26, marginBottom: 8 }}>🗑</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 6 }}>{t.wmDelTitle}</div>
+            <div style={{ fontSize: 12.5, color: TEXT2, marginBottom: 18, lineHeight: 1.6 }}>{t.wmDelBody}</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setDelTarget(null)} disabled={deleting} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${BDR2}`, background: "transparent", color: TEXT2, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>{t.confirmNo}</button>
+              <button onClick={confirmDelete} disabled={deleting} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${RED}66`, background: deleting ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.14)", color: RED, cursor: deleting ? "default" : "pointer", fontSize: 13, fontWeight: 800, fontFamily: "inherit", opacity: deleting ? 0.7 : 1 }}>{t.wmDelete}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
