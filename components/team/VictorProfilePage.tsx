@@ -2082,7 +2082,7 @@ function VictorProjectDrawer({
               <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flexShrink: 1, flexBasis: isMobile ? "44%" : 250, maxWidth: isMobile ? 168 : 320 }}>
                 <div style={{ width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 11, flexShrink: 0, background: `linear-gradient(145deg, ${PURPLE}44, ${PURPLE}18)`, border: `1px solid ${PURPLE}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 0 16px ${PURPLE}22` }}>🎵</div>
                 <div style={{ minWidth: 0 }}>
-                  <div title={npItem.file.name} style={{ fontSize: isMobile ? 12.5 : 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{npItem.file.name}</div>
+                  <div title={npItem.file.name} style={{ fontSize: isMobile ? 12.5 : 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext", textAlign: "start" }}>{npItem.file.name}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                     {npItem.versionLabel && /^V\d/.test(npItem.versionLabel) && <span style={{ fontSize: 9, fontWeight: 900, padding: "1px 7px", borderRadius: 5, background: `${PURPLE}26`, color: PURPLE, border: `1px solid ${PURPLE}55`, whiteSpace: "nowrap" }}>{npItem.versionLabel}</span>}
                     <span style={{ fontSize: 9, fontWeight: 800, padding: "1px 7px", borderRadius: 5, background: `${ROLE_COLOR[npItem.role]}22`, color: ROLE_COLOR[npItem.role], whiteSpace: "nowrap" }}>{t(`role.${npItem.role}`)}</span>
@@ -2090,13 +2090,13 @@ function VictorProjectDrawer({
                 </div>
               </div>
               {/* transport */}
-              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexShrink: 0, direction: "ltr" }}>
                 <button onClick={() => playerStep(-1)} disabled={npIdx <= 0} title={t("player.prev")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: npIdx <= 0 ? "default" : "pointer", opacity: npIdx <= 0 ? 0.35 : 1, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏮</button>
                 <button onClick={togglePlayer} title={pPlaying ? t("player.pause") : t("player.play")} style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: "50%", background: `linear-gradient(145deg, ${PURPLE}, #6D28D9)`, border: "none", color: "#fff", cursor: "pointer", fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0, boxShadow: `0 4px 16px ${PURPLE}55` }}>{pPlaying ? "⏸" : "▶"}</button>
                 <button onClick={() => playerStep(1)} disabled={npIdx < 0 || npIdx >= playlist.length - 1} title={t("player.next")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: (npIdx < 0 || npIdx >= playlist.length - 1) ? "default" : "pointer", opacity: (npIdx < 0 || npIdx >= playlist.length - 1) ? 0.35 : 1, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏭</button>
               </div>
               {/* progress + time */}
-              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 7 : 12, minWidth: 0 }}>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 7 : 12, minWidth: 0, direction: "ltr" }}>
                 <span style={{ fontSize: 10.5, color: TEXT2, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>{fmtDur(pCur)}</span>
                 <div ref={pBarRef}
                   onPointerDown={e => { try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ } playerSeek(e.clientX); }}
@@ -2110,7 +2110,7 @@ function VictorProjectDrawer({
               </div>
               {/* volume (desktop) + download */}
               {!isMobile && (
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, direction: "ltr" }}>
                   <span style={{ fontSize: 13, color: MUTED }}>🔊</span>
                   <input type="range" min={0} max={1} step={0.01} value={pVol} onChange={e => setPVol(Number(e.target.value))} title="Volume" style={{ width: 84, accentColor: PURPLE, cursor: "pointer" }} />
                 </div>
@@ -2127,12 +2127,12 @@ function VictorProjectDrawer({
                   <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("player.chooseFileToPlay")}</div>
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexShrink: 0, direction: "ltr" }}>
                 <button disabled title={t("player.prev")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.4, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏮</button>
                 <button disabled title={t("player.play")} style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: "50%", background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.5, fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>▶</button>
                 <button disabled title={t("player.next")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.4, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏭</button>
               </div>
-              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 7 : 12, minWidth: 0 }}>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 7 : 12, minWidth: 0, direction: "ltr" }}>
                 <span style={{ fontSize: 10.5, color: MUTED, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>0:00</span>
                 <div style={{ flex: 1, minWidth: 40, padding: "8px 0" }}>
                   <div style={{ height: 7, background: "rgba(255,255,255,0.07)", borderRadius: 4 }} />
@@ -2140,7 +2140,7 @@ function VictorProjectDrawer({
                 <span style={{ fontSize: 10.5, color: MUTED, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>—</span>
               </div>
               {!isMobile && (
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, opacity: 0.4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, opacity: 0.4, direction: "ltr" }}>
                   <span style={{ fontSize: 13, color: MUTED }}>🔊</span>
                   <input type="range" min={0} max={1} step={0.01} value={pVol} disabled style={{ width: 84, accentColor: MUTED, cursor: "default" }} />
                 </div>
