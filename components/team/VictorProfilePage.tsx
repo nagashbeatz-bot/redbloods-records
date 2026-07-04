@@ -1150,7 +1150,7 @@ function VictorProjectDrawer({
   // Brief files — owner uploads/deletes, Victor views/downloads. NOT versions.
   const [effectiveBriefFiles, setEffectiveBriefFiles] = useState<FileLink[]>(work.briefFiles ?? []);
   const [briefUploading, setBriefUploading] = useState(false);
-  const [briefErr, setBriefErr] = useState(false);
+  const [briefErr, setBriefErr] = useState<string | null>(null);
   const [briefDelPath, setBriefDelPath] = useState<string | null>(null);
   const briefFileInputRef = useRef<HTMLInputElement | null>(null);
   // References (YouTube) — owner adds/edits/deletes, Victor views/opens.
@@ -1218,7 +1218,7 @@ function VictorProjectDrawer({
   // Brief files (owner only — the route is requireOwner; Victor gets 403).
   async function uploadBriefFile(file: File | null) {
     if (!file || briefUploading) return;
-    setBriefUploading(true); setBriefErr(false);
+    setBriefUploading(true); setBriefErr(null);
     try {
       // Brief files land in the work's own Dropbox folder (…/00_Brief). That base
       // folder is created lazily, so make sure it exists (and dropbox_folder is
@@ -1228,8 +1228,8 @@ function VictorProjectDrawer({
       const res = await fetch(`/api/vendor/victor/work/${work.id}/brief`, { method: "POST", body: fd });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok) { setEffectiveBriefFiles(d.briefFiles ?? []); onRefresh?.(); }
-      else setBriefErr(true);
-    } catch { setBriefErr(true); }
+      else setBriefErr((d?.error as string) || t("brief.uploadFail"));
+    } catch { setBriefErr(t("brief.uploadFail")); }
     finally { setBriefUploading(false); if (briefFileInputRef.current) briefFileInputRef.current.value = ""; }
   }
   async function deleteBriefFile(dropboxPath: string) {
@@ -1997,7 +1997,7 @@ function VictorProjectDrawer({
                         )}
                       </div>
                       <input ref={briefFileInputRef} type="file" style={{ display: "none" }} onChange={(e) => uploadBriefFile(e.target.files?.[0] ?? null)} />
-                      {briefErr && <div style={{ fontSize: 11, color: RED, marginBottom: 8 }}>{t("brief.uploadFail")}</div>}
+                      {briefErr && <div style={{ fontSize: 11, color: RED, marginBottom: 8, unicodeBidi: "plaintext" } as React.CSSProperties}>{briefErr}</div>}
                       {effectiveBriefFiles.length === 0 ? (
                         <div style={{ fontSize: 11.5, color: MUTED, padding: "2px 0" }}>{t("brief.empty")}</div>
                       ) : (
