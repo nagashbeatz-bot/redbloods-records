@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { mixVersionsFolder, sanitizeFolder, primaryArtist } from "@/lib/project-paths";
+import { mixVersionsFolder, sanitizeFolder } from "@/lib/project-paths";
 import { listMixVersions, createMixVersion } from "@/lib/mix-versions-store";
 
 // Large audio files (WAV/FLAC/stems) can take a while.
@@ -15,15 +15,23 @@ function dropboxArg(obj: Record<string, unknown>): string {
   );
 }
 
-/** Role word (Hebrew) derived from the ORIGINAL filename — embedded in the stored
- *  name so the UI re-detects the role and groups up to 4 files (mix/acapella/
- *  instrumental/stems) under one version. Mirrors the client detectRole. */
-function roleWordFromName(name: string): string {
+type RoleKey = "mix" | "acapella" | "instrumental" | "stems";
+const ROLE_EN: Record<RoleKey, string> = { mix: "Mix", acapella: "Acapella", instrumental: "Instrumental", stems: "Stems" };
+
+/** Role KEY inferred from the ORIGINAL filename — used only as the fallback when
+ *  the client doesn't send an explicit role. Mirrors the client detectRole. */
+function roleKeyFromName(name: string): RoleKey {
   const s = (name || "").toLowerCase();
-  if (/(\.(zip|rar|7z)$|stems|ערוצים)/.test(s)) return "ערוצים";
-  if (/(instrumental|\binst\b|\bbeat\b|karaoke|אינסטרומנטל|אינסטרו|ביט)/.test(s)) return "אינסטרומנטל";
-  if (/(acapella|accapella|acappella|acapela|\bvocals?\b|\bvox\b|אקפלה|אקאפלה|ווקאל|וקאל|שירה)/.test(s)) return "אקפלה";
-  return "מיקס";
+  if (/(\.(zip|rar|7z)$|stems|ערוצים)/.test(s)) return "stems";
+  if (/(instrumental|\binst\b|\bbeat\b|karaoke|אינסטרומנטל|אינסטרו|ביט)/.test(s)) return "instrumental";
+  if (/(acapella|accapella|acappella|acapela|\bvocals?\b|\bvox\b|אקפלה|אקאפלה|ווקאל|וקאל|שירה)/.test(s)) return "acapella";
+  return "mix";
+}
+/** Resolve the English role label: explicit client role (validated) → else from filename. */
+function resolveRoleEn(roleParam: string | null, fileName: string): string {
+  const p = (roleParam ?? "").trim().toLowerCase();
+  if (p === "mix" || p === "acapella" || p === "instrumental" || p === "stems") return ROLE_EN[p];
+  return ROLE_EN[roleKeyFromName(fileName)];
 }
 
 /** GET /api/sound-engineer/[id]/versions — list mix versions for a work. */
@@ -58,6 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // label, different role file) — so a duplicate label is intentional, not a
     // clash. Absent/false keeps the old guard for the "new version" flow.
     const addToExisting = form.get("addToExisting") != null;
+    const roleParam     = form.get("role") as string | null; // explicit per-file role (optional)
     const durationRaw    = form.get("durationSeconds") as string | null;
     const durationParsed = durationRaw != null ? Number(durationRaw) : NaN;
     const durationSeconds = Number.isFinite(durationParsed) && durationParsed > 0 ? Math.round(durationParsed) : null;
@@ -114,11 +123,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Mix Versions (no per-label subfolder); uniqueness comes from the unique
     // label baked into the file name.
     const safeLabel     = sanitizeFolder(effectiveLabel) || "Mix";
-    // Embed the detected role word so several files can live under ONE label and
-    // the UI re-detects each file's role. autorename below is the safety net if
-    // two files still map to the same name.
-    const roleWord      = roleWordFromName(file.name);
-    const cleanBase     = [primaryArtist(artist), projectName, effectiveLabel, roleWord]
+    // Name: "{versionLabel} - {roleEn} - {originalFileName}". Role comes from the
+    // user's pick (validated), else inferred from the filename. The role word +
+    // original name let the UI re-detect the role and keep several files under one
+    // label; autorename below is the safety net for identical names.
+    const roleEn        = resolveRoleEn(roleParam, file.name);
+    const origDot       = file.name.lastIndexOf(".");
+    const origBase      = origDot >= 0 ? file.name.slice(0, origDot) : file.name;
+    const cleanBase     = [effectiveLabel, roleEn, origBase]
       .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || safeLabel;
     const cleanFileName = ext ? `${cleanBase}.${ext}` : cleanBase;
 

@@ -248,6 +248,8 @@ const TR = {
     versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט",
     uploadNewVersionBtn: "+ העלה גרסה חדשה", addToVersionBtn: "+ הוסף קובץ לגרסה הזו",
     uploadHint: "גרור קבצים לכאן · נגן = mp3/wav · ערוצים = zip/rar",
+    rpTitle: "בחר סוג לכל קובץ", rpSubNew: "גרסה חדשה", rpSubExisting: "מוסיף לגרסה",
+    rpHint: "מיקס/אקפלה/אינסטרומנטל = נגן · ערוצים = הורדה בלבד", rpUpload: "העלה",
     versionFiles: "קבצי הגרסה", versionFilesSub: "מסומנים בזמן אמת — הערות משותפות לגרסה זו",
     sharedComments: "הערות משותפות לגרסה", sharedCommentsSub: "ההערות משותפות לכל שלושת הקבצים",
     versionDetails: "פרטי הגרסה", vName: "שם הגרסה", vCreator: "יוצר", vCreatedAt: "נוצר בתאריך", vUpdatedAt: "עודכן לאחרונה",
@@ -285,6 +287,8 @@ const TR = {
     versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files",
     uploadNewVersionBtn: "+ Upload new version", addToVersionBtn: "+ Add file to this version",
     uploadHint: "Drag files here · player = mp3/wav · stems = zip/rar",
+    rpTitle: "Choose a type for each file", rpSubNew: "New version", rpSubExisting: "Adding to",
+    rpHint: "Mix/Acapella/Instrumental = player · Stems = download only", rpUpload: "Upload",
     versionFiles: "Version files", versionFilesSub: "Marked in real time — comments are shared for this version",
     sharedComments: "Shared comments for this version", sharedCommentsSub: "Comments are shared across all three files",
     versionDetails: "Version details", vName: "Version name", vCreator: "Creator", vCreatedAt: "Created", vUpdatedAt: "Last updated",
@@ -1056,6 +1060,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [vLoadErr, setVLoadErr]   = useState(false);
   const [uploading, setUploading] = useState(false);
   const [drag, setDrag]           = useState(false);
+  // Per-file role picker shown after files are chosen (before upload).
+  const [rolePicker, setRolePicker] = useState<{ mode: "new" | "existing"; items: { file: File; role: FileRole }[] } | null>(null);
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
@@ -1157,11 +1163,13 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
 
   // Upload ONE file. `label` + `addToExisting` group several files under one
   // logical version (no DB); no label → the server auto-assigns the next "Mix N".
-  async function postOneFile(file: File, opts: { label?: string; addToExisting?: boolean }): Promise<MixVersion | null> {
+  // `role` is the user's per-file pick → the server names the file accordingly.
+  async function postOneFile(file: File, opts: { label?: string; addToExisting?: boolean; role?: FileRole }): Promise<MixVersion | null> {
     const fd = new FormData();
     fd.append("file", file);
     if (opts.label) fd.append("label", opts.label);
     if (opts.addToExisting) fd.append("addToExisting", "1");
+    if (opts.role) fd.append("role", opts.role);
     try {
       const d = await fetch(`/api/sound-engineer/${work.id}/versions`, { method: "POST", body: fd }).then(r => r.json());
       if (d.ok && d.version) return d.version as MixVersion;
@@ -1170,45 +1178,48 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
     } catch { notify(t.vUploadFailed); return null; }
   }
 
-  // "+ העלה גרסה חדשה" — a batch becomes ONE new version: the first file creates
-  // the "Mix N", the rest join it (addToExisting) so all share the new label.
-  async function uploadNewVersion(list: FileList | null) {
+  // After files are chosen, open the per-file role picker (auto-suggested from the
+  // filename; the user can change each before uploading). Nothing uploads yet.
+  function openRolePicker(mode: "new" | "existing", list: FileList | null) {
     const files = list ? Array.from(list) : [];
+    if (newVersionInputRef.current) newVersionInputRef.current.value = "";
+    if (addFileInputRef.current) addFileInputRef.current.value = "";
     if (files.length === 0 || uploading) return;
-    setUploading(true);
-    try {
-      const first = await postOneFile(files[0], {}); // server auto-labels
-      if (!first) return;
-      const created = [first];
-      for (let i = 1; i < files.length; i++) {
-        const v = await postOneFile(files[i], { label: first.label, addToExisting: true });
-        if (v) created.push(v);
-      }
-      setVersions(prev => [...created, ...(prev ?? [])]);
-      setSel(first.id); // select the new logical version
-      notify(t.vUploaded);
-    } finally {
-      setUploading(false);
-      if (newVersionInputRef.current) newVersionInputRef.current.value = "";
-    }
+    if (mode === "existing" && !selectedGroup) return;
+    setRolePicker({ mode, items: files.map(f => ({ file: f, role: detectRole(f.name) })) });
   }
 
-  // "+ הוסף קובץ לגרסה הזו" — every file joins the SELECTED version (same label).
-  async function addFilesToSelectedVersion(list: FileList | null) {
-    const files = list ? Array.from(list) : [];
-    const label = selectedGroup?.label;
-    if (files.length === 0 || uploading || !label) return;
+  // Confirm the picker → upload each file with its chosen role.
+  async function runRolePickerUpload() {
+    const picker = rolePicker;
+    if (!picker || picker.items.length === 0 || uploading) return;
     setUploading(true);
     try {
-      const created: MixVersion[] = [];
-      for (const f of files) {
-        const v = await postOneFile(f, { label, addToExisting: true });
-        if (v) created.push(v);
+      if (picker.mode === "new") {
+        // First file creates the new "Mix N"; the rest join it (same label).
+        const first = await postOneFile(picker.items[0].file, { role: picker.items[0].role });
+        if (!first) return;
+        const created = [first];
+        for (let i = 1; i < picker.items.length; i++) {
+          const v = await postOneFile(picker.items[i].file, { label: first.label, addToExisting: true, role: picker.items[i].role });
+          if (v) created.push(v);
+        }
+        setVersions(prev => [...created, ...(prev ?? [])]);
+        setSel(first.id);
+        notify(t.vUploaded);
+      } else {
+        const label = selectedGroup?.label;
+        if (!label) return;
+        const created: MixVersion[] = [];
+        for (const it of picker.items) {
+          const v = await postOneFile(it.file, { label, addToExisting: true, role: it.role });
+          if (v) created.push(v);
+        }
+        if (created.length > 0) { setVersions(prev => [...created, ...(prev ?? [])]); notify(t.vUploaded); }
       }
-      if (created.length > 0) { setVersions(prev => [...created, ...(prev ?? [])]); notify(t.vUploaded); }
     } finally {
       setUploading(false);
-      if (addFileInputRef.current) addFileInputRef.current.value = "";
+      setRolePicker(null);
     }
   }
 
@@ -1365,14 +1376,14 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
               <div style={subCard}>
                 <div style={innerHead}>⬆ {t.uploadFiles}</div>
                 <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-                  <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => uploadNewVersion(e.target.files)} />
-                  <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => addFilesToSelectedVersion(e.target.files)} />
+                  <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("new", e.target.files)} />
+                  <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
                   {/* Dropzone → NEW version */}
                   <div
                     onClick={() => { if (!uploading) newVersionInputRef.current?.click(); }}
                     onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
                     onDragLeave={e => { e.preventDefault(); setDrag(false); }}
-                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadNewVersion(e.dataTransfer.files); }}
+                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("new", e.dataTransfer.files); }}
                     style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "16px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
                   >
                     <div style={{ fontSize: 22, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
@@ -1640,6 +1651,36 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => setDelC(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
                 <button onClick={confirmDeleteComment} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.cDelete}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Per-file role picker — opens after files are chosen, before upload */}
+        {rolePicker && (
+          <div onClick={() => { if (!uploading) setRolePicker(null); }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${BRAND}44`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+              <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${BDR}` }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>🎚 {t.rpTitle}</div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                  {rolePicker.mode === "new" ? t.rpSubNew : `${t.rpSubExisting}: ${selectedGroup?.label ?? ""}`} · {t.rpHint}
+                </div>
+              </div>
+              <div style={{ padding: "14px 18px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                {rolePicker.items.map((it, idx) => (
+                  <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 11, background: CARD2, border: `1px solid ${BDR}` }}>
+                    <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[it.role]}22`, color: ROLE_COLOR[it.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{isAudioName(it.file.name) ? "🎵" : "📦"}</span>
+                    <div title={it.file.name} style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{it.file.name}</div>
+                    <select value={it.role} onChange={e => { const role = e.target.value as FileRole; setRolePicker(p => p ? { ...p, items: p.items.map((x, i) => i === idx ? { ...x, role } : x) } : p); }}
+                      style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, padding: "6px 8px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${ROLE_COLOR[it.role]}66`, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
+                      {ROLE_ORDER.map(r => <option key={r} value={r}>{roleLabel(r, lang)}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: "14px 18px", borderTop: `1px solid ${BDR}`, display: "flex", gap: 10 }}>
+                <button onClick={() => { if (!uploading) setRolePicker(null); }} disabled={uploading} style={{ ...ghostBtn, flex: 1, justifyContent: "center", opacity: uploading ? 0.6 : 1 }}>{t.cancel}</button>
+                <button onClick={runRolePickerUpload} disabled={uploading} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: uploading ? MUTED : BRAND, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: uploading ? "default" : "pointer", fontFamily: "inherit" }}>{uploading ? t.vUploading : `⬆ ${t.rpUpload}`}</button>
               </div>
             </div>
           </div>
