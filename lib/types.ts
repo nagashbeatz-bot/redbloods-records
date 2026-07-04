@@ -55,6 +55,7 @@ export interface FileLink {
   versionLabel?: string;     // e.g. "V1", "מיקס 1", "מאסטר"
   category?: string;         // intake category: מאסטר/אקפלה/אינסטרומנטל/ערוצים/גרסת הופעה/אחר
   durationSeconds?: number;  // audio length in whole seconds — captured client-side at upload (optional; older files lack it)
+  size?: number;             // file size in bytes (optional; e.g. brief files)
 }
 
 /**
@@ -275,6 +276,7 @@ export interface VendorWork {
   references: VictorReference[];     // YouTube reference links (owner-editable)
   filesSent: FileLink[];
   filesReceived: FileLink[];
+  briefFiles: FileLink[];            // owner-attached brief helpers (NOT versions/player)
   isStuck: boolean;                  // computed: פעיל + daysSinceSent > stuckAfterDays
   daysSinceSent: number | null;      // computed
   linkedTaskId: string | null;       // FK → tasks(id), set when internalDeadline synced

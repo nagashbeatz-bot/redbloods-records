@@ -73,6 +73,7 @@ function mapRow(
     references:       (row.reference_links   as VictorReference[] | null) ?? [],
     filesSent:        (row.files_sent        as VendorWork["filesSent"])    ?? [],
     filesReceived:    (row.files_received    as VendorWork["filesReceived"]) ?? [],
+    briefFiles:       (row.brief_files       as VendorWork["briefFiles"])   ?? [],
     isStuck,
     daysSinceSent,
     linkedTaskId:     (row.linked_task_id as string | null) ?? null,
@@ -190,6 +191,7 @@ export async function updateVictorWork(
     references:       VictorReference[];
     filesSent:        VendorWork["filesSent"];
     filesReceived:    VendorWork["filesReceived"];
+    briefFiles:       VendorWork["briefFiles"];
     linkedTaskId:     string | null;
     versionReviews:   VendorWork["versionReviews"];
   }>
@@ -220,6 +222,7 @@ export async function updateVictorWork(
   if ("references"       in fields) dbFields.reference_links    = fields.references;
   if ("filesSent"        in fields) dbFields.files_sent         = fields.filesSent;
   if ("filesReceived"    in fields) dbFields.files_received     = fields.filesReceived;
+  if ("briefFiles"       in fields) dbFields.brief_files        = fields.briefFiles;
   if ("linkedTaskId"     in fields) dbFields.linked_task_id     = fields.linkedTaskId;
   if ("versionReviews"   in fields) dbFields.version_reviews    = fields.versionReviews;
 

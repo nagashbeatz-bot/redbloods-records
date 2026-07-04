@@ -844,6 +844,12 @@ function VictorProjectDrawer({
   const [editingBrief, setEditingBrief] = useState(false);
   const [briefDraft, setBriefDraft] = useState("");
   const [savingBrief, setSavingBrief] = useState(false);
+  // Brief files — owner uploads/deletes, Victor views/downloads. NOT versions.
+  const [effectiveBriefFiles, setEffectiveBriefFiles] = useState<FileLink[]>(work.briefFiles ?? []);
+  const [briefUploading, setBriefUploading] = useState(false);
+  const [briefErr, setBriefErr] = useState(false);
+  const [briefDelPath, setBriefDelPath] = useState<string | null>(null);
+  const briefFileInputRef = useRef<HTMLInputElement | null>(null);
   // References (YouTube) — owner adds/edits/deletes, Victor views/opens.
   const [effectiveRefs, setEffectiveRefs] = useState<VictorReference[]>(work.references ?? []);
   const [refForm, setRefForm] = useState<{ open: boolean; editId: string | null; url: string; title: string; note: string }>(
@@ -904,6 +910,31 @@ function VictorProjectDrawer({
     } finally {
       setSavingBrief(false);
     }
+  }
+
+  // Brief files (owner only — the route is requireOwner; Victor gets 403).
+  async function uploadBriefFile(file: File | null) {
+    if (!file || briefUploading) return;
+    setBriefUploading(true); setBriefErr(false);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const res = await fetch(`/api/vendor/victor/work/${work.id}/brief`, { method: "POST", body: fd });
+      const d = await res.json().catch(() => null);
+      if (res.ok && d?.ok) { setEffectiveBriefFiles(d.briefFiles ?? []); onRefresh?.(); }
+      else setBriefErr(true);
+    } catch { setBriefErr(true); }
+    finally { setBriefUploading(false); if (briefFileInputRef.current) briefFileInputRef.current.value = ""; }
+  }
+  async function deleteBriefFile(dropboxPath: string) {
+    const prev = effectiveBriefFiles;
+    setEffectiveBriefFiles(prev.filter((f) => f.dropboxPath !== dropboxPath)); // optimistic
+    setBriefDelPath(null);
+    try {
+      const res = await fetch(`/api/vendor/victor/work/${work.id}/brief`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dropboxPath }),
+      });
+      if (!res.ok) setEffectiveBriefFiles(prev); else onRefresh?.();
+    } catch { setEffectiveBriefFiles(prev); }
   }
 
   // ── References (YouTube) ─────────────────────────────────────────────────────
@@ -1629,6 +1660,57 @@ function VictorProjectDrawer({
                     ) : (
                       <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "28px 0", lineHeight: 1.7 }}>{isOwner ? t("drawer.briefEmptyOwner") : t("drawer.briefEmptyViewer")}</div>
                     )
+                  )}
+
+                  {/* ── Brief files: owner uploads/deletes, Victor views/downloads.
+                       NOT versions, never in the player, no V-prefix. ── */}
+                  {(isOwner || effectiveBriefFiles.length > 0) && (
+                    <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${BDR}` }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>📎 {t("brief.filesTitle")}{effectiveBriefFiles.length > 0 ? ` (${effectiveBriefFiles.length})` : ""}</span>
+                        {isOwner && (
+                          <button onClick={() => briefFileInputRef.current?.click()} disabled={briefUploading}
+                            style={{ fontSize: 11, fontWeight: 700, padding: "4px 11px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: briefUploading ? "default" : "pointer", fontFamily: "inherit", opacity: briefUploading ? 0.6 : 1 }}>
+                            {briefUploading ? "…" : t("brief.addFile")}
+                          </button>
+                        )}
+                      </div>
+                      <input ref={briefFileInputRef} type="file" style={{ display: "none" }} onChange={(e) => uploadBriefFile(e.target.files?.[0] ?? null)} />
+                      {briefErr && <div style={{ fontSize: 11, color: RED, marginBottom: 8 }}>{t("brief.uploadFail")}</div>}
+                      {effectiveBriefFiles.length === 0 ? (
+                        <div style={{ fontSize: 11.5, color: MUTED, padding: "2px 0" }}>{t("brief.empty")}</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                          {effectiveBriefFiles.map((f, i) => {
+                            const hasUrl = !!(f.dropboxShareUrl || f.url);
+                            const ext = (f.name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
+                            const sz = f.size ? (f.size > 1048576 ? `${(f.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1024))} KB`) : "";
+                            return (
+                              <div key={f.dropboxPath ?? i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}`, minWidth: 0 }}>
+                                <span style={{ fontSize: 15, flexShrink: 0 }}>📄</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div title={f.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{f.name}</div>
+                                  <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>{ext}{sz ? ` · ${sz}` : ""}</div>
+                                </div>
+                                <button onClick={() => downloadFile(f)} disabled={!hasUrl} title={t("file.download")}
+                                  style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 14, padding: 0, fontFamily: "inherit" }}>↓</button>
+                                {isOwner && (
+                                  briefDelPath === f.dropboxPath ? (
+                                    <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                                      <button onClick={() => f.dropboxPath && deleteBriefFile(f.dropboxPath)} style={{ padding: "3px 8px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: RED, border: "none", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.confirm")}</button>
+                                      <button onClick={() => setBriefDelPath(null)} style={{ padding: "3px 8px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => setBriefDelPath(f.dropboxPath ?? null)} title={t("file.delete")}
+                                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "3px 7px", flexShrink: 0, fontFamily: "inherit" }}>🗑</button>
+                                  )
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
