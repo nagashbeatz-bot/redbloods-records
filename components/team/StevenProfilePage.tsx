@@ -80,25 +80,43 @@ function detectRole(name: string): FileRole {
   return "mix";
 }
 
-// Display role — read from the role written into the name, so the user's pick
-// wins over any keyword in the (no-longer-stored) original filename:
-//   NEW clean format  "… - {RoleEn}[ n].{ext}"     → the trailing role segment.
-//   OLD format        "… - {RoleEn} - {original}"  → the earliest role segment.
-//   older / Hebrew                                 → detectRole fallback.
+// Display role — read from the role written into the stored name (the user's pick
+// wins; the original filename is no longer stored). Handles every historical
+// format:
+//   OLD "… - {RoleEn} - {original}"  → earliest explicit " - Role - " segment.
+//   a574bb6 "… - {RoleEn}[ n]"       → trailing " - Role".
+//   NEW space "{proj} {label}[ {RoleEn}][ n]" → trailing " Role" (zip/rar → stems).
+//   02823c9 Hebrew role word / plain mix → Hebrew match, else default mix.
 function roleOfFile(name: string): FileRole {
   const n = name || "";
   const noExt = n.replace(/\.[^.]+$/, "");
-  const tail = noExt.match(/ - (mix|acapella|instrumental|stems)(?: \d+)?$/i);
-  if (tail) return tail[1].toLowerCase() as FileRole;
+  const low = noExt.toLowerCase();
+  // 1) middle " - Role - " (earliest wins over a role word in a trailing original name)
   const segs: [FileRole, string][] = [
     ["mix", " - mix - "], ["acapella", " - acapella - "],
     ["instrumental", " - instrumental - "], ["stems", " - stems - "],
   ];
-  const low = n.toLowerCase();
   let bestIdx = Infinity;
   let bestRole: FileRole | null = null;
   for (const [role, seg] of segs) { const i = low.indexOf(seg); if (i >= 0 && i < bestIdx) { bestIdx = i; bestRole = role; } }
-  return bestRole ?? detectRole(n);
+  if (bestRole) return bestRole;
+  // 2) trailing role, either " - Role" (old clean) or " Role" (new space format)
+  if (/\.(zip|rar|7z)$/i.test(n)) return "stems";
+  const tail = noExt.match(/[ ](?:- )?(mix|acapella|instrumental|stems)(?: \d+)?$/i);
+  if (tail) return tail[1].toLowerCase() as FileRole;
+  // 3) Hebrew role words (older files)
+  if (/אקפלה|אקאפלה|ווקאל|וקאל|שירה/.test(n)) return "acapella";
+  if (/אינסטרומנטל|אינסטרו|ביט/.test(n)) return "instrumental";
+  if (/ערוצים/.test(n)) return "stems";
+  return "mix";
+}
+
+// Clean display name shown in the UI (player title, file rows) — built from the
+// VIEWER-facing project name + version label + language-translated role (a plain
+// mix shows no role word). NEVER the stored Dropbox/original filename.
+function fileDisplayName(project: string, label: string, role: FileRole, lang: Lang): string {
+  const rl = role === "mix" ? "" : roleLabel(role, lang);
+  return [project, label, rl].filter(Boolean).join(" ");
 }
 
 type RoledVersion = MixVersion & { role: FileRole };
@@ -1428,11 +1446,13 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
                   {!selectedGroup ? (
                     <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "8px 0" }}>—</div>
-                  ) : selectedGroup.files.map(f => (
+                  ) : selectedGroup.files.map(f => {
+                    const dName = fileDisplayName(work.project, selectedGroup.label, f.role, lang);
+                    return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
-                      <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[f.role]}22`, color: ROLE_COLOR[f.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>🎵</span>
+                      <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[f.role]}22`, color: ROLE_COLOR[f.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{isAudioName(f.fileName) ? "🎵" : "📦"}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div title={f.fileName} style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{f.fileName}</div>
+                        <div title={dName} style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{dName}</div>
                         <div style={{ fontSize: 9.5, color: MUTED, marginTop: 1 }}>{roleLabel(f.role, lang)}{f.fileSize ? ` · ${fmtBytes(f.fileSize)}` : ""}</div>
                       </div>
                       <a href={f.url} target="_blank" rel="noopener noreferrer" title={t.vDownload}
@@ -1440,7 +1460,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3L16.7 12 12 16.7 7.3 12l1.4-1.7L12 13.6V3zM5 19h14v2H5z"/></svg>
                       </a>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1477,7 +1498,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                             key={f.id}
                             ref={f.id === playerPrimaryId ? playerRef : undefined}
                             url={f.url}
-                            title={f.fileName}
+                            title={fileDisplayName(work.project, selectedGroup.label, f.role, lang)}
                             roleLabel={roleLabel(f.role, lang)}
                             roleColor={ROLE_COLOR[f.role]}
                             compact={f.id !== playerPrimaryId}

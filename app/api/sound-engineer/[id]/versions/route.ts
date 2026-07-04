@@ -124,18 +124,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Mix Versions (no per-label subfolder); uniqueness comes from the unique
     // label baked into the file name.
     const safeLabel     = sanitizeFolder(effectiveLabel) || "Mix";
-    // Clean, uniform name: "{projectName} - {versionLabel} - {roleEn}.{ext}". The
-    // ORIGINAL uploaded filename is NEVER included (only its extension is reused).
-    // projectName is the ORIGINAL project (never work_title / Steven display);
-    // filter(Boolean) drops it for standalone works so there's no leading " - ".
-    // Same role+ext already in this version → append " 2"/" 3" (autorename is the
-    // extra safety net). The role picker's choice drives roleEn.
+    // Clean, space-separated name: "{originalProjectName} {versionLabel}[ {RoleEn}].{ext}".
+    // The ORIGINAL uploaded filename is NEVER included (only its extension is reused).
+    // projectName is the ORIGINAL project (projects.name — never work_title / Steven
+    // display); dropped for standalone works (no leading space). A plain MIX omits
+    // the role word; acapella/instrumental/stems include it. On a same-name clash
+    // append " {RoleEn} {n}" (mix gets its word only when numbered), e.g.
+    // "פפארצי Mix 1 Mix 2.wav" / "פפארצי Mix 1 Acapella 2.mp3"; autorename is the net.
     const roleEn        = resolveRoleEn(roleParam, file.name);
-    const roleBase      = [projectName, effectiveLabel, roleEn]
-      .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || safeLabel;
-    let cleanFileName   = ext ? `${roleBase}.${ext}` : roleBase;
+    const projLabel     = [projectName, effectiveLabel].map(s => sanitizeFolder(s)).filter(Boolean).join(" ") || safeLabel;
+    const withRole      = [projLabel, sanitizeFolder(roleEn)].filter(Boolean).join(" ");
+    const baseName      = roleEn === "Mix" ? projLabel : withRole; // plain mix → no role word
+    let cleanFileName   = ext ? `${baseName}.${ext}` : baseName;
     for (let n = 2; existingNames.has(cleanFileName); n++) {
-      cleanFileName = ext ? `${roleBase} ${n}.${ext}` : `${roleBase} ${n}`;
+      const numbered = `${withRole} ${n}`; // numbered files always carry the role word
+      cleanFileName = ext ? `${numbered}.${ext}` : numbered;
     }
 
     const folder      = mixVersionsFolder({ projectId, artist, projectName, workId });
