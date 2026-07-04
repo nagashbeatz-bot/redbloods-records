@@ -991,12 +991,6 @@ export default function StevenProfilePage() {
                 </div>
               )}
             </div>
-            <div style={sectionCard}>
-              <div style={cardHead}>{t.recentFiles}</div>
-              {loading
-                ? <RowsSkeleton rows={3} height={38} pad="14px 18px" />
-                : <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noRecentFiles}</div>}
-            </div>
           </div>
         </div>
       </div>
