@@ -327,7 +327,7 @@ const TR = {
     kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid",
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid", payDateTitle: "Payment date", payDateField: "Payment date",
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
-    soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Job", noJobs: "No Steven jobs yet",
+    soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Work", noJobs: "No Steven jobs yet",
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
@@ -1789,19 +1789,10 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 <div style={{ padding: "6px 16px 14px" }}>
                   {detailRow(t.vName, <span style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedGroup?.label ?? "—"}</span>)}
                   {detailRow(t.vCreator, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{primary?.uploadedBy || "Steven"}</span>)}
-                  {detailRow(t.status, primary
-                    ? <InlineSelect<string> value={primary.status} display={vStatusLabel(primary.status, lang)} color={vStatusColor(primary.status)} options={VSTATUS_OPTIONS.map(o => ({ value: o, label: vStatusLabel(o, lang), color: vStatusColor(o) }))} onChange={v => setVersionStatus(primary, v)} />
-                    : <span style={{ fontSize: 12.5, color: MUTED }}>—</span>)}
                   {detailRow(t.vCreatedAt, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT, direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{primary ? fmtDateTime(primary.createdAt) : "—"}</span>)}
                   {detailRow(t.vUpdatedAt, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT, direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{primary ? fmtDateTime(primary.updatedAt) : "—"}</span>)}
                   {detailRow(t.vFileCount, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{selectedGroup ? `${selectedGroup.files.length} ${lang === "en" ? "files" : "קבצים"}` : "—"}</span>)}
                   {detailRow(t.vTotalSize, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{totalSize > 0 ? fmtBytes(totalSize) : "—"}</span>)}
-                  {primary && (
-                    <button onClick={() => setVersionStatus(primary, "מאושר")} disabled={primary.status === "מאושר"}
-                      style={{ width: "100%", marginTop: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: primary.status === "מאושר" ? "default" : "pointer", background: primary.status === "מאושר" ? "rgba(255,255,255,0.04)" : `${BRAND}16`, border: `1px solid ${primary.status === "מאושר" ? BDR2 : BRAND + "55"}`, color: primary.status === "מאושר" ? MUTED : BRAND }}>
-                      ✓ {t.markApproved}
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -1811,7 +1802,10 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 <div style={{ padding: "10px 16px 12px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px", alignItems: "start" }}>
                     {field(t.workType, <InlineSelect<WorkType> value={work.workType} display={wtLabel(work.workType, lang)} color={TEXT2} options={WORK_TYPES.map(o => ({ value: o, label: wtLabel(o, lang), color: TEXT2 }))} onChange={v => onChange({ workType: v })} />)}
-                    {field(t.status, <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))} onChange={v => onChange({ status: v })} />)}
+                    {field(t.status, <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={[
+                      { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
+                      { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
+                    ]} onChange={v => onChange({ status: v })} />)}
                     {field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
                     {field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
                     {field(t.startDate, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
