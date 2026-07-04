@@ -969,14 +969,14 @@ function VictorProjectDrawer({
 
   // Upload ONE file, tagged with the batch's version label. Progress reflects
   // the whole batch ((completed + this-file-fraction) / total).
-  function uploadOne(file: File, folder: string, versionLabel: string, idx: number, total: number): Promise<void> {
+  function uploadOne(file: File, folder: string, versionLabel: string | null, idx: number, total: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("workId", work.id);
       fd.append("dropboxFolder", folder);
       fd.append("subFolder", "Production");
-      fd.append("versionLabel", versionLabel);
+      if (versionLabel) fd.append("versionLabel", versionLabel); // omit → file lands under "Older files"
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/dropbox/vendor-upload");
       xhr.upload.onprogress = (e) => {
@@ -1005,7 +1005,17 @@ function VictorProjectDrawer({
     setUploading(true);
     setUploadProgress(0);
     setUploadError(null);
-    const versionLabel = `V${nextVersionNumber()}`;
+    // Version rule: a NEW round is created only when the batch contains audio.
+    //  • has audio           → V{max+1} (new version; any ZIP/RAR picked with it joins it)
+    //  • no audio, has ZIP/RAR → join latest V{max}, or V1 if no version exists yet
+    //  • no audio, no ZIP/RAR  → join latest V{max}, or (no version) leave unlabeled → "Older files"
+    const max = maxVersionNumber();
+    const hasAudio = files.some(f => isAudioFile(f.name));
+    const hasPackage = files.some(f => /\.(zip|rar|7z)$/i.test(f.name));
+    const versionLabel: string | null =
+      hasAudio    ? `V${max + 1}`
+      : hasPackage ? (max > 0 ? `V${max}` : "V1")
+      :              (max > 0 ? `V${max}` : null);
     try {
       // Auto-create the Dropbox folder on first upload (no manual button).
       const folder = await ensureDropboxFolder();
@@ -1013,7 +1023,9 @@ function VictorProjectDrawer({
       for (let i = 0; i < files.length; i++) {
         await uploadOne(files[i], folder, versionLabel, i, files.length);
       }
-      setOpenGroups({}); // new version = latest = open by default; older collapse
+      // Reveal where the files landed: the version (latest) opens by default;
+      // an unlabeled batch opens the "Older files" bucket instead.
+      setOpenGroups(versionLabel ? {} : { __untagged__: true });
       onRefresh?.();
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("err.upload");
@@ -1134,14 +1146,15 @@ function VictorProjectDrawer({
 
   // Next version number for a NEW upload batch = max seen (stored label OR
   // parsed filename) + 1; starts at V1 when there are none.
-  function nextVersionNumber(): number {
+  // Highest existing version number (stored label OR parsed filename); 0 if none.
+  function maxVersionNumber(): number {
     let max = 0;
     for (const f of effectiveFiles) {
       const src = (f.versionLabel && /^V\d+$/i.test(f.versionLabel)) ? f.versionLabel : (parseVersionKey(f.name) ?? "");
       const m = /^V(\d+)$/i.exec(src);
       if (m) max = Math.max(max, Number(m[1]));
     }
-    return max + 1;
+    return max;
   }
 
   // Flat audio playlist in display order (Latest group first) → prev/next.
