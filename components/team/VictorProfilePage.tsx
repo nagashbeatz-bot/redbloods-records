@@ -670,6 +670,13 @@ function segLabel(seg: BriefSegment, t: (k: string) => string): string {
   return t(`seg.${seg.type}`);
 }
 
+// Abbreviated label for medium-width blocks (e.g. "פז׳ 1" / "Ch1"). Localized
+// via i18n like segLabel, so Victor never gets Hebrew inside a narrow block.
+function segShortLabel(seg: BriefSegment, t: (k: string) => string): string {
+  if (seg.type === "custom") return (seg.label ?? "").trim() || t("seg.s.custom");
+  return t(`seg.s.${seg.type}`);
+}
+
 const MIN_SEG = 4;      // seconds — smallest allowed block
 const DEFAULT_LEN = 20; // seconds — default length of a freshly-added block
 
@@ -756,12 +763,24 @@ function BriefSegmentPlayer({
   const [advanced, setAdvanced] = useState(false);
   const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
   const laneRef = useRef<HTMLDivElement | null>(null);
+  const [laneW, setLaneW] = useState(0); // lane px width → decide label detail per block
   const dragRef = useRef<null | { id: string; mode: "move" | "l" | "r"; startX: number; s0: number; e0: number; moved: boolean }>(null);
   const segsRef = useRef(segs); segsRef.current = segs;
   const formDir: React.CSSProperties["direction"] = lang === "he" ? "rtl" : "ltr";
 
   // Re-seed when switching to a different brief file (dropboxPath identity).
   useEffect(() => { setSegs(normalizeSegs(file.segments ?? [], file.durationSeconds ?? 0)); setActiveId(null); }, [file.dropboxPath]);
+
+  // Track the lane's pixel width so each block can pick full / short / dot label
+  // by how much room it actually has (browser ResizeObserver — no library).
+  useEffect(() => {
+    const el = laneRef.current; if (!el) return;
+    const update = () => setLaneW(el.getBoundingClientRect().width);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // One stable <audio>; same single-active guard as the version player, so
   // brief audio and version audio can never play at the same time.
@@ -952,14 +971,22 @@ function BriefSegmentPlayer({
             const left = dur ? Math.min(100, (seg.start / dur) * 100) : 0;
             const width = dur ? Math.max(4, ((seg.end - seg.start) / dur) * 100) : 0;
             const active = seg.id === activeId;
+            // Fit the label to the block's real px width: full → short → dot.
+            // No cut-off text: too narrow shows just a clean dot, and the full
+            // name+time is always in the tooltip and the selected toolbar.
+            const wPx = (width / 100) * laneW;
+            const tier = wPx >= 62 ? "full" : wPx >= 34 ? "short" : "dot";
+            const pad = tier === "full" ? "0 10px" : tier === "short" ? "0 5px" : "0";
             return (
               <div key={seg.id}
                 onPointerDown={isOwner ? (e) => beginDrag(e, seg.id, "move") : undefined}
-                onClick={isOwner ? undefined : () => seekTo(seg.start)}
+                onClick={isOwner ? undefined : () => { seekTo(seg.start); setActiveId(seg.id); }}
                 title={`${segLabel(seg, t)} · ${fmt(seg.start)}–${fmt(seg.end)}`}
-                style={{ position: "absolute", top: 4, bottom: 4, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "4D" : "2E"}`, border: `1px solid ${seg.color}`, boxShadow: active ? `0 0 0 2px ${seg.color}66, 0 2px 10px rgba(0,0,0,0.45)` : "none", borderRadius: 7, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: isOwner ? "grab" : "pointer", padding: "0 12px", userSelect: "none", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" } as React.CSSProperties}>
+                style={{ position: "absolute", top: 4, bottom: 4, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "4D" : "2E"}`, border: `1px solid ${seg.color}`, boxShadow: active ? `0 0 0 2px ${seg.color}66, 0 2px 10px rgba(0,0,0,0.45)` : "none", borderRadius: 7, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: isOwner ? "grab" : "pointer", padding: pad, userSelect: "none", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" } as React.CSSProperties}>
                 {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "l")} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 9, cursor: "ew-resize", borderRadius: "7px 0 0 7px", background: `${seg.color}55` }} />}
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none" }}>{segLabel(seg, t)}</span>
+                {tier === "dot"
+                  ? <span style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.92)", boxShadow: active ? `0 0 0 2px ${seg.color}` : "none", flexShrink: 0, pointerEvents: "none" }} />
+                  : <span style={{ overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none" }}>{tier === "full" ? segLabel(seg, t) : segShortLabel(seg, t)}</span>}
                 {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "r")} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 9, cursor: "ew-resize", borderRadius: "0 7px 7px 0", background: `${seg.color}55` }} />}
               </div>
             );
@@ -1026,6 +1053,15 @@ function BriefSegmentPlayer({
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Victor read-only: tapping a block (no hover on mobile) surfaces its
+            full localized name + time here — never edit controls. */}
+        {!isOwner && activeSeg && (
+          <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", padding: "3px 9px", borderRadius: 7, background: `${activeSeg.color}22`, border: `1px solid ${activeSeg.color}` }}>{segLabel(activeSeg, t)}</span>
+            <span style={{ fontSize: 10, color: MUTED }}>{fmt(activeSeg.start)}–{fmt(activeSeg.end)}</span>
           </div>
         )}
       </div>
