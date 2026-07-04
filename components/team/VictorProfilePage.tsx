@@ -2204,6 +2204,66 @@ export default function VictorProfilePage() {
   const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
   const [roleChecked, setRoleChecked] = useState(false); // /api/me settled (success or fail)
   const isOwner = myRole === "owner";
+
+  // ── Profile avatar (owner + Victor can edit; global via settings/Dropbox) ──
+  const [avatar, setAvatar] = useState<{ imageUrl: string | null; zoom: number; posX: number; posY: number }>({ imageUrl: null, zoom: 1, posX: 50, posY: 50 });
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [avatarHover, setAvatarHover] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarErr, setAvatarErr] = useState(false);
+  const [dImg, setDImg] = useState<string | null>(null);   // editor draft image url
+  const [dZoom, setDZoom] = useState(1);
+  const [dPosX, setDPosX] = useState(50);
+  const [dPosY, setDPosY] = useState(50);
+  const avatarFileRef = useRef<HTMLInputElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/vendor/victor/avatar")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d) setAvatar({ imageUrl: d.imageUrl ?? null, zoom: d.zoom ?? 1, posX: d.posX ?? 50, posY: d.posY ?? 50 }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  function openAvatarEditor() {
+    setDImg(avatar.imageUrl); setDZoom(avatar.zoom); setDPosX(avatar.posX); setDPosY(avatar.posY);
+    setAvatarErr(false); setAvatarOpen(true);
+  }
+  async function uploadAvatar(file: File | null) {
+    if (!file || avatarUploading) return;
+    setAvatarUploading(true); setAvatarErr(false);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const res = await fetch("/api/vendor/victor/avatar", { method: "POST", body: fd });
+      const d = await res.json().catch(() => null);
+      if (res.ok && d?.ok) {
+        setDImg(d.imageUrl ?? null); setDZoom(d.zoom ?? 1); setDPosX(d.posX ?? 50); setDPosY(d.posY ?? 50);
+        setAvatar({ imageUrl: d.imageUrl ?? null, zoom: d.zoom ?? 1, posX: d.posX ?? 50, posY: d.posY ?? 50 });
+      } else setAvatarErr(true);
+    } catch { setAvatarErr(true); }
+    finally { setAvatarUploading(false); if (avatarFileRef.current) avatarFileRef.current.value = ""; }
+  }
+  async function saveAvatarCrop() {
+    if (avatarSaving) return;
+    setAvatarSaving(true);
+    try {
+      const res = await fetch("/api/vendor/victor/avatar", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zoom: dZoom, posX: dPosX, posY: dPosY }),
+      });
+      const d = await res.json().catch(() => null);
+      if (res.ok && d) setAvatar({ imageUrl: d.imageUrl ?? avatar.imageUrl, zoom: d.zoom, posX: d.posX, posY: d.posY });
+    } catch { /* keep prior */ }
+    finally { setAvatarSaving(false); setAvatarOpen(false); }
+  }
+  // Drag-to-pan on the editor preview (background-position %).
+  function avatarPan(dx: number, dy: number, size: number) {
+    setDPosX((x) => Math.max(0, Math.min(100, x - (dx / size) * 100)));
+    setDPosY((y) => Math.max(0, Math.min(100, y - (dy / size) * 100)));
+  }
   const roleLoading = myRole === null; // true only until role is known (cache or /api/me)
 
   // Restore the last-known role from cache BEFORE paint so the owner shell (or
@@ -2444,15 +2504,35 @@ export default function VictorProfilePage() {
           padding: isMobile ? "16px 16px" : "22px 28px", display: "flex", alignItems: "center",
           gap: isMobile ? 14 : 24, marginBottom: 18, flexWrap: isMobile ? "wrap" : "nowrap",
         }}>
-          {/* Avatar */}
-          <div style={{
-            width: isMobile ? 54 : 76, height: isMobile ? 54 : 76, borderRadius: "50%", flexShrink: 0,
-            background: `linear-gradient(135deg, ${PURPLE}44 0%, #1a1035 100%)`,
-            border: `2px solid ${PURPLE}55`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: isMobile ? 22 : 28, fontWeight: 900, color: PURPLE,
-            boxShadow: `0 0 24px ${PURPLE}22`,
-          }}>V</div>
+          {/* Avatar — click / hover to edit (owner or Victor). Shows the saved
+              image with its crop, or the "V" placeholder. */}
+          <div
+            onClick={openAvatarEditor}
+            onMouseEnter={() => setAvatarHover(true)}
+            onMouseLeave={() => setAvatarHover(false)}
+            title={t("avatar.edit")}
+            style={{
+              width: isMobile ? 54 : 76, height: isMobile ? 54 : 76, borderRadius: "50%", flexShrink: 0,
+              background: `linear-gradient(135deg, ${PURPLE}44 0%, #1a1035 100%)`,
+              border: `2px solid ${PURPLE}55`, position: "relative", overflow: "hidden",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: isMobile ? 22 : 28, fontWeight: 900, color: PURPLE,
+              boxShadow: `0 0 24px ${PURPLE}22`, cursor: "pointer",
+            }}
+          >
+            {avatar.imageUrl ? (
+              <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${avatar.imageUrl})`, backgroundSize: "cover", backgroundRepeat: "no-repeat", backgroundPosition: `${avatar.posX}% ${avatar.posY}%`, transform: `scale(${avatar.zoom})` }} />
+            ) : "V"}
+            {/* Edit overlay — full on desktop hover, small badge on mobile. */}
+            {(avatarHover && !isMobile) ? (
+              <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, color: "#fff" }}>
+                <span style={{ fontSize: 15 }}>📷</span>
+                <span style={{ fontSize: 8.5, fontWeight: 700, textAlign: "center", lineHeight: 1.15, padding: "0 4px" }}>{t("avatar.edit")}</span>
+              </div>
+            ) : isMobile ? (
+              <div style={{ position: "absolute", bottom: 0, right: 0, width: 20, height: 20, borderRadius: "50%", background: PURPLE, border: "2px solid #0A0A0D", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>📷</div>
+            ) : null}
+          </div>
 
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -2992,6 +3072,65 @@ export default function VictorProfilePage() {
     )}
 
     {/* ── Salary edit modal (centered, dark, Redbloods style) ── */}
+    {/* Avatar editor — owner or Victor. Non-destructive: source in Dropbox, crop
+        (zoom/position) saved as metadata; opens with the last state. */}
+    {avatarOpen && (
+      <div
+        onClick={() => { if (!avatarUploading && !avatarSaving) setAvatarOpen(false); }}
+        style={{ position: "fixed", inset: 0, zIndex: 100060, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          dir={lang === "he" ? "rtl" : "ltr"}
+          style={{ width: "min(360px, 94vw)", background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, padding: "22px 22px 20px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}
+        >
+          <div style={{ fontSize: 15, fontWeight: 900, color: TEXT, marginBottom: 16, textAlign: "center" }}>{t("avatar.title")}</div>
+
+          {/* Circular editor preview — drag to pan */}
+          <div
+            onPointerDown={(e) => { if (!dImg) return; dragRef.current = { x: e.clientX, y: e.clientY }; try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ } }}
+            onPointerMove={(e) => { if (!dragRef.current || e.buttons !== 1) return; const dx = e.clientX - dragRef.current.x; const dy = e.clientY - dragRef.current.y; dragRef.current = { x: e.clientX, y: e.clientY }; avatarPan(dx, dy, 220); }}
+            onPointerUp={() => { dragRef.current = null; }}
+            style={{ width: 220, height: 220, margin: "0 auto", borderRadius: "50%", overflow: "hidden", position: "relative", border: `2px solid ${PURPLE}55`, background: `linear-gradient(135deg, ${PURPLE}33, #14101f)`, cursor: dImg ? "grab" : "default", touchAction: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            {dImg ? (
+              <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${dImg})`, backgroundSize: "cover", backgroundRepeat: "no-repeat", backgroundPosition: `${dPosX}% ${dPosY}%`, transform: `scale(${dZoom})` }} />
+            ) : (
+              <div style={{ color: PURPLE, fontSize: 40, fontWeight: 900 }}>V</div>
+            )}
+            {avatarUploading && (
+              <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700 }}>…</div>
+            )}
+          </div>
+
+          {/* Zoom */}
+          {dImg && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 10.5, color: MUTED, fontWeight: 700, marginBottom: 5, display: "flex", justifyContent: "space-between" }}>
+                <span>{t("avatar.zoom")}</span><span style={{ fontSize: 9, color: MUTED }}>{t("avatar.drag")}</span>
+              </div>
+              <input type="range" min={1} max={3} step={0.01} value={dZoom} onChange={(e) => setDZoom(Number(e.target.value))} style={{ width: "100%", accentColor: PURPLE, cursor: "pointer", direction: "ltr" }} />
+            </div>
+          )}
+
+          <input ref={avatarFileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: "none" }} onChange={(e) => uploadAvatar(e.target.files?.[0] ?? null)} />
+
+          {avatarErr && <div style={{ fontSize: 11, color: RED, marginTop: 10, textAlign: "center" }}>{t("avatar.uploadFail")}</div>}
+
+          <button
+            onClick={() => avatarFileRef.current?.click()}
+            disabled={avatarUploading}
+            style={{ width: "100%", marginTop: 14, padding: "9px 0", borderRadius: 10, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, fontSize: 12.5, fontWeight: 800, cursor: avatarUploading ? "default" : "pointer", fontFamily: "inherit" }}
+          >📷 {dImg ? t("avatar.replace") : t("avatar.choose")}</button>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            <button onClick={() => setAvatarOpen(false)} disabled={avatarUploading || avatarSaving} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+            <button onClick={saveAvatarCrop} disabled={avatarUploading || avatarSaving || !dImg} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: (avatarSaving || !dImg) ? "default" : "pointer", fontFamily: "inherit", background: (avatarSaving || !dImg) ? MUTED : PURPLE }}>{avatarSaving ? "…" : t("avatar.save")}</button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {salaryModalOpen && (
       <>
         <div
