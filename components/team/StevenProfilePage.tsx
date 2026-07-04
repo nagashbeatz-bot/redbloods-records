@@ -1476,14 +1476,9 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                     <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.uploadNewVersionBtn}</div>
                     <div style={{ fontSize: 10, color: MUTED }}>{t.uploadHint}</div>
                   </div>
-                  {/* Add file(s) to the SELECTED version */}
-                  <button
-                    onClick={() => { if (!uploading && selectedGroup) addFileInputRef.current?.click(); }}
-                    disabled={uploading || !selectedGroup}
-                    title={selectedGroup ? `${selectedGroup.label}` : undefined}
-                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "9px 12px", borderRadius: 10, fontFamily: "inherit", cursor: (uploading || !selectedGroup) ? "default" : "pointer", background: (uploading || !selectedGroup) ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.05)", border: `1px solid ${(uploading || !selectedGroup) ? BDR2 : BRAND + "45"}`, color: (uploading || !selectedGroup) ? MUTED : BRAND, opacity: uploading ? 0.6 : 1 }}>
-                    {t.addToVersionBtn}{selectedGroup ? `: ${selectedGroup.label}` : ""}
-                  </button>
+                  {/* "Add file to this version" now lives in the center "Version
+                      files" card header (it acts on the SELECTED version, not general
+                      upload). The hidden addFileInputRef input stays here. */}
                 </div>
               </div>
 
@@ -1537,9 +1532,20 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
             <div style={{ ...colWrap, order: narrow ? 1 : 2 }}>
               {/* Version files — up to 3 stacked players */}
               <div style={subCard}>
-                <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
-                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
+                <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
+                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
+                  </div>
+                  {selectedGroup && (
+                    <button
+                      onClick={() => { if (!uploading) addFileInputRef.current?.click(); }}
+                      disabled={uploading}
+                      title={selectedGroup.label}
+                      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 800, padding: "7px 12px", borderRadius: 9, fontFamily: "inherit", cursor: uploading ? "default" : "pointer", background: `${BRAND}14`, border: `1px solid ${BRAND}45`, color: BRAND, whiteSpace: "nowrap", opacity: uploading ? 0.6 : 1 }}>
+                      {t.addToVersionBtn}
+                    </button>
+                  )}
                 </div>
                 <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
                   {vLoadErr ? (
