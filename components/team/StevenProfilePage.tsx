@@ -112,10 +112,11 @@ function roleOfFile(name: string): FileRole {
 }
 
 // Clean display name shown in the UI (player title, file rows) — built from the
-// VIEWER-facing project name + version label + language-translated role (a plain
-// mix shows no role word). NEVER the stored Dropbox/original filename.
-function fileDisplayName(project: string, label: string, role: FileRole, lang: Lang): string {
-  const rl = role === "mix" ? "" : roleLabel(role, lang);
+// VIEWER-facing project name + version label + role. The role word is ALWAYS
+// English (Mix/Acapella/Instrumental/Stems) even in the Hebrew owner view, and a
+// plain mix shows no role word. NEVER the stored Dropbox/original filename.
+function fileDisplayName(project: string, label: string, role: FileRole): string {
+  const rl = role === "mix" ? "" : ROLE_LABEL[role].en;
   return [project, label, rl].filter(Boolean).join(" ");
 }
 
@@ -1447,7 +1448,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                   {!selectedGroup ? (
                     <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "8px 0" }}>—</div>
                   ) : selectedGroup.files.map(f => {
-                    const dName = fileDisplayName(work.project, selectedGroup.label, f.role, lang);
+                    const dName = fileDisplayName(work.project, selectedGroup.label, f.role);
                     return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
                       <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[f.role]}22`, color: ROLE_COLOR[f.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{isAudioName(f.fileName) ? "🎵" : "📦"}</span>
@@ -1498,7 +1499,7 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                             key={f.id}
                             ref={f.id === playerPrimaryId ? playerRef : undefined}
                             url={f.url}
-                            title={fileDisplayName(work.project, selectedGroup.label, f.role, lang)}
+                            title={fileDisplayName(work.project, selectedGroup.label, f.role)}
                             roleLabel={roleLabel(f.role, lang)}
                             roleColor={ROLE_COLOR[f.role]}
                             compact={f.id !== playerPrimaryId}
