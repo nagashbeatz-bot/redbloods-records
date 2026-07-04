@@ -63,7 +63,8 @@ export interface FileLink {
  *  view can localize to en/ru and never shows Hebrew. "custom" carries a free
  *  `label` typed by the owner. */
 export type BriefSegmentType =
-  | "intro" | "verse" | "prechorus" | "chorus" | "bridge" | "outro" | "custom";
+  | "intro" | "verse1" | "prechorus" | "chorus1" | "verse2" | "chorus3"
+  | "cpart" | "bridge" | "finalChorus" | "outro" | "custom";
 
 /** A colored structure region over a brief audio file's timeline. start/end are
  *  seconds into the track. Persisted inside brief_files jsonb (no dedicated DB). */

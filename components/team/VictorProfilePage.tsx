@@ -642,10 +642,23 @@ function AudioPlayer({
 // ── Brief structure segments — canonical types → preset colors + localized ─────
 //    labels. This is BRIEF-ONLY: separate <audio>, never touches versions /
 //    versionGroups / reviews. Owner edits; Victor is strictly read-only.
-const SEG_ORDER: BriefSegmentType[] = ["intro", "verse", "prechorus", "chorus", "bridge", "outro", "custom"];
+const SEG_ORDER: BriefSegmentType[] = ["intro", "verse1", "prechorus", "chorus1", "verse2", "chorus3", "cpart", "bridge", "finalChorus", "outro", "custom"];
+// Colors are consistent by musical role so Victor reads structure at a glance:
+// every verse shares one color, every chorus shares another.
+const VERSE_C = "#8B5CF6";   // all verses
+const CHORUS_C = "#F59E0B";  // all choruses
 const SEG_COLOR: Record<BriefSegmentType, string> = {
-  intro: "#38BDF8", verse: "#8B5CF6", prechorus: "#A78BFA", chorus: "#F59E0B",
-  bridge: "#EC4899", outro: "#10B981", custom: "#6B7280",
+  intro: "#3B82F6",
+  verse1: VERSE_C,
+  prechorus: "#06B6D4",
+  chorus1: CHORUS_C,
+  verse2: VERSE_C,
+  chorus3: CHORUS_C,
+  cpart: "#EC4899",
+  bridge: "#F43F5E",
+  finalChorus: CHORUS_C,
+  outro: "#10B981",
+  custom: "#6B7280",
 };
 // Decorative waveform heights — deterministic (no lib, no Math.random) so SSR
 // and client render identically (no hydration mismatch).
@@ -657,23 +670,42 @@ function segLabel(seg: BriefSegment, t: (k: string) => string): string {
   return t(`seg.${seg.type}`);
 }
 
-const MIN_SEG = 2;      // seconds — smallest allowed block
+const MIN_SEG = 4;      // seconds — smallest allowed block
 const DEFAULT_LEN = 20; // seconds — default length of a freshly-added block
 
-// Cascade-forward normalize: keep blocks as a sorted, non-overlapping sequence.
-// Each block starts at max(its own start, previous block's end); lengths kept;
-// clamped to [0, dur]. Pushing a block right shoves the following ones after it.
+// Cascade-forward normalize with a hard guarantee that EVERY block stays inside
+// [0, dur], ordered, non-overlapping, and ≥ MIN_SEG — so nothing overflows,
+// piles up at the end, or vanishes.
+//   • dur unknown yet → just order + de-overlap forward (no cap).
+//   • not enough room even at MIN each → equal slices (still all visible).
+//   • otherwise → forward pass that RESERVES MIN_SEG for every later block, so a
+//     block (or a cascade push) can never consume the space the rest needs.
 function normalizeSegs(list: BriefSegment[], dur: number): BriefSegment[] {
   const sorted = [...list].sort((a, b) => a.start - b.start);
-  let cursor = 0;
+  const n = sorted.length;
+  if (n === 0) return [];
+  if (dur <= 0) {
+    let cursor = 0;
+    return sorted.map(s => {
+      const len = Math.max(MIN_SEG, s.end - s.start);
+      const start = Math.max(s.start, cursor);
+      cursor = start + len;
+      return { ...s, start, end: start + len };
+    });
+  }
+  if (n * MIN_SEG >= dur) {
+    const slice = dur / n;
+    return sorted.map((s, i) => ({ ...s, start: i * slice, end: (i + 1) * slice }));
+  }
   const out: BriefSegment[] = [];
-  for (const s of sorted) {
-    let len = Math.max(MIN_SEG, s.end - s.start);
-    let start = Math.max(s.start, cursor);
-    if (dur > 0) {
-      start = Math.min(start, Math.max(0, dur - MIN_SEG));
-      len = Math.min(len, Math.max(MIN_SEG, dur - start));
-    }
+  let cursor = 0;
+  for (let i = 0; i < n; i++) {
+    const s = sorted[i];
+    const reserveAfter = (n - 1 - i) * MIN_SEG;      // room later blocks need at min
+    const maxStart = dur - MIN_SEG - reserveAfter;   // start early enough for all
+    const start = Math.min(Math.max(s.start, cursor), maxStart);
+    const maxLen = dur - reserveAfter - start;        // ≥ MIN_SEG (proven)
+    const len = Math.min(Math.max(MIN_SEG, s.end - s.start), maxLen);
     const end = start + len;
     out.push({ ...s, start, end });
     cursor = end;
@@ -825,11 +857,12 @@ function BriefSegmentPlayer({
     let start = Math.min(lastEnd, Math.max(0, d - MIN_SEG));
     let end = Math.min(d, start + DEFAULT_LEN);
     if (end - start < MIN_SEG) { start = Math.max(0, d - DEFAULT_LEN); end = d; }
+    // No label stored for custom → segLabel() falls back to the per-viewer
+    // localized "custom", so a Hebrew owner default never leaks to Victor. Only
+    // an explicit custom name (typed in advanced) is stored verbatim.
     const seg: BriefSegment = {
       id: (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `${start}-${end}-${segs.length}`,
-      type,
-      ...(type === "custom" ? { label: t("seg.custom") } : {}),
-      color: SEG_COLOR[type], start, end,
+      type, color: SEG_COLOR[type], start, end,
     };
     setActiveId(seg.id);
     persist(normalizeSegs([...segs, seg], d));
@@ -978,7 +1011,10 @@ function BriefSegmentPlayer({
             {activeSeg && advanced && (
               <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: CARD, border: `1px solid ${BDR2}`, direction: formDir, display: "flex", flexDirection: "column", gap: 8 }}>
                 {activeSeg.type === "custom" && (
-                  <input value={activeSeg.label ?? ""} onChange={e => editActiveLocal({ label: e.target.value })} onBlur={flush} placeholder={t("seg.name")} maxLength={40} style={{ ...inputStyle, direction: formDir }} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <input value={activeSeg.label ?? ""} onChange={e => editActiveLocal({ label: e.target.value })} onBlur={flush} placeholder={t("seg.name")} maxLength={40} style={{ ...inputStyle, direction: formDir }} />
+                    <span style={{ fontSize: 9, color: MUTED }}>{t("seg.customNote")}</span>
+                  </div>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
                   {(["start", "end"] as const).map(key => (
