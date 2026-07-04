@@ -108,6 +108,7 @@ export interface MixComment {
   timestampSeconds: number;
   commentText:      string;
   author:           string | null;
+  role:             string | null;   // "mix" | "acapella" | "instrumental" | "stems" | null (legacy = shared/כללי)
   createdAt:        string;
   updatedAt:        string;
 }

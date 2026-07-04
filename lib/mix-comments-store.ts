@@ -14,6 +14,7 @@ function mapRow(r: Record<string, unknown>): MixComment {
     timestampSeconds: Number(r.timestamp_seconds ?? 0),
     commentText:      (r.comment_text     as string) ?? "",
     author:           (r.author           as string | null) ?? null,
+    role:             (r.role             as string | null) ?? null,
     createdAt:        (r.created_at        as string) ?? "",
     updatedAt:        (r.updated_at        as string) ?? "",
   };
@@ -37,6 +38,7 @@ export async function createMixComment(fields: {
   timestampSeconds: number;
   commentText:      string;
   author?:          string | null;
+  role?:            string | null;
 }): Promise<MixComment> {
   const ts   = Number.isFinite(fields.timestampSeconds) && fields.timestampSeconds > 0 ? fields.timestampSeconds : 0;
   const text = (fields.commentText ?? "").trim();
@@ -49,6 +51,7 @@ export async function createMixComment(fields: {
       timestamp_seconds: ts,
       comment_text:      text,
       author:            fields.author ?? null,
+      role:              fields.role ?? null,
     })
     .select()
     .single();

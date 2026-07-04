@@ -197,8 +197,6 @@ function fmtRelative(iso: string, lang: Lang): string {
   const d = Math.floor(h / 24);
   return lang === "en" ? `${d}d ago` : `לפני ${d} ימים`;
 }
-/** Cycling accent colors for comment index badges. */
-const COMMENT_COLORS = ["#EF4444", "#A855F7", "#F59E0B", "#3B82F6", "#10B981"];
 
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
@@ -1178,7 +1176,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
         </div>
         {dur > 0 && <div style={{ position: "absolute", top: -2, bottom: 0, left: `${pct}%`, width: 2, background: "#fff", opacity: 0.55, pointerEvents: "none" }} />}
         {dur > 0 && comments.map((c, i) => {
-          const col  = COMMENT_COLORS[i % COMMENT_COLORS.length];
+          const col  = roleColor; // each player shows only its own role's comments → role-colored markers
           const left = Math.min(100, Math.max(0, (c.timestampSeconds / dur) * 100));
           const show = hoveredC === c.id || pinnedC === c.id;
           return (
@@ -1262,7 +1260,10 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText]   = useState("");
   const [delC, setDelC]           = useState<MixComment | null>(null);
-  const playerRef = useRef<VersionPlayerHandle | null>(null);
+  const [addRole, setAddRole]     = useState<FileRole | null>(null); // role the new comment attaches to
+  const [rolePick, setRolePick]   = useState(false);                 // fallback picker when no active player
+  const playerRefs = useRef<Record<string, VersionPlayerHandle | null>>({}); // per-file player handles (by file id)
+  const lastActiveIdRef = useRef<string | null>(null);               // file id of the last-played stacked player
   const byTs = (a: MixComment, b: MixComment) => a.timestampSeconds - b.timestampSeconds;
 
   // Load the selected logical version's comments (keyed on the group's primary
@@ -1270,7 +1271,8 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
   useEffect(() => {
     if (!sel) { setComments(null); return; }
     let alive = true;
-    setComments(null); setCLoadErr(false); setAdding(false); setEditingId(null);
+    setComments(null); setCLoadErr(false); setAdding(false); setEditingId(null); setRolePick(false);
+    lastActiveIdRef.current = null;
     fetch(`/api/sound-engineer/versions/${sel}/comments`)
       .then(r => r.json())
       .then(d => { if (!alive) return; if (d.ok) setComments((d.comments ?? []).slice().sort(byTs)); else setCLoadErr(true); })
@@ -1278,9 +1280,20 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     return () => { alive = false; };
   }, [sel]);
 
+  // Decide which role the new comment belongs to: the last-played stacked player,
+  // else the sole audio player, else fall back to a small role picker.
   function openAddComment() {
-    const ts = Math.max(0, Math.floor(playerRef.current?.getCurrentTime() ?? 0));
-    setAddTs(ts); setNewText(""); setAdding(true);
+    const active = lastActiveIdRef.current ? audioFiles.find(f => f.id === lastActiveIdRef.current) : null;
+    const target = active ?? (audioFiles.length === 1 ? audioFiles[0] : null);
+    if (!target) { setNewText(""); setAdding(false); setRolePick(true); return; }
+    const ts = Math.max(0, Math.floor(playerRefs.current[target.id]?.getCurrentTime() ?? 0));
+    setAddRole(target.role); setAddTs(ts); setNewText(""); setRolePick(false); setAdding(true);
+  }
+  // Picker choice → open the add form for that role (time from the primary player if any).
+  function chooseAddRole(role: FileRole) {
+    const pid = playerPrimaryId;
+    const ts = Math.max(0, Math.floor((pid ? playerRefs.current[pid]?.getCurrentTime() : 0) ?? 0));
+    setAddRole(role); setAddTs(ts); setNewText(""); setRolePick(false); setAdding(true);
   }
   function saveNewComment() {
     const text = newText.trim();
@@ -1288,7 +1301,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     setSavingC(true);
     fetch(`/api/sound-engineer/versions/${sel}/comments`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ timestampSeconds: addTs, commentText: text }),
+      body: JSON.stringify({ timestampSeconds: addTs, commentText: text, role: addRole }),
     })
       .then(r => r.json())
       .then(d => {
@@ -1461,6 +1474,20 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
   const groups = useMemo(() => groupVersions(versions ?? []), [versions]);
   const selectedGroup = groups.find(g => g.files.some(f => f.id === sel)) ?? null;
   const primary = selectedGroup?.primary ?? null;
+
+  // Audio players in the selected version (archives are download-only rows, not players).
+  const audioFiles = useMemo(() => (selectedGroup?.files ?? []).filter(f => isAudioName(f.fileName)), [selectedGroup]);
+  const playerPrimaryId = useMemo(() => (audioFiles.find(f => f.id === primary?.id) ?? audioFiles[0])?.id, [audioFiles, primary]);
+  // A comment's logical role, or null = legacy/shared (כללי).
+  const roleOfComment = (c: MixComment): FileRole | null =>
+    (c.role === "mix" || c.role === "acapella" || c.role === "instrumental" || c.role === "stems") ? c.role : null;
+  // Bottom-list playback: the player matching the comment's role, else the primary player.
+  const playerForComment = (c: MixComment): VersionPlayerHandle | null => {
+    const r = roleOfComment(c);
+    const f = r ? audioFiles.find(af => af.role === r) : null;
+    const id = f?.id ?? playerPrimaryId;
+    return id ? (playerRefs.current[id] ?? null) : null;
+  };
 
   // Mix Versions folder = the directory the versions physically live in. Every
   // version is stored DIRECTLY under it, so the parent dir of any version's
@@ -1667,22 +1694,21 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                   ) : selectedGroup ? (() => {
                     // Players ONLY for audio files. Archives (stems/zip/rar) live
                     // in "project files" as download rows, never as a player.
-                    const audioFiles = selectedGroup.files.filter(f => isAudioName(f.fileName));
                     const stemsCount = selectedGroup.files.length - audioFiles.length;
-                    const playerPrimaryId = (audioFiles.find(f => f.id === primary?.id) ?? audioFiles[0])?.id;
                     return (
                       <>
                         {audioFiles.map(f => (
                           <VersionPlayer
                             key={f.id}
-                            ref={f.id === playerPrimaryId ? playerRef : undefined}
+                            ref={el => { playerRefs.current[f.id] = el; }}
                             url={f.url}
                             title={fileDisplayName(work.project, selectedGroup.label, f.role)}
                             roleLabel={roleLabel(f.role, lang)}
                             roleColor={ROLE_COLOR[f.role]}
                             compact={f.id !== playerPrimaryId}
                             shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
-                            comments={comments ?? []}
+                            comments={(comments ?? []).filter(c => c.role === f.role)}
+                            onPlayStart={() => { lastActiveIdRef.current = f.id; }}
                             onDownload={() => window.open(f.url, "_blank", "noopener,noreferrer")}
                             t={t}
                           />
@@ -1724,9 +1750,23 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
                   </div>
                   <div style={{ padding: "12px 16px 16px" }}>
+                    {rolePick && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44`, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: TEXT2, whiteSpace: "nowrap" }}>{rtl ? "שייך הערה ל:" : "Attach comment to:"}</span>
+                        {(["mix", "acapella", "instrumental"] as FileRole[]).map(r => (
+                          <button key={r} onClick={() => chooseAddRole(r)}
+                            style={{ fontSize: 11, fontWeight: 800, padding: "5px 11px", borderRadius: 8, background: `${ROLE_COLOR[r]}1A`, border: `1px solid ${ROLE_COLOR[r]}55`, color: ROLE_COLOR[r], cursor: "pointer", fontFamily: "inherit" }}>
+                            {roleLabel(r, lang)}
+                          </button>
+                        ))}
+                        <button onClick={() => setRolePick(false)}
+                          style={{ fontSize: 11, fontWeight: 700, padding: "5px 9px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
+                      </div>
+                    )}
                     {adding && (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t.cAtTime} {fmtTime(addTs)}</span>
+                        {addRole && <span style={{ fontSize: 9.5, fontWeight: 800, color: ROLE_COLOR[addRole], background: `${ROLE_COLOR[addRole]}1A`, border: `1px solid ${ROLE_COLOR[addRole]}40`, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{roleLabel(addRole, lang)}</span>}
                         <input autoFocus value={newText} onChange={e => setNewText(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
                           placeholder={t.cPlaceholder}
@@ -1742,28 +1782,30 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                     ) : comments === null ? (
                       <RowsSkeleton rows={2} height={44} pad="0" />
                     ) : comments.length === 0 ? (
-                      !adding && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
+                      !adding && !rolePick && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                         {comments.map((c, i) => {
-                          const col = COMMENT_COLORS[i % COMMENT_COLORS.length];
+                          const cr = roleOfComment(c);
+                          const col = cr ? ROLE_COLOR[cr] : MUTED;
                           const isEditing = editingId === c.id;
                           return (
                             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}` }}>
                               <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
-                              <button onClick={() => playerRef.current?.playFrom(c.timestampSeconds)} title={t.vPlay}
+                              <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds)} title={t.vPlay}
                                 style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
                               </button>
-                              <button onClick={() => playerRef.current?.seek(c.timestampSeconds)}
+                              <button onClick={() => playerForComment(c)?.seek(c.timestampSeconds)}
                                 style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds)}</button>
+                              <span style={{ fontSize: 9.5, fontWeight: 800, color: col, background: `${col}1A`, border: `1px solid ${col}40`, padding: "2px 7px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{cr ? roleLabel(cr, lang) : (rtl ? "כללי" : "Shared")}</span>
                               {isEditing ? (
                                 <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
                                   onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
                                   onBlur={() => saveEditComment(c)}
                                   style={{ flex: 1, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
                               ) : (
-                                <div onClick={() => playerRef.current?.seek(c.timestampSeconds)} title={c.commentText}
+                                <div onClick={() => playerForComment(c)?.seek(c.timestampSeconds)} title={c.commentText}
                                   style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
                               )}
                               <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
