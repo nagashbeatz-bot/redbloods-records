@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus } from "@/lib/types";
+import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
 
@@ -639,6 +639,309 @@ function AudioPlayer({
   );
 }
 
+// ── Brief structure segments — canonical types → preset colors + localized ─────
+//    labels. This is BRIEF-ONLY: separate <audio>, never touches versions /
+//    versionGroups / reviews. Owner edits; Victor is strictly read-only.
+const SEG_ORDER: BriefSegmentType[] = ["intro", "verse", "prechorus", "chorus", "bridge", "outro", "custom"];
+const SEG_COLOR: Record<BriefSegmentType, string> = {
+  intro: "#38BDF8", verse: "#8B5CF6", prechorus: "#A78BFA", chorus: "#F59E0B",
+  bridge: "#EC4899", outro: "#10B981", custom: "#6B7280",
+};
+// Decorative waveform heights — deterministic (no lib, no Math.random) so SSR
+// and client render identically (no hydration mismatch).
+const WAVE_BARS = Array.from({ length: 64 }, (_, i) =>
+  0.34 + 0.62 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.6)));
+
+function segLabel(seg: BriefSegment, t: (k: string) => string): string {
+  if (seg.type === "custom") return (seg.label ?? "").trim() || t("seg.custom");
+  return t(`seg.${seg.type}`);
+}
+
+// Inline brief-audio player with colored structure segments over the timeline.
+// Its own <audio>, guarded by the shared currentVictorAudio so it never plays
+// alongside a version. Segments persist via onSaveSegments (owner-only route).
+function BriefSegmentPlayer({
+  file, isOwner, onSaveSegments, onDownload, onDelete,
+  deleteConfirm, onDeleteConfirm, onDeleteCancel, deleting, deleteError,
+}: {
+  file: FileLink;
+  isOwner: boolean;
+  onSaveSegments: (segments: BriefSegment[]) => Promise<boolean>;
+  onDownload: () => void;
+  onDelete: () => void;
+  deleteConfirm: boolean;
+  onDeleteConfirm: () => void;
+  onDeleteCancel: () => void;
+  deleting: boolean;
+  deleteError: boolean;
+}) {
+  const t = useVictorT();
+  const [lang] = useVictorLang();
+  const isMobile = useIsMobile();
+  const { name } = file;
+  const url = file.dropboxShareUrl || file.url || "";
+  const hasUrl = !!url;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);              // playhead seconds
+  const [duration, setDuration] = useState(file.durationSeconds ?? 0);
+  const [segs, setSegs] = useState<BriefSegment[]>(file.segments ?? []);
+  const [form, setForm] = useState<null | { id: string | null; type: BriefSegmentType; label: string; start: number; end: number }>(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(false);
+  const formDir: React.CSSProperties["direction"] = lang === "he" ? "rtl" : "ltr";
+
+  // Re-seed when switching to a different brief file (dropboxPath identity).
+  useEffect(() => { setSegs(file.segments ?? []); setForm(null); }, [file.dropboxPath]);
+
+  // One stable <audio>; same single-active guard as the version player, so
+  // brief audio and version audio can never play at the same time.
+  useEffect(() => {
+    if (!url) return;
+    const a = new Audio(playbackSrc(file));
+    a.preload = "metadata";
+    audioRef.current = a;
+    const onTime = () => setCur(a.currentTime || 0);
+    const onMeta = () => setDuration(a.duration && !isNaN(a.duration) ? a.duration : (file.durationSeconds ?? 0));
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => { setPlaying(false); setCur(0); };
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("loadedmetadata", onMeta);
+    a.addEventListener("durationchange", onMeta);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onEnded);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onMeta);
+      a.removeEventListener("durationchange", onMeta);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onEnded);
+      a.pause();
+      if (currentVictorAudio === a) currentVictorAudio = null;
+      a.src = "";
+      if (audioRef.current === a) audioRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
+
+  function togglePlay(e: React.MouseEvent) {
+    e.stopPropagation();
+    const a = audioRef.current; if (!a) return;
+    if (a.paused) {
+      if (currentVictorAudio && currentVictorAudio !== a) currentVictorAudio.pause();
+      currentVictorAudio = a;
+      a.play().catch(() => {});
+    } else a.pause();
+  }
+  function seekTo(sec: number) {
+    const a = audioRef.current; if (!a) return;
+    const d = a.duration && !isNaN(a.duration) ? a.duration : duration;
+    if (!d) return;
+    a.currentTime = Math.max(0, Math.min(d, sec));
+    setCur(a.currentTime);
+  }
+  function seekToClientX(clientX: number) {
+    const bar = barRef.current; const d = duration;
+    if (!bar || !d) return;
+    const rect = bar.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    seekTo(frac * d);
+  }
+  function onBarPointerDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    seekToClientX(e.clientX);
+  }
+  function onBarPointerMove(e: React.PointerEvent) {
+    if (e.buttons !== 1) return;
+    seekToClientX(e.clientX);
+  }
+  function fmt(s: number) {
+    const m = Math.floor(s / 60); const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  // Timeline length: real duration once known, else the furthest segment end.
+  const dur = duration || Math.max(1, ...segs.map(s => s.end));
+  const progressPct = dur ? Math.min(100, (cur / dur) * 100) : 0;
+
+  // ── Owner editing (segments) ──
+  function openAdd() {
+    const start = Math.round(cur);
+    setForm({ id: null, type: "verse", label: "", start, end: Math.round(Math.min(dur || start + 15, start + 15)) });
+    setErr(false);
+  }
+  function openEdit(seg: BriefSegment) {
+    setForm({ id: seg.id, type: seg.type, label: seg.label ?? "", start: Math.round(seg.start), end: Math.round(seg.end) });
+    setErr(false);
+  }
+  async function commitForm() {
+    if (!form || saving) return;
+    const start = Math.max(0, Number(form.start) || 0);
+    const end = Math.max(start, Number(form.end) || 0);
+    const seg: BriefSegment = {
+      id: form.id ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${start}-${end}-${segs.length}`),
+      type: form.type,
+      ...(form.type === "custom" && form.label.trim() ? { label: form.label.trim() } : {}),
+      color: SEG_COLOR[form.type], start, end,
+    };
+    const next = (form.id ? segs.map(s => s.id === form.id ? seg : s) : [...segs, seg]).sort((a, b) => a.start - b.start);
+    const prev = segs;
+    setSaving(true); setErr(false);
+    setSegs(next); // optimistic
+    const ok = await onSaveSegments(next);
+    setSaving(false);
+    if (ok) setForm(null);
+    else { setSegs(prev); setErr(true); }
+  }
+  async function removeSeg(id: string) {
+    const prev = segs;
+    const next = segs.filter(s => s.id !== id);
+    setSegs(next); setForm(null);
+    const ok = await onSaveSegments(next);
+    if (!ok) setSegs(prev);
+  }
+
+  const inputStyle: React.CSSProperties = {
+    padding: "6px 8px", borderRadius: 8, fontSize: isMobile ? 16 : 12,
+    background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT,
+    outline: "none", fontFamily: "inherit", boxSizing: "border-box", width: "100%",
+  };
+
+  return (
+    <div style={{ borderRadius: 12, background: CARD2, border: `1px solid ${BDR}`, overflow: "hidden" }}>
+      {/* Header: play · name · download · (owner) delete */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+        <button onClick={togglePlay} disabled={!hasUrl} title={name} style={{
+          width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+          background: playing ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`,
+          color: "#fff", cursor: hasUrl ? "pointer" : "not-allowed", display: "flex", alignItems: "center",
+          justifyContent: "center", fontSize: 13, fontFamily: "inherit", outline: "none",
+        }}>{playing ? "⏸" : "▶"}</button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div title={name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
+          <div style={{ fontSize: 9.5, color: MUTED, marginTop: 1 }}>🎵 {t("seg.title")}</div>
+        </div>
+        <button onClick={e => { e.stopPropagation(); onDownload(); }} disabled={!hasUrl} title={t("file.download")}
+          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 15, padding: 0, fontFamily: "inherit", outline: "none" }}>↓</button>
+        {isOwner && (
+          <button onClick={e => { e.stopPropagation(); onDeleteConfirm(); }} title={t("file.delete")}
+            style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "3px 7px", flexShrink: 0, outline: "none", fontFamily: "inherit" }}>🗑</button>
+        )}
+      </div>
+
+      {/* Timeline block — forced LTR inside the RTL drawer so time flows L→R. */}
+      <div style={{ padding: "2px 12px 12px", direction: "ltr" }}>
+        {/* Colored structure segments */}
+        <div style={{ position: "relative", height: 24, marginBottom: 4 }}>
+          {segs.length === 0 ? (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, color: MUTED, border: `1px dashed ${BDR2}`, borderRadius: 6 }}>{t("seg.empty")}</div>
+          ) : segs.map(seg => {
+            const left = dur ? Math.min(100, (seg.start / dur) * 100) : 0;
+            const width = dur ? Math.max(3, ((seg.end - seg.start) / dur) * 100) : 0;
+            return (
+              <button key={seg.id} onClick={() => { seekTo(seg.start); if (isOwner) openEdit(seg); }}
+                title={`${segLabel(seg, t)} · ${fmt(seg.start)}–${fmt(seg.end)}`}
+                style={{ position: "absolute", top: 0, bottom: 0, left: `${left}%`, width: `${width}%`, background: `${seg.color}30`, border: `1px solid ${seg.color}`, borderRadius: 6, color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: "pointer", padding: "0 4px", fontFamily: "inherit", outline: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
+                {segLabel(seg, t)}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Decorative waveform + playhead — click / drag to seek */}
+        <div ref={barRef} onPointerDown={onBarPointerDown} onPointerMove={onBarPointerMove}
+          style={{ position: "relative", height: 42, cursor: "pointer", touchAction: "none", display: "flex", alignItems: "center", gap: 2, padding: "0 1px", borderRadius: 8, background: "rgba(255,255,255,0.03)", overflow: "hidden" }}>
+          {WAVE_BARS.map((h, i) => {
+            const barPct = ((i + 0.5) / WAVE_BARS.length) * 100;
+            const played = barPct <= progressPct;
+            return <div key={i} style={{ flex: 1, height: `${Math.round(h * 100)}%`, borderRadius: 1, background: played ? PURPLE : "rgba(255,255,255,0.14)" }} />;
+          })}
+          <div style={{ position: "absolute", left: `${progressPct}%`, top: 0, bottom: 0, width: 2, background: "#fff", opacity: 0.85, pointerEvents: "none" }} />
+        </div>
+
+        {/* Time labels */}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: MUTED, marginTop: 3 }}>
+          <span>{fmt(cur)}</span>
+          <span>{duration > 0 ? fmt(duration) : "—"}</span>
+        </div>
+
+        {/* Owner: add marker + form */}
+        {isOwner && (
+          <div style={{ marginTop: 10, direction: formDir }}>
+            {!form && (
+              <button onClick={openAdd}
+                style={{ fontSize: 11, fontWeight: 700, padding: "5px 12px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.add")}</button>
+            )}
+            {form && (
+              <div style={{ padding: 11, borderRadius: 11, background: CARD, border: `1px solid ${PURPLE}33`, display: "flex", flexDirection: "column", gap: 9 }}>
+                {/* type */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {SEG_ORDER.map(type => {
+                    const active = form.type === type;
+                    return (
+                      <button key={type} onClick={() => setForm(f => f ? { ...f, type } : f)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit", outline: "none", border: `1px solid ${active ? SEG_COLOR[type] : BDR2}`, background: active ? `${SEG_COLOR[type]}22` : "transparent", color: active ? "#fff" : TEXT2 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: SEG_COLOR[type], flexShrink: 0 }} />
+                        {t(`seg.${type}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.type === "custom" && (
+                  <input value={form.label} onChange={e => setForm(f => f ? { ...f, label: e.target.value } : f)} placeholder={t("seg.name")} maxLength={40} style={{ ...inputStyle, direction: formDir }} />
+                )}
+                {/* start / end */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {(["start", "end"] as const).map(key => (
+                    <div key={key} style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9.5, color: MUTED, marginBottom: 3 }}>{t(`seg.${key}`)} (s)</div>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <input type="number" min={0} value={form[key]} onChange={e => setForm(f => f ? { ...f, [key]: Math.max(0, Number(e.target.value) || 0) } : f)} style={{ ...inputStyle, direction: "ltr" }} />
+                        <button onClick={() => setForm(f => f ? { ...f, [key]: Math.round(cur) } : f)} title={t("seg.useNow")}
+                          style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: "0 8px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.useNow")}</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {err && <div style={{ fontSize: 10.5, color: RED }}>{t("seg.saveFail")}</div>}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  {form.id ? (
+                    <button onClick={() => removeSeg(form.id!)} disabled={saving}
+                      style={{ fontSize: 10.5, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: saving ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{t("file.delete")}</button>
+                  ) : <span />}
+                  <div style={{ display: "flex", gap: 7 }}>
+                    <button onClick={() => setForm(null)} disabled={saving}
+                      style={{ fontSize: 10.5, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: saving ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{t("drawer.cancel")}</button>
+                    <button onClick={commitForm} disabled={saving}
+                      style={{ fontSize: 10.5, fontWeight: 800, padding: "5px 13px", borderRadius: 8, background: saving ? MUTED : PURPLE, border: "none", color: "#fff", cursor: saving ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{saving ? "…" : t("seg.save")}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Inline delete confirm (owner) */}
+      {deleteConfirm && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `1px solid rgba(239,68,68,0.2)`, background: "rgba(239,68,68,0.06)" }}>
+          <span style={{ fontSize: 11, color: RED, fontWeight: 700, flex: 1 }}>{t("file.deleteConfirm")}</span>
+          {deleteError && <span style={{ fontSize: 10, color: RED }}>{t("file.retryError")}</span>}
+          <button onClick={e => { e.stopPropagation(); onDelete(); }} disabled={deleting}
+            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 800, background: deleting ? MUTED : RED, border: "none", color: "#fff", cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{deleting ? "…" : t("drawer.confirm")}</button>
+          <button onClick={e => { e.stopPropagation(); onDeleteCancel(); }} disabled={deleting}
+            style={{ padding: "3px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: deleting ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{t("drawer.cancel")}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FileRow({
   file,
   onDownload,
@@ -939,6 +1242,20 @@ function VictorProjectDrawer({
       });
       if (!res.ok) setEffectiveBriefFiles(prev); else onRefresh?.();
     } catch { setEffectiveBriefFiles(prev); }
+  }
+
+  // Persist structure segments for ONE brief audio file (owner-only PATCH).
+  // Returns success so the player can roll back its optimistic update on failure.
+  async function saveBriefSegments(dropboxPath: string, segments: BriefSegment[]): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/vendor/victor/work/${work.id}/brief`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dropboxPath, segments }),
+      });
+      const d = await res.json().catch(() => null);
+      if (res.ok && d?.ok) { setEffectiveBriefFiles(d.briefFiles ?? []); onRefresh?.(); return true; }
+      return false;
+    } catch { return false; }
   }
 
   // ── References (YouTube) ─────────────────────────────────────────────────────
@@ -1686,6 +2003,25 @@ function VictorProjectDrawer({
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                           {effectiveBriefFiles.map((f, i) => {
+                            // Brief AUDIO → inline player with structure segments (owner edits,
+                            // Victor read-only). Non-audio brief files stay as plain rows.
+                            if (isAudioFile(f.name)) {
+                              return (
+                                <BriefSegmentPlayer
+                                  key={f.dropboxPath ?? i}
+                                  file={f}
+                                  isOwner={isOwner}
+                                  onSaveSegments={(segments) => f.dropboxPath ? saveBriefSegments(f.dropboxPath, segments) : Promise.resolve(false)}
+                                  onDownload={() => downloadFile(f)}
+                                  onDelete={() => f.dropboxPath && deleteBriefFile(f.dropboxPath)}
+                                  deleteConfirm={briefDelPath === f.dropboxPath}
+                                  onDeleteConfirm={() => setBriefDelPath(f.dropboxPath ?? null)}
+                                  onDeleteCancel={() => setBriefDelPath(null)}
+                                  deleting={false}
+                                  deleteError={false}
+                                />
+                              );
+                            }
                             const hasUrl = !!(f.dropboxShareUrl || f.url);
                             const ext = (f.name.split(".").pop() ?? "").toUpperCase().slice(0, 4);
                             const sz = f.size ? (f.size > 1048576 ? `${(f.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1024))} KB`) : "";

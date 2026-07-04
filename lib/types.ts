@@ -56,6 +56,24 @@ export interface FileLink {
   category?: string;         // intake category: מאסטר/אקפלה/אינסטרומנטל/ערוצים/גרסת הופעה/אחר
   durationSeconds?: number;  // audio length in whole seconds — captured client-side at upload (optional; older files lack it)
   size?: number;             // file size in bytes (optional; e.g. brief files)
+  segments?: BriefSegment[]; // structure markers — ONLY on brief audio files (owner-authored, Victor read-only). Never on versions.
+}
+
+/** Canonical song-structure type. Stored (not the display label) so the Victor
+ *  view can localize to en/ru and never shows Hebrew. "custom" carries a free
+ *  `label` typed by the owner. */
+export type BriefSegmentType =
+  | "intro" | "verse" | "prechorus" | "chorus" | "bridge" | "outro" | "custom";
+
+/** A colored structure region over a brief audio file's timeline. start/end are
+ *  seconds into the track. Persisted inside brief_files jsonb (no dedicated DB). */
+export interface BriefSegment {
+  id: string;
+  type: BriefSegmentType;
+  label?: string;  // used only when type === "custom"
+  color: string;   // hex accent
+  start: number;   // seconds
+  end: number;     // seconds
 }
 
 /**

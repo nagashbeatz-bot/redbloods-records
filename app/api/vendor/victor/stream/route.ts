@@ -26,7 +26,9 @@ export async function GET(req: NextRequest) {
   const works = await getVictorWork();
   const owned = new Set<string>();
   for (const w of works) {
-    for (const f of [...(w.filesSent ?? []), ...(w.filesReceived ?? [])]) {
+    // briefFiles included so brief AUDIO can play inline — still scoped to
+    // Victor's own works (same ownership boundary as filesSent/filesReceived).
+    for (const f of [...(w.filesSent ?? []), ...(w.filesReceived ?? []), ...(w.briefFiles ?? [])]) {
       if (f.dropboxPath) owned.add(f.dropboxPath);
     }
   }
