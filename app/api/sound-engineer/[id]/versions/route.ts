@@ -6,13 +6,24 @@ import { listMixVersions, createMixVersion } from "@/lib/mix-versions-store";
 // Large audio files (WAV/FLAC/stems) can take a while.
 export const maxDuration = 300;
 
-const AUDIO_ZIP = /\.(wav|mp3|m4a|aiff?|flac|ogg|zip)$/i;
+const AUDIO_ZIP = /\.(wav|mp3|m4a|aiff?|flac|ogg|zip|rar|7z)$/i;
 
 /** Escape non-ASCII for the Dropbox-API-Arg header (headers must be pure ASCII). */
 function dropboxArg(obj: Record<string, unknown>): string {
   return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
     `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
   );
+}
+
+/** Role word (Hebrew) derived from the ORIGINAL filename — embedded in the stored
+ *  name so the UI re-detects the role and groups up to 4 files (mix/acapella/
+ *  instrumental/stems) under one version. Mirrors the client detectRole. */
+function roleWordFromName(name: string): string {
+  const s = (name || "").toLowerCase();
+  if (/(\.(zip|rar|7z)$|stems|ערוצים)/.test(s)) return "ערוצים";
+  if (/(instrumental|\binst\b|\bbeat\b|karaoke|אינסטרומנטל|אינסטרו|ביט)/.test(s)) return "אינסטרומנטל";
+  if (/(acapella|accapella|acappella|acapela|\bvocals?\b|\bvox\b|אקפלה|אקאפלה|ווקאל|וקאל|שירה)/.test(s)) return "אקפלה";
+  return "מיקס";
 }
 
 /** GET /api/sound-engineer/[id]/versions — list mix versions for a work. */
@@ -43,6 +54,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const form  = await req.formData();
     const file  = form.get("file") as File | null;
     const label = ((form.get("label") as string | null) ?? "").trim();
+    // When true, this file is being ADDED to an existing logical version (same
+    // label, different role file) — so a duplicate label is intentional, not a
+    // clash. Absent/false keeps the old guard for the "new version" flow.
+    const addToExisting = form.get("addToExisting") != null;
     const durationRaw    = form.get("durationSeconds") as string | null;
     const durationParsed = durationRaw != null ? Number(durationRaw) : NaN;
     const durationSeconds = Number.isFinite(durationParsed) && durationParsed > 0 ? Math.round(durationParsed) : null;
@@ -88,7 +103,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       let n = 1;
       while (existingLabels.has(`Mix ${n}`)) n++;
       effectiveLabel = `Mix ${n}`;
-    } else if (existingLabels.has(effectiveLabel)) {
+    } else if (existingLabels.has(effectiveLabel) && !addToExisting) {
+      // Explicit label that collides AND not an intentional add → block (new-version flow).
       return NextResponse.json({ ok: false, error: "כבר קיימת גרסה בשם הזה" }, { status: 409 });
     }
 
@@ -98,7 +114,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Mix Versions (no per-label subfolder); uniqueness comes from the unique
     // label baked into the file name.
     const safeLabel     = sanitizeFolder(effectiveLabel) || "Mix";
-    const cleanBase     = [primaryArtist(artist), projectName, effectiveLabel]
+    // Embed the detected role word so several files can live under ONE label and
+    // the UI re-detects each file's role. autorename below is the safety net if
+    // two files still map to the same name.
+    const roleWord      = roleWordFromName(file.name);
+    const cleanBase     = [primaryArtist(artist), projectName, effectiveLabel, roleWord]
       .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || safeLabel;
     const cleanFileName = ext ? `${cleanBase}.${ext}` : cleanBase;
 
@@ -114,7 +134,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       headers: {
         Authorization:     `Bearer ${token}`,
         "Content-Type":    "application/octet-stream",
-        "Dropbox-API-Arg": dropboxArg({ path: dropboxPath, mode: "add", autorename: false, mute: false }),
+        "Dropbox-API-Arg": dropboxArg({ path: dropboxPath, mode: "add", autorename: true, mute: false }),
       },
       body: buffer,
     });

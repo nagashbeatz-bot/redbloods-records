@@ -59,18 +59,22 @@ const vStatusColor = (s: string) => (s in VSTATUS_COLOR ? VSTATUS_COLOR[s as VSt
 // ── File role (mix / acapella / instrumental) — detected from the FILENAME only
 //    (no DB). A "logical version" groups the files that share a base label so up
 //    to 3 players stack under one version and share one comment thread. ─────────
-type FileRole = "mix" | "acapella" | "instrumental";
-const ROLE_ORDER: FileRole[] = ["mix", "acapella", "instrumental"];
-const ROLE_COLOR: Record<FileRole, string> = { mix: "#DC2626", acapella: "#A855F7", instrumental: "#3B82F6" };
+type FileRole = "mix" | "acapella" | "instrumental" | "stems";
+const ROLE_ORDER: FileRole[] = ["mix", "acapella", "instrumental", "stems"];
+const ROLE_COLOR: Record<FileRole, string> = { mix: "#DC2626", acapella: "#A855F7", instrumental: "#3B82F6", stems: "#F59E0B" };
 const ROLE_LABEL: Record<FileRole, { he: string; en: string }> = {
   mix:          { he: "מיקס",        en: "Mix" },
   acapella:     { he: "אקפלה",       en: "Acapella" },
   instrumental: { he: "אינסטרומנטל", en: "Instrumental" },
+  stems:        { he: "ערוצים",      en: "Stems" },
 };
 const roleLabel = (r: FileRole, lang: Lang) => (lang === "en" ? ROLE_LABEL[r].en : ROLE_LABEL[r].he);
+/** Audio files get a player; archives (stems/zip/rar) are download-only rows. */
+const isAudioName = (n: string) => /\.(wav|mp3|m4a|aiff?|flac|ogg|aac|opus)$/i.test(n || "");
 
 function detectRole(name: string): FileRole {
   const s = (name || "").toLowerCase();
+  if (/(\.(zip|rar|7z)$|stems|ערוצים)/.test(s)) return "stems";
   if (/(instrumental|\binst\b|\bbeat\b|karaoke|אינסטרומנטל|אינסטרו|ביט)/.test(s)) return "instrumental";
   if (/(acapella|accapella|acappella|acapela|\bvocals?\b|\bvox\b|אקפלה|אקאפלה|אקפלת|ווקאל|וקאל|שירה)/.test(s)) return "acapella";
   return "mix";
@@ -100,7 +104,11 @@ function groupVersions(versions: MixVersion[]): VersionGroup[] {
   }
   const groups = [...map.values()].map(g => {
     g.files.sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
-    g.primary = g.files.find(f => f.role === "mix") ?? g.files[0];
+    // Primary (holds the shared comment thread) = the mix, else any audio file,
+    // else the first file. Keeps comments on a stable, playable file.
+    g.primary = g.files.find(f => f.role === "mix")
+      ?? g.files.find(f => isAudioName(f.fileName))
+      ?? g.files[0];
     return g;
   });
   groups.sort((a, b) => (a.latestAt < b.latestAt ? 1 : -1)); // newest first
@@ -238,6 +246,8 @@ const TR = {
     cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט",
+    uploadNewVersionBtn: "+ העלה גרסה חדשה", addToVersionBtn: "+ הוסף קובץ לגרסה הזו",
+    uploadHint: "גרור קבצים לכאן · נגן = mp3/wav · ערוצים = zip/rar",
     versionFiles: "קבצי הגרסה", versionFilesSub: "מסומנים בזמן אמת — הערות משותפות לגרסה זו",
     sharedComments: "הערות משותפות לגרסה", sharedCommentsSub: "ההערות משותפות לכל שלושת הקבצים",
     versionDetails: "פרטי הגרסה", vName: "שם הגרסה", vCreator: "יוצר", vCreatedAt: "נוצר בתאריך", vUpdatedAt: "עודכן לאחרונה",
@@ -273,6 +283,8 @@ const TR = {
     cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files",
+    uploadNewVersionBtn: "+ Upload new version", addToVersionBtn: "+ Add file to this version",
+    uploadHint: "Drag files here · player = mp3/wav · stems = zip/rar",
     versionFiles: "Version files", versionFilesSub: "Marked in real time — comments are shared for this version",
     sharedComments: "Shared comments for this version", sharedCommentsSub: "Comments are shared across all three files",
     versionDetails: "Version details", vName: "Version name", vCreator: "Creator", vCreatedAt: "Created", vUpdatedAt: "Last updated",
@@ -1047,7 +1059,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
-  const versionInputRef = useRef<HTMLInputElement | null>(null);
+  const newVersionInputRef = useRef<HTMLInputElement | null>(null);
+  const addFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Timestamp comments for the selected version ──────────────────────────────
   const [comments, setComments]   = useState<MixComment[] | null>(null); // null = loading
@@ -1142,26 +1155,61 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
     return () => { alive = false; };
   }, [work.id]);
 
-  function uploadVersionFile(list: FileList | null) {
-    const file = list?.[0];
-    if (!file || uploading) return;
-    setUploading(true);
+  // Upload ONE file. `label` + `addToExisting` group several files under one
+  // logical version (no DB); no label → the server auto-assigns the next "Mix N".
+  async function postOneFile(file: File, opts: { label?: string; addToExisting?: boolean }): Promise<MixVersion | null> {
     const fd = new FormData();
     fd.append("file", file);
-    // No manual label — the server auto-assigns the next free "Mix N".
-    fetch(`/api/sound-engineer/${work.id}/versions`, { method: "POST", body: fd })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ok && d.version) {
-          setVersions(prev => [d.version as MixVersion, ...(prev ?? [])]);
-          setSel((d.version as MixVersion).id); // new upload becomes the selected version (player ready)
-          notify(t.vUploaded);
-        } else {
-          notify(d.error || t.vUploadFailed);
-        }
-      })
-      .catch(() => notify(t.vUploadFailed))
-      .finally(() => { setUploading(false); if (versionInputRef.current) versionInputRef.current.value = ""; });
+    if (opts.label) fd.append("label", opts.label);
+    if (opts.addToExisting) fd.append("addToExisting", "1");
+    try {
+      const d = await fetch(`/api/sound-engineer/${work.id}/versions`, { method: "POST", body: fd }).then(r => r.json());
+      if (d.ok && d.version) return d.version as MixVersion;
+      notify(d.error || t.vUploadFailed);
+      return null;
+    } catch { notify(t.vUploadFailed); return null; }
+  }
+
+  // "+ העלה גרסה חדשה" — a batch becomes ONE new version: the first file creates
+  // the "Mix N", the rest join it (addToExisting) so all share the new label.
+  async function uploadNewVersion(list: FileList | null) {
+    const files = list ? Array.from(list) : [];
+    if (files.length === 0 || uploading) return;
+    setUploading(true);
+    try {
+      const first = await postOneFile(files[0], {}); // server auto-labels
+      if (!first) return;
+      const created = [first];
+      for (let i = 1; i < files.length; i++) {
+        const v = await postOneFile(files[i], { label: first.label, addToExisting: true });
+        if (v) created.push(v);
+      }
+      setVersions(prev => [...created, ...(prev ?? [])]);
+      setSel(first.id); // select the new logical version
+      notify(t.vUploaded);
+    } finally {
+      setUploading(false);
+      if (newVersionInputRef.current) newVersionInputRef.current.value = "";
+    }
+  }
+
+  // "+ הוסף קובץ לגרסה הזו" — every file joins the SELECTED version (same label).
+  async function addFilesToSelectedVersion(list: FileList | null) {
+    const files = list ? Array.from(list) : [];
+    const label = selectedGroup?.label;
+    if (files.length === 0 || uploading || !label) return;
+    setUploading(true);
+    try {
+      const created: MixVersion[] = [];
+      for (const f of files) {
+        const v = await postOneFile(f, { label, addToExisting: true });
+        if (v) created.push(v);
+      }
+      if (created.length > 0) { setVersions(prev => [...created, ...(prev ?? [])]); notify(t.vUploaded); }
+    } finally {
+      setUploading(false);
+      if (addFileInputRef.current) addFileInputRef.current.value = "";
+    }
   }
 
   function setVersionStatus(v: MixVersion, status: string) {
@@ -1313,22 +1361,32 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                 )}
               </div>
 
-              {/* Upload */}
+              {/* Upload — new version (dropzone) + add-to-selected-version */}
               <div style={subCard}>
                 <div style={innerHead}>⬆ {t.uploadFiles}</div>
-                <div style={{ padding: "12px 14px 14px" }}>
-                  <input ref={versionInputRef} type="file" accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip" style={{ display: "none" }} onChange={e => uploadVersionFile(e.target.files)} />
+                <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                  <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => uploadNewVersion(e.target.files)} />
+                  <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => addFilesToSelectedVersion(e.target.files)} />
+                  {/* Dropzone → NEW version */}
                   <div
-                    onClick={() => { if (!uploading) versionInputRef.current?.click(); }}
+                    onClick={() => { if (!uploading) newVersionInputRef.current?.click(); }}
                     onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
                     onDragLeave={e => { e.preventDefault(); setDrag(false); }}
-                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadVersionFile(e.dataTransfer.files); }}
-                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "18px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
+                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadNewVersion(e.dataTransfer.files); }}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "16px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
                   >
                     <div style={{ fontSize: 22, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
-                    <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
-                    <div style={{ fontSize: 10, color: MUTED }}>{t.vFileHint}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.uploadNewVersionBtn}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{t.uploadHint}</div>
                   </div>
+                  {/* Add file(s) to the SELECTED version */}
+                  <button
+                    onClick={() => { if (!uploading && selectedGroup) addFileInputRef.current?.click(); }}
+                    disabled={uploading || !selectedGroup}
+                    title={selectedGroup ? `${selectedGroup.label}` : undefined}
+                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "9px 12px", borderRadius: 10, fontFamily: "inherit", cursor: (uploading || !selectedGroup) ? "default" : "pointer", background: (uploading || !selectedGroup) ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.05)", border: `1px solid ${(uploading || !selectedGroup) ? BDR2 : BRAND + "45"}`, color: (uploading || !selectedGroup) ? MUTED : BRAND, opacity: uploading ? 0.6 : 1 }}>
+                    {t.addToVersionBtn}{selectedGroup ? `: ${selectedGroup.label}` : ""}
+                  </button>
                 </div>
               </div>
 
@@ -1374,26 +1432,40 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                     <div style={{ padding: "18px 0", fontSize: 12.5, color: RED, textAlign: "center" }}>{t.vLoadFailed}</div>
                   ) : (versions === null || (groups.length > 0 && !selectedGroup)) ? (
                     <PlayerSkeleton />
-                  ) : selectedGroup ? (
-                    selectedGroup.files.map(f => {
-                      const isPrimary = f.id === primary?.id;
-                      return (
-                        <VersionPlayer
-                          key={f.id}
-                          ref={isPrimary ? playerRef : undefined}
-                          url={f.url}
-                          title={f.fileName}
-                          roleLabel={roleLabel(f.role, lang)}
-                          roleColor={ROLE_COLOR[f.role]}
-                          compact={!isPrimary}
-                          shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
-                          comments={comments ?? []}
-                          onDownload={() => window.open(f.url, "_blank", "noopener,noreferrer")}
-                          t={t}
-                        />
-                      );
-                    })
-                  ) : (
+                  ) : selectedGroup ? (() => {
+                    // Players ONLY for audio files. Archives (stems/zip/rar) live
+                    // in "project files" as download rows, never as a player.
+                    const audioFiles = selectedGroup.files.filter(f => isAudioName(f.fileName));
+                    const stemsCount = selectedGroup.files.length - audioFiles.length;
+                    const playerPrimaryId = (audioFiles.find(f => f.id === primary?.id) ?? audioFiles[0])?.id;
+                    return (
+                      <>
+                        {audioFiles.map(f => (
+                          <VersionPlayer
+                            key={f.id}
+                            ref={f.id === playerPrimaryId ? playerRef : undefined}
+                            url={f.url}
+                            title={f.fileName}
+                            roleLabel={roleLabel(f.role, lang)}
+                            roleColor={ROLE_COLOR[f.role]}
+                            compact={f.id !== playerPrimaryId}
+                            shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
+                            comments={comments ?? []}
+                            onDownload={() => window.open(f.url, "_blank", "noopener,noreferrer")}
+                            t={t}
+                          />
+                        ))}
+                        {audioFiles.length === 0 && (
+                          <div style={{ padding: "20px 0" }}><EmptyZone icon="🎧" title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} /></div>
+                        )}
+                        {stemsCount > 0 && (
+                          <div style={{ fontSize: 11, color: MUTED, textAlign: "center", padding: "2px 0" }}>
+                            📦 {stemsCount} {lang === "en" ? "archive file(s) — see project files" : "קבצי ערוצים/ארכיון — ראה קבצי הפרויקט"}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })() : (
                     <div style={{ padding: "26px 0" }}><EmptyZone icon="🎧" title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} /></div>
                   )}
                 </div>
