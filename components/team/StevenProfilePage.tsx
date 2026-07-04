@@ -56,6 +56,60 @@ const VSTATUS_EN:    Record<VStatus, string> = { "בבדיקה": "In review", "�
 const vStatusLabel = (s: string, lang: Lang) => (lang === "en" && (s in VSTATUS_EN) ? VSTATUS_EN[s as VStatus] : s);
 const vStatusColor = (s: string) => (s in VSTATUS_COLOR ? VSTATUS_COLOR[s as VStatus] : MUTED);
 
+// ── File role (mix / acapella / instrumental) — detected from the FILENAME only
+//    (no DB). A "logical version" groups the files that share a base label so up
+//    to 3 players stack under one version and share one comment thread. ─────────
+type FileRole = "mix" | "acapella" | "instrumental";
+const ROLE_ORDER: FileRole[] = ["mix", "acapella", "instrumental"];
+const ROLE_COLOR: Record<FileRole, string> = { mix: "#DC2626", acapella: "#A855F7", instrumental: "#3B82F6" };
+const ROLE_LABEL: Record<FileRole, { he: string; en: string }> = {
+  mix:          { he: "מיקס",        en: "Mix" },
+  acapella:     { he: "אקפלה",       en: "Acapella" },
+  instrumental: { he: "אינסטרומנטל", en: "Instrumental" },
+};
+const roleLabel = (r: FileRole, lang: Lang) => (lang === "en" ? ROLE_LABEL[r].en : ROLE_LABEL[r].he);
+
+function detectRole(name: string): FileRole {
+  const s = (name || "").toLowerCase();
+  if (/(instrumental|\binst\b|\bbeat\b|karaoke|אינסטרומנטל|אינסטרו|ביט)/.test(s)) return "instrumental";
+  if (/(acapella|accapella|acappella|acapela|\bvocals?\b|\bvox\b|אקפלה|אקאפלה|אקפלת|ווקאל|וקאל|שירה)/.test(s)) return "acapella";
+  return "mix";
+}
+
+type RoledVersion = MixVersion & { role: FileRole };
+type VersionGroup = { key: string; label: string; files: RoledVersion[]; primary: RoledVersion; latestAt: string };
+
+// Strip a trailing role qualifier so "Mix 1 (acapella)" groups with "Mix 1".
+function baseVersionKey(label: string): string {
+  return (label || "")
+    .replace(/[\s\-_()·|]*\b(acapella|accapella|acappella|acapela|vocals?|vox|instrumental|inst|beat)\b[\s\-_()·|]*$/i, "")
+    .trim() || label;
+}
+
+// Group flat mix_versions rows into logical versions (code-only, no DB). Existing
+// data has unique labels → each becomes a group of one (a single "mix" player).
+function groupVersions(versions: MixVersion[]): VersionGroup[] {
+  const map = new Map<string, VersionGroup>();
+  for (const v of versions) {
+    const rv: RoledVersion = { ...v, role: detectRole(v.fileName || v.label) };
+    const key = baseVersionKey(v.label) || v.id;
+    let g = map.get(key);
+    if (!g) { g = { key, label: baseVersionKey(v.label) || v.label, files: [], primary: rv, latestAt: rv.createdAt }; map.set(key, g); }
+    g.files.push(rv);
+    if (rv.createdAt > g.latestAt) g.latestAt = rv.createdAt;
+  }
+  const groups = [...map.values()].map(g => {
+    g.files.sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
+    g.primary = g.files.find(f => f.role === "mix") ?? g.files[0];
+    return g;
+  });
+  groups.sort((a, b) => (a.latestAt < b.latestAt ? 1 : -1)); // newest first
+  return groups;
+}
+
+// A single active <audio> across all stacked players — starting one pauses others.
+let activeStevenAudio: HTMLAudioElement | null = null;
+
 /** Human file size. */
 function fmtBytes(b: number | null): string {
   if (b == null) return "—";
@@ -183,6 +237,11 @@ const TR = {
     cSection: "הערות בזמן", cAdd: "הוסף הערה", cEmpty: "אין הערות לגרסה הזו עדיין", cPlaceholder: "כתוב הערה על הנקודה הזו…", cAtTime: "בזמן",
     cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
+    versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט",
+    versionFiles: "קבצי הגרסה", versionFilesSub: "מסומנים בזמן אמת — הערות משותפות לגרסה זו",
+    sharedComments: "הערות משותפות לגרסה", sharedCommentsSub: "ההערות משותפות לכל שלושת הקבצים",
+    versionDetails: "פרטי הגרסה", vName: "שם הגרסה", vCreator: "יוצר", vCreatedAt: "נוצר בתאריך", vUpdatedAt: "עודכן לאחרונה",
+    vFileCount: "קבצים בגרסה", vTotalSize: "גודל כולל", markApproved: "סמן גרסה לאישור", headerUpdated: "עודכן לאחרונה בגרסה",
     newWorkTitle: "עבודה חדשה ל-Steven", projectName: "שם הפרויקט", priceLabel: "מחיר ($)", save: "שמור", cancel: "ביטול", required: "יש להזין שם פרויקט",
     tAdded: "הקבצים נוספו לעבודה", tRemoved: "הקובץ הוסר", tNoPlay: "אין קובץ לניגון כרגע", tNoDownload: "אין קובץ להורדה כרגע", tNoDropbox: "אין עדיין קישור Dropbox לעבודה הזו",
     tJobAdded: "עבודה חדשה נוספה", tViewAllPay: "היסטוריית תשלומים מלאה תהיה זמינה בקרוב", tViewAllFiles: "רשימת הקבצים המלאה תהיה זמינה בקרוב",
@@ -213,6 +272,11 @@ const TR = {
     cSection: "Timestamp comments", cAdd: "Add comment", cEmpty: "No comments on this version yet", cPlaceholder: "Write a note about this point…", cAtTime: "at",
     cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
+    versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files",
+    versionFiles: "Version files", versionFilesSub: "Marked in real time — comments are shared for this version",
+    sharedComments: "Shared comments for this version", sharedCommentsSub: "Comments are shared across all three files",
+    versionDetails: "Version details", vName: "Version name", vCreator: "Creator", vCreatedAt: "Created", vUpdatedAt: "Last updated",
+    vFileCount: "Files in version", vTotalSize: "Total size", markApproved: "Mark version for approval", headerUpdated: "Version last updated",
     newWorkTitle: "New Work for Steven", projectName: "Project name", priceLabel: "Price ($)", save: "Save", cancel: "Cancel", required: "Project name is required",
     tAdded: "Files added to job", tRemoved: "File removed", tNoPlay: "No playable file yet", tNoDownload: "No downloadable file yet", tNoDropbox: "No Dropbox link for this job yet",
     tJobAdded: "Job added", tViewAllPay: "Full payment history coming soon", tViewAllFiles: "Full file list coming soon",
@@ -830,8 +894,11 @@ type VersionPlayerHandle = {
   seek: (sec: number) => void;
   playFrom: (sec: number) => void;
 };
-const VersionPlayer = forwardRef<VersionPlayerHandle, { url: string; title: string; shouldPlay: number; comments: MixComment[]; t: T }>(
-function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
+const VersionPlayer = forwardRef<VersionPlayerHandle, {
+  url: string; title: string; roleLabel: string; roleColor: string; compact?: boolean;
+  shouldPlay: number; comments: MixComment[]; onDownload?: () => void; t: T;
+}>(
+function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -852,24 +919,33 @@ function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
   ), []);
   const playedBars = Math.round((pct / 100) * bars.length);
 
+  // Start playback while pausing any other stacked player (single active audio).
+  function startPlay(a: HTMLAudioElement) {
+    if (activeStevenAudio && activeStevenAudio !== a) activeStevenAudio.pause();
+    activeStevenAudio = a;
+    a.play().catch(() => setErr(true));
+  }
+
   useImperativeHandle(ref, () => ({
     getCurrentTime: () => audioRef.current?.currentTime ?? 0,
     seek: (sec: number) => { const a = audioRef.current; if (a) { a.currentTime = sec; setCur(sec); } },
-    playFrom: (sec: number) => { const a = audioRef.current; if (!a) return; a.currentTime = sec; setCur(sec); a.play().catch(() => setErr(true)); },
+    playFrom: (sec: number) => { const a = audioRef.current; if (!a) return; a.currentTime = sec; setCur(sec); startPlay(a); },
   }), []);
 
-  useEffect(() => { if (shouldPlay > 0) audioRef.current?.play().catch(() => setErr(true)); }, [shouldPlay]);
-  useEffect(() => { const a = audioRef.current; return () => { a?.pause(); }; }, []);
+  useEffect(() => { if (shouldPlay > 0) { const a = audioRef.current; if (a) startPlay(a); } }, [shouldPlay]);
+  useEffect(() => { const a = audioRef.current; return () => { a?.pause(); if (activeStevenAudio === a) activeStevenAudio = null; }; }, []);
   useEffect(() => { if (audioRef.current) audioRef.current.volume = vol; }, [vol]);
 
-  function toggle() { const a = audioRef.current; if (!a || err) return; if (a.paused) a.play().catch(() => setErr(true)); else a.pause(); }
+  function toggle() { const a = audioRef.current; if (!a || err) return; if (a.paused) startPlay(a); else a.pause(); }
   function seekTo(sec: number) { const a = audioRef.current; if (!a || !dur) return; const s = Math.min(dur, Math.max(0, sec)); a.currentTime = s; setCur(s); }
   function seekAt(clientX: number) { const bar = barRef.current; if (!bar || !dur) return; const rect = bar.getBoundingClientRect(); const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)); seekTo(ratio * dur); }
 
-  const tBtn: React.CSSProperties = { width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" };
+  const tBtn: React.CSSProperties = { width: compact ? 32 : 38, height: compact ? 32 : 38, borderRadius: "50%", flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" };
+  const waveH = compact ? 52 : 84;
+  const bigBtn = compact ? 46 : 58;
 
   return (
-    <div style={{ padding: "18px 20px 20px" }}>
+    <div style={{ padding: compact ? "12px 15px 14px" : "16px 18px 18px", background: CARD2, border: `1px solid ${BDR}`, borderInlineStart: `3px solid ${roleColor}`, borderRadius: 14 }}>
       <audio
         ref={audioRef} src={url} preload="metadata"
         onLoadedMetadata={e => { setDur(e.currentTarget.duration || 0); setLoading(false); }}
@@ -881,10 +957,12 @@ function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
         onError={() => { setErr(true); setLoading(false); }}
       />
 
-      {/* Title */}
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-        <div title={title} style={{ fontSize: 19, fontWeight: 900, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-        <div style={{ fontSize: 11, color: err ? RED : MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>{err ? t.vAudioError : loading ? t.vAudioLoading : ""}</div>
+      {/* Header: role chip · filename · status · download */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: compact ? 9 : 12 }}>
+        <span style={{ fontSize: 11, fontWeight: 900, color: "#fff", padding: "3px 11px", borderRadius: 8, background: roleColor, whiteSpace: "nowrap", flexShrink: 0 }}>{roleLabel}</span>
+        <div title={title} style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{title}</div>
+        <span style={{ fontSize: 10.5, color: err ? RED : MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>{err ? t.vAudioError : loading ? t.vAudioLoading : ""}</span>
+        {onDownload && <button onClick={onDownload} title={t.vDownload} style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3L16.7 12 12 16.7 7.3 12l1.4-1.7L12 13.6V3zM5 19h14v2H5z"/></svg></button>}
       </div>
 
       {/* Waveform + comment markers (LTR) */}
@@ -894,7 +972,7 @@ function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
           onPointerDown={e => { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); setDragging(true); seekAt(e.clientX); }}
           onPointerMove={e => { if (dragging) seekAt(e.clientX); }}
           onPointerUp={e => { setDragging(false); try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch {} }}
-          style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 84, cursor: "pointer", touchAction: "none" }}
+          style={{ display: "flex", alignItems: "flex-end", gap: 2, height: waveH, cursor: "pointer", touchAction: "none" }}
         >
           {bars.map((h, i) => (
             <div key={i} style={{ flex: 1, minWidth: 2, height: `${Math.round(h * 100)}%`, borderRadius: 2, background: i < playedBars ? `linear-gradient(180deg, #F87171, ${BRAND})` : "rgba(255,255,255,0.12)" }} />
@@ -931,14 +1009,14 @@ function VersionPlayer({ url, title, shouldPlay, comments, t }, ref) {
       </div>
 
       {/* Transport: time · controls · volume */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16, direction: "ltr" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: compact ? 10 : 16, direction: "ltr" }}>
         <span style={{ fontSize: 12, color: TEXT2, fontVariantNumeric: "tabular-nums", minWidth: 92, whiteSpace: "nowrap" }}>{fmtTime(cur)} <span style={{ color: MUTED }}>/ {fmtTime(dur)}</span></span>
 
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
           <button onClick={() => seekTo(0)} title="Restart" style={tBtn}><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7a5 5 0 11-5 5H5a7 7 0 107-7z"/></svg></button>
           <button onClick={() => seekTo(cur - 10)} title="-10s" style={tBtn}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6l-9 6 9 6z"/></svg></button>
           <button onClick={toggle} disabled={err} title={playing ? "Pause" : t.vPlay}
-            style={{ width: 58, height: 58, borderRadius: "50%", flexShrink: 0, border: "none", background: err ? "#3A3A44" : `linear-gradient(145deg, ${BRAND}, #B91C1C)`, color: "#fff", cursor: err ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: err ? "none" : `0 8px 22px ${BRAND}66` }}>
+            style={{ width: bigBtn, height: bigBtn, borderRadius: "50%", flexShrink: 0, border: "none", background: err ? "#3A3A44" : `linear-gradient(145deg, ${BRAND}, #B91C1C)`, color: "#fff", cursor: err ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: err ? "none" : `0 8px 22px ${BRAND}66` }}>
             {playing
               ? <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4.4" height="14" rx="1.3"/><rect x="13.6" y="5" width="4.4" height="14" rx="1.3"/></svg>
               : <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" style={{ marginInlineStart: 2 }}><path d="M8 5v14l11-7z"/></svg>}
@@ -984,7 +1062,8 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   const playerRef = useRef<VersionPlayerHandle | null>(null);
   const byTs = (a: MixComment, b: MixComment) => a.timestampSeconds - b.timestampSeconds;
 
-  // Load the selected version's comments (per-version; never the whole work).
+  // Load the selected logical version's comments (keyed on the group's primary
+  // file id, so all stacked players share one thread).
   useEffect(() => {
     if (!sel) { setComments(null); return; }
     let alive = true;
@@ -1053,8 +1132,10 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
         if (d.ok) {
           const list = (d.versions ?? []) as MixVersion[]; // server order = created_at desc → [0] is latest
           setVersions(list);
-          // Auto-select the latest version so the player is always ready (no click needed).
-          if (list.length > 0) setSel(cur => (cur && list.some(v => v.id === cur) ? cur : list[0].id));
+          // Auto-select the LATEST logical version (its primary file) so a player
+          // is always ready and comments load for the shared thread.
+          const gs = groupVersions(list);
+          if (gs.length > 0) setSel(cur => (cur && list.some(v => v.id === cur) ? cur : gs[0].primary.id));
         } else setVLoadErr(true);
       })
       .catch(() => { if (alive) setVLoadErr(true); });
@@ -1097,16 +1178,19 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
   function confirmDeleteVersion() {
     const v = delVersion; if (!v) return;
     setDelVersion(null);
-    if (sel === v.id) {
-      // Deleting the selected version → jump to the latest remaining, or empty if none.
-      const rest = (versions ?? []).filter(x => x.id !== v.id);
-      setSel(rest.length > 0 ? rest[0].id : null);
+    // Delete the whole LOGICAL version = every file in v's group (mix + acapella
+    // + instrumental). For existing single-file versions this is just that file.
+    const g = groups.find(x => x.files.some(f => f.id === v.id));
+    const ids = g ? g.files.map(f => f.id) : [v.id];
+    const idSet = new Set(ids);
+    if (sel && idSet.has(sel)) {
+      const restGroups = groups.filter(x => x.key !== g?.key);
+      setSel(restGroups.length > 0 ? restGroups[0].primary.id : null);
     }
     const prev = versions;
-    setVersions(cur => cur?.filter(x => x.id !== v.id) ?? null);
-    fetch(`/api/sound-engineer/versions/${v.id}`, { method: "DELETE" })
-      .then(r => r.json())
-      .then(d => { if (d.ok) notify(t.vDeleted); else { setVersions(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); } })
+    setVersions(cur => cur?.filter(x => !idSet.has(x.id)) ?? null);
+    Promise.all(ids.map(id => fetch(`/api/sound-engineer/versions/${id}`, { method: "DELETE" }).then(r => r.json())))
+      .then(results => { if (results.every(d => d.ok)) notify(t.vDeleted); else { setVersions(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); } })
       .catch(() => { setVersions(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); });
   }
 
@@ -1116,8 +1200,11 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
 
-  // Currently-selected version for the local player (null when it no longer exists).
-  const selected = versions?.find(v => v.id === sel) ?? null;
+  // Logical versions (code-only grouping) + the selected one (matched via any of
+  // its files → its primary). `sel` always holds the group's primary file id.
+  const groups = useMemo(() => groupVersions(versions ?? []), [versions]);
+  const selectedGroup = groups.find(g => g.files.some(f => f.id === sel)) ?? null;
+  const primary = selectedGroup?.primary ?? null;
 
   // Mix Versions folder = the directory the versions physically live in. Every
   // version is stored DIRECTLY under it, so the parent dir of any version's
@@ -1154,262 +1241,291 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
     <div style={fieldCol}><span style={fieldLbl}>{label}</span><div style={{ minWidth: 0, display: "flex" }}>{node}</div></div>
   );
 
+  const groupTitle = selectedGroup ? `${work.project} - ${selectedGroup.label}` : work.project;
+  const totalSize = selectedGroup ? selectedGroup.files.reduce((s, f) => s + (f.fileSize ?? 0), 0) : 0;
+  const colWrap: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 14, minWidth: 0 };
+
   const modal = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{
-        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1240px, 96vw)", maxHeight: "92vh",
+        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1400px, 97vw)", maxHeight: "94vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
-        {/* Header */}
-        <div style={{ padding: "20px 24px 18px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
+        {/* Header — version title · Steven · last updated */}
+        <div style={{ padding: "18px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: 5 }}>{t.jobEyebrow}</div>
-              <div style={{ fontSize: 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{work.project}</div>
+              <div title={groupTitle} style={{ fontSize: 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{groupTitle}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800, color: TEXT2, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}>🎧 Steven</span>
+                {primary && <span style={{ fontSize: 11.5, color: MUTED }}>{t.headerUpdated}: <span style={{ direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{fmtDateTime(primary.updatedAt)}</span></span>}
+              </div>
             </div>
             <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 18, cursor: "pointer", flexShrink: 0, lineHeight: 1 }}>×</button>
           </div>
-          {/* Meta — supplier + work type only. Status & payment live in "job details"
-              below (no duplicate chips in the header). */}
-          <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 14, flexWrap: "wrap" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, color: TEXT2, padding: "4px 11px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}>🎧 Steven</span>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT2 }}>{wtLabel(work.workType, lang)}</span>
-          </div>
         </div>
 
-        {/* Body — workboard: instructions (top) / details / versions (middle) / player (bottom) */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Body — 3-column workboard: versions/files (left) · players+comments (center) · details (right) */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "18px 22px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "300px minmax(0, 1fr) 320px", gap: 16, alignItems: "start" }}>
 
-          {/* TOP: job details + mix instructions (shown directly — no accordion) */}
-          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(280px, 1fr) minmax(0, 1.55fr)", gap: 16, alignItems: "start" }}>
-
-            {/* Work details — narrower side card */}
-            <div style={subCard}>
-              <div style={innerHead}>{t.jobDetails}</div>
-              <div style={{ padding: "10px 16px 12px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px", alignItems: "start" }}>
-                  {field(t.project, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{work.project}</span>)}
-                  {field(t.workType, <InlineSelect<WorkType> value={work.workType} display={wtLabel(work.workType, lang)} color={TEXT2} options={WORK_TYPES.map(o => ({ value: o, label: wtLabel(o, lang), color: TEXT2 }))} onChange={v => onChange({ workType: v })} />)}
-                  {field(t.status, <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))} onChange={v => onChange({ status: v })} />)}
-                  {field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
-                  {field(t.startDate, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
-                  {field(t.deadline, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
-                  {field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
+            {/* ═══ LEFT: versions · upload · project files · Dropbox ═══ */}
+            <div style={{ ...colWrap, order: narrow ? 2 : 1 }}>
+              {/* Versions for project */}
+              <div style={subCard}>
+                <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <span>🎵 {t.versionsForProject}</span>
+                  {groups.length > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: MUTED }}>{groups.length}</span>}
                 </div>
-                <div style={{ paddingTop: 12, marginTop: 10, borderTop: `1px solid ${BDR}` }}>
-                  <button
-                    onClick={() => setConfirmOpen(true)}
-                    onMouseEnter={e => { e.currentTarget.style.background = `${RED}12`; e.currentTarget.style.borderColor = `${RED}80`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = `${RED}44`; }}
-                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit", transition: "all .12s" }}
-                  >🗑 {t.deleteWork}</button>
+                {vLoadErr ? (
+                  <div style={{ padding: "10px 16px 16px", fontSize: 12.5, color: RED }}>{t.vLoadFailed}</div>
+                ) : versions === null ? (
+                  <RowsSkeleton rows={3} height={34} pad="10px 12px 12px" />
+                ) : groups.length === 0 ? (
+                  <div style={{ padding: "10px 16px 18px", fontSize: 12, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
+                ) : (
+                  <div style={{ padding: "8px 10px 10px", display: "flex", flexDirection: "column", gap: 5, maxHeight: 240, overflowY: "auto" }}>
+                    {groups.map(g => {
+                      const isSel = selectedGroup?.key === g.key;
+                      const st = g.primary.status;
+                      return (
+                        <div key={g.key} onClick={() => setSel(g.primary.id)}
+                          style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 11, cursor: "pointer", background: isSel ? `${BRAND}14` : "transparent", border: `1px solid ${isSel ? BRAND + "66" : "transparent"}`, transition: "background .12s" }}>
+                          <button onClick={e => { e.stopPropagation(); setSel(g.primary.id); setPlayReq(p => ({ id: g.primary.id, nonce: (p?.nonce ?? 0) + 1 })); }} title={t.vPlay}
+                            style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                          </button>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div title={g.label} style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: vStatusColor(st), flexShrink: 0 }} />
+                              <span style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{vStatusLabel(st, lang)} · {g.files.length} {lang === "en" ? "files" : "קבצים"}</span>
+                            </div>
+                          </div>
+                          <button onClick={e => { e.stopPropagation(); setDelVersion(g.primary); }} title={t.vDelYes}
+                            style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Upload */}
+              <div style={subCard}>
+                <div style={innerHead}>⬆ {t.uploadFiles}</div>
+                <div style={{ padding: "12px 14px 14px" }}>
+                  <input ref={versionInputRef} type="file" accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip" style={{ display: "none" }} onChange={e => uploadVersionFile(e.target.files)} />
+                  <div
+                    onClick={() => { if (!uploading) versionInputRef.current?.click(); }}
+                    onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
+                    onDragLeave={e => { e.preventDefault(); setDrag(false); }}
+                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadVersionFile(e.dataTransfer.files); }}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "18px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
+                  >
+                    <div style={{ fontSize: 22, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
+                    <div style={{ fontSize: 10, color: MUTED }}>{t.vFileHint}</div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Mix instructions — wide, central work area, backed by real notes */}
-            <div style={subCard}>
-              <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
-                <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎚 {t.mixInstructions}</div>
-                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.mixInstructionsSub}</div>
-              </div>
-              <div style={{ padding: "14px 16px" }}>
-                <NotesEditor
-                  value={work.notes}
-                  placeholder={t.mixInstructionsPh}
-                  saveLabel={t.saveInstructions}
-                  onSave={v => { onChange({ notes: v }); notify(t.instructionsSaved); }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* WORKBOARD: player+comments (main, right) | versions+upload (side, left) */}
-          <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: 16, alignItems: "stretch", minHeight: narrow ? undefined : 420 }}>
-
-          {/* SIDE: Mix versions + upload (fixed-width column, full height) */}
-          <div style={{ ...subCard, order: narrow ? 1 : 2, width: narrow ? "auto" : 344, flexShrink: 0, display: "flex", flexDirection: "column" }}>
-            <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <span>🎵 {t.mixVersions}</span>
-              {work.filesLink && (
-                <a href={work.filesLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 8, background: "rgba(0,98,238,0.12)", border: "1px solid rgba(0,98,238,0.3)", color: "#4A9EFF", fontFamily: "inherit", whiteSpace: "nowrap", textDecoration: "none" }}>{t.openInDropbox}</a>
-              )}
-            </div>
-            <div style={{ padding: "12px 14px 8px" }}>
-              <button onClick={() => { if (!uploading) versionInputRef.current?.click(); }} disabled={uploading}
-                style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "9px 12px", borderRadius: 10, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", opacity: uploading ? 0.6 : 1 }}>{t.uploadVersion}</button>
-            </div>
-
-            <input ref={versionInputRef} type="file" accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip" style={{ display: "none" }} onChange={e => uploadVersionFile(e.target.files)} />
-
-            {/* Upload zone: dropzone with a small, subtle optional-label input inside */}
-            <div style={{ padding: "14px 16px 8px" }}>
-              <div
-                onClick={() => { if (!uploading) versionInputRef.current?.click(); }}
-                onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
-                onDragLeave={e => { e.preventDefault(); setDrag(false); }}
-                onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) uploadVersionFile(e.dataTransfer.files); }}
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "13px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? BRAND : BDR2}`, background: drag ? `${BRAND}12` : "rgba(255,255,255,0.015)", transition: "all .15s" }}
-              >
-                <div style={{ fontSize: 19, opacity: 0.85, color: drag ? BRAND : TEXT2 }}>☁️</div>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.vChooseFile}</div>
-                <div style={{ fontSize: 10, color: MUTED }}>{t.vFileHint}</div>
-              </div>
-            </div>
-
-            {/* List / empty / loading */}
-            {vLoadErr ? (
-              <div style={{ padding: "8px 16px 18px", fontSize: 12.5, color: RED }}>{t.vLoadFailed}</div>
-            ) : versions === null ? (
-              <RowsSkeleton rows={3} height={30} pad="2px 12px 12px" />
-            ) : versions.length === 0 ? (
-              <div style={{ padding: "4px 16px 20px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
-            ) : (
-              <div style={{ padding: "2px 12px 12px", flex: 1, minHeight: 60, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
-                {versions.map(v => {
-                  const primary = `${work.project} - ${stripId(v.label, v.id)}`;
-                  const isSel = sel === v.id;
-                  return (
-                    <div key={v.id} onClick={() => setSel(v.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10, cursor: "pointer", background: isSel ? `${BRAND}12` : "transparent", border: `1px solid ${isSel ? BRAND + "55" : "transparent"}`, transition: "background .12s" }}>
-                      <button onClick={e => { e.stopPropagation(); setSel(v.id); setPlayReq(p => ({ id: v.id, nonce: (p?.nonce ?? 0) + 1 })); }} title={t.vPlay}
-                        style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
-                      </button>
-                      <div title={primary} style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{primary}</div>
-                      <button onClick={e => { e.stopPropagation(); setDelVersion(v); }} title={t.vDelYes}
-                        style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                        onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+              {/* Project files (files of the selected version) */}
+              <div style={subCard}>
+                <div style={innerHead}>📁 {t.projectFiles}</div>
+                <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {!selectedGroup ? (
+                    <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "8px 0" }}>—</div>
+                  ) : selectedGroup.files.map(f => (
+                    <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
+                      <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[f.role]}22`, color: ROLE_COLOR[f.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>🎵</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div title={f.fileName} style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{f.fileName}</div>
+                        <div style={{ fontSize: 9.5, color: MUTED, marginTop: 1 }}>{roleLabel(f.role, lang)}{f.fileSize ? ` · ${fmtBytes(f.fileSize)}` : ""}</div>
+                      </div>
+                      <a href={f.url} target="_blank" rel="noopener noreferrer" title={t.vDownload}
+                        style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3L16.7 12 12 16.7 7.3 12l1.4-1.7L12 13.6V3zM5 19h14v2H5z"/></svg>
+                      </a>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            )}
 
-            {/* Open the Mix Versions folder in Dropbox (web deep-link, no share).
-                Pinned to the card bottom; disabled until a folder exists. */}
-            <div style={{ marginTop: "auto", padding: "10px 14px 14px", borderTop: `1px solid ${BDR}` }}>
-              <button
-                onClick={openMixFolder}
-                disabled={!mixFolderPath}
-                title={mixFolderPath ? undefined : t.vFolderPending}
-                style={{
-                  width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  fontSize: 11.5, fontWeight: 700, padding: "8px 12px", borderRadius: 10, fontFamily: "inherit",
-                  background: mixFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${mixFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`,
-                  color: mixFolderPath ? "#4A9EFF" : MUTED,
-                  cursor: mixFolderPath ? "pointer" : "default",
-                }}>
+              {/* Dropbox */}
+              <button onClick={openMixFolder} disabled={!mixFolderPath} title={mixFolderPath ? undefined : t.vFolderPending}
+                style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "10px 12px", borderRadius: 12, fontFamily: "inherit", background: mixFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${mixFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: mixFolderPath ? "#4A9EFF" : MUTED, cursor: mixFolderPath ? "pointer" : "default" }}>
                 {t.openMixFolder}
               </button>
             </div>
-          </div>
 
-          {/* MAIN: local player + timestamp comments (fills the remaining width) */}
-          <div style={{ ...subCard, order: narrow ? 2 : 1, flex: narrow ? "none" : "1 1 0", minWidth: 0, display: "flex", flexDirection: "column" }}>
-            <div style={innerHead}>🎧 {t.playerSection}</div>
-            {vLoadErr ? (
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 16px", fontSize: 12.5, color: RED, textAlign: "center" }}>{t.vLoadFailed}</div>
-            ) : (versions === null || (versions.length > 0 && !selected)) ? (
-              /* Still loading versions (or auto-select settling) — never flash the empty state. */
-              <>
-                <PlayerSkeleton />
-                <RowsSkeleton rows={2} height={44} pad="4px 16px 18px" />
-              </>
-            ) : selected ? (
-              <>
-                <VersionPlayer
-                  ref={playerRef}
-                  key={selected.id}
-                  url={selected.url}
-                  title={`${work.project} - ${stripId(selected.label, selected.id)}`}
-                  shouldPlay={playReq?.id === selected.id ? playReq.nonce : 0}
-                  comments={comments ?? []}
-                  t={t}
-                />
-
-                {/* Timestamp comments */}
-                <div style={{ padding: "4px 16px 18px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>💬 {t.cSection}</span>
-                    <button
-                      onClick={openAddComment}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, padding: "5px 12px", borderRadius: 8, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: "pointer", fontFamily: "inherit" }}
-                    >+ {t.cAdd}</button>
-                  </div>
-
-                  {/* Add row */}
-                  {adding && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t.cAtTime} {fmtTime(addTs)}</span>
-                      <input
-                        autoFocus value={newText} onChange={e => setNewText(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
-                        placeholder={t.cPlaceholder}
-                        style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }}
-                      />
-                      <button onClick={saveNewComment} disabled={!newText.trim() || savingC}
-                        style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC ? 1 : 0.5, fontFamily: "inherit" }}>{t.save}</button>
-                      <button onClick={() => setAdding(false)}
-                        style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
-                    </div>
-                  )}
-
-                  {/* List */}
-                  {cLoadErr ? (
-                    <div style={{ fontSize: 12, color: RED, padding: "6px 2px" }}>{t.cLoadFail}</div>
-                  ) : comments === null ? (
-                    <RowsSkeleton rows={2} height={44} pad="0" />
-                  ) : comments.length === 0 ? (
-                    !adding && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
+            {/* ═══ CENTER: version files (players) · shared comments ═══ */}
+            <div style={{ ...colWrap, order: narrow ? 1 : 2 }}>
+              {/* Version files — up to 3 stacked players */}
+              <div style={subCard}>
+                <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
+                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
+                </div>
+                <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  {vLoadErr ? (
+                    <div style={{ padding: "18px 0", fontSize: 12.5, color: RED, textAlign: "center" }}>{t.vLoadFailed}</div>
+                  ) : (versions === null || (groups.length > 0 && !selectedGroup)) ? (
+                    <PlayerSkeleton />
+                  ) : selectedGroup ? (
+                    selectedGroup.files.map(f => {
+                      const isPrimary = f.id === primary?.id;
+                      return (
+                        <VersionPlayer
+                          key={f.id}
+                          ref={isPrimary ? playerRef : undefined}
+                          url={f.url}
+                          title={f.fileName}
+                          roleLabel={roleLabel(f.role, lang)}
+                          roleColor={ROLE_COLOR[f.role]}
+                          compact={!isPrimary}
+                          shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
+                          comments={comments ?? []}
+                          onDownload={() => window.open(f.url, "_blank", "noopener,noreferrer")}
+                          t={t}
+                        />
+                      );
+                    })
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {comments.map((c, i) => {
-                        const col = COMMENT_COLORS[i % COMMENT_COLORS.length];
-                        const isEditing = editingId === c.id;
-                        return (
-                          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}` }}>
-                            <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
-                            <button onClick={() => playerRef.current?.playFrom(c.timestampSeconds)} title={t.vPlay}
-                              style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
-                            </button>
-                            <button onClick={() => playerRef.current?.seek(c.timestampSeconds)}
-                              style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds)}</button>
-                            {isEditing ? (
-                              <input
-                                autoFocus value={editText} onChange={e => setEditText(e.target.value)}
-                                onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
-                                onBlur={() => saveEditComment(c)}
-                                style={{ flex: 1, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }}
-                              />
-                            ) : (
-                              <div onClick={() => playerRef.current?.seek(c.timestampSeconds)} title={c.commentText}
-                                style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
-                            )}
-                            <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
-                            {!isEditing && (
-                              <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
-                                style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                                onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
-                            )}
-                            <button onClick={() => setDelC(c)} title={t.cDelete}
-                              style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                              onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <div style={{ padding: "26px 0" }}><EmptyZone icon="🎧" title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} /></div>
                   )}
                 </div>
-              </>
-            ) : (
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <EmptyZone icon="🎧" title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} />
               </div>
-            )}
-          </div>
+
+              {/* Shared comments for the version */}
+              {selectedGroup && (
+                <div style={subCard}>
+                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {t.sharedComments}</div>
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
+                    </div>
+                    <button onClick={openAddComment}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>+ {t.cAdd}</button>
+                  </div>
+                  <div style={{ padding: "12px 16px 16px" }}>
+                    {adding && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t.cAtTime} {fmtTime(addTs)}</span>
+                        <input autoFocus value={newText} onChange={e => setNewText(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
+                          placeholder={t.cPlaceholder}
+                          style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                        <button onClick={saveNewComment} disabled={!newText.trim() || savingC}
+                          style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC ? 1 : 0.5, fontFamily: "inherit" }}>{t.save}</button>
+                        <button onClick={() => setAdding(false)}
+                          style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
+                      </div>
+                    )}
+                    {cLoadErr ? (
+                      <div style={{ fontSize: 12, color: RED, padding: "6px 2px" }}>{t.cLoadFail}</div>
+                    ) : comments === null ? (
+                      <RowsSkeleton rows={2} height={44} pad="0" />
+                    ) : comments.length === 0 ? (
+                      !adding && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                        {comments.map((c, i) => {
+                          const col = COMMENT_COLORS[i % COMMENT_COLORS.length];
+                          const isEditing = editingId === c.id;
+                          return (
+                            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}` }}>
+                              <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                              <button onClick={() => playerRef.current?.playFrom(c.timestampSeconds)} title={t.vPlay}
+                                style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                              </button>
+                              <button onClick={() => playerRef.current?.seek(c.timestampSeconds)}
+                                style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds)}</button>
+                              {isEditing ? (
+                                <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                                  onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
+                                  onBlur={() => saveEditComment(c)}
+                                  style={{ flex: 1, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                              ) : (
+                                <div onClick={() => playerRef.current?.seek(c.timestampSeconds)} title={c.commentText}
+                                  style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
+                              )}
+                              <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
+                              {!isEditing && (
+                                <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
+                                  style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                                  onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
+                              )}
+                              <button onClick={() => setDelC(c)} title={t.cDelete}
+                                style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                                onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ═══ RIGHT: version details · job details · instructions ═══ */}
+            <div style={{ ...colWrap, order: 3 }}>
+              {/* Version details */}
+              <div style={subCard}>
+                <div style={innerHead}>ℹ {t.versionDetails}</div>
+                <div style={{ padding: "6px 16px 14px" }}>
+                  {detailRow(t.vName, <span style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedGroup?.label ?? "—"}</span>)}
+                  {detailRow(t.vCreator, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{primary?.uploadedBy || "Steven"}</span>)}
+                  {detailRow(t.status, primary
+                    ? <InlineSelect<string> value={primary.status} display={vStatusLabel(primary.status, lang)} color={vStatusColor(primary.status)} options={VSTATUS_OPTIONS.map(o => ({ value: o, label: vStatusLabel(o, lang), color: vStatusColor(o) }))} onChange={v => setVersionStatus(primary, v)} />
+                    : <span style={{ fontSize: 12.5, color: MUTED }}>—</span>)}
+                  {detailRow(t.vCreatedAt, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT, direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{primary ? fmtDateTime(primary.createdAt) : "—"}</span>)}
+                  {detailRow(t.vUpdatedAt, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT, direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{primary ? fmtDateTime(primary.updatedAt) : "—"}</span>)}
+                  {detailRow(t.vFileCount, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{selectedGroup ? `${selectedGroup.files.length} ${lang === "en" ? "files" : "קבצים"}` : "—"}</span>)}
+                  {detailRow(t.vTotalSize, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{totalSize > 0 ? fmtBytes(totalSize) : "—"}</span>)}
+                  {primary && (
+                    <button onClick={() => setVersionStatus(primary, "מאושר")} disabled={primary.status === "מאושר"}
+                      style={{ width: "100%", marginTop: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12.5, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: primary.status === "מאושר" ? "default" : "pointer", background: primary.status === "מאושר" ? "rgba(255,255,255,0.04)" : `${BRAND}16`, border: `1px solid ${primary.status === "מאושר" ? BDR2 : BRAND + "55"}`, color: primary.status === "מאושר" ? MUTED : BRAND }}>
+                      ✓ {t.markApproved}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Job details (compact) */}
+              <div style={subCard}>
+                <div style={innerHead}>{t.jobDetails}</div>
+                <div style={{ padding: "10px 16px 12px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px", alignItems: "start" }}>
+                    {field(t.workType, <InlineSelect<WorkType> value={work.workType} display={wtLabel(work.workType, lang)} color={TEXT2} options={WORK_TYPES.map(o => ({ value: o, label: wtLabel(o, lang), color: TEXT2 }))} onChange={v => onChange({ workType: v })} />)}
+                    {field(t.status, <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))} onChange={v => onChange({ status: v })} />)}
+                    {field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
+                    {field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
+                    {field(t.startDate, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
+                    {field(t.deadline, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
+                  </div>
+                  <div style={{ paddingTop: 12, marginTop: 10, borderTop: `1px solid ${BDR}` }}>
+                    <button onClick={() => setConfirmOpen(true)}
+                      style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12, fontWeight: 700, padding: "8px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.deleteWork}</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mix instructions (compact) */}
+              <div style={subCard}>
+                <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>🎚 {t.mixInstructions}</div>
+                </div>
+                <div style={{ padding: "12px 16px" }}>
+                  <NotesEditor value={work.notes} placeholder={t.mixInstructionsPh} saveLabel={t.saveInstructions} onSave={v => { onChange({ notes: v }); notify(t.instructionsSaved); }} />
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
