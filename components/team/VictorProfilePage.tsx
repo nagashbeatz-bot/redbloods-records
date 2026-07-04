@@ -657,6 +657,39 @@ function segLabel(seg: BriefSegment, t: (k: string) => string): string {
   return t(`seg.${seg.type}`);
 }
 
+const MIN_SEG = 2;      // seconds — smallest allowed block
+const DEFAULT_LEN = 20; // seconds — default length of a freshly-added block
+
+// Cascade-forward normalize: keep blocks as a sorted, non-overlapping sequence.
+// Each block starts at max(its own start, previous block's end); lengths kept;
+// clamped to [0, dur]. Pushing a block right shoves the following ones after it.
+function normalizeSegs(list: BriefSegment[], dur: number): BriefSegment[] {
+  const sorted = [...list].sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  const out: BriefSegment[] = [];
+  for (const s of sorted) {
+    let len = Math.max(MIN_SEG, s.end - s.start);
+    let start = Math.max(s.start, cursor);
+    if (dur > 0) {
+      start = Math.min(start, Math.max(0, dur - MIN_SEG));
+      len = Math.min(len, Math.max(MIN_SEG, dur - start));
+    }
+    const end = start + len;
+    out.push({ ...s, start, end });
+    cursor = end;
+  }
+  return out;
+}
+
+// Small inline-SVG icons (feather-style, currentColor) — matches the stroked
+// SVG pattern already used elsewhere (Sidebar/ProjectsTable). No icon library.
+const SVG_BASE = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+function IconPlay() { return (<svg {...SVG_BASE}><path d="M7 5l12 7-12 7V5z" fill="currentColor" stroke="none" /></svg>); }
+function IconPause() { return (<svg {...SVG_BASE}><rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /></svg>); }
+function IconDownload() { return (<svg {...SVG_BASE}><path d="M12 4v11" /><path d="M7.5 10.5L12 15l4.5-4.5" /><path d="M5 20h14" /></svg>); }
+function IconTrash() { return (<svg {...SVG_BASE} width={13} height={13}><path d="M4 7h16" /><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /><path d="M6.5 7l1 12.5a1 1 0 0 0 1 .9h7a1 1 0 0 0 1-.9L18 7" /></svg>); }
+function IconMusic() { return (<svg {...SVG_BASE} width={11} height={11}><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" fill="currentColor" stroke="none" /><circle cx="16" cy="16" r="3" fill="currentColor" stroke="none" /></svg>); }
+
 // Inline brief-audio player with colored structure segments over the timeline.
 // Its own <audio>, guarded by the shared currentVictorAudio so it never plays
 // alongside a version. Segments persist via onSaveSegments (owner-only route).
@@ -686,14 +719,17 @@ function BriefSegmentPlayer({
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);              // playhead seconds
   const [duration, setDuration] = useState(file.durationSeconds ?? 0);
-  const [segs, setSegs] = useState<BriefSegment[]>(file.segments ?? []);
-  const [form, setForm] = useState<null | { id: string | null; type: BriefSegmentType; label: string; start: number; end: number }>(null);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState(false);
+  const [segs, setSegs] = useState<BriefSegment[]>(() => normalizeSegs(file.segments ?? [], file.durationSeconds ?? 0));
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [advanced, setAdvanced] = useState(false);
+  const [saving, setSaving] = useState<"idle" | "saving" | "error">("idle");
+  const laneRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<null | { id: string; mode: "move" | "l" | "r"; startX: number; s0: number; e0: number; moved: boolean }>(null);
+  const segsRef = useRef(segs); segsRef.current = segs;
   const formDir: React.CSSProperties["direction"] = lang === "he" ? "rtl" : "ltr";
 
   // Re-seed when switching to a different brief file (dropboxPath identity).
-  useEffect(() => { setSegs(file.segments ?? []); setForm(null); }, [file.dropboxPath]);
+  useEffect(() => { setSegs(normalizeSegs(file.segments ?? [], file.durationSeconds ?? 0)); setActiveId(null); }, [file.dropboxPath]);
 
   // One stable <audio>; same single-active guard as the version player, so
   // brief audio and version audio can never play at the same time.
@@ -769,41 +805,78 @@ function BriefSegmentPlayer({
   const dur = duration || Math.max(1, ...segs.map(s => s.end));
   const progressPct = dur ? Math.min(100, (cur / dur) * 100) : 0;
 
-  // ── Owner editing (segments) ──
-  function openAdd() {
-    const start = Math.round(cur);
-    setForm({ id: null, type: "verse", label: "", start, end: Math.round(Math.min(dur || start + 15, start + 15)) });
-    setErr(false);
+  // ── Owner editing — direct manipulation (click-to-add · drag · resize) ──
+  const activeSeg = segs.find(s => s.id === activeId) ?? null;
+
+  function persist(next: BriefSegment[]) {
+    setSegs(next);
+    setSaving("saving");
+    onSaveSegments(next).then(ok => setSaving(ok ? "idle" : "error"));
   }
-  function openEdit(seg: BriefSegment) {
-    setForm({ id: seg.id, type: seg.type, label: seg.label ?? "", start: Math.round(seg.start), end: Math.round(seg.end) });
-    setErr(false);
+  function flush() {
+    setSaving("saving");
+    onSaveSegments(segsRef.current).then(ok => setSaving(ok ? "idle" : "error"));
   }
-  async function commitForm() {
-    if (!form || saving) return;
-    const start = Math.max(0, Number(form.start) || 0);
-    const end = Math.max(start, Number(form.end) || 0);
+  // Click a chip → new block right after the last one (default length, clamped
+  // to the track). No numbers required — the block appears immediately.
+  function addSegment(type: BriefSegmentType) {
+    const d = duration; if (!d) return;
+    const lastEnd = segs.reduce((m, s) => Math.max(m, s.end), 0);
+    let start = Math.min(lastEnd, Math.max(0, d - MIN_SEG));
+    let end = Math.min(d, start + DEFAULT_LEN);
+    if (end - start < MIN_SEG) { start = Math.max(0, d - DEFAULT_LEN); end = d; }
     const seg: BriefSegment = {
-      id: form.id ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${start}-${end}-${segs.length}`),
-      type: form.type,
-      ...(form.type === "custom" && form.label.trim() ? { label: form.label.trim() } : {}),
-      color: SEG_COLOR[form.type], start, end,
+      id: (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `${start}-${end}-${segs.length}`,
+      type,
+      ...(type === "custom" ? { label: t("seg.custom") } : {}),
+      color: SEG_COLOR[type], start, end,
     };
-    const next = (form.id ? segs.map(s => s.id === form.id ? seg : s) : [...segs, seg]).sort((a, b) => a.start - b.start);
-    const prev = segs;
-    setSaving(true); setErr(false);
-    setSegs(next); // optimistic
-    const ok = await onSaveSegments(next);
-    setSaving(false);
-    if (ok) setForm(null);
-    else { setSegs(prev); setErr(true); }
+    setActiveId(seg.id);
+    persist(normalizeSegs([...segs, seg], d));
   }
-  async function removeSeg(id: string) {
-    const prev = segs;
-    const next = segs.filter(s => s.id !== id);
-    setSegs(next); setForm(null);
-    const ok = await onSaveSegments(next);
-    if (!ok) setSegs(prev);
+  function removeSeg(id: string) {
+    if (activeId === id) setActiveId(null);
+    persist(segs.filter(s => s.id !== id));
+  }
+  // Advanced numeric / custom-name edits: update locally, save on blur (flush).
+  function editActiveLocal(patch: Partial<BriefSegment>) {
+    if (!activeId) return;
+    setSegs(prev => normalizeSegs(prev.map(s => s.id === activeId ? { ...s, ...patch } : s), duration));
+  }
+  // Drag / resize via pointer events (no library). "move" = whole block; "l"/"r"
+  // = resize that edge. Live free-move (clamped to bounds); cascade on release.
+  function beginDrag(e: React.PointerEvent, id: string, mode: "move" | "l" | "r") {
+    if (!isOwner) return;
+    e.stopPropagation();
+    const seg = segs.find(s => s.id === id); if (!seg) return;
+    setActiveId(id);
+    dragRef.current = { id, mode, startX: e.clientX, s0: seg.start, e0: seg.end, moved: false };
+    try { laneRef.current?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+  function onLaneMove(e: React.PointerEvent) {
+    const dr = dragRef.current, lane = laneRef.current, d = duration;
+    if (!dr || !lane || !d) return;
+    const w = lane.getBoundingClientRect().width; if (!w) return;
+    if (Math.abs(e.clientX - dr.startX) > 4) dr.moved = true;
+    const delta = ((e.clientX - dr.startX) / w) * d;
+    setSegs(prev => prev.map(s => {
+      if (s.id !== dr.id) return s;
+      if (dr.mode === "move") {
+        const len = dr.e0 - dr.s0;
+        const start = Math.max(0, Math.min(dr.s0 + delta, d - len));
+        return { ...s, start, end: start + len };
+      }
+      if (dr.mode === "l") return { ...s, start: Math.max(0, Math.min(dr.s0 + delta, s.end - MIN_SEG)) };
+      return { ...s, end: Math.min(d, Math.max(dr.e0 + delta, s.start + MIN_SEG)) };
+    }));
+  }
+  function onLaneUp(e: React.PointerEvent) {
+    const dr = dragRef.current; dragRef.current = null;
+    try { laneRef.current?.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (!dr) return;
+    // A tap that didn't move → seek to the block's start (owner too).
+    if (!dr.moved) { const seg = segsRef.current.find(s => s.id === dr.id); if (seg) seekTo(seg.start); return; }
+    persist(normalizeSegs(segsRef.current, duration)); // cascade + save on release
   }
 
   const inputStyle: React.CSSProperties = {
@@ -821,34 +894,41 @@ function BriefSegmentPlayer({
           background: playing ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`,
           color: "#fff", cursor: hasUrl ? "pointer" : "not-allowed", display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 13, fontFamily: "inherit", outline: "none",
-        }}>{playing ? "⏸" : "▶"}</button>
+        }}>{playing ? <IconPause /> : <IconPlay />}</button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div title={name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
-          <div style={{ fontSize: 9.5, color: MUTED, marginTop: 1 }}>🎵 {t("seg.title")}</div>
+          <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}><IconMusic /> {t("seg.title")}</div>
         </div>
         <button onClick={e => { e.stopPropagation(); onDownload(); }} disabled={!hasUrl} title={t("file.download")}
-          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 15, padding: 0, fontFamily: "inherit", outline: "none" }}>↓</button>
+          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", outline: "none" }}><IconDownload /></button>
         {isOwner && (
           <button onClick={e => { e.stopPropagation(); onDeleteConfirm(); }} title={t("file.delete")}
-            style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "3px 7px", flexShrink: 0, outline: "none", fontFamily: "inherit" }}>🗑</button>
+            style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 8, cursor: "pointer", color: "#F87171", padding: 0, flexShrink: 0, outline: "none", fontFamily: "inherit" }}><IconTrash /></button>
         )}
       </div>
 
       {/* Timeline block — forced LTR inside the RTL drawer so time flows L→R. */}
       <div style={{ padding: "2px 12px 12px", direction: "ltr" }}>
-        {/* Colored structure segments */}
-        <div style={{ position: "relative", height: 24, marginBottom: 4 }}>
-          {segs.length === 0 ? (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, color: MUTED, border: `1px dashed ${BDR2}`, borderRadius: 6 }}>{t("seg.empty")}</div>
-          ) : segs.map(seg => {
+        {/* Structure segments — draggable/resizable blocks (owner); tap to seek */}
+        <div ref={laneRef} onPointerMove={isOwner ? onLaneMove : undefined} onPointerUp={isOwner ? onLaneUp : undefined}
+          style={{ position: "relative", height: 40, marginBottom: 6, borderRadius: 8, background: "rgba(255,255,255,0.025)", border: `1px solid ${BDR}`, touchAction: "none", overflow: "hidden" }}>
+          {segs.length === 0 && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, color: MUTED }}>{isOwner ? t("seg.hint") : t("seg.empty")}</div>
+          )}
+          {segs.map(seg => {
             const left = dur ? Math.min(100, (seg.start / dur) * 100) : 0;
-            const width = dur ? Math.max(3, ((seg.end - seg.start) / dur) * 100) : 0;
+            const width = dur ? Math.max(4, ((seg.end - seg.start) / dur) * 100) : 0;
+            const active = seg.id === activeId;
             return (
-              <button key={seg.id} onClick={() => { seekTo(seg.start); if (isOwner) openEdit(seg); }}
+              <div key={seg.id}
+                onPointerDown={isOwner ? (e) => beginDrag(e, seg.id, "move") : undefined}
+                onClick={isOwner ? undefined : () => seekTo(seg.start)}
                 title={`${segLabel(seg, t)} · ${fmt(seg.start)}–${fmt(seg.end)}`}
-                style={{ position: "absolute", top: 0, bottom: 0, left: `${left}%`, width: `${width}%`, background: `${seg.color}30`, border: `1px solid ${seg.color}`, borderRadius: 6, color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: "pointer", padding: "0 4px", fontFamily: "inherit", outline: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
-                {segLabel(seg, t)}
-              </button>
+                style={{ position: "absolute", top: 4, bottom: 4, left: `${left}%`, width: `${width}%`, background: `${seg.color}${active ? "4D" : "2E"}`, border: `1px solid ${seg.color}`, boxShadow: active ? `0 0 0 2px ${seg.color}66, 0 2px 10px rgba(0,0,0,0.45)` : "none", borderRadius: 7, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap", cursor: isOwner ? "grab" : "pointer", padding: "0 12px", userSelect: "none", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,0.6)" } as React.CSSProperties}>
+                {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "l")} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 9, cursor: "ew-resize", borderRadius: "7px 0 0 7px", background: `${seg.color}55` }} />}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none" }}>{segLabel(seg, t)}</span>
+                {isOwner && <span onPointerDown={(e) => beginDrag(e, seg.id, "r")} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 9, cursor: "ew-resize", borderRadius: "0 7px 7px 0", background: `${seg.color}55` }} />}
+              </div>
             );
           })}
         </div>
@@ -870,56 +950,43 @@ function BriefSegmentPlayer({
           <span>{duration > 0 ? fmt(duration) : "—"}</span>
         </div>
 
-        {/* Owner: add marker + form */}
+        {/* Owner: click a type → block appears instantly; then drag / resize it */}
         {isOwner && (
-          <div style={{ marginTop: 10, direction: formDir }}>
-            {!form && (
-              <button onClick={openAdd}
-                style={{ fontSize: 11, fontWeight: 700, padding: "5px 12px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.add")}</button>
+          <div style={{ marginTop: 11 }}>
+            <div style={{ fontSize: 9.5, color: MUTED, marginBottom: 6, direction: formDir }}>{t("seg.addTitle")}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {SEG_ORDER.map(type => (
+                <button key={type} onClick={() => addSegment(type)} disabled={!duration} title={duration ? "" : t("seg.hint")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, cursor: duration ? "pointer" : "not-allowed", fontFamily: "inherit", outline: "none", border: `1px solid ${SEG_COLOR[type]}66`, background: `${SEG_COLOR[type]}16`, color: "#fff", opacity: duration ? 1 : 0.45 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: SEG_COLOR[type], flexShrink: 0 }} />
+                  {t(`seg.${type}`)}
+                </button>
+              ))}
+            </div>
+            {activeSeg && (
+              <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", direction: formDir }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", padding: "3px 9px", borderRadius: 7, background: `${activeSeg.color}22`, border: `1px solid ${activeSeg.color}` }}>{segLabel(activeSeg, t)}</span>
+                <span style={{ fontSize: 10, color: MUTED, direction: "ltr" }}>{fmt(activeSeg.start)}–{fmt(activeSeg.end)}</span>
+                <button onClick={() => setAdvanced(a => !a)}
+                  style={{ fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 7, background: advanced ? `${PURPLE}18` : "rgba(255,255,255,0.05)", border: `1px solid ${advanced ? `${PURPLE}55` : BDR2}`, color: advanced ? PURPLE : TEXT2, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.advanced")}</button>
+                <button onClick={() => removeSeg(activeSeg.id)} title={t("file.delete")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit", outline: "none" }}><IconTrash />{t("file.delete")}</button>
+                {saving === "saving" && <span style={{ fontSize: 10, color: MUTED }}>…</span>}
+                {saving === "error" && <span style={{ fontSize: 10, color: RED }}>{t("seg.saveFail")}</span>}
+              </div>
             )}
-            {form && (
-              <div style={{ padding: 11, borderRadius: 11, background: CARD, border: `1px solid ${PURPLE}33`, display: "flex", flexDirection: "column", gap: 9 }}>
-                {/* type */}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {SEG_ORDER.map(type => {
-                    const active = form.type === type;
-                    return (
-                      <button key={type} onClick={() => setForm(f => f ? { ...f, type } : f)}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit", outline: "none", border: `1px solid ${active ? SEG_COLOR[type] : BDR2}`, background: active ? `${SEG_COLOR[type]}22` : "transparent", color: active ? "#fff" : TEXT2 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: SEG_COLOR[type], flexShrink: 0 }} />
-                        {t(`seg.${type}`)}
-                      </button>
-                    );
-                  })}
-                </div>
-                {form.type === "custom" && (
-                  <input value={form.label} onChange={e => setForm(f => f ? { ...f, label: e.target.value } : f)} placeholder={t("seg.name")} maxLength={40} style={{ ...inputStyle, direction: formDir }} />
+            {activeSeg && advanced && (
+              <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: CARD, border: `1px solid ${BDR2}`, direction: formDir, display: "flex", flexDirection: "column", gap: 8 }}>
+                {activeSeg.type === "custom" && (
+                  <input value={activeSeg.label ?? ""} onChange={e => editActiveLocal({ label: e.target.value })} onBlur={flush} placeholder={t("seg.name")} maxLength={40} style={{ ...inputStyle, direction: formDir }} />
                 )}
-                {/* start / end */}
                 <div style={{ display: "flex", gap: 8 }}>
                   {(["start", "end"] as const).map(key => (
-                    <div key={key} style={{ flex: 1 }}>
+                    <label key={key} style={{ flex: 1 }}>
                       <div style={{ fontSize: 9.5, color: MUTED, marginBottom: 3 }}>{t(`seg.${key}`)} (s)</div>
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <input type="number" min={0} value={form[key]} onChange={e => setForm(f => f ? { ...f, [key]: Math.max(0, Number(e.target.value) || 0) } : f)} style={{ ...inputStyle, direction: "ltr" }} />
-                        <button onClick={() => setForm(f => f ? { ...f, [key]: Math.round(cur) } : f)} title={t("seg.useNow")}
-                          style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: "0 8px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.useNow")}</button>
-                      </div>
-                    </div>
+                      <input type="number" min={0} value={Math.round(activeSeg[key])} onChange={e => editActiveLocal({ [key]: Math.max(0, Number(e.target.value) || 0) })} onBlur={flush} style={{ ...inputStyle, direction: "ltr" }} />
+                    </label>
                   ))}
-                </div>
-                {err && <div style={{ fontSize: 10.5, color: RED }}>{t("seg.saveFail")}</div>}
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  {form.id ? (
-                    <button onClick={() => removeSeg(form.id!)} disabled={saving}
-                      style={{ fontSize: 10.5, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: saving ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{t("file.delete")}</button>
-                  ) : <span />}
-                  <div style={{ display: "flex", gap: 7 }}>
-                    <button onClick={() => setForm(null)} disabled={saving}
-                      style={{ fontSize: 10.5, fontWeight: 700, padding: "5px 11px", borderRadius: 8, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: saving ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{t("drawer.cancel")}</button>
-                    <button onClick={commitForm} disabled={saving}
-                      style={{ fontSize: 10.5, fontWeight: 800, padding: "5px 13px", borderRadius: 8, background: saving ? MUTED : PURPLE, border: "none", color: "#fff", cursor: saving ? "default" : "pointer", fontFamily: "inherit", outline: "none" }}>{saving ? "…" : t("seg.save")}</button>
-                  </div>
                 </div>
               </div>
             )}
