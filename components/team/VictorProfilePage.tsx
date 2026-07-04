@@ -431,6 +431,17 @@ function parseVersionKey(name: string): string | null {
   if (/\bfix\b/.test(n))         return "FIX";
   return null;
 }
+// The set of version GROUP keys currently present (mirrors buildVersionGroups):
+// prefer the stored label, fall back to filename parse, else the "all"/untagged
+// bucket. Used to prune reviews of versions that no longer have any files.
+function versionKeysOf(files: FileLink[]): Set<string> {
+  const keys = new Set<string>();
+  if (files.length === 0) return keys;
+  const vkeys = files.map(f => (f.versionLabel && /^V\d+$/i.test(f.versionLabel)) ? f.versionLabel.toUpperCase() : parseVersionKey(f.name));
+  if (!vkeys.some(Boolean)) { keys.add("all"); return keys; }
+  for (const k of vkeys) keys.add(k ?? "__untagged__");
+  return keys;
+}
 // Stable per-file id for tracking the now-playing track across re-renders/deletes.
 function fileId(f: FileLink): string {
   return f.dropboxPath || f.dropboxShareUrl || f.url || f.name;
@@ -953,12 +964,20 @@ function VictorProjectDrawer({
         }
       }
       const filtered = effectiveFiles.filter((_, i) => i !== idx);
+      // When a version loses its LAST file, drop its review too — otherwise a
+      // reused version number (e.g. a fresh V1) would inherit the old feedback.
+      const remainingKeys = versionKeysOf(filtered);
+      const prunedReviews = Object.fromEntries(
+        Object.entries(effectiveReviews).filter(([k]) => remainingKeys.has(k)),
+      ) as Record<string, VersionReview>;
+      const reviewsChanged = Object.keys(prunedReviews).length !== Object.keys(effectiveReviews).length;
       await fetch(`/api/vendor/victor/work/${work.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filesSent: filtered }),
+        body: JSON.stringify(reviewsChanged ? { filesSent: filtered, versionReviews: prunedReviews } : { filesSent: filtered }),
       });
       setEffectiveFiles(filtered);
+      if (reviewsChanged) setEffectiveReviews(prunedReviews);
       onRefresh?.();
     } catch {
       setDeleteError(true);
