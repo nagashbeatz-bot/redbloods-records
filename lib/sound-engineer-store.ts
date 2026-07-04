@@ -62,6 +62,7 @@ function mapRow(
     filesLink:            (row.files_link           as string | null) ?? null,
     notes:                (row.notes                as string)        ?? "",
     linkedTransactionId:  (row.linked_transaction_id as string | null) ?? null,
+    sortOrder:            row.sort_order != null ? Number(row.sort_order) : null,
     createdAt:            (row.created_at           as string) ?? "",
     updatedAt:            (row.updated_at           as string) ?? "",
   };
@@ -158,12 +159,32 @@ export async function getSoundEngineerWorkForProject(
 export async function listSoundEngineerWork(
   engineerName?: string
 ): Promise<SoundEngineerWork[]> {
-  let q = supabase.from("sound_engineer_work").select("*").order("created_at", { ascending: false });
+  // Manual order first (sort_order ASC), then unordered rows by recency
+  // (created_at DESC). nullsFirst:false pushes NULL sort_order to the end.
+  let q = supabase
+    .from("sound_engineer_work")
+    .select("*")
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false });
   if (engineerName) q = q.eq("engineer_name", engineerName);
 
   const [{ data, error }, projectMap] = await Promise.all([q, buildProjectMap()]);
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => mapRow(r as Record<string, unknown>, projectMap));
+}
+
+/**
+ * Persist a manual list order: writes sort_order = index for each id in the given
+ * order. Only the passed ids are touched (scoped to one engineer's list by the
+ * caller). Never creates/deletes rows, never touches Finance.
+ */
+export async function reorderSoundEngineerWork(orderedIds: string[]): Promise<void> {
+  const ids = orderedIds.filter((id) => typeof id === "string" && id);
+  await Promise.all(
+    ids.map((id, index) =>
+      supabase.from("sound_engineer_work").update({ sort_order: index }).eq("id", id)
+    )
+  );
 }
 
 /** Get a list of all unique engineer names ever used. */

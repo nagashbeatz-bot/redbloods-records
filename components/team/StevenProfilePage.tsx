@@ -631,6 +631,10 @@ export default function StevenProfilePage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [openMaterialsId, setOpenMaterialsId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  // Drag-to-reorder + full-row hover state (works table).
+  const [dragId, setDragId]   = useState<string | null>(null); // row being dragged
+  const [overId, setOverId]   = useState<string | null>(null); // current drop target
+  const [hoverId, setHoverId] = useState<string | null>(null); // row under cursor (glow)
   const [lang, setLang]     = useState<Lang>("he");
   const [toast, setToast]   = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -717,6 +721,31 @@ export default function StevenProfilePage() {
       } catch {
         notify(rtl ? "המחיקה נכשלה" : "Delete failed");
       }
+    }
+  }
+
+  // Move dragged work to just before the drop target, optimistically, then persist
+  // the new order (owner-only route). Reverts + toasts on failure.
+  async function reorderWorks(fromId: string, toId: string) {
+    if (!fromId || fromId === toId) return;
+    const prev = works;
+    const moved = prev.find(w => w.id === fromId);
+    if (!moved) return;
+    const rest = prev.filter(w => w.id !== fromId);
+    const at = rest.findIndex(w => w.id === toId);
+    if (at < 0) return;
+    const next = [...rest.slice(0, at), moved, ...rest.slice(at)];
+    setWorks(next); // optimistic
+    try {
+      const res = await fetch("/api/sound-engineer/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: next.map(w => w.id) }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setWorks(prev); // revert
+      notify(rtl ? "שמירת הסדר נכשלה" : "Reorder failed");
     }
   }
 
@@ -820,6 +849,7 @@ export default function StevenProfilePage() {
               <table style={{ width: "100%", minWidth: 660, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: CARD2 }}>
+                    <th aria-hidden style={{ width: 26 }} />
                     {[t.project, t.workType, t.status, t.startDate, t.deadline, t.price, t.payment, t.action].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: textStart, fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
@@ -829,7 +859,7 @@ export default function StevenProfilePage() {
                   {loading ? (
                     Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i} style={{ borderTop: `1px solid ${BDR}` }}>
-                        <td colSpan={8} style={{ padding: "0 14px" }}>
+                        <td colSpan={9} style={{ padding: "0 14px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 20, height: 45 }}>
                             <Shimmer w={140} h={13} /><Shimmer w={88} h={12} /><Shimmer w={64} h={22} r={999} />
                             <Shimmer w={62} h={12} /><Shimmer w={62} h={12} /><Shimmer w={50} h={12} />
@@ -839,12 +869,32 @@ export default function StevenProfilePage() {
                       </tr>
                     ))
                   ) : works.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
+                    <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
                   ) : works.map((w, i) => (
-                    <tr key={w.id} style={{ borderTop: `1px solid ${BDR}`, background: i % 2 ? "rgba(255,255,255,0.01)" : "transparent" }}>
-                      <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}><span style={{ marginInlineEnd: 5 }}>🎵</span>{w.project}</td>
+                    <tr key={w.id}
+                      onClick={() => setOpenId(w.id)}
+                      onMouseEnter={() => setHoverId(w.id)}
+                      onMouseLeave={() => setHoverId(cur => (cur === w.id ? null : cur))}
+                      onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== w.id) setOverId(w.id); } }}
+                      onDrop={e => { if (dragId) { e.preventDefault(); void reorderWorks(dragId, w.id); } setDragId(null); setOverId(null); }}
+                      style={{
+                        borderTop: overId === w.id && dragId ? `2px solid ${BRAND}` : `1px solid ${BDR}`,
+                        background: dragId === w.id ? "rgba(220,38,38,0.05)" : hoverId === w.id ? "rgba(220,38,38,0.08)" : (i % 2 ? "rgba(255,255,255,0.01)" : "transparent"),
+                        opacity: dragId === w.id ? 0.5 : 1,
+                        cursor: "pointer",
+                        transition: "background 0.12s ease",
+                      }}>
+                      <td onClick={e => e.stopPropagation()} style={{ padding: "0 4px", textAlign: "center", width: 26 }}>
+                        <span
+                          draggable
+                          onDragStart={e => { setDragId(w.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", w.id); } catch {} }}
+                          onDragEnd={() => { setDragId(null); setOverId(null); }}
+                          title={rtl ? "גרור לשינוי סדר" : "Drag to reorder"}
+                          style={{ cursor: "grab", color: dragId === w.id ? BRAND : MUTED, fontSize: 15, lineHeight: 1, userSelect: "none", display: "inline-block", padding: "8px 2px" }}>⠿</span>
+                      </td>
+                      <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{w.project}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{wtLabel(w.workType, lang)}</td>
-                      <td style={{ padding: "11px 14px" }}>
+                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
                         <InlineSelect
                           value={w.status}
                           display={statusLabel(w.status, lang)}
@@ -859,7 +909,7 @@ export default function StevenProfilePage() {
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.startDate}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>
-                      <td style={{ padding: "11px 14px" }}>
+                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
                         <InlineSelect
                           value={w.pay}
                           display={payLabel(w.pay, lang)}
@@ -871,7 +921,7 @@ export default function StevenProfilePage() {
                           onChange={v => updateWork(w.id, { pay: v })}
                         />
                       </td>
-                      <td style={{ padding: "11px 14px" }}>
+                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
                           <button onClick={() => setOpenId(w.id)}
                             onMouseEnter={e => { e.currentTarget.style.background = "#E4E4EA"; e.currentTarget.style.boxShadow = "0 0 8px rgba(255,255,255,0.16)"; }}

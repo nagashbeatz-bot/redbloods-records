@@ -459,6 +459,7 @@ export interface SoundEngineerWork {
   filesLink: string | null;      // Dropbox / Drive / any URL
   notes: string;
   linkedTransactionId: string | null;  // references transactions(id)
+  sortOrder: number | null;      // manual list order (sound_engineer_work.sort_order); null → fall back to created_at
   createdAt: string;
   updatedAt: string;
 }
