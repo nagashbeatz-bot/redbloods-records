@@ -1702,7 +1702,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
               </button>
             </div>
 
-            {/* ═══ CENTER: version files (players) · shared comments ═══ */}
+            {/* ═══ CENTER: version files (players) · add-comment action (shared list is full-width below) ═══ */}
             <div style={{ ...colWrap, order: narrow ? 1 : 2 }}>
               {/* Version files — up to 3 stacked players */}
               <div style={subCard}>
@@ -1778,89 +1778,6 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 </div>
               )}
 
-              {/* Shared comments for the version */}
-              {selectedGroup && (
-                <div style={subCard}>
-                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {t.sharedComments}</div>
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
-                  </div>
-                  <div style={{ padding: "12px 16px 16px" }}>
-                    {rolePick && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44`, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: TEXT2, whiteSpace: "nowrap" }}>{rtl ? "שייך הערה ל:" : "Attach comment to:"}</span>
-                        {(["mix", "acapella", "instrumental"] as FileRole[]).map(r => (
-                          <button key={r} onClick={() => chooseAddRole(r)}
-                            style={{ fontSize: 11, fontWeight: 800, padding: "5px 11px", borderRadius: 8, background: `${ROLE_COLOR[r]}1A`, border: `1px solid ${ROLE_COLOR[r]}55`, color: ROLE_COLOR[r], cursor: "pointer", fontFamily: "inherit" }}>
-                            {roleLabel(r, lang)}
-                          </button>
-                        ))}
-                        <button onClick={() => setRolePick(false)}
-                          style={{ fontSize: 11, fontWeight: 700, padding: "5px 9px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
-                      </div>
-                    )}
-                    {adding && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t.cAtTime} {fmtTime(addTs)}</span>
-                        {addRole && <span style={{ fontSize: 9.5, fontWeight: 800, color: ROLE_COLOR[addRole], background: `${ROLE_COLOR[addRole]}1A`, border: `1px solid ${ROLE_COLOR[addRole]}40`, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{roleLabel(addRole, lang)}</span>}
-                        <input autoFocus value={newText} onChange={e => setNewText(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
-                          placeholder={t.cPlaceholder}
-                          style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
-                        <button onClick={saveNewComment} disabled={!newText.trim() || savingC}
-                          style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC ? 1 : 0.5, fontFamily: "inherit" }}>{t.save}</button>
-                        <button onClick={() => setAdding(false)}
-                          style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
-                      </div>
-                    )}
-                    {cLoadErr ? (
-                      <div style={{ fontSize: 12, color: RED, padding: "6px 2px" }}>{t.cLoadFail}</div>
-                    ) : comments === null ? (
-                      <RowsSkeleton rows={2} height={44} pad="0" />
-                    ) : comments.length === 0 ? (
-                      !adding && !rolePick && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                        {comments.map((c, i) => {
-                          const cr = roleOfComment(c);
-                          const col = cr ? ROLE_COLOR[cr] : MUTED;
-                          const isEditing = editingId === c.id;
-                          return (
-                            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}` }}>
-                              <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
-                              <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds)} title={t.vPlay}
-                                style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
-                              </button>
-                              <button onClick={() => playerForComment(c)?.seek(c.timestampSeconds)}
-                                style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds)}</button>
-                              <span style={{ fontSize: 9.5, fontWeight: 800, color: col, background: `${col}1A`, border: `1px solid ${col}40`, padding: "2px 7px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{cr ? roleLabel(cr, lang) : (rtl ? "כללי" : "Shared")}</span>
-                              {isEditing ? (
-                                <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
-                                  onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
-                                  onBlur={() => saveEditComment(c)}
-                                  style={{ flex: 1, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
-                              ) : (
-                                <div onClick={() => playerForComment(c)?.seek(c.timestampSeconds)} title={c.commentText}
-                                  style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
-                              )}
-                              <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
-                              {!isEditing && (
-                                <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
-                                  style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                                  onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
-                              )}
-                              <button onClick={() => setDelC(c)} title={t.cDelete}
-                                style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                                onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* ═══ RIGHT: version details · job details · instructions ═══ */}
@@ -1912,6 +1829,90 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
             </div>
 
           </div>
+
+          {/* ═══ FULL-WIDTH: unified shared comments for the version — below the 3-column grid ═══ */}
+          {selectedGroup && (
+            <div style={{ ...subCard, marginTop: 16 }}>
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {t.sharedComments}</div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
+              </div>
+              <div style={{ padding: "12px 16px 16px" }}>
+                {rolePick && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44`, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: TEXT2, whiteSpace: "nowrap" }}>{rtl ? "שייך הערה ל:" : "Attach comment to:"}</span>
+                    {(["mix", "acapella", "instrumental"] as FileRole[]).map(r => (
+                      <button key={r} onClick={() => chooseAddRole(r)}
+                        style={{ fontSize: 11, fontWeight: 800, padding: "5px 11px", borderRadius: 8, background: `${ROLE_COLOR[r]}1A`, border: `1px solid ${ROLE_COLOR[r]}55`, color: ROLE_COLOR[r], cursor: "pointer", fontFamily: "inherit" }}>
+                        {roleLabel(r, lang)}
+                      </button>
+                    ))}
+                    <button onClick={() => setRolePick(false)}
+                      style={{ fontSize: 11, fontWeight: 700, padding: "5px 9px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
+                  </div>
+                )}
+                {adding && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t.cAtTime} {fmtTime(addTs)}</span>
+                    {addRole && <span style={{ fontSize: 9.5, fontWeight: 800, color: ROLE_COLOR[addRole], background: `${ROLE_COLOR[addRole]}1A`, border: `1px solid ${ROLE_COLOR[addRole]}40`, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{roleLabel(addRole, lang)}</span>}
+                    <input autoFocus value={newText} onChange={e => setNewText(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
+                      placeholder={t.cPlaceholder}
+                      style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                    <button onClick={saveNewComment} disabled={!newText.trim() || savingC}
+                      style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC ? 1 : 0.5, fontFamily: "inherit" }}>{t.save}</button>
+                    <button onClick={() => setAdding(false)}
+                      style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
+                  </div>
+                )}
+                {cLoadErr ? (
+                  <div style={{ fontSize: 12, color: RED, padding: "6px 2px" }}>{t.cLoadFail}</div>
+                ) : comments === null ? (
+                  <RowsSkeleton rows={2} height={44} pad="0" />
+                ) : comments.length === 0 ? (
+                  !adding && !rolePick && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 360, overflowY: "auto" }}>
+                    {comments.map((c, i) => {
+                      const cr = roleOfComment(c);
+                      const col = cr ? ROLE_COLOR[cr] : MUTED;
+                      const isEditing = editingId === c.id;
+                      return (
+                        <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}` }}>
+                          <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                          <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds)} title={t.vPlay}
+                            style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                          </button>
+                          <button onClick={() => playerForComment(c)?.seek(c.timestampSeconds)}
+                            style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds)}</button>
+                          <span style={{ fontSize: 9.5, fontWeight: 800, color: col, background: `${col}1A`, border: `1px solid ${col}40`, padding: "2px 7px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{cr ? roleLabel(cr, lang) : (rtl ? "כללי" : "Shared")}</span>
+                          {isEditing ? (
+                            <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
+                              onBlur={() => saveEditComment(c)}
+                              style={{ flex: 1, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                          ) : (
+                            <div onClick={() => playerForComment(c)?.seek(c.timestampSeconds)} title={c.commentText}
+                              style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
+                          )}
+                          <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
+                          {!isEditing && (
+                            <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
+                              style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                              onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
+                          )}
+                          <button onClick={() => setDelC(c)} title={t.cDelete}
+                            style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Delete confirmation (in-app, no browser confirm) */}
