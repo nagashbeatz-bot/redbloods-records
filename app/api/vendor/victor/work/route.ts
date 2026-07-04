@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireVictorAccess, requireOwner } from "@/lib/require-auth";
+import { requireVictorAccess, requireOwner, getAuthRole } from "@/lib/require-auth";
 
 /**
  * GET  /api/vendor/victor/work?projectId=...  — get work record for a project
@@ -13,9 +13,10 @@ export async function GET(req: Request) {
     const projectId = searchParams.get("projectId");
     if (!projectId) return NextResponse.json({ ok: false, error: "projectId חסר" }, { status: 400 });
 
-    const { getVictorWorkForProject } = await import("@/lib/vendor-store");
+    const { getVictorWorkForProject, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
     const work = await getVictorWorkForProject(projectId);
-    return NextResponse.json({ ok: true, work });
+    const safe = work && (await getAuthRole()) === "victor" ? sanitizeWorkForVictor(work) : work;
+    return NextResponse.json({ ok: true, work: safe });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

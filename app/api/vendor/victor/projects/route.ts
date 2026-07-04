@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireVictorAccess } from "@/lib/require-auth";
+import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
 
 /**
  * GET /api/vendor/victor/projects — scoped: ONLY the projects Victor is assigned
@@ -12,8 +12,11 @@ export async function GET() {
   if (denied) return denied;
 
   try {
-    const { getVictorWork } = await import("@/lib/vendor-store");
-    const work = await getVictorWork(); // all victor work, enriched with project info
+    const { getVictorWork, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
+    const raw = await getVictorWork(); // all victor work, enriched with project info
+    // For Victor, sanitized rows have projectId=null → they drop out of the map
+    // below, so a supplier gets NO project roster (name/artist) at all.
+    const work = (await getAuthRole()) === "victor" ? raw.map(sanitizeWorkForVictor) : raw;
 
     const byProject = new Map<string, { id: string; name: string; artist: string; workStatus: string; workState: string | null }>();
     for (const w of work) {

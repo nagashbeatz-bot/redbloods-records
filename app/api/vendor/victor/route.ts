@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireVictorAccess } from "@/lib/require-auth";
+import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
 
 /**
  * GET /api/vendor/victor?month=YYYY-MM
@@ -13,13 +13,15 @@ export async function GET(req: Request) {
     const month = searchParams.get("month") ??
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    const { getVictorMonthStats, getVictorWork } = await import("@/lib/vendor-store");
+    const { getVictorMonthStats, getVictorWork, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
     const [stats, work] = await Promise.all([
       getVictorMonthStats(month),
       getVictorWork(month),
     ]);
 
-    return NextResponse.json({ ok: true, stats, work });
+    // Victor's list never carries Artist/Project/Dropbox-folder fields.
+    const safeWork = (await getAuthRole()) === "victor" ? work.map(sanitizeWorkForVictor) : work;
+    return NextResponse.json({ ok: true, stats, work: safeWork });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

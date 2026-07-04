@@ -30,22 +30,35 @@ export async function POST(req: NextRequest) {
     const formData    = await req.formData();
     const file        = formData.get("file")         as File   | null;
     const workId      = formData.get("workId")       as string | null;
-    const dropboxFolder = formData.get("dropboxFolder") as string | null;
     const subFolder   = (formData.get("subFolder") as string | null) ?? "01_From_Redbloods";
     // Optional version tag (e.g. "V3") — one upload batch shares one label so the
     // UI can group a round together. Additive only: absent → behaves as before.
     const versionLabel = (formData.get("versionLabel") as string | null) || undefined;
 
-    if (!file || !workId || !dropboxFolder) {
+    if (!file || !workId) {
       return NextResponse.json({ error: "׳—׳¡׳¨׳™׳ ׳₪׳¨׳׳˜׳¨׳™׳: file, workId, dropboxFolder" }, { status: 400 });
     }
 
+    // Resolve the base folder SERVER-SIDE from the workId (creating it on first
+    // use). The client never sends a path, so Victor can upload without ever
+    // receiving the Artist/Project-revealing Dropbox folder.
+    let baseFolder: string;
+    try {
+      const { ensureVendorFolder } = await import("@/lib/vendor-folder");
+      baseFolder = await ensureVendorFolder(workId);
+    } catch (e) {
+      console.error("[vendor-upload] folder resolve failed:", e);
+      return NextResponse.json({ error: "folder not ready" }, { status: 409 });
+    }
+
     const sanitizedName = file.name.replace(/[<>:"/\\|?*]/g, "_");
-    const cleanFolder    = dropboxFolder.startsWith("/") ? dropboxFolder.slice(1) : dropboxFolder;
-    const cleanSubFolder = subFolder ? subFolder.replace(/^\/+|\/+$/g, "") : "";
+    // subFolder is a fixed bucket name (Production / 03_Approved …) — strip
+    // anything that isn't a plain name so it can't alter the path (no traversal).
+    const cleanSubFolder = (subFolder ?? "").replace(/[^A-Za-z0-9_]/g, "");
+    const cleanBase      = baseFolder.replace(/\/+$/, "");
     const dropboxPath    = cleanSubFolder
-      ? `/${cleanFolder}/${cleanSubFolder}/${sanitizedName}`
-      : `/${cleanFolder}/${sanitizedName}`;
+      ? `${cleanBase}/${cleanSubFolder}/${sanitizedName}`
+      : `${cleanBase}/${sanitizedName}`;
 
     // Upload to Dropbox
     const buffer = Buffer.from(await file.arrayBuffer());

@@ -1533,9 +1533,12 @@ function VictorProjectDrawer({
       : hasPackage ? (max > 0 ? `V${max}` : "V1")
       :              (max > 0 ? `V${max}` : null);
     try {
-      // Auto-create the Dropbox folder on first upload (no manual button).
-      const folder = await ensureDropboxFolder();
-      if (!folder) { setUploading(false); return; }
+      // Owner resolves/creates the folder client-side (also feeds the owner-only
+      // "Open in Dropbox" link). Victor never handles the path — the upload route
+      // resolves & creates the folder server-side from the workId, so his client
+      // sends no folder at all (nothing Artist/Project-revealing reaches him).
+      const folder = (isOwner ? await ensureDropboxFolder() : "") ?? "";
+      if (isOwner && !folder) { setUploading(false); return; }
       for (let i = 0; i < files.length; i++) {
         await uploadOne(files[i], folder, versionLabel, i, files.length);
       }

@@ -17,10 +17,12 @@ export async function GET(
   const denied = await requireVictorAccess(); if (denied) return denied;
   try {
     const { id } = await params;
-    const { getVictorWorkById } = await import("@/lib/vendor-store");
+    const { getVictorWorkById, sanitizeWorkForVictor } = await import("@/lib/vendor-store");
     const work = await getVictorWorkById(id);
     if (!work) return NextResponse.json({ ok: false, work: null }, { status: 404 });
-    return NextResponse.json({ ok: true, work });
+    // Victor never receives Artist/Project/Dropbox-folder fields; owner gets all.
+    const safe = (await getAuthRole()) === "victor" ? sanitizeWorkForVictor(work) : work;
+    return NextResponse.json({ ok: true, work: safe });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

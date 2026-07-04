@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireVictorAccess } from "@/lib/require-auth";
+import { requireOwner } from "@/lib/require-auth";
 
 /**
  * POST /api/vendor/victor/production-link
@@ -67,7 +67,9 @@ async function getOrCreateFolderShareLink(token: string, path: string): Promise<
 }
 
 export async function POST(req: Request) {
-  const denied = await requireVictorAccess(); if (denied) return denied;
+  // Owner-only: this returns a Dropbox folder link (the "Open in Dropbox" button
+  // is owner-only). Victor must never receive a folder link → 403.
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { workId } = (await req.json()) as { workId?: string };
     if (!workId) return NextResponse.json({ error: "workId נדרש" }, { status: 400 });

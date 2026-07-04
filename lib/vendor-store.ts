@@ -83,6 +83,25 @@ function mapRow(
   };
 }
 
+// ── Victor payload sanitizer ───────────────────────────────────────────────────
+// Strip everything that would reveal the Artist / Client / Project or the
+// Dropbox folder from a work before it is sent to a VICTOR client. Apply this in
+// every route that returns work data when the caller's role is "victor"; the
+// owner keeps the full record. projectName collapses to the Victor-facing work
+// title (never the real project name), so client fallbacks never leak it.
+// NOTE: per-file dropboxPath/url inside filesSent/briefFiles still carry the
+// folder path (the player/stream need them) — that is a separate, larger change.
+export function sanitizeWorkForVictor(w: VendorWork): VendorWork {
+  return {
+    ...w,
+    projectName:      (w.title && w.title.trim()) ? w.title : "—",
+    artist:           "",
+    projectId:        null,
+    dropboxFolder:    null,
+    dropboxShareLink: null,
+  };
+}
+
 // ── Project lookup helper ─────────────────────────────────────────────────────
 
 async function buildProjectMap(): Promise<Map<string, { name: string; artist: string }>> {
