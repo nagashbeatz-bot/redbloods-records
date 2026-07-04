@@ -2188,9 +2188,9 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <button type="button" onClick={onOpenWork}
-              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: `${GREEN}16`, border: `1px solid ${GREEN}55`, color: GREEN, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", animation: "wm-glow 2.6s ease-in-out infinite" }}
-              onMouseEnter={e => { e.currentTarget.style.animation = "none"; e.currentTarget.style.background = `${GREEN}26`; e.currentTarget.style.borderColor = GREEN; e.currentTarget.style.boxShadow = "0 0 12px rgba(16,185,129,0.5)"; }}
-              onMouseLeave={e => { e.currentTarget.style.animation = "wm-glow 2.6s ease-in-out infinite"; e.currentTarget.style.background = `${GREEN}16`; e.currentTarget.style.borderColor = `${GREEN}55`; e.currentTarget.style.boxShadow = "none"; }}>↗ {t.wmOpenWork}</button>
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)", color: "#F0B24A", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>↗ {t.wmOpenWork}</button>
             <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0, marginInlineStart: 2 }}>✕</button>
