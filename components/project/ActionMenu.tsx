@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { ACTIONS, type ActionDef } from "@/lib/action-types";
 import ScheduleModal from "./ScheduleModal";
 import QuickTxModal from "@/components/finance/QuickTxModal";
+import { SendModal } from "@/components/ui/ProjectDrawerV2";
 import { useProjects } from "@/components/ProjectsProvider";
 
 interface Props {
@@ -17,6 +19,7 @@ interface Props {
 export default function ActionMenu({ projectId, projectName, artist, onSessionCreated }: Props) {
   const [open,          setOpen]          = useState(false);
   const [active,        setActive]        = useState<ActionDef | null>(null);
+  const [showSend,      setShowSend]      = useState(false);
   const [financeType,   setFinanceType]   = useState<"income" | "expense" | null>(null);
   const [pos,           setPos]           = useState({ top: 0, left: 0, openUp: false });
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -25,6 +28,7 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const { deleteProject } = useProjects();
+  const router = useRouter();
 
   // Finance section + delete section adds ≈ 130 + 50 extra
   const MENU_H_ESTIMATE = ACTIONS.length * 41 + 48 + 130 + 50;
@@ -150,6 +154,13 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
                 {a.label}
               </button>
             ))}
+            {/* Shortcut to the existing send-to-mix flow (SendModal, dest = מיקס / מאסטר) */}
+            <button onClick={() => { setOpen(false); setShowSend(true); }} style={menuItemStyle}
+              onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "rgba(168,85,247,0.11)", color: "#E0E0E0" })}
+              onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLElement).style, { background: "transparent", color: "#B0B0B0" })}
+            >
+              🎚 שלח למיקס
+            </button>
           </div>
 
           {/* ── Separator ── */}
@@ -201,6 +212,19 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
           artist={artist}
           onClose={() => setActive(null)}
           onSessionCreated={onSessionCreated}
+        />
+      )}
+
+      {/* Send-to-mix shortcut → reuses the existing SendModal, opened on מיקס / מאסטר.
+          On success: Steven → navigate to /team/steven; Bill → no active page, just close. */}
+      {showSend && (
+        <SendModal
+          projectId={projectId}
+          projectName={projectName}
+          artistName={artist}
+          initialDest="מיקס / מאסטר"
+          onSuccess={({ selection }) => { if (selection === "Steven") router.push("/team/steven"); }}
+          onClose={() => setShowSend(false)}
         />
       )}
 

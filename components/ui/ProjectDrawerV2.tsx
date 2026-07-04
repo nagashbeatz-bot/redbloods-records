@@ -205,11 +205,17 @@ interface SendModalProps {
   artistName:    string;
   onClose:       () => void;
   onActionSent?: (action: ProjectAction) => void;
+  /** When provided, the modal opens directly on step 2 for this destination
+   *  (used by the Projects-page "שלח למיקס" shortcut). Back-to-step-1 is hidden. */
+  initialDest?:  SendDestination;
+  /** Fired on a successful send, right before onClose. Lets a caller react
+   *  (e.g. navigate) based on where/to-whom the send went. */
+  onSuccess?:    (info: { dest: SendDestination; selection: string }) => void;
 }
 
-function SendModal({ projectId, projectName, artistName, onClose, onActionSent }: SendModalProps) {
-  const [step,       setStep]      = useState<1 | 2>(1);
-  const [dest,       setDest]      = useState<SendDestination | null>(null);
+export function SendModal({ projectId, projectName, artistName, onClose, onActionSent, initialDest, onSuccess }: SendModalProps) {
+  const [step,       setStep]      = useState<1 | 2>(initialDest ? 2 : 1);
+  const [dest,       setDest]      = useState<SendDestination | null>(initialDest ?? null);
   const [selection,  setSelection] = useState<string | null>(null);
   const [saving,     setSaving]    = useState(false);
   const [error,      setError]     = useState<string | null>(null);
@@ -361,6 +367,7 @@ function SendModal({ projectId, projectName, artistName, onClose, onActionSent }
       const resData = await res.json().catch(() => ({}));
       if (onActionSent && resData.action) onActionSent(resData.action as ProjectAction);
 
+      if (onSuccess && dest && selection) onSuccess({ dest, selection });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
@@ -415,7 +422,7 @@ function SendModal({ projectId, projectName, artistName, onClose, onActionSent }
         {/* ── header ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {step === 2 && (
+            {step === 2 && !initialDest && (
               <button onClick={goBack} style={{
                 background: "none", border: "none", color: TEXT2,
                 fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
