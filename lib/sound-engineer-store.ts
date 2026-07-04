@@ -444,6 +444,15 @@ export async function syncStevenPaymentExpense(workId: string): Promise<string |
   }
   const displayName = (projectId ? projectName : ((w.work_title as string | null) ?? "")).trim();
 
+  // Fixed working ratio for this phase — NO external/official rate, NO manual input.
+  // The agreed USD net (unchanged on the Steven page) is recorded in Finance as ILS,
+  // and we note the PayPal gross: $200 net → PayPal gross $210 ($200×1.05) → recorded
+  // ₪650 ($200×3.25). round to 2 decimals to avoid float artifacts.
+  const ils   = Math.round(agreed * 3.25 * 100) / 100; // Finance amount (₪)
+  const gross = Math.round(agreed * 1.05 * 100) / 100; // PayPal gross estimate ($) — note only
+  const num = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
+  const notes = `תשלום Steven: $${num(agreed)} נטו. PayPal gross estimate: $${num(gross)}. יחס חישוב קבוע: $200 = ₪650. נרשם בכספים: ₪${num(ils)}.`;
+
   const txFields: Record<string, unknown> = {
     project_id:        projectId,
     scope:             projectId ? "project" : "general",
@@ -451,12 +460,12 @@ export async function syncStevenPaymentExpense(workId: string): Promise<string |
     category:          "מיקס / מאסטר",
     description:       displayName ? `מיקס - ${displayName}` : "מיקס",
     artist,
-    amount:            agreed,
-    currency:          (w.currency as string) ?? "$",
+    amount:            ils,          // recorded in ₪ per the fixed ratio (not the $ agreed)
+    currency:          "₪",
     payment_status:    "שולם",
     payment_method:    "",
     receipt_ref:       "",
-    notes:             "",
+    notes,
     date:              paymentDate,
     linked_session_id: "",
     expense_scope:     "כללי",
