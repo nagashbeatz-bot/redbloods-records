@@ -2109,7 +2109,7 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
       <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
         style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(1240px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
-        <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}@keyframes wm-pulse{0%,100%{opacity:1}50%{opacity:.5}}"}</style>
+        <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}@keyframes wm-pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes wm-glow{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}50%{box-shadow:0 0 9px 1px rgba(16,185,129,.32)}}"}</style>
         {/* Hidden file inputs live INSIDE the panel so a programmatic .click() can
             never bubble to the overlay backdrop and close the modal (owner only). */}
         {!readOnly && (
@@ -2129,7 +2129,9 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <button type="button" onClick={onOpenWork}
-              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>↗ {t.wmOpenWork}</button>
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: `${GREEN}16`, border: `1px solid ${GREEN}55`, color: GREEN, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", animation: "wm-glow 2.6s ease-in-out infinite" }}
+              onMouseEnter={e => { e.currentTarget.style.animation = "none"; e.currentTarget.style.background = `${GREEN}26`; e.currentTarget.style.borderColor = GREEN; e.currentTarget.style.boxShadow = "0 0 12px rgba(16,185,129,0.5)"; }}
+              onMouseLeave={e => { e.currentTarget.style.animation = "wm-glow 2.6s ease-in-out infinite"; e.currentTarget.style.background = `${GREEN}16`; e.currentTarget.style.borderColor = `${GREEN}55`; e.currentTarget.style.boxShadow = "none"; }}>↗ {t.wmOpenWork}</button>
             <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0, marginInlineStart: 2 }}>✕</button>
