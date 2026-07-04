@@ -669,7 +669,7 @@ export default function StevenProfilePage() {
 
   // Edit a work: optimistic local update + PATCH to the existing API for DB-backed rows.
   // Persisted fields: work_type, status, agreed_price. (pay/dates stay display-only here.)
-  async function updateWork(id: string, patch: Partial<Work>) {
+  async function updateWork(id: string, patch: Partial<Work>): Promise<boolean> {
     const target = works.find(w => w.id === id);
     setWorks(prev => prev.map(w => {
       if (w.id !== id) return w;
@@ -685,7 +685,7 @@ export default function StevenProfilePage() {
       if (patch.price !== undefined) next.pay = payFromAmounts(next.price, next.amountPaid);
       return next;
     }));
-    if (!target || !target.dbBacked) return; // manual "new work" rows are local-only
+    if (!target || !target.dbBacked) return true; // manual "new work" rows are local-only
 
     // skipFinanceSync keeps these edits from creating/updating any Finance transaction.
     const body: Record<string, unknown> = { skipFinanceSync: true };
@@ -697,7 +697,7 @@ export default function StevenProfilePage() {
     // Payment date: explicit value from the modal, or cleared when unmarking paid.
     if (patch.paymentDate !== undefined) body.paymentDate = patch.paymentDate;
     else if (patch.pay === "לא שולם")    body.paymentDate = null;
-    if (Object.keys(body).length === 1) return; // only the flag → nothing actually changed
+    if (Object.keys(body).length === 1) return true; // only the flag → nothing actually changed
 
     try {
       const res = await fetch(`/api/sound-engineer/${id}`, {
@@ -708,10 +708,27 @@ export default function StevenProfilePage() {
       if (!res.ok) {
         setWorks(prev => prev.map(w => (w.id === id ? target : w))); // revert on failure
         notify(rtl ? "השמירה נכשלה" : "Save failed");
+        return false;
       }
+      return true;
     } catch {
       setWorks(prev => prev.map(w => (w.id === id ? target : w))); // revert on failure
       notify(rtl ? "השמירה נכשלה" : "Save failed");
+      return false;
+    }
+  }
+
+  // After a paid/unpaid change is persisted, reconcile the linked Finance expense
+  // (create/update when paid, delete when not) — safe, id-linked, owner-only route.
+  async function syncPaymentExpense(id: string) {
+    const target = works.find(w => w.id === id);
+    if (!target || !target.dbBacked) return; // local-only rows never hit Finance
+    try {
+      const res = await fetch(`/api/sound-engineer/${id}/payment-expense`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) notify(rtl ? "סנכרון לכספים נכשל — בדוק ב-Finance" : "Finance sync failed — check Finance");
+    } catch {
+      notify(rtl ? "סנכרון לכספים נכשל — בדוק ב-Finance" : "Finance sync failed — check Finance");
     }
   }
   // Delete a job: optimistic remove + close, then DELETE for DB-backed rows.
@@ -930,7 +947,7 @@ export default function StevenProfilePage() {
                             { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
                             { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
                           ]}
-                          onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void updateWork(w.id, { pay: v }); }}
+                          onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }}
                         />
                       </td>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
@@ -988,7 +1005,7 @@ export default function StevenProfilePage() {
 
       {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
-      {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={date => { const wid = payModal.workId; setPayModal(null); void updateWork(wid, { pay: "שולם", paymentDate: date }); }} />}
+      {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
     </div>

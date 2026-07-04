@@ -400,6 +400,84 @@ export async function updateSoundEngineerWork(
   return mapRow(row, projectMap);
 }
 
+/**
+ * Reconcile the ONE Finance expense linked to a Steven/Bill payment, keyed ONLY by
+ * sound_engineer_work.linked_transaction_id (never by name/amount/type):
+ *   - paid (amount_paid ≥ agreed_price > 0 AND payment_date set) → upsert the linked
+ *     expense (update the linked row if it still exists, else insert + save the link).
+ *   - not paid → delete the linked expense by id and clear linked_transaction_id.
+ * Idempotent (re-marking "שולם" updates the same row — no duplicates). expense: type
+ * "expense", payment_status "שולם" (supplier status, never "התקבל"), category
+ * "מיקס / מאסטר", date = payment_date. Project-linked → project scope + original
+ * project name/artist; standalone → general scope + work_title. Returns the tx id.
+ */
+export async function syncStevenPaymentExpense(workId: string): Promise<string | null> {
+  const { data: w } = await supabase
+    .from("sound_engineer_work")
+    .select("id, project_id, work_title, agreed_price, currency, amount_paid, payment_date, linked_transaction_id")
+    .eq("id", workId)
+    .maybeSingle();
+  if (!w) throw new Error("עבודה לא נמצאה");
+
+  const agreed      = Number(w.agreed_price ?? 0);
+  const paid        = Number(w.amount_paid  ?? 0);
+  const paymentDate = (w.payment_date as string | null) ?? null;
+  const linkedId    = (w.linked_transaction_id as string | null) ?? null;
+  const isPaid      = agreed > 0 && paid >= agreed && !!paymentDate;
+
+  // ── Not paid → remove ONLY the linked expense, clear the link ──
+  if (!isPaid) {
+    if (linkedId) {
+      await supabase.from("transactions").delete().eq("id", linkedId);
+      await supabase.from("sound_engineer_work").update({ linked_transaction_id: null }).eq("id", workId);
+    }
+    return null;
+  }
+
+  // ── Paid → resolve original project (scope/artist/name) ──
+  const projectId = (w.project_id as string | null) ?? null;
+  let artist = "", projectName = "";
+  if (projectId) {
+    const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).maybeSingle();
+    projectName = (proj?.name as string) ?? "";
+    artist      = (proj?.artist as string) ?? "";
+  }
+  const displayName = (projectId ? projectName : ((w.work_title as string | null) ?? "")).trim();
+
+  const txFields: Record<string, unknown> = {
+    project_id:        projectId,
+    scope:             projectId ? "project" : "general",
+    type:              "expense",
+    category:          "מיקס / מאסטר",
+    description:       displayName ? `מיקס - ${displayName}` : "מיקס",
+    artist,
+    amount:            agreed,
+    currency:          (w.currency as string) ?? "$",
+    payment_status:    "שולם",
+    payment_method:    "",
+    receipt_ref:       "",
+    notes:             "",
+    date:              paymentDate,
+    linked_session_id: "",
+    expense_scope:     "כללי",
+  };
+
+  // ── Upsert by the safe link ──
+  if (linkedId) {
+    const { data: existing } = await supabase.from("transactions").select("id").eq("id", linkedId).maybeSingle();
+    if (existing) {
+      const { error } = await supabase.from("transactions").update(txFields).eq("id", linkedId);
+      if (error) throw new Error(error.message);
+      return linkedId;
+    }
+  }
+  const { data: inserted, error } = await supabase.from("transactions").insert(txFields).select("id").single();
+  if (error) throw new Error(error.message);
+  const newId = inserted?.id as string;
+  await supabase.from("sound_engineer_work").update({ linked_transaction_id: newId }).eq("id", workId);
+  return newId;
+}
+
 /** Delete a sound engineer work record. Does NOT delete the linked transaction. */
 export async function deleteSoundEngineerWork(id: string): Promise<void> {
   const { error } = await supabase.from("sound_engineer_work").delete().eq("id", id);
