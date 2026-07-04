@@ -1243,7 +1243,9 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
   const [uploading, setUploading] = useState(false);
   const [drag, setDrag]           = useState(false);
   // Per-file role picker shown after files are chosen (before upload).
-  const [rolePicker, setRolePicker] = useState<{ mode: "new" | "existing"; items: { file: File; role: FileRole }[] } | null>(null);
+  const [rolePicker, setRolePicker] = useState<{ mode: "new" | "existing"; items: { file: File; role: FileRole }[]; label?: string } | null>(null);
+  const [upProgress, setUpProgress] = useState<{ done: number; total: number; current: string } | null>(null); // batch upload progress
+  const [rpError, setRpError]       = useState<string | null>(null); // inline error in the role picker
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
@@ -1355,9 +1357,8 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     try {
       const d = await fetch(`/api/sound-engineer/${work.id}/versions`, { method: "POST", body: fd }).then(r => r.json());
       if (d.ok && d.version) return d.version as MixVersion;
-      notify(d.error || t.vUploadFailed);
-      return null;
-    } catch { notify(t.vUploadFailed); return null; }
+      return null; // caller (runRolePickerUpload) shows a friendly inline error
+    } catch { return null; }
   }
 
   // After files are chosen, open the per-file role picker (auto-suggested from the
@@ -1371,37 +1372,51 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     setRolePicker({ mode, items: files.map(f => ({ file: f, role: detectRole(f.name) })) });
   }
 
-  // Confirm the picker → upload each file with its chosen role.
+  // Confirm the picker → upload each file with its chosen role, one at a time, with
+  // a visible per-file counter. On failure it STOPS with an inline error, keeps the
+  // modal + role choices, and drops the already-succeeded files so a retry continues
+  // WITHOUT duplicating (the version label is carried so remaining files join it).
   async function runRolePickerUpload() {
     const picker = rolePicker;
     if (!picker || picker.items.length === 0 || uploading) return;
-    setUploading(true);
+    const total = picker.items.length;
+    // Established version label: an existing-version selection, or one carried from a
+    // previous partial attempt. Empty for a fresh "new" batch (first file creates it).
+    let label: string | undefined = picker.label ?? (picker.mode === "existing" ? selectedGroup?.label : undefined);
+    if (picker.mode === "existing" && !label) return;
+    setUploading(true); setRpError(null);
+    const created: MixVersion[] = [];
     try {
-      if (picker.mode === "new") {
-        // First file creates the new "Mix N"; the rest join it (same label).
-        const first = await postOneFile(picker.items[0].file, { role: picker.items[0].role });
-        if (!first) return;
-        const created = [first];
-        for (let i = 1; i < picker.items.length; i++) {
-          const v = await postOneFile(picker.items[i].file, { label: first.label, addToExisting: true, role: picker.items[i].role });
-          if (v) created.push(v);
+      for (let i = 0; i < total; i++) {
+        const it = picker.items[i];
+        setUpProgress({ done: i, total, current: it.file.name });
+        const v = label
+          ? await postOneFile(it.file, { label, addToExisting: true, role: it.role })
+          : await postOneFile(it.file, { role: it.role }); // first file of a NEW version
+        if (!v) {
+          // Persist what succeeded (so it isn't lost / re-uploaded), carry the label,
+          // and keep only the remaining files in the picker for a clean retry.
+          if (created.length > 0) {
+            setVersions(prev => [...created, ...(prev ?? [])]);
+            if (picker.mode === "new" && !picker.label) setSel(created[0].id);
+          }
+          setRolePicker({ mode: picker.mode, items: picker.items.slice(i), label });
+          setRpError(rtl ? "העלאת קובץ נכשלה — נסה שוב" : "A file failed to upload — try again");
+          return;
         }
-        setVersions(prev => [...created, ...(prev ?? [])]);
-        setSel(first.id);
-        notify(t.vUploaded);
-      } else {
-        const label = selectedGroup?.label;
-        if (!label) return;
-        const created: MixVersion[] = [];
-        for (const it of picker.items) {
-          const v = await postOneFile(it.file, { label, addToExisting: true, role: it.role });
-          if (v) created.push(v);
-        }
-        if (created.length > 0) { setVersions(prev => [...created, ...(prev ?? [])]); notify(t.vUploaded); }
+        if (!label) label = v.label; // first NEW file established the version label
+        created.push(v);
       }
+      setUpProgress({ done: total, total, current: "" });
+      setVersions(prev => [...created, ...(prev ?? [])]);
+      if (picker.mode === "new" && !picker.label && created[0]) setSel(created[0].id);
+      notify(t.vUploaded);
+      setRolePicker(null);
+    } catch {
+      setRpError(rtl ? "העלאה נכשלה — נסה שוב" : "Upload failed — try again");
     } finally {
       setUploading(false);
-      setRolePicker(null);
+      setUpProgress(null);
     }
   }
 
@@ -1869,7 +1884,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
 
         {/* Per-file role picker — opens after files are chosen, before upload */}
         {rolePicker && (
-          <div onClick={() => { if (!uploading) setRolePicker(null); }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={() => { if (!uploading) { setRolePicker(null); setRpError(null); } }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${BRAND}44`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
               <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${BDR}` }}>
                 <div style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>🎚 {t.rpTitle}</div>
@@ -1882,16 +1897,37 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                   <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 11, background: CARD2, border: `1px solid ${BDR}` }}>
                     <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[it.role]}22`, color: ROLE_COLOR[it.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{isAudioName(it.file.name) ? "🎵" : "📦"}</span>
                     <div title={it.file.name} style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{it.file.name}</div>
-                    <select value={it.role} onChange={e => { const role = e.target.value as FileRole; setRolePicker(p => p ? { ...p, items: p.items.map((x, i) => i === idx ? { ...x, role } : x) } : p); }}
+                    <select value={it.role} onChange={e => { const role = e.target.value as FileRole; setRpError(null); setRolePicker(p => p ? { ...p, items: p.items.map((x, i) => i === idx ? { ...x, role } : x) } : p); }}
                       style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, padding: "6px 8px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${ROLE_COLOR[it.role]}66`, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
                       {ROLE_ORDER.map(r => <option key={r} value={r}>{roleLabel(r, lang)}</option>)}
                     </select>
                   </div>
                 ))}
               </div>
+              {/* Batch progress (per file) + inline error — modal stays open on failure */}
+              {(rpError || upProgress) && (
+                <div style={{ padding: "0 18px 4px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}"}</style>
+                  {rpError && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, color: "#FCA5A5", background: "rgba(239,68,68,0.1)", border: `1px solid ${RED}44`, borderRadius: 10, padding: "8px 11px" }}>⚠ {rpError}</div>
+                  )}
+                  {upProgress && (
+                    <div style={{ background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12, color: TEXT2, fontWeight: 700 }}>
+                        <span>{rtl ? "מעלה" : "Uploading"} {Math.min(upProgress.done + 1, upProgress.total)} {rtl ? "מתוך" : "of"} {upProgress.total}</span>
+                        <WMSpinner size={12} color={BRAND} />
+                      </div>
+                      {upProgress.current && <div title={upProgress.current} style={{ fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left" } as React.CSSProperties}>{upProgress.current}</div>}
+                      <div style={{ height: 4, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", borderRadius: 4, background: `linear-gradient(90deg, ${BRAND}, #F87171)`, width: `${Math.round((upProgress.done / upProgress.total) * 100)}%`, transition: "width 0.2s ease" }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div style={{ padding: "14px 18px", borderTop: `1px solid ${BDR}`, display: "flex", gap: 10 }}>
-                <button onClick={() => { if (!uploading) setRolePicker(null); }} disabled={uploading} style={{ ...ghostBtn, flex: 1, justifyContent: "center", opacity: uploading ? 0.6 : 1 }}>{t.cancel}</button>
-                <button onClick={runRolePickerUpload} disabled={uploading} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: uploading ? MUTED : BRAND, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: uploading ? "default" : "pointer", fontFamily: "inherit" }}>{uploading ? t.vUploading : `⬆ ${t.rpUpload}`}</button>
+                <button onClick={() => { if (!uploading) { setRolePicker(null); setRpError(null); } }} disabled={uploading} style={{ ...ghostBtn, flex: 1, justifyContent: "center", opacity: uploading ? 0.6 : 1 }}>{t.cancel}</button>
+                <button onClick={runRolePickerUpload} disabled={uploading} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: uploading ? MUTED : BRAND, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>{uploading ? <><WMSpinner size={12} color="#fff" /> {t.vUploading}</> : `⬆ ${t.rpUpload}`}</button>
               </div>
             </div>
           </div>
