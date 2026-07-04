@@ -1087,8 +1087,10 @@ const VersionPlayer = forwardRef<VersionPlayerHandle, {
   // Optional A/B-compare hooks (Work Materials). onPlayStart fires when this player
   // begins playing; onTime reports currentTime on every tick. Both no-ops elsewhere.
   onPlayStart?: () => void; onTime?: (sec: number) => void;
+  // Drag a comment marker to a new time. Absent → markers are click-to-seek only.
+  onCommentMove?: (id: string, newTs: number) => void;
 }>(
-function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime }, ref) {
+function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime, onCommentMove }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -1100,6 +1102,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
   const [vol, setVol]           = useState(1);
   const [hoveredC, setHoveredC] = useState<string | null>(null); // marker under cursor
   const [pinnedC, setPinnedC]   = useState<string | null>(null); // marker clicked → bubble stays open
+  const [dragC, setDragC]       = useState<{ id: string; ts: number; startX: number; moved: boolean } | null>(null); // marker being dragged
 
   const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
 
@@ -1171,12 +1174,15 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
         {dur > 0 && <div style={{ position: "absolute", top: -2, bottom: 0, left: `${pct}%`, width: 2, background: "#fff", opacity: 0.55, pointerEvents: "none" }} />}
         {dur > 0 && comments.map((c, i) => {
           const col  = roleColor; // each player shows only its own role's comments → role-colored markers
-          const left = Math.min(100, Math.max(0, (c.timestampSeconds / dur) * 100));
+          const isDragging = dragC?.id === c.id;
+          const ts   = isDragging ? dragC!.ts : c.timestampSeconds;
+          const left = Math.min(100, Math.max(0, (ts / dur) * 100));
           const show = hoveredC === c.id || pinnedC === c.id;
+          const canDrag = !!onCommentMove; // dur>0 already guaranteed by the outer guard
           return (
-            <div key={c.id} style={{ position: "absolute", top: -9, left: `${left}%`, transform: "translateX(-50%)", zIndex: show ? 6 : 2 }}>
-              {/* Floating comment bubble — appears on hover / when pinned; does not affect layout */}
-              {show && (
+            <div key={c.id} style={{ position: "absolute", top: -9, left: `${left}%`, transform: "translateX(-50%)", zIndex: (show || isDragging) ? 7 : 2 }}>
+              {/* Floating comment bubble — hover / pinned; hidden while dragging (time chip shows instead) */}
+              {show && !isDragging && (
                 <div style={{
                   position: "absolute", bottom: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)",
                   maxWidth: 190, padding: "5px 9px", borderRadius: 9, background: col, color: "#fff",
@@ -1189,10 +1195,32 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
                   <span style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: `6px solid ${col}` }} />
                 </div>
               )}
+              {/* Live time chip while dragging this marker */}
+              {isDragging && dragC!.moved && (
+                <div style={{ position: "absolute", bottom: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)", padding: "3px 8px", borderRadius: 8, background: "#0D0D12", color: "#fff", fontSize: 11, fontWeight: 800, whiteSpace: "nowrap", border: `1px solid ${col}`, fontVariantNumeric: "tabular-nums", pointerEvents: "none" }}>{fmtTime(ts)}</div>
+              )}
               <button title={`${fmtTime(c.timestampSeconds)} · ${c.commentText}`}
-                onClick={() => { seekTo(c.timestampSeconds); setPinnedC(c.id); }}
+                onPointerDown={canDrag ? (e => { e.stopPropagation(); try { (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId); } catch {} setDragC({ id: c.id, ts: c.timestampSeconds, startX: e.clientX, moved: false }); }) : undefined}
+                onPointerMove={canDrag ? (e => {
+                  if (dragC?.id !== c.id) return;
+                  e.stopPropagation();
+                  const bar = barRef.current; if (!bar) return;
+                  const rect = bar.getBoundingClientRect();
+                  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                  const moved = dragC.moved || Math.abs(e.clientX - dragC.startX) > 3;
+                  setDragC({ id: c.id, ts: ratio * dur, startX: dragC.startX, moved });
+                }) : undefined}
+                onPointerUp={canDrag ? (e => {
+                  e.stopPropagation();
+                  try { (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId); } catch {}
+                  const d = dragC; setDragC(null);
+                  if (!d || d.id !== c.id) return;
+                  if (d.moved) { const nt = Math.min(Math.floor(dur), Math.max(0, Math.round(d.ts))); if (nt !== c.timestampSeconds) onCommentMove!(c.id, nt); }
+                  else { seekTo(c.timestampSeconds); setPinnedC(c.id); }
+                }) : undefined}
+                onClick={canDrag ? undefined : (() => { seekTo(c.timestampSeconds); setPinnedC(c.id); })}
                 onMouseEnter={() => setHoveredC(c.id)} onMouseLeave={() => setHoveredC(cur => (cur === c.id ? null : cur))}
-                style={{ display: "block", width: 20, height: 20, borderRadius: "50%", background: col, color: "#fff", border: `2px solid ${CARD}`, fontSize: 10, fontWeight: 800, cursor: "pointer", lineHeight: "16px", textAlign: "center", boxShadow: show ? `0 0 0 3px ${col}44` : "none", transition: "box-shadow .12s ease" }}>{i + 1}</button>
+                style={{ display: "block", width: 20, height: 20, borderRadius: "50%", background: col, color: "#fff", border: `2px solid ${CARD}`, fontSize: 10, fontWeight: 800, cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "pointer", lineHeight: "16px", textAlign: "center", boxShadow: (show || isDragging) ? `0 0 0 3px ${col}44` : "none", transition: "box-shadow .12s ease", touchAction: "none", userSelect: "none" } as React.CSSProperties}>{i + 1}</button>
             </div>
           );
         })}
@@ -1330,6 +1358,19 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
       .then(r => r.json())
       .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); } })
       .catch(() => { setComments(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); });
+  }
+  // Drag a marker → new timestamp (same comment id → same role only). Optimistic + revert.
+  function moveComment(id: string, newTs: number) {
+    const prev = comments;
+    const target = prev?.find(x => x.id === id);
+    if (!target || target.timestampSeconds === newTs) return;
+    setComments(cur => cur ? cur.map(x => (x.id === id ? { ...x, timestampSeconds: newTs } : x)).sort(byTs) : null);
+    fetch(`/api/sound-engineer/comments/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ timestampSeconds: newTs }),
+    })
+      .then(r => r.json())
+      .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "עדכון הזמן נכשל" : "Failed to update time"); } })
+      .catch(() => { setComments(prev); notify(rtl ? "עדכון הזמן נכשל" : "Failed to update time"); });
   }
 
   useEffect(() => {
@@ -1703,6 +1744,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                             shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
                             comments={(comments ?? []).filter(c => c.role === f.role)}
                             onPlayStart={() => { lastActiveIdRef.current = f.id; }}
+                            onCommentMove={moveComment}
                             onDownload={() => window.open(f.url, "_blank", "noopener,noreferrer")}
                             t={t}
                           />
