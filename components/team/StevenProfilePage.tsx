@@ -309,13 +309,13 @@ const TR = {
     wmLoadFail: "טעינת חומרי העבודה נכשלה",
     wmInstructions: "הוראות עבודה", wmBpm: "BPM", wmKey: "סולם / Key", wmNotes: "הערות חשובות למיקס",
     wmNotesPh: "דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג, מה חשוב…", wmSaveMeta: "שמור הוראות", wmMetaSaved: "ההוראות נשמרו", wmMetaFail: "השמירה נכשלה",
-    wmRough: "Rough Mix", wmReferences: "רפרנסים", wmStems: "Stems / ערוצים", wmDocs: "מסמכים",
+    wmRough: "Rough Mix", wmReferences: "רפרנסים", wmStems: "ערוצים וקבצי עבודה", wmDocs: "מסמכים",
     wmRoughSub: "העלאת מיקס גס לעבודה", wmReferencesSub: "רפרנסי אודיו או קישורים חיצוניים", wmStemsSub: "ערוצי Stems או קבוצות ערוצים", wmDocsSub: "קבצי טקסט, מילים, הערות ועוד",
     wmCompare: "השוואה מהירה", wmCompareRough: "Rough Mix (המקורי ששלחנו)", wmCompareLatest: "Latest Mix (הגרסה האחרונה של Steven)",
     wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה", wmSyncNote: "השוואה לפי זמן ניגון",
     wmUploadRough: "+ העלה Rough Mix", wmUploadRef: "+ הוסף רפרנס", wmUploadStems: "+ העלה Stems", wmUploadDoc: "+ הוסף מסמך",
     wmUploadingRough: "מעלה Rough Mix…", wmUploadingRef: "מעלה רפרנס…", wmUploadingStems: "מעלה Stems…", wmUploadingDoc: "מעלה מסמך…",
-    wmUpProgress: "מעלה קובץ…", wmUpSaving: "שומר ל-Dropbox…",
+    wmUpProgress: "מעלה קובץ…", wmUpSaving: "שומר ל-Dropbox…", wmTooLarge: "הקובץ גדול מדי. המגבלה להעלאה דרך המערכת היא 1GB. העלה ישירות ל-Dropbox.",
     wmEmpty: "אין עדיין", wmDownload: "הורדה", wmDelete: "מחק",
     wmUploading: "מעלה…", wmUploaded: "הקובץ הועלה", wmUploadFail: "ההעלאה נכשלה", wmDeleted: "הקובץ נמחק", wmDeleteFail: "המחיקה נכשלה",
     wmDelTitle: "למחוק את הקובץ?", wmDelBody: "הקובץ יימחק מ-Dropbox ומחומרי העבודה. פעולה בלתי הפיכה.",
@@ -365,13 +365,13 @@ const TR = {
     wmLoadFail: "Failed to load work materials",
     wmInstructions: "Work Instructions", wmBpm: "BPM", wmKey: "Key", wmNotes: "Important mix notes",
     wmNotesPh: "Vocal/chorus focus, streaming-ready master, what matters…", wmSaveMeta: "Save instructions", wmMetaSaved: "Instructions saved", wmMetaFail: "Save failed",
-    wmRough: "Rough Mix", wmReferences: "References", wmStems: "Stems", wmDocs: "Documents",
+    wmRough: "Rough Mix", wmReferences: "References", wmStems: "Stems & Work Files", wmDocs: "Documents",
     wmRoughSub: "The rough mix to work from", wmReferencesSub: "Audio references or external links", wmStemsSub: "Stem files or channel bundles", wmDocsSub: "Text files, lyrics, notes and more",
     wmCompare: "Quick compare", wmCompareRough: "Rough Mix (what we sent)", wmCompareLatest: "Latest Mix (Steven's latest)",
     wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare", wmSyncNote: "A/B by playback time",
     wmUploadRough: "+ Upload Rough Mix", wmUploadRef: "+ Add reference", wmUploadStems: "+ Upload Stems", wmUploadDoc: "+ Add document",
     wmUploadingRough: "Uploading Rough Mix…", wmUploadingRef: "Uploading reference…", wmUploadingStems: "Uploading Stems…", wmUploadingDoc: "Uploading document…",
-    wmUpProgress: "Uploading file…", wmUpSaving: "Saving to Dropbox…",
+    wmUpProgress: "Uploading file…", wmUpSaving: "Saving to Dropbox…", wmTooLarge: "File too large. The in-app upload limit is 1GB. Upload it directly to Dropbox.",
     wmEmpty: "Nothing yet", wmDownload: "Download", wmDelete: "Delete",
     wmUploading: "Uploading…", wmUploaded: "File uploaded", wmUploadFail: "Upload failed", wmDeleted: "File removed", wmDeleteFail: "Delete failed",
     wmDelTitle: "Delete this file?", wmDelBody: "The file will be removed from Dropbox and work materials. This cannot be undone.",
@@ -2040,7 +2040,8 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
   // Guard against setState after unmount, and abort an in-flight upload on close.
   const aliveRef = useRef(true);
   const xhrRef   = useRef<XMLHttpRequest | null>(null);
-  useEffect(() => () => { aliveRef.current = false; xhrRef.current?.abort(); }, []);
+  const abortRef = useRef<AbortController | null>(null); // cancels an in-flight chunked upload
+  useEffect(() => () => { aliveRef.current = false; xhrRef.current?.abort(); abortRef.current?.abort(); }, []);
 
   // A/B compare — last playback time shared between the two compare players. When
   // one starts playing it jumps to this time, so switching Rough↔Latest keeps the
@@ -2092,11 +2093,20 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
     finally { setSaving(false); }
   }
 
-  // XHR (not fetch) so we get a REAL upload-progress %. Progress covers the
-  // browser→server body transfer (the bulk for big files); once that hits 100%
-  // the server is still pushing to Dropbox → we show a "saving" phase. No fake %.
+  // Dispatch by size: >1GB rejected; >140MB uses the chunked upload-session flow
+  // (Dropbox single-shot maxes at 150MB); otherwise the existing single-shot path.
+  const MAX_BYTES   = 1024 * 1024 * 1024;   // 1GB hard limit
+  const CHUNK_LIMIT = 140 * 1024 * 1024;    // switch to chunked above this
   function doUpload(file: File, materialType: string) {
     if (uploading) return; // one upload at a time
+    if (file.size > MAX_BYTES) { setErr(t.wmTooLarge); return; }
+    if (file.size > CHUNK_LIMIT) { void chunkedUpload(file, materialType); return; }
+    singleUpload(file, materialType);
+  }
+
+  // Single-shot upload (≤140MB): XHR gives a REAL request-body progress %; once it
+  // hits 100% the server is still pushing to Dropbox → "saving" phase. No fake %.
+  function singleUpload(file: File, materialType: string) {
     setUploading(materialType); setUpPct(0); setErr(null);
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
@@ -2108,8 +2118,6 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
       let d: { ok?: boolean; error?: string } = {};
       try { d = JSON.parse(xhr.responseText); } catch { /* non-JSON */ }
       if (xhr.status >= 200 && xhr.status < 300 && d.ok) {
-        // Keep the skeleton/"saving" state until reload swaps in the real row,
-        // so the card never flashes empty between the two.
         void reload().then(() => { if (!aliveRef.current) return; setUploading(null); setUpPct(null); notify(t.wmUploaded); });
       } else {
         setErr(d.error || t.wmUploadFail); setUploading(null); setUpPct(null);
@@ -2120,6 +2128,49 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
     fd.append("file", file);
     fd.append("materialType", materialType);
     xhr.send(fd);
+  }
+
+  // Chunked upload (>140MB, up to 1GB): Dropbox upload session — 8MB chunks stream
+  // through the server one at a time (never the whole file in memory / over the
+  // proxy). Real progress by bytes sent; a friendly error on failure (retry = pick
+  // the file again). No public share link; persisted to projects.files on finish.
+  async function chunkedUpload(file: File, materialType: string) {
+    setUploading(materialType); setUpPct(0); setErr(null);
+    const CHUNK = 8 * 1024 * 1024;
+    const total = file.size;
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const post = (qs: string, body: Blob) => fetch(`${url}/chunk?${qs}`, { method: "POST", body, signal: ac.signal });
+    try {
+      // start — first chunk opens the session
+      let offset = Math.min(CHUNK, total);
+      let res = await post("action=start", file.slice(0, offset));
+      let d = await res.json().catch(() => ({} as { ok?: boolean; sessionId?: string; error?: string }));
+      if (!res.ok || !d.ok || !d.sessionId) throw new Error();
+      const sessionId = d.sessionId;
+      if (aliveRef.current) setUpPct(Math.min(99, Math.round((offset / total) * 100)));
+      // append the middle chunks; the final chunk goes through finish (commit)
+      while (offset < total) {
+        const end = Math.min(offset + CHUNK, total);
+        const isLast = end >= total;
+        const qs = isLast
+          ? `action=finish&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}&materialType=${encodeURIComponent(materialType)}&ext=${encodeURIComponent(ext)}`
+          : `action=append&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}`;
+        if (isLast && aliveRef.current) setUpPct(100); // → "שומר ל-Dropbox…"
+        res = await post(qs, file.slice(offset, end));
+        d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error();
+        offset = end;
+        if (!isLast && aliveRef.current) setUpPct(Math.min(99, Math.round((offset / total) * 100)));
+      }
+      abortRef.current = null;
+      if (!aliveRef.current) return;
+      await reload().then(() => { if (aliveRef.current) { setUploading(null); setUpPct(null); notify(t.wmUploaded); } });
+    } catch {
+      abortRef.current = null;
+      if (aliveRef.current) { setErr(t.wmUploadFail); setUploading(null); setUpPct(null); }
+    }
   }
   function onPick(e: React.ChangeEvent<HTMLInputElement>, materialType: string) {
     const f = e.target.files?.[0];
@@ -2244,7 +2295,7 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
           <>
             <input ref={roughRef} type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "rough")} />
             <input ref={refRef}   type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "reference")} />
-            <input ref={stemsRef} type="file" accept=".zip,.rar,.7z" style={{ display: "none" }} onChange={e => onPick(e, "stems")} />
+            <input ref={stemsRef} type="file" accept=".zip,.rar,.7z,.wav,.aiff,.aif,.mp3,.flac,.ogg,.m4a" style={{ display: "none" }} onChange={e => onPick(e, "stems")} />
             <input ref={docRef}   type="file" style={{ display: "none" }} onChange={e => onPick(e, "doc")} />
           </>
         )}
