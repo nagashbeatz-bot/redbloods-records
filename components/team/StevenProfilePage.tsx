@@ -285,7 +285,7 @@ const TR = {
     cSection: "הערות בזמן", cAdd: "הוסף הערה", cEmpty: "אין הערות לגרסה הזו עדיין", cPlaceholder: "כתוב הערה על הנקודה הזו…", cAtTime: "בזמן",
     cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
-    versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט",
+    versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט", wmMatSub: "Rough Mix · רפרנסים · Stems · הוראות",
     uploadNewVersionBtn: "+ העלה גרסה חדשה", addToVersionBtn: "+ הוסף קובץ לגרסה הזו",
     uploadHint: "גרור קבצים לכאן · נגן = mp3/wav · ערוצים = zip/rar",
     rpTitle: "בחר סוג לכל קובץ", rpSubNew: "גרסה חדשה", rpSubExisting: "מוסיף לגרסה",
@@ -341,7 +341,7 @@ const TR = {
     cSection: "Timestamp comments", cAdd: "Add comment", cEmpty: "No comments on this version yet", cPlaceholder: "Write a note about this point…", cAtTime: "at",
     cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
-    versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files",
+    versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files", wmMatSub: "Rough Mix · References · Stems · Instructions",
     uploadNewVersionBtn: "+ Upload new version", addToVersionBtn: "+ Add file to this version",
     uploadHint: "Drag files here · player = mp3/wav · stems = zip/rar",
     rpTitle: "Choose a type for each file", rpSubNew: "New version", rpSubExisting: "Adding to",
@@ -908,7 +908,7 @@ export default function StevenProfilePage() {
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} notify={notify} lang={lang} t={t} />}
+      {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
@@ -1136,7 +1136,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
 });
 
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
-function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
   const narrow = useIsNarrow(760);
@@ -1486,6 +1486,20 @@ function WorkModal({ work, onChange, onDelete, onClose, notify, lang, t }: { wor
                   </button>
                 </div>
               </div>
+
+              {/* Work Materials shortcut — jump to what we SENT the engineer
+                  (Rough/References/Stems/Instructions) for the same job. */}
+              <button type="button" onClick={onOpenMaterials}
+                style={{ width: "100%", textAlign: rtl ? "right" : "left", display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 12, fontFamily: "inherit", cursor: "pointer", background: `${BRAND}12`, border: `1px solid ${BRAND}40` }}
+                onMouseEnter={e => { e.currentTarget.style.background = `${BRAND}20`; e.currentTarget.style.borderColor = `${BRAND}66`; }}
+                onMouseLeave={e => { e.currentTarget.style.background = `${BRAND}12`; e.currentTarget.style.borderColor = `${BRAND}40`; }}>
+                <span style={{ fontSize: 18, flexShrink: 0 }}>🎚</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 800, color: BRAND }}>{t.wmButton}</span>
+                  <span style={{ display: "block", fontSize: 10.5, color: MUTED, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.wmMatSub}</span>
+                </span>
+                <span style={{ fontSize: 15, color: BRAND, flexShrink: 0 }}>↗</span>
+              </button>
 
               {/* Project files (files of the selected version) */}
               <div style={subCard}>
