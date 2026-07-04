@@ -311,6 +311,8 @@ const TR = {
     wmCompare: "השוואה מהירה", wmCompareRough: "Rough Mix (המקורי ששלחנו)", wmCompareLatest: "Latest Mix (הגרסה האחרונה של Steven)",
     wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה", wmSyncNote: "השוואה לפי זמן ניגון",
     wmUploadRough: "+ העלה Rough Mix", wmUploadRef: "+ הוסף רפרנס", wmUploadStems: "+ העלה Stems", wmUploadDoc: "+ הוסף מסמך",
+    wmUploadingRough: "מעלה Rough Mix…", wmUploadingRef: "מעלה רפרנס…", wmUploadingStems: "מעלה Stems…", wmUploadingDoc: "מעלה מסמך…",
+    wmUpProgress: "מעלה קובץ…", wmUpSaving: "שומר ל-Dropbox…",
     wmEmpty: "אין עדיין", wmDownload: "הורדה", wmDelete: "מחק",
     wmUploading: "מעלה…", wmUploaded: "הקובץ הועלה", wmUploadFail: "ההעלאה נכשלה", wmDeleted: "הקובץ נמחק", wmDeleteFail: "המחיקה נכשלה",
     wmDelTitle: "למחוק את הקובץ?", wmDelBody: "הקובץ יימחק מ-Dropbox ומחומרי העבודה. פעולה בלתי הפיכה.",
@@ -364,6 +366,8 @@ const TR = {
     wmCompare: "Quick compare", wmCompareRough: "Rough Mix (what we sent)", wmCompareLatest: "Latest Mix (Steven's latest)",
     wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare", wmSyncNote: "A/B by playback time",
     wmUploadRough: "+ Upload Rough Mix", wmUploadRef: "+ Add reference", wmUploadStems: "+ Upload Stems", wmUploadDoc: "+ Add document",
+    wmUploadingRough: "Uploading Rough Mix…", wmUploadingRef: "Uploading reference…", wmUploadingStems: "Uploading Stems…", wmUploadingDoc: "Uploading document…",
+    wmUpProgress: "Uploading file…", wmUpSaving: "Saving to Dropbox…",
     wmEmpty: "Nothing yet", wmDownload: "Download", wmDelete: "Delete",
     wmUploading: "Uploading…", wmUploaded: "File uploaded", wmUploadFail: "Upload failed", wmDeleted: "File removed", wmDeleteFail: "Delete failed",
     wmDelTitle: "Delete this file?", wmDelBody: "The file will be removed from Dropbox and work materials. This cannot be undone.",
@@ -1791,6 +1795,11 @@ type WMData = {
   latestMix: { url: string; fileName: string; label: string; durationSeconds: number | null } | null;
 };
 
+// Small inline spinner (keyframes injected once inside the modal). No library.
+function WMSpinner({ size = 13, color = "#fff" }: { size?: number; color?: string }) {
+  return <span style={{ width: size, height: size, border: `2px solid ${color}44`, borderTopColor: color, borderRadius: "50%", display: "inline-block", animation: "wm-spin 0.7s linear infinite", flexShrink: 0 }} />;
+}
+
 // Per-row kebab menu (download / delete) for the Work-Materials cards. Closes via
 // a fixed transparent backdrop; sits above the modal's own stacking context.
 function WMKebab({ readOnly, onDownload, onDelete, t, rtl }: { readOnly: boolean; onDownload: () => void; onDelete: () => void; t: T; rtl: boolean }) {
@@ -1869,6 +1878,7 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   const [instr, setInstr]       = useState("");
   const [savingMeta, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null); // materialType being uploaded
+  const [upPct, setUpPct] = useState<number | null>(null);         // real request-body upload %, null when idle
   const [delTarget, setDelTarget] = useState<WMMaterial | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState<string | null>(null); // inline error banner (visible above the modal's z-index)
@@ -1877,6 +1887,10 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   const refRef   = useRef<HTMLInputElement | null>(null);
   const stemsRef = useRef<HTMLInputElement | null>(null);
   const docRef   = useRef<HTMLInputElement | null>(null);
+  // Guard against setState after unmount, and abort an in-flight upload on close.
+  const aliveRef = useRef(true);
+  const xhrRef   = useRef<XMLHttpRequest | null>(null);
+  useEffect(() => () => { aliveRef.current = false; xhrRef.current?.abort(); }, []);
 
   // A/B compare — last playback time shared between the two compare players. When
   // one starts playing it jumps to this time, so switching Rough↔Latest keeps the
@@ -1928,22 +1942,39 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
     finally { setSaving(false); }
   }
 
-  async function doUpload(file: File, materialType: string) {
-    setUploading(materialType); setErr(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("materialType", materialType);
-      const d = await fetch(url, { method: "POST", body: fd }).then(r => r.json());
-      if (d.ok) { await reload(); notify(t.wmUploaded); }
-      else setErr(d.error || t.wmUploadFail);
-    } catch { setErr(t.wmUploadFail); }
-    finally { setUploading(null); }
+  // XHR (not fetch) so we get a REAL upload-progress %. Progress covers the
+  // browser→server body transfer (the bulk for big files); once that hits 100%
+  // the server is still pushing to Dropbox → we show a "saving" phase. No fake %.
+  function doUpload(file: File, materialType: string) {
+    if (uploading) return; // one upload at a time
+    setUploading(materialType); setUpPct(0); setErr(null);
+    const xhr = new XMLHttpRequest();
+    xhrRef.current = xhr;
+    xhr.open("POST", url);
+    xhr.upload.onprogress = e => { if (aliveRef.current && e.lengthComputable) setUpPct(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      xhrRef.current = null;
+      if (!aliveRef.current) return;
+      let d: { ok?: boolean; error?: string } = {};
+      try { d = JSON.parse(xhr.responseText); } catch { /* non-JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300 && d.ok) {
+        // Keep the skeleton/"saving" state until reload swaps in the real row,
+        // so the card never flashes empty between the two.
+        void reload().then(() => { if (!aliveRef.current) return; setUploading(null); setUpPct(null); notify(t.wmUploaded); });
+      } else {
+        setErr(d.error || t.wmUploadFail); setUploading(null); setUpPct(null);
+      }
+    };
+    xhr.onerror = () => { xhrRef.current = null; if (!aliveRef.current) return; setErr(t.wmUploadFail); setUploading(null); setUpPct(null); };
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("materialType", materialType);
+    xhr.send(fd);
   }
   function onPick(e: React.ChangeEvent<HTMLInputElement>, materialType: string) {
     const f = e.target.files?.[0];
     e.target.value = "";
-    if (f) void doUpload(f, materialType);
+    if (f) doUpload(f, materialType);
   }
 
   async function confirmDelete() {
@@ -2006,8 +2037,10 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   // FUNCTION (not a nested component) so the audio rows keep a stable identity and
   // never remount / stop playing when the parent re-renders (e.g. while typing).
   const cardStyle: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 16, padding: "15px 15px 14px", display: "flex", flexDirection: "column", gap: 12, minWidth: 0 };
+  const UPLOADING_LABEL: Record<string, string> = { rough: t.wmUploadingRough, reference: t.wmUploadingRef, stems: t.wmUploadingStems, doc: t.wmUploadingDoc };
   function renderCard(icon: string, title: string, subtitle: string, uploadLabel: string, mt: string, inputRef: React.RefObject<HTMLInputElement | null>, list: WMMaterial[]) {
     const rows = rowsFor(list, mt);
+    const busy = uploading === mt;   // this card is the one uploading
     return (
       <div style={cardStyle}>
         <div>
@@ -2016,13 +2049,25 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
         </div>
         {!readOnly && (
           <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading !== null}
-            style={{ width: "100%", fontSize: 11.5, fontWeight: 800, padding: "8px 10px", borderRadius: 10, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: uploading && uploading !== mt ? 0.5 : 1 }}>
-            {uploading === mt ? t.wmUploading : uploadLabel}
+            style={{ width: "100%", fontSize: 11.5, fontWeight: 800, padding: "8px 10px", borderRadius: 10, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: uploading && !busy ? 0.45 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            {busy ? <><WMSpinner size={12} color={BRAND} /> {UPLOADING_LABEL[mt]}</> : uploadLabel}
           </button>
+        )}
+        {busy && (
+          <div style={{ background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11, padding: "10px 11px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, color: TEXT2, fontWeight: 600 }}>
+              <span>{upPct !== null && upPct < 100 ? t.wmUpProgress : t.wmUpSaving}</span>
+              {upPct !== null && upPct < 100 && <span style={{ fontVariantNumeric: "tabular-nums" }}>{upPct}%</span>}
+            </div>
+            <div style={{ height: 4, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 4, background: `linear-gradient(90deg, ${BRAND}, #F87171)`, width: upPct !== null && upPct < 100 ? `${upPct}%` : "100%", transition: "width 0.2s ease", ...(upPct !== null && upPct >= 100 ? { animation: "wm-pulse 1s ease-in-out infinite" } : {}) }} />
+            </div>
+            <Shimmer w="100%" h={34} r={10} />
+          </div>
         )}
         {rows.length > 0
           ? <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{rows}</div>
-          : <div style={{ padding: "18px 8px", textAlign: "center", fontSize: 11.5, color: MUTED, border: `1px dashed ${BDR2}`, borderRadius: 11, background: "rgba(255,255,255,0.01)" }}>{t.wmEmpty}</div>}
+          : (busy ? null : <div style={{ padding: "18px 8px", textAlign: "center", fontSize: 11.5, color: MUTED, border: `1px dashed ${BDR2}`, borderRadius: 11, background: "rgba(255,255,255,0.01)" }}>{t.wmEmpty}</div>)}
       </div>
     );
   }
@@ -2031,6 +2076,7 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
       <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
         style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(1240px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+        <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}@keyframes wm-pulse{0%,100%{opacity:1}50%{opacity:.5}}"}</style>
         {/* Hidden file inputs live INSIDE the panel so a programmatic .click() can
             never bubble to the overlay backdrop and close the modal (owner only). */}
         {!readOnly && (
