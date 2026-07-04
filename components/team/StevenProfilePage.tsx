@@ -924,16 +924,16 @@ export default function StevenProfilePage() {
                       </td>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
                         <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
-                          {/* Primary — light */}
-                          <button onClick={() => setOpenId(w.id)}
+                          {/* Work Materials — light style, sits on the RIGHT (RTL first) */}
+                          <button onClick={() => setOpenMaterialsId(w.id)} title={t.wmTitle}
                             onMouseEnter={e => { e.currentTarget.style.background = "#E9E9EF"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)"; e.currentTarget.style.boxShadow = "0 0 10px rgba(255,255,255,0.18)"; }}
                             onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)"; e.currentTarget.style.boxShadow = "none"; }}
-                            style={{ fontSize: 11, fontWeight: 800, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s, border-color 0.15s" }}>{t.openJob}</button>
-                          {/* Secondary — dark with amber/gold border */}
-                          <button onClick={() => setOpenMaterialsId(w.id)} title={t.wmTitle}
+                            style={{ fontSize: 11, fontWeight: 800, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s, border-color 0.15s" }}>🎚 {t.wmButton}</button>
+                          {/* Open Job — dark w/ amber/gold border, sits on the LEFT (RTL second) */}
+                          <button onClick={() => setOpenId(w.id)}
                             onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
                             onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
-                            style={{ fontSize: 11, fontWeight: 700, color: "#F0B24A", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>🎚 {t.wmButton}</button>
+                            style={{ fontSize: 11, fontWeight: 700, color: "#F0B24A", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>{t.openJob}</button>
                         </div>
                       </td>
                     </tr>
