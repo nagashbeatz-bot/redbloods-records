@@ -127,10 +127,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // user's pick (validated), else inferred from the filename. The role word +
     // original name let the UI re-detect the role and keep several files under one
     // label; autorename below is the safety net for identical names.
+    // Name: "{projectName} - {versionLabel} - {roleEn} - {originalFileName}".
+    // projectName is the ORIGINAL project (never work_title / Steven display);
+    // filter(Boolean) drops it for standalone works so there's no leading " - ".
     const roleEn        = resolveRoleEn(roleParam, file.name);
     const origDot       = file.name.lastIndexOf(".");
     const origBase      = origDot >= 0 ? file.name.slice(0, origDot) : file.name;
-    const cleanBase     = [effectiveLabel, roleEn, origBase]
+    const cleanBase     = [projectName, effectiveLabel, roleEn, origBase]
       .map(s => sanitizeFolder(s)).filter(Boolean).join(" - ") || safeLabel;
     const cleanFileName = ext ? `${cleanBase}.${ext}` : cleanBase;
 

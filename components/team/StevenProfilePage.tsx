@@ -80,6 +80,25 @@ function detectRole(name: string): FileRole {
   return "mix";
 }
 
+// Display role: prefer the EXPLICIT " - {RoleEn} - " segment we write on upload
+// (the earliest one wins — it sits before the original filename), so the user's
+// pick is authoritative and keywords in the original name can't override it.
+// Falls back to filename inference for older files without the segment.
+function roleOfFile(name: string): FileRole {
+  const n = name || "";
+  const segs: [RegExp, FileRole][] = [
+    [/ - Mix - /i, "mix"], [/ - Acapella - /i, "acapella"],
+    [/ - Instrumental - /i, "instrumental"], [/ - Stems - /i, "stems"],
+  ];
+  let bestIdx = Infinity;
+  let bestRole: FileRole | null = null;
+  for (const [re, role] of segs) {
+    const m = n.match(re);
+    if (m && m.index !== undefined && m.index < bestIdx) { bestIdx = m.index; bestRole = role; }
+  }
+  return bestRole ?? detectRole(n);
+}
+
 type RoledVersion = MixVersion & { role: FileRole };
 type VersionGroup = { key: string; label: string; files: RoledVersion[]; primary: RoledVersion; latestAt: string };
 
@@ -95,7 +114,7 @@ function baseVersionKey(label: string): string {
 function groupVersions(versions: MixVersion[]): VersionGroup[] {
   const map = new Map<string, VersionGroup>();
   for (const v of versions) {
-    const rv: RoledVersion = { ...v, role: detectRole(v.fileName || v.label) };
+    const rv: RoledVersion = { ...v, role: roleOfFile(v.fileName || v.label) };
     const key = baseVersionKey(v.label) || v.id;
     let g = map.get(key);
     if (!g) { g = { key, label: baseVersionKey(v.label) || v.label, files: [], primary: rv, latestAt: rv.createdAt }; map.set(key, g); }
