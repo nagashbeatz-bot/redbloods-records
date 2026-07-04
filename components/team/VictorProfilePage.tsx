@@ -991,7 +991,13 @@ function VictorProjectDrawer({
   function uploadOne(file: File, folder: string, versionLabel: string | null, idx: number, total: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const fd = new FormData();
-      fd.append("file", file);
+      // Prefix the stored filename with its version so same-named files across
+      // versions don't collide (e.g. "V2 - beat.wav"). Original name + extension
+      // kept; unlabeled (Older files) uploads keep their name. The server still
+      // sanitizes the name into the Dropbox path.
+      const uploadName = versionLabel ? `${versionLabel} - ${file.name}` : file.name;
+      const named = uploadName === file.name ? file : new File([file], uploadName, { type: file.type });
+      fd.append("file", named);
       fd.append("workId", work.id);
       fd.append("dropboxFolder", folder);
       fd.append("subFolder", "Production");
