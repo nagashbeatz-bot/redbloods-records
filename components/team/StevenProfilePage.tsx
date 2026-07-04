@@ -266,7 +266,7 @@ const TR = {
     breadcrumb: "צוות / ספקים", profileTitle: "פרופיל ספק —", role: "איש סאונד / מיקס ומאסטר", active: "פעיל",
     back: "→ חזרה לרשימה", newWork: "+ עבודה חדשה ל-Steven",
     soundSupplier: "ספק סאונד", supplierType: "סוג ספק: איש סאונד", updatedToday: "עודכן לאחרונה: היום",
-    kpiOpen: "עבודות פתוחות", kpiActive: "עבודות פעילות", kpiDone: "עבודות הושלמו", kpiDebt: "חוב ל-Steven", kpiPaidMonth: "שולם החודש",
+    kpiOpen: "עבודות פתוחות", kpiActive: "עבודות פעילות", kpiDone: "עבודות הושלמו", kpiDebt: "חוב ל-Steven", kpiPaidMonth: "שולם",
     payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם",
     noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולות", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
@@ -322,7 +322,7 @@ const TR = {
     breadcrumb: "Team / Suppliers", profileTitle: "Supplier Profile —", role: "Sound Engineer / Mix & Master", active: "Active",
     back: "← Back to list", newWork: "+ New work for Steven",
     soundSupplier: "Sound Supplier", supplierType: "Supplier type: Sound Engineer", updatedToday: "Updated today",
-    kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid This Month",
+    kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid",
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid",
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Job", noJobs: "No Steven jobs yet",
@@ -378,7 +378,8 @@ const TR = {
 type T = (typeof TR)["he"];
 
 // ── Chips ───────────────────────────────────────────────────────────────────────
-const STATUS_COLOR: Record<WorkStatus, string> = { "פעיל": GREEN, "הושלם": BLUE, "בוטל": RED };
+// הושלם = green (done); פעיל = blue (in-progress, NOT green); בוטל = red.
+const STATUS_COLOR: Record<WorkStatus, string> = { "פעיל": BLUE, "הושלם": GREEN, "בוטל": RED };
 const PAY_COLOR:    Record<PayStatus, string>  = { "שולם": GREEN, "חלקי": "#F59E0B", "לא שולם": RED };
 function StatusChip({ status, lang }: { status: WorkStatus; lang: Lang }) {
   const c = STATUS_COLOR[status];
@@ -832,8 +833,8 @@ export default function StevenProfilePage() {
           ) : (
             <>
               <KpiCard label={t.kpiOpen}      value={open}         icon="📁" />
-              <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={GREEN} />
-              <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={BLUE} />
+              <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={BLUE} />
+              <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={GREEN} />
               <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
               <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
             </>
