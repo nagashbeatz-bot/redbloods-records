@@ -307,6 +307,7 @@ const TR = {
     wmInstructions: "הוראות עבודה", wmBpm: "BPM", wmKey: "סולם / Key", wmNotes: "הערות חשובות למיקס",
     wmNotesPh: "דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג, מה חשוב…", wmSaveMeta: "שמור הוראות", wmMetaSaved: "ההוראות נשמרו", wmMetaFail: "השמירה נכשלה",
     wmRough: "Rough Mix", wmReferences: "רפרנסים", wmStems: "Stems / ערוצים", wmDocs: "מסמכים",
+    wmRoughSub: "העלאת מיקס גס לעבודה", wmReferencesSub: "רפרנסי אודיו או קישורים חיצוניים", wmStemsSub: "ערוצי Stems או קבוצות ערוצים", wmDocsSub: "קבצי טקסט, מילים, הערות ועוד",
     wmCompare: "השוואה מהירה", wmCompareRough: "Rough Mix (המקורי ששלחנו)", wmCompareLatest: "Latest Mix (הגרסה האחרונה של Steven)",
     wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה", wmSyncNote: "השוואה לפי זמן ניגון",
     wmUploadRough: "+ העלה Rough Mix", wmUploadRef: "+ הוסף רפרנס", wmUploadStems: "+ העלה Stems", wmUploadDoc: "+ הוסף מסמך",
@@ -359,6 +360,7 @@ const TR = {
     wmInstructions: "Work Instructions", wmBpm: "BPM", wmKey: "Key", wmNotes: "Important mix notes",
     wmNotesPh: "Vocal/chorus focus, streaming-ready master, what matters…", wmSaveMeta: "Save instructions", wmMetaSaved: "Instructions saved", wmMetaFail: "Save failed",
     wmRough: "Rough Mix", wmReferences: "References", wmStems: "Stems", wmDocs: "Documents",
+    wmRoughSub: "The rough mix to work from", wmReferencesSub: "Audio references or external links", wmStemsSub: "Stem files or channel bundles", wmDocsSub: "Text files, lyrics, notes and more",
     wmCompare: "Quick compare", wmCompareRough: "Rough Mix (what we sent)", wmCompareLatest: "Latest Mix (Steven's latest)",
     wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare", wmSyncNote: "A/B by playback time",
     wmUploadRough: "+ Upload Rough Mix", wmUploadRef: "+ Add reference", wmUploadStems: "+ Upload Stems", wmUploadDoc: "+ Add document",
@@ -1789,6 +1791,74 @@ type WMData = {
   latestMix: { url: string; fileName: string; label: string; durationSeconds: number | null } | null;
 };
 
+// Per-row kebab menu (download / delete) for the Work-Materials cards. Closes via
+// a fixed transparent backdrop; sits above the modal's own stacking context.
+function WMKebab({ readOnly, onDownload, onDelete, t, rtl }: { readOnly: boolean; onDownload: () => void; onDelete: () => void; t: T; rtl: boolean }) {
+  const [open, setOpen] = useState(false);
+  const item: React.CSSProperties = { display: "block", width: "100%", textAlign: rtl ? "right" : "left", padding: "8px 13px", background: "transparent", border: "none", color: TEXT2, fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" };
+  return (
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <button type="button" onClick={() => setOpen(o => !o)} title="•••"
+        style={{ width: 28, height: 28, borderRadius: 8, background: open ? "rgba(255,255,255,0.06)" : "transparent", border: "none", color: open ? TEXT2 : MUTED, cursor: "pointer", fontSize: 17, lineHeight: 1, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>⋮</button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 200004 }} />
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", [rtl ? "left" : "right"]: 0, zIndex: 200005, background: "#181820", border: `1px solid ${BDR2}`, borderRadius: 10, boxShadow: "0 12px 30px rgba(0,0,0,0.7)", minWidth: 150, overflow: "hidden", padding: "4px 0" } as React.CSSProperties}>
+            <button type="button" onClick={() => { setOpen(false); onDownload(); }} style={item}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>⬇ {t.wmDownload}</button>
+            {!readOnly && (
+              <button type="button" onClick={() => { setOpen(false); onDelete(); }} style={{ ...item, color: "#FCA5A5" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(239,68,68,0.1)")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>🗑 {t.wmDelete}</button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Compact audio row (Work-Materials cards): small inline play toggle + kebab.
+// Reuses the module-level single-active guard so only one thing ever plays.
+function WMAudioRow({ name, meta, url, readOnly, onDownload, onDelete, t, rtl }: { name: string; meta: string; url: string; readOnly: boolean; onDownload: () => void; onDelete: () => void; t: T; rtl: boolean }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => { const a = audioRef.current; return () => { a?.pause(); if (activeStevenAudio === a) activeStevenAudio = null; }; }, []);
+  function toggle() {
+    const a = audioRef.current; if (!a) return;
+    if (a.paused) { if (activeStevenAudio && activeStevenAudio !== a) activeStevenAudio.pause(); activeStevenAudio = a; a.play().catch(() => {}); }
+    else a.pause();
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11 }}>
+      <audio ref={audioRef} src={url} preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
+      <button type="button" onClick={toggle} title={t.vPlay}
+        style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, border: "none", background: `linear-gradient(145deg, ${BRAND}, #B91C1C)`, color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: `0 3px 12px ${BRAND}55` }}>
+        {playing ? <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4.4" height="14" rx="1.3"/><rect x="13.6" y="5" width="4.4" height="14" rx="1.3"/></svg>
+                 : <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" style={{ marginInlineStart: 2 }}><path d="M8 5v14l11-7z"/></svg>}
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div title={name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
+        <div style={{ fontSize: 10.5, color: MUTED, marginTop: 1, direction: "ltr", textAlign: rtl ? "right" : "left" } as React.CSSProperties}>{meta}</div>
+      </div>
+      <WMKebab readOnly={readOnly} onDownload={onDownload} onDelete={onDelete} t={t} rtl={rtl} />
+    </div>
+  );
+}
+
+// Compact non-audio row (stems/docs): icon + name + kebab (download / delete).
+function WMFileRow({ icon, name, meta, readOnly, onDownload, onDelete, t, rtl }: { icon: string; name: string; meta: string; readOnly: boolean; onDownload: () => void; onDelete: () => void; t: T; rtl: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11 }}>
+      <span style={{ fontSize: 17, flexShrink: 0, width: 34, textAlign: "center" }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div title={name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
+        <div style={{ fontSize: 10.5, color: MUTED, marginTop: 1, direction: "ltr", textAlign: rtl ? "right" : "left" } as React.CSSProperties}>{meta}</div>
+      </div>
+      <WMKebab readOnly={readOnly} onDownload={onDownload} onDelete={onDelete} t={t} rtl={rtl} />
+    </div>
+  );
+}
+
 function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; onClose: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const rtl = lang === "he";
   const readOnly = lang === "en"; // "Steven view" is a read-only preview (owner-only page; no Steven login yet)
@@ -1796,7 +1866,6 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
 
   const [data, setData]         = useState<WMData | null>(null); // null = loading
   const [loadErr, setLoadErr]   = useState(false);
-  const [bpm, setBpm]           = useState("");
   const [instr, setInstr]       = useState("");
   const [savingMeta, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null); // materialType being uploaded
@@ -1834,7 +1903,7 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
         if (d.ok) {
           const wd: WMData = { projectLinked: !!d.projectLinked, materials: d.materials ?? [], meta: d.meta ?? {}, latestMix: d.latestMix ?? null };
           setData(wd);
-          setBpm(wd.meta.bpm ?? ""); setInstr(wd.meta.instructions ?? "");
+          setInstr(wd.meta.instructions ?? "");
         } else setLoadErr(true);
       })
       .catch(() => { if (alive) setLoadErr(true); });
@@ -1852,7 +1921,7 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
     if (savingMeta || readOnly) return;
     setSaving(true); setErr(null);
     try {
-      const d = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bpm, instructions: instr }) }).then(r => r.json());
+      const d = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instructions: instr }) }).then(r => r.json());
       if (d.ok) notify(t.wmMetaSaved);
       else setErr(d.error || t.wmMetaFail);
     } catch { setErr(t.wmMetaFail); }
@@ -1894,58 +1963,26 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   const secHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
   const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", background: "#0D0D12", border: `1px solid ${BDR2}`, borderRadius: 10, color: TEXT, colorScheme: "dark", fontSize: 13, padding: "9px 12px", outline: "none", fontFamily: "inherit" };
   const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5 };
-  function upBtn(label: string, mt: string, onClick: () => void): React.ReactNode {
-    return (
-      <button onClick={onClick} disabled={uploading !== null}
-        style={{ fontSize: 11.5, fontWeight: 800, padding: "6px 12px", borderRadius: 9, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: uploading && uploading !== mt ? 0.5 : 1 }}>
-        {uploading === mt ? t.wmUploading : label}
-      </button>
-    );
-  }
   const ROLE_C: Record<string, string> = { rough: BRAND, reference: BLUE, stems: "#F59E0B", doc: MUTED, latest: GREEN };
 
-  function audioPlayer(m: WMMaterial, label: string, color: string) {
-    return (
-      <VersionPlayer key={m.dropboxPath} url={m.url} title={m.name} roleLabel={label} roleColor={color}
-        shouldPlay={0} comments={[]} onDownload={() => window.open(m.url, "_blank", "noopener,noreferrer")} t={t} />
-    );
-  }
-  function downloadRow(m: WMMaterial) {
-    return (
-      <div key={m.dropboxPath} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11 }}>
-        <span style={{ fontSize: 16, flexShrink: 0 }}>{m.kind === "archive" ? "📦" : "📄"}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div title={m.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{m.name}</div>
-          <div style={{ fontSize: 11, color: MUTED }}>{fmtBytes(m.size)}</div>
-        </div>
-        <button onClick={() => window.open(m.url, "_blank", "noopener,noreferrer")} title={t.wmDownload}
-          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3L16.7 12 12 16.7 7.3 12l1.4-1.7L12 13.6V3zM5 19h14v2H5z"/></svg>
-        </button>
-        {!readOnly && (
-          <button onClick={() => setDelTarget(m)} title={t.wmDelete}
-            style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: "rgba(239,68,68,0.08)", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>🗑</button>
-        )}
-      </div>
-    );
-  }
   function emptyLine(label: string) {
-    return <div style={{ padding: "14px 0", textAlign: "center", fontSize: 12, color: MUTED }}>{label}</div>;
+    return <div style={{ padding: "18px 0", textAlign: "center", fontSize: 12, color: MUTED }}>{label}</div>;
   }
-  // Audio material rendered with an inline delete button beneath the player (owner only).
-  function audioBlock(m: WMMaterial, label: string, color: string) {
-    return (
-      <div key={m.dropboxPath}>
-        {audioPlayer(m, label, color)}
-        {!readOnly && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-            <button onClick={() => setDelTarget(m)}
-              style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.wmDelete}</button>
-          </div>
-        )}
-      </div>
-    );
+
+  // Display name = Steven-visible project name (work.project) + material type —
+  // NEVER the stored Dropbox/original filename. References are always numbered;
+  // other types get a number only when there is more than one of that type.
+  const TYPE_DISPLAY: Record<string, string> = { rough: "Rough Mix", reference: "Reference", stems: "Stems", doc: "Instructions" };
+  function dispName(mt: string, idx: number, count: number): string {
+    const label = TYPE_DISPLAY[mt] ?? mt;
+    const numbered = mt === "reference" || count > 1;
+    return `${work.project} ${label}${numbered ? " " + (idx + 1) : ""}`.trim();
   }
+  function metaStr(m: WMMaterial): string {
+    const ext = (m.name.split(".").pop() ?? "").toUpperCase();
+    return [ext, m.durationSeconds ? fmtTime(m.durationSeconds) : null, m.size ? fmtBytes(m.size) : null].filter(Boolean).join(" · ");
+  }
+  const dl = (m: WMMaterial) => () => window.open(m.url, "_blank", "noopener,noreferrer");
 
   const materials = data?.materials ?? [];
   const rough      = materials.filter(m => m.materialType === "rough");
@@ -1954,10 +1991,56 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
   const docs       = materials.filter(m => m.materialType === "doc");
   const roughAudio = rough.find(m => m.kind === "audio") ?? null;
 
+  // Build the row elements for a card from its materials (audio → player row,
+  // archive/doc → download row). idx/count drive the display numbering.
+  function rowsFor(list: WMMaterial[], mt: string) {
+    return list.map((m, i) => {
+      const name = dispName(mt, i, list.length);
+      return m.kind === "audio"
+        ? <WMAudioRow key={m.dropboxPath} name={name} meta={metaStr(m)} url={m.url} readOnly={readOnly} onDownload={dl(m)} onDelete={() => setDelTarget(m)} t={t} rtl={rtl} />
+        : <WMFileRow key={m.dropboxPath} icon={m.kind === "archive" ? "📦" : "📄"} name={name} meta={metaStr(m)} readOnly={readOnly} onDownload={dl(m)} onDelete={() => setDelTarget(m)} t={t} rtl={rtl} />;
+    });
+  }
+
+  // One material card (header + subtitle + upload button + rows). A plain render
+  // FUNCTION (not a nested component) so the audio rows keep a stable identity and
+  // never remount / stop playing when the parent re-renders (e.g. while typing).
+  const cardStyle: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 16, padding: "15px 15px 14px", display: "flex", flexDirection: "column", gap: 12, minWidth: 0 };
+  function renderCard(icon: string, title: string, subtitle: string, uploadLabel: string, mt: string, inputRef: React.RefObject<HTMLInputElement | null>, list: WMMaterial[]) {
+    const rows = rowsFor(list, mt);
+    return (
+      <div style={cardStyle}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{icon} {title}</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 3, lineHeight: 1.5 }}>{subtitle}</div>
+        </div>
+        {!readOnly && (
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading !== null}
+            style={{ width: "100%", fontSize: 11.5, fontWeight: 800, padding: "8px 10px", borderRadius: 10, background: `${BRAND}16`, border: `1px solid ${BRAND}45`, color: BRAND, cursor: uploading ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: uploading && uploading !== mt ? 0.5 : 1 }}>
+            {uploading === mt ? t.wmUploading : uploadLabel}
+          </button>
+        )}
+        {rows.length > 0
+          ? <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{rows}</div>
+          : <div style={{ padding: "18px 8px", textAlign: "center", fontSize: 11.5, color: MUTED, border: `1px dashed ${BDR2}`, borderRadius: 11, background: "rgba(255,255,255,0.01)" }}>{t.wmEmpty}</div>}
+      </div>
+    );
+  }
+
   const modal = (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
       <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
-        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(980px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(1240px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+        {/* Hidden file inputs live INSIDE the panel so a programmatic .click() can
+            never bubble to the overlay backdrop and close the modal (owner only). */}
+        {!readOnly && (
+          <>
+            <input ref={roughRef} type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "rough")} />
+            <input ref={refRef}   type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "reference")} />
+            <input ref={stemsRef} type="file" accept=".zip,.rar,.7z" style={{ display: "none" }} onChange={e => onPick(e, "stems")} />
+            <input ref={docRef}   type="file" style={{ display: "none" }} onChange={e => onPick(e, "doc")} />
+          </>
+        )}
 
         {/* Header */}
         <div style={{ position: "sticky", top: 0, zIndex: 2, background: CARD, borderBottom: `1px solid ${BDR}`, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -1965,7 +2048,7 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
             <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.01em" }}>🎚 {t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></div>
             <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.wmSubtitle}{readOnly && <span style={{ marginInlineStart: 8, fontSize: 10.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 7, padding: "1px 7px" }}>👁 {t.wmReadOnly}</span>}</div>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
+          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 }}>✕</button>
         </div>
 
         <div style={{ padding: "18px 20px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1985,20 +2068,14 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
             <EmptyZone icon="🔗" title={t.wmNoProject} />
           ) : (
             <>
-              {/* 1. Instructions (BPM + notes) */}
+              {/* Instructions — free text only (no BPM/Key) */}
               <div style={sec}>
                 <div style={secHead}><span>📝 {t.wmInstructions}</span></div>
-                <div style={{ width: 130, marginBottom: 12 }}>
-                  <label style={lbl}>{t.wmBpm}</label>
-                  <input value={bpm} onChange={e => setBpm(e.target.value)} readOnly={readOnly} inputMode="numeric" placeholder="—" style={{ ...inp, direction: "ltr", textAlign: "start" }} />
-                </div>
-                <div>
-                  <label style={lbl}>{t.wmNotes}</label>
-                  <textarea value={instr} onChange={e => setInstr(e.target.value)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={4} style={{ ...inp, resize: "vertical", lineHeight: 1.6 }} />
-                </div>
+                <label style={lbl}>{t.wmNotes}</label>
+                <textarea value={instr} onChange={e => setInstr(e.target.value)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={4} style={{ ...inp, resize: "vertical", lineHeight: 1.6 }} />
                 {!readOnly && (
                   <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                    <button onClick={saveMeta} disabled={savingMeta}
+                    <button type="button" onClick={saveMeta} disabled={savingMeta}
                       style={{ fontSize: 12.5, fontWeight: 800, padding: "8px 18px", borderRadius: 10, background: BRAND, border: "none", color: "#fff", cursor: savingMeta ? "wait" : "pointer", fontFamily: "inherit", opacity: savingMeta ? 0.7 : 1 }}>
                       {t.wmSaveMeta}
                     </button>
@@ -2006,92 +2083,40 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
                 )}
               </div>
 
-              {/* 2. Rough Mix */}
-              <div style={sec}>
-                <div style={secHead}>
-                  <span>🎵 {t.wmRough}</span>
-                  {!readOnly && upBtn(t.wmUploadRough, "rough", () => roughRef.current?.click())}
-                </div>
-                {rough.length === 0 ? emptyLine(t.wmEmpty) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {rough.map(m => m.kind === "audio" ? audioBlock(m, t.wmRough, ROLE_C.rough) : downloadRow(m))}
-                  </div>
-                )}
+              {/* Material cards — Rough Mix / References / Stems / Documents */}
+              <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, alignItems: "start" }}>
+                {renderCard("🎵", t.wmRough,      t.wmRoughSub,      t.wmUploadRough, "rough",     roughRef, rough)}
+                {renderCard("🎧", t.wmReferences, t.wmReferencesSub, t.wmUploadRef,   "reference", refRef,   references)}
+                {renderCard("📦", t.wmStems,      t.wmStemsSub,      t.wmUploadStems, "stems",     stemsRef, stems)}
+                {renderCard("📄", t.wmDocs,       t.wmDocsSub,       t.wmUploadDoc,   "doc",       docRef,   docs)}
               </div>
 
-              {/* 3. References */}
-              <div style={sec}>
-                <div style={secHead}>
-                  <span>🎧 {t.wmReferences}</span>
-                  {!readOnly && upBtn(t.wmUploadRef, "reference", () => refRef.current?.click())}
-                </div>
-                {references.length === 0 ? emptyLine(t.wmEmpty) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {references.map(m => m.kind === "audio" ? audioBlock(m, t.wmReferences, ROLE_C.reference) : downloadRow(m))}
-                  </div>
-                )}
-              </div>
-
-              {/* 4. Stems */}
-              <div style={sec}>
-                <div style={secHead}>
-                  <span>📦 {t.wmStems}</span>
-                  {!readOnly && upBtn(t.wmUploadStems, "stems", () => stemsRef.current?.click())}
-                </div>
-                {stems.length === 0 ? emptyLine(t.wmEmpty) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{stems.map(downloadRow)}</div>
-                )}
-              </div>
-
-              {/* 5. Documents (optional) */}
-              {(docs.length > 0 || !readOnly) && (
-                <div style={sec}>
-                  <div style={secHead}>
-                    <span>📄 {t.wmDocs}</span>
-                    {!readOnly && upBtn(t.wmUploadDoc, "doc", () => docRef.current?.click())}
-                  </div>
-                  {docs.length === 0 ? emptyLine(t.wmEmpty) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{docs.map(downloadRow)}</div>
-                  )}
-                </div>
-              )}
-
-              {/* 6. Quick compare — Rough vs Latest Mix (A/B by playback time) */}
-              <div style={{ ...sec, border: `1px solid ${BRAND}40` }}>
-                <div style={secHead}>
+              {/* Quick compare — Rough vs Latest Mix (A/B by playback time) */}
+              <div style={{ ...sec, border: `1px solid ${BRAND}40`, padding: "16px 18px" }}>
+                <div style={{ ...secHead, marginBottom: 4 }}>
                   <span>⚖ {t.wmCompare}</span>
                   <span style={{ fontSize: 10.5, fontWeight: 800, color: BRAND, border: `1px solid ${BRAND}45`, background: `${BRAND}14`, borderRadius: 7, padding: "2px 9px", whiteSpace: "nowrap" }}>⏱ {t.wmSyncNote}</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 12 }}>
-                  <div>
+                <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 12 }}>{t.wmCompareHint}</div>
+                <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 14 }}>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareRough}</div>
                     {roughAudio
-                      ? <VersionPlayer ref={cmpRoughRef} url={roughAudio.url} title={roughAudio.name} roleLabel={t.wmRough} roleColor={ROLE_C.rough} shouldPlay={0} comments={[]} onDownload={() => window.open(roughAudio.url, "_blank", "noopener,noreferrer")} onPlayStart={() => syncTo(cmpRoughRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
+                      ? <VersionPlayer ref={cmpRoughRef} url={roughAudio.url} title={dispName("rough", 0, 1)} roleLabel={t.wmRough} roleColor={ROLE_C.rough} shouldPlay={0} comments={[]} onDownload={dl(roughAudio)} onPlayStart={() => syncTo(cmpRoughRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
                       : emptyLine(t.wmEmpty)}
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareLatest}</div>
                     {data.latestMix
-                      ? <VersionPlayer ref={cmpLatestRef} url={data.latestMix.url} title={data.latestMix.fileName} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => window.open(data.latestMix!.url, "_blank", "noopener,noreferrer")} onPlayStart={() => syncTo(cmpLatestRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
+                      ? <VersionPlayer ref={cmpLatestRef} url={data.latestMix.url} title={`${work.project} ${data.latestMix.label}`.trim()} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => window.open(data.latestMix!.url, "_blank", "noopener,noreferrer")} onPlayStart={() => syncTo(cmpLatestRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
                       : emptyLine(t.wmNoLatest)}
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10 }}>{t.wmCompareHint}</div>
               </div>
             </>
           )}
         </div>
       </div>
-
-      {/* Hidden file inputs (owner only) */}
-      {!readOnly && (
-        <>
-          <input ref={roughRef} type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "rough")} />
-          <input ref={refRef}   type="file" accept="audio/*,.wav,.mp3,.aiff,.aif,.m4a,.flac,.ogg" style={{ display: "none" }} onChange={e => onPick(e, "reference")} />
-          <input ref={stemsRef} type="file" accept=".zip,.rar,.7z" style={{ display: "none" }} onChange={e => onPick(e, "stems")} />
-          <input ref={docRef}   type="file" style={{ display: "none" }} onChange={e => onPick(e, "doc")} />
-        </>
-      )}
 
       {/* Delete confirm */}
       {delTarget && (
@@ -2101,8 +2126,8 @@ function WorkMaterialsModal({ work, onClose, notify, lang, t }: { work: Work; on
             <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 6 }}>{t.wmDelTitle}</div>
             <div style={{ fontSize: 12.5, color: TEXT2, marginBottom: 18, lineHeight: 1.6 }}>{t.wmDelBody}</div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setDelTarget(null)} disabled={deleting} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${BDR2}`, background: "transparent", color: TEXT2, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>{t.confirmNo}</button>
-              <button onClick={confirmDelete} disabled={deleting} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${RED}66`, background: deleting ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.14)", color: RED, cursor: deleting ? "default" : "pointer", fontSize: 13, fontWeight: 800, fontFamily: "inherit", opacity: deleting ? 0.7 : 1 }}>{t.wmDelete}</button>
+              <button type="button" onClick={() => setDelTarget(null)} disabled={deleting} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${BDR2}`, background: "transparent", color: TEXT2, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>{t.confirmNo}</button>
+              <button type="button" onClick={confirmDelete} disabled={deleting} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${RED}66`, background: deleting ? "rgba(239,68,68,0.06)" : "rgba(239,68,68,0.14)", color: RED, cursor: deleting ? "default" : "pointer", fontSize: 13, fontWeight: 800, fontFamily: "inherit", opacity: deleting ? 0.7 : 1 }}>{t.wmDelete}</button>
             </div>
           </div>
         </div>

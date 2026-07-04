@@ -147,10 +147,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // within the same material type; autorename is the final safety net.
     const dot = file.name.lastIndexOf(".");
     const ext = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : "";
-    const existingNames = new Set(
-      (project.files as FileRow[]).filter((f) => f.category === WM_CATEGORY).map((f) => f.name ?? "")
-    );
-    const base = [sanitizeFolder(projectName), TYPE_LABEL[materialType]].filter(Boolean).join(" ") || TYPE_LABEL[materialType];
+    const wmFiles = (project.files as FileRow[]).filter((f) => f.category === WM_CATEGORY);
+    const existingNames = new Set(wmFiles.map((f) => f.name ?? ""));
+
+    // References are ALWAYS numbered ("{project} Reference 1", "… Reference 2", …);
+    // the other types use a bare label ("{project} Rough Mix", "… Stems") and only
+    // get a trailing number on an exact-name clash. autorename is the final net.
+    const typeLabel = TYPE_LABEL[materialType];
+    let label = typeLabel;
+    if (materialType === "reference") {
+      const n = wmFiles.filter((f) => f.versionLabel === "reference").length + 1;
+      label = `${typeLabel} ${n}`;
+    }
+    const base = [sanitizeFolder(projectName), label].filter(Boolean).join(" ") || label;
     let cleanName = ext ? `${base}.${ext}` : base;
     for (let n = 2; existingNames.has(cleanName); n++) {
       const numbered = `${base} ${n}`;
@@ -190,6 +199,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         dropboxPath: finalPath,
         category: WM_CATEGORY,
         versionLabel: materialType,   // sub-type: rough | reference | stems | doc
+        size: file.size,
         ...(durationSeconds ? { durationSeconds } : {}),
       });
     } catch (dbErr) {

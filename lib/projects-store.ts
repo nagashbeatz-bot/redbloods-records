@@ -18,7 +18,7 @@ interface DbProject {
   project_type:   string;
   parent_project: string;
   is_hidden:      boolean;
-  files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number }[];
+  files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number; size?: number }[];
   work_materials: WorkMaterialsMeta | null;
   created_at:     string;
   updated_at:     string;
@@ -35,6 +35,7 @@ function dbToProject(db: DbProject): Project {
     versionLabel:     f.versionLabel,
     category:         f.category,
     durationSeconds:  f.durationSeconds,
+    size:             f.size,
   }));
 
   return {
@@ -167,7 +168,7 @@ export async function deleteProject(id: string): Promise<void> {
 /** Update files JSONB for a project (used after file upload) */
 export async function addFileToProject(
   id: string,
-  file: { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number }
+  file: { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number; size?: number }
 ): Promise<void> {
   // Read current files, append, write back
   const { data, error: readErr } = await supabase
@@ -178,7 +179,7 @@ export async function addFileToProject(
 
   if (readErr) throw new Error(readErr.message);
 
-  const current: { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number }[] =
+  const current: { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number; size?: number }[] =
     (data as { files: typeof current }).files || [];
 
   const { error } = await supabase
