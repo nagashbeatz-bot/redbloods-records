@@ -63,6 +63,7 @@ function mapRow(
     notes:                (row.notes                as string)        ?? "",
     linkedTransactionId:  (row.linked_transaction_id as string | null) ?? null,
     sortOrder:            row.sort_order != null ? Number(row.sort_order) : null,
+    paymentDate:          (row.payment_date         as string | null) ?? null,
     createdAt:            (row.created_at           as string) ?? "",
     updatedAt:            (row.updated_at           as string) ?? "",
   };
@@ -312,6 +313,7 @@ export async function updateSoundEngineerWork(
     internalDeadline: string | null;
     filesLink:        string | null;
     notes:            string;
+    paymentDate:      string | null;   // YYYY-MM-DD when marked paid, or null to clear
     /** When true, skip the linked-transaction sync entirely (Steven flow). Not persisted. */
     skipFinanceSync:  boolean;
   }>
@@ -339,6 +341,7 @@ export async function updateSoundEngineerWork(
   if (fields.internalDeadline !== undefined) dbUpdate.internal_deadline  = fields.internalDeadline;
   if (fields.filesLink        !== undefined) dbUpdate.files_link         = fields.filesLink;
   if (fields.notes            !== undefined) dbUpdate.notes              = fields.notes;
+  if (fields.paymentDate      !== undefined) dbUpdate.payment_date       = fields.paymentDate;
 
   const { data: updated, error } = await supabase
     .from("sound_engineer_work")

@@ -205,6 +205,7 @@ interface Work {
   startDate: string; deadline: string; price: number; pay: PayStatus;
   amountPaid: number; currency: string; dbBacked: boolean;
   notes: string; filesLink: string | null;   // real fields from sound_engineer_work
+  paymentDate: string | null;                 // YYYY-MM-DD when marked paid (null = unpaid/legacy)
 }
 
 // ── DB ↔ UI mapping (the page UI has fewer enum values than the DB) ───────────────
@@ -257,6 +258,7 @@ function mapRecord(r: SoundEngineerWork): Work {
     dbBacked:   true,
     notes:      r.notes || "",
     filesLink:  r.filesLink ?? null,
+    paymentDate: r.paymentDate ?? null,
   };
 }
 
@@ -267,7 +269,7 @@ const TR = {
     back: "→ חזרה לרשימה", newWork: "+ עבודה חדשה ל-Steven",
     soundSupplier: "ספק סאונד", supplierType: "סוג ספק: איש סאונד", updatedToday: "עודכן לאחרונה: היום",
     kpiOpen: "עבודות פתוחות", kpiActive: "עבודות פעילות", kpiDone: "עבודות הושלמו", kpiDebt: "חוב ל-Steven", kpiPaidMonth: "שולם",
-    payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם",
+    payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם", payDateTitle: "תאריך תשלום", payDateField: "תאריך תשלום",
     noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולות", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
@@ -323,7 +325,7 @@ const TR = {
     back: "← Back to list", newWork: "+ New work for Steven",
     soundSupplier: "Sound Supplier", supplierType: "Supplier type: Sound Engineer", updatedToday: "Updated today",
     kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid",
-    payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid",
+    payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid", payDateTitle: "Payment date", payDateField: "Payment date",
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Job", noJobs: "No Steven jobs yet",
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
@@ -632,6 +634,7 @@ export default function StevenProfilePage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [openMaterialsId, setOpenMaterialsId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [payModal, setPayModal] = useState<{ workId: string; project: string } | null>(null); // "שולם" → date modal
   // Drag-to-reorder + full-row hover state (works table).
   const [dragId, setDragId]   = useState<string | null>(null); // row being dragged
   const [overId, setOverId]   = useState<string | null>(null); // current drop target
@@ -676,6 +679,8 @@ export default function StevenProfilePage() {
       if (patch.pay !== undefined) {
         next.amountPaid = patch.pay === "שולם" ? w.price : 0;
         next.pay = payFromAmounts(w.price, next.amountPaid);
+        // "שולם" → paymentDate arrives in `patch` (from the modal); "לא שולם" clears it.
+        if (patch.pay === "לא שולם") next.paymentDate = null;
       }
       if (patch.price !== undefined) next.pay = payFromAmounts(next.price, next.amountPaid);
       return next;
@@ -689,6 +694,9 @@ export default function StevenProfilePage() {
     if (patch.price    !== undefined) body.agreedPrice = patch.price;
     if (patch.pay      !== undefined) body.amountPaid  = patch.pay === "שולם" ? target.price : 0;
     if (patch.notes    !== undefined) body.notes       = patch.notes;
+    // Payment date: explicit value from the modal, or cleared when unmarking paid.
+    if (patch.paymentDate !== undefined) body.paymentDate = patch.paymentDate;
+    else if (patch.pay === "לא שולם")    body.paymentDate = null;
     if (Object.keys(body).length === 1) return; // only the flag → nothing actually changed
 
     try {
@@ -758,6 +766,8 @@ export default function StevenProfilePage() {
   const done    = works.filter(w => w.status === "הושלם").length;
   const debt    = works.reduce((s, w) => s + Math.max(0, w.price - w.amountPaid), 0);
   const paidSum = works.reduce((s, w) => s + w.amountPaid, 0);
+  // Payment history — paid works, newest payment first (legacy/no-date rows sort last).
+  const paidWorks = [...works].filter(w => w.pay === "שולם").sort((a, b) => (b.paymentDate || "").localeCompare(a.paymentDate || ""));
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "32px 28px 80px" }}>
@@ -920,7 +930,7 @@ export default function StevenProfilePage() {
                             { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
                             { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
                           ]}
-                          onChange={v => updateWork(w.id, { pay: v })}
+                          onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void updateWork(w.id, { pay: v }); }}
                         />
                       </td>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
@@ -948,9 +958,23 @@ export default function StevenProfilePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={sectionCard}>
               <div style={cardHead}>{t.payHistory}</div>
-              {loading
-                ? <RowsSkeleton rows={3} height={38} pad="14px 18px" />
-                : <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noPayments}</div>}
+              {loading ? (
+                <RowsSkeleton rows={3} height={38} pad="14px 18px" />
+              ) : paidWorks.length === 0 ? (
+                <div style={{ padding: "28px 16px", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.noPayments}</div>
+              ) : (
+                <div style={{ padding: "10px 14px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {paidWorks.map(w => (
+                    <div key={w.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 12px", background: CARD2, border: `1px solid ${BDR}`, borderRadius: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div title={w.project} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.project}</div>
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>{w.paymentDate ? fmtDbDate(w.paymentDate) : "—"}</div>
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: GREEN, whiteSpace: "nowrap", direction: "ltr" }}>{fmt(w.amountPaid)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={sectionCard}>
               <div style={cardHead}>{t.recentFiles}</div>
@@ -964,6 +988,7 @@ export default function StevenProfilePage() {
 
       {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
+      {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={date => { const wid = payModal.workId; setPayModal(null); void updateWork(wid, { pay: "שולם", paymentDate: date }); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
     </div>
@@ -1876,6 +1901,32 @@ type WMData = {
   meta: { bpm?: string; key?: string; instructions?: string };
   latestMix: { url: string; fileName: string; label: string; durationSeconds: number | null } | null;
 };
+
+// Payment-date modal — shown when a work's payment is set to "שולם". Confirm the
+// date (defaults to today) or cancel (status stays unchanged). Dark, RTL-aware.
+function PaymentDateModal({ project, initialDate, onSave, onClose, lang, t }: { project: string; initialDate: string; onSave: (date: string) => void; onClose: () => void; lang: Lang; t: T }) {
+  const rtl = lang === "he";
+  const [date, setDate] = useState(initialDate);
+  const modal = (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
+        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18, width: "min(380px, 94vw)", padding: "22px 22px 18px", boxShadow: "0 24px 70px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+        <div style={{ fontSize: 16, fontWeight: 900 }}>💵 {t.payDateTitle}</div>
+        <div title={project} style={{ fontSize: 12, color: TEXT2, marginTop: 3, marginBottom: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project}</div>
+        <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 6 }}>{t.payDateField}</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} autoFocus
+          style={{ width: "100%", boxSizing: "border-box", background: "#0D0D12", border: `1px solid ${BDR2}`, borderRadius: 10, color: TEXT, colorScheme: "dark", fontSize: 14, padding: "10px 12px", outline: "none", fontFamily: "inherit" }} />
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          <button type="button" onClick={onClose}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${BDR2}`, background: "transparent", color: TEXT2, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>{t.cancel}</button>
+          <button type="button" onClick={() => { if (date) onSave(date); }} disabled={!date}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: date ? GREEN : MUTED, color: "#fff", cursor: date ? "pointer" : "default", fontSize: 13, fontWeight: 800, fontFamily: "inherit" }}>{t.save}</button>
+        </div>
+      </div>
+    </div>
+  );
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : null;
+}
 
 // Small inline spinner (keyframes injected once inside the modal). No library.
 function WMSpinner({ size = 13, color = "#fff" }: { size?: number; color?: string }) {

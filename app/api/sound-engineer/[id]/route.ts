@@ -28,6 +28,7 @@ export async function PATCH(
       internalDeadline: string | null;
       filesLink:        string | null;
       notes:            string;
+      paymentDate:      string | null;
       skipFinanceSync:  boolean;
     }>;
 

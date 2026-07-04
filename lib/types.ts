@@ -460,6 +460,7 @@ export interface SoundEngineerWork {
   notes: string;
   linkedTransactionId: string | null;  // references transactions(id)
   sortOrder: number | null;      // manual list order (sound_engineer_work.sort_order); null → fall back to created_at
+  paymentDate: string | null;    // YYYY-MM-DD when marked paid (sound_engineer_work.payment_date); null = not paid / legacy
   createdAt: string;
   updatedAt: string;
 }
