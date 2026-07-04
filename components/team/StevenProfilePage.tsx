@@ -269,7 +269,7 @@ const TR = {
     kpiOpen: "עבודות פתוחות", kpiActive: "עבודות פעילות", kpiDone: "עבודות הושלמו", kpiDebt: "חוב ל-Steven", kpiPaidMonth: "שולם החודש",
     payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם",
     noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
-    soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולה", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
+    soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולות", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
@@ -325,7 +325,7 @@ const TR = {
     kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid This Month",
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid",
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
-    soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Action", openJob: "Open Job", noJobs: "No Steven jobs yet",
+    soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Job", noJobs: "No Steven jobs yet",
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
@@ -850,16 +850,18 @@ export default function StevenProfilePage() {
                 <thead>
                   <tr style={{ background: CARD2 }}>
                     <th aria-hidden style={{ width: 26 }} />
-                    {[t.project, t.workType, t.status, t.startDate, t.deadline, t.price, t.payment, t.action].map(h => (
+                    {[t.project, t.workType, t.status, t.deadline, t.price, t.payment].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: textStart, fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
+                    {/* Actions column — subtle spotlight so the row-action area reads as one group */}
+                    <th style={{ padding: "10px 14px", textAlign: "center", fontSize: 10, fontWeight: 800, color: "#E4DAC4", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap", background: "radial-gradient(ellipse at center, rgba(245,158,11,0.12), rgba(245,158,11,0) 72%)" }}>{t.action}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i} style={{ borderTop: `1px solid ${BDR}` }}>
-                        <td colSpan={9} style={{ padding: "0 14px" }}>
+                        <td colSpan={8} style={{ padding: "0 14px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 20, height: 45 }}>
                             <Shimmer w={140} h={13} /><Shimmer w={88} h={12} /><Shimmer w={64} h={22} r={999} />
                             <Shimmer w={62} h={12} /><Shimmer w={62} h={12} /><Shimmer w={50} h={12} />
@@ -869,7 +871,7 @@ export default function StevenProfilePage() {
                       </tr>
                     ))
                   ) : works.length === 0 ? (
-                    <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
+                    <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
                   ) : works.map((w, i) => (
                     <tr key={w.id}
                       onClick={() => setOpenId(w.id)}
@@ -906,7 +908,6 @@ export default function StevenProfilePage() {
                           onChange={v => updateWork(w.id, { status: v })}
                         />
                       </td>
-                      <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.startDate}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
@@ -921,16 +922,18 @@ export default function StevenProfilePage() {
                           onChange={v => updateWork(w.id, { pay: v })}
                         />
                       </td>
-                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                      <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
+                          {/* Primary — light */}
                           <button onClick={() => setOpenId(w.id)}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#E4E4EA"; e.currentTarget.style.boxShadow = "0 0 8px rgba(255,255,255,0.16)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.boxShadow = "none"; }}
-                            style={{ fontSize: 11, fontWeight: 700, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s" }}>{t.openJob}</button>
+                            onMouseEnter={e => { e.currentTarget.style.background = "#E9E9EF"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)"; e.currentTarget.style.boxShadow = "0 0 10px rgba(255,255,255,0.18)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)"; e.currentTarget.style.boxShadow = "none"; }}
+                            style={{ fontSize: 11, fontWeight: 800, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s, border-color 0.15s" }}>{t.openJob}</button>
+                          {/* Secondary — dark with amber/gold border */}
                           <button onClick={() => setOpenMaterialsId(w.id)} title={t.wmTitle}
-                            onMouseEnter={e => { e.currentTarget.style.background = `${BRAND}26`; e.currentTarget.style.borderColor = `${BRAND}70`; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = `${BRAND}14`; e.currentTarget.style.borderColor = `${BRAND}45`; }}
-                            style={{ fontSize: 11, fontWeight: 700, color: BRAND, padding: "5px 13px", borderRadius: 10, border: `1px solid ${BRAND}45`, background: `${BRAND}14`, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>🎚 {t.wmButton}</button>
+                            onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
+                            style={{ fontSize: 11, fontWeight: 700, color: "#F0B24A", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>🎚 {t.wmButton}</button>
                         </div>
                       </td>
                     </tr>
