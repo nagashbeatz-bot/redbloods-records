@@ -1,13 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
-
-// Runs before paint on the client (kills the async lang flash); no-op on the server.
-const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -629,7 +626,7 @@ function isoDay(offset = 0): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export default function StevenProfilePage() {
+export default function StevenProfilePage({ initialLang = "he" }: { initialLang?: Lang }) {
   const router = useRouter();
   const [works, setWorks]   = useState<Work[]>([]);
   const [loading, setLoading] = useState(true); // initial page load only — never re-armed after create
@@ -641,7 +638,18 @@ export default function StevenProfilePage() {
   const [dragId, setDragId]   = useState<string | null>(null); // row being dragged
   const [overId, setOverId]   = useState<string | null>(null); // current drop target
   const [hoverId, setHoverId] = useState<string | null>(null); // row under cursor (glow)
-  const [lang, setLang]     = useState<Lang>("he");
+  // Language decided synchronously at the FIRST render (no post-hydration effect):
+  //   • SSR uses `initialLang` (server picked it by role → Steven="en", owner="he"),
+  //     so the very first painted HTML is already correct — no Hebrew flash.
+  //   • On the client, a previously saved choice (rb_steven_lang) wins over the default.
+  const [lang, setLang]     = useState<Lang>(() => {
+    if (typeof window === "undefined") return initialLang;
+    try {
+      const saved = localStorage.getItem("rb_steven_lang");
+      if (saved === "he" || saved === "en") return saved;
+    } catch { /* ignore */ }
+    return initialLang;
+  });
   const [toast, setToast]   = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const t = TR[lang];
@@ -652,20 +660,6 @@ export default function StevenProfilePage() {
   // (Security is server-side: proxy + /api/supplier/steven/* + ownership checks.)
   const role = useRole();
   const isSteven = role === "steven";
-
-  // Decide Steven's language BEFORE paint (no async /api/me wait → no Hebrew flash):
-  //   1. a saved choice wins (rb_steven_lang);
-  //   2. else Steven (resolved role OR the cached rb_role, read synchronously) → English.
-  // Owner/Victor never write rb_steven_lang and their cached role isn't "steven",
-  // so this is a no-op for them (default stays Hebrew). Re-runs when role resolves
-  // to cover a brand-new login where rb_role wasn't cached yet.
-  useIsoLayoutEffect(() => {
-    try {
-      const saved = localStorage.getItem("rb_steven_lang");
-      if (saved === "he" || saved === "en") { setLang(saved); return; }
-      if (role === "steven" || localStorage.getItem("rb_role") === "steven") setLang("en");
-    } catch { /* ignore */ }
-  }, [role]);
 
   function notify(msg: string) {
     setToast(msg);
