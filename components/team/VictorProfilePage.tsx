@@ -1292,6 +1292,10 @@ function VictorProjectDrawer({
   const [effectiveShareLink, setEffectiveShareLink] = useState<string | null>(work.dropboxShareLink ?? null);
   const [effectiveFiles, setEffectiveFiles] = useState<FileLink[]>(work.filesSent ?? []);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Large-file (chunked) upload: true once the last chunk is committing → the
+  // button shows "saving…" instead of a percentage. Cancels on unmount.
+  const [savingDbx, setSavingDbx] = useState(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const [openingDbx, setOpeningDbx] = useState(false);
   const [dbxFallback, setDbxFallback] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1331,6 +1335,9 @@ function VictorProjectDrawer({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, playingId]);
+
+  // Cancel any in-flight chunked upload when the drawer unmounts (close / switch).
+  useEffect(() => () => { uploadAbortRef.current?.abort(); }, []);
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -1532,12 +1539,66 @@ function VictorProjectDrawer({
     });
   }
 
+  // Upload ONE large file (>140MB, up to 1GB) via the Dropbox upload-session —
+  // 8MB chunks stream through the server one at a time (never the whole file in
+  // memory or over the proxy). Same version label / naming as the single-shot
+  // path; no public share link. Batch progress mirrors uploadOne. Aborts if the
+  // drawer closes mid-upload (uploadAbortRef).
+  async function chunkedUploadOne(file: File, versionLabel: string | null, idx: number, total: number): Promise<void> {
+    const CHUNK = 8 * 1024 * 1024;
+    const size = file.size;
+    // Same stored name as single-shot: version-prefixed so same-named files across
+    // versions don't collide. The server sanitizes it into the Dropbox path.
+    const uploadName = versionLabel ? `${versionLabel} - ${file.name}` : file.name;
+    const ac = new AbortController();
+    uploadAbortRef.current = ac;
+    const base = "/api/dropbox/vendor-upload/chunk";
+    const post = (qs: string, body: Blob) => fetch(`${base}?${qs}`, { method: "POST", body, signal: ac.signal });
+    const setPct = (sent: number) => setUploadProgress(Math.round(((idx + sent / size) / total) * 100));
+    try {
+      // start — the first chunk opens the session
+      let offset = Math.min(CHUNK, size);
+      let res = await post("action=start", file.slice(0, offset));
+      let d = (await res.json().catch(() => ({}))) as { ok?: boolean; sessionId?: string; file?: FileLink };
+      if (!res.ok || !d.ok || !d.sessionId) throw new Error(t("err.upload"));
+      const sessionId = d.sessionId;
+      setPct(offset);
+      // append the middle chunks; the final chunk goes through finish (commit)
+      while (offset < size) {
+        const end = Math.min(offset + CHUNK, size);
+        const isLast = end >= size;
+        const qs = isLast
+          ? `action=finish&workId=${encodeURIComponent(work.id)}&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}&subFolder=Production&name=${encodeURIComponent(uploadName)}${versionLabel ? `&versionLabel=${encodeURIComponent(versionLabel)}` : ""}`
+          : `action=append&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}`;
+        if (isLast) setSavingDbx(true); // last chunk commits server-side → "saving…"
+        res = await post(qs, file.slice(offset, end));
+        d = (await res.json().catch(() => ({}))) as { ok?: boolean; sessionId?: string; file?: FileLink };
+        if (!res.ok || !d.ok) throw new Error(t("err.upload"));
+        if (isLast && d.file) setEffectiveFiles(prev => [...prev, d.file as FileLink]);
+        offset = end;
+        setPct(offset);
+      }
+    } finally {
+      if (uploadAbortRef.current === ac) uploadAbortRef.current = null;
+      setSavingDbx(false);
+    }
+  }
+
   // One upload batch (a single file-picker selection or drop) = ONE new version.
   // All files in the batch share "V{next}". After it, the new (latest) version
   // opens and older ones collapse (openGroups reset → group defaults apply).
   async function handleUploadBatch(fileList: FileList | null) {
     const files = fileList ? Array.from(fileList) : [];
     if (files.length === 0 || uploading) return;
+    // Dispatch by size: >1GB rejected; >140MB uses the chunked upload-session
+    // (Dropbox single-shot maxes ~150MB); otherwise the existing single-shot path.
+    const MAX_BYTES   = 1024 * 1024 * 1024;   // 1GB in-app hard limit
+    const CHUNK_LIMIT = 140 * 1024 * 1024;    // switch to chunked above this
+    if (files.some(f => f.size > MAX_BYTES)) {
+      setUploadError(t("files.tooLarge"));
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setUploading(true);
     setUploadProgress(0);
     setUploadError(null);
@@ -1583,7 +1644,8 @@ function VictorProjectDrawer({
       const folder = (isOwner ? await ensureDropboxFolder() : "") ?? "";
       if (isOwner && !folder) { setUploading(false); return; }
       for (let i = 0; i < files.length; i++) {
-        await uploadOne(files[i], folder, versionLabel, i, files.length);
+        if (files[i].size > CHUNK_LIMIT) await chunkedUploadOne(files[i], versionLabel, i, files.length);
+        else await uploadOne(files[i], folder, versionLabel, i, files.length);
       }
       // Reveal where the files landed: the version (latest) opens by default;
       // an unlabeled batch opens the "Older files" bucket instead.
@@ -1596,6 +1658,7 @@ function VictorProjectDrawer({
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setSavingDbx(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -2327,7 +2390,7 @@ function VictorProjectDrawer({
                     fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
                   }}
                 >
-                  {uploading ? `${uploadProgress}%` : t("files.upload")}
+                  {uploading ? (savingDbx ? t("files.saving") : `${uploadProgress}%`) : t("files.upload")}
                 </button>
                 {/* Owner-only: never expose the Dropbox folder link or the total
                     file count to Victor — he only needs Upload. */}

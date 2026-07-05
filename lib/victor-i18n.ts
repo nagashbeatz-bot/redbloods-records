@@ -171,6 +171,8 @@ const HE: Dict = {
   "files.empty": "אין קבצים לפרויקט זה",
   "files.emptySub": "קבצים שיישלחו ויתקבלו יופיעו כאן",
   "files.upload": "↑ העלאה",
+  "files.saving": "שומר…",
+  "files.tooLarge": "הקובץ גדול מדי. המגבלה להעלאה דרך המערכת היא 1GB. העלה ישירות ל-Dropbox.",
   "files.openDropbox": "פתח ב-Dropbox ↗",
   "files.opening": "פותח…",
   // versions workflow (Victor deliverables grouped by round)
@@ -426,6 +428,8 @@ const EN: Dict = {
   "files.empty": "No files for this project",
   "files.emptySub": "Files sent and received will appear here",
   "files.upload": "↑ Upload",
+  "files.saving": "Saving…",
+  "files.tooLarge": "File too large. The in-app upload limit is 1GB. Upload it directly to Dropbox.",
   "files.openDropbox": "Open in Dropbox ↗",
   "files.opening": "Opening…",
   // versions workflow
@@ -668,6 +672,8 @@ const RU: Dict = {
   "files.empty": "Нет файлов для этого проекта",
   "files.emptySub": "Отправленные и полученные файлы появятся здесь",
   "files.upload": "↑ Загрузить",
+  "files.saving": "Сохранение…",
+  "files.tooLarge": "Файл слишком большой. Лимит загрузки через систему — 1 ГБ. Загрузите напрямую в Dropbox.",
   "files.openDropbox": "Открыть в Dropbox ↗",
   "files.opening": "Открываю…",
   // versions workflow
