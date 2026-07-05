@@ -1212,8 +1212,13 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
                   const bar = barRef.current; if (!bar) return;
                   const rect = bar.getBoundingClientRect();
                   const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                  const newTs = ratio * dur;
                   const moved = dragC.moved || Math.abs(e.clientX - dragC.startX) > 3;
-                  setDragC({ id: c.id, ts: ratio * dur, startX: dragC.startX, moved });
+                  // Scrub THIS player to the marker's live position (preserves play/pause;
+                  // seekTo only sets currentTime). Only once it's a real drag, so a plain
+                  // click still seeks via pointerup, not mid-move.
+                  if (moved) seekTo(newTs);
+                  setDragC({ id: c.id, ts: newTs, startX: dragC.startX, moved });
                 }) : undefined}
                 onPointerUp={canDrag ? (e => {
                   e.stopPropagation();
