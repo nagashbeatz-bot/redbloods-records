@@ -125,6 +125,11 @@ export async function POST(req: NextRequest) {
             // Independent session — the manual title IS the calendar event name.
             summary = cleanTitle || (isFilming ? "צילום קליפ" : "סשן");
           }
+          // Rehearsal-for-a-show gets a clear, dedicated calendar title. Additive:
+          // existing session types keep their titles untouched.
+          if (sessionType === "חזרה להופעה" && cleanTitle) {
+            summary = `חזרה להופעה - ${cleanTitle}`;
+          }
           const event = await createCalendarEvent(summary, calStart, calEnd, notes ? { description: notes } : undefined);
           const calId  = (event as { id?: string }).id ?? null;
           if (calId) {
