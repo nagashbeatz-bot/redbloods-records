@@ -1541,17 +1541,40 @@ function VictorProjectDrawer({
     setUploading(true);
     setUploadProgress(0);
     setUploadError(null);
-    // Version rule: a NEW round is created only when the batch contains audio.
-    //  • has audio           → V{max+1} (new version; any ZIP/RAR picked with it joins it)
-    //  • no audio, has ZIP/RAR → join latest V{max}, or V1 if no version exists yet
-    //  • no audio, no ZIP/RAR  → join latest V{max}, or (no version) leave unlabeled → "Older files"
+    // Version rule (per-work, with a 10-minute rolling window):
+    //  • latest version updated < 10 min ago → JOIN it (incl. audio) — a follow-up
+    //    file is part of the same round, not a new version.
+    //  • else has audio        → V{max+1} (new version; any ZIP/RAR picked with it joins it)
+    //  • else has ZIP/RAR      → join latest V{max}, or V1 if no version exists yet
+    //  • else (no audio/ZIP)   → join latest V{max}, or (none) leave unlabeled → "Older files"
+    // Backward compatible: files with no uploadedAt (older data) fall through to the
+    // classic "audio → new version" behavior.
+    const VERSION_WINDOW_MS = 10 * 60 * 1000;
     const max = maxVersionNumber();
     const hasAudio = files.some(f => isAudioFile(f.name));
     const hasPackage = files.some(f => /\.(zip|rar|7z)$/i.test(f.name));
+
+    // Version number a stored file belongs to (stored label, else parsed name); 0 if none.
+    const fileVersionNum = (f: FileLink): number => {
+      const src = (f.versionLabel && /^V\d+$/i.test(f.versionLabel)) ? f.versionLabel : (parseVersionKey(f.name) ?? "");
+      const m = /^V(\d+)$/i.exec(src);
+      return m ? Number(m[1]) : 0;
+    };
+    // Most-recent upload time within the LATEST version of THIS work (0 if unknown).
+    const latestLastUpload = max > 0
+      ? effectiveFiles.reduce((acc, f) => {
+          if (fileVersionNum(f) !== max || !f.uploadedAt) return acc;
+          const ts = new Date(f.uploadedAt).getTime();
+          return Number.isFinite(ts) ? Math.max(acc, ts) : acc;
+        }, 0)
+      : 0;
+    const withinWindow = latestLastUpload > 0 && (Date.now() - latestLastUpload < VERSION_WINDOW_MS);
+
     const versionLabel: string | null =
-      hasAudio    ? `V${max + 1}`
-      : hasPackage ? (max > 0 ? `V${max}` : "V1")
-      :              (max > 0 ? `V${max}` : null);
+      withinWindow ? `V${max}`
+      : hasAudio    ? `V${max + 1}`
+      : hasPackage  ? (max > 0 ? `V${max}` : "V1")
+      :               (max > 0 ? `V${max}` : null);
     try {
       // Owner resolves/creates the folder client-side (also feeds the owner-only
       // "Open in Dropbox" link). Victor never handles the path — the upload route

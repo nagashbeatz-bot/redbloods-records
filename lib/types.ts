@@ -56,6 +56,7 @@ export interface FileLink {
   category?: string;         // intake category: מאסטר/אקפלה/אינסטרומנטל/ערוצים/גרסת הופעה/אחר
   durationSeconds?: number;  // audio length in whole seconds — captured client-side at upload (optional; older files lack it)
   size?: number;             // file size in bytes (optional; e.g. brief files)
+  uploadedAt?: string;       // ISO timestamp set at upload — drives the Victor per-work version window (older files lack it)
   segments?: BriefSegment[]; // structure markers — ONLY on brief audio files (owner-authored, Victor read-only). Never on versions.
   fileRef?: string;          // opaque, path-free handle sent to Victor INSTEAD of dropboxPath/url/shareUrl (see sanitizeWorkForVictor). Resolved server-side per work.
 }

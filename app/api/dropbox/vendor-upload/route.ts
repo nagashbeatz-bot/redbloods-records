@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl, ...(versionLabel ? { versionLabel } : {}) };
+    const newFile = { name: uploaded.name, url: streamUrl, dropboxPath: finalPath, dropboxShareUrl: shareUrl, uploadedAt: new Date().toISOString(), ...(versionLabel ? { versionLabel } : {}) };
 
     // Update vendor_project_work.files_sent
     const { updateVictorWork, getVictorWorkForProject } = await import("@/lib/vendor-store");

@@ -119,6 +119,7 @@ function fileForVictor(f: FileLink): FileLink {
     ...(f.category        !== undefined ? { category: f.category } : {}),
     ...(f.durationSeconds !== undefined ? { durationSeconds: f.durationSeconds } : {}),
     ...(f.size            !== undefined ? { size: f.size } : {}),
+    ...(f.uploadedAt      !== undefined ? { uploadedAt: f.uploadedAt } : {}), // drives the per-work version window (no path — safe)
     ...(f.segments        !== undefined ? { segments: f.segments } : {}),
     ...(f.dropboxPath ? { fileRef: fileRefOf(f.dropboxPath) } : {}),
   };
