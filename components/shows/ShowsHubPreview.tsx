@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+import RehearsalModal from "@/components/shows/RehearsalModal";
 import { usePrivacyMode } from "@/lib/use-privacy";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -968,6 +969,7 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
   const [savingField,    setSavingField]    = useState<"status" | "payment_status" | null>(null);
   const [cancelConfirm,  setCancelConfirm]  = useState(false);
   const [cancelling,     setCancelling]     = useState(false);
+  const [rehearsalOpen,  setRehearsalOpen]  = useState(false);
 
   async function handlePatch(field: "status" | "payment_status", value: string) {
     setSavingField(field);
@@ -1199,6 +1201,16 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
             </div>
           )}
 
+          {/* Quick action — schedule a rehearsal for this show (independent session). */}
+          <button
+            onClick={() => setRehearsalOpen(true)}
+            style={{
+              width: "100%", padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
+              background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.4)",
+              color: "#818CF8", cursor: "pointer", fontFamily: "inherit",
+            }}
+          >🥁 קבע חזרה</button>
+
           {/* Button row */}
           <div style={{ display: "flex", gap: 10 }}>
             {/* Cancel show */}
@@ -1238,6 +1250,8 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
           </div>
         </div>
       </div>
+
+      {rehearsalOpen && <RehearsalModal show={show} onClose={() => setRehearsalOpen(false)} />}
     </>
   );
 }
