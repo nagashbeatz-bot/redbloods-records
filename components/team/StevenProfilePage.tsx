@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
+
+// Runs before paint on the client (kills the async lang flash); no-op on the server.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -650,14 +653,18 @@ export default function StevenProfilePage() {
   const role = useRole();
   const isSteven = role === "steven";
 
-  // Steven defaults to English on first load and remembers his choice
-  // (rb_steven_lang). Owner/Victor are never touched (effect returns early).
-  useEffect(() => {
-    if (role !== "steven") return;
+  // Decide Steven's language BEFORE paint (no async /api/me wait → no Hebrew flash):
+  //   1. a saved choice wins (rb_steven_lang);
+  //   2. else Steven (resolved role OR the cached rb_role, read synchronously) → English.
+  // Owner/Victor never write rb_steven_lang and their cached role isn't "steven",
+  // so this is a no-op for them (default stays Hebrew). Re-runs when role resolves
+  // to cover a brand-new login where rb_role wasn't cached yet.
+  useIsoLayoutEffect(() => {
     try {
       const saved = localStorage.getItem("rb_steven_lang");
-      setLang(saved === "he" ? "he" : "en");
-    } catch { setLang("en"); }
+      if (saved === "he" || saved === "en") { setLang(saved); return; }
+      if (role === "steven" || localStorage.getItem("rb_role") === "steven") setLang("en");
+    } catch { /* ignore */ }
   }, [role]);
 
   function notify(msg: string) {
