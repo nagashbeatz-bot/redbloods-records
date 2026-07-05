@@ -650,6 +650,16 @@ export default function StevenProfilePage() {
   const role = useRole();
   const isSteven = role === "steven";
 
+  // Steven defaults to English on first load and remembers his choice
+  // (rb_steven_lang). Owner/Victor are never touched (effect returns early).
+  useEffect(() => {
+    if (role !== "steven") return;
+    try {
+      const saved = localStorage.getItem("rb_steven_lang");
+      setLang(saved === "he" ? "he" : "en");
+    } catch { setLang("en"); }
+  }, [role]);
+
   function notify(msg: string) {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -801,12 +811,13 @@ export default function StevenProfilePage() {
     <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "32px 28px 80px" }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
-        <div style={{ marginBottom: 14 }}>
+        {/* Back to the /team list — owner only; Steven has just this one page. */}
+        {!isSteven && <div style={{ marginBottom: 14 }}>
           <button onClick={() => router.push("/team")} style={{
             display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 10,
             background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
           }}>{t.back}</button>
-        </div>
+        </div>}
 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
@@ -835,7 +846,7 @@ export default function StevenProfilePage() {
                 {(["he", "en"] as const).map(l => {
                   const sel = lang === l;
                   return (
-                    <button key={l} onClick={() => { setLang(l); notify(l === "he" ? TR[l].langHe : TR[l].langEn); }} style={{
+                    <button key={l} onClick={() => { setLang(l); if (isSteven) { try { localStorage.setItem("rb_steven_lang", l); } catch {} } notify(l === "he" ? TR[l].langHe : TR[l].langEn); }} style={{
                       fontSize: 12, fontWeight: 800, padding: "5px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
                       background: sel ? `${BRAND}1F` : "transparent", border: `1px solid ${sel ? BRAND + "66" : "transparent"}`, color: sel ? BRAND : TEXT2, transition: "all .12s",
                     }}>{l === "he" ? "עברית" : "English"}</button>
@@ -1785,7 +1796,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                             shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
                             comments={(comments ?? []).filter(c => c.role === f.role)}
                             onPlayStart={() => { lastActiveIdRef.current = f.id; }}
-                            onCommentMove={moveComment}
+                            onCommentMove={isSteven ? undefined : moveComment}
                             onCommentHover={setHoverCommentId}
                             onCommentLeave={() => setHoverCommentId(null)}
                             activeCommentId={hoverCommentId}
@@ -1809,9 +1820,9 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                 </div>
               </div>
 
-              {/* Add-a-comment action — acts on the selected version; the add-file
-                  action now lives in the version-files card header above. */}
-              {selectedGroup && (
+              {/* Add-a-comment action — owner only. Steven's comments are view-only
+                  (phase 1); creation is blocked here AND server-side. */}
+              {selectedGroup && !isSteven && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button onClick={openAddComment}
                     style={{ flex: "1 1 200px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2 }}
@@ -1868,15 +1879,16 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                 </div>
               </div>
 
-              {/* Mix instructions (compact) */}
-              <div style={subCard}>
+              {/* Mix instructions (compact) — owner only; Steven reads instructions
+                  via Work Materials instead, so this box is hidden for him. */}
+              {!isSteven && <div style={subCard}>
                 <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>🎚 {t.mixInstructions}</div>
                 </div>
                 <div style={{ padding: "12px 16px" }}>
                   <NotesEditor value={work.notes} placeholder={t.mixInstructionsPh} saveLabel={t.saveInstructions} onSave={v => { onChange({ notes: v }); notify(t.instructionsSaved); }} />
                 </div>
-              </div>
+              </div>}
             </div>
 
           </div>
@@ -1950,14 +1962,15 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                               style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
                           )}
                           <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
-                          {!isEditing && (
+                          {/* edit + delete — owner only; Steven's comments are view-only. */}
+                          {!isSteven && !isEditing && (
                             <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
                               style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
                               onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
                           )}
-                          <button onClick={() => setDelC(c)} title={t.cDelete}
+                          {!isSteven && <button onClick={() => setDelC(c)} title={t.cDelete}
                             style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>}
                         </div>
                       );
                     })}
@@ -2482,8 +2495,9 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)", color: "#F0B24A", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>↗ {t.wmOpenWork}</button>
-            <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
-              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>
+            {/* Open Dropbox folder — exposes a raw project path → owner only. */}
+            {!isSteven && <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>}
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0, marginInlineStart: 2 }}>✕</button>
           </div>
         </div>

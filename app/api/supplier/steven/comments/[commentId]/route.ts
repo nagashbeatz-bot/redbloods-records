@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireStevenAccess } from "@/lib/require-auth";
+import { requireStevenAccess, getAuthRole } from "@/lib/require-auth";
 import { updateMixComment, deleteMixComment } from "@/lib/mix-comments-store";
 import { assertStevenOwnsComment } from "@/lib/steven-scope";
 
 const FORBID = () => NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
-/** PATCH — edit text and/or timestamp of a comment on Steven's own work. */
+/** PATCH — edit a comment. Phase 1: Steven is VIEW-ONLY → 403 for a steven session. */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ commentId: string }> }) {
   const denied = await requireStevenAccess(); if (denied) return denied;
+  if ((await getAuthRole()) === "steven") return FORBID(); // steven can't edit comments
   try {
     const { commentId } = await params;
     if (!(await assertStevenOwnsComment(commentId))) return FORBID();
@@ -20,9 +21,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
 }
 
-/** DELETE — remove a comment on Steven's own work. */
+/** DELETE — remove a comment. Phase 1: Steven is VIEW-ONLY → 403 for a steven session. */
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ commentId: string }> }) {
   const denied = await requireStevenAccess(); if (denied) return denied;
+  if ((await getAuthRole()) === "steven") return FORBID(); // steven can't delete comments
   try {
     const { commentId } = await params;
     if (!(await assertStevenOwnsComment(commentId))) return FORBID();

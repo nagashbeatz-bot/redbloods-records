@@ -125,6 +125,19 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const vt = useVictorT();
   const isVictor = role === "victor";
 
+  // Steven's logout label follows his page language (default English), read from
+  // the same rb_steven_lang key the /team/steven page persists. Owner/Victor unaffected.
+  const [stevenLang, setStevenLang] = useState<"he" | "en">("en");
+  useEffect(() => {
+    if (role !== "steven") return;
+    try { setStevenLang(localStorage.getItem("rb_steven_lang") === "he" ? "he" : "en"); } catch { /* ignore */ }
+  }, [role]);
+  const signOutLabel = isVictor
+    ? vt("common.signOut")
+    : role === "steven"
+      ? (stevenLang === "he" ? "יציאה" : "Logout")
+      : "יציאה";
+
   // Friendly display name by role (no DB / no profiles system).
   const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : role === "steven" ? "Steven" : "Redbloods";
   const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : role === "steven" ? "Sound Engineer" : "";
@@ -334,7 +347,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
         )}
         <button
           onClick={signOutAndRedirect}
-          title={isVictor ? vt("common.signOut") : "יציאה"}
+          title={signOutLabel}
           style={{
             fontSize: 9, padding: "2px 8px", borderRadius: 6, cursor: "pointer",
             background: "rgba(255,255,255,0.05)",
@@ -342,7 +355,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
             color: SUB, fontWeight: 700, flexShrink: 0,
           }}
         >
-          {isVictor ? vt("common.signOut") : "יציאה"}
+          {signOutLabel}
         </button>
       </div>
 

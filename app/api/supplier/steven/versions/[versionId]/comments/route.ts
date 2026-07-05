@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireStevenAccess } from "@/lib/require-auth";
+import { requireStevenAccess, getAuthRole } from "@/lib/require-auth";
 import { listMixComments, createMixComment } from "@/lib/mix-comments-store";
 import { assertStevenOwnsVersion } from "@/lib/steven-scope";
 
@@ -19,9 +19,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ver
   }
 }
 
-/** POST — add a time-stamped comment on Steven's own version. */
+/** POST — add a time-stamped comment. Phase 1: Steven is VIEW-ONLY on comments,
+ *  so a steven session is rejected (403) here; only the owner may create. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ versionId: string }> }) {
   const denied = await requireStevenAccess(); if (denied) return denied;
+  if ((await getAuthRole()) === "steven") return FORBID(); // steven can't create comments
   try {
     const { versionId } = await params;
     if (!(await assertStevenOwnsVersion(versionId))) return FORBID();
