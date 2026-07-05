@@ -1089,8 +1089,11 @@ const VersionPlayer = forwardRef<VersionPlayerHandle, {
   onPlayStart?: () => void; onTime?: (sec: number) => void;
   // Drag a comment marker to a new time. Absent → markers are click-to-seek only.
   onCommentMove?: (id: string, newTs: number) => void;
+  // Cross-highlight with the shared list: report the marker under the cursor / being
+  // dragged; activeCommentId (from the list) glows the matching marker here.
+  onCommentHover?: (id: string) => void; onCommentLeave?: () => void; activeCommentId?: string | null;
 }>(
-function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime, onCommentMove }, ref) {
+function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime, onCommentMove, onCommentHover, onCommentLeave, activeCommentId }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -1178,9 +1181,11 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
           const ts   = isDragging ? dragC!.ts : c.timestampSeconds;
           const left = Math.min(100, Math.max(0, (ts / dur) * 100));
           const show = hoveredC === c.id || pinnedC === c.id;
+          const linked = activeCommentId === c.id; // hovered from the shared list below
+          const highlight = show || isDragging || linked;
           const canDrag = !!onCommentMove; // dur>0 already guaranteed by the outer guard
           return (
-            <div key={c.id} style={{ position: "absolute", top: -9, left: `${left}%`, transform: "translateX(-50%)", zIndex: (show || isDragging) ? 7 : 2 }}>
+            <div key={c.id} style={{ position: "absolute", top: -9, left: `${left}%`, transform: "translateX(-50%)", zIndex: highlight ? 7 : 2 }}>
               {/* Floating comment bubble — hover / pinned; hidden while dragging (time chip shows instead) */}
               {show && !isDragging && (
                 <div style={{
@@ -1200,7 +1205,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
                 <div style={{ position: "absolute", bottom: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)", padding: "3px 8px", borderRadius: 8, background: "#0D0D12", color: "#fff", fontSize: 11, fontWeight: 800, whiteSpace: "nowrap", border: `1px solid ${col}`, fontVariantNumeric: "tabular-nums", pointerEvents: "none" }}>{fmtTime(ts)}</div>
               )}
               <button title={`${fmtTime(c.timestampSeconds)} · ${c.commentText}`}
-                onPointerDown={canDrag ? (e => { e.stopPropagation(); try { (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId); } catch {} setDragC({ id: c.id, ts: c.timestampSeconds, startX: e.clientX, moved: false }); }) : undefined}
+                onPointerDown={canDrag ? (e => { e.stopPropagation(); try { (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId); } catch {} onCommentHover?.(c.id); setDragC({ id: c.id, ts: c.timestampSeconds, startX: e.clientX, moved: false }); }) : undefined}
                 onPointerMove={canDrag ? (e => {
                   if (dragC?.id !== c.id) return;
                   e.stopPropagation();
@@ -1215,12 +1220,12 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
                   try { (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId); } catch {}
                   const d = dragC; setDragC(null);
                   if (!d || d.id !== c.id) return;
-                  if (d.moved) { const nt = Math.min(Math.floor(dur), Math.max(0, Math.round(d.ts))); if (nt !== c.timestampSeconds) onCommentMove!(c.id, nt); }
+                  if (d.moved) { const nt = Math.min(Math.floor(dur), Math.max(0, Math.round(d.ts))); if (nt !== c.timestampSeconds) onCommentMove!(c.id, nt); onCommentLeave?.(); }
                   else { seekTo(c.timestampSeconds); setPinnedC(c.id); }
                 }) : undefined}
                 onClick={canDrag ? undefined : (() => { seekTo(c.timestampSeconds); setPinnedC(c.id); })}
-                onMouseEnter={() => setHoveredC(c.id)} onMouseLeave={() => setHoveredC(cur => (cur === c.id ? null : cur))}
-                style={{ display: "block", width: 20, height: 20, borderRadius: "50%", background: col, color: "#fff", border: `2px solid ${CARD}`, fontSize: 10, fontWeight: 800, cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "pointer", lineHeight: "16px", textAlign: "center", boxShadow: (show || isDragging) ? `0 0 0 3px ${col}44` : "none", transition: "box-shadow .12s ease", touchAction: "none", userSelect: "none" } as React.CSSProperties}>{i + 1}</button>
+                onMouseEnter={() => { setHoveredC(c.id); onCommentHover?.(c.id); }} onMouseLeave={() => { setHoveredC(cur => (cur === c.id ? null : cur)); onCommentLeave?.(); }}
+                style={{ display: "block", width: 20, height: 20, borderRadius: "50%", background: col, color: "#fff", border: `2px solid ${CARD}`, fontSize: 10, fontWeight: 800, cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "pointer", lineHeight: "16px", textAlign: "center", boxShadow: highlight ? `0 0 0 3px ${col}66, 0 0 10px ${col}` : "none", transform: highlight ? "scale(1.18)" : "scale(1)", transition: "box-shadow .14s ease, transform .14s ease", touchAction: "none", userSelect: "none" } as React.CSSProperties}>{i + 1}</button>
             </div>
           );
         })}
@@ -1284,6 +1289,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
   const [delC, setDelC]           = useState<MixComment | null>(null);
   const [addRole, setAddRole]     = useState<FileRole | null>(null); // role the new comment attaches to
   const [rolePick, setRolePick]   = useState(false);                 // fallback picker when no active player
+  const [hoverCommentId, setHoverCommentId] = useState<string | null>(null); // cross-highlight marker ⇄ shared list
   const playerRefs = useRef<Record<string, VersionPlayerHandle | null>>({}); // per-file player handles (by file id)
   const lastActiveIdRef = useRef<string | null>(null);               // file id of the last-played stacked player
   const byTs = (a: MixComment, b: MixComment) => a.timestampSeconds - b.timestampSeconds;
@@ -1745,6 +1751,9 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                             comments={(comments ?? []).filter(c => c.role === f.role)}
                             onPlayStart={() => { lastActiveIdRef.current = f.id; }}
                             onCommentMove={moveComment}
+                            onCommentHover={setHoverCommentId}
+                            onCommentLeave={() => setHoverCommentId(null)}
+                            activeCommentId={hoverCommentId}
                             onDownload={() => window.open(f.url, "_blank", "noopener,noreferrer")}
                             t={t}
                           />
@@ -1878,7 +1887,9 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                       const col = cr ? ROLE_COLOR[cr] : MUTED;
                       const isEditing = editingId === c.id;
                       return (
-                        <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}` }}>
+                        <div key={c.id}
+                          onMouseEnter={() => setHoverCommentId(c.id)} onMouseLeave={() => setHoverCommentId(cur => (cur === c.id ? null : cur))}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: hoverCommentId === c.id ? `${col}14` : CARD, border: `1px solid ${hoverCommentId === c.id ? col : BDR}`, boxShadow: hoverCommentId === c.id ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : "none", transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
                           <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
                           <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds)} title={t.vPlay}
                             style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
