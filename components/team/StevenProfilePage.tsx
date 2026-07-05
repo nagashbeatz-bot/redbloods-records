@@ -883,9 +883,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         {/* ── KPI row (5 cards) ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
           {loading ? (
-            // steven sees only 3 KPIs (no debt/paid) → skeleton must match, never
-            // flash 5 owner cards.
-            Array.from({ length: isSteven ? 3 : 5 }).map((_, i) => (
+            Array.from({ length: 5 }).map((_, i) => (
               <div key={i} style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "18px 20px 16px", minWidth: 0 }}>
                 <Shimmer w="62%" h={10} r={5} style={{ marginBottom: 13 }} />
                 <Shimmer w={64} h={30} r={8} />
@@ -896,15 +894,15 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
               <KpiCard label={t.kpiOpen}      value={open}         icon="📁" />
               <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={BLUE} />
               <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={GREEN} />
-              {/* Financial KPIs — owner only; hidden from Steven. */}
-              {!isSteven && <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />}
-              {!isSteven && <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />}
+              {/* Financial KPIs — read-only figures; shown to Steven too. */}
+              <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
+              <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
             </>
           )}
         </div>
 
-        {/* ── Main grid ── (steven: single column — no financial side cards) */}
-        <div style={{ display: "grid", gridTemplateColumns: isSteven ? "1fr" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* ── Main grid ── (jobs table + Payment History side card, both roles) */}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
           <div style={sectionCard}>
             <div style={cardHead}>{t.soundJobs}</div>
@@ -913,7 +911,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                 <thead>
                   <tr style={{ background: CARD2 }}>
                     <th aria-hidden style={{ width: 26 }} />
-                    {[t.project, t.workType, t.status, t.deadline, ...(isSteven ? [] : [t.price, t.payment])].map(h => (
+                    {[t.project, t.workType, t.status, t.deadline, t.price, t.payment].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: textStart, fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                     {/* Actions column — subtle spotlight so the row-action area reads as one group */}
@@ -978,20 +976,25 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                         )}
                       </td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
-                      {/* Price + Payment — owner only; hidden from Steven. */}
-                      {!isSteven && <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>}
-                      {!isSteven && <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
-                        <InlineSelect
-                          value={w.pay}
-                          display={payLabel(w.pay, lang)}
-                          color={PAY_COLOR[w.pay]}
-                          options={[
-                            { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
-                            { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
-                          ]}
-                          onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }}
-                        />
-                      </td>}
+                      {/* Price — read-only text for both roles. */}
+                      <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>
+                      {/* Payment — read-only badge for Steven; editable select for owner. */}
+                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
+                        {isSteven ? (
+                          <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${PAY_COLOR[w.pay]}1A`, border: `1px solid ${PAY_COLOR[w.pay]}40`, color: PAY_COLOR[w.pay] }}>{payLabel(w.pay, lang)}</span>
+                        ) : (
+                          <InlineSelect
+                            value={w.pay}
+                            display={payLabel(w.pay, lang)}
+                            color={PAY_COLOR[w.pay]}
+                            options={[
+                              { value: "שולם"    as PayStatus, label: payLabel("שולם",    lang), color: PAY_COLOR["שולם"]    },
+                              { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] },
+                            ]}
+                            onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }}
+                          />
+                        )}
+                      </td>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
                         <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
                           {/* Work Materials — light style, sits on the RIGHT (RTL first) */}
@@ -1013,8 +1016,8 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
             </div>
           </div>
 
-          {/* Side cards — Payment History is financial → owner only. */}
-          {!isSteven && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Side cards — Payment History (read-only; shown to Steven too). */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={sectionCard}>
               <div style={cardHead}>{t.payHistory}</div>
               {loading ? (
@@ -1035,7 +1038,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                 </div>
               )}
             </div>
-          </div>}
+          </div>
         </div>
       </div>
 

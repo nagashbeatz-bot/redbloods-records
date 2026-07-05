@@ -21,16 +21,17 @@ import { getMixComment } from "@/lib/mix-comments-store";
 /** The one engineer name Steven's login is scoped to. */
 export const STEVEN_ENGINEER = "Steven";
 
-/** Strip financials / owner-internal fields from a work before sending to Steven. */
+/**
+ * Strip owner-INTERNAL fields from a work before sending to Steven. Payment info
+ * (agreedPrice / amountPaid / balance / currency / paymentDate / derived pay status)
+ * is now shown to Steven READ-ONLY (there is no work-mutation route for him, so the
+ * data alone can't be changed). We still hide the finance-transaction link and any
+ * owner-internal text / raw external link.
+ */
 export function sanitizeWorkForSteven(w: SoundEngineerWork): SoundEngineerWork {
   return {
     ...w,
-    agreedPrice:         0,
-    currency:            "",
-    amountPaid:          0,
-    balance:             0,
-    paymentDate:         null,
-    linkedTransactionId: null,
+    linkedTransactionId: null,   // internal Finance transaction id — never exposed
     notes:               "",     // owner-internal notes — never shown to Steven
     filesLink:           null,   // raw external link — never shown
   };
