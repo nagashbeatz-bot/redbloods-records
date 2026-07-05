@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import { useRole } from "@/lib/use-role";
 import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
@@ -644,6 +645,11 @@ export default function StevenProfilePage() {
   const rtl = lang === "he";
   const textStart = rtl ? "right" : "left";
 
+  // Signed-in role. steven → sanitized supplier surface + owner controls hidden.
+  // (Security is server-side: proxy + /api/supplier/steven/* + ownership checks.)
+  const role = useRole();
+  const isSteven = role === "steven";
+
   function notify(msg: string) {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -654,12 +660,15 @@ export default function StevenProfilePage() {
   // create so a new job is shown from the SERVER truth, never a local phantom).
   const reloadWorks = useCallback(async () => {
     try {
-      const r = await fetch("/api/sound-engineer?engineer=Steven");
+      // steven → sanitized supplier list (financials stripped, own works only);
+      // owner → the full internal list.
+      const url = isSteven ? "/api/supplier/steven" : "/api/sound-engineer?engineer=Steven";
+      const r = await fetch(url);
       const d = (await r.json()) as { ok: boolean; works?: SoundEngineerWork[] };
       if (d.ok && d.works) setWorks(d.works.map(mapRecord));
     } catch { /* silent */ }
     finally { setLoading(false); }
-  }, []);
+  }, [isSteven]);
   useEffect(() => { void reloadWorks(); }, [reloadWorks]);
 
   const openWork = works.find(w => w.id === openId) ?? null;
@@ -668,6 +677,7 @@ export default function StevenProfilePage() {
   // Edit a work: optimistic local update + PATCH to the existing API for DB-backed rows.
   // Persisted fields: work_type, status, agreed_price. (pay/dates stay display-only here.)
   async function updateWork(id: string, patch: Partial<Work>): Promise<boolean> {
+    if (isSteven) return false; // steven can't edit works (status/pay/price owner-only)
     const target = works.find(w => w.id === id);
     setWorks(prev => prev.map(w => {
       if (w.id !== id) return w;
@@ -719,6 +729,7 @@ export default function StevenProfilePage() {
   // After a paid/unpaid change is persisted, reconcile the linked Finance expense
   // (create/update when paid, delete when not) — safe, id-linked, owner-only route.
   async function syncPaymentExpense(id: string) {
+    if (isSteven) return; // Finance is owner-only
     const target = works.find(w => w.id === id);
     if (!target || !target.dbBacked) return; // local-only rows never hit Finance
     try {
@@ -734,6 +745,7 @@ export default function StevenProfilePage() {
   // sound_engineer_work here — the linked project_action is not touched (no action
   // id on this page). Finance/transactions/Dropbox/projects are never deleted.
   async function deleteWork(id: string) {
+    if (isSteven) return; // delete is owner-only
     const target = works.find(w => w.id === id);
     setWorks(prev => prev.filter(w => w.id !== id));
     setOpenId(null);
@@ -751,6 +763,7 @@ export default function StevenProfilePage() {
   // Move dragged work to just before the drop target, optimistically, then persist
   // the new order (owner-only route). Reverts + toasts on failure.
   async function reorderWorks(fromId: string, toId: string) {
+    if (isSteven) return; // reorder is owner-only
     if (!fromId || fromId === toId) return;
     const prev = works;
     const moved = prev.find(w => w.id === fromId);
@@ -797,11 +810,13 @@ export default function StevenProfilePage() {
 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
-          <button onClick={() => setNewOpen(true)} style={{
-            padding: "10px 20px", borderRadius: 12, background: BRAND, border: "none", color: "#fff",
-            fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
-            boxShadow: "0 2px 16px rgba(220,38,38,0.35)", whiteSpace: "nowrap",
-          }}>{t.newWork}</button>
+          {!isSteven ? (
+            <button onClick={() => setNewOpen(true)} style={{
+              padding: "10px 20px", borderRadius: 12, background: BRAND, border: "none", color: "#fff",
+              fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
+              boxShadow: "0 2px 16px rgba(220,38,38,0.35)", whiteSpace: "nowrap",
+            }}>{t.newWork}</button>
+          ) : <div style={{ minWidth: 1 }} />}
 
           <div style={{ textAlign: "center", flex: 1, minWidth: 240 }}>
             <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>{t.breadcrumb}</div>
@@ -860,14 +875,15 @@ export default function StevenProfilePage() {
               <KpiCard label={t.kpiOpen}      value={open}         icon="📁" />
               <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={BLUE} />
               <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={GREEN} />
-              <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
-              <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />
+              {/* Financial KPIs — owner only; hidden from Steven. */}
+              {!isSteven && <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />}
+              {!isSteven && <KpiCard label={t.kpiPaidMonth} value={fmt(paidSum)} icon="💳" color={GREEN} />}
             </>
           )}
         </div>
 
-        {/* ── Main grid ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* ── Main grid ── (steven: single column — no financial side cards) */}
+        <div style={{ display: "grid", gridTemplateColumns: isSteven ? "1fr" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
           <div style={sectionCard}>
             <div style={cardHead}>{t.soundJobs}</div>
@@ -876,7 +892,7 @@ export default function StevenProfilePage() {
                 <thead>
                   <tr style={{ background: CARD2 }}>
                     <th aria-hidden style={{ width: 26 }} />
-                    {[t.project, t.workType, t.status, t.deadline, t.price, t.payment].map(h => (
+                    {[t.project, t.workType, t.status, t.deadline, ...(isSteven ? [] : [t.price, t.payment])].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: textStart, fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                     {/* Actions column — subtle spotlight so the row-action area reads as one group */}
@@ -913,30 +929,37 @@ export default function StevenProfilePage() {
                         transition: "background 0.12s ease",
                       }}>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "0 4px", textAlign: "center", width: 26 }}>
-                        <span
+                        {/* Reorder handle — owner only. */}
+                        {!isSteven && <span
                           draggable
                           onDragStart={e => { setDragId(w.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", w.id); } catch {} }}
                           onDragEnd={() => { setDragId(null); setOverId(null); }}
                           title={rtl ? "גרור לשינוי סדר" : "Drag to reorder"}
-                          style={{ cursor: "grab", color: dragId === w.id ? BRAND : MUTED, fontSize: 15, lineHeight: 1, userSelect: "none", display: "inline-block", padding: "8px 2px" }}>⠿</span>
+                          style={{ cursor: "grab", color: dragId === w.id ? BRAND : MUTED, fontSize: 15, lineHeight: 1, userSelect: "none", display: "inline-block", padding: "8px 2px" }}>⠿</span>}
                       </td>
                       <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{w.project}</td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{wtLabel(w.workType, lang)}</td>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
-                        <InlineSelect
-                          value={w.status}
-                          display={statusLabel(w.status, lang)}
-                          color={STATUS_COLOR[w.status]}
-                          options={[
-                            { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
-                            { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
-                          ]}
-                          onChange={v => updateWork(w.id, { status: v })}
-                        />
+                        {isSteven ? (
+                          // Steven: status is READ-ONLY (a colored badge, not a select).
+                          <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${STATUS_COLOR[w.status]}1A`, border: `1px solid ${STATUS_COLOR[w.status]}40`, color: STATUS_COLOR[w.status] }}>{statusLabel(w.status, lang)}</span>
+                        ) : (
+                          <InlineSelect
+                            value={w.status}
+                            display={statusLabel(w.status, lang)}
+                            color={STATUS_COLOR[w.status]}
+                            options={[
+                              { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
+                              { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
+                            ]}
+                            onChange={v => updateWork(w.id, { status: v })}
+                          />
+                        )}
                       </td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{w.deadline}</td>
-                      <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>
-                      <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
+                      {/* Price + Payment — owner only; hidden from Steven. */}
+                      {!isSteven && <td style={{ padding: "11px 14px", fontSize: 12.5, color: TEXT, fontWeight: 700, whiteSpace: "nowrap", direction: "ltr", textAlign: textStart }}>{fmt(w.price)}</td>}
+                      {!isSteven && <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
                         <InlineSelect
                           value={w.pay}
                           display={payLabel(w.pay, lang)}
@@ -947,7 +970,7 @@ export default function StevenProfilePage() {
                           ]}
                           onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }}
                         />
-                      </td>
+                      </td>}
                       <td onClick={e => e.stopPropagation()} style={{ padding: "10px 14px", textAlign: "center" }}>
                         <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
                           {/* Work Materials — light style, sits on the RIGHT (RTL first) */}
@@ -969,8 +992,8 @@ export default function StevenProfilePage() {
             </div>
           </div>
 
-          {/* Side cards (empty states — no mock data) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Side cards — Payment History is financial → owner only. */}
+          {!isSteven && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={sectionCard}>
               <div style={cardHead}>{t.payHistory}</div>
               {loading ? (
@@ -991,12 +1014,12 @@ export default function StevenProfilePage() {
                 </div>
               )}
             </div>
-          </div>
+          </div>}
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
-      {materialsWork && <WorkMaterialsModal work={materialsWork} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
+      {openWork && <WorkModal work={openWork} isSteven={isSteven} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
+      {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
@@ -1262,9 +1285,15 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
 });
 
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
-function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify, lang, t }: { work: Work; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterials, notify, lang, t }: { work: Work; isSteven: boolean; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
+  // Endpoint base by role: steven → sanitized supplier surface; owner → internal.
+  // versions/comments SUFFIXES match; only the prefix (and /work for versions) differ.
+  const API = isSteven ? "/api/supplier/steven" : "/api/sound-engineer";
+  const versionsUrl = isSteven ? `/api/supplier/steven/work/${work.id}/versions` : `/api/sound-engineer/${work.id}/versions`;
+  const commentsUrl = (vid: string) => `${API}/versions/${vid}/comments`;
+  const commentUrl  = (cid: string) => `${API}/comments/${cid}`;
   const narrow = useIsNarrow(760);
 
   // ── Mix versions (Phase 2) — real data from /api/sound-engineer/{workId}/versions
@@ -1306,7 +1335,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     let alive = true;
     setComments(null); setCLoadErr(false); setAdding(false); setEditingId(null); setRolePick(false);
     lastActiveIdRef.current = null;
-    fetch(`/api/sound-engineer/versions/${sel}/comments`)
+    fetch(commentsUrl(sel))
       .then(r => r.json())
       .then(d => { if (!alive) return; if (d.ok) setComments((d.comments ?? []).slice().sort(byTs)); else setCLoadErr(true); })
       .catch(() => { if (alive) setCLoadErr(true); });
@@ -1332,7 +1361,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     const text = newText.trim();
     if (!text || !sel || savingC) return;
     setSavingC(true);
-    fetch(`/api/sound-engineer/versions/${sel}/comments`, {
+    fetch(commentsUrl(sel), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ timestampSeconds: addTs, commentText: text, role: addRole }),
     })
@@ -1353,7 +1382,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     const prev = comments;
     setComments(cur => cur?.map(x => (x.id === c.id ? { ...x, commentText: text } : x)) ?? null);
     setEditingId(null);
-    fetch(`/api/sound-engineer/comments/${c.id}`, {
+    fetch(commentUrl(c.id), {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commentText: text }),
     })
       .then(r => r.json())
@@ -1365,7 +1394,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     setDelC(null);
     const prev = comments;
     setComments(cur => cur?.filter(x => x.id !== c.id) ?? null);
-    fetch(`/api/sound-engineer/comments/${c.id}`, { method: "DELETE" })
+    fetch(commentUrl(c.id), { method: "DELETE" })
       .then(r => r.json())
       .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); } })
       .catch(() => { setComments(prev); notify(rtl ? "המחיקה נכשלה" : "Delete failed"); });
@@ -1376,7 +1405,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     const target = prev?.find(x => x.id === id);
     if (!target || target.timestampSeconds === newTs) return;
     setComments(cur => cur ? cur.map(x => (x.id === id ? { ...x, timestampSeconds: newTs } : x)).sort(byTs) : null);
-    fetch(`/api/sound-engineer/comments/${id}`, {
+    fetch(commentUrl(id), {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ timestampSeconds: newTs }),
     })
       .then(r => r.json())
@@ -1387,7 +1416,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
   useEffect(() => {
     let alive = true;
     setVersions(null); setVLoadErr(false);
-    fetch(`/api/sound-engineer/${work.id}/versions`)
+    fetch(versionsUrl)
       .then(r => r.json())
       .then(d => {
         if (!alive) return;
@@ -1414,7 +1443,7 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
     if (opts.addToExisting) fd.append("addToExisting", "1");
     if (opts.role) fd.append("role", opts.role);
     try {
-      const d = await fetch(`/api/sound-engineer/${work.id}/versions`, { method: "POST", body: fd }).then(r => r.json());
+      const d = await fetch(versionsUrl, { method: "POST", body: fd }).then(r => r.json());
       if (d.ok && d.version) return d.version as MixVersion;
       return null; // caller (runRolePickerUpload) shows a friendly inline error
     } catch { return null; }
@@ -1632,9 +1661,10 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                               <span style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{vStatusLabel(st, lang)} · {g.files.length} {lang === "en" ? "files" : "קבצים"}</span>
                             </div>
                           </div>
-                          <button onClick={e => { e.stopPropagation(); setDelVersion(g.primary); }} title={t.vDelYes}
+                          {/* Delete a whole version — owner only. */}
+                          {!isSteven && <button onClick={e => { e.stopPropagation(); setDelVersion(g.primary); }} title={t.vDelYes}
                             style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>
+                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>}
                         </div>
                       );
                     })}
@@ -1706,11 +1736,11 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 <span style={{ fontSize: 15, color: TEXT2, flexShrink: 0 }}>↗</span>
               </button>
 
-              {/* Dropbox */}
-              <button onClick={openMixFolder} disabled={!mixFolderPath} title={mixFolderPath ? undefined : t.vFolderPending}
+              {/* Dropbox folder — exposes a raw project path → owner only (hidden from Steven). */}
+              {!isSteven && <button onClick={openMixFolder} disabled={!mixFolderPath} title={mixFolderPath ? undefined : t.vFolderPending}
                 style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "10px 12px", borderRadius: 12, fontFamily: "inherit", background: mixFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${mixFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: mixFolderPath ? "#4A9EFF" : MUTED, cursor: mixFolderPath ? "pointer" : "default" }}>
                 {t.openMixFolder}
-              </button>
+              </button>}
             </div>
 
             {/* ═══ CENTER: version files (players) · add-comment action (shared list is full-width below) ═══ */}
@@ -1814,20 +1844,27 @@ function WorkModal({ work, onChange, onDelete, onClose, onOpenMaterials, notify,
                 <div style={innerHead}>{t.jobDetails}</div>
                 <div style={{ padding: "10px 16px 12px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px", alignItems: "start" }}>
-                    {field(t.workType, <InlineSelect<WorkType> value={work.workType} display={wtLabel(work.workType, lang)} color={TEXT2} options={WORK_TYPES.map(o => ({ value: o, label: wtLabel(o, lang), color: TEXT2 }))} onChange={v => onChange({ workType: v })} />)}
-                    {field(t.status, <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={[
-                      { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
-                      { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
-                    ]} onChange={v => onChange({ status: v })} />)}
-                    {field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
-                    {field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
+                    {/* workType + status — editable for owner, READ-ONLY for Steven. */}
+                    {field(t.workType, isSteven
+                      ? <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{wtLabel(work.workType, lang)}</span>
+                      : <InlineSelect<WorkType> value={work.workType} display={wtLabel(work.workType, lang)} color={TEXT2} options={WORK_TYPES.map(o => ({ value: o, label: wtLabel(o, lang), color: TEXT2 }))} onChange={v => onChange({ workType: v })} />)}
+                    {field(t.status, isSteven
+                      ? <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, background: `${STATUS_COLOR[work.status]}1A`, border: `1px solid ${STATUS_COLOR[work.status]}40`, color: STATUS_COLOR[work.status] }}>{statusLabel(work.status, lang)}</span>
+                      : <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={[
+                          { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
+                          { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
+                        ]} onChange={v => onChange({ status: v })} />)}
+                    {/* payment + agreed price — owner only; hidden from Steven. */}
+                    {!isSteven && field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
+                    {!isSteven && field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
                     {field(t.startDate, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
                     {field(t.deadline, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
                   </div>
-                  <div style={{ paddingTop: 12, marginTop: 10, borderTop: `1px solid ${BDR}` }}>
+                  {/* Delete job — owner only. */}
+                  {!isSteven && <div style={{ paddingTop: 12, marginTop: 10, borderTop: `1px solid ${BDR}` }}>
                     <button onClick={() => setConfirmOpen(true)}
                       style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12, fontWeight: 700, padding: "8px 14px", borderRadius: 10, background: "transparent", border: `1px solid ${RED}44`, color: RED, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.deleteWork}</button>
-                  </div>
+                  </div>}
                 </div>
               </div>
 
@@ -2147,9 +2184,11 @@ function WMFileRow({ icon, name, meta, readOnly, onDownload, onDelete, t, rtl }:
   );
 }
 
-function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { work: Work; onClose: () => void; onOpenWork: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang, t }: { work: Work; isSteven: boolean; onClose: () => void; onOpenWork: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const rtl = lang === "he";
-  const readOnly = lang === "en"; // "Steven view" is a read-only preview (owner-only page; no Steven login yet)
+  // Read-only when Steven is signed in (materials are owner-managed), or in the
+  // owner's English "Steven view" preview.
+  const readOnly = isSteven || lang === "en";
   const narrow = useIsNarrow(760);
 
   const [data, setData]         = useState<WMData | null>(null); // null = loading
@@ -2185,7 +2224,10 @@ function WorkMaterialsModal({ work, onClose, onOpenWork, notify, lang, t }: { wo
     if (Math.abs(api.getCurrentTime() - target) > 1) api.seek(target);
   }
 
-  const url = `/api/sound-engineer/${work.id}/work-materials`;
+  // steven → sanitized read-only supplier endpoint (opaque file URLs, no raw path).
+  const url = isSteven
+    ? `/api/supplier/steven/work/${work.id}/work-materials`
+    : `/api/sound-engineer/${work.id}/work-materials`;
 
   useEffect(() => {
     let alive = true;

@@ -156,7 +156,9 @@ export default function MobileNav({
     ? MOBILE_TABS
     : isVictor
       ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" as string | undefined }]
-      : [];
+      : role === "steven"
+        ? [{ href: "/team/steven", label: "Steven", icon: "🎚", iconColor: "#DC2626" as string | undefined }]
+        : [];
 
   useEffect(() => {
     if (role !== "owner") return; // alerts are owner-only — no fetch for Victor

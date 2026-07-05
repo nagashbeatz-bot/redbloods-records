@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { roleForEmail, isVictorAllowedPath } from "@/lib/roles";
+import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath } from "@/lib/roles";
 
 // Paths that bypass the auth gate entirely:
 //  • OAuth callbacks — external redirect from Google/Dropbox carrying a one-time
@@ -136,6 +136,7 @@ export async function proxy(request: NextRequest) {
   if (pathname === "/login") {
     if (role === "owner") return NextResponse.redirect(new URL("/dashboard", request.url));
     if (role === "victor") return NextResponse.redirect(new URL("/team/victor", request.url));
+    if (role === "steven") return NextResponse.redirect(new URL("/team/steven", request.url));
     return response;
   }
 
@@ -153,6 +154,13 @@ export async function proxy(request: NextRequest) {
     if (isVictorAllowedPath(pathname)) return response;
     if (isApi) return forbidden();
     return NextResponse.redirect(new URL("/team/victor", request.url));
+  }
+
+  // Steven → restricted to his page + scoped sanitized APIs (mirror of Victor).
+  if (role === "steven") {
+    if (isStevenAllowedPath(pathname)) return response;
+    if (isApi) return forbidden();
+    return NextResponse.redirect(new URL("/team/steven", request.url));
   }
 
   // Signed in but email not recognized → locked out.

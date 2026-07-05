@@ -57,3 +57,13 @@ export async function requireVictorAccess(): Promise<NextResponse | null> {
   if (role !== "owner" && role !== "victor") return FORBID();
   return null;
 }
+
+/** Steven (or owner) — used on the scoped /api/supplier/steven endpoints. The
+ *  route ALSO verifies the work/version/comment belongs to engineerName='Steven'
+ *  (ownership), so this guard alone never exposes another supplier's data. */
+export async function requireStevenAccess(): Promise<NextResponse | null> {
+  const role = await getAuthRole();
+  if (role === null) return UNAUTH();
+  if (role !== "owner" && role !== "steven") return FORBID();
+  return null;
+}

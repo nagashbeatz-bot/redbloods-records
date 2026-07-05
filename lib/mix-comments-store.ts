@@ -32,6 +32,13 @@ export async function listMixComments(versionId: string): Promise<MixComment[]> 
   return (data ?? []).map((r) => mapRow(r as Record<string, unknown>));
 }
 
+/** Fetch a single comment by id (null = not found). Used for ownership checks. */
+export async function getMixComment(id: string): Promise<MixComment | null> {
+  const { data, error } = await supabase.from("mix_comments").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? mapRow(data as Record<string, unknown>) : null;
+}
+
 /** Add a comment at a given point in time. */
 export async function createMixComment(fields: {
   mixVersionId:     string;

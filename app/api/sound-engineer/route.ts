@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwner } from "@/lib/require-auth";
 import {
   getSoundEngineerWorkForProject,
   listSoundEngineerWork,
@@ -13,6 +14,7 @@ import type { SoundEngineerStatus, SoundEngineerWorkType } from "@/lib/types";
  * GET /api/sound-engineer?names=1         — list all engineer names
  */
 export async function GET(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { searchParams } = req.nextUrl;
     const projectId = searchParams.get("projectId");
@@ -44,6 +46,7 @@ export async function GET(req: NextRequest) {
  * Creates work record + auto-creates expense transaction if agreedPrice > 0.
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json() as {
       projectId?:       string | null;

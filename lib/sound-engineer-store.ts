@@ -156,6 +156,18 @@ export async function getSoundEngineerWorkForProject(
   return mapRow(data as Record<string, unknown>, projectMap);
 }
 
+/** Fetch a single sound engineer work by id (null = not found). Used for
+ *  ownership checks on the scoped supplier endpoints. */
+export async function getSoundEngineerWork(id: string): Promise<SoundEngineerWork | null> {
+  const [{ data, error }, projectMap] = await Promise.all([
+    supabase.from("sound_engineer_work").select("*").eq("id", id).maybeSingle(),
+    buildProjectMap(),
+  ]);
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return mapRow(data as Record<string, unknown>, projectMap);
+}
+
 /** List all sound engineer work records (optionally filtered by engineer name). */
 export async function listSoundEngineerWork(
   engineerName?: string

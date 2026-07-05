@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireStevenAccess } from "@/lib/require-auth";
 import { listMixVersions } from "@/lib/mix-versions-store";
 import { uploadMixVersionFile } from "@/lib/mix-version-upload";
+import { assertStevenOwnsWork, sanitizeVersionForSteven } from "@/lib/steven-scope";
 
 // Large audio files (WAV/FLAC/stems) can take a while.
 export const maxDuration = 300;
 
-/** GET /api/sound-engineer/[id]/versions — list mix versions for a work. */
+const FORBID = () => NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+
+/** GET /api/supplier/steven/work/[id]/versions — Steven's own work's versions,
+ *  with opaque stream URLs (no raw Dropbox path). 403 for any non-Steven work. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireStevenAccess(); if (denied) return denied;
   try {
     const { id } = await params;
-    const versions = await listMixVersions(id);
+    if (!(await assertStevenOwnsWork(id))) return FORBID();
+    const versions = (await listMixVersions(id)).map(sanitizeVersionForSteven);
     return NextResponse.json({ ok: true, versions });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
@@ -19,18 +24,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 }
 
-/**
- * POST /api/sound-engineer/[id]/versions — upload a new mix version.
- * Server-side only: Dropbox token never leaves the server. The file goes to the
- * ORIGINAL project's folder under /Mix Versions/ (work_title is NEVER used for
- * the path). Metadata is stored ONLY in mix_versions — never projects.files, and
- * NO public share link is created. The upload core lives in lib/mix-version-upload
- * so this owner route and the scoped supplier route share one tested path.
- */
+/** POST — Steven uploads a new version / adds a file to an existing one, ONLY on
+ *  his own work. Same upload core as the owner route; response is sanitized. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireStevenAccess(); if (denied) return denied;
   try {
     const { id: workId } = await params;
+    if (!(await assertStevenOwnsWork(workId))) return FORBID();
 
     const form  = await req.formData();
     const file  = form.get("file") as File | null;
@@ -45,10 +45,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       file: file as File, label, addToExisting, roleParam, durationSeconds,
     });
     if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
-    return NextResponse.json({ ok: true, version: result.version });
+    return NextResponse.json({ ok: true, version: sanitizeVersionForSteven(result.version) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
-    console.error("[sound-engineer/versions POST]", msg);
+    console.error("[supplier/steven/versions POST]", msg);
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
