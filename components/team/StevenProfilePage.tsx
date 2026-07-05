@@ -638,35 +638,25 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const [dragId, setDragId]   = useState<string | null>(null); // row being dragged
   const [overId, setOverId]   = useState<string | null>(null); // current drop target
   const [hoverId, setHoverId] = useState<string | null>(null); // row under cursor (glow)
-  // Language decided synchronously at the FIRST render (no post-hydration effect):
-  //   • SSR uses `initialLang` (server picked it by role → Steven="en", owner="he"),
-  //     so the very first painted HTML is already correct — no Hebrew flash.
-  //   • On the client, a previously saved choice (rb_steven_lang) wins over the default.
-  const [lang, setLang]     = useState<Lang>(() => {
-    if (typeof window === "undefined") return initialLang;
-    try {
-      const saved = localStorage.getItem("rb_steven_lang");
-      if (saved === "he" || saved === "en") return saved;
-    } catch { /* ignore */ }
-    return initialLang;
-  });
+  // Signed-in role — derived from `clientRole ?? initialRole` so it's correct on the
+  // VERY FIRST render (SSR + hydration), before useRole()'s /api/me resolves. We key
+  // off `=== "steven"` (never `!isOwner`), so an unknown/null role is NON-owner and
+  // never flashes the owner view.
+  const clientRole = useRole();
+  const effectiveRole = clientRole ?? initialRole;
+  const isSteven = effectiveRole === "steven";
+
+  // Language. Steven is ENGLISH-ONLY: the effective `lang` is forced to "en", the
+  // toggle is hidden, and nothing is read from / written to localStorage. Owner/Victor
+  // start from the server-provided initialLang ("he") and can toggle within the
+  // session (not persisted — same as before).
+  const [langState, setLangState] = useState<Lang>(initialLang);
+  const lang = isSteven ? "en" : langState;
   const [toast, setToast]   = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const t = TR[lang];
   const rtl = lang === "he";
   const textStart = rtl ? "right" : "left";
-
-  // Signed-in role. steven → sanitized supplier surface + owner controls hidden.
-  // (Security is server-side: proxy + /api/supplier/steven/* + ownership checks.)
-  //
-  // CRITICAL: derive from `role ?? initialRole` — the server passes initialRole from
-  // the session, so isSteven is correct on the VERY FIRST render (SSR + hydration),
-  // before the client `useRole()` /api/me round-trip resolves. Without this, role is
-  // null on frame 1 → every `!isSteven` gate would flash the OWNER view. We key off
-  // `=== "steven"` (never `!isOwner`), so an unknown/null role is treated as NON-owner.
-  const clientRole = useRole();
-  const effectiveRole = clientRole ?? initialRole;
-  const isSteven = effectiveRole === "steven";
 
   function notify(msg: string) {
     setToast(msg);
@@ -848,20 +838,21 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 280 }}>
-            {/* Page-local language toggle (UI only — no global i18n) */}
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            {/* Page-local language toggle (UI only) — owner/Victor only. Steven is
+                English-only, so no toggle is shown and no language is persisted. */}
+            {!isSteven && <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <div style={{ display: "inline-flex", gap: 4, background: CARD, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4 }}>
                 {(["he", "en"] as const).map(l => {
                   const sel = lang === l;
                   return (
-                    <button key={l} onClick={() => { setLang(l); if (isSteven) { try { localStorage.setItem("rb_steven_lang", l); } catch {} } notify(l === "he" ? TR[l].langHe : TR[l].langEn); }} style={{
+                    <button key={l} onClick={() => { setLangState(l); notify(l === "he" ? TR[l].langHe : TR[l].langEn); }} style={{
                       fontSize: 12, fontWeight: 800, padding: "5px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
                       background: sel ? `${BRAND}1F` : "transparent", border: `1px solid ${sel ? BRAND + "66" : "transparent"}`, color: sel ? BRAND : TEXT2, transition: "all .12s",
                     }}>{l === "he" ? "עברית" : "English"}</button>
                   );
                 })}
               </div>
-            </div>
+            </div>}
             <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "14px 18px", display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ textAlign: textStart }}>
                 <span style={{ fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 7, background: `${BRAND}1A`, border: `1px solid ${BRAND}40`, color: BRAND }}>{t.soundSupplier}</span>

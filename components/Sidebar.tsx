@@ -125,18 +125,9 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const vt = useVictorT();
   const isVictor = role === "victor";
 
-  // Steven's logout label follows his page language (default English), read from
-  // the same rb_steven_lang key the /team/steven page persists. Owner/Victor unaffected.
-  const [stevenLang, setStevenLang] = useState<"he" | "en">("en");
-  useEffect(() => {
-    if (role !== "steven") return;
-    try { setStevenLang(localStorage.getItem("rb_steven_lang") === "he" ? "he" : "en"); } catch { /* ignore */ }
-  }, [role]);
-  const signOutLabel = isVictor
-    ? vt("common.signOut")
-    : role === "steven"
-      ? (stevenLang === "he" ? "יציאה" : "Logout")
-      : "יציאה";
+  // Logout label: Victor follows his i18n; Steven is English-only → "Logout";
+  // owner stays Hebrew.
+  const signOutLabel = isVictor ? vt("common.signOut") : role === "steven" ? "Logout" : "יציאה";
 
   // Friendly display name by role (no DB / no profiles system).
   const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : role === "steven" ? "Steven" : "Redbloods";
