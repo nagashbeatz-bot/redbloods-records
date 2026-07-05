@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Show } from "@/lib/shows-types";
+import DatePickerInput from "@/components/ui/DatePickerInput";
+import TimePickerInput from "@/components/ui/TimePickerInput";
 
-const inp: React.CSSProperties = {
-  width: "100%", padding: "8px 10px", borderRadius: 8,
-  border: "1px solid #222", background: "#0D0D0D", color: "#E0E0E0",
-  fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+// Shared dark field + label styling — matches the system's session/form look.
+const field: React.CSSProperties = {
+  width: "100%", padding: "10px 12px", borderRadius: 10,
+  border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#E8E8E8",
+  fontSize: 13.5, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
 };
 const lbl: React.CSSProperties = {
-  fontSize: 10, color: "#555", marginBottom: 4, fontWeight: 600,
-  letterSpacing: "0.06em", textTransform: "uppercase",
+  fontSize: 10.5, color: "#6B6B6B", marginBottom: 6, fontWeight: 700, letterSpacing: "0.05em",
 };
 
 /**
@@ -70,56 +72,98 @@ export default function RehearsalModal({ show, onClose, onCreated }: {
 
   const modal = (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 200000 }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.74)", backdropFilter: "blur(4px)", zIndex: 200000 }} />
       <div style={{
         position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-        background: "#141414", border: "1px solid #2A2A2A", borderRadius: 14,
-        width: 360, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto",
-        zIndex: 200001, padding: 24, direction: "rtl", fontFamily: "'Heebo', Arial, sans-serif",
+        background: "#141414", border: "1px solid #262626", borderRadius: 18,
+        width: 384, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto",
+        zIndex: 200001, padding: "24px 24px 22px", direction: "rtl",
+        fontFamily: "'Heebo', Arial, sans-serif",
+        boxShadow: "0 24px 70px rgba(0,0,0,0.85)",
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6366F1", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>🥁 קבע חזרה</div>
-        <div style={{ fontSize: 16, fontWeight: 800, color: "#F0F0F0", marginBottom: 2 }}>{show.name}</div>
-        {show.artist && <div style={{ fontSize: 12, color: "#666", marginBottom: 14 }}>{show.artist}</div>}
-        {err && <div style={{ color: "#EF4444", fontSize: 12, marginBottom: 10 }}>{err}</div>}
-
-        <div style={{ marginBottom: 12 }}>
-          <div style={lbl}>תאריך חזרה *</div>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
+        {/* ── Header ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+            background: "rgba(99,102,241,0.13)", border: "1px solid rgba(99,102,241,0.35)",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+          }}>🥁</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: "#818CF8", letterSpacing: "0.08em", textTransform: "uppercase" }}>קביעת חזרה</div>
+            <div style={{ fontSize: 15.5, fontWeight: 800, color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{show.name}</div>
+            {show.artist && <div style={{ fontSize: 12, color: "#777", marginTop: 1 }}>{show.artist}</div>}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+
+        <div style={{ borderTop: "1px solid #222", marginBottom: 16 }} />
+
+        {err && (
+          <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 10, padding: "8px 12px", color: "#F87171", fontSize: 12.5, marginBottom: 14 }}>
+            {err}
+          </div>
+        )}
+
+        {/* ── Date ── */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={lbl}>תאריך חזרה</div>
+          <DatePickerInput value={date} onChange={setDate} min={todayStr} placeholder="בחר תאריך" style={field} />
+        </div>
+
+        {/* ── Times ── */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
           <div style={{ flex: 1 }}>
-            <div style={lbl}>שעת התחלה *</div>
-            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={inp} />
+            <div style={lbl}>שעת התחלה</div>
+            <TimePickerInput value={startTime} onChange={setStartTime} style={field} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={lbl}>שעת סיום</div>
-            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={inp} />
+            <TimePickerInput value={endTime} onChange={setEndTime} style={field} />
           </div>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={lbl}>מיקום / חדר חזרות</div>
-          <input value={location} onChange={e => setLocation(e.target.value)} style={inp} />
-        </div>
+
+        {/* ── Location ── */}
         <div style={{ marginBottom: 14 }}>
-          <div style={lbl}>הערות</div>
-          <textarea value={userNotes} onChange={e => setUserNotes(e.target.value)} rows={2} style={{ ...inp, resize: "vertical" }} />
+          <div style={lbl}>מיקום / חדר חזרות</div>
+          <input value={location} onChange={e => setLocation(e.target.value)} placeholder="גרוב הוד השרון" style={field} />
         </div>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: 18, userSelect: "none" }}>
+        {/* ── Notes ── */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={lbl}>הערות</div>
+          <textarea value={userNotes} onChange={e => setUserNotes(e.target.value)} rows={2}
+            placeholder="פרטים נוספים (לא חובה)…"
+            style={{ ...field, resize: "vertical", lineHeight: 1.5 }} />
+        </div>
+
+        {/* ── Calendar checkbox ── */}
+        <label style={{
+          display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none",
+          marginBottom: 18, padding: "10px 12px", borderRadius: 10,
+          border: `1px solid ${addToCal ? "rgba(99,102,241,0.35)" : "#222"}`,
+          background: addToCal ? "rgba(99,102,241,0.06)" : "#0D0D0D", transition: "all 0.15s",
+        }}>
           <div onClick={() => setAddToCal(v => !v)} style={{
             width: 18, height: 18, borderRadius: 5, flexShrink: 0,
             border: `1.5px solid ${addToCal ? "#6366F1" : "#333"}`,
-            background: addToCal ? "rgba(99,102,241,0.2)" : "transparent",
+            background: addToCal ? "rgba(99,102,241,0.25)" : "transparent",
             display: "flex", alignItems: "center", justifyContent: "center",
-          }}>{addToCal && <span style={{ color: "#818CF8", fontSize: 12, lineHeight: 1 }}>✓</span>}</div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: addToCal ? "#818CF8" : "#888" }}>הוסף ליומן Google</span>
+          }}>{addToCal && <span style={{ color: "#A5B4FC", fontSize: 12, lineHeight: 1 }}>✓</span>}</div>
+          <span style={{ fontSize: 13, fontWeight: 600, color: addToCal ? "#A5B4FC" : "#9A9A9A" }}>📅 הוסף ליומן Google</span>
         </label>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onClose} disabled={saving} style={{ flex: 1, padding: "9px", borderRadius: 8, border: "1px solid #333", background: "none", color: "#888", cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
-          <button onClick={handleCreate} disabled={saving} style={{ flex: 2, padding: "9px", borderRadius: 8, border: "none", background: "#6366F1", color: "#fff", cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>
-            {saving ? "שומר..." : "קבע חזרה"}
-          </button>
+        {/* ── Actions ── */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} disabled={saving} style={{
+            flex: 1, padding: "11px", borderRadius: 10, border: "1px solid #2E2E2E",
+            background: "transparent", color: "#999", cursor: saving ? "default" : "pointer",
+            fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+          }}>ביטול</button>
+          <button onClick={handleCreate} disabled={saving} style={{
+            flex: 2, padding: "11px", borderRadius: 10, border: "none",
+            background: "#6366F1", color: "#fff", cursor: saving ? "default" : "pointer",
+            fontWeight: 800, fontFamily: "inherit", fontSize: 13.5,
+            boxShadow: "0 4px 16px rgba(99,102,241,0.35)", opacity: saving ? 0.7 : 1,
+          }}>{saving ? "שומר…" : "🥁 קבע חזרה"}</button>
         </div>
       </div>
     </>
