@@ -92,13 +92,19 @@ export async function register() {
     maybeSend("evening");
   }, { timezone: TZ });
 
-  // ── Victor upload notice — flush due 3-min batches (owner-only push) ────────
+  // ── Supplier upload notices — flush due coalesced batches (owner-only push) ──
   cron.schedule("* * * * *", async () => {
     try {
       const { flushDueVictorUploadNotices } = await import("@/lib/victor-upload-notify");
       await flushDueVictorUploadNotices();
     } catch (err) {
       console.error("[victor-upload-notify] flush tick failed:", err);
+    }
+    try {
+      const { flushDueStevenUploadNotices } = await import("@/lib/steven-notify");
+      await flushDueStevenUploadNotices();
+    } catch (err) {
+      console.error("[steven-notify] flush tick failed:", err);
     }
   }, { timezone: TZ });
 

@@ -679,6 +679,14 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   }, [isSteven]);
   useEffect(() => { void reloadWorks(); }, [reloadWorks]);
 
+  // Presence beacon — fire once when Steven lands on his page. The SERVER decides
+  // whether to actually push (login dedupe + 30-min visit cooldown), so a refresh
+  // never spams; owner never fires this. NOT /api/push/check.
+  useEffect(() => {
+    if (!isSteven) return;
+    fetch("/api/supplier/steven/ping", { method: "POST" }).catch(() => {});
+  }, [isSteven]);
+
   const openWork = works.find(w => w.id === openId) ?? null;
   const materialsWork = works.find(w => w.id === openMaterialsId) ?? null;
 

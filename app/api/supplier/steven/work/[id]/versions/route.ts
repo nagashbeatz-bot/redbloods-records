@@ -30,7 +30,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const denied = await requireStevenAccess(); if (denied) return denied;
   try {
     const { id: workId } = await params;
-    if (!(await assertStevenOwnsWork(workId))) return FORBID();
+    const work = await assertStevenOwnsWork(workId);
+    if (!work) return FORBID();
 
     const form  = await req.formData();
     const file  = form.get("file") as File | null;
@@ -45,6 +46,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       file: file as File, label, addToExisting, roleParam, durationSeconds,
     });
     if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
+
+    // Best-effort owner push (coalesced ~75s into one summary). NEVER fail the upload.
+    try {
+      const { queueStevenUploadNotice } = await import("@/lib/steven-notify");
+      await queueStevenUploadNotice(workId, work.projectName, {
+        name:  result.version.fileName,
+        role:  roleParam || null,
+        label: result.version.label,
+      });
+    } catch { /* best-effort */ }
+
     return NextResponse.json({ ok: true, version: sanitizeVersionForSteven(result.version) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
