@@ -8,17 +8,20 @@ export const metadata = { title: "Steven — פרופיל ספק | Redbloods OS"
 export const dynamic = "force-dynamic";
 
 /**
- * Decide the page language ON THE SERVER from the session role, so the very first
- * SSR HTML is already correct — Steven → English, owner → Hebrew — with no
- * client-side Hebrew→English flash. The client still lets either role toggle and
- * persists the choice (rb_steven_lang) over this default.
+ * Resolve the role ON THE SERVER from the session and pass it (+ the derived
+ * language) into StevenProfilePage. This makes the VERY FIRST render — SSR and the
+ * first client render — already role-correct, so Steven never sees even a frame of
+ * the owner view / owner skeleton (permission flash), and owner never sees the
+ * restricted one. The proxy already gated this route, so a real visitor here is
+ * always "owner" or "steven"; anything else is treated as non-owner (safe).
  */
 export default async function StevenPage() {
   const role = await getAuthRole();
-  const initialLang = role === "steven" ? "en" : "he";
+  const initialRole = role === "steven" ? "steven" : role === "owner" ? "owner" : role === "victor" ? "victor" : null;
+  const initialLang = initialRole === "steven" ? "en" : "he";
   return (
     <AppShell>
-      <StevenProfilePage initialLang={initialLang} />
+      <StevenProfilePage initialRole={initialRole} initialLang={initialLang} />
     </AppShell>
   );
 }

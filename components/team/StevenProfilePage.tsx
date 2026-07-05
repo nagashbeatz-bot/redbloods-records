@@ -626,7 +626,7 @@ function isoDay(offset = 0): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export default function StevenProfilePage({ initialLang = "he" }: { initialLang?: Lang }) {
+export default function StevenProfilePage({ initialLang = "he", initialRole = null }: { initialLang?: Lang; initialRole?: "owner" | "victor" | "steven" | null }) {
   const router = useRouter();
   const [works, setWorks]   = useState<Work[]>([]);
   const [loading, setLoading] = useState(true); // initial page load only — never re-armed after create
@@ -658,8 +658,15 @@ export default function StevenProfilePage({ initialLang = "he" }: { initialLang?
 
   // Signed-in role. steven → sanitized supplier surface + owner controls hidden.
   // (Security is server-side: proxy + /api/supplier/steven/* + ownership checks.)
-  const role = useRole();
-  const isSteven = role === "steven";
+  //
+  // CRITICAL: derive from `role ?? initialRole` — the server passes initialRole from
+  // the session, so isSteven is correct on the VERY FIRST render (SSR + hydration),
+  // before the client `useRole()` /api/me round-trip resolves. Without this, role is
+  // null on frame 1 → every `!isSteven` gate would flash the OWNER view. We key off
+  // `=== "steven"` (never `!isOwner`), so an unknown/null role is treated as NON-owner.
+  const clientRole = useRole();
+  const effectiveRole = clientRole ?? initialRole;
+  const isSteven = effectiveRole === "steven";
 
   function notify(msg: string) {
     setToast(msg);
@@ -876,7 +883,9 @@ export default function StevenProfilePage({ initialLang = "he" }: { initialLang?
         {/* ── KPI row (5 cards) ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
           {loading ? (
-            Array.from({ length: 5 }).map((_, i) => (
+            // steven sees only 3 KPIs (no debt/paid) → skeleton must match, never
+            // flash 5 owner cards.
+            Array.from({ length: isSteven ? 3 : 5 }).map((_, i) => (
               <div key={i} style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "18px 20px 16px", minWidth: 0 }}>
                 <Shimmer w="62%" h={10} r={5} style={{ marginBottom: 13 }} />
                 <Shimmer w={64} h={30} r={8} />
