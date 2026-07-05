@@ -2219,6 +2219,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
   const [data, setData]         = useState<WMData | null>(null); // null = loading
   const [loadErr, setLoadErr]   = useState(false);
   const [instr, setInstr]       = useState("");
+  const [instrFocus, setInstrFocus] = useState(false); // textarea focus → slightly stronger glow
   const [savingMeta, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null); // materialType being uploaded
   const [upPct, setUpPct] = useState<number | null>(null);         // real request-body upload %, null when idle
@@ -2388,6 +2389,16 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
 
   // ── styles ──
   const sec: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" };
+  // Instructions area gets a very soft language-tinted glow (red for the Hebrew
+  // owner UI, blue for Steven's English) that strengthens slightly on focus.
+  const glowAccent = rtl ? "#EF4444" : "#4A9EFF";
+  const instrGlow: React.CSSProperties = {
+    borderColor: `${glowAccent}${instrFocus ? "5C" : "2E"}`,
+    boxShadow: instrFocus
+      ? `0 0 18px ${glowAccent}2A, inset 0 0 0 1px ${glowAccent}22`
+      : `0 0 13px ${glowAccent}12, inset 0 0 0 1px ${glowAccent}0F`,
+    transition: "border-color .18s ease, box-shadow .18s ease",
+  };
   const secHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
   const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", background: "#0D0D12", border: `1px solid ${BDR2}`, borderRadius: 10, color: TEXT, colorScheme: "dark", fontSize: 13, padding: "9px 12px", outline: "none", fontFamily: "inherit" };
   const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5 };
@@ -2532,10 +2543,10 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
           ) : (
             <>
               {/* Instructions — free text only (no BPM/Key) */}
-              <div style={sec}>
+              <div style={{ ...sec, ...instrGlow }}>
                 <div style={secHead}><span>📝 {t.wmInstructions}</span></div>
                 <label style={lbl}>{t.wmNotes}</label>
-                <textarea value={instr} onChange={e => setInstr(e.target.value)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={6} dir="auto" style={{ ...inp, resize: "vertical", lineHeight: 1.6, minHeight: 140 }} />
+                <textarea value={instr} onChange={e => setInstr(e.target.value)} onFocus={() => setInstrFocus(true)} onBlur={() => setInstrFocus(false)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={6} dir="auto" style={{ ...inp, resize: "vertical", lineHeight: 1.6, minHeight: 140 }} />
                 {!readOnly && (
                   <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
                     <button type="button" onClick={saveMeta} disabled={savingMeta}
