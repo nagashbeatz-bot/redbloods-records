@@ -2483,7 +2483,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
   const modal = (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
       <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
-        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(1240px, 96vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(1320px, 96vw)", maxHeight: "94vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
         <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}@keyframes wm-pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes wm-glow{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}50%{box-shadow:0 0 9px 1px rgba(16,185,129,.32)}}"}</style>
         {/* Hidden file inputs live INSIDE the panel so a programmatic .click() can
             never bubble to the overlay backdrop and close the modal (owner only). */}
@@ -2535,7 +2535,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
               <div style={sec}>
                 <div style={secHead}><span>📝 {t.wmInstructions}</span></div>
                 <label style={lbl}>{t.wmNotes}</label>
-                <textarea value={instr} onChange={e => setInstr(e.target.value)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={4} style={{ ...inp, resize: "vertical", lineHeight: 1.6 }} />
+                <textarea value={instr} onChange={e => setInstr(e.target.value)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={6} dir="auto" style={{ ...inp, resize: "vertical", lineHeight: 1.6, minHeight: 140 }} />
                 {!readOnly && (
                   <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
                     <button type="button" onClick={saveMeta} disabled={savingMeta}
