@@ -657,6 +657,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const t = TR[lang];
   const rtl = lang === "he";
   const textStart = rtl ? "right" : "left";
+  // Mobile layout: below 760px the desktop two-column body (jobs table + side
+  // card) can't fit, so we stack to a single column and tighten the chrome.
+  const narrow = useIsNarrow(760);
 
   function notify(msg: string) {
     setToast(msg);
@@ -814,7 +817,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const paidWorks = [...works].filter(w => w.pay === "שולם").sort((a, b) => (b.paymentDate || "").localeCompare(a.paymentDate || ""));
 
   return (
-    <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: "32px 28px 80px" }}>
+    <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: narrow ? "18px 16px calc(32px + env(safe-area-inset-bottom))" : "32px 28px 80px", boxSizing: "border-box" }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
         {/* Back to the /team list — owner only; Steven has just this one page. */}
@@ -826,7 +829,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>}
 
         {/* ── Header ── */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
+        <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", alignItems: narrow ? "stretch" : "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 }}>
           {!isSteven ? (
             <button onClick={() => setNewOpen(true)} style={{
               padding: "10px 20px", borderRadius: 12, background: BRAND, border: "none", color: "#fff",
@@ -837,7 +840,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
 
           <div style={{ textAlign: "center", flex: 1, minWidth: 240 }}>
             <div style={{ fontSize: 12, color: MUTED, letterSpacing: "0.06em", marginBottom: 3 }}>{t.breadcrumb}</div>
-            <h1 style={{ fontSize: 30, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>{t.profileTitle} <span style={{ color: BRAND }}>Steven</span></h1>
+            <h1 style={{ fontSize: narrow ? 23 : 30, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>{t.profileTitle} <span style={{ color: BRAND }}>Steven</span></h1>
             <div style={{ fontSize: 13, color: TEXT2, marginTop: 6 }}>{t.role}</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: GREEN, boxShadow: `0 0 6px ${GREEN}88` }} />
@@ -845,7 +848,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 280 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: narrow ? 0 : 280 }}>
             {/* Page-local language toggle (UI only) — owner/Victor only. Steven is
                 English-only, so no toggle is shown and no language is persisted. */}
             {!isSteven && <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -901,7 +904,10 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
 
         {/* ── Main grid ── (jobs table + Payment History side card, both roles) */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* Mobile: single column so the jobs table isn't crushed by the 300px
+            side card. minmax(0,1fr) lets the table's own overflow-x:auto wrapper
+            shrink and scroll internally instead of overflowing the page. */}
+        <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
           <div style={sectionCard}>
             <div style={cardHead}>{t.soundJobs}</div>
