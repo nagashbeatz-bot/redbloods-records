@@ -911,6 +911,48 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
 
           <div style={sectionCard}>
             <div style={cardHead}>{t.soundJobs}</div>
+            {narrow ? (
+              /* Mobile: each job is a self-contained card (no wide desktop table
+                 → no horizontal scroll). Same handlers as the table rows. */
+              <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {loading ? (
+                  <RowsSkeleton rows={4} height={96} pad="0" />
+                ) : works.length === 0 ? (
+                  <div style={{ padding: "34px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</div>
+                ) : works.map(w => (
+                  <div key={w.id} onClick={() => setOpenId(w.id)} style={{ background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 12, cursor: "pointer", minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.project}</div>
+                        <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>{wtLabel(w.workType, lang)}</div>
+                      </div>
+                      <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+                        {isSteven ? (
+                          <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${STATUS_COLOR[w.status]}1A`, border: `1px solid ${STATUS_COLOR[w.status]}40`, color: STATUS_COLOR[w.status] }}>{statusLabel(w.status, lang)}</span>
+                        ) : (
+                          <InlineSelect value={w.status} display={statusLabel(w.status, lang)} color={STATUS_COLOR[w.status]} options={[{ value: "פעיל" as WorkStatus, label: statusLabel("פעיל", lang), color: STATUS_COLOR["פעיל"] }, { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] }]} onChange={v => updateWork(w.id, { status: v })} />
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 16px", fontSize: 12 }}>
+                      <span style={{ color: MUTED }}>{t.deadline}: <span style={{ color: TEXT2, fontWeight: 600 }}>{w.deadline || "—"}</span></span>
+                      <span style={{ color: MUTED }}>{t.price}: <span style={{ color: TEXT, fontWeight: 800, direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{fmt(w.price)}</span></span>
+                      <span onClick={e => e.stopPropagation()}>
+                        {isSteven ? (
+                          <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${PAY_COLOR[w.pay]}1A`, border: `1px solid ${PAY_COLOR[w.pay]}40`, color: PAY_COLOR[w.pay] }}>{payLabel(w.pay, lang)}</span>
+                        ) : (
+                          <InlineSelect value={w.pay} display={payLabel(w.pay, lang)} color={PAY_COLOR[w.pay]} options={[{ value: "שולם" as PayStatus, label: payLabel("שולם", lang), color: PAY_COLOR["שולם"] }, { value: "לא שולם" as PayStatus, label: payLabel("לא שולם", lang), color: PAY_COLOR["לא שולם"] }]} onChange={v => { if (v === "שולם") setPayModal({ workId: w.id, project: w.project }); else void (async () => { const ok = await updateWork(w.id, { pay: v }); if (ok) await syncPaymentExpense(w.id); })(); }} />
+                        )}
+                      </span>
+                    </div>
+                    <div onClick={e => e.stopPropagation()} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <button onClick={() => setOpenMaterialsId(w.id)} style={{ fontSize: 12, fontWeight: 800, color: "#1A1A20", padding: "10px 8px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🎚 {t.wmButton}</button>
+                      <button onClick={() => setOpenId(w.id)} style={{ fontSize: 12, fontWeight: 700, color: "#F0B24A", padding: "10px 8px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.openJob}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", minWidth: 660, borderCollapse: "collapse" }}>
                 <thead>
@@ -1019,6 +1061,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                 </tbody>
               </table>
             </div>
+            )}
           </div>
 
           {/* Side cards — Payment History (read-only; shown to Steven too). */}
@@ -1160,6 +1203,9 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
   const [dragC, setDragC]       = useState<{ id: string; ts: number; startX: number; moved: boolean } | null>(null); // marker being dragged
 
   const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+  // Mobile: tighten the waveform and transport so the card never forces a width
+  // wider than a phone viewport (volume slider is dropped — device volume is used).
+  const narrow = useIsNarrow(760);
 
   // Decorative waveform bars — a static visual motif, NOT real audio analysis.
   const bars = useMemo(() => Array.from({ length: 76 }, (_, i) =>
@@ -1220,10 +1266,10 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
           onPointerDown={e => { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); setDragging(true); seekAt(e.clientX); }}
           onPointerMove={e => { if (dragging) seekAt(e.clientX); }}
           onPointerUp={e => { setDragging(false); try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch {} }}
-          style={{ display: "flex", alignItems: "flex-end", gap: 2, height: waveH, cursor: "pointer", touchAction: "none" }}
+          style={{ display: "flex", alignItems: "flex-end", gap: narrow ? 1 : 2, height: waveH, cursor: "pointer", touchAction: "none" }}
         >
           {bars.map((h, i) => (
-            <div key={i} style={{ flex: 1, minWidth: 2, height: `${Math.round(h * 100)}%`, borderRadius: 2, background: i < playedBars ? `linear-gradient(180deg, #F87171, ${BRAND})` : "rgba(255,255,255,0.12)" }} />
+            <div key={i} style={{ flex: 1, minWidth: narrow ? 1 : 2, height: `${Math.round(h * 100)}%`, borderRadius: 2, background: i < playedBars ? `linear-gradient(180deg, #F87171, ${BRAND})` : "rgba(255,255,255,0.12)" }} />
           ))}
         </div>
         {dur > 0 && <div style={{ position: "absolute", top: -2, bottom: 0, left: `${pct}%`, width: 2, background: "#fff", opacity: 0.55, pointerEvents: "none" }} />}
@@ -1289,10 +1335,10 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
       </div>
 
       {/* Transport: time · controls · volume */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: compact ? 10 : 16, direction: "ltr" }}>
-        <span style={{ fontSize: 12, color: TEXT2, fontVariantNumeric: "tabular-nums", minWidth: 92, whiteSpace: "nowrap" }}>{fmtTime(cur)} <span style={{ color: MUTED }}>/ {fmtTime(dur)}</span></span>
+      <div style={{ display: "flex", alignItems: "center", gap: narrow ? 8 : 12, marginTop: compact ? 10 : 16, direction: "ltr" }}>
+        <span style={{ fontSize: 12, color: TEXT2, fontVariantNumeric: "tabular-nums", minWidth: narrow ? 0 : 92, whiteSpace: "nowrap", flexShrink: 0 }}>{fmtTime(cur)} <span style={{ color: MUTED }}>/ {fmtTime(dur)}</span></span>
 
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: narrow ? 8 : 12, minWidth: 0 }}>
           <button onClick={() => seekTo(0)} title="Restart" style={tBtn}><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7a5 5 0 11-5 5H5a7 7 0 107-7z"/></svg></button>
           <button onClick={() => seekTo(cur - 10)} title="-10s" style={tBtn}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6l-9 6 9 6z"/></svg></button>
           <button onClick={toggle} disabled={err} title={playing ? "Pause" : t.vPlay}
@@ -1304,10 +1350,14 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
           <button onClick={() => seekTo(cur + 10)} title="+10s" style={tBtn}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6l9 6-9 6z"/></svg></button>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 92 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={MUTED}><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0014 8v8a4.5 4.5 0 002.5-4z"/></svg>
-          <input type="range" min={0} max={1} step={0.01} value={vol} onChange={e => setVol(Number(e.target.value))} style={{ width: 72, accentColor: BRAND, cursor: "pointer" }} />
-        </div>
+        {/* Volume — hidden on mobile (device volume is used); keeps the transport
+            row from overflowing a phone viewport. */}
+        {!narrow && (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 92 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={MUTED}><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0014 8v8a4.5 4.5 0 002.5-4z"/></svg>
+            <input type="range" min={0} max={1} step={0.01} value={vol} onChange={e => setVol(Number(e.target.value))} style={{ width: 72, accentColor: BRAND, cursor: "pointer" }} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1633,17 +1683,17 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
   const colWrap: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 14, minWidth: 0 };
 
   const modal = (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100001, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: narrow ? "stretch" : "center", justifyContent: "center", padding: narrow ? 10 : 24 }}>
       <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{
-        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: "min(1400px, 97vw)", maxHeight: "94vh",
+        background: CARD, border: `1px solid ${BRAND}33`, borderRadius: 20, width: narrow ? "100%" : "min(1400px, 97vw)", maxWidth: "100%", maxHeight: "94vh",
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
         {/* Header — version title · Steven · last updated */}
-        <div style={{ padding: "18px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
+        <div style={{ padding: narrow ? "14px 16px 12px" : "18px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: 5 }}>{t.jobEyebrow}</div>
-              <div title={groupTitle} style={{ fontSize: 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{groupTitle}</div>
+              <div title={groupTitle} style={{ fontSize: narrow ? 19 : 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{groupTitle}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, flexWrap: "wrap" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800, color: TEXT2, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}>🎧 Steven</span>
                 {primary && <span style={{ fontSize: 11.5, color: MUTED }}>{t.headerUpdated}: <span style={{ direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{fmtDateTime(primary.updatedAt)}</span></span>}
@@ -1654,8 +1704,8 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
         </div>
 
         {/* Body — 3-column workboard: versions/files (left) · players+comments (center) · details (right) */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "18px 22px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "300px minmax(0, 1fr) 320px", gap: 16, alignItems: "start" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: narrow ? "14px 14px calc(20px + env(safe-area-inset-bottom))" : "18px 22px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "300px minmax(0, 1fr) 320px", gap: 16, alignItems: "start" }}>
 
             {/* ═══ LEFT: versions · upload · project files · Dropbox ═══ */}
             <div style={{ ...colWrap, order: narrow ? 2 : 1 }}>
@@ -2498,9 +2548,9 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
   }
 
   const modal = (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 12px", overflowY: "auto" }}>
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: narrow ? "10px 8px" : "4vh 12px", overflowY: "auto" }}>
       <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
-        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: "min(1320px, 96vw)", maxHeight: "94vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: narrow ? "100%" : "min(1320px, 96vw)", maxWidth: "100%", maxHeight: "94vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
         <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}@keyframes wm-pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes wm-glow{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}50%{box-shadow:0 0 9px 1px rgba(16,185,129,.32)}}"}</style>
         {/* Hidden file inputs live INSIDE the panel so a programmatic .click() can
             never bubble to the overlay backdrop and close the modal (owner only). */}
@@ -2514,9 +2564,9 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
         )}
 
         {/* Header */}
-        <div style={{ position: "sticky", top: 0, zIndex: 2, background: CARD, borderBottom: `1px solid ${BDR}`, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 2, background: CARD, borderBottom: `1px solid ${BDR}`, padding: narrow ? "13px 14px" : "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.01em" }}>🎚 {t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></div>
+            <div style={{ fontSize: narrow ? 15 : 17, fontWeight: 900, letterSpacing: "-0.01em" }}>🎚 {t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></div>
             <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.wmSubtitle}{readOnly && <span style={{ marginInlineStart: 8, fontSize: 10.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 7, padding: "1px 7px" }}>👁 {t.wmReadOnly}</span>}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -2531,7 +2581,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
           </div>
         </div>
 
-        <div style={{ padding: "18px 20px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ padding: narrow ? "14px 14px calc(22px + env(safe-area-inset-bottom))" : "18px 20px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
           {err && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12.5, fontWeight: 600, color: "#FCA5A5", background: "rgba(239,68,68,0.1)", border: `1px solid ${RED}44`, borderRadius: 10, padding: "9px 12px" }}>
               <span>⚠ {err}</span>
@@ -2564,7 +2614,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
               </div>
 
               {/* Material cards — Rough Mix / References / Stems / Documents */}
-              <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, alignItems: "start" }}>
+              <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, alignItems: "start" }}>
                 {renderCard("🎵", t.wmRough,      t.wmRoughSub,      t.wmUploadRough, "rough",     roughRef, rough)}
                 {renderCard("🎧", t.wmReferences, t.wmReferencesSub, t.wmUploadRef,   "reference", refRef,   references)}
                 {renderCard("📦", t.wmStems,      t.wmStemsSub,      t.wmUploadStems, "stems",     stemsRef, stems)}
@@ -2578,7 +2628,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
                   <span style={{ fontSize: 10.5, fontWeight: 800, color: BRAND, border: `1px solid ${BRAND}45`, background: `${BRAND}14`, borderRadius: 7, padding: "2px 9px", whiteSpace: "nowrap" }}>⏱ {t.wmSyncNote}</span>
                 </div>
                 <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 12 }}>{t.wmCompareHint}</div>
-                <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "1fr 1fr", gap: 14 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareRough}</div>
                     {roughAudio
@@ -2601,7 +2651,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
       {/* Delete confirm */}
       {delTarget && (
         <div onClick={e => { e.stopPropagation(); if (!deleting) setDelTarget(null); }} style={{ position: "fixed", inset: 0, zIndex: 200001, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-          <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()} style={{ background: "#161616", border: `1px solid ${BDR2}`, borderRadius: 16, padding: "22px 24px", width: 360, textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.9)" }}>
+          <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()} style={{ background: "#161616", border: `1px solid ${BDR2}`, borderRadius: 16, padding: "22px 24px", width: "min(360px, 100%)", boxSizing: "border-box", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.9)" }}>
             <div style={{ fontSize: 26, marginBottom: 8 }}>🗑</div>
             <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 6 }}>{t.wmDelTitle}</div>
             <div style={{ fontSize: 12.5, color: TEXT2, marginBottom: 18, lineHeight: 1.6 }}>{t.wmDelBody}</div>
