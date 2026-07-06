@@ -606,11 +606,12 @@ function Toast({ msg }: { msg: string | null }) {
 }
 
 function KpiCard({ label, value, icon, color = TEXT }: { label: string; value: string | number; icon: string; color?: string }) {
+  const narrow = useIsNarrow(760); // tighter cards on mobile — less empty space
   return (
-    <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: "18px 20px 16px", position: "relative", overflow: "hidden", minWidth: 0 }}>
-      <div style={{ position: "absolute", bottom: -10, insetInlineStart: -6, fontSize: 58, opacity: 0.05, lineHeight: 1, userSelect: "none", pointerEvents: "none" }}>{icon}</div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTED, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
-      <div style={{ fontSize: 32, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
+    <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: narrow ? "12px 15px 11px" : "18px 20px 16px", position: "relative", overflow: "hidden", minWidth: 0 }}>
+      <div style={{ position: "absolute", bottom: -10, insetInlineStart: -6, fontSize: narrow ? 44 : 58, opacity: 0.05, lineHeight: 1, userSelect: "none", pointerEvents: "none" }}>{icon}</div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTED, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: narrow ? 6 : 10 }}>{label}</div>
+      <div style={{ fontSize: narrow ? 26 : 32, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
     </div>
   );
 }
@@ -946,8 +947,8 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                       </span>
                     </div>
                     <div onClick={e => e.stopPropagation()} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <button onClick={() => setOpenMaterialsId(w.id)} style={{ fontSize: 12, fontWeight: 800, color: "#1A1A20", padding: "10px 8px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🎚 {t.wmButton}</button>
-                      <button onClick={() => setOpenId(w.id)} style={{ fontSize: 12, fontWeight: 700, color: "#F0B24A", padding: "10px 8px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.openJob}</button>
+                      <button onClick={() => setOpenMaterialsId(w.id)} style={{ fontSize: 12, fontWeight: 800, color: "#1A1A20", padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🎚 {t.wmButton}</button>
+                      <button onClick={() => setOpenId(w.id)} style={{ fontSize: 12, fontWeight: 700, color: "#F0B24A", padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.openJob}</button>
                     </div>
                   </div>
                 ))}
@@ -1689,7 +1690,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
         display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: `0 24px 90px rgba(0,0,0,0.9), 0 0 60px ${BRAND}10`, fontFamily: "'Heebo', Arial, sans-serif",
       }}>
         {/* Header — version title · Steven · last updated */}
-        <div style={{ padding: narrow ? "14px 16px 12px" : "18px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
+        <div style={{ padding: narrow ? "11px 14px 10px" : "18px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: 5 }}>{t.jobEyebrow}</div>
@@ -1699,12 +1700,12 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                 {primary && <span style={{ fontSize: 11.5, color: MUTED }}>{t.headerUpdated}: <span style={{ direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{fmtDateTime(primary.updatedAt)}</span></span>}
               </div>
             </div>
-            <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 18, cursor: "pointer", flexShrink: 0, lineHeight: 1 }}>×</button>
+            <button onClick={onClose} aria-label="Close" style={{ width: narrow ? 30 : 34, height: narrow ? 30 : 34, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
           </div>
         </div>
 
         {/* Body — 3-column workboard: versions/files (left) · players+comments (center) · details (right) */}
-        <div style={{ flex: 1, overflowY: "auto", padding: narrow ? "14px 14px calc(20px + env(safe-area-inset-bottom))" : "18px 22px" }}>
+        <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "thin", padding: narrow ? "14px 14px calc(20px + env(safe-area-inset-bottom))" : "18px 22px" }}>
           <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "300px minmax(0, 1fr) 320px", gap: 16, alignItems: "start" }}>
 
             {/* ═══ LEFT: versions · upload · project files · Dropbox ═══ */}
@@ -2550,7 +2551,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
   const modal = (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 200000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: narrow ? "10px 8px" : "4vh 12px", overflowY: "auto" }}>
       <div dir={rtl ? "rtl" : "ltr"} onClick={e => e.stopPropagation()}
-        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: narrow ? "100%" : "min(1320px, 96vw)", maxWidth: "100%", maxHeight: "94vh", overflowY: "auto", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
+        style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 20, width: narrow ? "100%" : "min(1320px, 96vw)", maxWidth: "100%", maxHeight: "94vh", overflowY: "auto", scrollbarWidth: "thin", boxShadow: "0 32px 80px rgba(0,0,0,0.85)", fontFamily: "'Heebo', Arial, sans-serif", color: TEXT }}>
         <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}@keyframes wm-pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes wm-glow{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}50%{box-shadow:0 0 9px 1px rgba(16,185,129,.32)}}"}</style>
         {/* Hidden file inputs live INSIDE the panel so a programmatic .click() can
             never bubble to the overlay backdrop and close the modal (owner only). */}
@@ -2577,7 +2578,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
             {/* Open Dropbox folder — exposes a raw project path → owner only. */}
             {!isSteven && <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>}
-            <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0, marginInlineStart: 2 }}>✕</button>
+            <button type="button" onClick={onClose} aria-label="Close" style={{ width: narrow ? 30 : 32, height: narrow ? 30 : 32, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", marginInlineStart: 2 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
           </div>
         </div>
 
@@ -2602,7 +2603,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
               <div style={{ ...sec, ...instrGlow }}>
                 <div style={secHead}><span>📝 {t.wmInstructions}</span></div>
                 <label style={lbl}>{t.wmNotes}</label>
-                <textarea value={instr} onChange={e => setInstr(e.target.value)} onFocus={() => setInstrFocus(true)} onBlur={() => setInstrFocus(false)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={6} dir="auto" style={{ ...inp, resize: "vertical", lineHeight: 1.6, minHeight: 140 }} />
+                <textarea value={instr} onChange={e => setInstr(e.target.value)} onFocus={() => setInstrFocus(true)} onBlur={() => setInstrFocus(false)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={narrow ? 8 : 6} dir="auto" style={{ ...inp, resize: "vertical", lineHeight: 1.6, minHeight: narrow ? 188 : 140 }} />
                 {!readOnly && (
                   <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
                     <button type="button" onClick={saveMeta} disabled={savingMeta}
