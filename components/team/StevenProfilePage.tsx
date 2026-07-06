@@ -605,13 +605,34 @@ function Toast({ msg }: { msg: string | null }) {
   );
 }
 
+// ── Clean line-icons (mobile polish — replace stock emoji on the Steven page).
+// Stroked, inherit currentColor, vertically centered for inline use in headers.
+function LineIcon({ paths, size = 15, fill = false }: { paths: string; size?: number; fill?: boolean }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke={fill ? "none" : "currentColor"} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden>
+      <path d={paths} />
+    </svg>
+  );
+}
+const SlidersIcon    = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M4 21v-6M4 11V3M12 21v-8M12 9V3M20 21v-4M20 13V3M1 15h6M9 9h6M17 17h6" />;
+const InfoIcon       = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.5v.5" />;
+const MusicIcon      = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M9 18V5l11-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zM20 16a3 3 0 11-6 0 3 3 0 016 0z" />;
+const FolderIcon     = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />;
+const FileIcon       = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5zM14 3v5h5M9 13h6M9 17h6" />;
+const HeadphonesIcon = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M4 14v-2a8 8 0 0116 0v2M4 14a2 2 0 012 2v2a2 2 0 01-2 2 2 2 0 01-2-2v-2a2 2 0 012-2zM20 14a2 2 0 00-2 2v2a2 2 0 002 2 2 2 0 002-2v-2a2 2 0 00-2-2z" />;
+const BoxIcon        = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8" />;
+const NoteIcon       = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M4 4h11l5 5v11a0 0 0 010 0H4a0 0 0 010 0V4zM8 11h8M8 15h5" />;
+const ScaleIcon      = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M12 3v18M6 21h12M12 5l-7 2 3 6a3 3 0 01-6 0l3-6M12 5l7 2-3 6a3 3 0 006 0l-3-6" />;
+const UploadIcon     = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 15V3M7 8l5-5 5 5" />;
+const ArrowUpRight   = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M7 17L17 7M8 7h9v9" />;
+
 function KpiCard({ label, value, icon, color = TEXT }: { label: string; value: string | number; icon: string; color?: string }) {
   const narrow = useIsNarrow(760); // tighter cards on mobile — less empty space
   return (
-    <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: narrow ? "12px 15px 11px" : "18px 20px 16px", position: "relative", overflow: "hidden", minWidth: 0 }}>
-      <div style={{ position: "absolute", bottom: -10, insetInlineStart: -6, fontSize: narrow ? 44 : 58, opacity: 0.05, lineHeight: 1, userSelect: "none", pointerEvents: "none" }}>{icon}</div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTED, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: narrow ? 6 : 10 }}>{label}</div>
-      <div style={{ fontSize: narrow ? 26 : 32, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
+    <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, padding: narrow ? "10px 14px 9px" : "18px 20px 16px", position: "relative", overflow: "hidden", minWidth: 0 }}>
+      <div style={{ position: "absolute", bottom: -10, insetInlineStart: -6, fontSize: narrow ? 38 : 58, opacity: 0.05, lineHeight: 1, userSelect: "none", pointerEvents: "none" }}>{icon}</div>
+      <div style={{ fontSize: narrow ? 9.5 : 10.5, fontWeight: 700, color: MUTED, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: narrow ? 4 : 10 }}>{label}</div>
+      <div style={{ fontSize: narrow ? 23 : 32, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1 }}>{value}</div>
     </div>
   );
 }
@@ -818,7 +839,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const paidWorks = [...works].filter(w => w.pay === "שולם").sort((a, b) => (b.paymentDate || "").localeCompare(a.paymentDate || ""));
 
   return (
-    <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: narrow ? "18px 16px calc(32px + env(safe-area-inset-bottom))" : "32px 28px 80px", boxSizing: "border-box" }}>
+    <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: narrow ? "16px 16px calc(76px + env(safe-area-inset-bottom))" : "32px 28px 80px", boxSizing: "border-box" }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
         {/* Back to the /team list — owner only; Steven has just this one page. */}
@@ -947,8 +968,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                       </span>
                     </div>
                     <div onClick={e => e.stopPropagation()} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <button onClick={() => setOpenMaterialsId(w.id)} style={{ fontSize: 12, fontWeight: 800, color: "#1A1A20", padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🎚 {t.wmButton}</button>
-                      <button onClick={() => setOpenId(w.id)} style={{ fontSize: 12, fontWeight: 700, color: "#F0B24A", padding: "8px 10px", borderRadius: 9, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.openJob}</button>
+                      {/* Dark outline (not a solid white button) so it belongs to the dark UI. */}
+                      <button onClick={() => setOpenMaterialsId(w.id)} style={{ fontSize: 11.5, fontWeight: 700, color: TEXT, padding: "7px 10px", borderRadius: 9, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.05)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}><SlidersIcon size={13} /> {t.wmButton}</button>
+                      <button onClick={() => setOpenId(w.id)} style={{ fontSize: 11.5, fontWeight: 700, color: "#F0B24A", padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.10)", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.openJob}</button>
                     </div>
                   </div>
                 ))}
@@ -1235,12 +1257,15 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
   function seekTo(sec: number) { const a = audioRef.current; if (!a || !dur) return; const s = Math.min(dur, Math.max(0, sec)); a.currentTime = s; setCur(s); }
   function seekAt(clientX: number) { const bar = barRef.current; if (!bar || !dur) return; const rect = bar.getBoundingClientRect(); const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)); seekTo(ratio * dur); }
 
-  const tBtn: React.CSSProperties = { width: compact ? 32 : 38, height: compact ? 32 : 38, borderRadius: "50%", flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" };
-  const waveH = compact ? 52 : 84;
-  const bigBtn = compact ? 46 : 58;
+  // Mobile forces a compact size regardless of the `compact` prop, so the
+  // primary/compare players don't render at desktop scale on a phone.
+  const tSize  = narrow ? 30 : (compact ? 32 : 38);
+  const tBtn: React.CSSProperties = { width: tSize, height: tSize, borderRadius: "50%", flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" };
+  const waveH = narrow ? 40 : (compact ? 52 : 84);
+  const bigBtn = narrow ? 40 : (compact ? 46 : 58);
 
   return (
-    <div style={{ padding: compact ? "12px 15px 14px" : "16px 18px 18px", background: CARD2, border: `1px solid ${BDR}`, borderInlineStart: `3px solid ${roleColor}`, borderRadius: 14 }}>
+    <div style={{ padding: narrow ? "10px 12px 11px" : (compact ? "12px 15px 14px" : "16px 18px 18px"), background: CARD2, border: `1px solid ${BDR}`, borderInlineStart: `3px solid ${roleColor}`, borderRadius: 14 }}>
       <audio
         ref={audioRef} src={url} preload="metadata"
         onLoadedMetadata={e => { setDur(e.currentTarget.duration || 0); setLoading(false); }}
@@ -1253,15 +1278,16 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
       />
 
       {/* Header: role chip · filename · status · download */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: compact ? 9 : 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 900, color: "#fff", padding: "3px 11px", borderRadius: 8, background: roleColor, whiteSpace: "nowrap", flexShrink: 0 }}>{roleLabel}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: narrow ? 8 : 10, marginBottom: narrow ? 6 : (compact ? 9 : 12) }}>
+        <span style={{ fontSize: narrow ? 10 : 11, fontWeight: 900, color: "#fff", padding: narrow ? "2px 9px" : "3px 11px", borderRadius: 8, background: roleColor, whiteSpace: "nowrap", flexShrink: 0 }}>{roleLabel}</span>
         <div title={title} style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{title}</div>
-        <span style={{ fontSize: 10.5, color: err ? RED : MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>{err ? t.vAudioError : loading ? t.vAudioLoading : ""}</span>
+        {/* Loading text is hidden on mobile so it never squeezes the title; errors still show. */}
+        {(err || !narrow) && <span style={{ fontSize: 10.5, color: err ? RED : MUTED, whiteSpace: "nowrap", flexShrink: 0 }}>{err ? t.vAudioError : loading ? t.vAudioLoading : ""}</span>}
         {onDownload && <button onClick={onDownload} title={t.vDownload} style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.6l3.3-3.3L16.7 12 12 16.7 7.3 12l1.4-1.7L12 13.6V3zM5 19h14v2H5z"/></svg></button>}
       </div>
 
       {/* Waveform + comment markers (LTR) */}
-      <div style={{ direction: "ltr", position: "relative", marginTop: 14 }}>
+      <div style={{ direction: "ltr", position: "relative", marginTop: narrow ? 6 : 14 }}>
         <div
           ref={barRef}
           onPointerDown={e => { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); setDragging(true); seekAt(e.clientX); }}
@@ -1336,7 +1362,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
       </div>
 
       {/* Transport: time · controls · volume */}
-      <div style={{ display: "flex", alignItems: "center", gap: narrow ? 8 : 12, marginTop: compact ? 10 : 16, direction: "ltr" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: narrow ? 8 : 12, marginTop: narrow ? 8 : (compact ? 10 : 16), direction: "ltr" }}>
         <span style={{ fontSize: 12, color: TEXT2, fontVariantNumeric: "tabular-nums", minWidth: narrow ? 0 : 92, whiteSpace: "nowrap", flexShrink: 0 }}>{fmtTime(cur)} <span style={{ color: MUTED }}>/ {fmtTime(dur)}</span></span>
 
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: narrow ? 8 : 12, minWidth: 0 }}>
@@ -1693,11 +1719,11 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
         <div style={{ padding: narrow ? "11px 14px 10px" : "18px 24px 16px", borderBottom: `1px solid ${BDR}`, flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: 5 }}>{t.jobEyebrow}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: narrow ? 2 : 5 }}>{t.jobEyebrow}</div>
               <div title={groupTitle} style={{ fontSize: narrow ? 19 : 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{groupTitle}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, flexWrap: "wrap" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800, color: TEXT2, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}>🎧 Steven</span>
-                {primary && <span style={{ fontSize: 11.5, color: MUTED }}>{t.headerUpdated}: <span style={{ direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{fmtDateTime(primary.updatedAt)}</span></span>}
+              <div style={{ display: "flex", alignItems: "center", gap: narrow ? 7 : 9, marginTop: narrow ? 6 : 10, flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 800, color: TEXT2, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}><HeadphonesIcon size={12} /> Steven</span>
+                {primary && <span style={{ fontSize: narrow ? 11 : 11.5, color: MUTED }}>{t.headerUpdated}: <span style={{ direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{fmtDateTime(primary.updatedAt)}</span></span>}
               </div>
             </div>
             <button onClick={onClose} aria-label="Close" style={{ width: narrow ? 30 : 34, height: narrow ? 30 : 34, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1713,7 +1739,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
               {/* Versions for project */}
               <div style={subCard}>
                 <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <span>🎵 {t.versionsForProject}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><MusicIcon /> {t.versionsForProject}</span>
                   {groups.length > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: MUTED }}>{groups.length}</span>}
                 </div>
                 {vLoadErr ? (
@@ -1755,7 +1781,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
               {/* Upload — new version (dropzone). Distinct amber accent so the
                   action area reads apart from the static info cards. */}
               <div style={{ ...subCard, border: "1px solid rgba(245,158,11,0.28)" }}>
-                <div style={innerHead}>⬆ {t.uploadFiles}</div>
+                <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon /> {t.uploadFiles}</span></div>
                 <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
                   <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("new", e.target.files)} />
                   <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
@@ -1767,7 +1793,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                     onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("new", e.dataTransfer.files); }}
                     style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "16px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? "#F59E0B" : "rgba(245,158,11,0.42)"}`, background: drag ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.05)", transition: "all .15s" }}
                   >
-                    <div style={{ fontSize: 22, opacity: 0.9, color: drag ? "#F59E0B" : "#D89A3A" }}>☁️</div>
+                    <div style={{ opacity: 0.9, color: drag ? "#F59E0B" : "#D89A3A", display: "flex", justifyContent: "center" }}><UploadIcon size={26} /></div>
                     <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.uploadNewVersionBtn}</div>
                     <div style={{ fontSize: 10, color: MUTED }}>{t.uploadHint}</div>
                   </div>
@@ -1779,7 +1805,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
 
               {/* Project files (files of the selected version) */}
               <div style={subCard}>
-                <div style={innerHead}>📁 {t.projectFiles}</div>
+                <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><FolderIcon /> {t.projectFiles}</span></div>
                 <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
                   {!selectedGroup ? (
                     <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "8px 0" }}>—</div>
@@ -1829,7 +1855,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
               <div style={subCard}>
                 <div style={{ padding: "13px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>🎵 {t.versionFiles}</div>
+                    <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><MusicIcon size={16} /> {t.versionFiles}</div>
                     <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
                   </div>
                   {selectedGroup && (
@@ -1908,7 +1934,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
             <div style={{ ...colWrap, order: 3 }}>
               {/* Version details */}
               <div style={subCard}>
-                <div style={innerHead}>ℹ {t.versionDetails}</div>
+                <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><InfoIcon /> {t.versionDetails}</span></div>
                 <div style={{ padding: "6px 16px 14px" }}>
                   {detailRow(t.vName, <span style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedGroup?.label ?? "—"}</span>)}
                   {detailRow(t.vCreator, <span style={{ fontSize: 12.5, fontWeight: 700, color: TEXT }}>{primary?.uploadedBy || "Steven"}</span>)}
@@ -2514,13 +2540,13 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
   // never remount / stop playing when the parent re-renders (e.g. while typing).
   const cardStyle: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 16, padding: "15px 15px 14px", display: "flex", flexDirection: "column", gap: 12, minWidth: 0 };
   const UPLOADING_LABEL: Record<string, string> = { rough: t.wmUploadingRough, reference: t.wmUploadingRef, stems: t.wmUploadingStems, doc: t.wmUploadingDoc };
-  function renderCard(icon: string, title: string, subtitle: string, uploadLabel: string, mt: string, inputRef: React.RefObject<HTMLInputElement | null>, list: WMMaterial[]) {
+  function renderCard(_icon: string, title: string, subtitle: string, uploadLabel: string, mt: string, inputRef: React.RefObject<HTMLInputElement | null>, list: WMMaterial[]) {
     const rows = rowsFor(list, mt);
     const busy = uploading === mt;   // this card is the one uploading
     return (
       <div style={cardStyle}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{icon} {title}</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}>{mt === "rough" ? <MusicIcon size={15} /> : mt === "reference" ? <HeadphonesIcon size={15} /> : mt === "stems" ? <BoxIcon size={15} /> : <FileIcon size={15} />} {title}</div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 3, lineHeight: 1.5 }}>{subtitle}</div>
         </div>
         {!readOnly && (
@@ -2567,14 +2593,14 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
         {/* Header */}
         <div style={{ position: "sticky", top: 0, zIndex: 2, background: CARD, borderBottom: `1px solid ${BDR}`, padding: narrow ? "13px 14px" : "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: narrow ? 15 : 17, fontWeight: 900, letterSpacing: "-0.01em" }}>🎚 {t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></div>
+            <div style={{ fontSize: narrow ? 15 : 17, fontWeight: 900, letterSpacing: "-0.01em", display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}><SlidersIcon size={17} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></span></div>
             <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.wmSubtitle}{readOnly && <span style={{ marginInlineStart: 8, fontSize: 10.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 7, padding: "1px 7px" }}>👁 {t.wmReadOnly}</span>}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <button type="button" onClick={onOpenWork}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
-              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)", color: "#F0B24A", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>↗ {t.wmOpenWork}</button>
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)", color: "#F0B24A", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s", display: "inline-flex", alignItems: "center", gap: 6 }}><ArrowUpRight size={14} /> {t.wmOpenWork}</button>
             {/* Open Dropbox folder — exposes a raw project path → owner only. */}
             {!isSteven && <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>}
@@ -2601,9 +2627,17 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
             <>
               {/* Instructions — free text only (no BPM/Key) */}
               <div style={{ ...sec, ...instrGlow }}>
-                <div style={secHead}><span>📝 {t.wmInstructions}</span></div>
+                <div style={secHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><NoteIcon /> {t.wmInstructions}</span></div>
                 <label style={lbl}>{t.wmNotes}</label>
-                <textarea value={instr} onChange={e => setInstr(e.target.value)} onFocus={() => setInstrFocus(true)} onBlur={() => setInstrFocus(false)} readOnly={readOnly} placeholder={t.wmNotesPh} rows={narrow ? 8 : 6} dir="auto" style={{ ...inp, resize: "vertical", lineHeight: 1.6, minHeight: narrow ? 188 : 140 }} />
+                {readOnly ? (
+                  /* Steven / read-only: a comfortable note that auto-grows to the
+                     text — never a choked, scrolling input. */
+                  <div dir="auto" style={{ ...inp, minHeight: 0, lineHeight: 1.7, whiteSpace: "pre-wrap", overflowWrap: "anywhere", cursor: "default", padding: "12px 14px" }}>
+                    {instr ? instr : <span style={{ color: MUTED }}>{t.wmNotesPh}</span>}
+                  </div>
+                ) : (
+                  <textarea value={instr} onChange={e => setInstr(e.target.value)} onFocus={() => setInstrFocus(true)} onBlur={() => setInstrFocus(false)} placeholder={t.wmNotesPh} rows={narrow ? 8 : 6} dir="auto" style={{ ...inp, resize: "vertical", lineHeight: 1.6, minHeight: narrow ? 188 : 140 }} />
+                )}
                 {!readOnly && (
                   <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
                     <button type="button" onClick={saveMeta} disabled={savingMeta}
@@ -2625,8 +2659,8 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
               {/* Quick compare — Rough vs Latest Mix (A/B by playback time) */}
               <div style={{ ...sec, border: `1px solid ${BRAND}40`, padding: "16px 18px" }}>
                 <div style={{ ...secHead, marginBottom: 4 }}>
-                  <span>⚖ {t.wmCompare}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: BRAND, border: `1px solid ${BRAND}45`, background: `${BRAND}14`, borderRadius: 7, padding: "2px 9px", whiteSpace: "nowrap" }}>⏱ {t.wmSyncNote}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><ScaleIcon /> {t.wmCompare}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: TEXT2, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.04)", borderRadius: 7, padding: "2px 9px", whiteSpace: "nowrap" }}>{t.wmSyncNote}</span>
                 </div>
                 <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 12 }}>{t.wmCompareHint}</div>
                 <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "1fr 1fr", gap: 14 }}>
