@@ -17,6 +17,7 @@ export interface PushSubscriptionRow {
   endpoint: string;
   p256dh: string;
   auth: string;
+  role: string | null; // "owner" | "steven" — the device's audience
 }
 
 // PushSubscription.toJSON() shape sent from the client
@@ -25,18 +26,23 @@ interface PushSubJSON {
   keys: { p256dh: string; auth: string };
 }
 
-export async function saveSubscription(sub: PushSubJSON) {
+/** Persist a subscription with the device's audience role ("owner" | "steven").
+ *  Upsert on endpoint so a re-subscribe refreshes keys AND role. */
+export async function saveSubscription(sub: PushSubJSON, role: string) {
   const { endpoint, keys } = sub;
   if (!keys?.p256dh || !keys?.auth) throw new Error("Invalid subscription keys");
 
   await supabase.from("push_subscriptions").upsert(
-    { endpoint, p256dh: keys.p256dh, auth: keys.auth },
+    { endpoint, p256dh: keys.p256dh, auth: keys.auth, role },
     { onConflict: "endpoint" },
   );
 }
 
-export async function getSubscriptions(): Promise<PushSubscriptionRow[]> {
-  const { data } = await supabase.from("push_subscriptions").select("*");
+/** All subscriptions, or only those whose role is in `roles` when provided. */
+export async function getSubscriptions(roles?: string[]): Promise<PushSubscriptionRow[]> {
+  let q = supabase.from("push_subscriptions").select("*");
+  if (roles && roles.length) q = q.in("role", roles);
+  const { data } = await q;
   return data ?? [];
 }
 
@@ -47,8 +53,8 @@ export interface PushPayload {
   tag?: string;
 }
 
-export async function sendPushToAll(payload: PushPayload) {
-  const subs = await getSubscriptions();
+/** Deliver a payload to a concrete set of subscriptions + prune dead endpoints. */
+async function deliver(subs: PushSubscriptionRow[], payload: PushPayload) {
   const results = await Promise.allSettled(
     subs.map((row) =>
       webpush.sendNotification(
@@ -76,4 +82,19 @@ export async function sendPushToAll(payload: PushPayload) {
   }
 
   return results;
+}
+
+/** Send only to devices whose role is in `roles` (e.g. ["owner","steven"]). */
+export async function sendPushToRoles(roles: string[], payload: PushPayload) {
+  return deliver(await getSubscriptions(roles), payload);
+}
+
+/**
+ * Owner devices only. Legacy name kept so existing callers (Steven activity,
+ * Victor uploads, agent alerts, cron, push/check) stay owner-scoped without
+ * edits — a Steven ("steven") device NEVER receives these internal notices.
+ * For explicit multi-audience sends use sendPushToRoles.
+ */
+export async function sendPushToAll(payload: PushPayload) {
+  return sendPushToRoles(["owner"], payload);
 }

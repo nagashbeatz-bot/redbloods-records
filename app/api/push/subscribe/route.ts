@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const sub = await req.json();
-    await saveSubscription(sub);
+    await saveSubscription(sub, "owner"); // this endpoint is owner-gated
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("push subscribe error:", e);
