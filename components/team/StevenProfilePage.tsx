@@ -762,6 +762,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const clientRole = useRole();
   const effectiveRole = clientRole ?? initialRole;
   const isSteven = effectiveRole === "steven";
+  // Positive owner gate — true ONLY for owner (never steven/victor/unknown/null),
+  // so owner-only actions don't rely on "not steven".
+  const isOwner = effectiveRole === "owner";
 
   // Language. Steven is ENGLISH-ONLY: the effective `lang` is forced to "en", the
   // toggle is hidden, and nothing is read from / written to localStorage. Owner/Victor
@@ -1212,7 +1215,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
       </div>
 
       {openWork && <WorkModal work={openWork} isSteven={isSteven} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
-      {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
+      {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} isOwner={isOwner} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
       <Toast msg={toast} />
@@ -2390,7 +2393,7 @@ function WMFileRow({ icon, name, meta, readOnly, onDownload, onDelete, t, rtl }:
   );
 }
 
-function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang, t }: { work: Work; isSteven: boolean; onClose: () => void; onOpenWork: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; onClose: () => void; onOpenWork: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const rtl = lang === "he";
   // Read-only when Steven is signed in (materials are owner-managed), or in the
   // owner's English "Steven view" preview.
@@ -2699,9 +2702,10 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)", color: "#F0B24A", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s", display: "inline-flex", alignItems: "center", gap: 6 }}><ArrowUpRight size={14} /> {t.wmOpenWork}</button>
-            {/* Send to Steven — general work action (owner only). UI only for now:
+            {/* Send to Steven — general work action, OWNER ONLY (positive gate:
+                effectiveRole==="owner", never "not steven"). UI only for now:
                 shows a placeholder toast; no Push / API / status / side effect. */}
-            {!isSteven && <button type="button" onClick={() => notify(t.wmSendSoon)}
+            {isOwner && <button type="button" onClick={() => notify(t.wmSendSoon)}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.20)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.70)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.10)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.45)"; }}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.45)", color: "#34D399", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>{t.wmSendToSteven}</button>}
