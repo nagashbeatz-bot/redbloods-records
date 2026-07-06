@@ -303,7 +303,7 @@ const TR = {
     confirmYes: "מחק", confirmNo: "ביטול", tDeleted: "העבודה נמחקה", priceSaved: "המחיר נשמר", priceInvalid: "מחיר לא תקין",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "חומרי עבודה", wmTitle: "חומרי עבודה", wmSubtitle: "מה ששלחנו ל-Steven כדי לעבוד", wmReadOnly: "תצוגת Steven — קריאה בלבד",
-    wmOpenWork: "פתח עבודה", wmOpenFolder: "📦 פתח תיקייה ב-Dropbox", wmFolderPending: "התיקייה תיווצר אחרי ההעלאה הראשונה", wmFolderFail: "לא ניתן לפתוח את תיקיית Dropbox",
+    wmOpenWork: "פתח עבודה", wmSendToSteven: "שלח ל-Steven", wmSendSoon: "שליחה ל-Steven תחובר בשלב הבא", wmOpenFolder: "📦 פתח תיקייה ב-Dropbox", wmFolderPending: "התיקייה תיווצר אחרי ההעלאה הראשונה", wmFolderFail: "לא ניתן לפתוח את תיקיית Dropbox",
     wmNoProject: "לעבודה זו אין פרויקט מקושר — חומרי עבודה זמינים רק לעבודה עם פרויקט.",
     wmLoadFail: "טעינת חומרי העבודה נכשלה",
     wmInstructions: "הוראות עבודה", wmBpm: "BPM", wmKey: "סולם / Key", wmNotes: "הערות חשובות למיקס",
@@ -359,7 +359,7 @@ const TR = {
     confirmYes: "Delete", confirmNo: "Cancel", tDeleted: "Job deleted", priceSaved: "Price saved", priceInvalid: "Invalid price",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "Work Materials", wmTitle: "Work Materials", wmSubtitle: "What we sent you to work with", wmReadOnly: "Read only",
-    wmOpenWork: "Open Work", wmOpenFolder: "📦 Open Dropbox Folder", wmFolderPending: "The folder is created after the first upload", wmFolderFail: "Couldn't open the Dropbox folder",
+    wmOpenWork: "Open Work", wmSendToSteven: "Send to Steven", wmSendSoon: "Sending to Steven will be wired up next", wmOpenFolder: "📦 Open Dropbox Folder", wmFolderPending: "The folder is created after the first upload", wmFolderFail: "Couldn't open the Dropbox folder",
     wmNoProject: "This job has no linked project — work materials require a project.",
     wmLoadFail: "Failed to load work materials",
     wmInstructions: "Work Instructions", wmBpm: "BPM", wmKey: "Key", wmNotes: "Important mix notes",
@@ -2694,11 +2694,17 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
             <div style={{ fontSize: narrow ? 15 : 17, fontWeight: 900, letterSpacing: "-0.01em", display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}><SlidersIcon size={17} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{t.wmTitle} <span style={{ color: MUTED, fontWeight: 700, fontSize: 13 }}>— {work.project}</span></span></div>
             <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>{t.wmSubtitle}{readOnly && <span style={{ marginInlineStart: 8, fontSize: 10.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 7, padding: "1px 7px" }}>👁 {t.wmReadOnly}</span>}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", rowGap: 8 }}>
             <button type="button" onClick={onOpenWork}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)", color: "#F0B24A", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s", display: "inline-flex", alignItems: "center", gap: 6 }}><ArrowUpRight size={14} /> {t.wmOpenWork}</button>
+            {/* Send to Steven — general work action (owner only). UI only for now:
+                shows a placeholder toast; no Push / API / status / side effect. */}
+            {!isSteven && <button type="button" onClick={() => notify(t.wmSendSoon)}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.20)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.70)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.10)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.45)"; }}
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.45)", color: "#34D399", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>{t.wmSendToSteven}</button>}
             {/* Open Dropbox folder — exposes a raw project path → owner only. */}
             {!isSteven && <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>}
