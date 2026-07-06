@@ -240,7 +240,9 @@ export default function MobileNav({
             }}
           >
             <span style={{ fontSize: 22, lineHeight: 1 }}>🚪</span>
-            {vt("common.signOut")}
+            {/* Steven works in English — mirror the Sidebar's "Logout"; Victor
+                keeps his own i18n label. (vt resolves to Hebrew for steven.) */}
+            {role === "steven" ? "Logout" : vt("common.signOut")}
           </button>
         )}
       </nav>
