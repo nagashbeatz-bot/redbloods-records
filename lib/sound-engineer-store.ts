@@ -33,6 +33,16 @@ function paymentStatusFromAmounts(agreed: number, paid: number): string {
   return "לא שולם";
 }
 
+/**
+ * The name Steven actually SEES for a work — mirrors the client mapRecord
+ * (`workTitle || projectName`). Steven-facing work title wins over the original
+ * project name; falls back to the project name, then "". Used for push text so
+ * a notification never shows a different name than the page.
+ */
+export function stevenDisplayName(w: Pick<SoundEngineerWork, "workTitle" | "projectName">): string {
+  return (w.workTitle ?? "").trim() || (w.projectName ?? "").trim();
+}
+
 function mapRow(
   row: Record<string, unknown>,
   projectMap: Map<string, { name: string; artist: string }>
@@ -426,7 +436,7 @@ export async function updateSoundEngineerWork(
       const { notifyStevenPaymentPaid } = await import("@/lib/steven-payment-notify");
       await notifyStevenPaymentPaid({
         id:          result.id,
-        projectName: result.projectName,
+        displayName: stevenDisplayName(result), // Steven-facing name, not the raw project name
         currency:    result.currency,
         agreedPrice: result.agreedPrice,
         paymentDate: result.paymentDate,

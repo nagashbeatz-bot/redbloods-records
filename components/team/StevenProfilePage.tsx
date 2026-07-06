@@ -303,7 +303,7 @@ const TR = {
     confirmYes: "מחק", confirmNo: "ביטול", tDeleted: "העבודה נמחקה", priceSaved: "המחיר נשמר", priceInvalid: "מחיר לא תקין",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "חומרי עבודה", wmTitle: "חומרי עבודה", wmSubtitle: "מה ששלחנו ל-Steven כדי לעבוד", wmReadOnly: "תצוגת Steven — קריאה בלבד",
-    wmOpenWork: "פתח עבודה", wmSendToSteven: "שלח ל-Steven", wmSendSoon: "שליחה ל-Steven תחובר בשלב הבא", wmOpenFolder: "📦 פתח תיקייה ב-Dropbox", wmFolderPending: "התיקייה תיווצר אחרי ההעלאה הראשונה", wmFolderFail: "לא ניתן לפתוח את תיקיית Dropbox",
+    wmOpenWork: "פתח עבודה", wmSendToSteven: "שלח ל-Steven", wmSending: "שולח…", wmSentToSteven: "נשלח ל-Steven", wmSendFail: "שליחה ל-Steven נכשלה", wmSendAgain: "כבר נשלח ל-Steven. לשלוח שוב?", wmOpenFolder: "📦 פתח תיקייה ב-Dropbox", wmFolderPending: "התיקייה תיווצר אחרי ההעלאה הראשונה", wmFolderFail: "לא ניתן לפתוח את תיקיית Dropbox",
     wmNoProject: "לעבודה זו אין פרויקט מקושר — חומרי עבודה זמינים רק לעבודה עם פרויקט.",
     wmLoadFail: "טעינת חומרי העבודה נכשלה",
     wmInstructions: "הוראות עבודה", wmBpm: "BPM", wmKey: "סולם / Key", wmNotes: "הערות חשובות למיקס",
@@ -359,7 +359,7 @@ const TR = {
     confirmYes: "Delete", confirmNo: "Cancel", tDeleted: "Job deleted", priceSaved: "Price saved", priceInvalid: "Invalid price",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "Work Materials", wmTitle: "Work Materials", wmSubtitle: "What we sent you to work with", wmReadOnly: "Read only",
-    wmOpenWork: "Open Work", wmSendToSteven: "Send to Steven", wmSendSoon: "Sending to Steven will be wired up next", wmOpenFolder: "📦 Open Dropbox Folder", wmFolderPending: "The folder is created after the first upload", wmFolderFail: "Couldn't open the Dropbox folder",
+    wmOpenWork: "Open Work", wmSendToSteven: "Send to Steven", wmSending: "Sending…", wmSentToSteven: "Sent to Steven", wmSendFail: "Failed to send to Steven", wmSendAgain: "Already sent to Steven. Send again?", wmOpenFolder: "📦 Open Dropbox Folder", wmFolderPending: "The folder is created after the first upload", wmFolderFail: "Couldn't open the Dropbox folder",
     wmNoProject: "This job has no linked project — work materials require a project.",
     wmLoadFail: "Failed to load work materials",
     wmInstructions: "Work Instructions", wmBpm: "BPM", wmKey: "Key", wmNotes: "Important mix notes",
@@ -2402,6 +2402,7 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
 
   const [data, setData]         = useState<WMData | null>(null); // null = loading
   const [loadErr, setLoadErr]   = useState(false);
+  const [sendingSteven, setSendingSteven] = useState(false); // "Send to Steven" push in flight
   const [instr, setInstr]       = useState("");
   const [instrFocus, setInstrFocus] = useState(false); // textarea focus → slightly stronger glow
   const [savingMeta, setSaving] = useState(false);
@@ -2472,6 +2473,30 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
       else setErr(d.error || t.wmMetaFail);
     } catch { setErr(t.wmMetaFail); }
     finally { setSaving(false); }
+  }
+
+  // "Send to Steven" → owner-only route builds the text + pushes to owner+steven.
+  // Manual click only; server dedups and asks to confirm a resend. No auto-fire.
+  async function sendToSteven() {
+    if (sendingSteven) return;
+    setSendingSteven(true);
+    try {
+      const base = `/api/sound-engineer/${work.id}/notify-mix-ready`;
+      let res = await fetch(base, { method: "POST" });
+      let d = await res.json().catch(() => ({} as { ok?: boolean; alreadySent?: boolean }));
+      if (res.ok && d.alreadySent) {
+        if (typeof window !== "undefined" && window.confirm(t.wmSendAgain)) {
+          res = await fetch(`${base}?resend=1`, { method: "POST" });
+          d = await res.json().catch(() => ({}));
+        } else { setSendingSteven(false); return; }
+      }
+      if (res.ok && d.ok) notify(t.wmSentToSteven);
+      else throw new Error();
+    } catch {
+      notify(t.wmSendFail);
+    } finally {
+      setSendingSteven(false);
+    }
   }
 
   // Dispatch by size: >1GB rejected; >140MB uses the chunked upload-session flow
@@ -2703,12 +2728,12 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.10)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)", color: "#F0B24A", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s", display: "inline-flex", alignItems: "center", gap: 6 }}><ArrowUpRight size={14} /> {t.wmOpenWork}</button>
             {/* Send to Steven — general work action, OWNER ONLY (positive gate:
-                effectiveRole==="owner", never "not steven"). UI only for now:
-                shows a placeholder toast; no Push / API / status / side effect. */}
-            {isOwner && <button type="button" onClick={() => notify(t.wmSendSoon)}
+                effectiveRole==="owner", never "not steven"). Manual push to
+                owner+steven via the owner-gated notify-mix-ready route. */}
+            {isOwner && <button type="button" onClick={sendToSteven} disabled={sendingSteven}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.20)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.70)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.10)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.45)"; }}
-              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.45)", color: "#34D399", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s" }}>{t.wmSendToSteven}</button>}
+              style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.45)", color: "#34D399", cursor: sendingSteven ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, border-color 0.15s", opacity: sendingSteven ? 0.7 : 1 }}>{sendingSteven ? t.wmSending : t.wmSendToSteven}</button>}
             {/* Open Dropbox folder — exposes a raw project path → owner only. */}
             {!isSteven && <button type="button" onClick={openInstrFolder} disabled={!instrFolderPath} title={instrFolderPath ? undefined : t.wmFolderPending}
               style={{ fontSize: 12, fontWeight: 800, padding: "7px 13px", borderRadius: 10, background: instrFolderPath ? "rgba(0,98,238,0.10)" : "rgba(255,255,255,0.03)", border: `1px solid ${instrFolderPath ? "rgba(0,98,238,0.28)" : BDR2}`, color: instrFolderPath ? "#4A9EFF" : MUTED, cursor: instrFolderPath ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t.wmOpenFolder}</button>}

@@ -29,7 +29,7 @@ const key = (workId: string) => `steven_payment_pushed_${workId}`;
 
 export async function notifyStevenPaymentPaid(work: {
   id: string;
-  projectName: string;
+  displayName: string; // the name Steven SEES (workTitle || projectName), not the raw project name
   currency: string;
   agreedPrice: number;
   paymentDate: string | null;
@@ -44,7 +44,7 @@ export async function notifyStevenPaymentPaid(work: {
     const prev = (data?.value as { paymentDate?: string } | null)?.paymentDate ?? null;
     if (prev === stamp) return;
 
-    const name = (work.projectName ?? "").trim() || "a project";
+    const name = (work.displayName ?? "").trim() || "a project";
     const body = work.agreedPrice > 0
       ? `${name} · ${work.currency}${work.agreedPrice} paid. Thank you for the work!`
       : `${name} · Paid. Thank you for the work!`;
