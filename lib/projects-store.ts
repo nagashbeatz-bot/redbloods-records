@@ -147,6 +147,7 @@ export async function updateProject(
     project_type:   string;
     parent_project: string;
     is_hidden:      boolean;
+    dropbox_folder: string | null;
     files:          { name: string; assetId?: number; url?: string }[];
   }>
 ): Promise<void> {

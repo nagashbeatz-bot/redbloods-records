@@ -626,6 +626,12 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const [copyFeedback,   setCopyFeedback]   = useState<"idle" | "copied" | "nolink">("idle");
   const uploadWrapRef  = useRef<HTMLDivElement>(null);
   const [uploadTitle,  setUploadTitle]  = useState("");
+  // Inline project-name editing. Renames projects.name ONLY — the Dropbox folder
+  // is frozen server-side (freeze-before-rename), so files never move.
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft,   setNameDraft]   = useState("");
+  const [savingName,  setSavingName]  = useState(false);
+  const [nameMsg,     setNameMsg]     = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -743,6 +749,27 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
 
   const project = projects.find(p => p.id === projectId);
   if (!mounted || !project) return null;
+
+  function startEditName() { if (!project) return; setNameDraft(project.name); setNameMsg(null); setEditingName(true); }
+  function cancelEditName() { setEditingName(false); setNameMsg(null); }
+  async function saveName() {
+    if (!project) return;
+    const trimmed = nameDraft.trim();
+    if (!trimmed) { setNameMsg({ ok: false, text: "שם הפרויקט לא יכול להיות ריק" }); return; }
+    if (trimmed === project.name) { setEditingName(false); return; }
+    setSavingName(true); setNameMsg(null);
+    try {
+      // "name" field → server freezes dropbox_folder before renaming (no folder move).
+      await updateProjectField(project.id, "name", trimmed);
+      setEditingName(false);
+      setNameMsg({ ok: true, text: "שם הפרויקט עודכן" });
+      setTimeout(() => setNameMsg(cur => (cur?.ok ? null : cur)), 2500);
+    } catch (e) {
+      setNameMsg({ ok: false, text: e instanceof Error ? e.message : "עדכון נכשל" });
+    } finally {
+      setSavingName(false);
+    }
+  }
 
   const isUploading    = uploadTitle.startsWith("מעלה");
   const uploadDone     = uploadTitle === "הועלה בהצלחה ✓";
@@ -906,14 +933,38 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               paddingTop: 6, paddingRight: 20,
             }}>
               {/* Name */}
-              <div style={{
-                fontSize: 48, fontWeight: 900, color: TEXT,
-                letterSpacing: -2, lineHeight: 1,
-                marginBottom: 12,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {project.name}
-              </div>
+              {editingName ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={e => setNameDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void saveName(); } else if (e.key === "Escape") cancelEditName(); }}
+                    dir="rtl"
+                    disabled={savingName}
+                    style={{ flex: 1, minWidth: 180, fontSize: isMobile ? 26 : 34, fontWeight: 900, color: TEXT, background: "rgba(255,255,255,0.06)", border: `1px solid ${accent}77`, borderRadius: 12, padding: "5px 12px", outline: "none", fontFamily: "inherit", letterSpacing: -1, boxSizing: "border-box" }}
+                  />
+                  <button onClick={() => void saveName()} disabled={savingName}
+                    style={{ fontSize: 13, fontWeight: 800, padding: "8px 16px", borderRadius: 10, border: "none", background: accent, color: "#fff", cursor: savingName ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", opacity: savingName ? 0.7 : 1 }}>{savingName ? "שומר…" : "שמור"}</button>
+                  <button onClick={cancelEditName} disabled={savingName}
+                    style={{ fontSize: 13, fontWeight: 700, padding: "8px 14px", borderRadius: 10, border: `1px solid ${BORDER2}`, background: "transparent", color: TEXT2, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>בטל</button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 48, fontWeight: 900, color: TEXT,
+                    letterSpacing: -2, lineHeight: 1,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+                  }}>
+                    {project.name}
+                  </div>
+                  <button onClick={startEditName} title="ערוך שם" aria-label="ערוך שם"
+                    style={{ flexShrink: 0, width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER2}`, color: TEXT2, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                  </button>
+                </div>
+              )}
+              {nameMsg && <div style={{ fontSize: 12, fontWeight: 700, color: nameMsg.ok ? "#34D399" : "#F87171", marginBottom: 10, marginTop: -2 }}>{nameMsg.text}</div>}
 
               {/* Type + artist */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>

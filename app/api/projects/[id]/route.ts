@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, updateProject, deleteProject } from "@/lib/projects-store";
+import { projectBaseFolder } from "@/lib/project-paths";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
 import { supabase } from "@/lib/supabase";
 import { listTasks, deleteTask } from "@/lib/tasks-store";
@@ -176,6 +177,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         patch.end_date = value === "הושלם" ? today : null;
       }
 
+      // Freeze-before-rename: a name change must NEVER relocate the Dropbox
+      // folder. If this project isn't frozen yet, freeze it to its CURRENT
+      // (pre-rename) canonical path first, in the same update. Never overwrite
+      // an existing dropbox_folder.
+      if (field === "name") {
+        const current = await getProject(id);
+        if (current && !((current.dropboxFolder ?? "").trim())) {
+          patch.dropbox_folder = projectBaseFolder(current.artist ?? "", current.name ?? "", id);
+        }
+      }
+
       await updateProject(id, patch);
 
       // Sync artist changes to clients table (fire-and-forget)
@@ -193,11 +205,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: "שם הפרויקט לא יכול להיות ריק" }, { status: 400 });
     }
 
-    // Capture old artist before update (only if artist field is changing)
+    // Capture old artist before update (only if artist field is changing).
+    // Also freeze-before-rename: if the name is changing and the project isn't
+    // frozen yet, freeze its CURRENT canonical Dropbox path first so the rename
+    // never relocates uploads. Never overwrite an existing dropbox_folder.
     let oldArtistFull = "";
-    if (artist !== undefined) {
+    let freezeFolder: string | null = null;
+    if (artist !== undefined || name !== undefined) {
       const current = await getProject(id);
       oldArtistFull = current?.artist ?? "";
+      if (name !== undefined && current && !((current.dropboxFolder ?? "").trim())) {
+        freezeFolder = projectBaseFolder(current.artist ?? "", current.name ?? "", id);
+      }
     }
 
     const today = new Date().toISOString().split("T")[0];
@@ -214,6 +233,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ...(projectType    !== undefined && { project_type:   projectType }),
       ...(parentProject  !== undefined && { parent_project: parentProject }),
       ...(isHidden       !== undefined && { is_hidden:      Boolean(isHidden) }),
+      ...(freezeFolder   !== null      && { dropbox_folder: freezeFolder }),
     });
 
     // Sync artist changes to clients table (fire-and-forget)
