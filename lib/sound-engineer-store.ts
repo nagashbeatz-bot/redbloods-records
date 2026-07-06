@@ -340,6 +340,12 @@ export async function updateSoundEngineerWork(
 
   const cur = current as Record<string, unknown>;
 
+  // Snapshot the pre-update "Paid" state so we can detect a real transition and
+  // push "Payment confirmed" only once (never on re-save / refresh / page load).
+  const curAgreed = Number(cur.agreed_price ?? 0);
+  const curPaid   = Number(cur.amount_paid  ?? 0);
+  const wasPaid   = curAgreed > 0 && curPaid >= curAgreed && !!(cur.payment_date);
+
   const dbUpdate: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -409,7 +415,28 @@ export async function updateSoundEngineerWork(
   }
 
   const projectMap = await buildProjectMap();
-  return mapRow(row, projectMap);
+  const result = mapRow(row, projectMap);
+
+  // ── "Payment confirmed" push (owner + Steven) on a REAL transition only ──
+  // Fires only when the work goes from non-Paid → Paid. Best-effort, never
+  // throws, localhost-guarded, deduped in settings. No other path is touched.
+  const nowPaid = result.agreedPrice > 0 && result.amountPaid >= result.agreedPrice && !!result.paymentDate;
+  if (!wasPaid && nowPaid) {
+    try {
+      const { notifyStevenPaymentPaid } = await import("@/lib/steven-payment-notify");
+      await notifyStevenPaymentPaid({
+        id:          result.id,
+        projectName: result.projectName,
+        currency:    result.currency,
+        agreedPrice: result.agreedPrice,
+        paymentDate: result.paymentDate,
+      });
+    } catch (e) {
+      console.error("[sound-engineer] payment notify failed (non-fatal):", e);
+    }
+  }
+
+  return result;
 }
 
 /**
