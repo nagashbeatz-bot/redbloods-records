@@ -839,7 +839,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const paidWorks = [...works].filter(w => w.pay === "שולם").sort((a, b) => (b.paymentDate || "").localeCompare(a.paymentDate || ""));
 
   return (
-    <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: narrow ? "16px 16px calc(76px + env(safe-area-inset-bottom))" : "32px 28px 80px", boxSizing: "border-box" }}>
+    <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: narrow ? "16px 16px calc(104px + env(safe-area-inset-bottom))" : "32px 28px 80px", boxSizing: "border-box" }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
         {/* Back to the /team list — owner only; Steven has just this one page. */}
@@ -1071,7 +1071,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                           <button onClick={() => setOpenMaterialsId(w.id)} title={t.wmTitle}
                             onMouseEnter={e => { e.currentTarget.style.background = "#E9E9EF"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)"; e.currentTarget.style.boxShadow = "0 0 10px rgba(255,255,255,0.18)"; }}
                             onMouseLeave={e => { e.currentTarget.style.background = "#D7D7DD"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)"; e.currentTarget.style.boxShadow = "none"; }}
-                            style={{ fontSize: 11, fontWeight: 800, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s, border-color 0.15s" }}>🎚 {t.wmButton}</button>
+                            style={{ fontSize: 11, fontWeight: 800, color: "#1A1A20", padding: "5px 13px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "#D7D7DD", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", transition: "background 0.15s, box-shadow 0.15s, border-color 0.15s", display: "inline-flex", alignItems: "center", gap: 6 }}><SlidersIcon size={13} /> {t.wmButton}</button>
                           {/* Open Job — dark w/ amber/gold border, sits on the LEFT (RTL second) */}
                           <button onClick={() => setOpenId(w.id)}
                             onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.20)"; e.currentTarget.style.borderColor = "rgba(245,158,11,0.70)"; }}
@@ -1135,10 +1135,10 @@ function useIsNarrow(max = 760): boolean {
 }
 
 // ── Empty "ready work area" (versions / player) — structured, not tiny text ──────
-function EmptyZone({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
+function EmptyZone({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
   return (
     <div style={{ margin: "14px 16px 16px", padding: "28px 20px", borderRadius: 14, border: `1.5px dashed ${BDR2}`, background: "rgba(255,255,255,0.015)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 9 }}>
-      <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${BRAND}12`, border: `1px solid ${BRAND}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{icon}</div>
+      <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${BRAND}12`, border: `1px solid ${BRAND}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: BRAND }}>{icon}</div>
       <div style={{ fontSize: 14, fontWeight: 800, color: TEXT2 }}>{title}</div>
       {subtitle && <div style={{ fontSize: 12, color: MUTED, maxWidth: 360, lineHeight: 1.65 }}>{subtitle}</div>}
     </div>
@@ -1813,7 +1813,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                     const dName = fileDisplayName(work.project, selectedGroup.label, f.role);
                     return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
-                      <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[f.role]}22`, color: ROLE_COLOR[f.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{isAudioName(f.fileName) ? "🎵" : "📦"}</span>
+                      <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[f.role]}22`, color: ROLE_COLOR[f.role], display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{isAudioName(f.fileName) ? <MusicIcon size={14} /> : <BoxIcon size={14} />}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div title={dName} style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{dName}</div>
                         <div style={{ fontSize: 9.5, color: MUTED, marginTop: 1 }}>{roleLabel(f.role, lang)}{f.fileSize ? ` · ${fmtBytes(f.fileSize)}` : ""}</div>
@@ -1834,12 +1834,12 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                 style={{ width: "100%", textAlign: rtl ? "right" : "left", display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 12, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.09)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor = BDR2; }}>
-                <span style={{ fontSize: 17, flexShrink: 0, opacity: 0.9 }}>🎚</span>
+                <span style={{ flexShrink: 0, opacity: 0.9, color: TEXT2, display: "inline-flex" }}><SlidersIcon size={18} /></span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: TEXT }}>{t.wmButton}</span>
                   <span style={{ display: "block", fontSize: 10.5, color: MUTED, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.wmMatSub}</span>
                 </span>
-                <span style={{ fontSize: 15, color: TEXT2, flexShrink: 0 }}>↗</span>
+                <span style={{ color: TEXT2, flexShrink: 0, display: "inline-flex" }}><ArrowUpRight size={16} /></span>
               </button>
 
               {/* Dropbox folder — exposes a raw project path → owner only (hidden from Steven). */}
@@ -1900,17 +1900,17 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                           />
                         ))}
                         {audioFiles.length === 0 && (
-                          <div style={{ padding: "20px 0" }}><EmptyZone icon="🎧" title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} /></div>
+                          <div style={{ padding: "20px 0" }}><EmptyZone icon={<HeadphonesIcon size={22} />} title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} /></div>
                         )}
                         {stemsCount > 0 && (
-                          <div style={{ fontSize: 11, color: MUTED, textAlign: "center", padding: "2px 0" }}>
-                            📦 {stemsCount} {lang === "en" ? "archive file(s) — see project files" : "קבצי ערוצים/ארכיון — ראה קבצי הפרויקט"}
+                          <div style={{ fontSize: 11, color: MUTED, textAlign: "center", padding: "2px 0", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%" }}>
+                            <BoxIcon size={13} /> {stemsCount} {lang === "en" ? "archive file(s) — see project files" : "קבצי ערוצים/ארכיון — ראה קבצי הפרויקט"}
                           </div>
                         )}
                       </>
                     );
                   })() : (
-                    <div style={{ padding: "26px 0" }}><EmptyZone icon="🎧" title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} /></div>
+                    <div style={{ padding: "26px 0" }}><EmptyZone icon={<HeadphonesIcon size={22} />} title={t.pNoVersionsTitle} subtitle={t.pNoVersionsSub} /></div>
                   )}
                 </div>
               </div>
@@ -1978,7 +1978,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
                   via Work Materials instead, so this box is hidden for him. */}
               {!isSteven && <div style={subCard}>
                 <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>🎚 {t.mixInstructions}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><SlidersIcon size={15} /> {t.mixInstructions}</div>
                 </div>
                 <div style={{ padding: "12px 16px" }}>
                   <NotesEditor value={work.notes} placeholder={t.mixInstructionsPh} saveLabel={t.saveInstructions} onSave={v => { onChange({ notes: v }); notify(t.instructionsSaved); }} />
@@ -2125,7 +2125,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
           <div onClick={() => { if (!uploading) { setRolePicker(null); setRpError(null); } }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${BRAND}44`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
               <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${BDR}` }}>
-                <div style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>🎚 {t.rpTitle}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><SlidersIcon size={16} /> {t.rpTitle}</div>
                 <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
                   {rolePicker.mode === "new" ? t.rpSubNew : `${t.rpSubExisting}: ${selectedGroup?.label ?? ""}`} · {t.rpHint}
                 </div>
@@ -2133,7 +2133,7 @@ function WorkModal({ work, isSteven, onChange, onDelete, onClose, onOpenMaterial
               <div style={{ padding: "14px 18px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
                 {rolePicker.items.map((it, idx) => (
                   <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 11, background: CARD2, border: `1px solid ${BDR}` }}>
-                    <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[it.role]}22`, color: ROLE_COLOR[it.role], display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{isAudioName(it.file.name) ? "🎵" : "📦"}</span>
+                    <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[it.role]}22`, color: ROLE_COLOR[it.role], display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{isAudioName(it.file.name) ? <MusicIcon size={14} /> : <BoxIcon size={14} />}</span>
                     <div title={it.file.name} style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{it.file.name}</div>
                     <select value={it.role} onChange={e => { const role = e.target.value as FileRole; setRpError(null); setRolePicker(p => p ? { ...p, items: p.items.map((x, i) => i === idx ? { ...x, role } : x) } : p); }}
                       style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, padding: "6px 8px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${ROLE_COLOR[it.role]}66`, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
@@ -2279,10 +2279,10 @@ function WMAudioRow({ name, meta, url, readOnly, onDownload, onDelete, t, rtl }:
 }
 
 // Compact non-audio row (stems/docs): icon + name + kebab (download / delete).
-function WMFileRow({ icon, name, meta, readOnly, onDownload, onDelete, t, rtl }: { icon: string; name: string; meta: string; readOnly: boolean; onDownload: () => void; onDelete: () => void; t: T; rtl: boolean }) {
+function WMFileRow({ icon, name, meta, readOnly, onDownload, onDelete, t, rtl }: { icon: React.ReactNode; name: string; meta: string; readOnly: boolean; onDownload: () => void; onDelete: () => void; t: T; rtl: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11 }}>
-      <span style={{ fontSize: 17, flexShrink: 0, width: 34, textAlign: "center" }}>{icon}</span>
+      <span style={{ flexShrink: 0, width: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", color: TEXT2 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div title={name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
         <div style={{ fontSize: 10.5, color: MUTED, marginTop: 1, direction: "ltr", textAlign: rtl ? "right" : "left" } as React.CSSProperties}>{meta}</div>
@@ -2531,7 +2531,7 @@ function WorkMaterialsModal({ work, isSteven, onClose, onOpenWork, notify, lang,
       const name = dispName(mt, i, list.length);
       return m.kind === "audio"
         ? <WMAudioRow key={m.dropboxPath} name={name} meta={metaStr(m)} url={m.url} readOnly={readOnly} onDownload={dl(m)} onDelete={() => setDelTarget(m)} t={t} rtl={rtl} />
-        : <WMFileRow key={m.dropboxPath} icon={m.kind === "archive" ? "📦" : "📄"} name={name} meta={metaStr(m)} readOnly={readOnly} onDownload={dl(m)} onDelete={() => setDelTarget(m)} t={t} rtl={rtl} />;
+        : <WMFileRow key={m.dropboxPath} icon={m.kind === "archive" ? <BoxIcon size={15} /> : <FileIcon size={15} />} name={name} meta={metaStr(m)} readOnly={readOnly} onDownload={dl(m)} onDelete={() => setDelTarget(m)} t={t} rtl={rtl} />;
     });
   }
 
