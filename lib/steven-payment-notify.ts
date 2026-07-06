@@ -46,11 +46,11 @@ export async function notifyStevenPaymentPaid(work: {
 
     const name = (work.projectName ?? "").trim() || "a project";
     const body = work.agreedPrice > 0
-      ? `A ${work.currency}${work.agreedPrice} payment for "${name}" has been marked as paid.`
-      : `Payment for "${name}" has been marked as paid.`;
+      ? `${name} · ${work.currency}${work.agreedPrice} paid. Thank you for the work!`
+      : `${name} · Paid. Thank you for the work!`;
 
     await sendPushToRoles(["owner", "steven"], {
-      title: "Payment confirmed",
+      title: "Payment sent",
       body,
       url: "/team/steven",
       // Shared tag → the browser/iOS collapses any rare duplicate into one.
