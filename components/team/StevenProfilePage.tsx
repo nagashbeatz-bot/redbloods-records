@@ -648,6 +648,101 @@ function isoDay(offset = 0): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// ── Steven push-notifications opt-in (English; Steven only; rendered by the
+//    parent behind an isSteven gate). Never requests permission on mount — only
+//    reads the current state; the browser prompt fires ONLY on the button tap. ──
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+function vapidToUint8(base64: string): ArrayBuffer {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr.buffer as ArrayBuffer;
+}
+type StevenPushState = "loading" | "unsupported" | "ios-needs-pwa" | "default" | "working" | "granted" | "denied";
+function StevenPushCard() {
+  const [state, setState] = useState<StevenPushState>("loading");
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    if (!supported) {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const standalone = window.matchMedia?.("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
+      setState(isIOS && !standalone ? "ios-needs-pwa" : "unsupported");
+      return;
+    }
+    // READ the current permission — this does NOT prompt.
+    if (Notification.permission === "denied") { setState("denied"); return; }
+    if (Notification.permission === "granted") {
+      navigator.serviceWorker.getRegistration()
+        .then(async (reg) => { const sub = reg ? await reg.pushManager.getSubscription() : null; setState(sub ? "granted" : "default"); })
+        .catch(() => setState("default"));
+      return;
+    }
+    setState("default");
+  }, []);
+
+  async function enable() {
+    setErr(null);
+    setState("working");
+    try {
+      const perm = await Notification.requestPermission(); // ← fires on tap only (user gesture)
+      if (perm !== "granted") { setState(perm === "denied" ? "denied" : "default"); return; }
+      await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      const sub = existing ?? await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidToUint8(VAPID_PUBLIC_KEY),
+      });
+      const res = await fetch("/api/supplier/steven/push-subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setState("granted");
+    } catch {
+      setErr("Couldn't enable notifications. Please try again.");
+      setState("default");
+    }
+  }
+
+  if (state === "loading") return null;
+
+  const actionable = state === "default" || state === "working";
+  let sub: string | null = null; let subColor = MUTED;
+  if (state === "granted")       { sub = "Notifications enabled"; subColor = GREEN; }
+  else if (state === "denied")   sub = "Notifications blocked. Enable them in your iPhone settings.";
+  else if (state === "ios-needs-pwa") sub = "Add this page to your Home Screen and open it from the icon to enable notifications.";
+  else if (state === "unsupported")   sub = "Notifications are not supported on this device.";
+  else if (actionable)           sub = "Get a push the moment a payment is confirmed.";
+
+  return (
+    <div style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 14, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+        <span style={{ color: TEXT2, display: "inline-flex", flexShrink: 0 }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>Notifications</div>
+          {sub && <div style={{ fontSize: 11.5, color: subColor, marginTop: 2, lineHeight: 1.5 }}>{sub}</div>}
+          {err && <div style={{ fontSize: 11.5, color: "#F87171", marginTop: 2 }}>{err}</div>}
+        </div>
+      </div>
+      {actionable && (
+        <button type="button" onClick={enable} disabled={state === "working"}
+          style={{ fontSize: 12.5, fontWeight: 800, padding: "8px 16px", borderRadius: 10, border: "none", background: BRAND, color: "#fff", cursor: state === "working" ? "wait" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0, opacity: state === "working" ? 0.7 : 1 }}>
+          {state === "working" ? "Enabling…" : "Enable notifications"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function StevenProfilePage({ initialLang = "he", initialRole = null }: { initialLang?: Lang; initialRole?: "owner" | "victor" | "steven" | null }) {
   const router = useRouter();
   const [works, setWorks]   = useState<Work[]>([]);
@@ -903,6 +998,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
             </div>
           </div>
         </div>
+
+        {/* Steven-only: enable iPhone/PWA push (user-gesture opt-in). Owner never sees this. */}
+        {isSteven && <StevenPushCard />}
 
         {/* ── KPI row (5 cards) ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
