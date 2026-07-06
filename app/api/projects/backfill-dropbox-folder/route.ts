@@ -3,6 +3,11 @@ import { requireOwner } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { projectBaseFolder } from "@/lib/project-paths";
 
+// Session-sensitive: must run per-request so requireOwner reads the live cookies.
+// Without this the static-path GET can be prerendered at build (cookies() throws,
+// getAuthUser swallows it → a cached 401), which is why owner wasn't recognized.
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/projects/backfill-dropbox-folder
  *
