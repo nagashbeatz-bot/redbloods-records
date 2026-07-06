@@ -20,6 +20,7 @@ interface DbProject {
   is_hidden:      boolean;
   files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number; size?: number }[];
   work_materials: WorkMaterialsMeta | null;
+  dropbox_folder: string | null; // frozen canonical Dropbox base folder (rename-proof)
   created_at:     string;
   updated_at:     string;
 }
@@ -55,6 +56,7 @@ function dbToProject(db: DbProject): Project {
     isHidden:      db.is_hidden ?? false,
     updatedAt:     db.updated_at ?? db.created_at ?? "",
     workMaterials: db.work_materials ?? {},
+    dropboxFolder: db.dropbox_folder ?? null,
   };
 }
 

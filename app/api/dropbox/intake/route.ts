@@ -261,11 +261,12 @@ export async function POST(req: NextRequest) {
       const items = (body.items as IntakeItem[]) ?? [];
       if (!projectId || items.length === 0) return NextResponse.json({ error: "חסר פרויקט או קבצים" }, { status: 400 });
 
-      const { data: proj } = await supabase.from("projects").select("name, artist").eq("id", projectId).single();
+      const { data: proj } = await supabase.from("projects").select("name, artist, dropbox_folder").eq("id", projectId).single();
       if (!proj) return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
-      // Canonical target — same place manual delivery uploads go:
+      // Canonical target — same place manual delivery uploads go. The frozen
+      // dropbox_folder wins so a rename never relocates the Delivery folder:
       // /Projects/{primaryArtist}/{projectName}/Delivery (+ /ערוצים for stems).
-      const target = deliveryFolder((proj as { artist: string }).artist, (proj as { name: string }).name, projectId);
+      const target = deliveryFolder((proj as { artist: string }).artist, (proj as { name: string }).name, projectId, (proj as { dropbox_folder: string | null }).dropbox_folder);
 
       await dbx(token, "files/create_folder_v2", { path: target, autorename: false }, pathRoot);
       // Pre-create any sub-folders (e.g. ערוצים). If it already exists, Dropbox

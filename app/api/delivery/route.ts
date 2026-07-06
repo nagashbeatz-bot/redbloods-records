@@ -140,7 +140,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "projectId and projectName required" }, { status: 400 });
   }
 
-  const folderPath = deliveryFolder(artist ?? "", projectName, projectId);
+  // Frozen folder (projects.dropbox_folder) wins so a rename never relocates the
+  // Delivery folder; falls back to the body's name only when not yet frozen.
+  const { getProject } = await import("@/lib/projects-store");
+  const frozen = (await getProject(projectId))?.dropboxFolder ?? null;
+  const folderPath = deliveryFolder(artist ?? "", projectName, projectId, frozen);
 
   try {
     await createDropboxFolder(token, folderPath);

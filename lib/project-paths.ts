@@ -15,11 +15,16 @@ export function primaryArtist(raw: string): string {
 
 /**
  * Canonical project folder: /Projects/{primaryArtist}/{projectName}.
- * Falls back to /Projects/ללא אמן/... when the artist is missing, and to a
- * projectId-based name when even the project name is empty (matches the
- * long-standing manual-upload behavior).
+ *
+ * `storedFolder` (projects.dropbox_folder) FREEZES the path: once a project has
+ * one, it is the base folder regardless of the current name — so renaming a
+ * project never moves/creates a Dropbox folder. When it's null/empty we fall
+ * back to the name-derived path (unchanged legacy behavior), and to a
+ * projectId-based name when even the project name is empty.
  */
-export function projectBaseFolder(artist: string, projectName: string, projectId: string): string {
+export function projectBaseFolder(artist: string, projectName: string, projectId: string, storedFolder?: string | null): string {
+  const frozen = (storedFolder ?? "").trim();
+  if (frozen) return frozen;
   const a = sanitizeFolder(primaryArtist(artist));
   const p = sanitizeFolder(projectName);
   if (a && p) return `/Projects/${a}/${p}`;
@@ -28,8 +33,8 @@ export function projectBaseFolder(artist: string, projectName: string, projectId
 }
 
 /** Delivery subfolder under the canonical project folder: …/Delivery */
-export function deliveryFolder(artist: string, projectName: string, projectId: string): string {
-  return `${projectBaseFolder(artist, projectName, projectId)}/Delivery`;
+export function deliveryFolder(artist: string, projectName: string, projectId: string, storedFolder?: string | null): string {
+  return `${projectBaseFolder(artist, projectName, projectId, storedFolder)}/Delivery`;
 }
 
 /**
@@ -37,8 +42,8 @@ export function deliveryFolder(artist: string, projectName: string, projectId: s
  * This is what Redbloods SENDS to the sound engineer (Rough Mix, References,
  * Stems, Instructions) — separate from …/Delivery and …/Mix Versions.
  */
-export function instructionsFolder(artist: string, projectName: string, projectId: string): string {
-  return `${projectBaseFolder(artist, projectName, projectId)}/Instructions`;
+export function instructionsFolder(artist: string, projectName: string, projectId: string, storedFolder?: string | null): string {
+  return `${projectBaseFolder(artist, projectName, projectId, storedFolder)}/Instructions`;
 }
 
 /**
@@ -53,9 +58,10 @@ export function mixVersionsFolder(opts: {
   artist?: string;
   projectName?: string;
   workId: string;
+  dropboxFolder?: string | null; // frozen project base folder (projects.dropbox_folder)
 }): string {
   if (opts.projectId) {
-    return `${projectBaseFolder(opts.artist ?? "", opts.projectName ?? "", opts.projectId)}/Mix Versions`;
+    return `${projectBaseFolder(opts.artist ?? "", opts.projectName ?? "", opts.projectId, opts.dropboxFolder)}/Mix Versions`;
   }
   return `/Sound Engineer/${opts.workId}/Mix Versions`;
 }

@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
     // existing files keep their stored dropboxPath. The file NAME is unchanged.
     const { getProject } = await import("@/lib/projects-store");
     const project       = await getProject(projectId);
-    let folderPath = projectBaseFolder(project?.artist ?? "", project?.name ?? "", projectId);
+    // Frozen folder (projects.dropbox_folder) wins → renaming never moves uploads.
+    let folderPath = projectBaseFolder(project?.artist ?? "", project?.name ?? "", projectId, project?.dropboxFolder);
 
     // Optional subfolder (e.g. "Delivery" or nested "Delivery/ערוצים") — new
     // uploads only; existing files are untouched. Each path segment is sanitized

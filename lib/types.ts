@@ -195,6 +195,10 @@ export interface Project {
   // Work-materials text metadata (BPM / Key / instructions) sent to the sound
   // engineer. Files live in `files` (category "חומרי עבודה"); this is the text only.
   workMaterials?: WorkMaterialsMeta;
+  // Frozen canonical Dropbox base folder (projects.dropbox_folder). When set,
+  // all writers use it instead of recomputing from the name → renaming a project
+  // never moves/creates a Dropbox folder. Null on projects not yet frozen.
+  dropboxFolder?: string | null;
 }
 
 /** Free-text work-materials metadata shown to Steven/Bill (stored in projects.work_materials jsonb). */

@@ -166,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       cleanName = ext ? `${numbered}.${ext}` : numbered;
     }
 
-    const folder = instructionsFolder(artist, projectName, project.id);
+    const folder = instructionsFolder(artist, projectName, project.id, project.dropboxFolder);
     const dropboxPath = `${folder}/${cleanName}`;
 
     // ── Upload to Dropbox (token stays server-side; no share link) ─────────────

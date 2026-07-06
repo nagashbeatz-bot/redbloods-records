@@ -67,11 +67,13 @@ export async function uploadMixVersionFile(
 
   const projectId = (work.project_id as string | null) ?? null;
   let artist = "", projectName = "";
+  let dropboxFolder: string | null = null; // frozen project base folder (rename-proof)
   if (projectId) {
     const { getProject } = await import("@/lib/projects-store");
     const project = await getProject(projectId);
     artist      = project?.artist ?? "";
     projectName = project?.name ?? "";
+    dropboxFolder = project?.dropboxFolder ?? null;
   }
 
   const versionId = crypto.randomUUID();
@@ -103,7 +105,7 @@ export async function uploadMixVersionFile(
     cleanFileName = ext ? `${numbered}.${ext}` : numbered;
   }
 
-  const folder      = mixVersionsFolder({ projectId, artist, projectName, workId });
+  const folder      = mixVersionsFolder({ projectId, artist, projectName, workId, dropboxFolder });
   const dropboxPath = `${folder}/${cleanFileName}`;
 
   // ── Upload to Dropbox (token server-side; no share link) ──────────────────

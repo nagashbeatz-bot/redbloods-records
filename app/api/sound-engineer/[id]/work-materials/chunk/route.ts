@@ -96,7 +96,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       let cleanName = ext ? `${base}.${ext}` : base;
       for (let n = 2; existingNames.has(cleanName); n++) { const numbered = `${base} ${n}`; cleanName = ext ? `${numbered}.${ext}` : numbered; }
 
-      const dropboxPath = `${instructionsFolder(artist, projectName, project.id)}/${cleanName}`;
+      const dropboxPath = `${instructionsFolder(artist, projectName, project.id, project.dropboxFolder)}/${cleanName}`;
 
       const res = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
         method: "POST",
