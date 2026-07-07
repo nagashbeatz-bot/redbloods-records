@@ -274,7 +274,7 @@ const TR = {
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
-    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", openMixFolder: "📦 פתח ב-Dropbox", vFolderPending: "התיקייה תיווצר אחרי העלאת גרסה ראשונה", vFolderOpenFail: "לא ניתן לפתוח את תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו", sendNotes: "שלח הערות", sendNotesSoon: "יחובר בהמשך",
+    mixVersions: "גרסאות למיקס", versionsEmptyTitle: "עדיין אין גרסאות מיקס", mixVersionsEmpty: "גרסאות המיקס (Mix 1, Mix 2...) יתווספו כאן בהמשך", openInDropbox: "📦 פתח תיקיית Dropbox", openMixFolder: "📦 פתח ב-Dropbox", vFolderPending: "התיקייה תיווצר אחרי העלאת גרסה ראשונה", vFolderOpenFail: "לא ניתן לפתוח את תיקיית Dropbox", noFilesLink: "אין עדיין תיקיית Dropbox מקושרת לעבודה זו", sendNotes: "שלח הערות", sendNotesSoon: "יחובר בהמשך", sendNotesSent: "ההערות נשלחו ל-Steven", sendNotesFail: "שליחת ההערות נכשלה",
     uploadVersion: "+ העלה גרסה / קובץ עבודה", phase2Tag: "פאזה 2", uploadComing: "העלאת גרסאות אמיתית ל-Dropbox תתווסף בפאזה הבאה",
     vLabelPh: "שם גרסה, למשל Mix 1", vChooseFile: "בחר קובץ", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "מעלה קובץ…", vUploaded: "הגרסה הועלתה", vUploadFailed: "העלאת הגרסה נכשלה", vDeleted: "הגרסה נמחקה", vLoadFailed: "טעינת הגרסאות נכשלה",
@@ -330,7 +330,7 @@ const TR = {
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
-    mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", openMixFolder: "📦 Open in Dropbox", vFolderPending: "The folder is created after the first version upload", vFolderOpenFail: "Couldn't open the Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet", sendNotes: "Send notes", sendNotesSoon: "Coming soon",
+    mixVersions: "Mix Versions", versionsEmptyTitle: "No mix versions yet", mixVersionsEmpty: "Mix versions (Mix 1, Mix 2...) will appear here", openInDropbox: "📦 Open Dropbox folder", openMixFolder: "📦 Open in Dropbox", vFolderPending: "The folder is created after the first version upload", vFolderOpenFail: "Couldn't open the Dropbox folder", noFilesLink: "No Dropbox folder linked to this job yet", sendNotes: "Send notes", sendNotesSoon: "Coming soon", sendNotesSent: "Notes sent to Steven", sendNotesFail: "Failed to send notes",
     uploadVersion: "+ Upload version / work file", phase2Tag: "Phase 2", uploadComing: "Real Dropbox version upload is coming in the next phase",
     vLabelPh: "Version name, e.g. Mix 1", vChooseFile: "Choose file", vFileHint: "WAV / MP3 / AIFF / M4A / FLAC / ZIP",
     vUploading: "Uploading…", vUploaded: "Version uploaded", vUploadFailed: "Version upload failed", vDeleted: "Version deleted", vLoadFailed: "Failed to load versions",
@@ -748,6 +748,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const [works, setWorks]   = useState<Work[]>([]);
   const [loading, setLoading] = useState(true); // initial page load only — never re-armed after create
   const [openId, setOpenId] = useState<string | null>(null);
+  const [focusNotesId, setFocusNotesId] = useState<string | null>(null); // deep-link → scroll modal to shared comments (one-shot)
   const [openMaterialsId, setOpenMaterialsId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [payModal, setPayModal] = useState<{ workId: string; project: string } | null>(null); // "שולם" → date modal
@@ -801,6 +802,35 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
     finally { setLoading(false); }
   }, [isSteven]);
   useEffect(() => { void reloadWorks(); }, [reloadWorks]);
+
+  // Deep link from a "New mix notes" push: /team/steven?work={id}&notes=1 opens
+  // that work's modal and (notes=1) scrolls it to the shared comments. Parsed
+  // ONCE on mount into a ref, then the query is stripped so a later refresh never
+  // re-opens. NO push is sent here — this is pure client navigation. A plain
+  // /team/steven visit (no ?work) is untouched.
+  const deepLinkRef = useRef<{ id: string; notes: boolean } | null>(null);
+  const [deepLinkReady, setDeepLinkReady] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") { setDeepLinkReady(true); return; }
+    const sp = new URLSearchParams(window.location.search);
+    const wid = sp.get("work");
+    if (wid) {
+      deepLinkRef.current = { id: wid, notes: sp.get("notes") === "1" };
+      router.replace("/team/steven"); // clean URL → refresh won't reopen
+    }
+    setDeepLinkReady(true);
+  }, [router]);
+  // Apply the pending deep link once the works list has loaded (consume once).
+  useEffect(() => {
+    if (!deepLinkReady) return;
+    const dl = deepLinkRef.current;
+    if (!dl || !works.length) return;
+    if (works.some(w => w.id === dl.id)) {
+      setOpenId(dl.id);
+      if (dl.notes) setFocusNotesId(dl.id);
+    }
+    deepLinkRef.current = null;
+  }, [works, deepLinkReady]);
 
   // Presence beacon — fire once when Steven lands on his page. The SERVER decides
   // whether to actually push (login dedupe + 30-min visit cooldown), so a refresh
@@ -1214,7 +1244,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => setOpenId(null)} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
+      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} isOwner={isOwner} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
@@ -1492,7 +1522,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
 });
 
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
-function WorkModal({ work, isSteven, isOwner, onChange, onDelete, onClose, onOpenMaterials, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDelete, onClose, onOpenMaterials, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
   // Endpoint base by role: steven → sanitized supplier surface; owner → internal.
@@ -1521,6 +1551,35 @@ function WorkModal({ work, isSteven, isOwner, onChange, onDelete, onClose, onOpe
   // ── Timestamp comments for the selected version ──────────────────────────────
   const [comments, setComments]   = useState<MixComment[] | null>(null); // null = loading
   const [cLoadErr, setCLoadErr]   = useState(false);
+  // Deep-link (?notes=1): scroll to the shared-comments block ONCE, after the
+  // comments have loaded. No highlight / glow / animation.
+  const notesRef = useRef<HTMLDivElement>(null);
+  const notesScrolledRef = useRef(false);
+  useEffect(() => {
+    if (!focusNotes || comments === null || notesScrolledRef.current) return;
+    notesScrolledRef.current = true;
+    notesRef.current?.scrollIntoView({ block: "start" });
+  }, [focusNotes, comments]);
+
+  // "Send notes" → owner-only route builds the text SERVER-SIDE and pushes an
+  // IDENTICAL "New mix notes" notification to owner + Steven. Manual click ONLY
+  // (never on load / refresh / comment-add). No dedup: repeatable by design; the
+  // in-flight guard just blocks a double-tap.
+  const [sendingNotes, setSendingNotes] = useState(false);
+  async function sendNotes() {
+    if (sendingNotes) return;
+    setSendingNotes(true);
+    try {
+      const res = await fetch(`/api/sound-engineer/${work.id}/notify-notes`, { method: "POST" });
+      const d = await res.json().catch(() => ({} as { ok?: boolean }));
+      if (res.ok && d.ok) notify(t.sendNotesSent);
+      else throw new Error();
+    } catch {
+      notify(t.sendNotesFail);
+    } finally {
+      setSendingNotes(false);
+    }
+  }
   const [adding, setAdding]       = useState(false);
   const [addTs, setAddTs]         = useState(0);
   const [newText, setNewText]     = useState("");
@@ -1961,15 +2020,15 @@ function WorkModal({ work, isSteven, isOwner, onChange, onDelete, onClose, onOpe
                 {t.openMixFolder}
               </button>}
 
-              {/* Send notes — OWNER ONLY (positive isOwner). UI placeholder for
-                  now: no Push / API / status; will send review notes to Steven
-                  later. Same size/width as the Dropbox button, purple to signal a
-                  different action. */}
-              {isOwner && <button type="button" onClick={() => notify(t.sendNotesSoon)}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(168,85,247,0.20)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.60)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "rgba(168,85,247,0.10)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.35)"; }}
-                style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "10px 12px", borderRadius: 12, marginTop: 8, fontFamily: "inherit", background: "rgba(168,85,247,0.10)", border: "1px solid rgba(168,85,247,0.35)", color: "#C084FC", cursor: "pointer", transition: "background 0.15s, border-color 0.15s" }}>
-                {t.sendNotes}
+              {/* Send notes — OWNER ONLY (positive isOwner). Manual click fires an
+                  identical "New mix notes" push to owner + Steven via the
+                  owner-gated notify-notes route. NEVER auto-fires. Same size/width
+                  as the Dropbox button, purple to signal a different action. */}
+              {isOwner && <button type="button" onClick={sendNotes} disabled={sendingNotes}
+                onMouseEnter={e => { if (sendingNotes) return; e.currentTarget.style.background = "rgba(168,85,247,0.20)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.60)"; }}
+                onMouseLeave={e => { if (sendingNotes) return; e.currentTarget.style.background = "rgba(168,85,247,0.10)"; e.currentTarget.style.borderColor = "rgba(168,85,247,0.35)"; }}
+                style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 700, padding: "10px 12px", borderRadius: 12, marginTop: 8, fontFamily: "inherit", background: "rgba(168,85,247,0.10)", border: "1px solid rgba(168,85,247,0.35)", color: "#C084FC", cursor: sendingNotes ? "wait" : "pointer", opacity: sendingNotes ? 0.7 : 1, transition: "background 0.15s, border-color 0.15s" }}>
+                {sendingNotes ? t.wmSending : t.sendNotes}
               </button>}
             </div>
 
@@ -2114,7 +2173,7 @@ function WorkModal({ work, isSteven, isOwner, onChange, onDelete, onClose, onOpe
 
           {/* ═══ FULL-WIDTH: unified shared comments for the version — below the 3-column grid ═══ */}
           {selectedGroup && (
-            <div style={{ ...subCard, marginTop: 16 }}>
+            <div ref={notesRef} style={{ ...subCard, marginTop: 16 }}>
               <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
                 <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {t.sharedComments}</div>
                 <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
