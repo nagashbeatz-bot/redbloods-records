@@ -1763,6 +1763,18 @@ function WorkModal({ work, isSteven, isOwner, onChange, onDelete, onClose, onOpe
   // A comment's logical role, or null = legacy/shared (כללי).
   const roleOfComment = (c: MixComment): FileRole | null =>
     (c.role === "mix" || c.role === "acapella" || c.role === "instrumental" || c.role === "stems") ? c.role : null;
+  // Shared-list display order (RENDER ONLY — never mutates content/timestamps/DB):
+  // fixed file-type order Mix → Instrumental → Acapella (→ stems → legacy/null),
+  // then within a group by song timestamp, then created_at. Numbering is rebuilt
+  // from this sorted order.
+  const COMMENT_ROLE_RANK: Record<string, number> = { mix: 0, instrumental: 1, acapella: 2, stems: 3 };
+  const commentSort = (a: MixComment, b: MixComment): number => {
+    const ra = COMMENT_ROLE_RANK[roleOfComment(a) ?? ""] ?? 4;
+    const rb = COMMENT_ROLE_RANK[roleOfComment(b) ?? ""] ?? 4;
+    if (ra !== rb) return ra - rb;
+    if (a.timestampSeconds !== b.timestampSeconds) return a.timestampSeconds - b.timestampSeconds;
+    return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+  };
   // Bottom-list playback: the player matching the comment's role, else the primary player.
   const playerForComment = (c: MixComment): VersionPlayerHandle | null => {
     const r = roleOfComment(c);
@@ -2143,7 +2155,7 @@ function WorkModal({ work, isSteven, isOwner, onChange, onDelete, onClose, onOpe
                   !adding && !rolePick && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 360, overflowY: "auto" }}>
-                    {comments.map((c, i) => {
+                    {[...comments].sort(commentSort).map((c, i) => {
                       const cr = roleOfComment(c);
                       const col = cr ? ROLE_COLOR[cr] : MUTED;
                       const isEditing = editingId === c.id;
