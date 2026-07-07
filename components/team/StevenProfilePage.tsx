@@ -310,8 +310,8 @@ const TR = {
     wmNotesPh: "דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג, מה חשוב…", wmSaveMeta: "שמור הוראות", wmMetaSaved: "ההוראות נשמרו", wmMetaFail: "השמירה נכשלה",
     wmRough: "Rough Mix", wmReferences: "רפרנסים", wmStems: "ערוצים וקבצי עבודה", wmDocs: "מסמכים",
     wmRoughSub: "העלאת מיקס גס לעבודה", wmReferencesSub: "רפרנסי אודיו או קישורים חיצוניים", wmStemsSub: "ערוצי Stems או קבוצות ערוצים", wmDocsSub: "קבצי טקסט, מילים, הערות ועוד",
-    wmCompare: "השוואה מהירה", wmCompareRough: "Rough Mix (המקורי ששלחנו)", wmCompareLatest: "Latest Mix (הגרסה האחרונה של Steven)",
-    wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה", wmSyncNote: "השוואה לפי זמן ניגון",
+    wmCompare: "השוואה מהירה", wmCompareRough: "Rough Mix (המקורי ששלחנו)", wmCompareLatest: "Latest Mix (הגרסה האחרונה של Steven)", wmCompareReference: "Reference (שהועלה)",
+    wmCompareHint: "לחיצה על Play בשני הנגנים תשמיע כל אחד בנפרד.", wmNoLatest: "אין עדיין גרסת מיקס מ-Steven להשוואה", wmNoReference: "אין עדיין reference שהועלה", wmSyncNote: "השוואה לפי זמן ניגון",
     wmUploadRough: "+ העלה Rough Mix", wmUploadRef: "+ הוסף רפרנס", wmUploadStems: "+ העלה Stems", wmUploadDoc: "+ הוסף מסמך",
     wmUploadingRough: "מעלה Rough Mix…", wmUploadingRef: "מעלה רפרנס…", wmUploadingStems: "מעלה Stems…", wmUploadingDoc: "מעלה מסמך…",
     wmUpProgress: "מעלה קובץ…", wmUpSaving: "שומר ל-Dropbox…", wmTooLarge: "הקובץ גדול מדי. המגבלה להעלאה דרך המערכת היא 1GB. העלה ישירות ל-Dropbox.",
@@ -366,8 +366,8 @@ const TR = {
     wmNotesPh: "Vocal/chorus focus, streaming-ready master, what matters…", wmSaveMeta: "Save instructions", wmMetaSaved: "Instructions saved", wmMetaFail: "Save failed",
     wmRough: "Rough Mix", wmReferences: "References", wmStems: "Stems & Work Files", wmDocs: "Documents",
     wmRoughSub: "The rough mix to work from", wmReferencesSub: "Audio references or external links", wmStemsSub: "Stem files or channel bundles", wmDocsSub: "Text files, lyrics, notes and more",
-    wmCompare: "Quick compare", wmCompareRough: "Rough Mix (what we sent)", wmCompareLatest: "Latest Mix (Steven's latest)",
-    wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare", wmSyncNote: "A/B by playback time",
+    wmCompare: "Quick compare", wmCompareRough: "Rough Mix (what we sent)", wmCompareLatest: "Latest Mix (Steven's latest)", wmCompareReference: "Reference (uploaded)",
+    wmCompareHint: "Press Play on either player — one plays at a time.", wmNoLatest: "No mix from Steven yet to compare", wmNoReference: "No reference uploaded yet", wmSyncNote: "A/B by playback time",
     wmUploadRough: "+ Upload Rough Mix", wmUploadRef: "+ Add reference", wmUploadStems: "+ Upload Stems", wmUploadDoc: "+ Add document",
     wmUploadingRough: "Uploading Rough Mix…", wmUploadingRef: "Uploading reference…", wmUploadingStems: "Uploading Stems…", wmUploadingDoc: "Uploading document…",
     wmUpProgress: "Uploading file…", wmUpSaving: "Saving to Dropbox…", wmTooLarge: "File too large. The in-app upload limit is 1GB. Upload it directly to Dropbox.",
@@ -2428,6 +2428,7 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
   const cmpTimeRef   = useRef(0);
   const cmpRoughRef  = useRef<VersionPlayerHandle | null>(null);
   const cmpLatestRef = useRef<VersionPlayerHandle | null>(null);
+  const cmpRefRef    = useRef<VersionPlayerHandle | null>(null);
   function syncTo(ref: React.MutableRefObject<VersionPlayerHandle | null>) {
     const api = ref.current;
     if (!api) return;
@@ -2638,6 +2639,11 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
   const stems      = materials.filter(m => m.materialType === "stems");
   const docs       = materials.filter(m => m.materialType === "doc");
   const roughAudio = rough.find(m => m.kind === "audio") ?? null;
+  // The uploaded reference for the compare strip: the first audio reference
+  // (same single-select approach as roughAudio — no carousel). refIdx keeps the
+  // "Reference N" numbering aligned with the References card.
+  const refAudio   = references.find(m => m.kind === "audio") ?? null;
+  const refIdx     = refAudio ? references.indexOf(refAudio) : 0;
 
   // Instructions folder path — derived from any material's dropboxPath parent (the
   // folder only exists once at least one file was uploaded). Same client-only
@@ -2809,6 +2815,15 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
                       ? <VersionPlayer ref={cmpLatestRef} url={data.latestMix.url} title={`${work.project} ${data.latestMix.label}`.trim()} roleLabel="Latest Mix" roleColor={ROLE_C.latest} shouldPlay={0} comments={[]} onDownload={() => window.open(data.latestMix!.url, "_blank", "noopener,noreferrer")} onPlayStart={() => syncTo(cmpLatestRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
                       : emptyLine(t.wmNoLatest)}
                   </div>
+                </div>
+                {/* Reference — one WIDE player on its own row below the A/B pair.
+                    Same design/behavior; shows the uploaded reference or a clean
+                    empty state. minWidth:0 keeps it responsive on mobile. */}
+                <div style={{ marginTop: 14, minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2, marginBottom: 8 }}>{t.wmCompareReference}</div>
+                  {refAudio
+                    ? <VersionPlayer ref={cmpRefRef} url={refAudio.url} title={dispName("reference", refIdx, references.length)} roleLabel={t.wmReferences} roleColor={ROLE_C.reference} shouldPlay={0} comments={[]} onDownload={dl(refAudio)} onPlayStart={() => syncTo(cmpRefRef)} onTime={sec => { cmpTimeRef.current = sec; }} t={t} />
+                    : emptyLine(t.wmNoReference)}
                 </div>
               </div>
             </>
