@@ -7,6 +7,7 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { type ClientRole } from "@/lib/use-role";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import { useVictorT } from "@/lib/victor-i18n";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 
 const BRAND   = "#DC2626";
 const SUB     = "#A0A0A0";
@@ -153,7 +154,7 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   }, []);
 
   useEffect(() => {
-    if (role !== "owner") return; // alerts are owner-only
+    if (role !== "owner" || !MAI_AI_ENABLED) return; // alerts owner-only; skipped while AI is disabled
     fetch("/api/agent/alerts?status=new&count=1")
       .then((r) => r.json())
       .then((d) => setUnreadAlerts(d.count ?? 0))

@@ -15,6 +15,7 @@ import SensitiveValue from "@/components/ui/SensitiveValue";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import Link from "next/link";
 import TasksAttentionModal from "@/components/dashboard/TasksAttentionModal";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -607,6 +608,7 @@ export default function DashboardDesignPreview() {
   }, []);
 
   useEffect(() => {
+    if (!MAI_AI_ENABLED) return; // agent disabled → no auto alerts fetch (tasks-attention still shows)
     fetch("/api/agent/alerts?status=new&limit=50")
       .then(r => r.json())
       .then(d => setAlerts(Array.isArray(d.alerts) ? d.alerts : []))

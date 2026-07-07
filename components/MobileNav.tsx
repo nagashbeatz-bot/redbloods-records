@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import { useVictorT } from "@/lib/victor-i18n";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 
 const MOBILE_TABS = [
   { href: "/dashboard",      label: "דשבורד",   icon: "⬡", iconColor: "#38BDF8" },
@@ -91,19 +92,21 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
               </Link>
             );
           })}
-          <button
-            onClick={() => { onClose(); onOpenChat?.(); }}
-            style={{
-              display: "flex", alignItems: "center", gap: 12,
-              padding: "14px 16px", borderRadius: 14,
-              background: "#1A1A1A", border: "1px solid #252525",
-              color: "#A855F7", fontSize: 15, fontWeight: 600,
-              cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <span style={{ fontSize: 20 }}>✦</span>
-            סוכן AI
-          </button>
+          {MAI_AI_ENABLED && (
+            <button
+              onClick={() => { onClose(); onOpenChat?.(); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "14px 16px", borderRadius: 14,
+                background: "#1A1A1A", border: "1px solid #252525",
+                color: "#A855F7", fontSize: 15, fontWeight: 600,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <span style={{ fontSize: 20 }}>✦</span>
+              סוכן AI
+            </button>
+          )}
 
           {/* Logout — full width at the bottom (user area) */}
           <button
@@ -161,7 +164,7 @@ export default function MobileNav({
         : [];
 
   useEffect(() => {
-    if (role !== "owner") return; // alerts are owner-only — no fetch for Victor
+    if (role !== "owner" || !MAI_AI_ENABLED) return; // owner-only; skipped while AI is disabled
     fetch("/api/agent/alerts?status=new&count=1")
       .then((r) => r.json())
       .then((d) => setUnreadAlerts(d.count ?? 0))

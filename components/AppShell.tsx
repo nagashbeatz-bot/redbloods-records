@@ -17,6 +17,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import PushManager from "@/components/PushManager";
 import QuickActionsModal from "@/components/quick-actions/QuickActionsModal";
 import { useRole } from "@/lib/use-role";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 
 const CHAT_WIDTH    = 320; // px — agent chat panel
 const SIDEBAR_WIDTH = 248; // px — desktop sidebar
@@ -70,6 +71,7 @@ export default function AppShell({ children, topRight }: { children: React.React
 
   useEffect(() => {
     const handler = (e: Event) => {
+      if (!MAI_AI_ENABLED) return; // AI disabled → never open the chat
       const prompt = (e as CustomEvent<string>).detail;
       if (!prompt) return;
       setChatOpen(true);
@@ -172,7 +174,7 @@ export default function AppShell({ children, topRight }: { children: React.React
                   variant="desktop"
                 />
               ) : <div />}
-              {topRight ?? (isOwner ? (
+              {topRight ?? (isOwner && MAI_AI_ENABLED ? (
                 <button
                   onClick={() => setChatOpen(!chatOpen)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
@@ -232,7 +234,7 @@ export default function AppShell({ children, topRight }: { children: React.React
                 pointerEvents: chatOpen ? "auto" : "none",
               }}
             >
-              {chatOpen && (
+              {MAI_AI_ENABLED && chatOpen && (
                 <ChatPanel
                   projects={projects}
                   onClose={() => setChatOpen(false)}
@@ -259,7 +261,7 @@ export default function AppShell({ children, topRight }: { children: React.React
       {/* ── Overlays & floating elements ── */}
 
       {/* Mobile: full-screen chat */}
-      {chatOpen && (
+      {MAI_AI_ENABLED && chatOpen && (
         <div
           className="md:hidden"
           style={{ position: "fixed", inset: 0, zIndex: 50, background: "#0D0D0D" }}
