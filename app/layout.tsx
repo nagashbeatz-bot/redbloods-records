@@ -35,7 +35,8 @@ export default function RootLayout({
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#0D0D0D" />
-        <link rel="apple-touch-icon" href="/apple-icon.png" />
+        {/* Favicon + apple-touch-icon come from app/icon.png & app/apple-icon.png
+            (Next file conventions) — the new Redbloods logo. */}
       </head>
       <body className="min-h-screen" suppressHydrationWarning>
         {/* Set --app-height synchronously before first paint so the layout
