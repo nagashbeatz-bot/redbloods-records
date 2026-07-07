@@ -2221,7 +2221,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       return (
                         <div key={c.id}
                           onMouseEnter={() => setHoverCommentId(c.id)} onMouseLeave={() => setHoverCommentId(cur => (cur === c.id ? null : cur))}
-                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", borderRadius: 11, background: hoverCommentId === c.id ? `${col}14` : CARD, border: `1px solid ${hoverCommentId === c.id ? col : BDR}`, boxShadow: hoverCommentId === c.id ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : "none", transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
+                          style={{ display: "flex", alignItems: "center", flexWrap: narrow ? "wrap" : "nowrap", rowGap: narrow ? 7 : undefined, gap: 10, padding: "11px 13px", borderRadius: 11, background: hoverCommentId === c.id ? `${col}14` : CARD, border: `1px solid ${hoverCommentId === c.id ? col : BDR}`, boxShadow: hoverCommentId === c.id ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : "none", transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
                           <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
                           <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds)} title={t.vPlay}
                             style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
@@ -2234,10 +2234,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                             <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
                               onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
                               onBlur={() => saveEditComment(c)}
-                              style={{ flex: 1, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                              style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
                           ) : (
                             <div onClick={() => playerForComment(c)?.seek(c.timestampSeconds)} title={c.commentText}
-                              style={{ flex: 1, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.commentText}</div>
+                              style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: narrow ? "visible" : "hidden", textOverflow: narrow ? "clip" : "ellipsis", whiteSpace: narrow ? "normal" : "nowrap", wordBreak: narrow ? "break-word" : undefined, lineHeight: narrow ? 1.45 : undefined }}>{c.commentText}</div>
                           )}
                           <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
                           {/* edit + delete — owner only; Steven's comments are view-only. */}
