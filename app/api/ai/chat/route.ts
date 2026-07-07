@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { chatWithAgent } from "@/lib/ai-router";
 import { buildAgentContext } from "@/lib/agent/context-builder";
 import { requireOwner } from "@/lib/require-auth";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 
 export async function POST(req: NextRequest) {
+  // Kill-switch — before auth, DB, or any LLM call. No side effects.
+  if (!MAI_AI_ENABLED) return NextResponse.json({ disabled: true }, { status: 503 });
   const unauth = await requireOwner(); if (unauth) return unauth;
   try {
     const { messages, projects, currentPage, selectedProjectId, selectedClientId } =

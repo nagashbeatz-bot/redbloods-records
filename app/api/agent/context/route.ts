@@ -5,8 +5,11 @@
  */
 import { NextResponse } from "next/server";
 import { buildSnapshot, formatSnapshotAsText } from "@/lib/agent/snapshot";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 
 export async function GET() {
+  // Kill-switch — no AI context snapshot while the agent is disabled.
+  if (!MAI_AI_ENABLED) return NextResponse.json({ disabled: true }, { status: 503 });
   try {
     const snapshot = await buildSnapshot();
     const text     = formatSnapshotAsText(snapshot);

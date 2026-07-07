@@ -5,6 +5,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { listProjects } from "@/lib/projects-store";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { GeneratedReport } from "./types";
 
 // ── Hebrew date utils ─────────────────────────────────────────────────────────
@@ -214,8 +215,8 @@ async function getWeeklyRecommendations(data: WeeklyData): Promise<string[]> {
 
   const prompt = `אתה מנהל תפעול של סטודיו מוזיקה "Redbloods Records". סיכום שבועי:\n${ctx}\n\nתן בדיוק 3 המלצות עדיפות לשבוע הבא. כל המלצה: משפט אחד, עברית, קצר ומעשי. החזר JSON בלבד: {"recommendations": ["...", "...", "..."]}`;
 
-  // OpenAI primary
-  if (process.env.OPENAI_API_KEY) {
+  // OpenAI primary — skipped entirely while the agent/AI is disabled.
+  if (MAI_AI_ENABLED && process.env.OPENAI_API_KEY) {
     try {
       const { openAIJSON, resolveModel } = await import("@/lib/providers/openai");
       const model = resolveModel("default");
@@ -234,8 +235,8 @@ async function getWeeklyRecommendations(data: WeeklyData): Promise<string[]> {
     } catch { /* fallthrough to Groq */ }
   }
 
-  // Groq fallback (optional)
-  if (process.env.GROQ_API_KEY) {
+  // Groq fallback (optional) — skipped entirely while the agent/AI is disabled.
+  if (MAI_AI_ENABLED && process.env.GROQ_API_KEY) {
     try {
       const OpenAI = (await import("openai")).default;
       const client = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });

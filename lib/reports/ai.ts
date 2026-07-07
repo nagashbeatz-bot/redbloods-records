@@ -4,6 +4,7 @@
  * SERVER ONLY.
  */
 import "server-only";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { ReportData, ReportType } from "./types";
 
 export async function getRecommendations(
@@ -97,8 +98,8 @@ ${contextLines.join("\n")}
 אל תחזור על מה שכתבת כבר בדוח. התמקד בצעד הבא הכי חשוב.
 החזר JSON בלבד: {"recommendations": ["...", "...", "..."]}`;
 
-  // Try OpenAI (primary)
-  if (process.env.OPENAI_API_KEY) {
+  // Try OpenAI (primary) — skipped entirely while the agent/AI is disabled.
+  if (MAI_AI_ENABLED && process.env.OPENAI_API_KEY) {
     try {
       const { openAIJSON, resolveModel } = await import("@/lib/providers/openai");
       const model = resolveModel("default");
@@ -120,8 +121,8 @@ ${contextLines.join("\n")}
     }
   }
 
-  // Groq fallback (optional — only if GROQ_API_KEY set)
-  if (process.env.GROQ_API_KEY) {
+  // Groq fallback (optional) — skipped entirely while the agent/AI is disabled.
+  if (MAI_AI_ENABLED && process.env.GROQ_API_KEY) {
     try {
       const OpenAI = (await import("openai")).default;
       const client = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });

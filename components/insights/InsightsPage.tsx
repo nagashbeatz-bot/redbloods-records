@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { Project, AgentAlert, AlertStatus } from "@/lib/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -651,8 +652,10 @@ export default function InsightsPage() {
     }).catch(() => setLoaded(true));
   }, []);
 
-  // Fetch agent alerts separately
+  // Fetch agent alerts separately — skipped entirely while the agent is disabled
+  // (no fetch, no stale alerts shown).
   useEffect(() => {
+    if (!MAI_AI_ENABLED) { setAgentAlertsLoaded(true); return; }
     fetch("/api/agent/alerts?status=new&limit=20")
       .then((r) => r.json())
       .then((data) => {
@@ -914,8 +917,12 @@ export default function InsightsPage() {
         <div style={{ color: "#444", fontSize: 13, padding: "60px", textAlign: "center" }}>טוען נתונים...</div>
       ) : (
         <>
-          {/* 🤖 התראות סוכן */}
-          {(agentAlertsLoaded || agentAlerts.length > 0) && (
+          {/* 🤖 התראות סוכן — hidden while Mai AI is disabled; show a calm off state */}
+          {!MAI_AI_ENABLED ? (
+            <div style={{ background: "#181818", border: "1px solid #252525", borderRadius: 16, padding: "18px 18px", marginBottom: 24, textAlign: "center" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#555" }}>🤖 התובנות החכמות כבויות כרגע</div>
+            </div>
+          ) : (agentAlertsLoaded || agentAlerts.length > 0) && (
             <div style={{ background: "#181818", border: "1px solid #252525", borderRadius: 16, padding: "16px 18px", marginBottom: 24 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: agentAlerts.length > 0 ? 12 : 0 }}>
                 <button

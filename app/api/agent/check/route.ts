@@ -29,6 +29,7 @@ import {
 import { createAlertIfNotCoolingDown } from "@/lib/agent/alerts-store";
 import { sendAlertsAsNotifications } from "@/lib/agent/notifications";
 import { getGoalsProgress } from "@/lib/agent/goals";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { AgentAlert, AlertInput } from "@/lib/types";
 
 const supabase = createClient(
@@ -40,6 +41,12 @@ const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"])
 const DONE_PROJECT_STATUSES = new Set(["הושלם", "בהשהייה"]);
 
 export async function GET(req: NextRequest) {
+  // ── Kill-switch — FIRST, before the secret check, DB, alerts, or push ──────
+  // An externally-triggered runner: when the agent is disabled it must return
+  // immediately without scanning, creating/updating agent_alerts, pushing, or
+  // triggering any report.
+  if (!MAI_AI_ENABLED) return NextResponse.json({ ok: true, disabled: true });
+
   // ── Auth ──────────────────────────────────────────────────────────────────
   const secret = req.nextUrl.searchParams.get("secret");
   if (!secret || secret !== process.env.CRON_SECRET) {

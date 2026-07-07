@@ -5,12 +5,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAlerts, createAlertIfNotCoolingDown, getUnreadCount } from "@/lib/agent/alerts-store";
 import { requireOwner } from "@/lib/require-auth";
+import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import type { AlertSeverity, AlertStatus } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
+  const params  = req.nextUrl.searchParams;
+  const countOnlyEarly = params.get("count") === "1";
+  // Kill-switch — return an empty result in the existing shape WITHOUT touching
+  // the DB, so no stale alerts are ever exposed while the agent is disabled.
+  if (!MAI_AI_ENABLED) return NextResponse.json(countOnlyEarly ? { count: 0 } : { alerts: [] });
+
   // Owner-only — agent alerts are the owner's and must not reach Victor.
   const denied = await requireOwner(); if (denied) return denied;
-  const params  = req.nextUrl.searchParams;
   const status  = params.get("status")  as AlertStatus | null;
   const countOnly = params.get("count") === "1";
   const limit   = parseInt(params.get("limit") ?? "50");
@@ -30,6 +36,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Kill-switch — no manual alert creation while the agent is disabled.
+  if (!MAI_AI_ENABLED) return NextResponse.json({ disabled: true }, { status: 503 });
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json();
