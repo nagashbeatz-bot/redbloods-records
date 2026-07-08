@@ -135,7 +135,7 @@ const LIBRARY: LibTrack[] = [
 // Shorter labels for the compact mobile KPI strip.
 const KPI_SHORT: Record<string, string> = { "סה״כ שירים": "שירים", "עם אודיו": "אודיו" };
 
-const TABS = ["בית", "המוזיקה שלי", "ההופעות שלי", "מאזן", "ביטים פנויים", "לו״ז ועדכונים"] as const;
+const TABS = ["בית", "המוזיקה שלי", "ההופעות שלי", "מאזן", "ביטים פנויים", "לו״ז ועדכונים", "קבצי הופעות ויח״צ"] as const;
 type Tab = (typeof TABS)[number];
 
 // ── Small shared building blocks ─────────────────────────────────────────────────
@@ -393,6 +393,8 @@ export default function ArtistPortalPage() {
           <PortalHero title="ההופעות שלי" subtitle="כל ההופעות הקרובות וההופעות שבוצעו במקום אחד" />
         ) : tab === "מאזן" ? (
           <PortalHero title="מאזן" subtitle="הכנסות, הוצאות והיסטוריית תשלומים" />
+        ) : tab === "קבצי הופעות ויח״צ" ? (
+          <PortalHero title="קבצי הופעות ויח״צ" subtitle="כל חומרי ההופעות והיח״צ שלך במקום אחד" />
         ) : (
           <PortalHero title={tab} subtitle="האזור הזה יוצג בקרוב" />
         )}
@@ -403,6 +405,7 @@ export default function ArtistPortalPage() {
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
             : tab === "מאזן" ? <BalancePage summary={summary} loadState={summaryState} />
+            : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage />
             : <ComingSoon tab={tab} />}
         </div>
       </div>
@@ -473,6 +476,134 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
     <div style={{ ...panel, padding: "56px 24px", textAlign: "center" }}>
       <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>🚧</div>
       <div style={{ fontSize: 14, color: TEXT2 }}>האזור הזה עדיין בבנייה — יעודכן בקרוב</div>
+    </div>
+  );
+}
+
+// ── קבצי הופעות ויח״צ (press & shows materials tab) — UI per the approved concept.
+// Two areas only: (1) a simple "חומרי יח״צ" card built around a single "פתח
+// תיקייה" action — NO file list, NO quick links, NO "what's missing"; (2) a
+// "חומרים להופעות" playlist with the SAME look/feel as "המוזיקה שלי" but WITHOUT
+// a status column, inside an inner-scroll container so it clearly holds a large
+// set of songs. Data is temporary demo (UI only — no source wired yet); the open
+// -folder + play actions are placeholders (a subtle toast), no invented feature.
+type ShowTrack = { name: string; artists: string; dur: string };
+const SHOW_MATERIALS: ShowTrack[] = [
+  { name: "פרצוף",          artists: "שליו טסמה",       dur: "3:12" },
+  { name: "פשע",            artists: "שליו טסמה",       dur: "3:28" },
+  { name: "פפארצי",         artists: "שליו טסמה, נאגש", dur: "2:52" },
+  { name: "תל אביב",        artists: "שליו טסמה",       dur: "3:05" },
+  { name: "דאנסהול פארטי",  artists: "שליו טסמה, נאגש", dur: "2:58" },
+  { name: "יהלום",          artists: "שליו טסמה",       dur: "3:21" },
+  { name: "מיאמור",         artists: "שליו טסמה, נאגש", dur: "2:39" },
+  { name: "אפריקן ליידי",   artists: "שליו טסמה",       dur: "3:47" },
+  { name: "מלכה",           artists: "שליו טסמה",       dur: "3:02" },
+  { name: "לילה בעיר",      artists: "שליו טסמה, נאגש", dur: "3:15" },
+  { name: "גלים",           artists: "שליו טסמה",       dur: "2:44" },
+  { name: "אש",             artists: "שליו טסמה",       dur: "3:33" },
+  { name: "חלום",           artists: "שליו טסמה",       dur: "2:51" },
+  { name: "דרך חדשה",       artists: "שליו טסמה, נאגש", dur: "3:19" },
+];
+
+function PressAndShowsPage() {
+  const isMobile = useIsMobile();
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Playlist grid — SAME feel as "המוזיקה שלי" MINUS the status column, with the
+  // play button as the trailing action (RTL → leftmost) per the approved concept
+  // + the requested column order: שם השיר · אמן / משתתפים · משך · play (no header).
+  const cols = "minmax(0, 1.9fr) minmax(0, 1.2fr) 72px 52px";
+  const heads: { label: string; align: "start" | "center" }[] = [
+    { label: "שם השיר",       align: "start"  },
+    { label: "אמן / משתתפים", align: "start"  },
+    { label: "משך",           align: "center" },
+    { label: "",              align: "center" }, // play column (no header)
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* ── חומרי יח״צ — simple card, one central "פתח תיקייה" action ── */}
+      <div style={panel}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16, padding: isMobile ? "18px 18px" : "22px 24px" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+              <span style={{ fontSize: isMobile ? 16 : 17.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>חומרי יח״צ</span>
+            </div>
+            <p style={{ fontSize: 13, color: TEXT2, margin: "8px 0 0", lineHeight: 1.6, maxWidth: 460 }}>תמונות יח״צ, לוגו, ביוגרפיה וחומרים לשליחה</p>
+          </div>
+          <button onClick={() => setToast("התיקייה תחובר בקרוב")} style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, flexShrink: 0,
+            width: isMobile ? "100%" : "auto",
+            padding: isMobile ? "12px 16px" : "11px 18px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+            background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}66`, color: "#FF6B6B",
+            fontSize: 13.5, fontWeight: 800, whiteSpace: "nowrap", boxShadow: `0 0 16px rgba(220,38,38,0.16)`,
+          }}>
+            <Svg size={17} color="#FF6B6B" fill="none"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6a1 1 0 0 1-.7-.3l-1.4-1.4a1 1 0 0 0-.7-.3H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
+            פתח תיקייה
+          </button>
+        </div>
+      </div>
+
+      {/* ── חומרים להופעות — playlist (music-tab feel, no status), inner-scroll ── */}
+      <div style={panel}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 18px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+          <span style={{ fontSize: 16, color: "#FF6B6B", lineHeight: 1 }}>♫</span>
+          <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>חומרים להופעות</span>
+        </div>
+
+        {/* desktop column header (mobile uses cards) */}
+        {!isMobile && (
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
+            {heads.map((h, i) => (
+              <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
+            ))}
+          </div>
+        )}
+
+        {/* rows — INNER SCROLL container so it clearly supports many songs */}
+        <div style={{ maxHeight: isMobile ? 360 : 430, overflowY: "auto", padding: isMobile ? "2px 0 6px" : "6px 0 8px" }}>
+          {SHOW_MATERIALS.map((t, i) => (
+            isMobile ? (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artists}</div>
+                </div>
+                <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.dur}</span>
+                <PlayButton size={42} onClick={() => setToast("הנגן יחובר בקרוב")} />
+              </div>
+            ) : (
+              <div key={i} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                <div style={{ minWidth: 0, textAlign: "start" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                </div>
+                <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artists}</div>
+                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <PlayButton size={42} onClick={() => setToast("הנגן יחובר בקרוב")} />
+                </div>
+              </div>
+            )
+          ))}
+        </div>
+      </div>
+
+      {toast && typeof document !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 100040,
+          background: "#1A1C22", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 13, fontWeight: 700,
+          padding: "11px 20px", borderRadius: 12, boxShadow: "0 8px 30px rgba(0,0,0,0.6)", fontFamily: "'Heebo', Arial, sans-serif", maxWidth: "90vw", textAlign: "center",
+        }}>{toast}</div>,
+        document.body
+      )}
     </div>
   );
 }
