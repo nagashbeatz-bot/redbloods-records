@@ -514,15 +514,14 @@ function PressAndShowsPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Playlist grid — SAME feel as "המוזיקה שלי" MINUS the status column, with the
-  // play button as the trailing action (RTL → leftmost) per the approved concept
-  // + the requested column order: שם השיר · אמן / משתתפים · משך · play (no header).
-  const cols = "minmax(0, 1.9fr) minmax(0, 1.2fr) 72px 52px";
+  // Playlist grid — SAME as "המוזיקה שלי" MINUS the status column: play (RTL →
+  // rightmost, fixed) · שם השיר (wide) · אמן / משתתפים · משך (left).
+  const cols = "52px minmax(0, 1.9fr) minmax(0, 1.2fr) 72px";
   const heads: { label: string; align: "start" | "center" }[] = [
+    { label: "",              align: "center" }, // play column (no header)
     { label: "שם השיר",       align: "start"  },
     { label: "אמן / משתתפים", align: "start"  },
     { label: "משך",           align: "center" },
-    { label: "",              align: "center" }, // play column (no header)
   ];
 
   return (
@@ -539,13 +538,13 @@ function PressAndShowsPage() {
             <p style={{ fontSize: 13, color: TEXT2, margin: "8px 0 0", lineHeight: 1.6, maxWidth: 460 }}>תמונות יח״צ, לוגו, ביוגרפיה וחומרים לשליחה</p>
           </div>
           <button onClick={() => setToast("התיקייה תחובר בקרוב")} style={{
-            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, flexShrink: 0,
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, flexShrink: 0,
             width: isMobile ? "100%" : "auto",
-            padding: isMobile ? "12px 16px" : "11px 18px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
-            background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}66`, color: "#FF6B6B",
-            fontSize: 13.5, fontWeight: 800, whiteSpace: "nowrap", boxShadow: `0 0 16px rgba(220,38,38,0.16)`,
+            padding: isMobile ? "15px 20px" : "14px 26px", borderRadius: 13, cursor: "pointer", fontFamily: "inherit",
+            background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "1px solid rgba(220,38,38,0.55)", color: "#fff",
+            fontSize: 15, fontWeight: 800, whiteSpace: "nowrap", boxShadow: `0 4px 20px rgba(220,38,38,0.38)`,
           }}>
-            <Svg size={17} color="#FF6B6B" fill="none"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6a1 1 0 0 1-.7-.3l-1.4-1.4a1 1 0 0 0-.7-.3H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
+            <Svg size={19} color="#fff" fill="none"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6a1 1 0 0 1-.7-.3l-1.4-1.4a1 1 0 0 0-.7-.3H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
             פתח תיקייה
           </button>
         </div>
@@ -558,38 +557,38 @@ function PressAndShowsPage() {
           <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>חומרים להופעות</span>
         </div>
 
-        {/* desktop column header (mobile uses cards) */}
+        {/* desktop column header (mobile uses cards) — bright + bold for clarity */}
         {!isMobile && (
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "11px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
             {heads.map((h, i) => (
-              <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
+              <div key={i} style={{ fontSize: 12.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
         )}
 
-        {/* rows — INNER SCROLL container so it clearly supports many songs */}
-        <div style={{ maxHeight: isMobile ? 360 : 430, overflowY: "auto", padding: isMobile ? "2px 0 6px" : "6px 0 8px" }}>
+        {/* rows — tighter than cards (song-list feel); INNER SCROLL for many songs */}
+        <div style={{ maxHeight: isMobile ? 360 : 430, overflowY: "auto", padding: "2px 0 4px" }}>
           {SHOW_MATERIALS.map((t, i) => (
             isMobile ? (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: `1px solid ${BDR}` }}>
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 16px", borderBottom: `1px solid ${BDR}` }}>
+                <PlayButton size={38} onClick={() => setToast("הנגן יחובר בקרוב")} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                  <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artists}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artists}</div>
                 </div>
                 <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.dur}</span>
-                <PlayButton size={42} onClick={() => setToast("הנגן יחובר בקרוב")} />
               </div>
             ) : (
               <div key={i} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "9px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <PlayButton size={38} onClick={() => setToast("הנגן יחובר בקרוב")} />
+                </div>
                 <div style={{ minWidth: 0, textAlign: "start" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
                 </div>
                 <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artists}</div>
                 <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <PlayButton size={42} onClick={() => setToast("הנגן יחובר בקרוב")} />
-                </div>
               </div>
             )
           ))}
