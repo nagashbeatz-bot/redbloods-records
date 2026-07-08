@@ -567,8 +567,10 @@ function PressAndShowsPage() {
         )}
 
         {/* rows — tighter than cards (song-list feel); INNER SCROLL for many songs.
-            Extra bottom padding so the final row's play button is never clipped. */}
-        <div style={{ maxHeight: isMobile ? 380 : 460, overflowY: "auto", padding: "2px 0 14px" }}>
+            Generous bottom padding (> the panel's 18px radius) so the final row's
+            play button clears the rounded corner and always shows with air below.
+            scrollPaddingBottom keeps the last row fully in view when scrolled. */}
+        <div style={{ maxHeight: isMobile ? 400 : 500, overflowY: "auto", padding: "2px 0 28px", scrollPaddingBottom: 28 }}>
           {SHOW_MATERIALS.map((t, i) => (
             isMobile ? (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}` }}>
