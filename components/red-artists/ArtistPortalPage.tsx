@@ -529,22 +529,22 @@ function PressAndShowsPage() {
 
       {/* ── חומרי יח״צ — simple card, one central "פתח תיקייה" action ── */}
       <div style={panel}>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16, padding: isMobile ? "18px 18px" : "22px 24px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 18, padding: isMobile ? "20px 18px" : "26px 28px" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-              <span style={{ fontSize: isMobile ? 16 : 17.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>חומרי יח״צ</span>
+              <span style={{ fontSize: isMobile ? 16.5 : 18, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>חומרי יח״צ</span>
             </div>
-            <p style={{ fontSize: 13, color: TEXT2, margin: "8px 0 0", lineHeight: 1.6, maxWidth: 460 }}>תמונות יח״צ, לוגו, ביוגרפיה וחומרים לשליחה</p>
+            <p style={{ fontSize: 13.5, color: TEXT2, margin: "8px 0 0", lineHeight: 1.6, maxWidth: 460 }}>תמונות יח״צ, לוגו, ביוגרפיה וחומרים לשליחה</p>
           </div>
           <button onClick={() => setToast("התיקייה תחובר בקרוב")} style={{
-            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, flexShrink: 0,
-            width: isMobile ? "100%" : "auto",
-            padding: isMobile ? "15px 20px" : "14px 26px", borderRadius: 13, cursor: "pointer", fontFamily: "inherit",
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, flexShrink: 0,
+            width: isMobile ? "100%" : "auto", minWidth: isMobile ? undefined : 210,
+            padding: isMobile ? "16px 22px" : "17px 36px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
             background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "1px solid rgba(220,38,38,0.55)", color: "#fff",
-            fontSize: 15, fontWeight: 800, whiteSpace: "nowrap", boxShadow: `0 4px 20px rgba(220,38,38,0.38)`,
+            fontSize: 15.5, fontWeight: 800, whiteSpace: "nowrap", boxShadow: `0 6px 22px rgba(220,38,38,0.40)`,
           }}>
-            <Svg size={19} color="#fff" fill="none"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6a1 1 0 0 1-.7-.3l-1.4-1.4a1 1 0 0 0-.7-.3H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
+            <Svg size={21} color="#fff" fill="none"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6a1 1 0 0 1-.7-.3l-1.4-1.4a1 1 0 0 0-.7-.3H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
             פתח תיקייה
           </button>
         </div>
@@ -559,36 +559,37 @@ function PressAndShowsPage() {
 
         {/* desktop column header (mobile uses cards) — bright + bold for clarity */}
         {!isMobile && (
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "11px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
             {heads.map((h, i) => (
-              <div key={i} style={{ fontSize: 12.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
+              <div key={i} style={{ fontSize: 13.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
         )}
 
-        {/* rows — tighter than cards (song-list feel); INNER SCROLL for many songs */}
-        <div style={{ maxHeight: isMobile ? 360 : 430, overflowY: "auto", padding: "2px 0 4px" }}>
+        {/* rows — tighter than cards (song-list feel); INNER SCROLL for many songs.
+            Extra bottom padding so the final row's play button is never clipped. */}
+        <div style={{ maxHeight: isMobile ? 380 : 460, overflowY: "auto", padding: "2px 0 14px" }}>
           {SHOW_MATERIALS.map((t, i) => (
             isMobile ? (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 16px", borderBottom: `1px solid ${BDR}` }}>
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}` }}>
                 <PlayButton size={38} onClick={() => setToast("הנגן יחובר בקרוב")} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                  <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artists}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  <div style={{ fontSize: 12, color: TEXT2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artists}</div>
                 </div>
-                <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.dur}</span>
+                <span style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.dur}</span>
               </div>
             ) : (
               <div key={i} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "9px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s" }}>
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   <PlayButton size={38} onClick={() => setToast("הנגן יחובר בקרוב")} />
                 </div>
                 <div style={{ minWidth: 0, textAlign: "start" }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
                 </div>
-                <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artists}</div>
-                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
+                <div style={{ fontSize: 14, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artists}</div>
+                <div style={{ fontSize: 13.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
               </div>
             )
           ))}
