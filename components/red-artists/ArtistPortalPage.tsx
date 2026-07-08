@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
 import type { Project } from "@/lib/types";
@@ -480,39 +480,102 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
   );
 }
 
-// ── קבצי הופעות ויח״צ (press & shows materials tab) — UI per the approved concept.
-// Two areas only: (1) a simple "חומרי יח״צ" card built around a single "פתח
-// תיקייה" action — NO file list, NO quick links, NO "what's missing"; (2) a
-// "חומרים להופעות" playlist with the SAME look/feel as "המוזיקה שלי" but WITHOUT
-// a status column, inside an inner-scroll container so it clearly holds a large
-// set of songs. Data is temporary demo (UI only — no source wired yet); the open
-// -folder + play actions are placeholders (a subtle toast), no invented feature.
-type ShowTrack = { name: string; artists: string; dur: string };
-const SHOW_MATERIALS: ShowTrack[] = [
-  { name: "פרצוף",          artists: "שליו טסמה",       dur: "3:12" },
-  { name: "פשע",            artists: "שליו טסמה",       dur: "3:28" },
-  { name: "פפארצי",         artists: "שליו טסמה, נאגש", dur: "2:52" },
-  { name: "תל אביב",        artists: "שליו טסמה",       dur: "3:05" },
-  { name: "דאנסהול פארטי",  artists: "שליו טסמה, נאגש", dur: "2:58" },
-  { name: "יהלום",          artists: "שליו טסמה",       dur: "3:21" },
-  { name: "מיאמור",         artists: "שליו טסמה, נאגש", dur: "2:39" },
-  { name: "אפריקן ליידי",   artists: "שליו טסמה",       dur: "3:47" },
-  { name: "מלכה",           artists: "שליו טסמה",       dur: "3:02" },
-  { name: "לילה בעיר",      artists: "שליו טסמה, נאגש", dur: "3:15" },
-  { name: "גלים",           artists: "שליו טסמה",       dur: "2:44" },
-  { name: "אש",             artists: "שליו טסמה",       dur: "3:33" },
-  { name: "חלום",           artists: "שליו טסמה",       dur: "2:51" },
-  { name: "דרך חדשה",       artists: "שליו טסמה, נאגש", dur: "3:19" },
-];
+// ── קבצי הופעות ויח״צ (press & shows materials tab) — REAL Dropbox wiring, NO DB.
+// "חומרים להופעות" lists audio from the server-owned performance-files folder; a
+// single top "העלה קבצים" opens a choice modal (קובץ הופעה → performance-files ·
+// חומרי יח״צ → press-kit); "פתח תיקייה" opens the press-kit folder. All paths are
+// server-owned (client sends only an approved `kind`). Playback reuses the GLOBAL
+// player. No metadata / share-token / /Projects / Push.
+type PerfFile = { name: string; path: string; url: string };
+type UploadKind = "performance" | "pressKit";
+const trackTitle = (name: string) => name.replace(/\.[^.]+$/, "");
 
 function PressAndShowsPage() {
   const isMobile = useIsMobile();
+  const player = usePlayerSafe();
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2600);
+    const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // Performance-files list — real, from Dropbox (no DB).
+  const [files, setFiles] = useState<PerfFile[]>([]);
+  const [listState, setListState] = useState<LoadState>("loading");
+  const loadFiles = useCallback(async () => {
+    setListState("loading");
+    try {
+      const r = await fetch("/api/red-artists/performance-files");
+      const d = await r.json();
+      if (r.ok && d.ok) { setFiles(Array.isArray(d.files) ? d.files : []); setListState("ready"); }
+      else setListState("error");
+    } catch { setListState("error"); }
+  }, []);
+  useEffect(() => { void loadFiles(); }, [loadFiles]);
+
+  // Upload — one general button → choice modal → native picker per kind.
+  const [chooseOpen, setChooseOpen] = useState(false);
+  const [uploading, setUploading]   = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const kindRef = useRef<UploadKind | null>(null);
+
+  function pick(kind: UploadKind) {
+    setChooseOpen(false);
+    kindRef.current = kind;
+    const inp = fileRef.current;
+    if (!inp) return;
+    inp.accept = kind === "performance" ? "audio/*" : "image/*,.pdf,.txt,.doc,.docx";
+    inp.value = ""; // allow re-picking the same file
+    inp.click();
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const kind = kindRef.current;
+    if (!file || !kind) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("kind", kind);
+      fd.append("file", file);
+      const r = await fetch("/api/red-artists/upload", { method: "POST", body: fd });
+      const d = await r.json().catch(() => ({} as { ok?: boolean; error?: string }));
+      if (!r.ok || !d.ok) { setToast(d.error || "ההעלאה נכשלה"); return; }
+      if (kind === "performance") { await loadFiles(); setToast("הקובץ עלה לחומרים להופעות"); }
+      else setToast("הקובץ עלה לתיקיית היח״צ");
+    } catch { setToast("ההעלאה נכשלה"); }
+    finally { setUploading(false); }
+  }
+
+  // "פתח תיקייה" → press-kit share link (folder created server-side if missing).
+  // Pre-open a blank tab INSIDE the click gesture so the popup isn't blocked.
+  const [opening, setOpening] = useState(false);
+  async function openPressKit() {
+    if (opening) return;
+    setOpening(true);
+    const w = typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
+    try {
+      const r = await fetch("/api/red-artists/press-kit-link", { method: "POST" });
+      const d = await r.json().catch(() => ({} as { ok?: boolean; shareLink?: string; error?: string }));
+      if (r.ok && d.ok && d.shareLink) { if (w) w.location.href = d.shareLink; else window.open(d.shareLink, "_blank"); }
+      else { w?.close(); setToast(d.error || "לא ניתן לפתוח את התיקייה"); }
+    } catch { w?.close(); setToast("לא ניתן לפתוח את התיקייה"); }
+    finally { setOpening(false); }
+  }
+
+  // Play a performance file through the GLOBAL player (no local audio element).
+  function playState(f: PerfFile) {
+    const cur = !!player?.track && player.track.projectId === `perf:${f.path}`;
+    const playing = cur && !!player?.playing;
+    const onClick = () => {
+      if (!player) return;
+      if (playing) player.pause();
+      else if (cur) player.resume();
+      else player.play({ projectId: `perf:${f.path}`, projectName: trackTitle(f.name), artist: SHALEV_ARTIST, fileName: f.name, url: f.url });
+    };
+    return { playing, onClick };
+  }
 
   // Playlist grid — SAME as "המוזיקה שלי" MINUS the status column: play (RTL →
   // rightmost, fixed) · שם השיר (wide) · אמן / משתתפים · משך (left).
@@ -525,7 +588,24 @@ function PressAndShowsPage() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ── top action bar — one general upload entry (opens the choice modal) ── */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={() => setChooseOpen(true)} disabled={uploading} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9,
+          width: isMobile ? "100%" : "auto",
+          padding: isMobile ? "12px 18px" : "12px 22px", borderRadius: 13, cursor: uploading ? "wait" : "pointer",
+          fontFamily: "inherit", background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+          border: "1px solid rgba(220,38,38,0.55)", color: "#fff", fontSize: 14.5, fontWeight: 800,
+          whiteSpace: "nowrap", boxShadow: "0 5px 20px rgba(220,38,38,0.36)", opacity: uploading ? 0.75 : 1,
+        }}>
+          <IcUpload size={18} /> {uploading ? "מעלה…" : "העלה קבצים"}
+        </button>
+      </div>
+
+      {/* hidden native picker — accept is set per chosen kind before .click() */}
+      <input ref={fileRef} type="file" onChange={onFile} style={{ display: "none" }} />
 
       {/* ── חומרי יח״צ — simple card, one central "פתח תיקייה" action ── */}
       <div style={panel}>
@@ -537,28 +617,28 @@ function PressAndShowsPage() {
             </div>
             <p style={{ fontSize: 13.5, color: TEXT2, margin: "8px 0 0", lineHeight: 1.6, maxWidth: 460 }}>תמונות יח״צ, לוגו, ביוגרפיה וחומרים לשליחה</p>
           </div>
-          <button onClick={() => setToast("התיקייה תחובר בקרוב")} style={{
+          <button onClick={openPressKit} disabled={opening} style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, flexShrink: 0,
             width: isMobile ? "100%" : "auto", minWidth: isMobile ? undefined : 210,
-            padding: isMobile ? "16px 22px" : "17px 36px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+            padding: isMobile ? "16px 22px" : "17px 36px", borderRadius: 14, cursor: opening ? "wait" : "pointer", fontFamily: "inherit",
             background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "1px solid rgba(220,38,38,0.55)", color: "#fff",
-            fontSize: 15.5, fontWeight: 800, whiteSpace: "nowrap", boxShadow: `0 6px 22px rgba(220,38,38,0.40)`,
+            fontSize: 15.5, fontWeight: 800, whiteSpace: "nowrap", boxShadow: `0 6px 22px rgba(220,38,38,0.40)`, opacity: opening ? 0.75 : 1,
           }}>
             <Svg size={21} color="#fff" fill="none"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6a1 1 0 0 1-.7-.3l-1.4-1.4a1 1 0 0 0-.7-.3H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
-            פתח תיקייה
+            {opening ? "פותח…" : "פתח תיקייה"}
           </button>
         </div>
       </div>
 
-      {/* ── חומרים להופעות — playlist (music-tab feel, no status), inner-scroll ── */}
+      {/* ── חומרים להופעות — real list (music-tab feel, no status), inner-scroll ── */}
       <div style={panel}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 18px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
           <span style={{ fontSize: 16, color: "#FF6B6B", lineHeight: 1 }}>♫</span>
           <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>חומרים להופעות</span>
         </div>
 
-        {/* desktop column header (mobile uses cards) — bright + bold for clarity */}
-        {!isMobile && (
+        {/* desktop column header (mobile uses cards) */}
+        {!isMobile && files.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
             {heads.map((h, i) => (
               <div key={i} style={{ fontSize: 13.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
@@ -566,37 +646,49 @@ function PressAndShowsPage() {
           </div>
         )}
 
-        {/* rows — tighter than cards (song-list feel); INNER SCROLL for many songs.
-            Generous bottom padding (> the panel's 18px radius) so the final row's
-            play button clears the rounded corner and always shows with air below.
-            scrollPaddingBottom keeps the last row fully in view when scrolled. */}
+        {/* rows — INNER SCROLL; generous bottom padding (> panel radius) so the last
+            row's play button clears the rounded corner and shows with air below. */}
         <div style={{ maxHeight: isMobile ? 400 : 500, overflowY: "auto", padding: "2px 0 28px", scrollPaddingBottom: 28 }}>
-          {SHOW_MATERIALS.map((t, i) => (
-            isMobile ? (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}` }}>
-                <PlayButton size={38} onClick={() => setToast("הנגן יחובר בקרוב")} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                  <div style={{ fontSize: 12, color: TEXT2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artists}</div>
+          {listState === "loading" ? (
+            <div style={{ padding: "44px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>טוען…</div>
+          ) : listState === "error" ? (
+            <div style={{ padding: "44px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא ניתן לטעון את הקבצים כרגע</div>
+          ) : files.length === 0 ? (
+            <div style={{ padding: "40px 24px", textAlign: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: TEXT2 }}>עדיין לא הועלו חומרים להופעות</div>
+              <div style={{ fontSize: 12.5, color: MUTED, marginTop: 5 }}>לחץ על ״העלה קבצים״ ובחר ״קובץ הופעה״ כדי להוסיף</div>
+            </div>
+          ) : (
+            files.map((f, i) => {
+              const ps = playState(f);
+              return isMobile ? (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{trackTitle(f.name)}</div>
+                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{SHALEV_ARTIST}</div>
+                  </div>
+                  <span style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>—</span>
                 </div>
-                <span style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.dur}</span>
-              </div>
-            ) : (
-              <div key={i} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s" }}>
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <PlayButton size={38} onClick={() => setToast("הנגן יחובר בקרוב")} />
+              ) : (
+                <div key={i} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                  </div>
+                  <div style={{ minWidth: 0, textAlign: "start" }}>
+                    <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{trackTitle(f.name)}</div>
+                  </div>
+                  <div style={{ fontSize: 14, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{SHALEV_ARTIST}</div>
+                  <div style={{ fontSize: 13.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>—</div>
                 </div>
-                <div style={{ minWidth: 0, textAlign: "start" }}>
-                  <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                </div>
-                <div style={{ fontSize: 14, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artists}</div>
-                <div style={{ fontSize: 13.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.dur}</div>
-              </div>
-            )
-          ))}
+              );
+            })
+          )}
         </div>
       </div>
+
+      {chooseOpen && <UploadChoiceModal onChoose={pick} onClose={() => setChooseOpen(false)} />}
 
       {toast && typeof document !== "undefined" && createPortal(
         <div style={{
@@ -607,6 +699,42 @@ function PressAndShowsPage() {
         document.body
       )}
     </div>
+  );
+}
+
+// Upload choice — "מה תרצה להעלות?" → performance (audio) or pressKit (images/docs).
+function UploadChoiceModal({ onChoose, onClose }: { onChoose: (kind: UploadKind) => void; onClose: () => void }) {
+  if (typeof document === "undefined") return null;
+  const opts: { kind: UploadKind; title: string; desc: string; icon: React.ReactNode }[] = [
+    { kind: "performance", title: "קובץ הופעה", desc: "פלייבק, גרסת DJ, גרסה נקייה או אינטרו במה",
+      icon: <Svg size={20} color="#FF6B6B" fill="none"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></Svg> },
+    { kind: "pressKit", title: "חומרי יח״צ", desc: "תמונת יח״צ, לוגו, ביוגרפיה, קאבר או קובץ לשליחה",
+      icon: <Svg size={20} color="#FF6B6B" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.6-3.6L9 20" /></Svg> },
+  ];
+  return createPortal(
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 100045, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} dir="rtl" style={{ width: "min(460px, 94vw)", background: "#141416", border: `1px solid ${BDR2}`, borderRadius: 18, overflow: "hidden", fontFamily: "'Heebo', Arial, sans-serif", boxShadow: "0 24px 80px rgba(0,0,0,0.85)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px", borderBottom: `1px solid ${BDR}` }}>
+          <span style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>מה תרצה להעלות?</span>
+          <button onClick={onClose} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", display: "inline-flex", padding: 2 }}><IcX size={18} /></button>
+        </div>
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {opts.map(o => (
+            <button key={o.kind} onClick={() => onChoose(o.kind)}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(220,38,38,0.55)"; e.currentTarget.style.background = "rgba(220,38,38,0.08)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = BDR2; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+              style={{ display: "flex", alignItems: "center", gap: 14, textAlign: "start", padding: "16px 18px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit", background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, transition: "background .15s, border-color .15s" }}>
+              <span style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: "rgba(220,38,38,0.13)", border: `1px solid ${BRAND}44`, display: "flex", alignItems: "center", justifyContent: "center" }}>{o.icon}</span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 15.5, fontWeight: 800, color: TEXT }}>{o.title}</span>
+                <span style={{ display: "block", fontSize: 12.5, color: TEXT2, marginTop: 3, lineHeight: 1.5 }}>{o.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
