@@ -23,7 +23,6 @@ const MORE_ITEMS = [
   { href: "/team",          label: "צוות",     icon: "👥", iconColor: "#A855F7" },
   { href: "/shows",         label: "הופעות",   icon: "🎤", iconColor: "#F472B6" },
   { href: "/red-films",     label: "Red Films", icon: "🎬", iconColor: "#EC4899" },
-  { href: "/red-artists",   label: "Red Artists", icon: "🎤", iconColor: "#DC2626" },
   { href: "/label",         label: "ניהול הלייבל", icon: "🎯", iconColor: "#DC2626" },
   { href: "/insights",      label: "תובנות",   icon: "◎", iconColor: "#2DD4BF" },
   { href: "/setup/dropbox", label: "Dropbox",   icon: "📦", iconColor: undefined },

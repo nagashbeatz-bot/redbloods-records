@@ -43,6 +43,17 @@ export async function getLabelArtist(id: string): Promise<LabelArtist | null> {
   return data ? mapArtist(data as DbLabelArtist) : null;
 }
 
+/** Look up a label artist by exact name (used server-side to resolve Shalev). */
+export async function getLabelArtistByName(name: string): Promise<LabelArtist | null> {
+  const { data, error } = await supabase
+    .from("label_artists")
+    .select("*")
+    .eq("name", name)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? mapArtist(data as DbLabelArtist) : null;
+}
+
 export type CreateArtistResult =
   | { status: "ok"; artist: LabelArtist }
   | { status: "duplicate" };
