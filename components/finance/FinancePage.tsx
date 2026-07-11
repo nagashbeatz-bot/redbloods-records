@@ -1403,7 +1403,7 @@ export default function FinancePage() {
       </div>
 
       {/* ── KPI cards (4 in a row) ───────────────────────────────────────── */}
-      {/* RTL, right→left: התקבל בפועל → הוצאות בפועל → תזרים נטו → צפוי/ממתין */}
+      {/* RTL, right→left: התקבל בפועל → הוצאות בפועל → נטו בפועל → הכנסות צפויות */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 18 }}>
         <SummaryCard icon="✅" label="התקבל בפועל"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
@@ -1413,11 +1413,11 @@ export default function FinancePage() {
           value={fmtAmount(expensesPaid)} color={expensesPaid > 0 ? RED : MUTED}
           sub="שולם בפועל"
         />
-        <SummaryCard icon="📈" label="תזרים נטו"
+        <SummaryCard icon="📈" label="נטו בפועל"
           value={fmtAmount(stats.profitReal)} color={stats.profitReal >= 0 ? GREEN : RED}
           sub="התקבל בפועל − שולם בפועל"
         />
-        <SummaryCard icon="⏳" label="צפוי / ממתין"
+        <SummaryCard icon="⏳" label="הכנסות צפויות"
           value={fmtAmount(stats.incomeExpected)} color={stats.incomeExpected > 0 ? AMBER : MUTED}
           sub="הכנסות שטרם התקבלו"
         />
@@ -1475,7 +1475,7 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* ── יעד רווח נטו חודשי (horizontal progress) ─────────────────────── */}
+      {/* ── יעד נטו חודשי (horizontal progress) ──────────────────────────── */}
       {(() => {
         const goal    = NET_MONTHLY_GOAL;
         const real    = stats.profitReal;   // canonical net (received − paid)
@@ -1486,7 +1486,7 @@ export default function FinancePage() {
         const estW    = Math.max(0, Math.min(100, (est  / goal) * 100));
         return (
       <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "20px 22px 22px", marginBottom: 20, boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 18 }}>יעד רווח נטו חודשי</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 18 }}>יעד נטו חודשי</div>
         <div style={{ display: "flex", gap: 30, alignItems: "center", flexWrap: "wrap" }}>
           {/* Right (RTL-first): headline percentage */}
           <div style={{ flex: "0 0 180px", minWidth: 150, textAlign: "center" }}>
@@ -1500,7 +1500,7 @@ export default function FinancePage() {
           <div style={{ flex: "1 1 440px", minWidth: 300 }}>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
               {goalStat("נטו בפועל", fmtAmount(real), real >= 0 ? GREEN : RED)}
-              {goalStat("צפוי לנטו", fmtAmount(est), est >= 0 ? AMBER : RED)}
+              {goalStat("נטו צפוי", fmtAmount(est), est >= 0 ? AMBER : RED)}
               {goalStat("יעד", fmtAmount(goal), TEXT)}
             </div>
             <div style={{ position: "relative", height: 22, borderRadius: 100, background: BDR2, overflow: "hidden" }}>
@@ -1513,6 +1513,17 @@ export default function FinancePage() {
               <span style={{ fontSize: 12, color: MUTED }}>0</span>
               <span style={{ fontSize: 12.5, color: real >= 0 ? GREEN : RED, fontWeight: 800 }}>{fmtAmount(real)}</span>
               <span style={{ fontSize: 12, color: TEXT2, fontWeight: 700 }}>{fmtAmount(goal)}</span>
+            </div>
+            {/* Secondary: expected expenses (offset in the forecast) + clarifier */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${BDR}` }}>
+              <span style={{
+                fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 6,
+                background: `${RED}12`, border: `1px solid ${RED}2A`, borderRadius: 100, padding: "4px 11px",
+              }}>
+                <span style={{ color: MUTED }}>הוצאות צפויות</span>
+                <strong style={{ color: RED }}>{fmtAmount(stats.expensesExpected)}</strong>
+              </span>
+              <span style={{ fontSize: 11, color: MUTED }}>נטו צפוי כולל הכנסות והוצאות צפויות</span>
             </div>
           </div>
         </div>
@@ -1596,9 +1607,9 @@ export default function FinancePage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {sumRow("הכנסות שהתקבלו", stats.incomeReceived, GREEN)}
               {sumRow("הוצאות ששולמו", expensesPaid, RED)}
-              {sumRow("צפוי / ממתין", stats.incomeExpected, AMBER)}
+              {sumRow("הכנסות צפויות", stats.incomeExpected, AMBER)}
               <div style={{ borderTop: `1px solid ${BDR}`, marginTop: 2, paddingTop: 14 }}>
-                {sumRow("תזרים נטו", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, true)}
+                {sumRow("נטו בפועל", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, true)}
               </div>
             </div>
             <button
