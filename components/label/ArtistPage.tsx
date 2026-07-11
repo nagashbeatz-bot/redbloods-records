@@ -63,7 +63,7 @@ export default function ArtistPage({ artistId }: { artistId: string }) {
 
       {/* Profile */}
       <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 16, marginBottom: 24, background: "radial-gradient(120% 180% at 15% -30%, rgba(220,38,38,0.22) 0%, rgba(13,13,13,0) 60%), linear-gradient(180deg,#171012,#121212)", border: `1px solid ${BORDER}`, borderRadius: 22, padding: "24px 26px" }}>
-        <ArtistAvatar artist={artist} size={78} />
+        <ArtistAvatar artist={artist} size={84} glow />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 26, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>{artist.name}</div>
           <div style={{ fontSize: 13, fontWeight: 700, color: sc, marginTop: 4 }}>● {artist.status}</div>

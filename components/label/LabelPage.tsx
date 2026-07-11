@@ -188,32 +188,30 @@ export default function LabelPage() {
               const next = activeRels.filter((r) => r.release.releaseTargetDate).sort((a, b) => (a.release.releaseTargetDate! < b.release.releaseTargetDate! ? -1 : 1))[0] ?? activeRels[0] ?? null;
               const sc = ARTIST_STATUS_COLOR[artist.status];
               return (
-                <div key={artist.id} style={{ background: CARD, border: `1px solid ${next ? "rgba(220,38,38,0.22)" : BORDER}`, borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-                    <ArtistAvatar artist={artist} size={54} />
+                <div key={artist.id} style={{ background: "linear-gradient(160deg,#1B1414 0%,#151515 60%)", border: `1px solid ${next ? "rgba(220,38,38,0.30)" : BORDER}`, borderRadius: 22, padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <ArtistAvatar artist={artist} size={76} glow />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artist.name}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: sc }}>● {artist.status}</div>
+                      <div style={{ fontSize: 19, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artist.name}</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: sc, marginTop: 4 }}>● {artist.status}</div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{activeRels.length} ריליסים בצינור</div>
                     </div>
                   </div>
 
                   <div style={{ background: CARD2, borderRadius: 14, padding: "13px 15px", border: `1px solid ${BORDER2}` }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.06em", marginBottom: 7 }}>הריליס הבא</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.06em", marginBottom: 8 }}>הריליס הבא</div>
                     {next ? (
-                      <>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{next.name}</div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{next.name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                           <StageBadge stage={next.release.releaseStage} small />
                           <span style={{ fontSize: 12, fontWeight: 700, color: SUB }}>{fmtDate(next.release.releaseTargetDate)}</span>
                         </div>
-                      </>
+                      </div>
                     ) : <div style={{ fontSize: 13, color: MUTED }}>אין ריליס פעיל</div>}
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 13, color: SUB }}>בצינור: <b style={{ color: TEXT }}>{activeRels.length}</b></span>
-                    <Link href={`/label/artists/${artist.id}`} style={{ fontSize: 13, fontWeight: 800, color: BRAND, textDecoration: "none" }}>פתח עמוד אמן ←</Link>
-                  </div>
+                  <Link href={`/label/artists/${artist.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13.5, fontWeight: 800, color: "#fff", background: BRAND, borderRadius: 12, padding: "11px 0", textDecoration: "none" }}>פתח עמוד אמן ←</Link>
                 </div>
               );
             })}

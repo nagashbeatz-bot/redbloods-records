@@ -91,14 +91,30 @@ export function Card({ children, style }: { children: React.ReactNode; style?: R
   return <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 20, padding: 20, ...style }}>{children}</div>;
 }
 
-export function ArtistAvatar({ artist, size = 52 }: { artist: { name: string; imageUrl: string | null }; size?: number }) {
-  if (artist.imageUrl) {
-    return (
-      <img src={artist.imageUrl} alt={artist.name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: `1px solid ${BORDER}` }} />
-    );
+// Shalev has an existing profile image in his portal (Dropbox, no DB). Reuse it
+// as his avatar here when label_artists.image_url is empty — display-only, no upload.
+const SHALEV_AVATAR_SRC = `/api/dropbox/stream?path=${encodeURIComponent("/app/red-artists/shalev-tasama/profile-image/avatar.jpg")}`;
+
+/** Effective avatar src: the artist's image_url, else Shalev's portal image, else null. */
+export function resolveArtistImage(artist: { name: string; imageUrl: string | null }): string | null {
+  if (artist.imageUrl && artist.imageUrl.trim()) return artist.imageUrl.trim();
+  if (artist.name.trim() === "שליו טסמה") return SHALEV_AVATAR_SRC;
+  return null;
+}
+
+export function ArtistAvatar({ artist, size = 52, glow = false }: { artist: { name: string; imageUrl: string | null }; size?: number; glow?: boolean }) {
+  const src = resolveArtistImage(artist);
+  const [failed, setFailed] = useState(false);
+  const ring: React.CSSProperties = glow
+    ? { boxShadow: "0 0 0 2px rgba(220,38,38,0.5), 0 0 18px rgba(220,38,38,0.28)", border: "1px solid rgba(220,38,38,0.35)" }
+    : { border: `1px solid ${BORDER}` };
+  const common: React.CSSProperties = { width: size, height: size, borderRadius: "50%", flexShrink: 0, ...ring };
+
+  if (src && !failed) {
+    return <img src={src} alt={artist.name} onError={() => setFailed(true)} style={{ ...common, objectFit: "cover" }} />;
   }
   return (
-    <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#2A2A2A,#161616)", border: `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.36, fontWeight: 800, color: SUB }}>
+    <div style={{ ...common, background: "linear-gradient(150deg,#3A1616,#1A1111)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.4, fontWeight: 900, color: "#E7A6A6", letterSpacing: "-0.02em" }}>
       {artist.name.trim().charAt(0) || "?"}
     </div>
   );
