@@ -56,9 +56,25 @@ export const ACTIVE_RELEASE_STAGES: ReleaseStage[] =
 /** Suggested "responsible" values in the label UI; picking "אחר" unlocks free text. */
 export const RESPONSIBLE_SUGGESTIONS = ["אני", "שליו", "ויקטור", "סטיבן", "אחר"] as const;
 
+// The canonical, stable label-artist entity (public.label_artists). Releases link
+// to it by id — the artist list is NEVER derived from projects.artist anymore.
+export type LabelArtistStatus = "פעיל" | "בהשהייה" | "לא פעיל";
+export const LABEL_ARTIST_STATUSES: LabelArtistStatus[] = ["פעיל", "בהשהייה", "לא פעיל"];
+
+export interface LabelArtist {
+  id: string;
+  name: string;
+  status: LabelArtistStatus;
+  imageUrl: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** One row of project_release_details (1:1 with a project). */
 export interface ProjectReleaseDetails {
   projectId: string;
+  labelArtistId: string | null;     // FK → label_artists.id (authoritative artist link)
   releaseStage: ReleaseStage;
   releaseTargetDate: string | null; // YYYY-MM-DD
   nextAction: string;

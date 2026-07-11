@@ -13,6 +13,7 @@ import { RELEASE_STAGES } from "./types";
 // ── DB row shape (public.project_release_details) ────────────────────────────
 interface DbRelease {
   project_id:          string;
+  label_artist_id:     string | null;
   release_stage:       string;
   release_target_date: string | null;
   next_action:         string;
@@ -27,6 +28,7 @@ interface DbRelease {
 function mapRelease(db: DbRelease): ProjectReleaseDetails {
   return {
     projectId:         db.project_id,
+    labelArtistId:     db.label_artist_id ?? null,
     releaseStage:      db.release_stage as ReleaseStage,
     releaseTargetDate: db.release_target_date,
     nextAction:        db.next_action ?? "",
@@ -92,20 +94,24 @@ export async function getReleaseDetails(projectId: string): Promise<ProjectRelea
   return data ? mapRelease(data as DbRelease) : null;
 }
 
-// ── Guard: a release row may exist ONLY for a שיר + לייבל project ─────────────
-type Guard = { ok: true; project: { project_type: string; project_business_type: string } } | { ok: false };
-async function fetchProjectForGuard(projectId: string): Promise<Guard | null> {
+// ── Guards ───────────────────────────────────────────────────────────────────
+async function fetchProject(projectId: string): Promise<{ project_type: string; project_business_type: string } | null> {
   const { data, error } = await supabase
     .from("projects")
     .select("project_type, project_business_type")
     .eq("id", projectId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) return null; // project not found
-  const p = data as { project_type: string; project_business_type: string };
-  return p.project_type === "שיר" && p.project_business_type === "לייבל"
-    ? { ok: true, project: p }
-    : { ok: false };
+  return (data as { project_type: string; project_business_type: string } | null) ?? null;
+}
+async function fetchArtistName(labelArtistId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("label_artists")
+    .select("name")
+    .eq("id", labelArtistId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? (data as { name: string }).name : null;
 }
 
 // ── Writes ───────────────────────────────────────────────────────────────────
@@ -125,12 +131,12 @@ export interface ReleaseInput {
  * back both inserts on any failure.
  */
 export async function createLabelSongRelease(fields: {
-  name: string; artist?: string; deadline?: string | null; notes?: string;
+  labelArtistId: string; name: string; deadline?: string | null; notes?: string;
   parentProject?: string;
 } & ReleaseInput): Promise<string> {
   const { data, error } = await supabase.rpc("create_label_song_release", {
+    p_label_artist_id:     fields.labelArtistId,
     p_name:                fields.name,
-    p_artist:              fields.artist ?? "",
     p_deadline:            fields.deadline ?? null,
     p_notes:               fields.notes ?? "",
     p_parent_project:      fields.parentProject ?? "",
@@ -147,26 +153,42 @@ export async function createLabelSongRelease(fields: {
 export type ReleaseWriteResult =
   | { status: "ok"; release: ProjectReleaseDetails }
   | { status: "not_found" }
-  | { status: "not_label_song" }
+  | { status: "not_song" }
+  | { status: "artist_not_found" }
   | { status: "exists" }
   | { status: "conflict" };
 
-/** Create a release row for an EXISTING project (must be שיר + לייבל). */
-export async function createReleaseForExisting(
+/**
+ * Convert an EXISTING song project into a label release linked to a chosen
+ * label artist: marks it לייבל, syncs projects.artist to the artist's name (display),
+ * and creates its project_release_details row with label_artist_id.
+ */
+export async function convertProjectToLabelRelease(
   projectId: string,
+  labelArtistId: string,
   input: ReleaseInput,
 ): Promise<ReleaseWriteResult> {
-  const guard = await fetchProjectForGuard(projectId);
-  if (guard === null) return { status: "not_found" };
-  if (!guard.ok) return { status: "not_label_song" };
+  const proj = await fetchProject(projectId);
+  if (proj === null) return { status: "not_found" };
+  if (proj.project_type !== "שיר") return { status: "not_song" };
+
+  const artistName = await fetchArtistName(labelArtistId);
+  if (artistName === null) return { status: "artist_not_found" };
 
   const existing = await getReleaseDetails(projectId);
   if (existing) return { status: "exists" };
+
+  const { error: upErr } = await supabase
+    .from("projects")
+    .update({ project_business_type: "לייבל", artist: artistName, updated_at: new Date().toISOString() })
+    .eq("id", projectId);
+  if (upErr) throw new Error(upErr.message);
 
   const { data, error } = await supabase
     .from("project_release_details")
     .insert({
       project_id:          projectId,
+      label_artist_id:     labelArtistId,
       release_stage:       input.releaseStage ?? "רעיון",
       release_target_date: input.releaseTargetDate ?? null,
       next_action:         input.nextAction ?? "",
@@ -177,6 +199,44 @@ export async function createReleaseForExisting(
     .single();
   if (error) throw new Error(error.message);
   return { status: "ok", release: mapRelease(data as DbRelease) };
+}
+
+/** Releases belonging to one label artist (joined to project name/type/status). */
+export async function listReleasesByArtist(labelArtistId: string): Promise<LabelRelease[]> {
+  const { data: relRows, error: rErr } = await supabase
+    .from("project_release_details")
+    .select("*")
+    .eq("label_artist_id", labelArtistId);
+  if (rErr) throw new Error(rErr.message);
+  const rels = (relRows ?? []) as DbRelease[];
+  if (rels.length === 0) return [];
+
+  const ids = rels.map((r) => r.project_id);
+  const { data: projRows, error: pErr } = await supabase
+    .from("projects")
+    .select("id, name, artist, status, project_type, project_business_type")
+    .in("id", ids);
+  if (pErr) throw new Error(pErr.message);
+
+  type ProjRow = { id: string; name: string; artist: string; status: string; project_type: string; project_business_type: string };
+  const pById = new Map<string, ProjRow>();
+  for (const p of (projRows ?? []) as ProjRow[]) pById.set(p.id, p);
+
+  return rels
+    .map((r): LabelRelease | null => {
+      const p = pById.get(r.project_id);
+      if (!p) return null;
+      return {
+        projectId:    p.id,
+        name:         p.name,
+        artist:       p.artist,
+        projectType:  p.project_type as ProjectType,
+        status:       p.status as ProjectStatus,
+        businessType: p.project_business_type as ProjectBusinessType,
+        release:      mapRelease(r),
+      };
+    })
+    .filter((x): x is LabelRelease => x !== null);
 }
 
 /**
