@@ -7,18 +7,18 @@ import { usePrivacyMode } from "@/lib/use-privacy";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const BRAND  = "#DC2626";
-const GREEN  = "#10B981";
-const AMBER  = "#F59E0B";
+const GREEN  = "#13C99A"; // bright teal-green (income / received / positive net)
+const AMBER  = "#F5A623"; // gold (expected / pending / goal / warnings)
 const RED    = "#EF4444";
 const BLUE   = "#3B82F6";
 const PURPLE = "#A855F7";
-const CARD   = "#111318";
-const CARD2  = "#0D0D12";
-const BDR    = "rgba(255,255,255,0.07)";
-const BDR2   = "rgba(255,255,255,0.11)";
-const TEXT   = "#F2F2F2";
-const TEXT2  = "#A0A0B0";
-const MUTED  = "#52526A";
+const CARD   = "#131620"; // card surface — slightly lighter than the page
+const CARD2  = "#0E1017"; // deeper surface (table/section headers)
+const BDR    = "rgba(132,148,176,0.12)"; // cool blue-gray hairline
+const BDR2   = "rgba(132,148,176,0.20)"; // cool blue-gray, stronger
+const TEXT   = "#F4F6FA";
+const TEXT2  = "#9AA3B6"; // cool secondary gray
+const MUTED  = "#5B6274"; // cool muted
 
 // Monthly net-profit goal (UI-only; no settings/DB source yet).
 const NET_MONTHLY_GOAL = 15000;
@@ -274,7 +274,7 @@ const SECTION_LABEL: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = {
   background: CARD, border: `1px solid ${BDR}`, borderRadius: 10,
-  color: TEXT2, fontSize: 12, padding: "7px 12px", outline: "none",
+  color: TEXT2, fontSize: 13, padding: "9px 14px", outline: "none",
   fontFamily: "inherit", cursor: "pointer",
 };
 
@@ -309,38 +309,39 @@ function SummaryCard({
 
   return (
     <div style={{
-      background: `linear-gradient(160deg, ${color}0A, ${CARD} 55%)`,
-      border: `1px solid ${BDR2}`, borderRadius: 16,
-      padding: "15px 17px 14px", flex: "1 1 0", minWidth: 0, minHeight: 138,
+      background: `linear-gradient(158deg, ${color}12, ${CARD} 52%)`,
+      border: `1px solid ${BDR2}`, borderRadius: 18,
+      padding: "22px 24px 20px", flex: "1 1 0", minWidth: 0, minHeight: 176,
       position: "relative", overflow: "hidden", display: "flex", flexDirection: "column",
+      boxShadow: `0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 26px rgba(0,0,0,0.32)`,
     }}>
       {/* top accent */}
-      <div style={{ position: "absolute", top: 0, insetInline: 0, height: 3, background: `linear-gradient(270deg, ${color}, ${color}00)` }} />
+      <div style={{ position: "absolute", top: 0, insetInline: 0, height: 4, background: `linear-gradient(270deg, ${color}, ${color}00)` }} />
       {/* header: label + icon, chevron drill affordance */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ color: MUTED, fontSize: 13, opacity: 0.7 }}>‹</span>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, letterSpacing: "0.01em", lineHeight: 1.2, marginInlineStart: "auto", textAlign: "left" }}>
+        <span style={{ color: MUTED, fontSize: 15, opacity: 0.7 }}>‹</span>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, letterSpacing: "0.01em", lineHeight: 1.2, marginInlineStart: "auto", textAlign: "left" }}>
           {label}
         </div>
         {icon && (
           <div style={{
-            width: 36, height: 36, borderRadius: 11, flexShrink: 0,
-            background: `${color}18`, border: `1px solid ${color}30`, color,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+            width: 46, height: 46, borderRadius: 13, flexShrink: 0,
+            background: `${color}1E`, border: `1px solid ${color}38`, color,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23,
           }}>{icon}</div>
         )}
       </div>
-      <div style={{ fontSize: 31, fontWeight: 900, color, letterSpacing: "-0.04em", lineHeight: 1, marginTop: "auto" }}>{value}</div>
+      <div style={{ fontSize: 42, fontWeight: 900, color, letterSpacing: "-0.045em", lineHeight: 1, marginTop: "auto", textShadow: `0 0 26px ${color}33` }}>{value}</div>
       {sub && (
-        <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>{sub}</div>
+        <div style={{ fontSize: 12, color: TEXT2, marginTop: 8 }}>{sub}</div>
       )}
       {pct !== undefined && (
-        <div style={{ marginTop: 9 }}>
-          <div style={{ height: 5, borderRadius: 100, background: BDR2, overflow: "hidden" }}>
+        <div style={{ marginTop: 11 }}>
+          <div style={{ height: 7, borderRadius: 100, background: BDR2, overflow: "hidden" }}>
             <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: color, borderRadius: 100 }} />
           </div>
           {progressLabel && (
-            <div style={{ fontSize: 10, color: MUTED, marginTop: 5, textAlign: "left" }}>{progressLabel}</div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 6, textAlign: "left" }}>{progressLabel}</div>
           )}
         </div>
       )}
@@ -1020,7 +1021,7 @@ export default function FinancePage() {
   // ── Source grouping (הופעות / פרויקטים / כללי) ─────────────────────────────
   const GRID_COLS = "72px 1.9fr 1.6fr 1.3fr 120px 100px 28px";
   // Flat "all transactions" table columns: תאריך · סוג · שם · קטגוריה · פרויקט · איש קשר · סכום · סטטוס · ⋮
-  const FLAT_COLS = "88px 58px 1.7fr 1fr 1.15fr 1.05fr 112px 82px 24px";
+  const FLAT_COLS = "106px 76px 1.7fr 1.1fr 1.25fr 1.15fr 136px 100px 30px";
   const isProjectTx = (t: Transaction) => !isShowTx(t) && (!!t.project_id || (t.scope ?? "project") === "project");
   const showsTxs    = filtered.filter(isShowTx);
   const projectTxs  = filtered.filter(isProjectTx);
@@ -1227,36 +1228,37 @@ export default function FinancePage() {
 
   // ── Small render helpers for the redesigned sections ────────────────────────
   const attnCard = (col: string): React.CSSProperties => ({
-    display: "flex", alignItems: "center", gap: 11, padding: "12px 14px",
-    borderRadius: 12, background: `${col}0D`, border: `1px solid ${col}2A`,
+    display: "flex", alignItems: "center", gap: 14, padding: "16px 18px",
+    borderRadius: 14, background: `${col}12`, border: `1px solid ${col}33`,
     cursor: "pointer", fontFamily: "inherit", textAlign: "right", width: "100%",
+    minHeight: 66,
   });
 
   // תזרים החודש: one flow cell + a connector arrow.
   const flowArrow = () => (
-    <div style={{ display: "flex", alignItems: "center", color: MUTED, fontSize: 17, flexShrink: 0, alignSelf: "stretch" }}>⇄</div>
+    <div style={{ display: "flex", alignItems: "center", color: TEXT2, fontSize: 22, flexShrink: 0, alignSelf: "stretch", opacity: 0.55 }}>⇄</div>
   );
   const flowCell = (label: string, val: number, col: string, glyph: string) => (
-    <div style={{ flex: "1 1 150px", minWidth: 128, background: `${col}0D`, border: `1px solid ${col}26`, borderRadius: 12, padding: "12px 14px" }}>
+    <div style={{ flex: "1 1 170px", minWidth: 150, background: `linear-gradient(158deg, ${col}12, ${CARD2} 60%)`, border: `1px solid ${col}2E`, borderRadius: 14, padding: "16px 18px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2 }}>{label}</span>
-        <span style={{ width: 26, height: 26, borderRadius: 8, background: `${col}1C`, color: col, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>{glyph}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>{label}</span>
+        <span style={{ width: 32, height: 32, borderRadius: 9, background: `${col}22`, color: col, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800 }}>{glyph}</span>
       </div>
-      <div style={{ fontSize: 22, fontWeight: 900, color: col, letterSpacing: "-0.03em", marginTop: 8 }}>{fmtAmount(val)}</div>
+      <div style={{ fontSize: 29, fontWeight: 900, color: col, letterSpacing: "-0.035em", marginTop: 11, textShadow: `0 0 22px ${col}2E` }}>{fmtAmount(val)}</div>
     </div>
   );
 
   const goalStat = (label: string, val: string, col: string) => (
     <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.04em" }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 900, color: col, marginTop: 3 }}>{val}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.04em" }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 900, color: col, marginTop: 4 }}>{val}</div>
     </div>
   );
 
   const sumRow = (label: string, val: number, col: string, bold = false) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <span style={{ fontSize: bold ? 13 : 12, color: bold ? TEXT : TEXT2, fontWeight: bold ? 800 : 500 }}>{label}</span>
-      <span style={{ fontSize: bold ? 16 : 14, fontWeight: bold ? 900 : 800, color: col }}>{fmtAmount(val)}</span>
+      <span style={{ fontSize: bold ? 14 : 13, color: bold ? TEXT : TEXT2, fontWeight: bold ? 800 : 500 }}>{label}</span>
+      <span style={{ fontSize: bold ? 18 : 15.5, fontWeight: bold ? 900 : 800, color: col }}>{fmtAmount(val)}</span>
     </div>
   );
 
@@ -1265,7 +1267,7 @@ export default function FinancePage() {
   // real page immediately. Fixed min-height keeps the layout from jumping.
   if (privacyHidden) {
     return (
-      <div dir="rtl" style={{ padding: "16px 28px", maxWidth: 1400, margin: "0 auto" }}>
+      <div dir="rtl" style={{ padding: "20px 40px", maxWidth: 1780, margin: "0 auto" }}>
         <div style={{ minHeight: "72vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ textAlign: "center", maxWidth: 440, padding: "40px 34px", borderRadius: 18, background: CARD, border: "1px solid rgba(255,255,255,0.08)" }}>
             <div style={{ fontSize: 42, marginBottom: 14, color: "#EAB308" }}>👁</div>
@@ -1282,7 +1284,7 @@ export default function FinancePage() {
   }
 
   return (
-    <div dir="rtl" style={{ padding: "16px 28px", maxWidth: 1400, margin: "0 auto" }}>
+    <div dir="rtl" style={{ padding: "20px 40px", maxWidth: 1780, margin: "0 auto" }}>
 
       {modalOpen && (
         <TxModal draft={draft} setDraft={setDraft} saving={saving}
@@ -1334,14 +1336,14 @@ export default function FinancePage() {
       })(), document.body)}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         {/* Right: title */}
-        <h1 style={{ fontSize: 30, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.03em" }}>כספים</h1>
+        <h1 style={{ fontSize: 34, fontWeight: 900, color: TEXT, margin: 0, letterSpacing: "-0.035em" }}>כספים</h1>
 
         {/* Center: month navigator */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={() => { setPeriod("month"); setMonthOffset((o) => o - 1); }} style={navBtnStyle}>‹</button>
-          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, minWidth: 140, textAlign: "center" }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: TEXT, minWidth: 150, textAlign: "center" }}>
             📅 {periodTitle}
           </div>
           <button onClick={() => { setPeriod("month"); setMonthOffset((o) => o + 1); }} style={navBtnStyle}>›</button>
@@ -1350,10 +1352,10 @@ export default function FinancePage() {
         {/* Left: add button */}
         <button onClick={openAdd} style={{
           display: "flex", alignItems: "center", gap: 8,
-          padding: "10px 22px", borderRadius: 12,
+          padding: "12px 26px", borderRadius: 12,
           background: BRAND, border: "none", color: "#fff",
-          fontSize: 14, fontWeight: 800, cursor: "pointer",
-          boxShadow: "0 2px 16px rgba(220,38,38,0.45)",
+          fontSize: 15, fontWeight: 800, cursor: "pointer",
+          boxShadow: "0 4px 20px rgba(220,38,38,0.5)",
           fontFamily: "inherit",
         }}>+ הוסף תנועה</button>
       </div>
@@ -1402,7 +1404,7 @@ export default function FinancePage() {
 
       {/* ── KPI cards (4 in a row) ───────────────────────────────────────── */}
       {/* RTL, right→left: התקבל בפועל → הוצאות בפועל → תזרים נטו → צפוי/ממתין */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 18 }}>
         <SummaryCard icon="✅" label="התקבל בפועל"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
           sub={`${periodTx.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).length} תשלומים שהתקבלו`}
@@ -1424,47 +1426,48 @@ export default function FinancePage() {
       {/* ── דורש טיפול היום (prominent band) ─────────────────────────────── */}
       {hasAttention && (
         <div style={{
-          marginBottom: 14, borderRadius: 16, padding: "14px 16px",
-          background: `linear-gradient(160deg, ${AMBER}0C, ${CARD} 60%)`,
-          border: `1px solid ${AMBER}2E`,
+          marginBottom: 18, borderRadius: 18, padding: "18px 20px",
+          background: `linear-gradient(160deg, ${AMBER}10, ${CARD} 62%)`,
+          border: `1px solid ${AMBER}33`,
+          boxShadow: "0 8px 26px rgba(0,0,0,0.3)",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 11 }}>
-            <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>דורש טיפול</span>
-            <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: RED, borderRadius: 100, minWidth: 18, padding: "1px 7px", textAlign: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>דורש טיפול היום</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: RED, borderRadius: 100, minWidth: 20, padding: "2px 8px", textAlign: "center" }}>
               {noDateTx.length + attentionUnpaidIncome.length + attentionOpenExpenses.length}
             </span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
             {attentionUnpaidIncome.length > 0 && (
               <button onClick={() => { setViewTab("income"); setStatusFilter("לא שולם"); }} style={attnCard(RED)}>
-                <span style={{ fontSize: 20 }}>⚡</span>
+                <span style={{ width: 42, height: 42, borderRadius: 11, flexShrink: 0, background: `${RED}20`, border: `1px solid ${RED}38`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>⚡</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
                     <strong style={{ color: RED }}>{attentionUnpaidIncome.length}</strong> הכנסות לא שולמו
                   </div>
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>דורש גבייה · {fmtAmount(attentionUnpaidIncome.reduce((s, t) => s + t.amount, 0))}</div>
+                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>דורש גבייה · {fmtAmount(attentionUnpaidIncome.reduce((s, t) => s + t.amount, 0))}</div>
                 </div>
               </button>
             )}
             {attentionOpenExpenses.length > 0 && (
               <button onClick={() => { setViewTab("expense"); setStatusFilter(""); }} style={attnCard(AMBER)}>
-                <span style={{ fontSize: 20 }}>📋</span>
+                <span style={{ width: 42, height: 42, borderRadius: 11, flexShrink: 0, background: `${AMBER}20`, border: `1px solid ${AMBER}38`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📋</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
                     <strong style={{ color: AMBER }}>{attentionOpenExpenses.length}</strong> הוצאות פתוחות
                   </div>
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>ממתינות לתשלום · {fmtAmount(attentionOpenExpenses.reduce((s, t) => s + t.amount, 0))}</div>
+                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>ממתינות לתשלום · {fmtAmount(attentionOpenExpenses.reduce((s, t) => s + t.amount, 0))}</div>
                 </div>
               </button>
             )}
             {noDateTx.length > 0 && (
               <button onClick={() => setShowUndated((v) => !v)} style={attnCard(BLUE)}>
-                <span style={{ fontSize: 20 }}>⚠</span>
+                <span style={{ width: 42, height: 42, borderRadius: 11, flexShrink: 0, background: `${BLUE}20`, border: `1px solid ${BLUE}38`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>⚠</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>
                     <strong style={{ color: BLUE }}>{noDateTx.length}</strong> תנועות ללא תאריך
                   </div>
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{showUndated ? "מוצגות בטבלה — לחץ להסתרה" : "לחץ להצגה בטבלה"}</div>
+                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{showUndated ? "מוצגות בטבלה — לחץ להסתרה" : "לחץ להצגה בטבלה"}</div>
                 </div>
               </button>
             )}
@@ -1473,9 +1476,9 @@ export default function FinancePage() {
       )}
 
       {/* ── תזרים החודש (horizontal flow, no donut) ──────────────────────── */}
-      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "14px 18px", marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 12 }}>תזרים החודש</div>
-        <div style={{ display: "flex", alignItems: "stretch", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px", marginBottom: 18, boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 14 }}>תזרים החודש</div>
+        <div style={{ display: "flex", alignItems: "stretch", gap: 12, flexWrap: "wrap" }}>
           {flowCell("נכנס", stats.incomeReceived, GREEN, "↓")}
           {flowArrow()}
           {flowCell("יצא", expensesPaid, RED, "↑")}
@@ -1496,27 +1499,36 @@ export default function FinancePage() {
         const realW   = Math.max(0, Math.min(100, (real / goal) * 100));
         const estW    = Math.max(0, Math.min(100, (est  / goal) * 100));
         return (
-      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 18px 18px", marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>יעד רווח נטו חודשי</div>
-          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-            {goalStat("נטו בפועל", fmtAmount(real), real >= 0 ? GREEN : RED)}
-            {goalStat("צפוי לנטו", fmtAmount(est), est >= 0 ? AMBER : RED)}
-            {goalStat("יעד", fmtAmount(goal), TEXT2)}
+      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "20px 22px 22px", marginBottom: 20, boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 18 }}>יעד רווח נטו חודשי</div>
+        <div style={{ display: "flex", gap: 30, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Right (RTL-first): headline percentage */}
+          <div style={{ flex: "0 0 180px", minWidth: 150, textAlign: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, letterSpacing: "0.05em" }}>עמידה ביעד</div>
+            <div style={{ fontSize: 50, fontWeight: 900, color: real >= 0 ? GREEN : RED, lineHeight: 1.05, letterSpacing: "-0.03em", textShadow: `0 0 30px ${(real >= 0 ? GREEN : RED)}38` }}>{realPct}%</div>
+            {est > real && (
+              <div style={{ fontSize: 12, color: AMBER, marginTop: 6 }}>אם כל הצפוי ייכנס: {estPct}%</div>
+            )}
           </div>
-        </div>
-        <div style={{ position: "relative", height: 16, borderRadius: 100, background: BDR2, overflow: "hidden" }}>
-          {/* forecast fill (behind) */}
-          <div style={{ position: "absolute", insetInlineStart: 0, top: 0, height: "100%", width: `${estW}%`, background: `${AMBER}55` }} />
-          {/* real fill (front) */}
-          <div style={{ position: "absolute", insetInlineStart: 0, top: 0, height: "100%", width: `${realW}%`, background: real >= 0 ? GREEN : RED }} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, color: MUTED }}>0</span>
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: real >= 0 ? GREEN : RED }}>
-            {realPct}% מהיעד{est > real ? ` · אם כל הצפוי ייכנס: ${estPct}%` : ""}
-          </span>
-          <span style={{ fontSize: 12, color: TEXT2, fontWeight: 700 }}>{fmtAmount(goal)}</span>
+          {/* Left: stat labels + long bar + baseline */}
+          <div style={{ flex: "1 1 440px", minWidth: 300 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
+              {goalStat("נטו בפועל", fmtAmount(real), real >= 0 ? GREEN : RED)}
+              {goalStat("צפוי לנטו", fmtAmount(est), est >= 0 ? AMBER : RED)}
+              {goalStat("יעד", fmtAmount(goal), TEXT)}
+            </div>
+            <div style={{ position: "relative", height: 22, borderRadius: 100, background: BDR2, overflow: "hidden" }}>
+              {/* forecast (dashed outline, behind) */}
+              <div style={{ position: "absolute", insetInlineStart: 0, top: 0, height: "100%", width: `${estW}%`, background: `${AMBER}1E`, border: `1px dashed ${AMBER}88`, borderRadius: 100, boxSizing: "border-box" }} />
+              {/* real (solid, front) */}
+              <div style={{ position: "absolute", insetInlineStart: 0, top: 0, height: "100%", width: `${realW}%`, background: real >= 0 ? GREEN : RED, borderRadius: 100, boxShadow: `0 0 18px ${(real >= 0 ? GREEN : RED)}55` }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+              <span style={{ fontSize: 12, color: MUTED }}>0</span>
+              <span style={{ fontSize: 12.5, color: real >= 0 ? GREEN : RED, fontWeight: 800 }}>{fmtAmount(real)}</span>
+              <span style={{ fontSize: 12, color: TEXT2, fontWeight: 700 }}>{fmtAmount(goal)}</span>
+            </div>
+          </div>
         </div>
       </div>
         );
@@ -1524,14 +1536,14 @@ export default function FinancePage() {
 
       {/* ── Filter strip (full width) ────────────────────────────────────── */}
       <div style={{
-        display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12,
-        alignItems: "center", padding: "10px 14px",
-        background: CARD, border: `1px solid ${BDR}`, borderRadius: 12,
+        display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14,
+        alignItems: "center", padding: "12px 16px",
+        background: CARD, border: `1px solid ${BDR}`, borderRadius: 14,
       }}>
-        <div style={{ position: "relative", flex: "1 1 190px", minWidth: 150 }}>
-          <span style={{ position: "absolute", insetInlineStart: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 12, pointerEvents: "none" }}>🔍</span>
+        <div style={{ position: "relative", flex: "1 1 220px", minWidth: 170 }}>
+          <span style={{ position: "absolute", insetInlineStart: 13, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 13, pointerEvents: "none" }}>🔍</span>
           <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="חיפוש..."
-            style={{ ...INPUT_S, padding: "7px 30px 7px 12px", fontSize: 12, border: `1px solid ${BDR}` }} />
+            style={{ ...INPUT_S, padding: "9px 36px 9px 14px", fontSize: 13, border: `1px solid ${BDR}` }} />
         </div>
 
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
@@ -1589,21 +1601,30 @@ export default function FinancePage() {
       </div>
 
       {/* ── Main: transactions table (left) + quick summary (right) ──────── */}
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
 
         {/* Quick summary — real (existing) figures only */}
-        <div style={{ flex: "0 0 260px", minWidth: 230 }}>
-          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 16px" }}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginBottom: 14 }}>סיכום מהיר</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ flex: "0 0 280px", minWidth: 240 }}>
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "20px 20px", boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 16 }}>סיכום מהיר</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {sumRow("הכנסות שהתקבלו", stats.incomeReceived, GREEN)}
               {sumRow("הוצאות ששולמו", expensesPaid, RED)}
               {sumRow("צפוי / ממתין", stats.incomeExpected, AMBER)}
-              <div style={{ borderTop: `1px solid ${BDR}`, marginTop: 2, paddingTop: 12 }}>
+              <div style={{ borderTop: `1px solid ${BDR}`, marginTop: 2, paddingTop: 14 }}>
                 {sumRow("תזרים נטו", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, true)}
               </div>
             </div>
-            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 14, lineHeight: 1.6 }}>
+            <button
+              onClick={() => { setViewTab("all"); setStatusFilter(""); setCategoryFilter(""); setContactFilter(""); setProjectFilter(""); setSourceFilter("all"); setSearchQuery(""); }}
+              style={{
+                marginTop: 18, width: "100%", padding: "10px", borderRadius: 10,
+                border: `1px solid ${BDR2}`, background: "transparent", color: TEXT2,
+                fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+              }}
+            >⤢ לכל הנתונים</button>
+            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 12, lineHeight: 1.6, textAlign: "center" }}>
               מבוסס על התנועות בטווח {periodTitle}.
             </div>
           </div>
@@ -1612,35 +1633,33 @@ export default function FinancePage() {
         {/* Table column */}
         <div style={{ flex: "1 1 560px", minWidth: 0 }}>
 
-          {/* ── Segmented tabs ────────────────────────────────────────── */}
-          <div style={{
-            display: "flex", gap: 6, marginBottom: 12,
-            background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: 5,
-          }}>
-            {([["all","הכל",TEXT2],["income","הכנסות",GREEN],["expense","הוצאות",RED],["unpaid","לא שולם",RED],["shows","הופעות",BRAND],["attention","דורש טיפול",AMBER]] as const).map(([k, label, color]) => {
-              const active = viewTab === k;
-              const badge  = k === "unpaid" ? unpaidCount : k === "attention" ? attentionCount : 0;
-              return (
-                <button key={k} onClick={() => setViewTab(k)} style={{
-                  flex: 1, padding: "10px 4px", borderRadius: 11, border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  background: active ? `${color}22` : "transparent",
-                  color: active ? color : TEXT2,
-                  fontSize: 13, fontWeight: active ? 800 : 600, whiteSpace: "nowrap",
-                  outline: active ? `1px solid ${color}55` : "none",
-                  boxShadow: active ? `inset 0 -3px 0 ${color}, 0 4px 14px ${color}22` : "none",
-                  fontFamily: "inherit",
-                }}>
-                  {label}
-                  {badge > 0 && (
-                    <span style={{
-                      fontSize: 10, fontWeight: 800, color: "#fff", background: k === "attention" ? AMBER : RED,
-                      borderRadius: 100, padding: "1px 6px", minWidth: 16, textAlign: "center",
-                    }}>{badge}</span>
-                  )}
-                </button>
-              );
-            })}
+          {/* ── Table title + underline tabs ──────────────────────────── */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, marginBottom: 10, paddingInline: 4 }}>כל התנועות</div>
+            <div style={{ display: "flex", gap: 2, flexWrap: "wrap", borderBottom: `1px solid ${BDR}`, paddingInline: 2 }}>
+              {([["all","הכל"],["income","הכנסות"],["expense","הוצאות"],["unpaid","לא שולם"],["shows","הופעות"],["attention","דורש טיפול"]] as const).map(([k, label]) => {
+                const active = viewTab === k;
+                const badge  = k === "unpaid" ? unpaidCount : k === "attention" ? attentionCount : 0;
+                return (
+                  <button key={k} onClick={() => setViewTab(k)} style={{
+                    padding: "10px 14px", border: "none", background: "transparent", cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 6, fontFamily: "inherit",
+                    fontSize: 14, fontWeight: active ? 800 : 600, whiteSpace: "nowrap",
+                    color: active ? TEXT : TEXT2,
+                    borderBottom: active ? `2px solid ${BRAND}` : "2px solid transparent",
+                    marginBottom: -1,
+                  }}>
+                    {label}
+                    {badge > 0 && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, color: "#fff", background: k === "attention" ? AMBER : RED,
+                        borderRadius: 100, padding: "1px 6px", minWidth: 16, textAlign: "center",
+                      }}>{badge}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* ── Transactions table ────────────────────────────────────── */}
@@ -1664,19 +1683,19 @@ export default function FinancePage() {
               {renderGroup("g-general", "כללי", "🏢", PURPLE, generalTxs, generalTxs.map((tx, i) => renderTxRow(tx, i)))}
               <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
                 <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
-                <span>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
                 <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
               </div>
             </>
           ) : (
             /* Default: flat "כל התנועות" table (month headers when קיבוץ חודשי is on) */
-            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
+            <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
               {/* Table header */}
               <div style={{
                 display: "grid", gridTemplateColumns: FLAT_COLS,
-                gap: 8, padding: "10px 16px",
+                gap: 10, padding: "13px 18px",
                 background: CARD2, borderBottom: `1px solid ${BDR}`,
-                fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
+                fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.05em",
               }}>
                 <div>תאריך</div><div>סוג</div><div>שם</div><div>קטגוריה</div>
                 <div>פרויקט</div><div>איש קשר</div><div>סכום</div><div>סטטוס</div><div />
@@ -1710,54 +1729,54 @@ export default function FinancePage() {
                       onClick={() => openEdit(tx)}
                       style={{
                         display: "grid", gridTemplateColumns: FLAT_COLS,
-                        gap: 8, padding: "14px 16px", alignItems: "center",
-                        borderBottom: `1px solid rgba(255,255,255,0.06)`,
+                        gap: 10, padding: "16px 18px", alignItems: "center",
+                        borderBottom: `1px solid ${BDR}`,
                         background: baseBg, cursor: "pointer",
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.035)"; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = baseBg; }}
                     >
                       {/* תאריך */}
-                      <div style={{ fontSize: 12, color: undated ? AMBER : TEXT2 }}>
+                      <div style={{ fontSize: 12.5, color: undated ? AMBER : TEXT2 }}>
                         {undated ? "ללא תאריך" : fmtDate(tx.date)}
                       </div>
                       {/* סוג */}
                       <div>
                         <span style={{
-                          fontSize: 10, fontWeight: 800, borderRadius: 6, padding: "3px 8px",
-                          background: isIncome ? `${GREEN}16` : `${RED}14`,
+                          fontSize: 10.5, fontWeight: 800, borderRadius: 6, padding: "3px 9px",
+                          background: isIncome ? `${GREEN}18` : `${RED}16`,
                           color: isIncome ? GREEN : RED,
-                          border: `1px solid ${isIncome ? `${GREEN}30` : `${RED}2E`}`,
+                          border: `1px solid ${isIncome ? `${GREEN}33` : `${RED}30`}`,
                           display: "inline-block", whiteSpace: "nowrap",
                         }}>
                           {isIncome ? "הכנסה" : "הוצאה"}
                         </span>
                       </div>
                       {/* שם */}
-                      <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 13.5, color: TEXT, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {getTransactionLabel(tx)}
                       </div>
                       {/* קטגוריה */}
-                      <div style={{ fontSize: 12, color: tx.category ? TEXT2 : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 12.5, color: tx.category ? TEXT2 : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {tx.category || "—"}
                       </div>
                       {/* פרויקט / שיוך */}
                       <div>
                         <span title={src.label} style={{
                           display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
-                          fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
-                          background: `${src.col}14`, color: src.col, border: `1px solid ${src.col}2E`,
+                          fontSize: 11, fontWeight: 700, borderRadius: 6, padding: "4px 9px",
+                          background: `${src.col}16`, color: src.col, border: `1px solid ${src.col}30`,
                         }}>
                           <span style={{ flexShrink: 0 }}>{src.icon}</span>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{src.label}</span>
                         </span>
                       </div>
                       {/* איש קשר */}
-                      <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 12.5, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {tx.artist || proj?.artist || "—"}
                       </div>
                       {/* סכום */}
-                      <div style={{ fontSize: 15, fontWeight: 800, color: isIncome ? GREEN : RED, whiteSpace: "nowrap", letterSpacing: "-0.02em" }}>
+                      <div style={{ fontSize: 16.5, fontWeight: 800, color: isIncome ? GREEN : RED, whiteSpace: "nowrap", letterSpacing: "-0.02em" }}>
                         {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
                       </div>
                       {/* סטטוס */}
@@ -1786,7 +1805,7 @@ export default function FinancePage() {
               {/* Footer totals */}
               <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: `1px solid ${BDR}`, background: CARD2, fontSize: 11, color: MUTED }}>
                 <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
-                <span>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span>הוצאות: <strong style={{ color: RED }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
                 <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
               </div>
             </div>
