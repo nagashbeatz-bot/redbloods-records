@@ -29,7 +29,7 @@ type Period        = "month" | "3months" | "custom";
 type SortMode      = "date-desc" | "date-asc" | "amount-desc" | "project" | "status" | "type";
 type Scope         = "project" | "general";
 type SourceFilter  = "all" | "project" | "general";
-type ViewTab       = "all" | "income" | "expense" | "shows" | "unpaid";
+type ViewTab       = "all" | "income" | "expense" | "shows" | "unpaid" | "attention";
 
 interface Transaction {
   id: string;
@@ -778,6 +778,13 @@ export default function FinancePage() {
   const [projectFilter, setProjectFilter] = useState("");
   const [sortMode,     setSortMode]     = useState<SortMode>("date-desc");
   const [groupByMonth, setGroupByMonth] = useState(false);
+  // Source-grouped card view (הופעות / פרויקטים / כללי) is now opt-in; the flat
+  // table is the default (matches the approved design).
+  const [groupBySource, setGroupBySource] = useState(false);
+  // Client-side-only enrichment filters over already-loaded data (no API/DB):
+  const [searchQuery,    setSearchQuery]    = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [contactFilter,  setContactFilter]  = useState("");
 
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -817,19 +824,35 @@ export default function FinancePage() {
   const compStats = compRange.from ? calcStats(compTx) : null;
 
   // ── Needs attention (from ALL transactions, not just period) ──────────────
-  const attentionUnpaidIncome  = transactions.filter((t) => t.type === "income"  && t.payment_status === "לא שולם");
-  const attentionOpenExpenses  = transactions.filter((t) => t.type === "expense" && ["צפוי", "לא שולם"].includes(t.payment_status));
+  // "צפוי" alone is NOT a problem (no overdue logic here) — only explicitly
+  // unpaid/partial rows need attention, per the canonical meaning of the data.
+  const attentionUnpaidIncome  = transactions.filter((t) => t.type === "income"  && ["לא שולם", "חלקי"].includes(t.payment_status));
+  const attentionOpenExpenses  = transactions.filter((t) => t.type === "expense" && ["לא שולם", "חלקי"].includes(t.payment_status));
   const hasAttention = noDateTx.length > 0 || attentionUnpaidIncome.length > 0 || attentionOpenExpenses.length > 0;
 
   // ── Table filtered rows ────────────────────────────────────────────────────
+  // Rows that "need attention": unpaid/partial on either side (same meaning as
+  // the דורש טיפול band — no overdue-by-date inference).
+  const needsAttention = (t: Transaction) =>
+    (t.type === "income"  && ["לא שולם", "חלקי"].includes(t.payment_status)) ||
+    (t.type === "expense" && ["לא שולם", "חלקי"].includes(t.payment_status));
+
   function matchesFilters(t: Transaction) {
-    if (viewTab === "income"  && t.type !== "income")  return false;
-    if (viewTab === "expense" && t.type !== "expense") return false;
-    if (viewTab === "shows"   && !isShowTx(t))         return false;
-    if (viewTab === "unpaid"  && t.payment_status !== "לא שולם") return false;
+    if (viewTab === "income"    && t.type !== "income")  return false;
+    if (viewTab === "expense"   && t.type !== "expense") return false;
+    if (viewTab === "shows"     && !isShowTx(t))         return false;
+    if (viewTab === "unpaid"    && t.payment_status !== "לא שולם") return false;
+    if (viewTab === "attention" && !needsAttention(t))   return false;
     if (statusFilter           && (t.payment_status === "התקבל" ? "שולם" : t.payment_status) !== statusFilter) return false;
     if (projectFilter          && t.project_id !== projectFilter) return false;
     if (sourceFilter !== "all" && (t.scope ?? "project") !== sourceFilter) return false;
+    if (categoryFilter         && (t.category || "") !== categoryFilter) return false;
+    if (contactFilter          && (t.artist   || "") !== contactFilter)  return false;
+    if (searchQuery.trim()) {
+      const q   = searchQuery.trim().toLowerCase();
+      const hay = `${getTransactionLabel(t)} ${t.artist} ${t.category} ${t.description} ${userVisibleNotes(t.notes)}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     return true;
   }
 
@@ -902,6 +925,9 @@ export default function FinancePage() {
 
   const projectsWithTx = projects.filter((p) => transactions.some((t) => t.project_id === p.id));
   const allStatuses    = [...new Set(transactions.map((t) => t.payment_status === "התקבל" ? "שולם" : t.payment_status))];
+  // Filter option lists derived from loaded data only (no invented values).
+  const allCategories  = [...new Set(transactions.map((t) => (t.category || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "he"));
+  const allContacts    = [...new Set(transactions.map((t) => (t.artist   || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "he"));
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
   function openAdd() {
@@ -987,11 +1013,14 @@ export default function FinancePage() {
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const expensesPaid = stats.projExpPaid + stats.genExpPaid;
-  const unpaidCount  = periodTx.filter((t) => t.payment_status === "לא שולם").length;
+  const expensesPaid   = stats.projExpPaid + stats.genExpPaid;
+  const unpaidCount    = periodTx.filter((t) => t.payment_status === "לא שולם").length;
+  const attentionCount = periodTx.filter(needsAttention).length;
 
   // ── Source grouping (הופעות / פרויקטים / כללי) ─────────────────────────────
   const GRID_COLS = "72px 1.9fr 1.6fr 1.3fr 120px 100px 28px";
+  // Flat "all transactions" table columns: תאריך · סוג · שם · קטגוריה · פרויקט · איש קשר · סכום · סטטוס · ⋮
+  const FLAT_COLS = "88px 58px 1.7fr 1fr 1.15fr 1.05fr 112px 82px 24px";
   const isProjectTx = (t: Transaction) => !isShowTx(t) && (!!t.project_id || (t.scope ?? "project") === "project");
   const showsTxs    = filtered.filter(isShowTx);
   const projectTxs  = filtered.filter(isProjectTx);
@@ -1196,6 +1225,41 @@ export default function FinancePage() {
     cursor: "pointer", fontFamily: "inherit", outline: "none",
   };
 
+  // ── Small render helpers for the redesigned sections ────────────────────────
+  const attnCard = (col: string): React.CSSProperties => ({
+    display: "flex", alignItems: "center", gap: 11, padding: "12px 14px",
+    borderRadius: 12, background: `${col}0D`, border: `1px solid ${col}2A`,
+    cursor: "pointer", fontFamily: "inherit", textAlign: "right", width: "100%",
+  });
+
+  // תזרים החודש: one flow cell + a connector arrow.
+  const flowArrow = () => (
+    <div style={{ display: "flex", alignItems: "center", color: MUTED, fontSize: 17, flexShrink: 0, alignSelf: "stretch" }}>⇄</div>
+  );
+  const flowCell = (label: string, val: number, col: string, glyph: string) => (
+    <div style={{ flex: "1 1 150px", minWidth: 128, background: `${col}0D`, border: `1px solid ${col}26`, borderRadius: 12, padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: TEXT2 }}>{label}</span>
+        <span style={{ width: 26, height: 26, borderRadius: 8, background: `${col}1C`, color: col, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>{glyph}</span>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 900, color: col, letterSpacing: "-0.03em", marginTop: 8 }}>{fmtAmount(val)}</div>
+    </div>
+  );
+
+  const goalStat = (label: string, val: string, col: string) => (
+    <div style={{ textAlign: "center" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.04em" }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 900, color: col, marginTop: 3 }}>{val}</div>
+    </div>
+  );
+
+  const sumRow = (label: string, val: number, col: string, bold = false) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <span style={{ fontSize: bold ? 13 : 12, color: bold ? TEXT : TEXT2, fontWeight: bold ? 800 : 500 }}>{label}</span>
+      <span style={{ fontSize: bold ? 16 : 14, fontWeight: bold ? 900 : 800, color: col }}>{fmtAmount(val)}</span>
+    </div>
+  );
+
   // Privacy / "מצב לקוח": never render any financial content — show a clean
   // placeholder instead (same route, no redirect). Toggling off re-renders the
   // real page immediately. Fixed min-height keeps the layout from jumping.
@@ -1336,179 +1400,243 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* ── KPI cards (5 in a row) ───────────────────────────────────────── */}
-      {(() => {
-        const totalIncome = stats.incomeReceived + stats.incomeExpected;
-        const netPct      = Math.round(Math.max(0, stats.profitReal) / NET_MONTHLY_GOAL * 100);
-        return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
-        {/* RTL story, right→left: סך הכנסות → שולם → ממתין → סך הוצאות → נטו */}
-        <SummaryCard icon="💰" label="סך הכנסות"
-          value={fmtAmount(totalIncome)} color={GREEN}
-          sub={`${periodTx.filter((t) => t.type === "income").length} הכנסות`}
-        />
-        <SummaryCard icon="✅" label="שולם"
+      {/* ── KPI cards (4 in a row) ───────────────────────────────────────── */}
+      {/* RTL, right→left: התקבל בפועל → הוצאות בפועל → תזרים נטו → צפוי/ממתין */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
+        <SummaryCard icon="✅" label="התקבל בפועל"
           value={fmtAmount(stats.incomeReceived)} color={GREEN}
-          sub="התקבל בפועל"
+          sub={`${periodTx.filter((t) => t.type === "income" && ["שולם", "התקבל"].includes(t.payment_status)).length} תשלומים שהתקבלו`}
         />
-        <SummaryCard icon="⏳" label="ממתין לתשלום"
-          value={fmtAmount(stats.incomeExpected)} color={stats.incomeExpected > 0 ? AMBER : MUTED}
-          sub="טרם התקבל"
-        />
-        <SummaryCard icon="📉" label='סך הוצאות'
+        <SummaryCard icon="📉" label="הוצאות בפועל"
           value={fmtAmount(expensesPaid)} color={expensesPaid > 0 ? RED : MUTED}
           sub="שולם בפועל"
         />
-        <SummaryCard icon="📈" label="נטו"
+        <SummaryCard icon="📈" label="תזרים נטו"
           value={fmtAmount(stats.profitReal)} color={stats.profitReal >= 0 ? GREEN : RED}
-          sub={`יעד נטו חודשי: ${fmtAmount(NET_MONTHLY_GOAL)}`}
-          progress={stats.profitReal / NET_MONTHLY_GOAL}
-          progressLabel={`${netPct}% מהיעד`}
+          sub="התקבל בפועל − שולם בפועל"
         />
+        <SummaryCard icon="⏳" label="צפוי / ממתין"
+          value={fmtAmount(stats.incomeExpected)} color={stats.incomeExpected > 0 ? AMBER : MUTED}
+          sub="הכנסות שטרם התקבלו"
+        />
+      </div>
+
+      {/* ── דורש טיפול היום (prominent band) ─────────────────────────────── */}
+      {hasAttention && (
+        <div style={{
+          marginBottom: 14, borderRadius: 16, padding: "14px 16px",
+          background: `linear-gradient(160deg, ${AMBER}0C, ${CARD} 60%)`,
+          border: `1px solid ${AMBER}2E`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 11 }}>
+            <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>דורש טיפול</span>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: RED, borderRadius: 100, minWidth: 18, padding: "1px 7px", textAlign: "center" }}>
+              {noDateTx.length + attentionUnpaidIncome.length + attentionOpenExpenses.length}
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: 10 }}>
+            {attentionUnpaidIncome.length > 0 && (
+              <button onClick={() => { setViewTab("income"); setStatusFilter("לא שולם"); }} style={attnCard(RED)}>
+                <span style={{ fontSize: 20 }}>⚡</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+                    <strong style={{ color: RED }}>{attentionUnpaidIncome.length}</strong> הכנסות לא שולמו
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>דורש גבייה · {fmtAmount(attentionUnpaidIncome.reduce((s, t) => s + t.amount, 0))}</div>
+                </div>
+              </button>
+            )}
+            {attentionOpenExpenses.length > 0 && (
+              <button onClick={() => { setViewTab("expense"); setStatusFilter(""); }} style={attnCard(AMBER)}>
+                <span style={{ fontSize: 20 }}>📋</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+                    <strong style={{ color: AMBER }}>{attentionOpenExpenses.length}</strong> הוצאות פתוחות
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>ממתינות לתשלום · {fmtAmount(attentionOpenExpenses.reduce((s, t) => s + t.amount, 0))}</div>
+                </div>
+              </button>
+            )}
+            {noDateTx.length > 0 && (
+              <button onClick={() => setShowUndated((v) => !v)} style={attnCard(BLUE)}>
+                <span style={{ fontSize: 20 }}>⚠</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+                    <strong style={{ color: BLUE }}>{noDateTx.length}</strong> תנועות ללא תאריך
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{showUndated ? "מוצגות בטבלה — לחץ להסתרה" : "לחץ להצגה בטבלה"}</div>
+                </div>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── תזרים החודש (horizontal flow, no donut) ──────────────────────── */}
+      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "14px 18px", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 12 }}>תזרים החודש</div>
+        <div style={{ display: "flex", alignItems: "stretch", gap: 10, flexWrap: "wrap" }}>
+          {flowCell("נכנס", stats.incomeReceived, GREEN, "↓")}
+          {flowArrow()}
+          {flowCell("יצא", expensesPaid, RED, "↑")}
+          {flowArrow()}
+          {flowCell("נטו", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, "=")}
+          {flowArrow()}
+          {flowCell("צפוי", stats.incomeExpected, AMBER, "…")}
+        </div>
+      </div>
+
+      {/* ── יעד רווח נטו חודשי (horizontal progress) ─────────────────────── */}
+      {(() => {
+        const goal    = NET_MONTHLY_GOAL;
+        const real    = stats.profitReal;   // canonical net (received − paid)
+        const est     = stats.profitEst;     // canonical net forecast (received + expected − paid − expected-expenses)
+        const realPct = Math.max(0, Math.round((real / goal) * 100));
+        const estPct  = Math.max(0, Math.round((est  / goal) * 100));
+        const realW   = Math.max(0, Math.min(100, (real / goal) * 100));
+        const estW    = Math.max(0, Math.min(100, (est  / goal) * 100));
+        return (
+      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 18px 18px", marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>יעד רווח נטו חודשי</div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+            {goalStat("נטו בפועל", fmtAmount(real), real >= 0 ? GREEN : RED)}
+            {goalStat("צפוי לנטו", fmtAmount(est), est >= 0 ? AMBER : RED)}
+            {goalStat("יעד", fmtAmount(goal), TEXT2)}
+          </div>
+        </div>
+        <div style={{ position: "relative", height: 16, borderRadius: 100, background: BDR2, overflow: "hidden" }}>
+          {/* forecast fill (behind) */}
+          <div style={{ position: "absolute", insetInlineStart: 0, top: 0, height: "100%", width: `${estW}%`, background: `${AMBER}55` }} />
+          {/* real fill (front) */}
+          <div style={{ position: "absolute", insetInlineStart: 0, top: 0, height: "100%", width: `${realW}%`, background: real >= 0 ? GREEN : RED }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: MUTED }}>0</span>
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: real >= 0 ? GREEN : RED }}>
+            {realPct}% מהיעד{est > real ? ` · אם כל הצפוי ייכנס: ${estPct}%` : ""}
+          </span>
+          <span style={{ fontSize: 12, color: TEXT2, fontWeight: 700 }}>{fmtAmount(goal)}</span>
+        </div>
       </div>
         );
       })()}
 
-      {/* ── Two-column layout ────────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-
-        {/* Left: monthly summary */}
-        <div style={{ flexShrink: 0, width: 330 }}>
-          <MonthlyDonut income={stats.incomeReceived} expenses={expensesPaid} pending={stats.incomeExpected} />
-
-          {/* Needs attention */}
-          {hasAttention && (
-            <div style={{
-              marginTop: 14, display: "flex", flexDirection: "column", gap: 8,
-              background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 16px",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>דורש טיפול</span>
-                <span style={{
-                  fontSize: 10, fontWeight: 800, color: "#fff", background: RED,
-                  borderRadius: 100, minWidth: 18, padding: "1px 6px", textAlign: "center",
-                }}>{noDateTx.length + attentionUnpaidIncome.length + attentionOpenExpenses.length}</span>
-              </div>
-              {noDateTx.length > 0 && (
-                <button onClick={() => setShowUndated((v) => !v)} style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "7px 12px", borderRadius: 10, width: "100%",
-                  background: `${AMBER}08`, border: `1px solid ${AMBER}22`,
-                  cursor: "pointer", fontFamily: "inherit",
-                }}>
-                  <span style={{ color: AMBER, fontSize: 12 }}>⚠</span>
-                  <span style={{ fontSize: 11, color: TEXT2, flex: 1, textAlign: "right" }}>
-                    <strong style={{ color: AMBER }}>{noDateTx.length}</strong> ללא תאריך
-                  </span>
-                  <span style={{ fontSize: 9, color: showUndated ? AMBER : MUTED }}>
-                    {showUndated ? "▲" : "▼"}
-                  </span>
-                </button>
-              )}
-              {attentionUnpaidIncome.length > 0 && (
-                <button onClick={() => { setViewTab("income"); setStatusFilter("לא שולם"); }} style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "7px 12px", borderRadius: 10, width: "100%",
-                  background: `${RED}08`, border: `1px solid ${RED}22`,
-                  cursor: "pointer", fontFamily: "inherit",
-                }}>
-                  <span style={{ color: RED, fontSize: 12 }}>⚡</span>
-                  <span style={{ fontSize: 11, color: TEXT2, flex: 1, textAlign: "right" }}>
-                    <strong style={{ color: RED }}>{attentionUnpaidIncome.length}</strong> לא שולמו
-                  </span>
-                </button>
-              )}
-              {attentionOpenExpenses.length > 0 && (
-                <button onClick={() => { setViewTab("expense"); setStatusFilter(""); }} style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "7px 12px", borderRadius: 10, width: "100%",
-                  background: `${AMBER}08`, border: `1px solid ${AMBER}22`,
-                  cursor: "pointer", fontFamily: "inherit",
-                }}>
-                  <span style={{ color: AMBER, fontSize: 12 }}>📋</span>
-                  <span style={{ fontSize: 11, color: TEXT2, flex: 1, textAlign: "right" }}>
-                    <strong style={{ color: AMBER }}>{attentionOpenExpenses.length}</strong> הוצאות פתוחות
-                  </span>
-                </button>
-              )}
-            </div>
-          )}
+      {/* ── Filter strip (full width) ────────────────────────────────────── */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12,
+        alignItems: "center", padding: "10px 14px",
+        background: CARD, border: `1px solid ${BDR}`, borderRadius: 12,
+      }}>
+        <div style={{ position: "relative", flex: "1 1 190px", minWidth: 150 }}>
+          <span style={{ position: "absolute", insetInlineStart: 11, top: "50%", transform: "translateY(-50%)", color: MUTED, fontSize: 12, pointerEvents: "none" }}>🔍</span>
+          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="חיפוש..."
+            style={{ ...INPUT_S, padding: "7px 30px 7px 12px", fontSize: 12, border: `1px solid ${BDR}` }} />
         </div>
 
-        {/* Right: filters + tabs + table */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
+          ...selectStyle, color: statusFilter ? BRAND : TEXT2, borderColor: statusFilter ? `${BRAND}40` : BDR,
+        }}>
+          <option value="">כל הסטטוסים</option>
+          {allStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
 
-          {/* ── Filter strip ──────────────────────────────────────────── */}
-          <div style={{
-            display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10,
-            alignItems: "center", padding: "10px 14px",
-            background: CARD, border: `1px solid ${BDR}`, borderRadius: 12,
-          }}>
-            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as SourceFilter)} style={selectStyle}>
-              <option value="all">כל המקורות</option>
-              <option value="project">📁 פרויקטים</option>
-              <option value="general">🏢 כללי</option>
-            </select>
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{
+          ...selectStyle, color: categoryFilter ? BRAND : TEXT2, borderColor: categoryFilter ? `${BRAND}40` : BDR,
+        }}>
+          <option value="">כל הקטגוריות</option>
+          {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
 
-            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={selectStyle}>
-              <option value="">כל הפרויקטים</option>
-              {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+        <select value={contactFilter} onChange={(e) => setContactFilter(e.target.value)} style={{
+          ...selectStyle, color: contactFilter ? BRAND : TEXT2, borderColor: contactFilter ? `${BRAND}40` : BDR,
+        }}>
+          <option value="">כל אנשי הקשר</option>
+          {allContacts.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
 
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
-              ...selectStyle,
-              color: statusFilter ? BRAND : TEXT2,
-              borderColor: statusFilter ? `${BRAND}40` : BDR,
-            }}>
-              <option value="">כל הסטטוסים</option>
-              {allStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={selectStyle}>
+          <option value="">כל הפרויקטים</option>
+          {projectsWithTx.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
 
-            <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={selectStyle}>
-              <option value="date-desc">מהחדש לישן</option>
-              <option value="date-asc">מהישן לחדש</option>
-              <option value="amount-desc">לפי סכום</option>
-              <option value="project">לפי פרויקט</option>
-              <option value="status">לפי סטטוס</option>
-              <option value="type">לפי סוג</option>
-            </select>
+        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as SourceFilter)} style={selectStyle}>
+          <option value="all">כל המקורות</option>
+          <option value="project">📁 פרויקטים</option>
+          <option value="general">🏢 כללי</option>
+        </select>
 
-            <button onClick={() => setGroupByMonth((v) => !v)} style={{
-              ...selectStyle,
-              background: groupByMonth ? `${PURPLE}15` : CARD,
-              color: groupByMonth ? PURPLE : TEXT2,
-              borderColor: groupByMonth ? `${PURPLE}40` : BDR,
-            }}>
-              קיבוץ חודשי
-            </button>
+        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={selectStyle}>
+          <option value="date-desc">מהחדש לישן</option>
+          <option value="date-asc">מהישן לחדש</option>
+          <option value="amount-desc">לפי סכום</option>
+          <option value="project">לפי פרויקט</option>
+          <option value="status">לפי סטטוס</option>
+          <option value="type">לפי סוג</option>
+        </select>
 
-            <span style={{ fontSize: 11, color: MUTED, marginRight: "auto" }}>{filtered.length} תנועות</span>
+        <button onClick={() => setGroupBySource((v) => !v)} style={{
+          ...selectStyle, background: groupBySource ? `${BLUE}15` : CARD,
+          color: groupBySource ? BLUE : TEXT2, borderColor: groupBySource ? `${BLUE}40` : BDR,
+        }}>קיבוץ מקור</button>
+
+        <button onClick={() => setGroupByMonth((v) => !v)} style={{
+          ...selectStyle, background: groupByMonth ? `${PURPLE}15` : CARD,
+          color: groupByMonth ? PURPLE : TEXT2, borderColor: groupByMonth ? `${PURPLE}40` : BDR,
+        }}>קיבוץ חודשי</button>
+
+        <span style={{ fontSize: 11, color: MUTED, marginInlineStart: "auto" }}>{filtered.length} תנועות</span>
+      </div>
+
+      {/* ── Main: transactions table (left) + quick summary (right) ──────── */}
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+
+        {/* Quick summary — real (existing) figures only */}
+        <div style={{ flex: "0 0 260px", minWidth: 230 }}>
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "16px 16px" }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginBottom: 14 }}>סיכום מהיר</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {sumRow("הכנסות שהתקבלו", stats.incomeReceived, GREEN)}
+              {sumRow("הוצאות ששולמו", expensesPaid, RED)}
+              {sumRow("צפוי / ממתין", stats.incomeExpected, AMBER)}
+              <div style={{ borderTop: `1px solid ${BDR}`, marginTop: 2, paddingTop: 12 }}>
+                {sumRow("תזרים נטו", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, true)}
+              </div>
+            </div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 14, lineHeight: 1.6 }}>
+              מבוסס על התנועות בטווח {periodTitle}.
+            </div>
           </div>
+        </div>
+
+        {/* Table column */}
+        <div style={{ flex: "1 1 560px", minWidth: 0 }}>
 
           {/* ── Segmented tabs ────────────────────────────────────────── */}
           <div style={{
-            display: "flex", gap: 6, marginBottom: 14,
+            display: "flex", gap: 6, marginBottom: 12,
             background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: 5,
           }}>
-            {([["all","הכל",TEXT2],["income","הכנסות",GREEN],["expense","הוצאות",AMBER],["shows","הופעות",BRAND],["unpaid","לא שולם",RED]] as const).map(([k, label, color]) => {
+            {([["all","הכל",TEXT2],["income","הכנסות",GREEN],["expense","הוצאות",RED],["unpaid","לא שולם",RED],["shows","הופעות",BRAND],["attention","דורש טיפול",AMBER]] as const).map(([k, label, color]) => {
               const active = viewTab === k;
+              const badge  = k === "unpaid" ? unpaidCount : k === "attention" ? attentionCount : 0;
               return (
                 <button key={k} onClick={() => setViewTab(k)} style={{
-                  flex: 1, padding: "13px 0", borderRadius: 11, border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                  flex: 1, padding: "10px 4px", borderRadius: 11, border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                   background: active ? `${color}22` : "transparent",
                   color: active ? color : TEXT2,
-                  fontSize: 14.5, fontWeight: active ? 800 : 600,
+                  fontSize: 13, fontWeight: active ? 800 : 600, whiteSpace: "nowrap",
                   outline: active ? `1px solid ${color}55` : "none",
                   boxShadow: active ? `inset 0 -3px 0 ${color}, 0 4px 14px ${color}22` : "none",
                   fontFamily: "inherit",
                 }}>
                   {label}
-                  {k === "unpaid" && unpaidCount > 0 && (
+                  {badge > 0 && (
                     <span style={{
-                      fontSize: 10, fontWeight: 800, color: "#fff", background: RED,
-                      borderRadius: 100, padding: "1px 7px", minWidth: 18, textAlign: "center",
-                    }}>{unpaidCount}</span>
+                      fontSize: 10, fontWeight: 800, color: "#fff", background: k === "attention" ? AMBER : RED,
+                      borderRadius: 100, padding: "1px 6px", minWidth: 16, textAlign: "center",
+                    }}>{badge}</span>
                   )}
                 </button>
               );
@@ -1528,18 +1656,30 @@ export default function FinancePage() {
                 </button>
               </div>
             </div>
-          ) : groupByMonth ? (
+          ) : groupBySource ? (
+            /* Optional source-grouped card view (opt-in) */
+            <>
+              {renderGroup("g-shows", "הופעות", "🎤", BRAND, showsTxs, renderShowsBody(showsTxs))}
+              {renderGroup("g-projects", "פרויקטים", "📁", BLUE, projectTxs, projectTxs.map((tx, i) => renderTxRow(tx, i)))}
+              {renderGroup("g-general", "כללי", "🏢", PURPLE, generalTxs, generalTxs.map((tx, i) => renderTxRow(tx, i)))}
+              <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
+                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
+                <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
+              </div>
+            </>
+          ) : (
+            /* Default: flat "כל התנועות" table (month headers when קיבוץ חודשי is on) */
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
               {/* Table header */}
               <div style={{
-                display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
+                display: "grid", gridTemplateColumns: FLAT_COLS,
                 gap: 8, padding: "10px 16px",
                 background: CARD2, borderBottom: `1px solid ${BDR}`,
                 fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.06em",
               }}>
-                <div>תאריך</div><div>סוג</div><div>שיוך</div>
-                <div>אמן / ספק</div><div>תנועה</div>
-                <div>סכום</div><div>סטטוס</div><div />
+                <div>תאריך</div><div>סוג</div><div>שם</div><div>קטגוריה</div>
+                <div>פרויקט</div><div>איש קשר</div><div>סכום</div><div>סטטוס</div><div />
               </div>
 
               {displayItems.map((item) => {
@@ -1560,25 +1700,28 @@ export default function FinancePage() {
                 const isIncome = tx.type === "income";
                 const undated  = !tx.date;
                 const baseBg   = undated ? "#1D1810" : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)";
+                const src = isShowTx(tx) ? { label: "הופעה", icon: "🎤", col: BRAND }
+                  : (!!tx.project_id || (tx.scope ?? "project") === "project") ? { label: proj?.name || "פרויקט", icon: "📁", col: BLUE }
+                  : { label: "כללי", icon: "🏢", col: PURPLE };
 
                 return (
                   <div key={tx.id}>
-                    {/* Row — click anywhere opens the edit modal */}
                     <div
                       onClick={() => openEdit(tx)}
                       style={{
-                        display: "grid", gridTemplateColumns: "90px 70px 2fr 1.5fr 1.5fr 110px 90px 30px",
-                        gap: 8, padding: "17px 16px", alignItems: "center",
+                        display: "grid", gridTemplateColumns: FLAT_COLS,
+                        gap: 8, padding: "14px 16px", alignItems: "center",
                         borderBottom: `1px solid rgba(255,255,255,0.06)`,
-                        background: baseBg,
-                        cursor: "pointer",
+                        background: baseBg, cursor: "pointer",
                       }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)"; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = baseBg; }}
                     >
+                      {/* תאריך */}
                       <div style={{ fontSize: 12, color: undated ? AMBER : TEXT2 }}>
                         {undated ? "ללא תאריך" : fmtDate(tx.date)}
                       </div>
+                      {/* סוג */}
                       <div>
                         <span style={{
                           fontSize: 10, fontWeight: 800, borderRadius: 6, padding: "3px 8px",
@@ -1590,32 +1733,34 @@ export default function FinancePage() {
                           {isIncome ? "הכנסה" : "הוצאה"}
                         </span>
                       </div>
-                      <div>
-                        {(() => {
-                          const src = isShowTx(tx) ? { label: "הופעה", icon: "🎤", col: BRAND }
-                            : (!!tx.project_id || (tx.scope ?? "project") === "project") ? { label: proj?.name || "פרויקט", icon: "📁", col: BLUE }
-                            : { label: "כללי", icon: "🏢", col: PURPLE };
-                          return (
-                            <span title={src.label} style={{
-                              display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
-                              fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
-                              background: `${src.col}14`, color: src.col, border: `1px solid ${src.col}2E`,
-                            }}>
-                              <span style={{ flexShrink: 0 }}>{src.icon}</span>
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{src.label}</span>
-                            </span>
-                          );
-                        })()}
+                      {/* שם */}
+                      <div style={{ fontSize: 13, color: TEXT, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {getTransactionLabel(tx)}
                       </div>
+                      {/* קטגוריה */}
+                      <div style={{ fontSize: 12, color: tx.category ? TEXT2 : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {tx.category || "—"}
+                      </div>
+                      {/* פרויקט / שיוך */}
+                      <div>
+                        <span title={src.label} style={{
+                          display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
+                          fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: "3px 8px",
+                          background: `${src.col}14`, color: src.col, border: `1px solid ${src.col}2E`,
+                        }}>
+                          <span style={{ flexShrink: 0 }}>{src.icon}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{src.label}</span>
+                        </span>
+                      </div>
+                      {/* איש קשר */}
                       <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {tx.artist || proj?.artist || "—"}
                       </div>
-                      <div style={{ fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {getTransactionLabel(tx)}
-                      </div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: isIncome ? GREEN : RED, whiteSpace: "nowrap" }}>
+                      {/* סכום */}
+                      <div style={{ fontSize: 15, fontWeight: 800, color: isIncome ? GREEN : RED, whiteSpace: "nowrap", letterSpacing: "-0.02em" }}>
                         {isIncome ? "+" : "−"}{fmtAmount(tx.amount, tx.currency)}
                       </div>
+                      {/* סטטוס */}
                       <div>
                         <button type="button" title="שינוי סטטוס מהיר"
                           onClick={(e) => {
@@ -1627,6 +1772,7 @@ export default function FinancePage() {
                           <StatusBadge status={tx.payment_status} />
                         </button>
                       </div>
+                      {/* עריכה */}
                       <button type="button" title="עריכת תנועה"
                         onClick={(e) => { e.stopPropagation(); openEdit(tx); }}
                         style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, fontFamily: "inherit", padding: 0 }}>
@@ -1641,20 +1787,9 @@ export default function FinancePage() {
               <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderTop: `1px solid ${BDR}`, background: CARD2, fontSize: 11, color: MUTED }}>
                 <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
                 <span>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
-                <span style={{ marginRight: "auto" }}>{filtered.length} תנועות מסוננות</span>
+                <span style={{ marginInlineStart: "auto" }}>{filtered.length} תנועות מסוננות</span>
               </div>
             </div>
-          ) : (
-            <>
-              {renderGroup("g-shows", "הופעות", "🎤", BRAND, showsTxs, renderShowsBody(showsTxs))}
-              {renderGroup("g-projects", "פרויקטים", "📁", BLUE, projectTxs, projectTxs.map((tx, i) => renderTxRow(tx, i)))}
-              {renderGroup("g-general", "כללי", "🏢", PURPLE, generalTxs, generalTxs.map((tx, i) => renderTxRow(tx, i)))}
-              <div style={{ display: "flex", gap: 24, padding: "12px 16px", borderRadius: 12, background: CARD2, fontSize: 11, color: MUTED, border: `1px solid ${BDR}` }}>
-                <span>הכנסות: <strong style={{ color: GREEN }}>{fmtAmount(filtered.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0))}</strong></span>
-                <span>הוצאות: <strong style={{ color: AMBER }}>{fmtAmount(filtered.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0))}</strong></span>
-                <span style={{ marginRight: "auto" }}>{filtered.length} תנועות מסוננות</span>
-              </div>
-            </>
           )}
         </div>
       </div>
