@@ -151,7 +151,10 @@ export default function RehearsalModal({ show, onClose, onCreated, rehearsal }: 
             box-shadow: 0 0 0 3px rgba(99,102,241,0.14); outline: none;
           }
           .rb-reh input::placeholder, .rb-reh textarea::placeholder { color: #55555E; }
-          .rb-reh input[type=number]::-webkit-inner-spin-button { opacity: .45; height: 22px; }
+          /* Hide the browser's native number spinner — keep numeric input + mobile numpad */
+          .rb-reh input[type=number]::-webkit-inner-spin-button,
+          .rb-reh input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+          .rb-reh input[type=number] { -moz-appearance: textfield; appearance: textfield; }
           .rb-reh::-webkit-scrollbar { width: 9px; }
           .rb-reh::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.09); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
         `}</style>
