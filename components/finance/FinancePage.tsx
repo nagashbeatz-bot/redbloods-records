@@ -1475,20 +1475,6 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* ── תזרים החודש (horizontal flow, no donut) ──────────────────────── */}
-      <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px", marginBottom: 18, boxShadow: "0 8px 26px rgba(0,0,0,0.3)" }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 14 }}>תזרים החודש</div>
-        <div style={{ display: "flex", alignItems: "stretch", gap: 12, flexWrap: "wrap" }}>
-          {flowCell("נכנס", stats.incomeReceived, GREEN, "↓")}
-          {flowArrow()}
-          {flowCell("יצא", expensesPaid, RED, "↑")}
-          {flowArrow()}
-          {flowCell("נטו", stats.profitReal, stats.profitReal >= 0 ? GREEN : RED, "=")}
-          {flowArrow()}
-          {flowCell("צפוי", stats.incomeExpected, AMBER, "…")}
-        </div>
-      </div>
-
       {/* ── יעד רווח נטו חודשי (horizontal progress) ─────────────────────── */}
       {(() => {
         const goal    = NET_MONTHLY_GOAL;
