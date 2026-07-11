@@ -5,6 +5,13 @@ import { requireOwner } from "@/lib/require-auth";
 
 const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 
+/** YYYY-MM-DD + 1 day (UTC-safe) — for a calendar end that crosses midnight. */
+function addDayStr(d: string): string {
+  const [y, m, dd] = d.split("-").map(Number);
+  const nd = new Date(Date.UTC(y, m - 1, dd) + 86400000);
+  return `${nd.getUTCFullYear()}-${String(nd.getUTCMonth() + 1).padStart(2, "0")}-${String(nd.getUTCDate()).padStart(2, "0")}`;
+}
+
 // ── GET /api/sessions?projectId=xxx  OR  ?all=1 ──────────────────────────────
 export async function GET(req: NextRequest) {
   const denied = await requireOwner(); if (denied) return denied;
@@ -152,7 +159,12 @@ export async function POST(req: NextRequest) {
           // Compute end in Israel local time — same approach as meetings to avoid timezone confusion
           let calEnd: string;
           if (endTime) {
-            calEnd = `${date}T${endTime}:00`;
+            // If end is at/before start it crossed midnight → put it on the next day
+            // so the calendar event has a correct positive duration.
+            const [sH, sM] = startTime.split(":").map(Number);
+            const [eH, eM] = endTime.split(":").map(Number);
+            const endDate  = (eH * 60 + eM) <= (sH * 60 + sM) ? addDayStr(date) : date;
+            calEnd = `${endDate}T${endTime}:00`;
           } else {
             const [hh, mm] = startTime.split(":").map(Number);
             const endTotalMin = hh * 60 + mm + 60; // default +1 hour

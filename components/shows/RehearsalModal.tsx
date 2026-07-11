@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Show } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
@@ -33,6 +33,115 @@ export interface RehearsalSession {
 
 const OP_STATUSES = ["מתוכנן", "בוצע", "בוטל"] as const;
 
+// Rehearsal duration presets (minutes) + "אחר" for a custom value.
+const DUR_OPTS = [
+  { label: "שעה", min: 60 },
+  { label: "שעה וחצי", min: 90 },
+  { label: "שעתיים", min: 120 },
+  { label: "שעתיים וחצי", min: 150 },
+  { label: "3 שעות", min: 180 },
+];
+const OTHER = "אחר";
+
+/** YYYY-MM-DD + 1 day (UTC-safe, no libs) — for a calendar end that crosses midnight. */
+function addDayStr(d: string): string {
+  const [y, m, dd] = d.split("-").map(Number);
+  const nd = new Date(Date.UTC(y, m - 1, dd) + 86400000);
+  return `${nd.getUTCFullYear()}-${String(nd.getUTCMonth() + 1).padStart(2, "0")}-${String(nd.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** HH:MM + minutes → HH:MM (wraps past midnight). */
+function addMinutes(hhmm: string, mins: number): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const t = (h * 60 + m + mins) % (24 * 60);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/** Derive duration (minutes) from an existing start/end (handles crossing midnight). */
+function durationFromTimes(start?: string | null, end?: string | null): number | null {
+  if (!start || !end) return null;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  if ([sh, sm, eh, em].some(n => Number.isNaN(n))) return null;
+  let d = (eh * 60 + em) - (sh * 60 + sm);
+  if (d < 0) d += 24 * 60;
+  return d > 0 ? d : null;
+}
+
+/** Modern custom dropdown for the rehearsal duration (presets + "אחר"). */
+function DurationPicker({ label, onPick, style, className }: {
+  label: string;
+  onPick: (opt: { label: string; min: number | null }) => void;
+  style?: React.CSSProperties;
+  className?: string;
+}) {
+  const btnRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const opts: { label: string; min: number | null }[] = [...DUR_OPTS, { label: OTHER, min: null }];
+
+  function openPanel() {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    setOpen(true);
+  }
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (document.getElementById("rb-dur-portal")?.contains(e.target as Node)) return;
+      if (btnRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onEsc);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onEsc); };
+  }, [open]);
+
+  const dropdown = (
+    <div id="rb-dur-portal" style={{
+      position: "fixed", top: pos.top, left: pos.left, width: Math.max(pos.width, 150),
+      zIndex: 200010, background: "#15151B", border: "1px solid rgba(255,255,255,0.12)",
+      borderRadius: 12, padding: 6, boxShadow: "0 18px 50px rgba(0,0,0,0.75)", direction: "rtl",
+    }}>
+      {opts.map(o => {
+        const active = o.label === label;
+        return (
+          <button key={o.label} type="button" onClick={() => { onPick(o); setOpen(false); }}
+            style={{
+              display: "block", width: "100%", textAlign: "right", padding: "9px 11px",
+              borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13,
+              background: active ? "rgba(99,102,241,0.22)" : "transparent",
+              color: active ? "#A5B4FC" : "#D8D8DE", fontWeight: active ? 700 : 500,
+            }}
+            onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)"; }}
+            onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >{o.label}</button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <>
+      <div ref={btnRef} role="button" tabIndex={0} onClick={openPanel}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPanel(); } }}
+        className={className} aria-haspopup="listbox" aria-expanded={open}
+        style={{
+          position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: 6, cursor: "pointer", userSelect: "none", ...style,
+          ...(open ? { borderColor: "rgba(99,102,241,0.55)", boxShadow: "0 0 0 3px rgba(99,102,241,0.14)" } : {}),
+        }}>
+        <span style={{ color: "#ECECF1" }}>{label}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.5, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      {open && typeof document !== "undefined" && createPortal(dropdown, document.body)}
+    </>
+  );
+}
+
 /**
  * Schedule OR edit a rehearsal for a show. Rehearsals are sessions
  * (session_type="חזרה להופעה") linked to the show via sessions.show_id, carrying
@@ -52,7 +161,11 @@ export default function RehearsalModal({ show, onClose, onCreated, rehearsal }: 
 
   const [date,      setDate]      = useState<string>(rehearsal?.date || show.date || todayStr);
   const [startTime, setStartTime] = useState<string>(rehearsal?.start_time || show.start_time || "");
-  const [endTime,   setEndTime]   = useState<string>(rehearsal?.end_time || "");
+  // Duration replaces "end time": end_time = start + duration (computed on save).
+  const initDur     = durationFromTimes(rehearsal?.start_time, rehearsal?.end_time);
+  const initMatched = initDur != null ? DUR_OPTS.find(o => o.min === initDur) : undefined;
+  const [durLabel,  setDurLabel]  = useState<string>(initDur == null ? "שעתיים" : (initMatched ? initMatched.label : OTHER));
+  const [customMin, setCustomMin] = useState<string>(initDur != null && !initMatched ? String(initDur) : "");
   const [location,  setLocation]  = useState<string>(rehearsal?.location ?? "גרוב הוד השרון");
   const [userNotes, setUserNotes] = useState<string>(isEdit ? (rehearsal?.notes ?? "") : "");
   const [cost,      setCost]      = useState<string>(rehearsal?.cost != null ? String(rehearsal.cost) : "");
@@ -69,10 +182,28 @@ export default function RehearsalModal({ show, onClose, onCreated, rehearsal }: 
   const costNum = cost.trim() === "" ? 0 : Number(cost);
   const costInvalid = cost.trim() !== "" && (!Number.isFinite(costNum) || costNum < 0);
 
+  const durTotal = durLabel === OTHER
+    ? (customMin.trim() === "" ? NaN : Number(customMin))
+    : (DUR_OPTS.find(o => o.label === durLabel)?.min ?? 120);
+  const durInvalid = !Number.isFinite(durTotal) || durTotal <= 0;
+  const endPreview = (startTime && !durInvalid) ? addMinutes(startTime, durTotal) : "";
+  const crossesMidnightPreview = (startTime && !durInvalid)
+    ? (Number(startTime.split(":")[0]) * 60 + Number(startTime.split(":")[1]) + durTotal) >= 24 * 60
+    : false;
+  const pickDuration = (o: { label: string; min: number | null }) => {
+    setDurLabel(o.label);
+    if (o.label !== OTHER) setCustomMin("");
+  };
+
   async function handleSave() {
     if (!date || !startTime) { setErr("צריך תאריך ושעת התחלה"); return; }
     if (costInvalid) { setErr("עלות לא תקינה"); return; }
+    if (durInvalid)  { setErr("משך לא תקין"); return; }
     setSaving(true); setErr(null);
+    // Compute end_time = start + duration (wraps past midnight; both stored).
+    const [sH, sM] = startTime.split(":").map(Number);
+    const endTime = addMinutes(startTime, durTotal);
+    const crossesMidnight = (sH * 60 + sM + durTotal) >= 24 * 60;
     const ref   = `חזרה עבור הופעה: ${show.name}${show.artist ? ` | אמן: ${show.artist}` : ""}`;
     const notes = isEdit
       ? (userNotes.trim() || ref)
@@ -81,12 +212,12 @@ export default function RehearsalModal({ show, onClose, onCreated, rehearsal }: 
       let res: Response;
       if (isEdit && rehearsal) {
         const startIso = `${date}T${startTime}:00`;
-        const endIso   = endTime ? `${date}T${endTime}:00` : undefined;
+        const endIso   = `${crossesMidnight ? addDayStr(date) : date}T${endTime}:00`;
         res = await fetch(`/api/sessions/${rehearsal.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            date, startTime, endTime: endTime || null,
+            date, startTime, endTime,
             status: opStatus, location: location.trim() || "גרוב הוד השרון", notes,
             cost: cost.trim() === "" ? null : costNum,
             ...(pay ? { paymentStatus: pay } : {}),
@@ -99,7 +230,7 @@ export default function RehearsalModal({ show, onClose, onCreated, rehearsal }: 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title:         show.name,
-            date, startTime, endTime: endTime || null,
+            date, startTime, endTime,
             status:        opStatus,
             sessionType:   "חזרה להופעה",
             location:      location.trim() || "גרוב הוד השרון",
@@ -191,17 +322,31 @@ export default function RehearsalModal({ show, onClose, onCreated, rehearsal }: 
           <DatePickerInput value={date} onChange={setDate} placeholder="בחר תאריך" className="rb-trigger" style={field} />
         </div>
 
-        {/* ── Times ── */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 15 }}>
-          <div style={{ flex: 1 }}>
+        {/* ── Start time + duration ── */}
+        <div style={{ display: "flex", gap: 12, marginBottom: durLabel === OTHER ? 10 : (endPreview ? 7 : 15), flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 130px" }}>
             <div style={lbl}>שעת התחלה</div>
             <TimePickerInput value={startTime} onChange={setStartTime} className="rb-trigger" style={field} />
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={lbl}>שעת סיום</div>
-            <TimePickerInput value={endTime} onChange={setEndTime} className="rb-trigger" style={field} />
+          <div style={{ flex: "1 1 130px" }}>
+            <div style={lbl}>משך החזרה</div>
+            <DurationPicker label={durLabel} onPick={pickDuration} className="rb-trigger" style={field} />
           </div>
         </div>
+        {durLabel === OTHER && (
+          <div style={{ marginBottom: endPreview ? 7 : 15 }}>
+            <div style={lbl}>משך מותאם (בדקות)</div>
+            <input className="rb-field" type="number" min={1} value={customMin} onChange={e => setCustomMin(e.target.value)} placeholder="למשל 200"
+              style={{ ...field, ...(customMin.trim() !== "" && durInvalid ? { borderColor: "rgba(239,68,68,0.55)" } : {}) }} />
+          </div>
+        )}
+        {endPreview && (
+          <div style={{ fontSize: 11, color: "#7A7A85", marginBottom: 15, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ opacity: 0.7 }}>🕒</span>
+            סיום משוער:&nbsp;<strong style={{ color: "#C9C9D2", fontVariantNumeric: "tabular-nums", direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{endPreview}</strong>
+            {crossesMidnightPreview && <span style={{ color: "#8B93F8" }}>(למחרת)</span>}
+          </div>
+        )}
 
         {/* ── Location ── */}
         <div style={{ marginBottom: 15 }}>
