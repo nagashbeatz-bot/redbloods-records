@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { touchProject } from "@/lib/projects-store";
+import { requireOwner } from "@/lib/require-auth";
+
+const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 
 // ── PATCH /api/sessions/[id] — update a session ──────────────────────────────
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await context.params;
     const body = await req.json();
-    const { date, startTime, endTime, status, sessionType, notes, photographer, location, startIso, endIso, summary } = body;
+    const { date, startTime, endTime, status, sessionType, notes, photographer, location, startIso, endIso, summary, cost, paymentStatus } = body;
 
     const patch: Record<string, unknown> = {};
     if (date         !== undefined) patch.date         = date        || null;
@@ -21,6 +25,13 @@ export async function PATCH(
     if (notes        !== undefined) patch.notes        = notes;
     if (photographer !== undefined) patch.photographer = photographer;
     if (location     !== undefined) patch.location     = location;
+    if (cost         !== undefined) {
+      const costNum = (cost === "" || cost == null) ? null : Number(cost);
+      if (costNum != null && (!Number.isFinite(costNum) || costNum < 0)) {
+        return NextResponse.json({ error: "עלות לא תקינה" }, { status: 400 });
+      }
+      patch.cost = costNum;
+    }
 
     const { data, error } = await supabase
       .from("sessions")
@@ -30,6 +41,28 @@ export async function PATCH(
       .single();
 
     if (error) throw new Error(error.message);
+
+    // Rehearsal → keep its canonical expense + the show's split (Fin-2) in sync.
+    // payment_status is passed only when the client explicitly sent it, so an
+    // edit that doesn't touch payment preserves the transaction's status.
+    const rehShowId = (data as { show_id?: string | null }).show_id;
+    if ((data as { session_type?: string }).session_type === REHEARSAL_SESSION_TYPE && rehShowId) {
+      try {
+        const { getShow } = await import("@/lib/shows-store");
+        const show = await getShow(rehShowId);
+        if (show) {
+          const { syncRehearsalFinance, syncShowFinance } = await import("@/lib/shows-finance-sync");
+          const pay = paymentStatus === undefined ? undefined : (paymentStatus === "שולם" ? "שולם" : "לא שולם");
+          await syncRehearsalFinance(
+            { id, date: (data as { date: string | null }).date, cost: (data as { cost: number | null }).cost },
+            show, pay,
+          );
+          await syncShowFinance(show);
+        }
+      } catch (e) {
+        console.error("[sessions PATCH id] rehearsal finance sync error:", e);
+      }
+    }
 
     // ── Google Calendar: update the EXISTING event (never create a new one) ──
     // Only when the session already has a calendar_event_id and the client sent
@@ -74,6 +107,7 @@ export async function DELETE(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await context.params;
 

@@ -5,6 +5,7 @@ import {
 } from "@/lib/shows-store";
 import type { PatchShowInput, ShowStatus, PaymentStatus, Show } from "@/lib/shows-store";
 import { supabase } from "@/lib/supabase";
+import { requireOwner } from "@/lib/require-auth";
 
 /** If show.artist is empty but artist_client_id exists, resolve name from DB. */
 async function resolveArtistName(show: Show): Promise<Show> {
@@ -27,6 +28,7 @@ const CALENDAR_SYNC_FIELDS = new Set([
 ]);
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await ctx.params;
     const body = await req.json();
@@ -195,8 +197,20 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await ctx.params;
+    // Safety: block deletion when the show has linked rehearsals (they carry
+    // their own sessions + Finance transactions). No auto-delete — the owner
+    // must handle the rehearsals first. 409 with a clear message.
+    const { countShowRehearsals } = await import("@/lib/shows-finance-sync");
+    const rehearsalCount = await countShowRehearsals(id);
+    if (rehearsalCount > 0) {
+      return NextResponse.json({
+        error: `להופעה יש ${rehearsalCount} חזרות מקושרות עם הוצאות — יש לטפל בהן לפני מחיקת ההופעה`,
+        rehearsalCount,
+      }, { status: 409 });
+    }
     // Real delete: hard-delete the show's linked Finance transactions (NOT
     // cancel — don't leave them as "בוטל"), then remove the show. No
     // syncShowFinance here. (status="בוטל" cancellation is handled separately

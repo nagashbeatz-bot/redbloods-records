@@ -1,7 +1,10 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
-import { computeShowSplit } from "@/lib/shows-types";
+import { computeShowSplit, rehearsalCountedAmount } from "@/lib/shows-types";
+
+const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
+const REHEARSAL_CATEGORY     = "חזרה";
 
 // Confirmed bookings only — leads (ליד חדש / ממתין לתשובה / צריך פולואפ) are
 // pipeline and must NOT create Finance transactions.
@@ -47,6 +50,7 @@ async function createTransaction(fields: {
   notes: string;
   artist?: string;
   expense_scope?: string;
+  linked_session_id?: string;
 }): Promise<string | null> {
   const { data, error } = await supabase
     .from("transactions")
@@ -64,7 +68,7 @@ async function createTransaction(fields: {
       receipt_ref:       "",
       notes:             fields.notes,
       category:          fields.category,
-      linked_session_id: "",
+      linked_session_id: fields.linked_session_id ?? "",
       expense_scope:     fields.expense_scope ?? "כללי",
     })
     .select("id")
@@ -92,6 +96,97 @@ async function patchTransaction(id: string, patch: {
   if (Object.keys(upd).length === 0) return;
   const { error } = await supabase.from("transactions").update(upd).eq("id", id);
   if (error) console.error("[shows-finance-sync] patch transaction failed:", error.message);
+}
+
+/**
+ * Fin-2: sum of a show's rehearsal costs that currently count toward the
+ * distributable-base deduction (see rehearsalCountedAmount). Reads the show's
+ * rehearsal sessions + their linked transactions. Non-fatal on error (returns 0).
+ */
+export async function getRehearsalCountedForShow(showId: string): Promise<number> {
+  try {
+    const { data: rs } = await supabase
+      .from("sessions")
+      .select("id, status, cost")
+      .eq("show_id", showId)
+      .eq("session_type", REHEARSAL_SESSION_TYPE);
+    if (!rs || rs.length === 0) return 0;
+    const ids = rs.map((r) => (r as { id: string }).id);
+    const { data: txs } = await supabase
+      .from("transactions")
+      .select("linked_session_id, payment_status")
+      .in("linked_session_id", ids);
+    const payBySession = new Map<string, string>();
+    (txs ?? []).forEach((t) => {
+      const lid = (t as { linked_session_id?: string }).linked_session_id;
+      if (lid) payBySession.set(lid, (t as { payment_status?: string }).payment_status ?? "");
+    });
+    let sum = 0;
+    for (const r of rs) {
+      const rr = r as { id: string; status: string | null; cost: number | null };
+      sum += rehearsalCountedAmount(rr.status, payBySession.get(rr.id) ?? null, rr.cost);
+    }
+    return sum;
+  } catch (e) {
+    console.error("[shows-finance-sync] getRehearsalCountedForShow error:", e);
+    return 0;
+  }
+}
+
+/**
+ * Create or update the ONE canonical expense transaction for a rehearsal, keyed
+ * by transactions.linked_session_id = session.id (idempotent — one tx per
+ * rehearsal; re-runs patch, never create a second). No transaction when
+ * cost <= 0; an existing tx is NEVER auto-deleted (left as-is) per the
+ * no-auto-delete rule. category="חזרה", expense_scope="הופעה", show_id marker
+ * in notes so it groups under the show in Finance.
+ */
+export async function syncRehearsalFinance(
+  rehearsal: { id: string; date: string | null; cost: number | null },
+  show: { id: string; name: string; artist: string },
+  paymentStatus?: string,
+): Promise<void> {
+  try {
+    const cost = Number(rehearsal.cost) || 0;
+    const { data: existing } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("linked_session_id", rehearsal.id)
+      .maybeSingle();
+    if (cost <= 0) return; // no tx for a zero/blank cost; never delete an existing one
+    const desc = show.artist ? `חזרה — ${show.name} (${show.artist})` : `חזרה — ${show.name}`;
+    if (existing?.id) {
+      // Patch amount/date/description; payment_status only when explicitly given
+      // (an edit that doesn't touch payment must preserve the existing status).
+      await patchTransaction((existing as { id: string }).id, {
+        amount: cost, date: rehearsal.date, description: desc, payment_status: paymentStatus,
+      });
+    } else {
+      await createTransaction({
+        type: "expense",
+        payment_status: paymentStatus ?? "לא שולם",
+        amount: cost,
+        date: rehearsal.date,
+        description: desc,
+        category: REHEARSAL_CATEGORY,
+        expense_scope: "הופעה",
+        notes: `show_id:${show.id}`,
+        linked_session_id: rehearsal.id,
+      });
+    }
+  } catch (e) {
+    console.error("[shows-finance-sync] syncRehearsalFinance error:", e);
+  }
+}
+
+/** Count a show's rehearsal sessions (used to block show deletion when > 0). */
+export async function countShowRehearsals(showId: string): Promise<number> {
+  const { count } = await supabase
+    .from("sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("show_id", showId)
+    .eq("session_type", REHEARSAL_SESSION_TYPE);
+  return count ?? 0;
 }
 
 export async function syncShowFinance(show: Show): Promise<void> {
@@ -174,7 +269,10 @@ export async function syncShowFinance(show: Show): Promise<void> {
     // Artist always takes half of the net after the dj (computeShowSplit). When
     // the dj fee changes, this re-splits the rest automatically so income stays
     // gross, the dj expense follows dj_fee, and the artist cut tracks (price-dj)/2.
-    const effectiveArtistFee = computeShowSplit(show).artistFee;
+    // Fin-2: subtract counted rehearsal costs before the 50/50 split so the
+    // artist's cut re-derives from (price − dj − rehearsals)/2.
+    const rehearsalCounted   = await getRehearsalCountedForShow(show.id);
+    const effectiveArtistFee = computeShowSplit(show, rehearsalCounted).artistFee;
     const hasArtistFee     = effectiveArtistFee > 0;
     const artistStatus     = (isCancelled || !hasArtistFee) ? "בוטל" : (isPaid ? "שולם" : "צפוי");
     const shouldHaveArtist = !isCancelled && isConfirmed && hasArtistFee;
@@ -235,8 +333,10 @@ export async function deleteShowFinance(show: Show): Promise<number> {
 
     // Fallback: catch any leftover row carrying this exact show's marker
     // (the show_id is a unique UUID, so this can only match this show's rows).
+    // GUARD: never sweep rehearsal expenses (category="חזרה") — they are managed
+    // per-session and are protected from auto-deletion (no-auto-delete rule).
     const { data: fb, error: fbErr } = await supabase
-      .from("transactions").delete().ilike("notes", `%show_id:${show.id}%`).select("id");
+      .from("transactions").delete().ilike("notes", `%show_id:${show.id}%`).neq("category", REHEARSAL_CATEGORY).select("id");
     if (fbErr) console.error("[shows-finance-sync] delete by marker failed:", fbErr.message);
     else deleted += fb?.length ?? 0;
   } catch (e) {

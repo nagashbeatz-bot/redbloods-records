@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
-import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit } from "@/lib/shows-types";
+import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit, rehearsalCountedAmount } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
-import RehearsalModal from "@/components/shows/RehearsalModal";
+import RehearsalModal, { type RehearsalSession } from "@/components/shows/RehearsalModal";
 import { usePrivacyMode } from "@/lib/use-privacy";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ const GREEN = "#10B981";
 const AMBER = "#F59E0B";
 const BLUE  = "#3B82F6";
 const PURPLE = "#8B5CF6";
+const RED   = "#EF4444";
 
 const STATUS_COLOR: Record<ShowStatus, { bg: string; text: string }> = {
   "ליד חדש":      { bg: "rgba(59,130,246,0.18)",  text: "#60A5FA" },
@@ -970,6 +971,27 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
   const [cancelConfirm,  setCancelConfirm]  = useState(false);
   const [cancelling,     setCancelling]     = useState(false);
   const [rehearsalOpen,  setRehearsalOpen]  = useState(false);
+  const [editRehearsal,  setEditRehearsal]  = useState<RehearsalSession | null>(null);
+  const [rehearsals,     setRehearsals]     = useState<RehearsalSession[]>([]);
+  const [rehearsalKey,   setRehearsalKey]   = useState(0);
+
+  // Load this show's rehearsals (each enriched with its transaction's
+  // payment_status) — read-only; refetched after a create/edit via rehearsalKey.
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/sessions?showId=${show.id}`)
+      .then(r => (r.ok ? r.json() : { rehearsals: [] }))
+      .then(d => { if (alive) setRehearsals(d.rehearsals ?? []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [show.id, rehearsalKey]);
+
+  // Fin-2: counted rehearsal costs for the distributable-base deduction.
+  const rehearsalCounted    = rehearsals.reduce((sum, r) => sum + rehearsalCountedAmount(r.status, r.payment_status, r.cost), 0);
+  const hasPartialRehearsal = rehearsals.some(r => r.payment_status === "חלקי");
+  const nextRehearsal       = [...rehearsals]
+    .filter(r => r.status !== "בוטל" && r.date)
+    .sort((a, b) => (a.date! < b.date! ? -1 : 1))[0] ?? null;
 
   async function handlePatch(field: "status" | "payment_status", value: string) {
     setSavingField(field);
@@ -986,9 +1008,12 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
     }
   }
 
-  const distributable = calcDistributable(show);
-  const artistShare   = calcArtistShare(show);
-  const labelShare    = calcLabelShare(show);
+  // Fin-2: subtract counted rehearsal costs before the 50/50 (matches the
+  // server-side shows-finance-sync, which is the source of truth).
+  const split         = computeShowSplit(show, rehearsalCounted);
+  const distributable = split.netAfterDj;
+  const artistShare   = split.artistFee;
+  const labelShare    = split.labelProfit;
   const remaining     = calcRemaining(show);
   const canEdit       = true;
 
@@ -1135,12 +1160,77 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {finCard("מחיר הופעה",      fmtIls(show.show_price),            TEXT2)}
               {finCard("שכר דיג׳יי",       fmtIls(show.dj_fee),                MUTED)}
+              {rehearsalCounted > 0 && finCard("עלויות חזרות", "−" + fmtIls(rehearsalCounted), RED)}
               {finCard("מקדמה",            fmtIls(show.advance_payment),       TEXT2)}
               {finCard("יתרה לגבייה",      fmtIls(remaining),                  remaining > 0 ? BRAND : GREEN, true)}
               {finCard("יתרה לחלוקה",      fmtIls(distributable),              AMBER, true)}
               {finCard("שכר אמן",          fmtIls(artistShare),                BLUE)}
               {finCard("רווח לייבל",       fmtIls(labelShare),                 GREEN, true)}
             </div>
+          </div>
+
+          {/* חזרות להופעה */}
+          <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>
+                🥁 חזרות להופעה{rehearsals.length ? ` · ${rehearsals.length}` : ""}
+              </span>
+              <button
+                onClick={() => { setEditRehearsal(null); setRehearsalOpen(true); }}
+                style={{
+                  padding: "6px 12px", borderRadius: 9, fontSize: 12, fontWeight: 700,
+                  background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.4)",
+                  color: "#818CF8", cursor: "pointer", fontFamily: "inherit",
+                }}
+              >+ קבע חזרה</button>
+            </div>
+
+            {nextRehearsal && (
+              <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 10 }}>
+                החזרה הקרובה: <strong style={{ color: TEXT2 }}>{nextRehearsal.date ? nextRehearsal.date.split("-").reverse().join(".") : "—"}{nextRehearsal.start_time ? ` · ${nextRehearsal.start_time}` : ""}</strong>
+              </div>
+            )}
+
+            {hasPartialRehearsal && (
+              <div style={{ background: "rgba(245,166,35,0.08)", border: "1px solid rgba(245,166,35,0.3)", borderRadius: 9, padding: "7px 10px", color: "#F5A623", fontSize: 11.5, marginBottom: 10 }}>
+                ⚠ יש חזרה במצב תשלום "חלקי" — אינו נתמך ואינו מקוזז מהחלוקה; דורש טיפול.
+              </div>
+            )}
+
+            {rehearsals.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "10px 0" }}>אין חזרות מתוזמנות עדיין.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {rehearsals.map(r => {
+                  const opCol  = r.status === "בוצע" ? GREEN : r.status === "בוטל" ? MUTED : BLUE;
+                  const payCol = r.payment_status === "שולם" ? GREEN
+                    : r.payment_status === "לא שולם" ? RED
+                    : r.payment_status === "חלקי" ? AMBER
+                    : r.payment_status === "בוטל" ? MUTED : null;
+                  return (
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.date ? r.date.split("-").reverse().join(".") : "ללא תאריך"}{r.start_time ? ` · ${r.start_time}` : ""}{r.end_time ? `–${r.end_time}` : ""}
+                        </div>
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.location || "—"}</div>
+                      </div>
+                      {r.cost != null && r.cost > 0 && (
+                        <span style={{ fontSize: 12.5, fontWeight: 800, color: RED, whiteSpace: "nowrap" }}>{fmtIls(r.cost)}</span>
+                      )}
+                      <Badge bg={`${opCol}22`} text={opCol}>{r.status}</Badge>
+                      {payCol && <Badge bg={`${payCol}22`} text={payCol}>{r.payment_status}</Badge>}
+                      {r.calendar_event_id && (
+                        <span title="מסונכרן ליומן Google" style={{ fontSize: 13 }}>📅</span>
+                      )}
+                      <button title="ערוך חזרה" onClick={() => { setEditRehearsal(r); setRehearsalOpen(true); }} style={{
+                        background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: "inherit",
+                      }}>✏️</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* הערות */}
@@ -1251,7 +1341,14 @@ function ShowPanel({ show, onClose, onEdit, onPatch, onCancelShow }: {
         </div>
       </div>
 
-      {rehearsalOpen && <RehearsalModal show={show} onClose={() => setRehearsalOpen(false)} />}
+      {rehearsalOpen && (
+        <RehearsalModal
+          show={show}
+          rehearsal={editRehearsal}
+          onClose={() => { setRehearsalOpen(false); setEditRehearsal(null); }}
+          onCreated={() => setRehearsalKey(k => k + 1)}
+        />
+      )}
     </>
   );
 }
@@ -1518,6 +1615,22 @@ export default function ShowsHubPreview() {
   async function deleteShow(show: Show) {
     setDeletingId(show.id);
     try {
+      // Safety: block deletion when the show has linked rehearsals (they carry
+      // their own sessions + Finance transactions). Abort BEFORE any destructive
+      // side effect (calendar removal / task cleanup). The server DELETE also
+      // returns 409 as a backstop.
+      try {
+        const rRes = await fetch(`/api/sessions?showId=${show.id}`);
+        if (rRes.ok) {
+          const rCount = ((await rRes.json()).rehearsals ?? []).length;
+          if (rCount > 0) {
+            setToast({ message: `להופעה יש ${rCount} חזרות מקושרות — יש לטפל בהן לפני מחיקת ההופעה`, type: "error" });
+            setDeletingId(null);
+            return;
+          }
+        }
+      } catch { /* fall through to the server-side 409 guard */ }
+
       if (show.calendar_event_id) {
         const calRes = await fetch(`/api/shows/${show.id}`, {
           method: "PATCH",

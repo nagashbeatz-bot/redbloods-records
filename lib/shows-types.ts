@@ -43,24 +43,61 @@ export interface Show {
  * Canonical show distribution — the SINGLE source of truth shared by the Shows
  * UI and the Finance sync, so both always agree (one helper, one calc).
  *
- *   grossAmount = show_price
- *   djFee       = dj_fee
- *   netAfterDj  = max(0, gross - dj)
- *   artistFee   = netAfterDj / 2     (artist always takes half of the net)
- *   labelProfit = netAfterDj / 2
+ *   grossAmount    = show_price
+ *   djFee          = dj_fee
+ *   rehearsalCosts = Σ counted rehearsal costs (Fin-2, see rehearsalCountedAmount)
+ *   netAfterDj     = max(0, gross - dj - rehearsalCosts)   ← distributable base
+ *   artistFee      = netAfterDj / 2     (artist always takes half of the base)
+ *   labelProfit    = netAfterDj / 2
  *
- * The split is ALWAYS 50/50 of whatever remains after the dj. The legacy
- * explicit `artist_fee` field is intentionally NOT consulted, so changing the
- * dj fee always re-splits the rest automatically. `artist_fee` is now vestigial
- * (still stored, but ignored by every calc).
+ * Fin-2: rehearsal costs that count (see rehearsalCountedAmount) are subtracted
+ * BEFORE the 50/50, so the artist shares in rehearsal expenses. The split is
+ * ALWAYS 50/50 of whatever remains after dj + rehearsals. The legacy explicit
+ * `artist_fee` field is intentionally NOT consulted. `rehearsalCosts` defaults
+ * to 0 so callers that don't pass it keep the pre-Fin-2 (gross-dj) behaviour.
  */
 export function computeShowSplit(
   s: Pick<Show, "show_price" | "dj_fee">,
-): { grossAmount: number; djFee: number; netAfterDj: number; artistFee: number; labelProfit: number } {
+  rehearsalCosts = 0,
+): { grossAmount: number; djFee: number; rehearsalCosts: number; netAfterDj: number; artistFee: number; labelProfit: number } {
   const grossAmount = s.show_price ?? 0;
   const djFee       = s.dj_fee ?? 0;
-  const netAfterDj  = Math.max(0, grossAmount - djFee);
+  const rehc        = Math.max(0, rehearsalCosts || 0);
+  const netAfterDj  = Math.max(0, grossAmount - djFee - rehc); // distributable base
   const artistFee   = netAfterDj / 2;
   const labelProfit = netAfterDj - artistFee; // == netAfterDj/2, avoids fp drift
-  return { grossAmount, djFee, netAfterDj, artistFee, labelProfit };
+  return { grossAmount, djFee, rehearsalCosts: rehc, netAfterDj, artistFee, labelProfit };
+}
+
+/**
+ * Fin-2 — how much of a single rehearsal's cost counts toward the show's
+ * distributable-base deduction. Pure, shared by the Finance sync (server) and
+ * the Shows UI (client) so both agree exactly.
+ *
+ *   operationalStatus ∈ "מתוכנן" | "בוצע" | "בוטל"   (sessions.status)
+ *   paymentStatus     ∈ "לא שולם" | "שולם" | "חלקי" | "בוטל" | null  (its transaction)
+ *
+ * Rules (partial "חלקי" is intentionally NOT supported — no canonical paid-amount
+ * source; such a rehearsal is never counted and is surfaced as needs-attention):
+ *   בוצע (any paid state, except חלקי) → full cost   (real obligation)
+ *   מתוכנן/בוטל + שולם                 → full cost   (money already out)
+ *   מתוכנן/בוטל + לא שולם              → 0
+ *   any + חלקי                         → 0  (flagged elsewhere, never invented)
+ */
+export function rehearsalCountedAmount(
+  operationalStatus: string | null | undefined,
+  paymentStatus: string | null | undefined,
+  cost: number | null | undefined,
+): number {
+  const c = Number(cost) || 0;
+  if (c <= 0) return 0;
+  if (paymentStatus === "חלקי") return 0;            // unsupported — never counted
+  if (operationalStatus === "בוצע") return c;        // obligation exists regardless of payment
+  if (paymentStatus === "שולם" || paymentStatus === "התקבל") return c; // planned/cancelled but paid
+  return 0;                                          // planned/cancelled & unpaid
+}
+
+/** True if a rehearsal's payment is "חלקי" — unsupported, surfaced as needs-attention. */
+export function isRehearsalPartial(paymentStatus: string | null | undefined): boolean {
+  return paymentStatus === "חלקי";
 }

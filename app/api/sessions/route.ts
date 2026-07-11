@@ -1,12 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { touchProject, ensureProjectStartDate } from "@/lib/projects-store";
+import { requireOwner } from "@/lib/require-auth";
+
+const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 
 // ── GET /api/sessions?projectId=xxx  OR  ?all=1 ──────────────────────────────
 export async function GET(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const all       = req.nextUrl.searchParams.get("all");
     const projectId = req.nextUrl.searchParams.get("projectId");
+    const showId    = req.nextUrl.searchParams.get("showId");
+
+    // Rehearsals for a specific show — each enriched with its linked
+    // transaction's payment_status (read-only; used by the show card).
+    if (showId) {
+      const { data: rows, error } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("show_id", showId)
+        .eq("session_type", REHEARSAL_SESSION_TYPE)
+        .order("date", { ascending: true });
+      if (error) throw new Error(error.message);
+      const list = rows ?? [];
+      const ids  = list.map((r) => (r as { id: string }).id);
+      const payBy = new Map<string, { payment_status: string; amount: number }>();
+      if (ids.length) {
+        const { data: txs } = await supabase
+          .from("transactions")
+          .select("linked_session_id, payment_status, amount")
+          .in("linked_session_id", ids);
+        (txs ?? []).forEach((t) => {
+          const lid = (t as { linked_session_id?: string }).linked_session_id;
+          if (lid) payBy.set(lid, {
+            payment_status: (t as { payment_status?: string }).payment_status ?? "",
+            amount:         (t as { amount?: number }).amount ?? 0,
+          });
+        });
+      }
+      const rehearsals = list.map((r) => {
+        const rr = r as { id: string };
+        const tx = payBy.get(rr.id);
+        return { ...r, payment_status: tx?.payment_status ?? null, has_transaction: !!tx };
+      });
+      return NextResponse.json({ rehearsals });
+    }
 
     // Return all sessions across all projects (for Insights page)
     if (all === "1") {
@@ -63,15 +102,22 @@ export async function GET(req: NextRequest) {
 
 // ── POST /api/sessions — create new session ──────────────────────────────────
 export async function POST(req: NextRequest) {
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json();
-    const { projectId, title, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar, photographer, location } = body;
+    const { projectId, title, date, startTime, endTime, status, sessionType, notes, calendarEventId, addToCalendar, photographer, location, showId, cost, paymentStatus } = body;
     const cleanTitle = typeof title === "string" ? title.trim() : "";
 
     // A session must be tied to a project OR carry a manual title (independent
     // session). Never create a project here.
     if (!projectId && !cleanTitle) {
       return NextResponse.json({ error: "בחר פרויקט או הזן שם לסשן" }, { status: 400 });
+    }
+
+    // Rehearsal cost (nullable, non-negative — DB also enforces the check).
+    const costNum = (cost === "" || cost == null) ? null : Number(cost);
+    if (costNum != null && (!Number.isFinite(costNum) || costNum < 0)) {
+      return NextResponse.json({ error: "עלות לא תקינה" }, { status: 400 });
     }
 
     const { data, error } = await supabase
@@ -88,6 +134,8 @@ export async function POST(req: NextRequest) {
         calendar_event_id: calendarEventId   || null,
         photographer:      photographer      || "",
         location:          location          || "",
+        show_id:           showId            || null,
+        cost:              costNum,
       })
       .select()
       .single();
@@ -140,6 +188,24 @@ export async function POST(req: NextRequest) {
         }
       } catch (err) {
         calendarError = err instanceof Error ? err.message : "שגיאה ביצירת אירוע ביומן";
+      }
+    }
+
+    // Rehearsal → canonical Finance (idempotent) + re-derive the show's split.
+    // showId is validated against a real show (getShow → null otherwise), so an
+    // unverified/foreign show_id never creates finance rows.
+    if (sessionType === REHEARSAL_SESSION_TYPE && showId) {
+      try {
+        const { getShow } = await import("@/lib/shows-store");
+        const show = await getShow(showId);
+        if (show) {
+          const { syncRehearsalFinance, syncShowFinance } = await import("@/lib/shows-finance-sync");
+          const pay = paymentStatus === "שולם" ? "שולם" : "לא שולם";
+          await syncRehearsalFinance({ id: data.id, date: data.date, cost: data.cost }, show, pay);
+          await syncShowFinance(show);
+        }
+      } catch (e) {
+        console.error("[sessions POST] rehearsal finance sync error:", e);
       }
     }
 
