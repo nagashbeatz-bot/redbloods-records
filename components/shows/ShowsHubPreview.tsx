@@ -66,9 +66,11 @@ function isUpcoming(d: string | null): boolean {
   if (!d) return false;
   return new Date(d) >= new Date(new Date().toDateString());
 }
-function calcDistributable(s: Show) { return computeShowSplit(s).netAfterDj; }
-function calcArtistShare(s: Show)   { return computeShowSplit(s).artistFee; }
-function calcLabelShare(s: Show)    { return computeShowSplit(s).labelProfit; }
+// Fin-2: uses the counted rehearsal costs attached by GET /api/shows so the
+// list matches the open show panel (falls back to 0 pre-Fin-2).
+function calcDistributable(s: Show) { return computeShowSplit(s, s.rehearsalCounted ?? 0).netAfterDj; }
+function calcArtistShare(s: Show)   { return computeShowSplit(s, s.rehearsalCounted ?? 0).artistFee; }
+function calcLabelShare(s: Show)    { return computeShowSplit(s, s.rehearsalCounted ?? 0).labelProfit; }
 function calcRemaining(s: Show)     { return Math.max(0, s.show_price - s.advance_payment); }
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────

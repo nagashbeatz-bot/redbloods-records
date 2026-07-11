@@ -13,7 +13,12 @@ async function resolveArtistName(show: Show): Promise<Show> {
 export async function GET() {
   try {
     const shows = await listShows();
-    return NextResponse.json({ shows });
+    // Fin-2: attach counted rehearsal costs per show so the list split matches
+    // the open show panel (one batched query).
+    const { getRehearsalCountedMap } = await import("@/lib/shows-finance-sync");
+    const map = await getRehearsalCountedMap(shows.map((s) => s.id));
+    const enriched = shows.map((s) => ({ ...s, rehearsalCounted: map[s.id] ?? 0 }));
+    return NextResponse.json({ shows: enriched });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: 500 });

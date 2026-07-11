@@ -179,6 +179,40 @@ export async function syncRehearsalFinance(
   }
 }
 
+/**
+ * Batched version of getRehearsalCountedForShow for a list of shows — one
+ * sessions query + one transactions query. Returns { showId: countedCost }.
+ */
+export async function getRehearsalCountedMap(showIds: string[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  try {
+    if (!showIds.length) return out;
+    const { data: rs } = await supabase
+      .from("sessions")
+      .select("id, show_id, status, cost")
+      .in("show_id", showIds)
+      .eq("session_type", REHEARSAL_SESSION_TYPE);
+    if (!rs || rs.length === 0) return out;
+    const ids = rs.map((r) => (r as { id: string }).id);
+    const { data: txs } = await supabase
+      .from("transactions")
+      .select("linked_session_id, payment_status")
+      .in("linked_session_id", ids);
+    const payBy = new Map<string, string>();
+    (txs ?? []).forEach((t) => {
+      const lid = (t as { linked_session_id?: string }).linked_session_id;
+      if (lid) payBy.set(lid, (t as { payment_status?: string }).payment_status ?? "");
+    });
+    for (const r of rs) {
+      const rr = r as { id: string; show_id: string; status: string | null; cost: number | null };
+      out[rr.show_id] = (out[rr.show_id] ?? 0) + rehearsalCountedAmount(rr.status, payBy.get(rr.id) ?? null, rr.cost);
+    }
+  } catch (e) {
+    console.error("[shows-finance-sync] getRehearsalCountedMap error:", e);
+  }
+  return out;
+}
+
 /** Count a show's rehearsal sessions (used to block show deletion when > 0). */
 export async function countShowRehearsals(showId: string): Promise<number> {
   const { count } = await supabase

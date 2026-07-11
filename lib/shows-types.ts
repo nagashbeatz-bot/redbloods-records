@@ -37,6 +37,9 @@ export interface Show {
   linked_artist_expense_transaction_id: string | null;
   created_at: string;
   updated_at: string;
+  // Transient (NOT a DB column): counted rehearsal costs for Fin-2, attached by
+  // GET /api/shows so the list split matches the open show panel. Optional.
+  rehearsalCounted?: number;
 }
 
 /**
