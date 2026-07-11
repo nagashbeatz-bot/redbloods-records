@@ -1,6 +1,6 @@
 import "server-only";
 import { supabase } from "./supabase";
-import type { Project, ProjectStatus, ProjectType, FileLink, WorkMaterialsMeta } from "./types";
+import type { Project, ProjectStatus, ProjectType, ProjectBusinessType, FileLink, WorkMaterialsMeta } from "./types";
 import { isOverdue, isDueSoon } from "./utils";
 
 // ─── DB row shape ──────────────────────────────────────────────────────────────
@@ -18,6 +18,7 @@ interface DbProject {
   project_type:   string;
   parent_project: string;
   is_hidden:      boolean;
+  project_business_type: string; // לקוח / לייבל
   files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number; size?: number }[];
   work_materials: WorkMaterialsMeta | null;
   dropbox_folder: string | null; // frozen canonical Dropbox base folder (rename-proof)
@@ -54,6 +55,7 @@ function dbToProject(db: DbProject): Project {
     projectType:   db.project_type as ProjectType,
     parentProject: db.parent_project,
     isHidden:      db.is_hidden ?? false,
+    businessType:  (db.project_business_type as ProjectBusinessType) ?? "לקוח",
     updatedAt:     db.updated_at ?? db.created_at ?? "",
     workMaterials: db.work_materials ?? {},
     dropboxFolder: db.dropbox_folder ?? null,
@@ -110,6 +112,7 @@ export async function createProject(fields: {
   notes?:         string;
   project_type?:  string;
   parent_project?: string;
+  project_business_type?: string;
   monday_id?:     string;
   files?:         { name: string; assetId?: number; url?: string }[];
 }): Promise<Project> {
@@ -124,6 +127,8 @@ export async function createProject(fields: {
       notes:          fields.notes          || "",
       project_type:   fields.project_type   || "",
       parent_project: fields.parent_project || "",
+      // Explicit per approved plan — never rely on the DB default alone.
+      project_business_type: fields.project_business_type || "לקוח",
       monday_id:      fields.monday_id      || null,
       files:          fields.files          || [],
     })
@@ -146,6 +151,7 @@ export async function updateProject(
     notes:          string;
     project_type:   string;
     parent_project: string;
+    project_business_type: string;
     is_hidden:      boolean;
     dropbox_folder: string | null;
     files:          { name: string; assetId?: number; url?: string }[];

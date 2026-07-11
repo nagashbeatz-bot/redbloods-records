@@ -42,6 +42,9 @@ export async function POST(req: NextRequest) {
       notes:          notes?.trim()         || "",
       project_type:   projectType           || "",
       parent_project: parentProject         || "",
+      // Projects created from the generic Projects UI / proposals are client work.
+      // Label releases are created explicitly via /api/label/projects.
+      project_business_type: "לקוח",
     });
 
     // Auto-create missing artists in clients table (fire-and-forget)

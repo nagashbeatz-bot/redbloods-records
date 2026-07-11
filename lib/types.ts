@@ -34,6 +34,53 @@ export function isNoAffiliation(val: string): boolean {
   return !val || val.trim() === NO_AFFILIATION;
 }
 
+// ── Label management (/label) ────────────────────────────────────────────────
+// Classifies every project as client-facing or a label/internal release.
+export type ProjectBusinessType = "לקוח" | "לייבל";
+export const PROJECT_BUSINESS_TYPES: ProjectBusinessType[] = ["לקוח", "לייבל"];
+
+// Explicit, owner-managed release pipeline (NOT derived from ProjectStatus).
+export type ReleaseStage =
+  | "רעיון" | "הפקה" | "הקלטה" | "עריכות" | "מיקס" | "מאסטר"
+  | "עטיפה" | "הפצה" | "תוכן" | "מוכן ליציאה" | "יצא" | "בהשהייה";
+
+export const RELEASE_STAGES: ReleaseStage[] = [
+  "רעיון", "הפקה", "הקלטה", "עריכות", "מיקס", "מאסטר",
+  "עטיפה", "הפצה", "תוכן", "מוכן ליציאה", "יצא", "בהשהייה",
+];
+
+/** Stages that mean the release is still "in the pipeline" (not out, not shelved). */
+export const ACTIVE_RELEASE_STAGES: ReleaseStage[] =
+  RELEASE_STAGES.filter((s) => s !== "יצא" && s !== "בהשהייה");
+
+/** Suggested "responsible" values in the label UI; picking "אחר" unlocks free text. */
+export const RESPONSIBLE_SUGGESTIONS = ["אני", "שליו", "ויקטור", "סטיבן", "אחר"] as const;
+
+/** One row of project_release_details (1:1 with a project). */
+export interface ProjectReleaseDetails {
+  projectId: string;
+  releaseStage: ReleaseStage;
+  releaseTargetDate: string | null; // YYYY-MM-DD
+  nextAction: string;
+  blocker: string;
+  responsible: string;
+  stageEnteredAt: string;           // ISO — when the current stage was entered
+  releasedAt: string | null;        // ISO — set when stage becomes "יצא"
+  createdAt: string;
+  updatedAt: string;                // ISO — optimistic-lock token
+}
+
+/** A label project joined with its (optional) release details — the /label list item. */
+export interface LabelRelease {
+  projectId: string;
+  name: string;
+  artist: string;
+  projectType: ProjectType;
+  status: ProjectStatus;
+  businessType: ProjectBusinessType;
+  release: ProjectReleaseDetails | null;
+}
+
 /** All fields that can be updated through the UI or agent */
 export type UpdatableField =
   | "status"
@@ -191,6 +238,7 @@ export interface Project {
   projectType: ProjectType;    // סוג פרויקט
   parentProject: string;       // שייך ל
   isHidden: boolean;           // הסתרה — לא מופיע בתצוגה הפעילה
+  businessType: ProjectBusinessType; // לקוח / לייבל (projects.project_business_type)
   updatedAt: string;           // ISO timestamp of last meaningful change
   // Work-materials text metadata (BPM / Key / instructions) sent to the sound
   // engineer. Files live in `files` (category "חומרי עבודה"); this is the text only.

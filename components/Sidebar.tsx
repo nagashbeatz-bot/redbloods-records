@@ -26,6 +26,7 @@ const NAV_MAIN = [
   { href: "/shows",     label: "הופעות",    icon: "🎤", iconColor: "#F472B6" },
   { href: "/red-films", label: "Red Films", icon: "🎬", iconColor: "#EC4899" },
   { href: "/red-artists", label: "Red Artists", icon: "🎤", iconColor: "#DC2626" },
+  { href: "/label",     label: "ניהול הלייבל", icon: "🎯", iconColor: "#DC2626" },
   { href: "/finance",   label: "כספים",     icon: "₪",  iconColor: "#34D399" },
   { href: "/insights",  label: "תובנות",    icon: "◎",  iconColor: "#2DD4BF" },
 ];
