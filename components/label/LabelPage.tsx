@@ -160,10 +160,21 @@ export default function LabelPage() {
 
   const busy = state === "loading";
 
+  // Top financial KPIs — from the already-loaded shows data (no extra fetch).
+  // Investments are 0 until clip/song channels are connected. Balance = actual
+  // income − actual investments (never mixes expected money into actual balance).
+  const finReady = shows != null;
+  const investActual = 0;
+  const investExpected = 0;
+  const incomeActual = shows?.totals.labelReceived ?? 0;
+  const incomeExpected = shows?.totals.labelExpected ?? 0;
+  const balanceActual = incomeActual - investActual;
+  const money = (n: number) => `₪${Math.round(n).toLocaleString()}`;
+
   return (
     <div dir="rtl" style={{ fontFamily: "'Heebo', Arial, sans-serif", color: TEXT, padding: "26px 32px 72px", width: "100%", maxWidth: 1600, margin: "0 auto" }}>
       <style>{`
-        .rb-lab-kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; }
+        .rb-lab-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
         .rb-lab-artists { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
         .rb-lab-money { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:14px; }
         .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
@@ -190,9 +201,11 @@ export default function LabelPage() {
         <StatCard label="אמני לייבל" value={busy ? "…" : d.roster.length} sub="ברשימת הלייבל" icon="🎤" />
         <StatCard label="ריליסים בצינור" value={busy ? "…" : d.active.length} sub={`${d.upcomingSoon.length} עם תאריך קרוב`} icon="💿" />
         <StatCard label="ריליסים קרובים" value={busy ? "…" : d.upcomingSoon.length} sub="עם תאריך יציאה" icon="🗓" />
-        <StatCard label="סה״כ השקעות" value="—" sub="טרם חובר" subColor={DIM} icon="₪" />
-        <StatCard label="סה״כ הכנסות" value="—" sub="טרם חובר" subColor={DIM} icon="₪" />
-        <StatCard label="מאזן כולל" value="—" sub="טרם חובר" subColor={DIM} icon="⚖" />
+        <StatCard label="סה״כ השקעות בפועל" value={finReady ? money(investActual) : "…"} sub="אפיקי השקעה טרם חוברו" subColor={DIM} icon="₪" />
+        <StatCard label="סה״כ השקעות צפויות" value={finReady ? money(investExpected) : "…"} sub="אפיקי השקעה טרם חוברו" subColor={DIM} icon="₪" />
+        <StatCard label="סה״כ הכנסות בפועל" value={finReady ? money(incomeActual) : "…"} sub="לפי הנתונים המחוברים כרגע" subColor={GREEN} icon="₪" />
+        <StatCard label="סה״כ הכנסות צפויות" value={finReady ? money(incomeExpected) : "…"} sub="טרם התקבל" subColor="#F59E0B" icon="₪" />
+        <StatCard label="מאזן כולל בפועל" value={finReady ? money(balanceActual) : "…"} sub="הכנסות פחות השקעות בפועל" subColor={balanceActual >= 0 ? GREEN : "#F87171"} icon="⚖" />
       </div>
 
       {/* Artists */}
