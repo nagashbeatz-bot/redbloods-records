@@ -166,9 +166,9 @@ export default function LabelPage() {
         .rb-lab-kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; }
         .rb-lab-artists { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
         .rb-lab-money { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:14px; }
-        .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(7,1fr); gap:12px; }
+        .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
         .rb-lab-bottom { display:grid; grid-template-columns:1fr 1.25fr; gap:18px; }
-        @media (max-width:1180px){ .rb-lab-kpis{ grid-template-columns:repeat(3,1fr);} .rb-lab-shows-kpis{ grid-template-columns:repeat(4,1fr);} }
+        @media (max-width:1180px){ .rb-lab-kpis{ grid-template-columns:repeat(3,1fr);} .rb-lab-shows-kpis{ grid-template-columns:repeat(3,1fr);} }
         @media (max-width:1000px){ .rb-lab-money{ grid-template-columns:1fr;} .rb-lab-bottom{ grid-template-columns:1fr;} }
         @media (max-width:620px){ .rb-lab-shows-kpis{ grid-template-columns:repeat(2,1fr);} }
         @media (max-width:620px){ .rb-lab-kpis{ grid-template-columns:repeat(2,1fr);} .rb-lab-artists{ grid-template-columns:1fr;} }
@@ -257,12 +257,10 @@ export default function LabelPage() {
             <>
               <div className="rb-lab-shows-kpis">
                 {[
-                  { l: "התקבל ללייבל", v: shows.totals.labelReceived, c: GREEN, money: true },
-                  { l: "טרם התקבל ללייבל", v: shows.totals.labelExpected, c: "#F59E0B", money: true },
-                  { l: "שולם לאמן", v: shows.totals.artistPaid, c: SUB, money: true },
-                  { l: "טרם שולם לאמן", v: shows.totals.artistExpected, c: SUB, money: true },
-                  { l: "שולם לדיג'יי", v: shows.totals.djPaid, c: SUB, money: true },
-                  { l: "טרם שולם לדיג'יי", v: shows.totals.djExpected, c: SUB, money: true },
+                  { l: "רווח לייבל — התקבל", v: shows.totals.labelReceived, c: GREEN, money: true },
+                  { l: "רווח לייבל — צפוי", v: shows.totals.labelExpected, c: "#F59E0B", money: true },
+                  { l: "רווח אמן — שולם", v: shows.totals.artistPaid, c: SUB, money: true },
+                  { l: "רווח אמן — צפוי", v: shows.totals.artistExpected, c: SUB, money: true },
                   { l: "מספר הופעות", v: shows.totals.count, c: TEXT, money: false },
                 ].map((t) => (
                   <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "14px 15px" }}>
@@ -291,9 +289,15 @@ export default function LabelPage() {
                         {s.included ? (
                           <>
                             <span style={{ fontSize: 11.5, fontWeight: 700, color: paid ? GREEN : "#F59E0B", background: paid ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)", border: `1px solid ${paid ? "rgba(52,211,153,0.3)" : "rgba(245,158,11,0.3)"}`, borderRadius: 100, padding: "3px 10px" }}>{s.paymentStatus}</span>
-                            <div style={{ textAlign: "left", minWidth: 96 }}>
-                              <div style={{ fontSize: 10, color: DIM }}>רווח לייבל</div>
-                              <div style={{ fontSize: 15, fontWeight: 900, color: paid ? GREEN : SUB }}>₪{Math.round(s.labelProfit).toLocaleString()}</div>
+                            <div style={{ display: "flex", gap: 18, textAlign: "left" }}>
+                              <div style={{ minWidth: 84 }}>
+                                <div style={{ fontSize: 10, color: DIM }}>רווח לייבל</div>
+                                <div style={{ fontSize: 15, fontWeight: 900, color: paid ? GREEN : SUB }}>₪{Math.round(s.labelProfit).toLocaleString()}</div>
+                              </div>
+                              <div style={{ minWidth: 84 }}>
+                                <div style={{ fontSize: 10, color: DIM }}>רווח אמן</div>
+                                <div style={{ fontSize: 15, fontWeight: 900, color: SUB }}>₪{Math.round(s.artistFee).toLocaleString()}</div>
+                              </div>
                             </div>
                           </>
                         ) : (
