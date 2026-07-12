@@ -13,7 +13,7 @@ import { MediaModal, MediaCancelModal, type MediaRec } from "./MediaModals";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM, GREEN,
   STAGE_COLOR, ARTIST_STATUS_COLOR, todayYmd, fmtDate, daysUntil, daysBetween, ACTIVE_STAGES_SET,
-  StatCard, StageBadge, SectionHeader, Card, ArtistAvatar,
+  StageBadge, SectionHeader, Card, ArtistAvatar,
   ModalShell, PrimaryBtn, GhostBtn, fieldStyle, labelStyle,
   CreateReleaseModal, EditReleaseModal, AddArtistModal,
 } from "./labelShared";
@@ -241,32 +241,35 @@ export default function LabelPage() {
 
   const busy = state === "loading";
 
-  // Top financial KPIs — from the already-loaded shows data (no extra fetch).
-  // Investments are 0 until clip/song channels are connected. Balance = actual
-  // income − actual investments (never mixes expected money into actual balance).
+  // Top financial KPIs — LABEL P&L only (never artist share / recoup). Balance =
+  // actual income − actual clip investment; projected adds only expected income.
   const finReady = shows != null && clips != null && media != null;
   const investActual = clips?.totals.labelInvestment ?? 0;   // clip label investment (budget/2)
-  const investExpected = 0;                                   // budget treated as fully paid
   const incomeActual = (shows?.totals.labelReceived ?? 0) + (media?.totals.labelShareReceived ?? 0);
   const incomeExpected = (shows?.totals.labelExpected ?? 0) + (media?.totals.labelShareExpected ?? 0);
-  const balanceActual = incomeActual - investActual;
+  const balanceActual = incomeActual - investActual;         // label balance (distinct from artistActualBalance)
+  const labelProjectedBalance = Math.round((balanceActual + incomeExpected + Number.EPSILON) * 100) / 100;
+  const openShows = shows ? shows.lines.filter((s) => s.included && s.paymentStatus !== "שולם").length : null;  // unpaid, non-collab
   const money = (n: number) => {
     const hasFrac = Math.abs(n % 1) > 0.001;
     return `₪${n.toLocaleString("en-US", { minimumFractionDigits: hasFrac ? 2 : 0, maximumFractionDigits: 2 })}`;
   };
+  const signedMoney = (n: number) => (n < -0.001 ? "−" : "") + money(Math.abs(n));
+  const signColor = (n: number) => (n < -0.001 ? "#F87171" : n > 0.001 ? GREEN : SUB);
 
   return (
     <div dir="rtl" style={{ fontFamily: "'Heebo', Arial, sans-serif", color: TEXT, padding: "26px 32px 72px", width: "100%", maxWidth: 1600, margin: "0 auto" }}>
       <style>{`
-        .rb-lab-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+        .rb-lab-fin { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+        .rb-lab-ops { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
         .rb-lab-artists { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
         .rb-lab-money { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:14px; }
         .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
         .rb-lab-bottom { display:grid; grid-template-columns:1fr 1.25fr; gap:18px; }
-        @media (max-width:1180px){ .rb-lab-kpis{ grid-template-columns:repeat(3,1fr);} .rb-lab-shows-kpis{ grid-template-columns:repeat(3,1fr);} }
+        @media (max-width:1180px){ .rb-lab-shows-kpis{ grid-template-columns:repeat(3,1fr);} }
         @media (max-width:1000px){ .rb-lab-money{ grid-template-columns:1fr;} .rb-lab-bottom{ grid-template-columns:1fr;} }
-        @media (max-width:620px){ .rb-lab-shows-kpis{ grid-template-columns:repeat(2,1fr);} }
-        @media (max-width:620px){ .rb-lab-kpis{ grid-template-columns:repeat(2,1fr);} .rb-lab-artists{ grid-template-columns:1fr;} }
+        @media (max-width:820px){ .rb-lab-fin{ grid-template-columns:1fr;} }
+        @media (max-width:620px){ .rb-lab-shows-kpis{ grid-template-columns:repeat(2,1fr);} .rb-lab-ops{ grid-template-columns:repeat(2,1fr);} .rb-lab-artists{ grid-template-columns:1fr;} }
       `}</style>
 
       {/* Hero */}
@@ -280,16 +283,41 @@ export default function LabelPage() {
 
       {state === "error" && <Card style={{ marginBottom: 20 }}><div style={{ color: "#F87171", textAlign: "center", padding: "10px 0", fontSize: 14 }}>שגיאה בטעינת נתוני הלייבל.</div></Card>}
 
-      {/* KPIs */}
-      <div className="rb-lab-kpis" style={{ marginBottom: 20 }}>
-        <StatCard label="אמני לייבל" value={busy ? "…" : d.roster.length} sub="ברשימת הלייבל" icon="🎤" />
-        <StatCard label="ריליסים בצינור" value={busy ? "…" : d.active.length} sub={`${d.upcomingSoon.length} עם תאריך קרוב`} icon="💿" />
-        <StatCard label="ריליסים קרובים" value={busy ? "…" : d.upcomingSoon.length} sub="עם תאריך יציאה" icon="🗓" />
-        <StatCard label="סה״כ השקעות בפועל" value={finReady ? money(investActual) : "…"} sub="אפיקי השקעה טרם חוברו" subColor={DIM} icon="₪" />
-        <StatCard label="סה״כ השקעות צפויות" value={finReady ? money(investExpected) : "…"} sub="אפיקי השקעה טרם חוברו" subColor={DIM} icon="₪" />
-        <StatCard label="סה״כ הכנסות בפועל" value={finReady ? money(incomeActual) : "…"} sub="לפי הנתונים המחוברים כרגע" subColor={GREEN} icon="₪" />
-        <StatCard label="סה״כ הכנסות צפויות" value={finReady ? money(incomeExpected) : "…"} sub="טרם התקבל" subColor="#F59E0B" icon="₪" />
-        <StatCard label="מאזן כולל בפועל" value={finReady ? money(balanceActual) : "…"} sub="הכנסות פחות השקעות בפועל" subColor={balanceActual >= 0 ? GREEN : "#F87171"} icon="⚖" />
+      {/* Financial KPIs — LABEL P&L only. Primary = actual label balance (the headline). */}
+      <div className="rb-lab-fin" style={{ marginBottom: 12 }}>
+        {/* 1 · Primary — actual label balance (emphasized: sign-colored border + largest number) */}
+        <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))", border: `1px solid ${!finReady ? BORDER : balanceActual < -0.001 ? "rgba(248,113,113,0.4)" : balanceActual > 0.001 ? "rgba(52,211,153,0.4)" : BORDER}`, borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: SUB }}>מאזן הלייבל בפועל</span>
+          <span style={{ fontSize: 38, fontWeight: 900, color: finReady ? signColor(balanceActual) : TEXT, letterSpacing: "-0.02em", lineHeight: 1.05, direction: "ltr", textAlign: "right" }}>{finReady ? signedMoney(balanceActual) : "…"}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: finReady ? signColor(balanceActual) : MUTED }}>הכנסות שהתקבלו פחות השקעות הלייבל</span>
+        </div>
+        {/* 2 · Expected income */}
+        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: SUB }}>צפוי להיכנס ללייבל</span>
+          <span style={{ fontSize: 30, fontWeight: 900, color: "#F59E0B", letterSpacing: "-0.02em", lineHeight: 1.05, direction: "ltr", textAlign: "right" }}>{finReady ? money(incomeExpected) : "…"}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: MUTED }}>הכנסות שעדיין לא התקבלו</span>
+        </div>
+        {/* 3 · Projected balance */}
+        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: SUB }}>מאזן לייבל צפוי</span>
+          <span style={{ fontSize: 30, fontWeight: 900, color: finReady ? signColor(labelProjectedBalance) : TEXT, letterSpacing: "-0.02em", lineHeight: 1.05, direction: "ltr", textAlign: "right" }}>{finReady ? signedMoney(labelProjectedBalance) : "…"}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: MUTED }}>המצב אם כל ההכנסות הצפויות יתקבלו</span>
+        </div>
+      </div>
+
+      {/* Operational KPIs — smaller, secondary */}
+      <div className="rb-lab-ops" style={{ marginBottom: 20 }}>
+        {[
+          { l: "אמני לייבל", v: busy ? "…" : d.roster.length },
+          { l: "הופעות פתוחות", v: openShows == null ? "…" : openShows },
+          { l: "קליפים פעילים", v: clips == null ? "…" : clips.totals.count },
+          { l: "ריליסים קרובים", v: busy ? "…" : d.upcomingSoon.length },
+        ].map((t) => (
+          <div key={t.l} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: SUB, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</span>
+            <span style={{ fontSize: 24, fontWeight: 900, color: TEXT, lineHeight: 1.1 }}>{t.v}</span>
+          </div>
+        ))}
       </div>
 
       {/* Compact artist nav + actions (replaces the large artists grid) */}
