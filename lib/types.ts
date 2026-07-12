@@ -175,20 +175,19 @@ export interface ArtistMediaSummary {
  * Purely derived at read time — writes nothing, changes no snapshot, offsets no prior record.
  */
 export interface ArtistRecoupSummary {
-  clipRecoupTarget: number;        // Σ artistRecoupTarget of active clips
-  mediaActualRecouped: number;     // signed recoupedTotal (frozen media snapshots)
+  clipRecoupTarget: number;        // Σ artistRecoupTarget of active clips — the initial debt
   mediaArtistShareReceived: number;// signed Σ artist_share_gross of received media (full, uncapped)
   showsArtistPaid: number;         // artist share of PAID shows
   mediaExpectedArtistShare: number;
   showsArtistExpected: number;     // artist share of not-yet-paid shows
-  actualRecouped: number;          // mediaActualRecouped + showsArtistPaid
+  actualArtistIncome: number;      // showsArtistPaid + mediaArtistShareReceived (flows through the debt)
+  actualRecouped: number;          // min(target, max(0, actualArtistIncome)) — applied to the debt
   expectedArtistIncome: number;    // showsArtistExpected + mediaExpectedArtistShare
-  actualRecoupBalance: number;     // max(0, target − actualRecouped)
+  actualRecoupBalance: number;     // max(0, target − actualArtistIncome) — חוב נוכחי
   projectedRecoup: number;         // min(expectedArtistIncome, actualRecoupBalance)
-  projectedRecoupBalance: number;  // actualRecoupBalance − projectedRecoup
-  artistCredit: number;            // max(0, actualRecouped − target) — display-only
-  actualArtistIncome: number;      // showsArtistPaid + mediaArtistShareReceived
-  artistActualBalance: number;     // actualArtistIncome − target (signed; the headline "מאזן אמן בפועל")
+  projectedRecoupBalance: number;  // max(0, actualRecoupBalance − expectedArtistIncome) — חוב צפוי
+  artistCredit: number;            // max(0, actualArtistIncome − target) — יתרה לזכות האמן
+  artistActualBalance: number;     // actualArtistIncome − target (signed debt: <0 owes label, >0 credit)
 }
 
 /** A label project joined with its (optional) release details — the /label list item. */

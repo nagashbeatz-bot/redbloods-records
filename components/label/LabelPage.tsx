@@ -186,7 +186,7 @@ export default function LabelPage() {
   const reloadRecoup = useCallback(() => {
     const roster = artists ?? [];
     const zero: ArtistRecoupSummary = {
-      clipRecoupTarget: 0, mediaActualRecouped: 0, mediaArtistShareReceived: 0, showsArtistPaid: 0,
+      clipRecoupTarget: 0, mediaArtistShareReceived: 0, showsArtistPaid: 0,
       mediaExpectedArtistShare: 0, showsArtistExpected: 0, actualRecouped: 0,
       expectedArtistIncome: 0, actualRecoupBalance: 0, projectedRecoup: 0,
       projectedRecoupBalance: 0, artistCredit: 0, actualArtistIncome: 0, artistActualBalance: 0,
@@ -454,7 +454,7 @@ export default function LabelPage() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יעד הקיזוז = חצי האמן מתקציבי הקליפים. הקיזוז בפועל מול הכנסות האמן מוצג בסקשן "קיזוז אמן" למטה. התקציב נקרא חי מ-Red Films.</div>
+              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יעד הקיזוז = חצי האמן מתקציבי הקליפים. הקיזוז בפועל מול הכנסות האמן מוצג בסקשן "חוב האמן ללייבל" למטה. התקציב נקרא חי מ-Red Films.</div>
             </>
           )}
         </Card>
@@ -526,34 +526,37 @@ export default function LabelPage() {
         </Card>
       </div>
 
-      {/* Unified artist recoup — clips=target; media (actual) + paid shows reduce it;
-          expected media + unpaid shows project the rest. All caps per-artist (server). */}
+      {/* Artist debt to label — initial debt = clip artist-half; the artist's FULL received
+          share (paid shows + received media) flows through it first, only the excess is credit.
+          Expected income projects the debt but never reduces it. All caps per-artist (server). */}
       <div style={{ marginBottom: 20 }}>
-        <SectionHeader title="קיזוז אמן" />
+        <SectionHeader title="חוב האמן ללייבל" />
         <Card>
           {!recoup ? (
             <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
           ) : (() => {
-            const bal = recoup.artistActualBalance;
-            const neg = bal < -0.001, pos = bal > 0.001;
-            const balColor = neg ? "#F87171" : pos ? GREEN : SUB;
-            const balNote = neg ? "האמן עדיין בחוב ללייבל" : pos ? "יתרה לזכות האמן" : "הקיזוז הושלם";
+            const debt = recoup.actualRecoupBalance, credit = recoup.artistCredit;
+            const inDebt = debt > 0.001, inCredit = !inDebt && credit > 0.001;
+            const hlTitle = inDebt ? "חוב האמן ללייבל" : inCredit ? "יתרה לזכות האמן" : "החוב נסגר";
+            const hlValue = inDebt ? debt : inCredit ? credit : 0;
+            const hlColor = inDebt ? "#F87171" : inCredit ? GREEN : SUB;
+            const hlNote = inDebt ? "חלק האמן מהכנסות מתקזז תחילה מול החוב" : inCredit ? "החוב נסגר והיתרה מיועדת לאמן" : "כל חלק האמן שהתקבל קיזז את החוב";
             return (
             <>
-              {/* Headline: signed artist balance — the single source of truth for the artist's state */}
-              <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))", border: `1px solid ${neg ? "rgba(248,113,113,0.35)" : pos ? "rgba(52,211,153,0.35)" : BORDER2}`, borderRadius: 18, padding: "22px 24px", marginBottom: 16, textAlign: "center" }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: SUB, letterSpacing: "0.02em" }}>מאזן אמן בפועל</div>
-                <div style={{ fontSize: 40, fontWeight: 900, color: balColor, marginTop: 8, letterSpacing: "-0.02em", direction: "ltr" }}>{neg ? "−" : ""}{money(Math.abs(bal))}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: balColor, marginTop: 8 }}>{balNote}</div>
+              {/* Headline: current artist debt (or credit once the debt is closed) */}
+              <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))", border: `1px solid ${inDebt ? "rgba(248,113,113,0.35)" : inCredit ? "rgba(52,211,153,0.35)" : BORDER2}`, borderRadius: 18, padding: "22px 24px", marginBottom: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: SUB, letterSpacing: "0.02em" }}>{hlTitle}</div>
+                <div style={{ fontSize: 40, fontWeight: 900, color: hlColor, marginTop: 8, letterSpacing: "-0.02em", direction: "ltr" }}>{money(hlValue)}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: hlColor, marginTop: 8 }}>{hlNote}</div>
               </div>
 
               {/* Secondary detail */}
               <div className="rb-lab-shows-kpis">
                 {[
-                  { l: "יעד קיזוז", v: recoup.clipRecoupTarget, c: SUB },
+                  { l: "חוב התחלתי", v: recoup.clipRecoupTarget, c: SUB },
                   { l: "קוזז בפועל", v: recoup.actualRecouped, c: GREEN },
-                  { l: "קיזוז צפוי", v: recoup.projectedRecoup, c: "#F59E0B" },
-                  { l: "יתרה צפויה", v: recoup.projectedRecoupBalance, c: "#F59E0B" },
+                  { l: "צפוי להתקזז", v: recoup.projectedRecoup, c: "#F59E0B" },
+                  { l: "חוב צפוי", v: recoup.projectedRecoupBalance, c: "#F59E0B" },
                 ].map((t) => (
                   <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "12px 14px" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
@@ -562,7 +565,7 @@ export default function LabelPage() {
                 ))}
               </div>
               <div style={{ marginTop: 12, fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
-                מאזן אמן בפועל = חלק האמן שהתקבל בפועל (הופעות ששולמו + מדיה שהתקבלה) פחות יעד הקיזוז מהקליפים. שלילי = חוב פתוח ללייבל; חיובי = יתרה לזכות האמן. הקיזוז הצפוי מבוסס על הופעות ומדיה שטרם התקבלו — לתצוגה בלבד.
+                החוב מתחיל מחצי האמן בתקציבי הקליפים. חלק האמן שהתקבל בפועל (הופעות ששולמו + מדיה שהתקבלה) מקזז אותו תחילה, ורק מה שמעבר הופך ליתרה לזכות האמן. "צפוי להתקזז" מבוסס על הופעות ומדיה שטרם התקבלו — לתצוגה בלבד, אינו מקטין את החוב בפועל.
               </div>
             </>
             );
