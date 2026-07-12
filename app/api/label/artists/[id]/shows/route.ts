@@ -4,11 +4,14 @@ import { getLabelArtist } from "@/lib/label-artists-store";
 import { listShows } from "@/lib/shows-store";
 import { parseArtistNames } from "@/lib/clients-store";
 import { computeShowSplit } from "@/lib/shows-types";
+import { getRehearsalCountedMap } from "@/lib/shows-finance-sync";
 import type { LabelShowLine, ArtistShowsSummary } from "@/lib/types";
 
 // GET /api/label/artists/[id]/shows — shows-only label finance for one artist.
 // Read-only. Artist name is resolved server-side from label_artists by id.
-// Money is derived ONLY via computeShowSplit; transactions are never summed.
+// Money is derived ONLY via computeShowSplit (with Fin-2 rehearsal costs from the
+// same getRehearsalCountedMap helper the Shows page uses); transactions are never
+// summed and the rehearsal cost is never subtracted again (it's inside the split).
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -19,7 +22,16 @@ export async function GET(
     const artist = await getLabelArtist(id);
     if (!artist) return NextResponse.json({ error: "האמן לא נמצא" }, { status: 404 });
 
-    const shows = await listShows();
+    const allShows = await listShows();
+    // This artist's shows, excluding cancelled ones.
+    const relevant = allShows.filter((s) => {
+      const tokens = parseArtistNames(s.artist || "");
+      return tokens.includes(artist.name) && s.status !== "בוטל" && s.payment_status !== "בוטל";
+    });
+    // Fin-2: counted rehearsal costs per show — the SAME helper the Shows page uses
+    // (one batched query). Passed into computeShowSplit so the split matches Shows.
+    const rehMap = await getRehearsalCountedMap(relevant.map((s) => s.id));
+
     const lines: LabelShowLine[] = [];
     const totals = {
       labelReceived: 0, labelExpected: 0,
@@ -28,13 +40,10 @@ export async function GET(
       count: 0, needsAttribution: 0,
     };
 
-    for (const s of shows) {
+    for (const s of relevant) {
       const tokens = parseArtistNames(s.artist || "");
-      if (!tokens.includes(artist.name)) continue;                 // not this artist's show
-      if (s.status === "בוטל" || s.payment_status === "בוטל") continue; // cancelled → excluded
-
       const isCollab = tokens.length > 1;
-      const split = computeShowSplit(s);                            // canonical split only
+      const split = computeShowSplit(s, rehMap[s.id] ?? 0);         // Fin-2 rehearsal costs baked into the split
       const included = !isCollab;
 
       lines.push({
