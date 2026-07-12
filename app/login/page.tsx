@@ -31,7 +31,9 @@ function LoginForm() {
       // refetch with the new session cookie — otherwise pages render empty until
       // a manual refresh, because client-side navigation keeps the providers
       // (already mounted on /login) with their stale anonymous (401) state.
-      const target = redirectTo.startsWith("/") && redirectTo !== "/login" ? redirectTo : "/dashboard";
+      // Never bounce back to /login or /maintenance after a successful sign-in — the
+      // owner should land in the app; the proxy re-checks the role on that navigation.
+      const target = redirectTo.startsWith("/") && redirectTo !== "/login" && redirectTo !== "/maintenance" ? redirectTo : "/dashboard";
       window.location.assign(target);
     } catch {
       setError("שגיאה בהתחברות, נסה שוב");

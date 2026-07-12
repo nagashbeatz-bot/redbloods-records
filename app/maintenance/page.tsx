@@ -53,6 +53,21 @@ export default function MaintenancePage() {
         >
           רענן
         </button>
+
+        {/* Owner sign-in — the only way to bypass maintenance is a real login (server
+            verifies the owner role from the session); no URL/secret shortcut. */}
+        <div style={{ marginTop: 20 }}>
+          <a
+            href="/login"
+            style={{
+              display: "inline-block", fontSize: 12.5, fontWeight: 700, color: "#8A8A98",
+              textDecoration: "none", padding: "8px 16px", borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            כניסת מנהל
+          </a>
+        </div>
       </div>
     </div>
   );
