@@ -88,6 +88,7 @@ export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   let email: string | null = null;
   let signedIn = false;
+  let authClient: ReturnType<typeof createServerClient> | null = null;
   try {
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -107,6 +108,7 @@ export async function proxy(request: NextRequest) {
         },
       },
     );
+    authClient = supabase;
     const { data } = await supabase.auth.getUser();
     if (data.user) { signedIn = true; email = data.user.email ?? null; }
   } catch {
@@ -115,34 +117,60 @@ export async function proxy(request: NextRequest) {
 
   const role = signedIn ? roleForEmail(email) : null;
   const isApi = pathname.startsWith("/api/");
-  const forbidden = () => NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+  // Fix #1: every response the proxy returns must carry the auth cookies that
+  // getUser()'s refresh wrote to `response` (via setAll). Without this, a token
+  // refresh on a redirect/forbidden/503 path is silently dropped, degrading the
+  // session on the next request. Wrap EVERY exit through this — no path forgets.
+  const carry = (res: NextResponse): NextResponse => {
+    for (const c of response.cookies.getAll()) res.cookies.set(c);
+    return res;
+  };
+  const forbidden = () => carry(NextResponse.json({ error: "forbidden" }, { status: 403 }));
   const toLogin = () => {
     const url = new URL("/login", request.url);
     url.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(url);
+    return carry(NextResponse.redirect(url));
   };
 
   // ── Maintenance lock ──────────────────────────────────────────────────────
-  // Owner ALWAYS bypasses (role is resolved server-side from the session, never
-  // the client). Everyone else — signed in or not — is held on the maintenance
-  // screen (pages) / a clean 503 (api). /login stays open so the owner can sign
-  // in; /maintenance and PUBLIC_BYPASS were already allowed above.
-  if (role !== "owner" && pathname !== "/login" && (await isMaintenanceOn(request))) {
-    if (isApi) return NextResponse.json({ maintenance: true }, { status: 503 });
-    return NextResponse.redirect(new URL("/maintenance", request.url));
+  // Owner ALWAYS bypasses. Evaluated ONLY when maintenance is actually ON, so the
+  // verified-claims fallback below adds ZERO overhead in normal operation.
+  if (pathname !== "/login" && (await isMaintenanceOn(request))) {
+    // Owner detection: prefer getUser's role; if that failed to identify the owner
+    // (transient failure / refresh race), fall back to SIGNATURE-VERIFIED claims
+    // (getClaims) — never a raw/unverified decode. A forged/hand-made cookie fails
+    // verification → no bypass. allowExpired lets a just-expired but signature-valid
+    // owner token bypass the maintenance SCREEN only; NOT a data boundary — every
+    // route still enforces requireOwner independently.
+    let ownerBypass = role === "owner";
+    if (!ownerBypass && authClient) {
+      try {
+        const { data: cl, error } = await authClient.auth.getClaims(undefined, { allowExpired: true });
+        const claimEmail = (cl?.claims as { email?: string } | undefined)?.email;
+        if (!error && roleForEmail(claimEmail) === "owner") ownerBypass = true;
+      } catch { /* verification failed → not owner */ }
+    }
+    if (!ownerBypass) {
+      // TEMP diagnostic (no email/token): shows who is blocked by maintenance — lets us
+      // confirm whether the owner's getUser is failing on desktop. Remove after prod check.
+      console.log("[proxy] maintenance block — role:", role, "signedIn:", signedIn, "path:", pathname);
+      if (isApi) return carry(NextResponse.json({ maintenance: true }, { status: 503 }));
+      return carry(NextResponse.redirect(new URL("/maintenance", request.url)));
+    }
   }
 
   // Login page: signed-in users go to their home; anon/unknown see the form.
   if (pathname === "/login") {
-    if (role === "owner") return NextResponse.redirect(new URL("/dashboard", request.url));
-    if (role === "victor") return NextResponse.redirect(new URL("/team/victor", request.url));
-    if (role === "steven") return NextResponse.redirect(new URL("/team/steven", request.url));
+    if (role === "owner") return carry(NextResponse.redirect(new URL("/dashboard", request.url)));
+    if (role === "victor") return carry(NextResponse.redirect(new URL("/team/victor", request.url)));
+    if (role === "steven") return carry(NextResponse.redirect(new URL("/team/steven", request.url)));
     return response;
   }
 
   // Not signed in → Phase 1 gate.
   if (!signedIn) {
-    if (isApi) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    if (isApi) return carry(NextResponse.json({ error: "unauthorized" }, { status: 401 }));
     return toLogin();
   }
 
@@ -153,19 +181,19 @@ export async function proxy(request: NextRequest) {
   if (role === "victor") {
     if (isVictorAllowedPath(pathname)) return response;
     if (isApi) return forbidden();
-    return NextResponse.redirect(new URL("/team/victor", request.url));
+    return carry(NextResponse.redirect(new URL("/team/victor", request.url)));
   }
 
   // Steven → restricted to his page + scoped sanitized APIs (mirror of Victor).
   if (role === "steven") {
     if (isStevenAllowedPath(pathname)) return response;
     if (isApi) return forbidden();
-    return NextResponse.redirect(new URL("/team/steven", request.url));
+    return carry(NextResponse.redirect(new URL("/team/steven", request.url)));
   }
 
   // Signed in but email not recognized → locked out.
   if (isApi) return forbidden();
-  return NextResponse.redirect(new URL("/login", request.url));
+  return carry(NextResponse.redirect(new URL("/login", request.url)));
 }
 
 export const config = {
