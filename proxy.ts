@@ -73,6 +73,29 @@ async function isMaintenanceOn(request: NextRequest): Promise<boolean> {
   return false; // fail-open
 }
 
+// TEMP DIAG (remove after root-cause): best-effort read of the access token from the
+// Supabase auth cookie WITHOUT the SDK (no refresh, no side effects). Answers "is an
+// access token present in the cookie when getUser's refresh failed?".
+function diagAccessTokenPresent(request: NextRequest): boolean {
+  try {
+    const parts = request.cookies.getAll().filter((c) => /-auth-token(\.\d+)?$/.test(c.name));
+    if (!parts.length) return false;
+    const single = parts.find((c) => /-auth-token$/.test(c.name));
+    let raw = single
+      ? single.value
+      : parts.filter((c) => /\.\d+$/.test(c.name))
+          .sort((a, b) => Number(a.name.split(".").pop()) - Number(b.name.split(".").pop()))
+          .map((c) => c.value).join("");
+    if (raw.startsWith("base64-")) {
+      const b64 = raw.slice(7);
+      raw = typeof atob === "function" ? atob(b64) : Buffer.from(b64, "base64").toString("utf8");
+    } else {
+      try { raw = decodeURIComponent(raw); } catch { /* keep raw */ }
+    }
+    return raw.includes("access_token");
+  } catch { return false; }
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -144,17 +167,35 @@ export async function proxy(request: NextRequest) {
     // owner token bypass the maintenance SCREEN only; NOT a data boundary — every
     // route still enforces requireOwner independently.
     let ownerBypass = role === "owner";
+    // TEMP DIAG (remove after root-cause): why doesn't the verified-claims fallback recover
+    // the owner when getUser threw refresh_token_not_found? No JWT/email is logged.
+    let dAttempted = false;
+    let dOutcome = "not-run";            // ok-owner | ok-not-owner | error:<code> | throw:<name>
+    const dAuthCookie = request.cookies.getAll().some((c) => /-auth-token(\.\d+)?$/.test(c.name));
+    const dAccessToken = diagAccessTokenPresent(request);
     if (!ownerBypass && authClient) {
+      dAttempted = true;
       try {
         const { data: cl, error } = await authClient.auth.getClaims(undefined, { allowExpired: true });
-        const claimEmail = (cl?.claims as { email?: string } | undefined)?.email;
-        if (!error && roleForEmail(claimEmail) === "owner") ownerBypass = true;
-      } catch { /* verification failed → not owner */ }
+        if (error) {
+          dOutcome = "error:" + ((error as { code?: string; name?: string }).code ?? (error as { name?: string }).name ?? "unknown");
+        } else {
+          const claimEmail = (cl?.claims as { email?: string } | undefined)?.email;
+          const isOwner = roleForEmail(claimEmail) === "owner";
+          dOutcome = isOwner ? "ok-owner" : "ok-not-owner";
+          if (isOwner) ownerBypass = true;
+        }
+      } catch (e) {
+        dOutcome = "throw:" + ((e as { name?: string }).name ?? "unknown");
+      }
     }
     if (!ownerBypass) {
-      // TEMP diagnostic (no email/token): shows who is blocked by maintenance — lets us
-      // confirm whether the owner's getUser is failing on desktop. Remove after prod check.
-      console.log("[proxy] maintenance block — role:", role, "signedIn:", signedIn, "path:", pathname);
+      console.log(
+        "[proxy] maint block — role:", role, "signedIn:", signedIn,
+        "| authCookie:", dAuthCookie, "accessToken:", dAccessToken,
+        "claimsAttempted:", dAttempted, "claimsOutcome:", dOutcome,
+        "ownerBypass:", ownerBypass, "path:", pathname,
+      );
       if (isApi) return carry(NextResponse.json({ maintenance: true }, { status: 503 }));
       return carry(NextResponse.redirect(new URL("/maintenance", request.url)));
     }
