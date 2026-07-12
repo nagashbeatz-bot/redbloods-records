@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { getLabelArtist } from "@/lib/label-artists-store";
-import { parseArtistNames } from "@/lib/clients-store";
-import { supabase } from "@/lib/supabase";
+import { listArtistClips, round2 } from "@/lib/label-clips";
 import type { LabelClipLine, ArtistClipsSummary } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/label/artists/[id]/clips — clip label investment for one artist.
-// Single source of truth: red_films_productions.general_budget (read live, no copy).
-// Per the label rule the full budget is treated as paid; label investment = budget/2,
-// artist recoup = budget/2 (display only). No clip_items, no transactions, no paidTotal.
+// Single source: red_films_productions.general_budget via the shared clip helper
+// (labelInvestment = round(budget/2,2); artistRecoup = budget − labelInvestment).
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -21,35 +19,18 @@ export async function GET(
     const artist = await getLabelArtist(id);
     if (!artist) return NextResponse.json({ error: "האמן לא נמצא" }, { status: 404 });
 
-    const { data, error } = await supabase
-      .from("red_films_productions")
-      .select("id, title, status, project_id, artist_name, production_type, general_budget");
-    if (error) throw new Error(error.message);
-
-    const clips: LabelClipLine[] = [];
-    const totals = { fullBudget: 0, labelInvestment: 0, artistRecoupBalance: 0, count: 0 };
-
-    for (const p of data ?? []) {
-      const prod = p as { id: string; title: string; status: string; project_id: string | null; artist_name: string | null; production_type: string | null; general_budget: number | null };
-      if (prod.production_type !== "קליפ") continue;                    // clips only
-      if (prod.status === "בוטל") continue;                              // cancelled excluded
-      if (!parseArtistNames(prod.artist_name || "").includes(artist.name)) continue; // this artist
-
-      const fullBudget = Number(prod.general_budget) || 0;
-      const labelInvestment = fullBudget / 2;
-      const artistRecoupBalance = fullBudget / 2;
-
-      clips.push({
-        id: prod.id, title: prod.title, status: prod.status, projectId: prod.project_id,
-        fullBudget, labelInvestment, artistRecoupBalance,
-      });
-      totals.fullBudget += fullBudget;
-      totals.labelInvestment += labelInvestment;
-      totals.artistRecoupBalance += artistRecoupBalance;
-      totals.count += 1;
-    }
-
-    const payload: ArtistClipsSummary = { totals, clips };
+    const clips = await listArtistClips(artist.name);
+    const lines: LabelClipLine[] = clips.map((c) => ({
+      id: c.id, title: c.title, status: c.status, projectId: c.projectId,
+      fullBudget: c.fullBudget, labelInvestment: c.labelInvestment, artistRecoupBalance: c.artistRecoupTarget,
+    }));
+    const totals = {
+      fullBudget: round2(clips.reduce((s, c) => s + c.fullBudget, 0)),
+      labelInvestment: round2(clips.reduce((s, c) => s + c.labelInvestment, 0)),
+      artistRecoupBalance: round2(clips.reduce((s, c) => s + c.artistRecoupTarget, 0)),
+      count: clips.length,
+    };
+    const payload: ArtistClipsSummary = { totals, clips: lines };
     return NextResponse.json(payload);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

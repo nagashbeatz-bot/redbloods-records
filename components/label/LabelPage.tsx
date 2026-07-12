@@ -8,7 +8,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary } from "@/lib/types";
+import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary, LabelMediaRecord, ArtistMediaSummary } from "@/lib/types";
+import { MediaModal, MediaCancelModal, type MediaRec } from "./MediaModals";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM, GREEN,
   STAGE_COLOR, ARTIST_STATUS_COLOR, todayYmd, fmtDate, daysUntil, daysBetween, ACTIVE_STAGES_SET,
@@ -106,6 +107,13 @@ export default function LabelPage() {
   type ClipLine = LabelClipLine & { artistName: string };
   const [clips, setClips] = useState<{ totals: ArtistClipsSummary["totals"]; lines: ClipLine[] } | null>(null);
 
+  const [media, setMedia] = useState<{
+    totals: ArtistMediaSummary["totals"]; recoupTarget: number; recoupBalance: number; artistCredit: number; records: MediaRec[];
+  } | null>(null);
+  const [mediaCreate, setMediaCreate] = useState(false);
+  const [mediaEdit, setMediaEdit] = useState<MediaRec | null>(null);
+  const [mediaCancel, setMediaCancel] = useState<MediaRec | null>(null);
+
   // Shows-only label finance: fetch per roster artist and aggregate. Money is
   // derived server-side via computeShowSplit only — transactions are never summed.
   useEffect(() => {
@@ -151,6 +159,25 @@ export default function LabelPage() {
     return () => { alive = false; };
   }, [artists]);
 
+  // Media income: fetch per roster artist and aggregate (signed totals from the API).
+  const reloadMedia = useCallback(() => {
+    const roster = artists ?? [];
+    const emptyT = { mediaGross: 0, labelShareReceived: 0, artistShareGross: 0, recoupedTotal: 0, artistPayableTotal: 0, labelShareExpected: 0 };
+    if (roster.length === 0) { setMedia({ totals: emptyT, recoupTarget: 0, recoupBalance: 0, artistCredit: 0, records: [] }); return; }
+    Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/media`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
+      .then((results: (ArtistMediaSummary | null)[]) => {
+        const t = { ...emptyT }; let rt = 0, rb = 0, ac = 0; const recs: MediaRec[] = [];
+        results.forEach((res, i) => {
+          if (!res) return;
+          (Object.keys(t) as (keyof typeof t)[]).forEach((k) => { t[k] += res.totals[k]; });
+          rt += res.recoupTarget; rb += res.recoupBalance; ac += res.artistCredit;
+          for (const rec of res.records) recs.push({ ...rec, artistId: roster[i].id, artistName: roster[i].name });
+        });
+        setMedia({ totals: t, recoupTarget: rt, recoupBalance: rb, artistCredit: ac, records: recs });
+      });
+  }, [artists]);
+  useEffect(() => { reloadMedia(); }, [reloadMedia]);
+
   const d = useMemo(() => {
     const roster = artists ?? [];
     const rels = releases ?? [];
@@ -188,11 +215,11 @@ export default function LabelPage() {
   // Top financial KPIs — from the already-loaded shows data (no extra fetch).
   // Investments are 0 until clip/song channels are connected. Balance = actual
   // income − actual investments (never mixes expected money into actual balance).
-  const finReady = shows != null && clips != null;
+  const finReady = shows != null && clips != null && media != null;
   const investActual = clips?.totals.labelInvestment ?? 0;   // clip label investment (budget/2)
   const investExpected = 0;                                   // budget treated as fully paid
-  const incomeActual = shows?.totals.labelReceived ?? 0;
-  const incomeExpected = shows?.totals.labelExpected ?? 0;
+  const incomeActual = (shows?.totals.labelReceived ?? 0) + (media?.totals.labelShareReceived ?? 0);
+  const incomeExpected = (shows?.totals.labelExpected ?? 0) + (media?.totals.labelShareExpected ?? 0);
   const balanceActual = incomeActual - investActual;
   const money = (n: number) => {
     const hasFrac = Math.abs(n % 1) > 0.001;
@@ -376,11 +403,74 @@ export default function LabelPage() {
         </Card>
       </div>
 
-      {/* Production / media — not connected yet */}
+      {/* Media income + recoup */}
       <div style={{ marginBottom: 20 }}>
-        <SectionHeader title="הפקה · מדיה" />
-        <Card style={{ padding: "20px 24px" }}>
-          <div style={{ fontSize: 13, color: MUTED, textAlign: "center", lineHeight: 1.7 }}>הכנסות/הוצאות הפקה ומדיה <b style={{ color: SUB }}>טרם חוברו למקור נתונים</b>.</div>
+        <SectionHeader title="הכנסות מדיה" action={
+          <button onClick={() => setMediaCreate(true)} disabled={d.roster.length === 0} style={{ fontSize: 12.5, fontWeight: 800, color: "#fff", background: d.roster.length === 0 ? "#4A2020" : BRAND, border: "none", borderRadius: 9, padding: "8px 16px", cursor: d.roster.length === 0 ? "default" : "pointer", fontFamily: "inherit" }}>+ הזנת מדיה</button>
+        } />
+        <Card>
+          {!media ? (
+            <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
+          ) : (
+            <>
+              <div className="rb-lab-shows-kpis">
+                {[
+                  { l: "סך מדיה (התקבל)", v: media.totals.mediaGross, c: SUB },
+                  { l: "חלק לייבל", v: media.totals.labelShareReceived, c: GREEN },
+                  { l: "חלק אמן ברוטו", v: media.totals.artistShareGross, c: SUB },
+                  { l: "שקוזז", v: media.totals.recoupedTotal, c: "#F59E0B" },
+                  { l: "לתשלום לאמן", v: media.totals.artistPayableTotal, c: SUB },
+                  { l: "יתרת קיזוז", v: media.recoupBalance, c: "#F87171" },
+                ].map((t) => (
+                  <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "14px 15px" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, marginTop: 6 }}>{money(t.v)}</div>
+                  </div>
+                ))}
+              </div>
+
+              {media.artistCredit > 0 && (
+                <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 700, color: "#F59E0B" }}>⚠ יתרת זכות לאמן (עודף קיזוז): {money(media.artistCredit)} — לתצוגה בלבד, אינה מקוזזת אוטומטית.</div>
+              )}
+
+              {media.records.length === 0 ? (
+                <div style={{ marginTop: 16, color: MUTED, textAlign: "center", padding: "10px 0", fontSize: 13.5 }}>אין הזנות מדיה. השתמש ב"הזנת מדיה" כדי להוסיף.</div>
+              ) : (
+                <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {media.records.map((r) => {
+                    const isRev = r.recordType === "reversal";
+                    const sc = r.status === "התקבל" ? GREEN : r.status === "צפוי" ? "#F59E0B" : MUTED;
+                    const canAct = r.recordType === "income" && r.status !== "בוטל" && !r.isReversed;
+                    const sgn = isRev ? "−" : "";
+                    return (
+                      <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD2, border: `1px solid ${isRev ? "rgba(245,158,11,0.25)" : BORDER2}`, borderRadius: 12, padding: "11px 14px", flexWrap: "wrap", opacity: r.status === "בוטל" || r.isReversed ? 0.6 : 1 }}>
+                        <div style={{ flex: 1, minWidth: 150 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            {r.source || "מדיה"}
+                            {isRev && <span style={{ fontSize: 10.5, fontWeight: 800, color: "#F59E0B", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 100, padding: "1px 8px" }}>היפוך</span>}
+                            {r.isReversed && <span style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, borderRadius: 100, padding: "1px 8px" }}>הופך</span>}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: MUTED }}>{r.artistName} · {r.reportPeriod || "—"} · {fmtDate(r.receivedDate)} · <span style={{ color: sc, fontWeight: 700 }}>{r.status}</span></div>
+                        </div>
+                        <div style={{ display: "flex", gap: 14, textAlign: "left", flexWrap: "wrap" }}>
+                          <div style={{ minWidth: 70 }}><div style={{ fontSize: 10, color: DIM }}>ברוטו</div><div style={{ fontSize: 13, fontWeight: 800, color: SUB }}>{sgn}{money(r.grossAmount)}</div></div>
+                          <div style={{ minWidth: 70 }}><div style={{ fontSize: 10, color: DIM }}>לייבל</div><div style={{ fontSize: 13, fontWeight: 900, color: GREEN }}>{sgn}{money(r.labelShare)}</div></div>
+                          <div style={{ minWidth: 70 }}><div style={{ fontSize: 10, color: DIM }}>קוזז</div><div style={{ fontSize: 13, fontWeight: 800, color: "#F59E0B" }}>{sgn}{money(r.recouped)}</div></div>
+                          <div style={{ minWidth: 70 }}><div style={{ fontSize: 10, color: DIM }}>לאמן</div><div style={{ fontSize: 13, fontWeight: 800, color: SUB }}>{sgn}{money(r.artistPayable)}</div></div>
+                        </div>
+                        {canAct && (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => setMediaEdit(r)} style={{ fontSize: 11.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 8, padding: "6px 11px", cursor: "pointer", fontFamily: "inherit" }}>עריכה</button>
+                            <button onClick={() => setMediaCancel(r)} style={{ fontSize: 11.5, fontWeight: 700, color: "#F87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.28)", borderRadius: 8, padding: "6px 11px", cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </Card>
       </div>
 
@@ -450,6 +540,10 @@ export default function LabelPage() {
       {addArtistOpen && <AddArtistModal onClose={() => setAddArtistOpen(false)} onSaved={() => reload()} />}
       {markOpen && <MarkExistingModal artists={d.roster} onClose={() => setMarkOpen(false)} onSaved={reload} />}
       {editItem && editItem.release && <EditReleaseModal item={editItem} onClose={() => setEditItem(null)} onSaved={reload} />}
+
+      {mediaCreate && <MediaModal artists={d.roster} mode="create" onClose={() => setMediaCreate(false)} onSaved={reloadMedia} />}
+      {mediaEdit && <MediaModal artists={d.roster} mode="edit" record={mediaEdit} onClose={() => setMediaEdit(null)} onSaved={reloadMedia} />}
+      {mediaCancel && <MediaCancelModal record={mediaCancel} onClose={() => setMediaCancel(null)} onSaved={reloadMedia} />}
     </div>
   );
 }

@@ -50,6 +50,12 @@ export function daysInStage(stageEnteredAt: string): number {
 }
 export const ACTIVE_STAGES_SET = new Set<ReleaseStage>(RELEASE_STAGES.filter((s) => s !== "יצא" && s !== "בהשהייה"));
 
+/** Money formatter: 2 decimals only when fractional (e.g. ₪2,477.50 / ₪1,000). */
+export function fmtMoney(n: number): string {
+  const frac = Math.abs(n % 1) > 0.001;
+  return `₪${n.toLocaleString("en-US", { minimumFractionDigits: frac ? 2 : 0, maximumFractionDigits: 2 })}`;
+}
+
 // ── atoms ─────────────────────────────────────────────────────────────────────
 export function StatCard({ label, value, sub, subColor, icon }: {
   label: string; value: React.ReactNode; sub?: string; subColor?: string; icon?: string;

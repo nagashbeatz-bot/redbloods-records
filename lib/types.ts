@@ -129,6 +129,45 @@ export interface ArtistClipsSummary {
   clips: LabelClipLine[];
 }
 
+// ── Media income (label_media_income) ────────────────────────────────────────
+export type MediaStatus = "התקבל" | "צפוי" | "בוטל";
+export type MediaRecordType = "income" | "reversal";
+
+/** One label_media_income row (values are DB-exact; updatedAt is the lock token). */
+export interface LabelMediaRecord {
+  id: string;
+  recordType: MediaRecordType;
+  reversesId: string | null;
+  grossAmount: number;
+  source: string;
+  reportPeriod: string;
+  receivedDate: string | null;
+  status: MediaStatus;
+  notes: string;
+  labelShare: number;
+  artistShareGross: number;
+  recoupBefore: number;
+  recouped: number;
+  artistPayable: number;
+  recoupAfter: number;
+  createdAt: string;
+  updatedAt: string;          // exact DB string — optimistic-lock token (never new Date())
+  isReversed: boolean;        // an active reversal references this income record
+  reversalId: string | null;
+}
+
+/** Aggregated media finance for one label artist. Signed by record_type. */
+export interface ArtistMediaSummary {
+  records: LabelMediaRecord[];
+  totals: {
+    mediaGross: number; labelShareReceived: number; artistShareGross: number;
+    recoupedTotal: number; artistPayableTotal: number; labelShareExpected: number;
+  };
+  recoupTarget: number;
+  recoupBalance: number;
+  artistCredit: number;
+}
+
 /** A label project joined with its (optional) release details — the /label list item. */
 export interface LabelRelease {
   projectId: string;
