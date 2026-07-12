@@ -66,7 +66,7 @@ export async function deleteClient(id: string): Promise<void> {
 }
 
 /** Parse a raw comma/semicolon-separated artist string into individual names */
-function parseArtistNames(raw: string): string[] {
+export function parseArtistNames(raw: string): string[] {
   return raw.split(/[,،;]/).map((s) => s.trim()).filter(Boolean);
 }
 

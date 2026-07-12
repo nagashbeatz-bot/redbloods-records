@@ -86,6 +86,32 @@ export interface ProjectReleaseDetails {
   updatedAt: string;                // ISO — optimistic-lock token
 }
 
+/** Per-show label-finance line for a label artist (shows-only; computed via computeShowSplit). */
+export interface LabelShowLine {
+  id: string;
+  name: string;
+  date: string | null;
+  status: string;
+  paymentStatus: string;   // original show.payment_status — never rewritten
+  showPrice: number;
+  djFee: number;
+  labelProfit: number;
+  artistFee: number;
+  isCollab: boolean;
+  included: boolean;       // false for collab (needs attribution) — excluded from totals
+}
+
+/** Aggregated show finances for one label artist. */
+export interface ArtistShowsSummary {
+  totals: {
+    labelReceived: number; labelExpected: number;
+    artistPaid: number;    artistExpected: number;
+    djPaid: number;        djExpected: number;
+    count: number;         needsAttribution: number;
+  };
+  shows: LabelShowLine[];
+}
+
 /** A label project joined with its (optional) release details — the /label list item. */
 export interface LabelRelease {
   projectId: string;

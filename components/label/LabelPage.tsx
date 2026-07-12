@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import type { LabelArtist, LabelRelease, ProjectReleaseDetails } from "@/lib/types";
+import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary } from "@/lib/types";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM, GREEN,
   STAGE_COLOR, ARTIST_STATUS_COLOR, todayYmd, fmtDate, daysUntil, daysBetween, ACTIVE_STAGES_SET,
@@ -88,6 +88,9 @@ export default function LabelPage() {
   const [markOpen, setMarkOpen] = useState(false);
   const [editItem, setEditItem] = useState<LabelRelease | null>(null);
 
+  type ShowLine = LabelShowLine & { artistName: string };
+  const [shows, setShows] = useState<{ totals: ArtistShowsSummary["totals"]; lines: ShowLine[] } | null>(null);
+
   const reload = useCallback(() => {
     Promise.all([
       fetch("/api/label/artists").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
@@ -99,6 +102,29 @@ export default function LabelPage() {
     }).catch(() => setState("error"));
   }, []);
   useEffect(() => { reload(); }, [reload]);
+
+  // Shows-only label finance: fetch per roster artist and aggregate. Money is
+  // derived server-side via computeShowSplit only — transactions are never summed.
+  useEffect(() => {
+    const roster = artists ?? [];
+    const empty = { labelReceived: 0, labelExpected: 0, artistPaid: 0, artistExpected: 0, djPaid: 0, djExpected: 0, count: 0, needsAttribution: 0 };
+    if (roster.length === 0) { setShows({ totals: empty, lines: [] }); return; }
+    let alive = true;
+    Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/shows`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
+      .then((results: (ArtistShowsSummary | null)[]) => {
+        if (!alive) return;
+        const t = { ...empty };
+        const lines: ShowLine[] = [];
+        results.forEach((res, i) => {
+          if (!res) return;
+          (Object.keys(t) as (keyof typeof t)[]).forEach((k) => { t[k] += res.totals[k]; });
+          for (const s of res.shows) lines.push({ ...s, artistName: roster[i].name });
+        });
+        lines.sort((a, b) => (a.date && b.date ? (a.date > b.date ? -1 : 1) : a.date ? -1 : 1));
+        setShows({ totals: t, lines });
+      });
+    return () => { alive = false; };
+  }, [artists]);
 
   const d = useMemo(() => {
     const roster = artists ?? [];
@@ -140,9 +166,11 @@ export default function LabelPage() {
         .rb-lab-kpis { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; }
         .rb-lab-artists { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
         .rb-lab-money { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:14px; }
+        .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(7,1fr); gap:12px; }
         .rb-lab-bottom { display:grid; grid-template-columns:1fr 1.25fr; gap:18px; }
-        @media (max-width:1180px){ .rb-lab-kpis{ grid-template-columns:repeat(3,1fr);} }
+        @media (max-width:1180px){ .rb-lab-kpis{ grid-template-columns:repeat(3,1fr);} .rb-lab-shows-kpis{ grid-template-columns:repeat(4,1fr);} }
         @media (max-width:1000px){ .rb-lab-money{ grid-template-columns:1fr;} .rb-lab-bottom{ grid-template-columns:1fr;} }
+        @media (max-width:620px){ .rb-lab-shows-kpis{ grid-template-columns:repeat(2,1fr);} }
         @media (max-width:620px){ .rb-lab-kpis{ grid-template-columns:repeat(2,1fr);} .rb-lab-artists{ grid-template-columns:1fr;} }
       `}</style>
 
@@ -219,20 +247,73 @@ export default function LabelPage() {
         )}
       </div>
 
-      {/* Investments & income — honest placeholder */}
+      {/* Shows — real label finance (computeShowSplit only; no double count) */}
       <div style={{ marginBottom: 30 }}>
-        <SectionHeader title="השקעות והכנסות" />
-        <Card style={{ padding: "28px 24px" }}>
-          <div className="rb-lab-money">
-            {[{ t: "השקעות החודש", c: "#F87171" }, { t: "הכנסות החודש", c: GREEN }, { t: "מאזן נטו", c: SUB }].map((b) => (
-              <div key={b.t} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "20px 18px" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: b.c }}>{b.t}</div>
-                <div style={{ fontSize: 28, fontWeight: 900, color: DIM, marginTop: 10 }}>—</div>
-                <div style={{ fontSize: 11.5, color: DIM, marginTop: 4 }}>טרם חובר למקור נתונים</div>
+        <SectionHeader title="הופעות הלייבל" />
+        <Card>
+          {!shows ? (
+            <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
+          ) : (
+            <>
+              <div className="rb-lab-shows-kpis">
+                {[
+                  { l: "התקבל ללייבל", v: shows.totals.labelReceived, c: GREEN, money: true },
+                  { l: "טרם התקבל ללייבל", v: shows.totals.labelExpected, c: "#F59E0B", money: true },
+                  { l: "שולם לאמן", v: shows.totals.artistPaid, c: SUB, money: true },
+                  { l: "טרם שולם לאמן", v: shows.totals.artistExpected, c: SUB, money: true },
+                  { l: "שולם לדיג'יי", v: shows.totals.djPaid, c: SUB, money: true },
+                  { l: "טרם שולם לדיג'יי", v: shows.totals.djExpected, c: SUB, money: true },
+                  { l: "מספר הופעות", v: shows.totals.count, c: TEXT, money: false },
+                ].map((t) => (
+                  <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "14px 15px" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: SUB, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
+                    <div style={{ fontSize: 21, fontWeight: 900, color: t.c, marginTop: 6 }}>{t.money ? `₪${Math.round(t.v).toLocaleString()}` : t.v}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 18, fontSize: 12.5, color: MUTED, lineHeight: 1.7, textAlign: "center" }}>אזור ההשקעות מול ההכנסות יחובר לאחר שיוגדר שיוך אמין של הוצאות לאמן ולריליס. המבנה מוכן — הנתונים לא מומצאים.</div>
+
+              {shows.totals.needsAttribution > 0 && (
+                <div style={{ marginTop: 14, fontSize: 12, color: "#F59E0B", fontWeight: 700 }}>⚠ {shows.totals.needsAttribution} הופעות קולאב דורשות שיוך ואינן נכללות בסכומים</div>
+              )}
+
+              {shows.lines.length === 0 ? (
+                <div style={{ marginTop: 16, color: MUTED, textAlign: "center", padding: "10px 0", fontSize: 13.5 }}>אין הופעות משויכות לאמני הלייבל.</div>
+              ) : (
+                <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {shows.lines.map((s) => {
+                    const paid = s.paymentStatus === "שולם";
+                    return (
+                      <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 12, padding: "11px 14px", flexWrap: "wrap" }}>
+                        <div style={{ flex: 1, minWidth: 140 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{s.name}</div>
+                          <div style={{ fontSize: 11.5, color: MUTED }}>{s.artistName} · {fmtDate(s.date)}</div>
+                        </div>
+                        {s.included ? (
+                          <>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: paid ? GREEN : "#F59E0B", background: paid ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)", border: `1px solid ${paid ? "rgba(52,211,153,0.3)" : "rgba(245,158,11,0.3)"}`, borderRadius: 100, padding: "3px 10px" }}>{s.paymentStatus}</span>
+                            <div style={{ textAlign: "left", minWidth: 96 }}>
+                              <div style={{ fontSize: 10, color: DIM }}>רווח לייבל</div>
+                              <div style={{ fontSize: 15, fontWeight: 900, color: paid ? GREEN : SUB }}>₪{Math.round(s.labelProfit).toLocaleString()}</div>
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: "#F59E0B", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 100, padding: "3px 10px" }}>דורש שיוך (קולאב)</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </Card>
+      </div>
+
+      {/* Investments (production / clips / media) — not connected yet */}
+      <div style={{ marginBottom: 30 }}>
+        <SectionHeader title="השקעות (הפקה · קליפים · מדיה)" />
+        <Card style={{ padding: "22px 24px" }}>
+          <div style={{ fontSize: 13, color: MUTED, textAlign: "center", lineHeight: 1.7 }}>הפקה, קליפים ומדיה <b style={{ color: SUB }}>טרם חוברו למקור נתונים</b> — בשלב זה מחוברות רק הכנסות מהופעות.</div>
         </Card>
       </div>
 
