@@ -118,7 +118,7 @@ export default function LabelPage() {
   // Only the gross income fields are used here (no debt/recoup/investment displayed).
   type RecoupRow = { artistId: string; artistName: string; summary: ArtistRecoupSummary };
   const [recoupRows, setRecoupRows] = useState<RecoupRow[] | null>(null);
-  const [bottomTab, setBottomTab] = useState<"actual" | "expected">("actual");
+  const [bottomTab, setBottomTab] = useState<"actual" | "expected" | "debt">("actual");
 
   // Shows-only label finance: fetch per roster artist and aggregate. Money is
   // derived server-side via computeShowSplit only — transactions are never summed.
@@ -520,13 +520,15 @@ export default function LabelPage() {
         </Card>
       </div>
 
-      {/* Artist income — two tabs (actual received / expected). Gross artist share only:
-          NO debt / recoup / investment applied here. Per-artist rows, never mixed. */}
+      {/* Artist income + debt — three tabs. Generic column-spec renderer per tab so the
+          three share one markup. All values already per-artist capped; totals just sum
+          each column (no re-cap, no cross-artist mixing). */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           {([
             { k: "actual", l: "מאזן אמן בפועל" },
             { k: "expected", l: "מאזן אמן צפוי" },
+            { k: "debt", l: "חוב האמן ללייבל" },
           ] as const).map((t) => {
             const on = bottomTab === t.k;
             return (
@@ -540,61 +542,51 @@ export default function LabelPage() {
           ) : recoupRows.length === 0 ? (
             <div style={{ color: MUTED, textAlign: "center", padding: "26px 0", fontSize: 13.5 }}>אין אמני לייבל להצגה.</div>
           ) : (() => {
-            const isActual = bottomTab === "actual";
-            const showsHdr = isActual ? "הופעות" : "הופעות (צפוי)";
-            const mediaHdr = isActual ? "מדיה" : "מדיה (צפוי)";
-            const recoupHdr = isActual ? "קיזוז בפועל" : "קיזוז צפוי";
-            const balanceHdr = isActual ? "יתרה אחרי קיזוז" : "יתרה צפויה אחרי קיזוז";
-            const totalColor = isActual ? GREEN : "#F59E0B";
-            const RECOUP = "#F59E0B";
-            const rows = recoupRows.map((r) => {
-              const s = r.summary;
-              // Expected balance derived from existing signed fields (NOT projectedRecoupBalance):
-              // artistActualBalance + expectedArtistIncome = actualArtistIncome + expectedArtistIncome − clipRecoupTarget.
-              const balance = isActual ? s.artistActualBalance : (s.artistActualBalance + s.expectedArtistIncome);
-              return {
-                id: r.artistId, name: r.artistName,
-                shows: isActual ? s.showsArtistPaid : s.showsArtistExpected,
-                media: isActual ? s.mediaArtistShareReceived : s.mediaExpectedArtistShare,
-                total: isActual ? s.actualArtistIncome : s.expectedArtistIncome,
-                recoup: isActual ? s.actualRecouped : s.projectedRecoup,
-                balance,
-              };
-            });
-            const tShows = rows.reduce((a, r) => a + r.shows, 0);
-            const tMedia = rows.reduce((a, r) => a + r.media, 0);
-            const tTotal = rows.reduce((a, r) => a + r.total, 0);
-            const tRecoup = rows.reduce((a, r) => a + r.recoup, 0);
-            const tBalance = rows.reduce((a, r) => a + r.balance, 0);
-            const cell: React.CSSProperties = { fontSize: 13, fontWeight: 800, textAlign: "left", direction: "ltr" };
+            const NEU = SUB, ORANGE = "#F59E0B", RED = "#F87171";
+            type Col = { header: string; get: (s: ArtistRecoupSummary) => number; color: (v: number) => string; fmt: (v: number) => string; strong?: boolean };
+            const colsByTab: Record<typeof bottomTab, Col[]> = {
+              actual: [
+                { header: "הופעות", get: (s) => s.showsArtistPaid, color: () => NEU, fmt: money },
+                { header: "מדיה", get: (s) => s.mediaArtistShareReceived, color: () => NEU, fmt: money },
+                { header: "סה״כ", get: (s) => s.actualArtistIncome, color: () => GREEN, fmt: money, strong: true },
+                { header: "קיזוז בפועל", get: (s) => s.actualRecouped, color: () => ORANGE, fmt: money },
+                { header: "יתרה אחרי קיזוז", get: (s) => s.artistActualBalance, color: signColor, fmt: signedMoney, strong: true },
+              ],
+              expected: [
+                { header: "הופעות (צפוי)", get: (s) => s.showsArtistExpected, color: () => NEU, fmt: money },
+                { header: "מדיה (צפוי)", get: (s) => s.mediaExpectedArtistShare, color: () => NEU, fmt: money },
+                { header: "סה״כ", get: (s) => s.expectedArtistIncome, color: () => ORANGE, fmt: money, strong: true },
+                { header: "קיזוז צפוי", get: (s) => s.projectedRecoup, color: () => ORANGE, fmt: money },
+                // Signed balance derived from existing fields (NOT projectedRecoupBalance):
+                { header: "יתרה צפויה אחרי קיזוז", get: (s) => s.artistActualBalance + s.expectedArtistIncome, color: signColor, fmt: signedMoney, strong: true },
+              ],
+              debt: [
+                { header: "חוב התחלתי", get: (s) => s.clipRecoupTarget, color: () => NEU, fmt: money },
+                { header: "קוזז בפועל", get: (s) => s.actualRecouped, color: () => ORANGE, fmt: money },
+                { header: "חוב נוכחי", get: (s) => s.actualRecoupBalance, color: () => RED, fmt: money, strong: true },
+                { header: "צפוי להתקזז", get: (s) => s.projectedRecoup, color: () => ORANGE, fmt: money },
+                { header: "חוב צפוי", get: (s) => s.projectedRecoupBalance, color: (v) => (v > 0.001 ? RED : NEU), fmt: money, strong: true },
+              ],
+            };
+            const cols = colsByTab[bottomTab];
+            const totals = cols.map((c) => recoupRows.reduce((a, r) => a + c.get(r.summary), 0));
+            const cell: React.CSSProperties = { fontSize: 13, textAlign: "left", direction: "ltr" };
             const hdr: React.CSSProperties = { fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" };
             return (
               <div style={{ overflowX: "auto" }}>
                 <div className="rb-lab-income-row" style={{ padding: "12px 18px", borderBottom: `1px solid ${BORDER2}` }}>
                   <span style={{ ...hdr, textAlign: "right" }}>אמן</span>
-                  <span style={hdr}>{showsHdr}</span>
-                  <span style={hdr}>{mediaHdr}</span>
-                  <span style={hdr}>סה״כ</span>
-                  <span style={hdr}>{recoupHdr}</span>
-                  <span style={hdr}>{balanceHdr}</span>
+                  {cols.map((c) => <span key={c.header} style={hdr}>{c.header}</span>)}
                 </div>
-                {rows.map((r, i) => (
-                  <div key={r.id} className="rb-lab-income-row" style={{ padding: "13px 18px", background: i % 2 ? "rgba(255,255,255,0.012)" : "transparent", borderBottom: `1px solid ${BORDER2}` }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-                    <span style={{ ...cell, color: SUB }}>{money(r.shows)}</span>
-                    <span style={{ ...cell, color: SUB }}>{money(r.media)}</span>
-                    <span style={{ ...cell, fontWeight: 900, color: totalColor }}>{money(r.total)}</span>
-                    <span style={{ ...cell, color: RECOUP }}>{money(r.recoup)}</span>
-                    <span style={{ ...cell, fontWeight: 900, color: signColor(r.balance) }}>{signedMoney(r.balance)}</span>
+                {recoupRows.map((r, i) => (
+                  <div key={r.artistId} className="rb-lab-income-row" style={{ padding: "13px 18px", background: i % 2 ? "rgba(255,255,255,0.012)" : "transparent", borderBottom: `1px solid ${BORDER2}` }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.artistName}</span>
+                    {cols.map((c) => { const v = c.get(r.summary); return <span key={c.header} style={{ ...cell, fontWeight: c.strong ? 900 : 800, color: c.color(v) }}>{c.fmt(v)}</span>; })}
                   </div>
                 ))}
                 <div className="rb-lab-income-row" style={{ padding: "13px 18px", background: "rgba(255,255,255,0.02)" }}>
                   <span style={{ fontSize: 12.5, fontWeight: 900, color: TEXT }}>סה״כ כל האמנים</span>
-                  <span style={{ ...cell, color: SUB }}>{money(tShows)}</span>
-                  <span style={{ ...cell, color: SUB }}>{money(tMedia)}</span>
-                  <span style={{ ...cell, fontSize: 15, fontWeight: 900, color: totalColor }}>{money(tTotal)}</span>
-                  <span style={{ ...cell, fontSize: 15, fontWeight: 900, color: RECOUP }}>{money(tRecoup)}</span>
-                  <span style={{ ...cell, fontSize: 15, fontWeight: 900, color: signColor(tBalance) }}>{signedMoney(tBalance)}</span>
+                  {cols.map((c, ci) => { const v = totals[ci]; return <span key={c.header} style={{ ...cell, fontSize: c.strong ? 15 : 13, fontWeight: 900, color: c.color(v) }}>{c.fmt(v)}</span>; })}
                 </div>
               </div>
             );
