@@ -190,9 +190,9 @@ export default function LabelPage() {
         <StatCard label="אמני לייבל" value={busy ? "…" : d.roster.length} sub="ברשימת הלייבל" icon="🎤" />
         <StatCard label="ריליסים בצינור" value={busy ? "…" : d.active.length} sub={`${d.upcomingSoon.length} עם תאריך קרוב`} icon="💿" />
         <StatCard label="ריליסים קרובים" value={busy ? "…" : d.upcomingSoon.length} sub="עם תאריך יציאה" icon="🗓" />
-        <StatCard label="השקעות החודש" value="—" sub="טרם חובר" subColor={DIM} icon="₪" />
-        <StatCard label="הכנסות החודש" value="—" sub="טרם חובר" subColor={DIM} icon="₪" />
-        <StatCard label="מאזן נטו" value="—" sub="טרם חובר" subColor={DIM} icon="⚖" />
+        <StatCard label="סה״כ השקעות" value="—" sub="טרם חובר" subColor={DIM} icon="₪" />
+        <StatCard label="סה״כ הכנסות" value="—" sub="טרם חובר" subColor={DIM} icon="₪" />
+        <StatCard label="מאזן כולל" value="—" sub="טרם חובר" subColor={DIM} icon="⚖" />
       </div>
 
       {/* Artists */}
