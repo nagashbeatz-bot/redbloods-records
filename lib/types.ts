@@ -112,6 +112,23 @@ export interface ArtistShowsSummary {
   shows: LabelShowLine[];
 }
 
+/** Per-clip label investment (Red Films general_budget; 50/50 label vs artist recoup). */
+export interface LabelClipLine {
+  id: string;
+  title: string;
+  status: string;
+  projectId: string | null;
+  fullBudget: number;          // red_films_productions.general_budget (paid in full)
+  labelInvestment: number;     // fullBudget / 2
+  artistRecoupBalance: number; // fullBudget / 2 — display-only, never auto-offset
+}
+
+/** Aggregated clip investment for one label artist. */
+export interface ArtistClipsSummary {
+  totals: { fullBudget: number; labelInvestment: number; artistRecoupBalance: number; count: number };
+  clips: LabelClipLine[];
+}
+
 /** A label project joined with its (optional) release details — the /label list item. */
 export interface LabelRelease {
   projectId: string;

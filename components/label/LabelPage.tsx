@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary } from "@/lib/types";
+import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary } from "@/lib/types";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM, GREEN,
   STAGE_COLOR, ARTIST_STATUS_COLOR, todayYmd, fmtDate, daysUntil, daysBetween, ACTIVE_STAGES_SET,
@@ -103,6 +103,9 @@ export default function LabelPage() {
   }, []);
   useEffect(() => { reload(); }, [reload]);
 
+  type ClipLine = LabelClipLine & { artistName: string };
+  const [clips, setClips] = useState<{ totals: ArtistClipsSummary["totals"]; lines: ClipLine[] } | null>(null);
+
   // Shows-only label finance: fetch per roster artist and aggregate. Money is
   // derived server-side via computeShowSplit only — transactions are never summed.
   useEffect(() => {
@@ -110,7 +113,7 @@ export default function LabelPage() {
     const empty = { labelReceived: 0, labelExpected: 0, artistPaid: 0, artistExpected: 0, djPaid: 0, djExpected: 0, count: 0, needsAttribution: 0 };
     if (roster.length === 0) { setShows({ totals: empty, lines: [] }); return; }
     let alive = true;
-    Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/shows`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
+    Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/shows`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
       .then((results: (ArtistShowsSummary | null)[]) => {
         if (!alive) return;
         const t = { ...empty };
@@ -122,6 +125,28 @@ export default function LabelPage() {
         });
         lines.sort((a, b) => (a.date && b.date ? (a.date > b.date ? -1 : 1) : a.date ? -1 : 1));
         setShows({ totals: t, lines });
+      });
+    return () => { alive = false; };
+  }, [artists]);
+
+  // Clip investment: fetch per roster artist and aggregate. Single source =
+  // red_films_productions.general_budget (live, no-store). labelInvestment = budget/2.
+  useEffect(() => {
+    const roster = artists ?? [];
+    const empty = { fullBudget: 0, labelInvestment: 0, artistRecoupBalance: 0, count: 0 };
+    if (roster.length === 0) { setClips({ totals: empty, lines: [] }); return; }
+    let alive = true;
+    Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/clips`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
+      .then((results: (ArtistClipsSummary | null)[]) => {
+        if (!alive) return;
+        const t = { ...empty };
+        const lines: ClipLine[] = [];
+        results.forEach((res, i) => {
+          if (!res) return;
+          (Object.keys(t) as (keyof typeof t)[]).forEach((k) => { t[k] += res.totals[k]; });
+          for (const c of res.clips) lines.push({ ...c, artistName: roster[i].name });
+        });
+        setClips({ totals: t, lines });
       });
     return () => { alive = false; };
   }, [artists]);
@@ -163,13 +188,16 @@ export default function LabelPage() {
   // Top financial KPIs — from the already-loaded shows data (no extra fetch).
   // Investments are 0 until clip/song channels are connected. Balance = actual
   // income − actual investments (never mixes expected money into actual balance).
-  const finReady = shows != null;
-  const investActual = 0;
-  const investExpected = 0;
+  const finReady = shows != null && clips != null;
+  const investActual = clips?.totals.labelInvestment ?? 0;   // clip label investment (budget/2)
+  const investExpected = 0;                                   // budget treated as fully paid
   const incomeActual = shows?.totals.labelReceived ?? 0;
   const incomeExpected = shows?.totals.labelExpected ?? 0;
   const balanceActual = incomeActual - investActual;
-  const money = (n: number) => `₪${Math.round(n).toLocaleString()}`;
+  const money = (n: number) => {
+    const hasFrac = Math.abs(n % 1) > 0.001;
+    return `₪${n.toLocaleString("en-US", { minimumFractionDigits: hasFrac ? 2 : 0, maximumFractionDigits: 2 })}`;
+  };
 
   return (
     <div dir="rtl" style={{ fontFamily: "'Heebo', Arial, sans-serif", color: TEXT, padding: "26px 32px 72px", width: "100%", maxWidth: 1600, margin: "0 auto" }}>
@@ -326,11 +354,56 @@ export default function LabelPage() {
         </Card>
       </div>
 
-      {/* Investments (production / clips / media) — not connected yet */}
+      {/* Clips — real label investment (Red Films general_budget; 50/50) */}
       <div style={{ marginBottom: 30 }}>
-        <SectionHeader title="השקעות (הפקה · קליפים · מדיה)" />
-        <Card style={{ padding: "22px 24px" }}>
-          <div style={{ fontSize: 13, color: MUTED, textAlign: "center", lineHeight: 1.7 }}>הפקה, קליפים ומדיה <b style={{ color: SUB }}>טרם חוברו למקור נתונים</b> — בשלב זה מחוברות רק הכנסות מהופעות.</div>
+        <SectionHeader title="קליפים (השקעת לייבל)" />
+        <Card>
+          {!clips ? (
+            <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
+          ) : clips.lines.length === 0 ? (
+            <div style={{ color: MUTED, textAlign: "center", padding: "22px 0", fontSize: 13.5, lineHeight: 1.7 }}>אין הפקות קליפ פעילות משויכות לאמני הלייבל.<br />תקציב קליפ מנוהל בעמוד Red Films.</div>
+          ) : (
+            <>
+              <div className="rb-lab-money">
+                {[
+                  { t: "תקציב מלא (שולם)", v: clips.totals.fullBudget, c: SUB },
+                  { t: "השקעת לייבל (50%)", v: clips.totals.labelInvestment, c: "#F87171" },
+                  { t: "יתרת קיזוז אמן (50%)", v: clips.totals.artistRecoupBalance, c: "#F59E0B" },
+                ].map((b) => (
+                  <div key={b.t} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "18px 18px" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: b.c }}>{b.t}</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: TEXT, marginTop: 8 }}>{money(b.v)}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                {clips.lines.map((c) => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 12, padding: "11px 14px", flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{c.title}</div>
+                      <div style={{ fontSize: 11.5, color: MUTED }}>{c.artistName} · {c.status}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 16, textAlign: "left", flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>תקציב</div><div style={{ fontSize: 14, fontWeight: 800, color: SUB }}>{money(c.fullBudget)}</div></div>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>לייבל 50%</div><div style={{ fontSize: 14, fontWeight: 900, color: "#F87171" }}>{money(c.labelInvestment)}</div></div>
+                      <div style={{ minWidth: 78 }}><div style={{ fontSize: 10, color: DIM }}>קיזוז אמן</div><div style={{ fontSize: 14, fontWeight: 800, color: "#F59E0B" }}>{money(c.artistRecoupBalance)}</div></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יתרת הקיזוז לתצוגה בלבד — אינה מקוזזת אוטומטית מהכנסות האמן. התקציב נקרא חי מ-Red Films.</div>
+            </>
+          )}
+        </Card>
+      </div>
+
+      {/* Production / media — not connected yet */}
+      <div style={{ marginBottom: 30 }}>
+        <SectionHeader title="הפקה · מדיה" />
+        <Card style={{ padding: "20px 24px" }}>
+          <div style={{ fontSize: 13, color: MUTED, textAlign: "center", lineHeight: 1.7 }}>הכנסות/הוצאות הפקה ומדיה <b style={{ color: SUB }}>טרם חוברו למקור נתונים</b>.</div>
         </Card>
       </div>
 
