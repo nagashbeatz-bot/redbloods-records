@@ -259,7 +259,7 @@ export default function LabelPage() {
         .rb-lab-money { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:14px; }
         .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
         .rb-lab-bottom { display:grid; grid-template-columns:1fr 1.25fr; gap:18px; }
-        .rb-lab-income-row { display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:10px; align-items:center; min-width:460px; }
+        .rb-lab-income-row { display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr 1fr 1.2fr; gap:10px; align-items:center; min-width:680px; }
         @media (max-width:1180px){ .rb-lab-shows-kpis{ grid-template-columns:repeat(3,1fr);} }
         @media (max-width:1000px){ .rb-lab-money{ grid-template-columns:1fr;} .rb-lab-bottom{ grid-template-columns:1fr;} }
         @media (max-width:820px){ .rb-lab-fin{ grid-template-columns:1fr;} }
@@ -541,29 +541,42 @@ export default function LabelPage() {
             <div style={{ color: MUTED, textAlign: "center", padding: "26px 0", fontSize: 13.5 }}>אין אמני לייבל להצגה.</div>
           ) : (() => {
             const isActual = bottomTab === "actual";
-            const showsHdr = isActual ? "הכנסות מהופעות ששולמו" : "הכנסות מהופעות שטרם שולמו";
-            const mediaHdr = isActual ? "הכנסות ממדיה שהתקבלה" : "הכנסות ממדיה צפויה";
+            const showsHdr = isActual ? "הופעות" : "הופעות (צפוי)";
+            const mediaHdr = isActual ? "מדיה" : "מדיה (צפוי)";
+            const recoupHdr = isActual ? "קיזוז בפועל" : "קיזוז צפוי";
+            const balanceHdr = isActual ? "יתרה אחרי קיזוז" : "יתרה צפויה אחרי קיזוז";
             const totalColor = isActual ? GREEN : "#F59E0B";
+            const RECOUP = "#F59E0B";
             const rows = recoupRows.map((r) => {
               const s = r.summary;
+              // Expected balance derived from existing signed fields (NOT projectedRecoupBalance):
+              // artistActualBalance + expectedArtistIncome = actualArtistIncome + expectedArtistIncome − clipRecoupTarget.
+              const balance = isActual ? s.artistActualBalance : (s.artistActualBalance + s.expectedArtistIncome);
               return {
                 id: r.artistId, name: r.artistName,
                 shows: isActual ? s.showsArtistPaid : s.showsArtistExpected,
                 media: isActual ? s.mediaArtistShareReceived : s.mediaExpectedArtistShare,
                 total: isActual ? s.actualArtistIncome : s.expectedArtistIncome,
+                recoup: isActual ? s.actualRecouped : s.projectedRecoup,
+                balance,
               };
             });
             const tShows = rows.reduce((a, r) => a + r.shows, 0);
             const tMedia = rows.reduce((a, r) => a + r.media, 0);
             const tTotal = rows.reduce((a, r) => a + r.total, 0);
+            const tRecoup = rows.reduce((a, r) => a + r.recoup, 0);
+            const tBalance = rows.reduce((a, r) => a + r.balance, 0);
             const cell: React.CSSProperties = { fontSize: 13, fontWeight: 800, textAlign: "left", direction: "ltr" };
+            const hdr: React.CSSProperties = { fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" };
             return (
               <div style={{ overflowX: "auto" }}>
                 <div className="rb-lab-income-row" style={{ padding: "12px 18px", borderBottom: `1px solid ${BORDER2}` }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em" }}>אמן</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" }}>{showsHdr}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" }}>{mediaHdr}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" }}>סה״כ</span>
+                  <span style={{ ...hdr, textAlign: "right" }}>אמן</span>
+                  <span style={hdr}>{showsHdr}</span>
+                  <span style={hdr}>{mediaHdr}</span>
+                  <span style={hdr}>סה״כ</span>
+                  <span style={hdr}>{recoupHdr}</span>
+                  <span style={hdr}>{balanceHdr}</span>
                 </div>
                 {rows.map((r, i) => (
                   <div key={r.id} className="rb-lab-income-row" style={{ padding: "13px 18px", background: i % 2 ? "rgba(255,255,255,0.012)" : "transparent", borderBottom: `1px solid ${BORDER2}` }}>
@@ -571,6 +584,8 @@ export default function LabelPage() {
                     <span style={{ ...cell, color: SUB }}>{money(r.shows)}</span>
                     <span style={{ ...cell, color: SUB }}>{money(r.media)}</span>
                     <span style={{ ...cell, fontWeight: 900, color: totalColor }}>{money(r.total)}</span>
+                    <span style={{ ...cell, color: RECOUP }}>{money(r.recoup)}</span>
+                    <span style={{ ...cell, fontWeight: 900, color: signColor(r.balance) }}>{signedMoney(r.balance)}</span>
                   </div>
                 ))}
                 <div className="rb-lab-income-row" style={{ padding: "13px 18px", background: "rgba(255,255,255,0.02)" }}>
@@ -578,6 +593,8 @@ export default function LabelPage() {
                   <span style={{ ...cell, color: SUB }}>{money(tShows)}</span>
                   <span style={{ ...cell, color: SUB }}>{money(tMedia)}</span>
                   <span style={{ ...cell, fontSize: 15, fontWeight: 900, color: totalColor }}>{money(tTotal)}</span>
+                  <span style={{ ...cell, fontSize: 15, fontWeight: 900, color: RECOUP }}>{money(tRecoup)}</span>
+                  <span style={{ ...cell, fontSize: 15, fontWeight: 900, color: signColor(tBalance) }}>{signedMoney(tBalance)}</span>
                 </div>
               </div>
             );
