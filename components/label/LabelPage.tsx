@@ -114,9 +114,11 @@ export default function LabelPage() {
   const [mediaEdit, setMediaEdit] = useState<MediaRec | null>(null);
   const [mediaCancel, setMediaCancel] = useState<MediaRec | null>(null);
 
-  // Unified artist recoup (clips=target; media+shows reduce it). Every cap is applied
-  // per-artist server-side; we sum the already-capped fields — never raw inputs.
-  const [recoup, setRecoup] = useState<ArtistRecoupSummary | null>(null);
+  // Per-artist income rows (source: /recoup). Kept per-artist — never mixed across artists.
+  // Only the gross income fields are used here (no debt/recoup/investment displayed).
+  type RecoupRow = { artistId: string; artistName: string; summary: ArtistRecoupSummary };
+  const [recoupRows, setRecoupRows] = useState<RecoupRow[] | null>(null);
+  const [bottomTab, setBottomTab] = useState<"actual" | "expected">("actual");
 
   // Shows-only label finance: fetch per roster artist and aggregate. Money is
   // derived server-side via computeShowSplit only — transactions are never summed.
@@ -182,24 +184,15 @@ export default function LabelPage() {
   }, [artists]);
   useEffect(() => { reloadMedia(); }, [reloadMedia]);
 
-  // Unified recoup: fetch per roster artist, sum the already-capped per-artist fields.
+  // Income rows: fetch /recoup per roster artist, keep each artist's result separately.
   const reloadRecoup = useCallback(() => {
     const roster = artists ?? [];
-    const zero: ArtistRecoupSummary = {
-      clipRecoupTarget: 0, mediaArtistShareReceived: 0, showsArtistPaid: 0,
-      mediaExpectedArtistShare: 0, showsArtistExpected: 0, actualRecouped: 0,
-      expectedArtistIncome: 0, actualRecoupBalance: 0, projectedRecoup: 0,
-      projectedRecoupBalance: 0, artistCredit: 0, actualArtistIncome: 0, artistActualBalance: 0,
-    };
-    if (roster.length === 0) { setRecoup(zero); return; }
+    if (roster.length === 0) { setRecoupRows([]); return; }
     Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/recoup`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
       .then((results: (ArtistRecoupSummary | null)[]) => {
-        const t = { ...zero };
-        results.forEach((res) => {
-          if (!res) return;
-          (Object.keys(t) as (keyof ArtistRecoupSummary)[]).forEach((k) => { t[k] += res[k]; });
-        });
-        setRecoup(t);
+        const rows: RecoupRow[] = [];
+        results.forEach((res, i) => { if (res) rows.push({ artistId: roster[i].id, artistName: roster[i].name, summary: res }); });
+        setRecoupRows(rows);
       });
   }, [artists]);
   useEffect(() => { reloadRecoup(); }, [reloadRecoup]);
@@ -266,6 +259,7 @@ export default function LabelPage() {
         .rb-lab-money { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:14px; }
         .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
         .rb-lab-bottom { display:grid; grid-template-columns:1fr 1.25fr; gap:18px; }
+        .rb-lab-income-row { display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:10px; align-items:center; min-width:460px; }
         @media (max-width:1180px){ .rb-lab-shows-kpis{ grid-template-columns:repeat(3,1fr);} }
         @media (max-width:1000px){ .rb-lab-money{ grid-template-columns:1fr;} .rb-lab-bottom{ grid-template-columns:1fr;} }
         @media (max-width:820px){ .rb-lab-fin{ grid-template-columns:1fr;} }
@@ -454,7 +448,7 @@ export default function LabelPage() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יעד הקיזוז = חצי האמן מתקציבי הקליפים. הקיזוז בפועל מול הכנסות האמן מוצג בסקשן "חוב האמן ללייבל" למטה. התקציב נקרא חי מ-Red Films.</div>
+              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יעד הקיזוז = חצי האמן מתקציבי הקליפים — לתצוגה בלבד, אינו מקוזז אוטומטית מהכנסות האמן. התקציב נקרא חי מ-Red Films.</div>
             </>
           )}
         </Card>
@@ -526,48 +520,66 @@ export default function LabelPage() {
         </Card>
       </div>
 
-      {/* Artist debt to label — initial debt = clip artist-half; the artist's FULL received
-          share (paid shows + received media) flows through it first, only the excess is credit.
-          Expected income projects the debt but never reduces it. All caps per-artist (server). */}
+      {/* Artist income — two tabs (actual received / expected). Gross artist share only:
+          NO debt / recoup / investment applied here. Per-artist rows, never mixed. */}
       <div style={{ marginBottom: 20 }}>
-        <SectionHeader title="חוב האמן ללייבל" />
-        <Card>
-          {!recoup ? (
-            <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
-          ) : (() => {
-            const debt = recoup.actualRecoupBalance, credit = recoup.artistCredit;
-            const inDebt = debt > 0.001, inCredit = !inDebt && credit > 0.001;
-            const hlTitle = inDebt ? "חוב האמן ללייבל" : inCredit ? "יתרה לזכות האמן" : "החוב נסגר";
-            const hlValue = inDebt ? debt : inCredit ? credit : 0;
-            const hlColor = inDebt ? "#F87171" : inCredit ? GREEN : SUB;
-            const hlNote = inDebt ? "חלק האמן מהכנסות מתקזז תחילה מול החוב" : inCredit ? "החוב נסגר והיתרה מיועדת לאמן" : "כל חלק האמן שהתקבל קיזז את החוב";
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {([
+            { k: "actual", l: "מאזן אמן בפועל" },
+            { k: "expected", l: "מאזן אמן צפוי" },
+          ] as const).map((t) => {
+            const on = bottomTab === t.k;
             return (
-            <>
-              {/* Headline: current artist debt (or credit once the debt is closed) */}
-              <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))", border: `1px solid ${inDebt ? "rgba(248,113,113,0.35)" : inCredit ? "rgba(52,211,153,0.35)" : BORDER2}`, borderRadius: 18, padding: "22px 24px", marginBottom: 16, textAlign: "center" }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: SUB, letterSpacing: "0.02em" }}>{hlTitle}</div>
-                <div style={{ fontSize: 40, fontWeight: 900, color: hlColor, marginTop: 8, letterSpacing: "-0.02em", direction: "ltr" }}>{money(hlValue)}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: hlColor, marginTop: 8 }}>{hlNote}</div>
-              </div>
-
-              {/* Secondary detail */}
-              <div className="rb-lab-shows-kpis">
-                {[
-                  { l: "חוב התחלתי", v: recoup.clipRecoupTarget, c: SUB },
-                  { l: "קוזז בפועל", v: recoup.actualRecouped, c: GREEN },
-                  { l: "צפוי להתקזז", v: recoup.projectedRecoup, c: "#F59E0B" },
-                  { l: "חוב צפוי", v: recoup.projectedRecoupBalance, c: "#F59E0B" },
-                ].map((t) => (
-                  <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
-                    <div style={{ fontSize: 17, fontWeight: 900, color: TEXT, marginTop: 5 }}>{money(t.v)}</div>
+              <button key={t.k} onClick={() => setBottomTab(t.k)} style={{ fontSize: 13.5, fontWeight: 800, borderRadius: 10, padding: "9px 18px", cursor: "pointer", fontFamily: "inherit", color: on ? "#fff" : SUB, background: on ? BRAND : "rgba(255,255,255,0.04)", border: `1px solid ${on ? BRAND : BORDER}` }}>{t.l}</button>
+            );
+          })}
+        </div>
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          {!recoupRows ? (
+            <div style={{ color: MUTED, textAlign: "center", padding: "22px 0" }}>טוען…</div>
+          ) : recoupRows.length === 0 ? (
+            <div style={{ color: MUTED, textAlign: "center", padding: "26px 0", fontSize: 13.5 }}>אין אמני לייבל להצגה.</div>
+          ) : (() => {
+            const isActual = bottomTab === "actual";
+            const showsHdr = isActual ? "הכנסות מהופעות ששולמו" : "הכנסות מהופעות שטרם שולמו";
+            const mediaHdr = isActual ? "הכנסות ממדיה שהתקבלה" : "הכנסות ממדיה צפויה";
+            const totalColor = isActual ? GREEN : "#F59E0B";
+            const rows = recoupRows.map((r) => {
+              const s = r.summary;
+              return {
+                id: r.artistId, name: r.artistName,
+                shows: isActual ? s.showsArtistPaid : s.showsArtistExpected,
+                media: isActual ? s.mediaArtistShareReceived : s.mediaExpectedArtistShare,
+                total: isActual ? s.actualArtistIncome : s.expectedArtistIncome,
+              };
+            });
+            const tShows = rows.reduce((a, r) => a + r.shows, 0);
+            const tMedia = rows.reduce((a, r) => a + r.media, 0);
+            const tTotal = rows.reduce((a, r) => a + r.total, 0);
+            const cell: React.CSSProperties = { fontSize: 13, fontWeight: 800, textAlign: "left", direction: "ltr" };
+            return (
+              <div style={{ overflowX: "auto" }}>
+                <div className="rb-lab-income-row" style={{ padding: "12px 18px", borderBottom: `1px solid ${BORDER2}` }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em" }}>אמן</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" }}>{showsHdr}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" }}>{mediaHdr}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.05em", textAlign: "left" }}>סה״כ</span>
+                </div>
+                {rows.map((r, i) => (
+                  <div key={r.id} className="rb-lab-income-row" style={{ padding: "13px 18px", background: i % 2 ? "rgba(255,255,255,0.012)" : "transparent", borderBottom: `1px solid ${BORDER2}` }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                    <span style={{ ...cell, color: SUB }}>{money(r.shows)}</span>
+                    <span style={{ ...cell, color: SUB }}>{money(r.media)}</span>
+                    <span style={{ ...cell, fontWeight: 900, color: totalColor }}>{money(r.total)}</span>
                   </div>
                 ))}
+                <div className="rb-lab-income-row" style={{ padding: "13px 18px", background: "rgba(255,255,255,0.02)" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 900, color: TEXT }}>סה״כ כל האמנים</span>
+                  <span style={{ ...cell, color: SUB }}>{money(tShows)}</span>
+                  <span style={{ ...cell, color: SUB }}>{money(tMedia)}</span>
+                  <span style={{ ...cell, fontSize: 15, fontWeight: 900, color: totalColor }}>{money(tTotal)}</span>
+                </div>
               </div>
-              <div style={{ marginTop: 12, fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
-                החוב מתחיל מחצי האמן בתקציבי הקליפים. חלק האמן שהתקבל בפועל (הופעות ששולמו + מדיה שהתקבלה) מקזז אותו תחילה, ורק מה שמעבר הופך ליתרה לזכות האמן. "צפוי להתקזז" מבוסס על הופעות ומדיה שטרם התקבלו — לתצוגה בלבד, אינו מקטין את החוב בפועל.
-              </div>
-            </>
             );
           })()}
         </Card>
