@@ -214,7 +214,7 @@ export default function LabelPage() {
       `}</style>
 
       {/* Hero */}
-      <div style={{ position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid ${BORDER}`, background: "radial-gradient(120% 140% at 50% -20%, rgba(220,38,38,0.28) 0%, rgba(220,38,38,0.06) 38%, rgba(13,13,13,0) 70%), linear-gradient(180deg,#171012,#121212)", padding: "34px 28px 30px", textAlign: "center", marginBottom: 22 }}>
+      <div style={{ position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid ${BORDER}`, background: "radial-gradient(120% 140% at 50% -20%, rgba(220,38,38,0.28) 0%, rgba(220,38,38,0.06) 38%, rgba(13,13,13,0) 70%), linear-gradient(180deg,#171012,#121212)", padding: "28px 28px 24px", textAlign: "center", marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 8 }}>
           <h1 style={{ fontSize: 32, fontWeight: 900, color: "#fff", margin: 0, letterSpacing: "-0.02em", textShadow: "0 1px 12px rgba(0,0,0,0.5)" }}>ניהול הלייבל</h1>
           <span style={{ fontSize: 26, filter: "drop-shadow(0 0 12px rgba(220,38,38,0.7))" }}>🎯</span>
@@ -225,7 +225,7 @@ export default function LabelPage() {
       {state === "error" && <Card style={{ marginBottom: 20 }}><div style={{ color: "#F87171", textAlign: "center", padding: "10px 0", fontSize: 14 }}>שגיאה בטעינת נתוני הלייבל.</div></Card>}
 
       {/* KPIs */}
-      <div className="rb-lab-kpis" style={{ marginBottom: 26 }}>
+      <div className="rb-lab-kpis" style={{ marginBottom: 20 }}>
         <StatCard label="אמני לייבל" value={busy ? "…" : d.roster.length} sub="ברשימת הלייבל" icon="🎤" />
         <StatCard label="ריליסים בצינור" value={busy ? "…" : d.active.length} sub={`${d.upcomingSoon.length} עם תאריך קרוב`} icon="💿" />
         <StatCard label="ריליסים קרובים" value={busy ? "…" : d.upcomingSoon.length} sub="עם תאריך יציאה" icon="🗓" />
@@ -236,60 +236,37 @@ export default function LabelPage() {
         <StatCard label="מאזן כולל בפועל" value={finReady ? money(balanceActual) : "…"} sub="הכנסות פחות השקעות בפועל" subColor={balanceActual >= 0 ? GREEN : "#F87171"} icon="⚖" />
       </div>
 
-      {/* Artists */}
-      <div style={{ marginBottom: 30 }}>
-        <SectionHeader title="אמני הלייבל" action={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => setAddArtistOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontFamily: "inherit" }}>+ אמן לייבל</button>
-            <button onClick={() => setMarkOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontFamily: "inherit" }}>סמן פרויקט כלייבל</button>
-            <button onClick={() => setCreateOpen(true)} style={{ fontSize: 12.5, fontWeight: 800, color: "#fff", background: BRAND, border: "none", borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontFamily: "inherit" }}>+ ריליס חדש</button>
-          </div>
-        } />
-        {busy ? (
-          <Card><div style={{ color: MUTED, textAlign: "center", padding: "22px 0" }}>טוען…</div></Card>
-        ) : d.roster.length === 0 ? (
-          <Card><div style={{ color: MUTED, textAlign: "center", padding: "26px 0", fontSize: 14, lineHeight: 1.7 }}>אין עדיין אמני לייבל.<br />הוסף אמן לייבל כדי להתחיל לנהל את הריליסים שלו.</div></Card>
-        ) : (
-          <div className="rb-lab-artists">
-            {d.roster.map((artist) => {
-              const rels = d.byArtist.get(artist.id) ?? [];
-              const activeRels = rels.filter((r) => ACTIVE_STAGES_SET.has(r.release.releaseStage));
-              const next = activeRels.filter((r) => r.release.releaseTargetDate).sort((a, b) => (a.release.releaseTargetDate! < b.release.releaseTargetDate! ? -1 : 1))[0] ?? activeRels[0] ?? null;
-              const sc = ARTIST_STATUS_COLOR[artist.status];
-              return (
-                <div key={artist.id} style={{ background: "linear-gradient(160deg,#1B1414 0%,#151515 60%)", border: `1px solid ${next ? "rgba(220,38,38,0.30)" : BORDER}`, borderRadius: 22, padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    <ArtistAvatar artist={artist} size={76} glow />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 19, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artist.name}</div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: sc, marginTop: 4 }}>● {artist.status}</div>
-                      <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{activeRels.length} ריליסים בצינור</div>
-                    </div>
-                  </div>
-
-                  <div style={{ background: CARD2, borderRadius: 14, padding: "13px 15px", border: `1px solid ${BORDER2}` }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: DIM, letterSpacing: "0.06em", marginBottom: 8 }}>הריליס הבא</div>
-                    {next ? (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{next.name}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <StageBadge stage={next.release.releaseStage} small />
-                          <span style={{ fontSize: 12, fontWeight: 700, color: SUB }}>{fmtDate(next.release.releaseTargetDate)}</span>
-                        </div>
-                      </div>
-                    ) : <div style={{ fontSize: 13, color: MUTED }}>אין ריליס פעיל</div>}
-                  </div>
-
-                  <Link href={`/label/artists/${artist.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13.5, fontWeight: 800, color: "#fff", background: BRAND, borderRadius: 12, padding: "11px 0", textDecoration: "none" }}>פתח עמוד אמן ←</Link>
+      {/* Compact artist nav + actions (replaces the large artists grid) */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+          {busy ? (
+            <span style={{ fontSize: 13, color: MUTED }}>טוען…</span>
+          ) : d.roster.length === 0 ? (
+            <span style={{ fontSize: 13, color: MUTED }}>אין עדיין אמני לייבל — הוסף אמן כדי להתחיל.</span>
+          ) : d.roster.map((artist) => {
+            const activeRels = (d.byArtist.get(artist.id) ?? []).filter((r) => ACTIVE_STAGES_SET.has(r.release.releaseStage));
+            const sc = ARTIST_STATUS_COLOR[artist.status];
+            return (
+              <Link key={artist.id} href={`/label/artists/${artist.id}`} title="פתח עמוד אמן" style={{ display: "flex", alignItems: "center", gap: 10, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 100, padding: "6px 14px 6px 7px", textDecoration: "none" }}>
+                <ArtistAvatar artist={artist} size={32} />
+                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{artist.name}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: sc }}>● {artist.status} · {activeRels.length} בצינור</span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <span style={{ fontSize: 13, color: BRAND, fontWeight: 900, marginRight: 2 }}>←</span>
+              </Link>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setAddArtistOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontFamily: "inherit" }}>+ אמן לייבל</button>
+          <button onClick={() => setMarkOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontFamily: "inherit" }}>סמן פרויקט כלייבל</button>
+          <button onClick={() => setCreateOpen(true)} style={{ fontSize: 12.5, fontWeight: 800, color: "#fff", background: BRAND, border: "none", borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontFamily: "inherit" }}>+ ריליס חדש</button>
+        </div>
       </div>
 
       {/* Shows — real label finance (computeShowSplit only; no double count) */}
-      <div style={{ marginBottom: 30 }}>
+      <div style={{ marginBottom: 20 }}>
         <SectionHeader title="הופעות הלייבל" />
         <Card>
           {!shows ? (
@@ -355,7 +332,7 @@ export default function LabelPage() {
       </div>
 
       {/* Clips — real label investment (Red Films general_budget; 50/50) */}
-      <div style={{ marginBottom: 30 }}>
+      <div style={{ marginBottom: 20 }}>
         <SectionHeader title="קליפים (השקעת לייבל)" />
         <Card>
           {!clips ? (
@@ -400,7 +377,7 @@ export default function LabelPage() {
       </div>
 
       {/* Production / media — not connected yet */}
-      <div style={{ marginBottom: 30 }}>
+      <div style={{ marginBottom: 20 }}>
         <SectionHeader title="הפקה · מדיה" />
         <Card style={{ padding: "20px 24px" }}>
           <div style={{ fontSize: 13, color: MUTED, textAlign: "center", lineHeight: 1.7 }}>הכנסות/הוצאות הפקה ומדיה <b style={{ color: SUB }}>טרם חוברו למקור נתונים</b>.</div>
