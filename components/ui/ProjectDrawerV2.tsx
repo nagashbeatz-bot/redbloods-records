@@ -2312,6 +2312,138 @@ function QuickTransactionModal({
   );
 }
 
+// ─── SplitPaymentModal ────────────────────────────────────────────────────────
+// Splits an EXPECTED income tx into a received part + a remaining expected balance,
+// atomically via POST /api/transactions/[id]/split (RPC). Display-only math here.
+function SplitPaymentModal({
+  tx, currency, onSaved, onClose,
+}: {
+  tx:       Transaction;
+  currency: string;
+  onSaved:  () => void;
+  onClose:  () => void;
+}) {
+  const [paidInput, setPaidInput] = useState("");
+  const [date,      setDate]      = useState(() => new Date().toISOString().slice(0, 10));
+  const [method,    setMethod]    = useState("");
+  const [saving,    setSaving]    = useState(false);
+  const [err,       setErr]       = useState("");
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const original  = tx.amount;
+  const paid      = Number(paidInput);
+  const paidValid = Number.isFinite(paid) && paid > 0 && paid <= original;
+  const remaining = paidValid ? original - paid : original;
+  const fmt = (n: number) => `${currency}${n.toLocaleString()}`;
+
+  async function handleConfirm() {
+    if (!paidValid || saving) return;
+    setSaving(true); setErr("");
+    try {
+      const res = await fetch(`/api/transactions/${tx.id}/split`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paidAmount: paid, receivedDate: date || null, paymentMethod: method }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        setErr(d?.error || "הפיצול נכשל"); setSaving(false); return;
+      }
+      onSaved(); onClose();
+    } catch {
+      setErr("שגיאת רשת"); setSaving(false);
+    }
+  }
+
+  const accent = GREEN;
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 199999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)" }} />
+      <div dir="rtl" style={{
+        position: "relative", width: 440, maxHeight: "90vh", overflowY: "auto",
+        borderRadius: 22, background: "linear-gradient(160deg, #12121A 0%, #0E0E14 100%)",
+        border: `1.5px solid ${accent}40`, boxShadow: `0 32px 80px rgba(0,0,0,0.85), 0 0 0 1px ${accent}18`,
+        padding: "24px 24px 22px", display: "flex", flexDirection: "column", gap: 14,
+      }}>
+        <button onClick={onClose} style={{
+          position: "absolute", top: 14, left: 14, width: 32, height: 32, borderRadius: "50%",
+          background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER2}`, color: TEXT2,
+          fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit",
+        }}>✕</button>
+
+        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>✂ פיצול תשלום</div>
+
+        <FieldWrap label="סכום התשלום המקורי">
+          <div style={{ ...inputStyle, display: "flex", alignItems: "center", color: TEXT2, fontWeight: 700, background: "rgba(255,255,255,0.03)" }}>
+            {fmt(original)}
+          </div>
+        </FieldWrap>
+
+        <FieldWrap label="שולם עכשיו *">
+          <input
+            type="text" inputMode="numeric" placeholder={`${currency} 0`}
+            value={paidInput} onChange={e => setPaidInput(e.target.value.replace(/[^0-9.]/g, ""))}
+            style={{ ...inputStyle, fontSize: 18, fontWeight: 700, color: accent }}
+          />
+        </FieldWrap>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <FieldWrap label="תאריך קבלת התשלום">
+            <DatePickerInput value={date} onChange={setDate} style={inputStyle} />
+          </FieldWrap>
+          <FieldWrap label="אמצעי תשלום">
+            <select className="v2-select" value={method} onChange={e => setMethod(e.target.value)} style={inputStyle}>
+              <option value="">בחר…</option>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </FieldWrap>
+        </div>
+
+        {/* live summary */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "12px 14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ color: TEXT2, fontWeight: 700 }}>התקבל עכשיו</span>
+            <span style={{ color: accent, fontWeight: 900 }}>{fmt(paidValid ? paid : 0)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ color: TEXT2, fontWeight: 700 }}>נותר לתשלום</span>
+            <span style={{ color: remaining > 0 ? RED_WARN : accent, fontWeight: 900 }}>{fmt(remaining)}</span>
+          </div>
+        </div>
+
+        {paidInput && !paidValid && (
+          <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, borderRadius: 8, padding: "8px 12px" }}>
+            {paid <= 0 ? "הסכום חייב להיות גדול מ-0" : `הסכום לא יכול לעלות על ${fmt(original)}`}
+          </div>
+        )}
+        {err && (
+          <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, borderRadius: 8, padding: "8px 12px" }}>{err}</div>
+        )}
+
+        <button
+          onClick={handleConfirm}
+          disabled={!paidValid || saving}
+          style={{
+            width: "100%", padding: "14px 0", borderRadius: 12,
+            background: !paidValid ? `${accent}18` : saving ? `${accent}88` : accent,
+            border: !paidValid ? `1.5px dashed ${accent}44` : "none",
+            color: !paidValid ? accent : "#000", fontSize: 15, fontWeight: 900,
+            cursor: !paidValid || saving ? "default" : "pointer", fontFamily: "inherit", opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? "מפצל…" : "פצל וסמן כהתקבל"}
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── BalanceReminderModal ─────────────────────────────────────────────────────
 // Prompts to set a due date for an open balance with no expected payment yet.
 // Creating the date posts a real "צפוי" income transaction so Finance can track it.
@@ -2680,6 +2812,7 @@ function FinanceContent({
   const [deletingTxId,    setDeletingTxId]    = useState<string | null>(null);
   const [txActionLoading, setTxActionLoading] = useState<string | null>(null);
   const [statusMenuTxId,  setStatusMenuTxId]  = useState<string | null>(null);
+  const [splitTx,         setSplitTx]         = useState<Transaction | null>(null);
 
   // ── edit agreed price ──────────────────────────────────────────────
   const [editingPrice, setEditingPrice] = useState(false);
@@ -2756,6 +2889,15 @@ function FinanceContent({
 
   return (
     <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {splitTx && (
+        <SplitPaymentModal
+          tx={splitTx}
+          currency={currency}
+          onSaved={onTxAdded}
+          onClose={() => setSplitTx(null)}
+        />
+      )}
 
       {/* ── KPI row ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
@@ -2947,6 +3089,21 @@ function FinanceContent({
                               >
                                 ✓ סמן כשולם
                               </button>
+                              {tx.type === "income" && (
+                                <button
+                                  onClick={() => { setStatusMenuTxId(null); setSplitTx(tx); }}
+                                  style={{
+                                    display: "block", width: "100%", textAlign: "right",
+                                    padding: "9px 14px", fontSize: 12, fontWeight: 700,
+                                    color: TEXT, background: "transparent", border: "none",
+                                    borderTop: `1px solid ${BORDER}`, cursor: "pointer",
+                                  }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                                >
+                                  ✂ פצל תשלום
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -3067,6 +3224,21 @@ function FinanceContent({
                               >
                                 ✓ סמן כשולם
                               </button>
+                              {tx.type === "income" && (
+                                <button
+                                  onClick={() => { setStatusMenuTxId(null); setSplitTx(tx); }}
+                                  style={{
+                                    display: "block", width: "100%", textAlign: "right",
+                                    padding: "9px 14px", fontSize: 12, fontWeight: 700,
+                                    color: TEXT, background: "transparent", border: "none",
+                                    borderTop: `1px solid ${BORDER}`, cursor: "pointer",
+                                  }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                                >
+                                  ✂ פצל תשלום
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
