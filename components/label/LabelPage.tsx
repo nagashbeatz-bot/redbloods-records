@@ -186,10 +186,10 @@ export default function LabelPage() {
   const reloadRecoup = useCallback(() => {
     const roster = artists ?? [];
     const zero: ArtistRecoupSummary = {
-      clipRecoupTarget: 0, mediaActualRecouped: 0, showsArtistPaid: 0,
+      clipRecoupTarget: 0, mediaActualRecouped: 0, mediaArtistShareReceived: 0, showsArtistPaid: 0,
       mediaExpectedArtistShare: 0, showsArtistExpected: 0, actualRecouped: 0,
       expectedArtistIncome: 0, actualRecoupBalance: 0, projectedRecoup: 0,
-      projectedRecoupBalance: 0, artistCredit: 0,
+      projectedRecoupBalance: 0, artistCredit: 0, actualArtistIncome: 0, artistActualBalance: 0,
     };
     if (roster.length === 0) { setRecoup(zero); return; }
     Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/recoup`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
@@ -505,28 +505,40 @@ export default function LabelPage() {
         <Card>
           {!recoup ? (
             <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
-          ) : (
+          ) : (() => {
+            const bal = recoup.artistActualBalance;
+            const neg = bal < -0.001, pos = bal > 0.001;
+            const balColor = neg ? "#F87171" : pos ? GREEN : SUB;
+            const balNote = neg ? "האמן עדיין בחוב ללייבל" : pos ? "יתרה לזכות האמן" : "הקיזוז הושלם";
+            return (
             <>
+              {/* Headline: signed artist balance — the single source of truth for the artist's state */}
+              <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))", border: `1px solid ${neg ? "rgba(248,113,113,0.35)" : pos ? "rgba(52,211,153,0.35)" : BORDER2}`, borderRadius: 18, padding: "22px 24px", marginBottom: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: SUB, letterSpacing: "0.02em" }}>מאזן אמן בפועל</div>
+                <div style={{ fontSize: 40, fontWeight: 900, color: balColor, marginTop: 8, letterSpacing: "-0.02em", direction: "ltr" }}>{neg ? "−" : ""}{money(Math.abs(bal))}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: balColor, marginTop: 8 }}>{balNote}</div>
+              </div>
+
+              {/* Secondary detail */}
               <div className="rb-lab-shows-kpis">
                 {[
                   { l: "יעד קיזוז", v: recoup.clipRecoupTarget, c: SUB },
                   { l: "קוזז בפועל", v: recoup.actualRecouped, c: GREEN },
                   { l: "קיזוז צפוי", v: recoup.projectedRecoup, c: "#F59E0B" },
-                  { l: "יתרת קיזוז בפועל", v: recoup.actualRecoupBalance, c: "#F87171" },
                   { l: "יתרה צפויה", v: recoup.projectedRecoupBalance, c: "#F59E0B" },
-                  ...(recoup.artistCredit > 0 ? [{ l: "זיכוי אמן", v: recoup.artistCredit, c: GREEN }] : []),
                 ].map((t) => (
-                  <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "14px 15px" }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
-                    <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, marginTop: 6 }}>{money(t.v)}</div>
+                  <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
+                    <div style={{ fontSize: 17, fontWeight: 900, color: TEXT, marginTop: 5 }}>{money(t.v)}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
-                הכנסות האמן מקזזות את חוב הקליפים: מדיה שהתקבלה + חלק האמן מהופעות ששולמו → קיזוז בפועל; מדיה צפויה + חלק האמן מהופעות שטרם שולמו → קיזוז צפוי. זיכוי אמן = עודף מעבר ליעד, לתצוגה בלבד — לא מקוזז אחורה ולא יוצר תשלום.
+              <div style={{ marginTop: 12, fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
+                מאזן אמן בפועל = חלק האמן שהתקבל בפועל (הופעות ששולמו + מדיה שהתקבלה) פחות יעד הקיזוז מהקליפים. שלילי = חוב פתוח ללייבל; חיובי = יתרה לזכות האמן. הקיזוז הצפוי מבוסס על הופעות ומדיה שטרם התקבלו — לתצוגה בלבד.
               </div>
             </>
-          )}
+            );
+          })()}
         </Card>
       </div>
 

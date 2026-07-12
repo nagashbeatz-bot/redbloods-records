@@ -30,6 +30,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     // Media: actual recouped (signed, frozen snapshots) + expected artist share (צפוי).
     const media = await getArtistMedia(id, artist.name);
     const mediaActualRecouped = media.totals.recoupedTotal;
+    const mediaArtistShareReceived = media.totals.artistShareGross;   // signed, full artist share (uncapped)
     const mediaExpectedArtistShare = media.totals.artistShareExpected;
 
     // Shows: artist share of paid / not-yet-paid shows — mirrors the shows route
@@ -51,6 +52,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     const recoup = computeArtistRecoup({
       clipRecoupTarget,
       mediaActualRecouped,
+      mediaArtistShareReceived,
       mediaExpectedArtistShare,
       showsArtistPaid,
       showsArtistExpected,

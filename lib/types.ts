@@ -177,6 +177,7 @@ export interface ArtistMediaSummary {
 export interface ArtistRecoupSummary {
   clipRecoupTarget: number;        // Σ artistRecoupTarget of active clips
   mediaActualRecouped: number;     // signed recoupedTotal (frozen media snapshots)
+  mediaArtistShareReceived: number;// signed Σ artist_share_gross of received media (full, uncapped)
   showsArtistPaid: number;         // artist share of PAID shows
   mediaExpectedArtistShare: number;
   showsArtistExpected: number;     // artist share of not-yet-paid shows
@@ -186,6 +187,8 @@ export interface ArtistRecoupSummary {
   projectedRecoup: number;         // min(expectedArtistIncome, actualRecoupBalance)
   projectedRecoupBalance: number;  // actualRecoupBalance − projectedRecoup
   artistCredit: number;            // max(0, actualRecouped − target) — display-only
+  actualArtistIncome: number;      // showsArtistPaid + mediaArtistShareReceived
+  artistActualBalance: number;     // actualArtistIncome − target (signed; the headline "מאזן אמן בפועל")
 }
 
 /** A label project joined with its (optional) release details — the /label list item. */
