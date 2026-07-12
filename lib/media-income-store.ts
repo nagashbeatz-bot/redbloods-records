@@ -41,7 +41,7 @@ export async function getArtistMedia(artistId: string, artistName: string): Prom
   for (const r of rows) if (r.record_type === "reversal" && r.reverses_id) reversalByOrig.set(r.reverses_id, r.id);
   const records = rows.map((r) => mapMedia(r, reversalByOrig));
 
-  let mediaGross = 0, labelShareReceived = 0, artistShareGross = 0, recoupedTotal = 0, artistPayableTotal = 0, labelShareExpected = 0;
+  let mediaGross = 0, labelShareReceived = 0, artistShareGross = 0, recoupedTotal = 0, artistPayableTotal = 0, labelShareExpected = 0, artistShareExpected = 0;
   for (const r of rows) {
     if (r.status === "התקבל") {
       const s = r.record_type === "reversal" ? -1 : 1;   // signed by record_type
@@ -51,7 +51,8 @@ export async function getArtistMedia(artistId: string, artistName: string): Prom
       recoupedTotal      += s * Number(r.recouped);
       artistPayableTotal += s * Number(r.artist_payable);
     } else if (r.status === "צפוי") {
-      labelShareExpected += Number(r.label_share);        // expected income (never reversal)
+      labelShareExpected  += Number(r.label_share);         // expected income (never reversal)
+      artistShareExpected += Number(r.artist_share_gross);  // feeds projected recoup (never reversal)
     }
   }
 
@@ -63,6 +64,7 @@ export async function getArtistMedia(artistId: string, artistName: string): Prom
       mediaGross: round2(mediaGross), labelShareReceived: round2(labelShareReceived),
       artistShareGross: round2(artistShareGross), recoupedTotal: recouped,
       artistPayableTotal: round2(artistPayableTotal), labelShareExpected: round2(labelShareExpected),
+      artistShareExpected: round2(artistShareExpected),
     },
     recoupTarget,
     recoupBalance: Math.max(0, round2(recoupTarget - recouped)),

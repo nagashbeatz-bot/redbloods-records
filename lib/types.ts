@@ -162,10 +162,30 @@ export interface ArtistMediaSummary {
   totals: {
     mediaGross: number; labelShareReceived: number; artistShareGross: number;
     recoupedTotal: number; artistPayableTotal: number; labelShareExpected: number;
+    artistShareExpected: number;   // Σ artist_share_gross of צפוי income (non-reversal) — feeds projected recoup
   };
   recoupTarget: number;
   recoupBalance: number;
   artistCredit: number;
+}
+
+/**
+ * Unified artist recoup across ALL income channels (clips = target; media + shows = income).
+ * Every max/min cap is applied PER ARTIST here; /label sums these already-capped results.
+ * Purely derived at read time — writes nothing, changes no snapshot, offsets no prior record.
+ */
+export interface ArtistRecoupSummary {
+  clipRecoupTarget: number;        // Σ artistRecoupTarget of active clips
+  mediaActualRecouped: number;     // signed recoupedTotal (frozen media snapshots)
+  showsArtistPaid: number;         // artist share of PAID shows
+  mediaExpectedArtistShare: number;
+  showsArtistExpected: number;     // artist share of not-yet-paid shows
+  actualRecouped: number;          // mediaActualRecouped + showsArtistPaid
+  expectedArtistIncome: number;    // showsArtistExpected + mediaExpectedArtistShare
+  actualRecoupBalance: number;     // max(0, target − actualRecouped)
+  projectedRecoup: number;         // min(expectedArtistIncome, actualRecoupBalance)
+  projectedRecoupBalance: number;  // actualRecoupBalance − projectedRecoup
+  artistCredit: number;            // max(0, actualRecouped − target) — display-only
 }
 
 /** A label project joined with its (optional) release details — the /label list item. */

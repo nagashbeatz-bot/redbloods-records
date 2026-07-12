@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary, LabelMediaRecord, ArtistMediaSummary } from "@/lib/types";
+import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary, LabelMediaRecord, ArtistMediaSummary, ArtistRecoupSummary } from "@/lib/types";
 import { MediaModal, MediaCancelModal, type MediaRec } from "./MediaModals";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM, GREEN,
@@ -114,6 +114,10 @@ export default function LabelPage() {
   const [mediaEdit, setMediaEdit] = useState<MediaRec | null>(null);
   const [mediaCancel, setMediaCancel] = useState<MediaRec | null>(null);
 
+  // Unified artist recoup (clips=target; media+shows reduce it). Every cap is applied
+  // per-artist server-side; we sum the already-capped fields — never raw inputs.
+  const [recoup, setRecoup] = useState<ArtistRecoupSummary | null>(null);
+
   // Shows-only label finance: fetch per roster artist and aggregate. Money is
   // derived server-side via computeShowSplit only — transactions are never summed.
   useEffect(() => {
@@ -162,7 +166,7 @@ export default function LabelPage() {
   // Media income: fetch per roster artist and aggregate (signed totals from the API).
   const reloadMedia = useCallback(() => {
     const roster = artists ?? [];
-    const emptyT = { mediaGross: 0, labelShareReceived: 0, artistShareGross: 0, recoupedTotal: 0, artistPayableTotal: 0, labelShareExpected: 0 };
+    const emptyT = { mediaGross: 0, labelShareReceived: 0, artistShareGross: 0, recoupedTotal: 0, artistPayableTotal: 0, labelShareExpected: 0, artistShareExpected: 0 };
     if (roster.length === 0) { setMedia({ totals: emptyT, recoupTarget: 0, recoupBalance: 0, artistCredit: 0, records: [] }); return; }
     Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/media`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
       .then((results: (ArtistMediaSummary | null)[]) => {
@@ -177,6 +181,31 @@ export default function LabelPage() {
       });
   }, [artists]);
   useEffect(() => { reloadMedia(); }, [reloadMedia]);
+
+  // Unified recoup: fetch per roster artist, sum the already-capped per-artist fields.
+  const reloadRecoup = useCallback(() => {
+    const roster = artists ?? [];
+    const zero: ArtistRecoupSummary = {
+      clipRecoupTarget: 0, mediaActualRecouped: 0, showsArtistPaid: 0,
+      mediaExpectedArtistShare: 0, showsArtistExpected: 0, actualRecouped: 0,
+      expectedArtistIncome: 0, actualRecoupBalance: 0, projectedRecoup: 0,
+      projectedRecoupBalance: 0, artistCredit: 0,
+    };
+    if (roster.length === 0) { setRecoup(zero); return; }
+    Promise.all(roster.map((a) => fetch(`/api/label/artists/${a.id}/recoup`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
+      .then((results: (ArtistRecoupSummary | null)[]) => {
+        const t = { ...zero };
+        results.forEach((res) => {
+          if (!res) return;
+          (Object.keys(t) as (keyof ArtistRecoupSummary)[]).forEach((k) => { t[k] += res[k]; });
+        });
+        setRecoup(t);
+      });
+  }, [artists]);
+  useEffect(() => { reloadRecoup(); }, [reloadRecoup]);
+
+  // Media writes change recoup too — refresh both after any media save.
+  const onMediaSaved = useCallback(() => { reloadMedia(); reloadRecoup(); }, [reloadMedia, reloadRecoup]);
 
   const d = useMemo(() => {
     const roster = artists ?? [];
@@ -372,7 +401,7 @@ export default function LabelPage() {
                 {[
                   { t: "תקציב מלא (שולם)", v: clips.totals.fullBudget, c: SUB },
                   { t: "השקעת לייבל (50%)", v: clips.totals.labelInvestment, c: "#F87171" },
-                  { t: "יתרת קיזוז אמן (50%)", v: clips.totals.artistRecoupBalance, c: "#F59E0B" },
+                  { t: "יעד קיזוז אמן (50%)", v: clips.totals.artistRecoupBalance, c: "#F59E0B" },
                 ].map((b) => (
                   <div key={b.t} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "18px 18px" }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, color: b.c }}>{b.t}</div>
@@ -397,7 +426,7 @@ export default function LabelPage() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יתרת הקיזוז לתצוגה בלבד — אינה מקוזזת אוטומטית מהכנסות האמן. התקציב נקרא חי מ-Red Films.</div>
+              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>יעד הקיזוז = חצי האמן מתקציבי הקליפים. הקיזוז בפועל מול הכנסות האמן מוצג בסקשן "קיזוז אמן" למטה. התקציב נקרא חי מ-Red Films.</div>
             </>
           )}
         </Card>
@@ -420,7 +449,6 @@ export default function LabelPage() {
                   { l: "חלק אמן ברוטו", v: media.totals.artistShareGross, c: SUB },
                   { l: "שקוזז", v: media.totals.recoupedTotal, c: "#F59E0B" },
                   { l: "לתשלום לאמן", v: media.totals.artistPayableTotal, c: SUB },
-                  { l: "יתרת קיזוז", v: media.recoupBalance, c: "#F87171" },
                 ].map((t) => (
                   <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "14px 15px" }}>
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
@@ -428,10 +456,6 @@ export default function LabelPage() {
                   </div>
                 ))}
               </div>
-
-              {media.artistCredit > 0 && (
-                <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 700, color: "#F59E0B" }}>⚠ יתרת זכות לאמן (עודף קיזוז): {money(media.artistCredit)} — לתצוגה בלבד, אינה מקוזזת אוטומטית.</div>
-              )}
 
               {media.records.length === 0 ? (
                 <div style={{ marginTop: 16, color: MUTED, textAlign: "center", padding: "10px 0", fontSize: 13.5 }}>אין הזנות מדיה. השתמש ב"הזנת מדיה" כדי להוסיף.</div>
@@ -469,6 +493,38 @@ export default function LabelPage() {
                   })}
                 </div>
               )}
+            </>
+          )}
+        </Card>
+      </div>
+
+      {/* Unified artist recoup — clips=target; media (actual) + paid shows reduce it;
+          expected media + unpaid shows project the rest. All caps per-artist (server). */}
+      <div style={{ marginBottom: 20 }}>
+        <SectionHeader title="קיזוז אמן" />
+        <Card>
+          {!recoup ? (
+            <div style={{ color: MUTED, textAlign: "center", padding: "18px 0" }}>טוען…</div>
+          ) : (
+            <>
+              <div className="rb-lab-shows-kpis">
+                {[
+                  { l: "יעד קיזוז", v: recoup.clipRecoupTarget, c: SUB },
+                  { l: "קוזז בפועל", v: recoup.actualRecouped, c: GREEN },
+                  { l: "קיזוז צפוי", v: recoup.projectedRecoup, c: "#F59E0B" },
+                  { l: "יתרת קיזוז בפועל", v: recoup.actualRecoupBalance, c: "#F87171" },
+                  { l: "יתרה צפויה", v: recoup.projectedRecoupBalance, c: "#F59E0B" },
+                  ...(recoup.artistCredit > 0 ? [{ l: "זיכוי אמן", v: recoup.artistCredit, c: GREEN }] : []),
+                ].map((t) => (
+                  <div key={t.l} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 14, padding: "14px 15px" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: t.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.l}</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, marginTop: 6 }}>{money(t.v)}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 14, fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
+                הכנסות האמן מקזזות את חוב הקליפים: מדיה שהתקבלה + חלק האמן מהופעות ששולמו → קיזוז בפועל; מדיה צפויה + חלק האמן מהופעות שטרם שולמו → קיזוז צפוי. זיכוי אמן = עודף מעבר ליעד, לתצוגה בלבד — לא מקוזז אחורה ולא יוצר תשלום.
+              </div>
             </>
           )}
         </Card>
@@ -541,9 +597,9 @@ export default function LabelPage() {
       {markOpen && <MarkExistingModal artists={d.roster} onClose={() => setMarkOpen(false)} onSaved={reload} />}
       {editItem && editItem.release && <EditReleaseModal item={editItem} onClose={() => setEditItem(null)} onSaved={reload} />}
 
-      {mediaCreate && <MediaModal artists={d.roster} mode="create" onClose={() => setMediaCreate(false)} onSaved={reloadMedia} />}
-      {mediaEdit && <MediaModal artists={d.roster} mode="edit" record={mediaEdit} onClose={() => setMediaEdit(null)} onSaved={reloadMedia} />}
-      {mediaCancel && <MediaCancelModal record={mediaCancel} onClose={() => setMediaCancel(null)} onSaved={reloadMedia} />}
+      {mediaCreate && <MediaModal artists={d.roster} mode="create" onClose={() => setMediaCreate(false)} onSaved={onMediaSaved} />}
+      {mediaEdit && <MediaModal artists={d.roster} mode="edit" record={mediaEdit} onClose={() => setMediaEdit(null)} onSaved={onMediaSaved} />}
+      {mediaCancel && <MediaCancelModal record={mediaCancel} onClose={() => setMediaCancel(null)} onSaved={onMediaSaved} />}
     </div>
   );
 }
