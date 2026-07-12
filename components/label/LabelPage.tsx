@@ -419,15 +419,20 @@ export default function LabelPage() {
             <div style={{ color: MUTED, textAlign: "center", padding: "22px 0", fontSize: 13.5, lineHeight: 1.7 }}>אין הפקות קליפ פעילות משויכות לאמני הלייבל.<br />תקציב קליפ מנוהל בעמוד Red Films.</div>
           ) : (
             <>
-              <div className="rb-lab-money">
+              {/* Recoup figures reuse the already-loaded per-artist recoupRows (no extra fetch).
+                  Σ actualRecouped / Σ actualRecoupBalance is a safe non-mixing roll-up
+                  (both fields ≥0, per-artist capped; יעד = קוזז + נותר holds). "…" while loading. */}
+              <div className="rb-lab-shows-kpis">
                 {[
-                  { t: "תקציב מלא (שולם)", v: clips.totals.fullBudget, c: SUB },
-                  { t: "השקעת לייבל (50%)", v: clips.totals.labelInvestment, c: "#F87171" },
-                  { t: "יעד קיזוז אמן (50%)", v: clips.totals.artistRecoupBalance, c: "#F59E0B" },
+                  { t: "תקציב מלא (שולם)", disp: money(clips.totals.fullBudget), c: SUB },
+                  { t: "השקעת לייבל (50%)", disp: money(clips.totals.labelInvestment), c: "#F87171" },
+                  { t: "יעד קיזוז אמן (50%)", disp: money(clips.totals.artistRecoupBalance), c: "#F59E0B" },
+                  { t: "קוזז בפועל מהאמן", disp: recoupRows ? money(recoupRows.reduce((a, r) => a + r.summary.actualRecouped, 0)) : "…", c: GREEN },
+                  { t: "נותר לקיזוז מהאמן", disp: recoupRows ? money(recoupRows.reduce((a, r) => a + r.summary.actualRecoupBalance, 0)) : "…", c: "#F87171" },
                 ].map((b) => (
-                  <div key={b.t} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "18px 18px" }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: b.c }}>{b.t}</div>
-                    <div style={{ fontSize: 26, fontWeight: 900, color: TEXT, marginTop: 8 }}>{money(b.v)}</div>
+                  <div key={b.t} style={{ background: CARD2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "16px 16px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: b.c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.t}</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: TEXT, marginTop: 8 }}>{b.disp}</div>
                   </div>
                 ))}
               </div>
