@@ -32,10 +32,14 @@ export async function saveSubscription(sub: PushSubJSON, role: string) {
   const { endpoint, keys } = sub;
   if (!keys?.p256dh || !keys?.auth) throw new Error("Invalid subscription keys");
 
-  await supabase.from("push_subscriptions").upsert(
+  // supabase-js does NOT throw on a DB error — it returns { error }. Check it and
+  // throw, so a rejected insert can never look like a success (that silent swallow
+  // is exactly why a shalev device was "saved" with 200 yet never persisted).
+  const { error } = await supabase.from("push_subscriptions").upsert(
     { endpoint, p256dh: keys.p256dh, auth: keys.auth, role },
     { onConflict: "endpoint" },
   );
+  if (error) throw new Error(`push_subscriptions upsert failed: ${error.message}`);
 }
 
 /** All subscriptions, or only those whose role is in `roles` when provided. */

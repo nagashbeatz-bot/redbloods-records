@@ -11,14 +11,20 @@ import { saveSubscription } from "@/lib/push";
 export async function POST(req: NextRequest) {
   const denied = await requireShalevAccess(); if (denied) return denied;
   const audience = (await getAuthRole()) === "shalev" ? "shalev" : "owner";
+  let hasEndpoint = false;
   try {
     const sub = await req.json();
+    hasEndpoint = !!sub?.endpoint;
     if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth) {
-      return NextResponse.json({ error: "invalid subscription" }, { status: 400 });
+      console.warn(`[red-artists/push-subscribe] role=${audience} endpoint=${hasEndpoint} → invalid subscription`);
+      return NextResponse.json({ error: "פרטי המנוי אינם תקינים" }, { status: 400 });
     }
-    await saveSubscription(sub, audience);
+    await saveSubscription(sub, audience); // throws if the DB rejected the row
+    console.info(`[red-artists/push-subscribe] role=${audience} endpoint=true → saved`);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "server error" }, { status: 500 });
+    // Log the REAL reason server-side; return a SAFE message (no DB internals).
+    console.error(`[red-artists/push-subscribe] role=${audience} endpoint=${hasEndpoint} → save failed:`, e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: "שמירת המנוי נכשלה" }, { status: 500 });
   }
 }
