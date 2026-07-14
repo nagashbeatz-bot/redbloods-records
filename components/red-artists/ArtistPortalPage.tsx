@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
+import { useRole, type ClientRole } from "@/lib/use-role";
 import type { Project } from "@/lib/types";
 
 // Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
@@ -315,17 +316,37 @@ function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────────
-export default function ArtistPortalPage() {
+export default function ArtistPortalPage({ initialRole }: { initialRole?: ClientRole } = {}) {
+  // The balance area (tab + home card) is OWNER-ONLY. `initialRole` comes from the
+  // server (flash-free); useRole confirms it client-side. Shalev never sees balance
+  // (also stripped server-side in shalev-summary).
+  const liveRole = useRole();
+  const role = liveRole ?? initialRole ?? null;
+  const isShalev = role === "shalev";
+
   // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
   // same tab and Back/Forward work. Initial state is the default (server + first
   // client render match → no hydration mismatch); the real URL is read on mount.
   const [tab, setTabState] = useState<Tab>(DEFAULT_TAB);
   useEffect(() => {
-    const sync = () => setTabState(tabFromUrl() ?? DEFAULT_TAB);
+    const sync = () => {
+      let t = tabFromUrl() ?? DEFAULT_TAB;
+      // Shalev may not open the balance tab — force him home and drop the param
+      // (covers a manual ?tab=balance / Back/Forward into it).
+      if (isShalev && t === "מאזן") {
+        t = DEFAULT_TAB;
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("tab");
+          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        }
+      }
+      setTabState(t);
+    };
     sync(); // adopt the tab from the URL on load
     window.addEventListener("popstate", sync); // Back/Forward
     return () => window.removeEventListener("popstate", sync);
-  }, []);
+  }, [isShalev]);
   const setTab = useCallback((t: Tab) => {
     setTabState(t);
     if (typeof window === "undefined") return;
@@ -453,7 +474,7 @@ export default function ArtistPortalPage() {
           flexWrap: isMobile ? "nowrap" : "wrap",
           overflowX: isMobile ? "auto" : "visible", paddingBottom: isMobile ? 2 : 0,
         }}>
-          {TABS.map(tb => {
+          {TABS.filter(tb => !(isShalev && tb === "מאזן")).map(tb => {
             const active = tb === tab;
             return (
               <button
@@ -499,11 +520,11 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} hideBalance={isShalev} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
-            : tab === "מאזן" ? <BalancePage summary={summary} loadState={summaryState} />
+            : tab === "מאזן" ? (isShalev ? null : <BalancePage summary={summary} loadState={summaryState} />)
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage />
             : <ComingSoon tab={tab} />}
         </div>
@@ -1932,7 +1953,7 @@ function NextReleaseModal({ current, sketches, onClose, onSaved }: {
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void> }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, hideBalance }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; hideBalance?: boolean }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
@@ -1989,7 +2010,9 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
           </div>
         </SectionCard>
 
-        {/* מאזן (artist-only, REAL: paid/expected show fees — NO split, NO expenses source) */}
+        {/* מאזן (artist-only, REAL: paid/expected show fees — NO split, NO expenses source).
+            OWNER-ONLY: hidden for the shalev role (server also returns balance:null). */}
+        {!hideBalance && (
         <SectionCard title="מאזן">
           <div style={{ padding: "14px 18px 18px" }}>
             {summaryState !== "ready" || !summary?.balance?.hasData ? (
@@ -2014,6 +2037,7 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
             )}
           </div>
         </SectionCard>
+        )}
       </div>
 
       {/* ── 3. Weekly calendar — REAL data, SAME source as the לו״ז tab (summary.weekly) ── */}
