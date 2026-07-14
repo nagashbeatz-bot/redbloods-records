@@ -29,9 +29,10 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
 export default function PushManager() {
   const role = useRole();
   useEffect(() => {
-    // Owner-only. Victor (or any non-owner) must never register a service
-    // worker, see a notification-permission prompt, or create a subscription.
-    if (role !== "owner") return;
+    // Owner + the shalev artist (his portal needs availability push). Victor,
+    // Steven and any other role must never register a service worker, see a
+    // notification-permission prompt, or create a subscription.
+    if (role !== "owner" && role !== "shalev") return;
     if (
       typeof window === "undefined" ||
       !("serviceWorker" in navigator) ||
@@ -64,8 +65,10 @@ export default function PushManager() {
           });
         }
 
-        // 4. Save subscription to server
-        await fetch("/api/push/subscribe", {
+        // 4. Save subscription to server — role-scoped endpoint so the device is
+        //    tagged with the right audience ("owner" vs "shalev").
+        const subscribeUrl = role === "shalev" ? "/api/red-artists/push-subscribe" : "/api/push/subscribe";
+        await fetch(subscribeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(sub.toJSON()),

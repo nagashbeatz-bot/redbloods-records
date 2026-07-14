@@ -1216,25 +1216,94 @@ function SchedulePage({ summary, loadState }: { summary: ShalevSummary | null; l
   );
 }
 
-// Availability picker (7 days + send). UI-only local draft; "שמור" commits to
-// local state, "שלח" is a demo confirmation. No DB / no Calendar — logic unchanged.
+// Format an ISO timestamp for the "last updated" line (client-only).
+function fmtWhen(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// Availability picker (7 days + send) — REAL persistence via
+// /api/red-artists/availability (global settings store). Load marks the last
+// saved days (NO push); "שלח" saves + triggers role-aware push server-side.
+// Both owner and shalev may send; who sent drives the "last updated" text.
 function AvailabilityBody() {
   const isMobile = useIsMobile();
   // Start with day names + blank dates (identical on server & client → no
-  // hydration mismatch); fill the real dates after mount.
+  // hydration mismatch); replaced on mount by the last saved value (or next week).
   const [days, setDays] = useState<AvailDay[]>(() => HEB_DAYS.map(day => ({ day, date: "", available: false, from: "" })));
-  useEffect(() => { setDays(computeNextWeek()); }, []);
-  const [sent, setSent] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<{ sentBy: "owner" | "shalev"; sentAt: string } | null>(null);
   const [editIdx, setEditIdx] = useState<number | null>(null); // day being edited in the modal
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<{ kind: "ok" | "warn" | "err"; text: string } | null>(null);
+
+  // Load the last saved availability (GET — NEVER sends push). Fall back to a
+  // blank next week when nothing was ever sent.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/red-artists/availability", { cache: "no-store" });
+        const d = await r.json().catch(() => ({}));
+        if (!alive) return;
+        const av = d?.availability;
+        if (r.ok && d?.ok && av && Array.isArray(av.days) && av.days.length === 7) {
+          setDays(av.days as AvailDay[]);
+          setLastUpdate({ sentBy: av.sentBy, sentAt: av.sentAt });
+          return;
+        }
+      } catch { /* fall through to a blank week */ }
+      if (alive) setDays(computeNextWeek());
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const saveDay = (i: number, patch: { available: boolean; from: string }) => {
     setDays(ds => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
     setEditIdx(null);
+    setStatus(null); // editing invalidates the prior "sent" confirmation
   };
+
+  const send = async () => {
+    if (sending) return;
+    setSending(true); setStatus(null);
+    try {
+      const r = await fetch("/api/red-artists/availability", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.ok) {
+        if (d.availability) setLastUpdate({ sentBy: d.availability.sentBy, sentAt: d.availability.sentAt });
+        // Save succeeded. Only a REAL push failure (not the non-production skip)
+        // is surfaced — as a soft warning; the availability is stored regardless.
+        const pushFailed = d.push && d.push.sent === false && d.push.error && d.push.error !== "push-disabled-non-production";
+        setStatus(pushFailed
+          ? { kind: "warn", text: "הזמינות נשמרה, אך שליחת ההתראה נכשלה" }
+          : { kind: "ok", text: "✓ הזמינות נשלחה" });
+      } else {
+        setStatus({ kind: "err", text: (d?.error as string) || "השליחה נכשלה" });
+      }
+    } catch {
+      setStatus({ kind: "err", text: "שגיאת רשת, נסה שוב" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const statusColor = status?.kind === "err" ? "#F87171" : status?.kind === "warn" ? "#F59E0B" : GREEN;
 
   return (
     <div style={{ padding: isMobile ? "14px 14px 16px" : "16px 22px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 12, color: MUTED }}>לחצו על יום כדי לעדכן זמינות</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, color: MUTED }}>לחצו על יום כדי לעדכן זמינות</div>
+        {lastUpdate && (
+          <div style={{ fontSize: 11.5, color: MUTED }}>
+            עודכן לאחרונה על ידי {lastUpdate.sentBy === "shalev" ? "שליו" : "הלייבל"} בתאריך {fmtWhen(lastUpdate.sentAt)}
+          </div>
+        )}
+      </div>
 
       {/* 7-day grid — desktop 7 across, mobile 2 cols */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)", gap: isMobile ? 10 : 12 }}>
@@ -1264,13 +1333,13 @@ function AvailabilityBody() {
 
       {/* send */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 2 }}>
-        <button onClick={() => setSent(true)} style={{
+        <button onClick={send} disabled={sending} style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
           padding: "14px 26px", borderRadius: 12, border: "none", color: "#fff", fontSize: 14.5, fontWeight: 800,
-          fontFamily: "inherit", cursor: "pointer", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
-          background: "linear-gradient(180deg, #E5322F, #C01C1C)", width: isMobile ? "100%" : "auto",
-        }}>שלח זמינות לשבוע הבא</button>
-        {sent && <span style={{ fontSize: 13, fontWeight: 700, color: GREEN }}>✓ הזמינות נשלחה (הדגמה)</span>}
+          fontFamily: "inherit", cursor: sending ? "wait" : "pointer", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)", width: isMobile ? "100%" : "auto", opacity: sending ? 0.75 : 1,
+        }}>{sending ? "שולח…" : "שלח זמינות לשבוע הבא"}</button>
+        {status && <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{status.text}</span>}
       </div>
 
       {editIdx !== null && (
