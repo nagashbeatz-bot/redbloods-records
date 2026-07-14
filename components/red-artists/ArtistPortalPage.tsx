@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
-import type { Project } from "@/lib/types";
+import type { Project, LabelRelease } from "@/lib/types";
 
 // Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
 // touch-friendly layout. UI only; no data/logic change.
@@ -62,6 +62,7 @@ const IcEdit     = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} 
 const IcTrash    = ({ size = 18, color = "#F87171" }: IcoProps) => <Svg size={size} color={color} fill="none"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></Svg>;
 const IcClock    = ({ size = 14, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></Svg>;
 const IcMusicNote = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></Svg>;
+const IcChevron  = ({ size = 16, color = "#FF6B6B" }: IcoProps) => <Svg size={size} color={color} fill="none"><polyline points="15 18 9 12 15 6" /></Svg>;
 // Drag handle — six dots (grip). Filled dots read clearly at small sizes.
 const IcGrip = ({ size = 16, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill={color}><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></Svg>;
 
@@ -263,6 +264,32 @@ function fmtSketchDate(iso: string | null | undefined): string {
   return d.length === 3 ? `${d[2]}.${d[1]}.${d[0]}` : iso;
 }
 
+// ── Next release (project_release_details via /api/label/releases) ─────────────────
+export type PortalRelease = { projectId: string; title: string; releaseDate: string; stage: string };
+const RELEASE_OUT_STAGES = new Set(["יצא", "בהשהייה"]);
+// Nearest STRICTLY-FUTURE release for this label artist, matched by the CANONICAL
+// labelArtistId (never by name). Excludes released/shelved and today-or-past (the
+// countdown targets the start of the release day, so a same-day date is already
+// "arrived" — showing it would be misleading). releaseTargetDate is "YYYY-MM-DD".
+function getNextRelease(releases: LabelRelease[], artistId: string): PortalRelease | null {
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const cand = releases
+    .filter(r => r.release && r.release.labelArtistId === artistId
+      && !RELEASE_OUT_STAGES.has(r.release.releaseStage)
+      && !r.release.releasedAt
+      && !!r.release.releaseTargetDate && r.release.releaseTargetDate > todayYmd)
+    .sort((a, b) => (a.release!.releaseTargetDate! < b.release!.releaseTargetDate! ? -1 : 1));
+  const top = cand[0];
+  if (!top?.release?.releaseTargetDate) return null;
+  return { projectId: top.projectId, title: top.name, releaseDate: top.release.releaseTargetDate, stage: top.release.releaseStage };
+}
+// The label-artist id from the portal URL (/label/artists/[id]) — the canonical link.
+function currentArtistId(): string | null {
+  if (typeof window === "undefined") return null;
+  const m = window.location.pathname.match(/\/label\/artists\/([0-9a-fA-F-]{36})/);
+  return m ? m[1] : null;
+}
+
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
   const target = normName(SHALEV_ARTIST);
   return (Array.isArray(projects) ? projects : [])
@@ -377,6 +404,21 @@ export default function ArtistPortalPage() {
     return () => { alive = false; };
   }, []);
 
+  // Next release — real data from project_release_details via /api/label/releases,
+  // filtered to THIS artist by the canonical labelArtistId (from the URL). No mock,
+  // no name match. `null` when there is no upcoming release → the card is hidden.
+  const [nextRelease, setNextRelease] = useState<PortalRelease | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const artistId = currentArtistId();
+    if (!artistId) return;
+    fetch("/api/label/releases", { cache: "no-store" })
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((rows: LabelRelease[]) => { if (alive && Array.isArray(rows)) setNextRelease(getNextRelease(rows, artistId)); })
+      .catch(() => { /* card stays hidden on failure — home page never breaks */ });
+    return () => { alive = false; };
+  }, []);
+
   // Learn-and-save duration into the SKETCH MANIFEST (never Projects): once the
   // global player has a real duration for the playing sketch's latest version and
   // it has none stored yet, persist it — at most once per file per session.
@@ -481,7 +523,7 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
@@ -1680,12 +1722,154 @@ const pbtn: React.CSSProperties = {
   display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0,
 };
 
+// ── Next-release card (real data) ────────────────────────────────────────────────
+// Countdown returns null until mounted → server + first client render match (no
+// hydration mismatch); the interval only runs on the client and is cleared on unmount.
+type Countdown = { days: number; hours: number; minutes: number; seconds: number; done: boolean };
+function useCountdown(targetMs: number): Countdown | null {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  if (now === null) return null;
+  const diff = Math.max(0, targetMs - now);
+  const s = Math.floor(diff / 1000);
+  return {
+    days: Math.floor(s / 86400),
+    hours: Math.floor((s % 86400) / 3600),
+    minutes: Math.floor((s % 3600) / 60),
+    seconds: s % 60,
+    done: diff <= 0,
+  };
+}
+// Release date has no time in the data → count down to LOCAL midnight of that day.
+function releaseTargetMs(ymd: string): number {
+  const t = new Date(`${ymd.slice(0, 10)}T00:00:00`).getTime();
+  return Number.isFinite(t) ? t : Date.now();
+}
+
+// Square cover placeholder (no cover field in the model) with a disc peeking out
+// behind it toward the card centre. Premium Redbloods look; never a broken image.
+function ReleaseArtwork({ title, size }: { title: string; size: number }) {
+  const disc = Math.round(size * 0.92);
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }} role="img" aria-label={`עטיפת הריליס ${title}`}>
+      {/* disc — behind, peeking out on the physical-right (toward the card centre in RTL) */}
+      <div style={{
+        position: "absolute", top: "50%", right: -Math.round(size * 0.30), transform: "translateY(-50%)",
+        width: disc, height: disc, borderRadius: "50%", zIndex: 0,
+        background: "radial-gradient(circle at 50% 50%, #E5322F 0%, #7c1a1a 5%, #1a1a1e 13%, #0c0c0f 58%, #050506 100%)",
+        border: "1px solid rgba(255,255,255,0.05)",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.6), inset 0 0 22px rgba(0,0,0,0.55)",
+      }}>
+        <div style={{ position: "absolute", inset: "34%", borderRadius: "50%", border: "1px solid rgba(255,255,255,0.06)" }} />
+        <div style={{ position: "absolute", top: "50%", left: "50%", width: 7, height: 7, borderRadius: "50%", transform: "translate(-50%,-50%)", background: "#E5322F", boxShadow: "0 0 10px rgba(220,38,38,0.8)" }} />
+      </div>
+      {/* cover — in front */}
+      <div style={{
+        position: "relative", zIndex: 1, width: size, height: size, borderRadius: 14, overflow: "hidden",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: 10, boxSizing: "border-box",
+        background: "radial-gradient(120% 120% at 28% 18%, rgba(220,38,38,0.38) 0%, rgba(220,38,38,0.06) 44%, #100c0d 74%), linear-gradient(160deg, #1c1416 0%, #0b0a0b 100%)",
+        border: "1px solid rgba(220,38,38,0.4)", boxShadow: "0 14px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)",
+      }}>
+        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.18em", color: "rgba(255,107,107,0.85)" }}>REDBLOODS</div>
+        <div style={{ fontSize: size >= 110 ? 17 : 14, fontWeight: 900, color: "#fff", textAlign: "center", lineHeight: 1.15, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{title}</div>
+      </div>
+    </div>
+  );
+}
+
+function TimerBox({ value, label }: { value: string; label: string }) {
+  return (
+    <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: "10px 4px", textAlign: "center", minWidth: 0 }}>
+      <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", lineHeight: 1.05, direction: "ltr", fontVariantNumeric: "tabular-nums" }}>{value}</div>
+      <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 4, whiteSpace: "nowrap" }}>{label}</div>
+    </div>
+  );
+}
+
+function NextReleaseCard({ release }: { release: PortalRelease }) {
+  const isMobile = useIsMobile();
+  const cd = useCountdown(releaseTargetMs(release.releaseDate));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const openDetails = () => { if (typeof window !== "undefined") window.location.href = `/projects/${release.projectId}`; };
+
+  const units: { value: string; label: string }[] = cd
+    ? [
+        { value: pad(cd.days), label: "ימים" },
+        { value: pad(cd.hours), label: "שעות" },
+        { value: pad(cd.minutes), label: "דקות" },
+        { value: pad(cd.seconds), label: "שניות" },
+      ]
+    : [
+        { value: "—", label: "ימים" }, { value: "—", label: "שעות" },
+        { value: "—", label: "דקות" }, { value: "—", label: "שניות" },
+      ];
+
+  const detailsBtn = (
+    <button
+      onClick={openDetails}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0,
+        padding: isMobile ? "13px 20px" : "12px 20px", width: isMobile ? "100%" : "auto",
+        borderRadius: 13, cursor: "pointer", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, whiteSpace: "nowrap",
+        color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", transition: "all .15s",
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.7)"; }}
+      onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.10)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.45)"; }}
+      onMouseDown={e => (e.currentTarget.style.transform = "scale(0.97)")}
+      onMouseUp={e => (e.currentTarget.style.transform = "scale(1)")}
+    >לפרטי הריליס <IcChevron size={15} /></button>
+  );
+
+  return (
+    <div style={{
+      position: "relative", overflow: "hidden", borderRadius: 22,
+      border: "1px solid rgba(220,38,38,0.45)",
+      background: "radial-gradient(90% 150% at 12% 18%, rgba(220,38,38,0.30) 0%, rgba(220,38,38,0.05) 42%, transparent 68%), linear-gradient(160deg, #1a1314 0%, #0c0a0b 100%)",
+      boxShadow: "0 0 60px rgba(220,38,38,0.12), 0 22px 52px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)",
+      padding: isMobile ? "20px 18px" : "24px 26px",
+      display: "flex", gap: isMobile ? 18 : 26,
+      flexDirection: isMobile ? "column" : "row-reverse", alignItems: "center",
+    }}>
+      {/* left (RTL row-reverse): artwork + disc · mobile: top */}
+      <ReleaseArtwork title={release.title} size={isMobile ? 116 : 124} />
+
+      {/* centre: label · title · date · timer */}
+      <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? "center" : "start", width: isMobile ? "100%" : undefined }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>הריליס הבא</span>
+        </div>
+        <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{release.title}</div>
+        <div style={{ fontSize: 13, color: TEXT2, marginTop: 7, marginBottom: 14 }}>יוצא ב־{fmtSketchDate(release.releaseDate)}</div>
+
+        {cd?.done ? (
+          <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יצא</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
+            {units.map(u => <TimerBox key={u.label} value={u.value} label={u.label} />)}
+          </div>
+        )}
+      </div>
+
+      {/* right (RTL row-reverse): details button · mobile: full-width bottom */}
+      {detailsBtn}
+    </div>
+  );
+}
+
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ── הריליס הבא (real project_release_details; hidden when none upcoming) ── */}
+      {nextRelease && <NextReleaseCard release={nextRelease} />}
 
       {/* ── "מה מחכה לך עכשיו" ── */}
       <div>
