@@ -520,7 +520,7 @@ export default function ArtistPortalPage({ initialRole }: { initialRole?: Client
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} hideBalance={isShalev} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} hideBalance={isShalev} isShalev={isShalev} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
@@ -1883,15 +1883,18 @@ function releaseBtnStyle(isMobile: boolean): React.CSSProperties {
   };
 }
 
-function NextReleaseCard({ release, sketches, onReload }: {
-  release: PortalRelease | null; sketches: Sketch[]; onReload: () => Promise<void>;
+function NextReleaseCard({ release, sketches, onReload, canEdit = true }: {
+  release: PortalRelease | null; sketches: Sketch[]; onReload: () => Promise<void>; canEdit?: boolean;
 }) {
   const isMobile = useIsMobile();
   const [modalOpen, setModalOpen] = useState(false);
   const cd = useCountdown(release ? releaseTargetMs(release.releaseDate) : 0);
   const pad = (n: number) => String(n).padStart(2, "0");
 
-  const DetailsBtn = ({ label }: { label: string }) => (
+  // Editing the release is OWNER-ONLY (route POST is requireOwner). For the shalev
+  // role the button is not rendered AND the modal is never mounted, so there is no
+  // handler/DOM path to open or update it — the card stays read-only.
+  const DetailsBtn = ({ label }: { label: string }) => canEdit ? (
     <button
       onClick={() => setModalOpen(true)} style={releaseBtnStyle(isMobile)}
       onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.7)"; }}
@@ -1899,9 +1902,9 @@ function NextReleaseCard({ release, sketches, onReload }: {
       onMouseDown={e => (e.currentTarget.style.transform = "scale(0.97)")}
       onMouseUp={e => (e.currentTarget.style.transform = "scale(1)")}
     >{label} <IcChevron size={15} /></button>
-  );
+  ) : null;
 
-  const modal = modalOpen && (
+  const modal = canEdit && modalOpen && (
     <NextReleaseModal current={release} sketches={sketches} onClose={() => setModalOpen(false)} onSaved={onReload} />
   );
 
@@ -2028,14 +2031,14 @@ function NextReleaseModal({ current, sketches, onClose, onSaved }: {
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, hideBalance }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; hideBalance?: boolean }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, hideBalance, isShalev }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
       {/* ── הריליס הבא — manifest pointer; full card when set, "set it" prompt when not ── */}
-      <NextReleaseCard release={nextRelease} sketches={sketches} onReload={onReloadNextRelease} />
+      <NextReleaseCard release={nextRelease} sketches={sketches} onReload={onReloadNextRelease} canEdit={!isShalev} />
 
       {/* ── "מה מחכה לך עכשיו" ── */}
       <div>
