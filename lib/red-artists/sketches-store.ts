@@ -48,7 +48,13 @@ export interface Sketch {
   archived: boolean;
   archivedAt?: string | null;
 }
-interface Manifest { schemaVersion: number; sketches: Sketch[] }
+interface Manifest {
+  schemaVersion: number;
+  sketches: Sketch[];
+  /** Explicit display order for ACTIVE sketches (stable ids). Absent on legacy
+   * manifests → a deterministic order is derived (see `effectiveOrder`). */
+  order?: string[];
+}
 
 /** Typed error whose `code` the routes map to an HTTP status + a Hebrew message. */
 export class SketchError extends Error {
@@ -151,7 +157,31 @@ async function readManifest(): Promise<{ manifest: Manifest; rev: string | null 
   const sketches = Array.isArray(rawList)
     ? (rawList.map((r) => normalizeSketch(r as Sketch)).filter(Boolean) as Sketch[])
     : [];
-  return { manifest: { schemaVersion: 1, sketches }, rev: dl.rev };
+  const rawOrder = (parsed as { order?: unknown })?.order;
+  const order = Array.isArray(rawOrder)
+    ? rawOrder.filter((x): x is string => typeof x === "string")
+    : undefined;
+  return { manifest: { schemaVersion: 1, sketches, order }, rev: dl.rev };
+}
+
+/** Newest-updated first — the legacy/default ordering. */
+function byUpdatedDesc(a: Sketch, b: Sketch): number {
+  return a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0;
+}
+
+/**
+ * The effective display order of ACTIVE sketches as a list of ids:
+ * saved `order` first (filtered to still-active ids), then any active sketch
+ * missing from it appended by updatedAt-desc. A legacy manifest with no `order`
+ * therefore yields exactly the current default ordering — deterministic, lossless.
+ */
+function effectiveOrder(m: Manifest): string[] {
+  const active = m.sketches.filter((s) => !s.archived);
+  const activeIds = new Set(active.map((s) => s.id));
+  const fromOrder = (m.order ?? []).filter((id) => activeIds.has(id));
+  const seen = new Set(fromOrder);
+  const rest = active.filter((s) => !seen.has(s.id)).sort(byUpdatedDesc).map((s) => s.id);
+  return [...fromOrder, ...rest];
 }
 
 /** Read-modify-write with rev-conditional save; retries on a concurrent-write clash. */
@@ -204,12 +234,13 @@ export async function validateAudio(file: File | null): Promise<UploadedAudio> {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-/** Active (non-archived) sketches, newest-updated first. */
+/** Active (non-archived) sketches in the manifest's effective display order. */
 export async function listSketches(): Promise<Sketch[]> {
   const { manifest } = await readManifest();
+  const pos = new Map(effectiveOrder(manifest).map((id, i) => [id, i]));
   return manifest.sketches
     .filter((s) => !s.archived)
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+    .sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
 }
 
 async function uploadVersionFile(id: string, title: string, version: number, audio: UploadedAudio): Promise<SketchVersion> {
@@ -256,6 +287,8 @@ export async function createSketch(input: {
         latestVersion: 1, latestFilePath: version.filePath, latestFileName: version.fileName,
         versions: [version], archived: false, archivedAt: null,
       });
+      // New sketch goes to the TOP of the library, preserving the rest of the order.
+      m.order = [id, ...effectiveOrder(m).filter((x) => x !== id)];
       return m;
     });
   } catch (e) {
@@ -278,6 +311,9 @@ export async function addVersion(id: string, audio: UploadedAudio): Promise<Sket
 
   try {
     await mutateManifest((m) => {
+      // Freeze the current positions BEFORE bumping updatedAt so a new version
+      // never moves the item (and legacy manifests gain a stable order now).
+      const frozen = effectiveOrder(m);
       const s = m.sketches.find((x) => x.id === id);
       if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
       // Recompute against the CURRENT latest under lock (no duplicate version numbers).
@@ -289,6 +325,7 @@ export async function addVersion(id: string, audio: UploadedAudio): Promise<Sket
       s.latestFileName = v.fileName;
       s.durationSeconds = undefined; // new version's length is unknown until played
       s.updatedAt = new Date().toISOString();
+      m.order = frozen;
       return m;
     });
   } catch (e) {
@@ -301,6 +338,9 @@ export async function addVersion(id: string, audio: UploadedAudio): Promise<Sket
 
 export async function patchDetails(id: string, patch: { title?: string; description?: string; notes?: string }): Promise<Sketch> {
   return (await mutateManifest((m) => {
+    // Editing details never moves the item; freeze positions (also seeds a
+    // stable order on a legacy manifest) before touching updatedAt.
+    const frozen = effectiveOrder(m);
     const s = m.sketches.find((x) => x.id === id && !x.archived);
     if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
     if (patch.title !== undefined) {
@@ -314,6 +354,7 @@ export async function patchDetails(id: string, patch: { title?: string; descript
     if (patch.description !== undefined) s.description = patch.description.trim();
     if (patch.notes !== undefined) s.notes = patch.notes.trim();
     s.updatedAt = new Date().toISOString();
+    m.order = frozen;
     return m;
   })).sketches.find((s) => s.id === id)!;
 }
@@ -325,8 +366,38 @@ export async function softDeleteSketch(id: string): Promise<void> {
     s.archived = true;
     s.archivedAt = new Date().toISOString();
     s.updatedAt = s.archivedAt;
+    // Drop it from the order without disturbing the remaining items' sequence.
+    m.order = effectiveOrder(m);
     return m; // files stay in Dropbox; the record stays in the manifest as archived.
   });
+}
+
+/**
+ * Reorder the ACTIVE library. The client sends only ids (never a path/manifest).
+ * Server-side we reject unknown/archived/duplicate ids, and any active item the
+ * client omitted (stale client) is preserved at the end so nothing is ever lost.
+ */
+export async function reorderSketches(orderedIds: string[]): Promise<Sketch[]> {
+  if (!Array.isArray(orderedIds)) throw new SketchError("BAD_INPUT", "רשימת הסדר אינה תקינה");
+  await mutateManifest((m) => {
+    const activeIds = new Set(m.sketches.filter((s) => !s.archived).map((s) => s.id));
+    const seen = new Set<string>();
+    for (const id of orderedIds) {
+      if (typeof id !== "string" || !activeIds.has(id)) {
+        throw new SketchError("BAD_INPUT", "רשימת הסדר מכילה פריט שאינו קיים בספרייה");
+      }
+      if (seen.has(id)) throw new SketchError("BAD_INPUT", "רשימת הסדר מכילה כפילויות");
+      seen.add(id);
+    }
+    // Preserve any active item the client didn't include (append, deterministic).
+    const rest = m.sketches
+      .filter((s) => !s.archived && !seen.has(s.id))
+      .sort(byUpdatedDesc)
+      .map((s) => s.id);
+    m.order = [...orderedIds, ...rest];
+    return m;
+  });
+  return listSketches();
 }
 
 export async function setSketchDuration(id: string, versionNumber: number, seconds: number): Promise<void> {

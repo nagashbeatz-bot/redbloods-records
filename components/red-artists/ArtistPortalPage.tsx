@@ -62,6 +62,8 @@ const IcEdit     = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} 
 const IcTrash    = ({ size = 18, color = "#F87171" }: IcoProps) => <Svg size={size} color={color} fill="none"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></Svg>;
 const IcClock    = ({ size = 14, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></Svg>;
 const IcMusicNote = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></Svg>;
+// Drag handle — six dots (grip). Filled dots read clearly at small sizes.
+const IcGrip = ({ size = 16, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill={color}><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></Svg>;
 
 // Single unified play button used in EVERY list across the portal (desktop +
 // mobile): dark circle, subtle red border + glow, clean white SVG play icon.
@@ -141,6 +143,27 @@ const KPI_SHORT: Record<string, string> = { "סה״כ שירים": "שירים",
 
 const TABS = ["בית", "המוזיקה שלי", "ההופעות שלי", "מאזן", "ביטים פנויים", "לו״ז ועדכונים", "קבצי הופעות ויח״צ"] as const;
 type Tab = (typeof TABS)[number];
+
+const DEFAULT_TAB: Tab = "בית";
+// Stable ASCII slugs for the `?tab=` URL param (the tab labels themselves are Hebrew).
+const TAB_SLUGS: Record<Tab, string> = {
+  "בית": "home",
+  "המוזיקה שלי": "music",
+  "ההופעות שלי": "shows",
+  "מאזן": "balance",
+  "ביטים פנויים": "beats",
+  "לו״ז ועדכונים": "schedule",
+  "קבצי הופעות ויח״צ": "files",
+};
+const SLUG_TO_TAB: Record<string, Tab> = Object.fromEntries(
+  (Object.entries(TAB_SLUGS) as [Tab, string][]).map(([t, slug]) => [slug, t]),
+) as Record<string, Tab>;
+/** Read the active tab from the current URL's `?tab=` (client-only). */
+function tabFromUrl(): Tab | null {
+  if (typeof window === "undefined") return null;
+  const slug = new URLSearchParams(window.location.search).get("tab");
+  return slug && SLUG_TO_TAB[slug] ? SLUG_TO_TAB[slug] : null;
+}
 
 // ── Small shared building blocks ─────────────────────────────────────────────────
 function SectionCard({ title, link, children }: { title: string; link?: string; children: React.ReactNode }) {
@@ -287,7 +310,24 @@ function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────────
 export default function ArtistPortalPage() {
-  const [tab, setTab] = useState<Tab>("בית");
+  // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
+  // same tab and Back/Forward work. Initial state is the default (server + first
+  // client render match → no hydration mismatch); the real URL is read on mount.
+  const [tab, setTabState] = useState<Tab>(DEFAULT_TAB);
+  useEffect(() => {
+    const sync = () => setTabState(tabFromUrl() ?? DEFAULT_TAB);
+    sync(); // adopt the tab from the URL on load
+    window.addEventListener("popstate", sync); // Back/Forward
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  const setTab = useCallback((t: Tab) => {
+    setTabState(t);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (t === DEFAULT_TAB) url.searchParams.delete("tab");
+    else url.searchParams.set("tab", TAB_SLUGS[t]); // only touch `tab` — other params kept
+    window.history.pushState(null, "", url.pathname + url.search + url.hash);
+  }, []);
   const isMobile = useIsMobile();
 
   // Single source of truth for the music library — the standalone sketches manifest
@@ -303,6 +343,22 @@ export default function ArtistPortalPage() {
     } catch { setLibState("error"); }
   }, []);
   useEffect(() => { void reloadSketches(); }, [reloadSketches]);
+
+  // Persist a new library order. The client sends ids only; the server is the
+  // source of truth. Returns true on success — on failure state is left unchanged
+  // so the library visually reverts to its previous order.
+  const reorderSketchesRemote = useCallback(async (orderedIds: string[]): Promise<boolean> => {
+    try {
+      const r = await fetch("/api/red-artists/sketches/reorder", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+      });
+      if (!r.ok) return false;
+      const d = await r.json();
+      if (d?.ok && Array.isArray(d.sketches)) setSketches(d.sketches);
+      return true;
+    } catch { return false; }
+  }, []);
 
   // Real shows + balance for Shalev — server-scoped endpoint (owner-only, READ-
   // ONLY, filtered server-side to "שליו טסמה"; no other artist / no label money).
@@ -426,7 +482,7 @@ export default function ArtistPortalPage() {
 
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} />
-            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} />
+            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
             : tab === "מאזן" ? <BalancePage summary={summary} loadState={summaryState} />
@@ -1304,8 +1360,9 @@ function playSketchLatest(player: ReturnType<typeof usePlayerSafe>, s: Sketch, o
   void playLibRow(player, sketchAsLibRow(s), onError);
 }
 
-function MyMusicPage({ sketches, loadState, onReload }: {
-  sketches: Sketch[]; loadState: "loading" | "ready" | "error"; onReload: () => Promise<void>;
+function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
+  sketches: Sketch[]; loadState: "loading" | "ready" | "error";
+  onReload: () => Promise<void>; onReorder: (orderedIds: string[]) => Promise<boolean>;
 }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
@@ -1327,10 +1384,79 @@ function MyMusicPage({ sketches, loadState, onReload }: {
     if (!fresh) setEditing(null);
   }, [sketches, editing]);
 
+  // ── Drag-to-reorder ──
+  // `rows` is the local view of the library so a drag can reorder rows live and
+  // smoothly. It resyncs from the server-backed `sketches` prop whenever we are
+  // not mid-drag / mid-save (so a failed save visually reverts).
+  const [rows, setRows] = useState<Sketch[]>(sketches);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  useEffect(() => {
+    if (!draggingId && !savingOrder) setRows(sketches);
+  }, [sketches, draggingId, savingOrder]);
+  const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const setRowRef = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) rowRefs.current.set(id, el); else rowRefs.current.delete(id);
+  }, []);
+
   const [visibleCount, setVisibleCount] = useState(6);
-  const displayRows = sketches.slice(0, visibleCount);
-  const hasMore = visibleCount < sketches.length;
-  const showMore = () => setVisibleCount(c => (c < 10 ? 10 : sketches.length));
+  const displayRows = rows.slice(0, visibleCount);
+  const hasMore = visibleCount < rows.length;
+  const showMore = () => setVisibleCount(c => (c < 10 ? 10 : rows.length));
+
+  // Move the dragged id to the insertion index computed from the pointer's Y
+  // against the visible rows. Produces a new array only when the order changes.
+  const moveDragging = useCallback((clientY: number, dragId: string) => {
+    setRows(prev => {
+      const visible = prev.slice(0, visibleCount);
+      let insertAt = visible.findIndex(s => {
+        const el = rowRefs.current.get(s.id);
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return clientY < r.top + r.height / 2;
+      });
+      if (insertAt === -1) insertAt = visible.length; // past the last visible row
+      const from = prev.findIndex(s => s.id === dragId);
+      if (from === -1) return prev;
+      let to = insertAt;
+      if (from < to) to -= 1;
+      to = Math.max(0, Math.min(to, prev.length - 1));
+      if (to === from) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  }, [visibleCount]);
+
+  const onHandleDown = (e: React.PointerEvent, id: string) => {
+    if (savingOrder) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setDraggingId(id);
+  };
+  const onHandleMove = (e: React.PointerEvent) => {
+    if (!draggingId) return;
+    e.preventDefault();
+    moveDragging(e.clientY, draggingId);
+  };
+  const commitOrder = useCallback(async () => {
+    const dragged = draggingId;
+    setDraggingId(null);
+    if (!dragged) return;
+    const nextIds = rows.map(s => s.id);
+    const origIds = sketches.map(s => s.id);
+    if (nextIds.join("|") === origIds.join("|")) return; // no change → no request
+    setSavingOrder(true);
+    const ok = await onReorder(nextIds);
+    setSavingOrder(false);
+    setToast(ok ? "הסדר נשמר" : "לא ניתן לשמור את הסדר, הסדר שוחזר");
+  }, [draggingId, rows, sketches, onReorder]);
+  const onHandleUp = (e: React.PointerEvent) => {
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    void commitOrder();
+  };
 
   const ready = loadState === "ready";
   const thisMonth = new Date().toISOString().slice(0, 7);
@@ -1344,9 +1470,10 @@ function MyMusicPage({ sketches, loadState, onReload }: {
     { label: "עודכנו החודש", short: "עודכנו", value: ready ? updatedThisMonth : "—", icon: <IcClock size={20} color="#FF6B6B" /> },
   ];
 
-  // Play (fixed) · שם הסקיצה (wide) · גרסה · עודכן · משך.
-  const cols = "52px minmax(0, 1.9fr) 84px 120px 72px";
+  // Handle (drag) · Play (fixed) · שם הסקיצה (wide) · גרסה · עודכן · משך.
+  const cols = "26px 52px minmax(0, 1.9fr) 84px 120px 72px";
   const heads: { label: string; align: "start" | "center" }[] = [
+    { label: "", align: "center" },
     { label: "", align: "center" },
     { label: "שם הסקיצה", align: "start" },
     { label: "גרסה", align: "center" },
@@ -1355,6 +1482,30 @@ function MyMusicPage({ sketches, loadState, onReload }: {
   ];
 
   const openEdit = (s: Sketch) => setEditing(s);
+
+  // Drag handle — the ONLY drag affordance (so page scroll and row-tap stay
+  // intact on touch). Never opens the edit modal; `touchAction:none` lets it own
+  // the gesture without the browser scrolling the page mid-drag.
+  const dragHandle = (s: Sketch) => (
+    <div role="button" tabIndex={-1} aria-label="גרור לשינוי סדר השירים"
+      onClick={e => e.stopPropagation()}
+      onPointerDown={e => onHandleDown(e, s.id)}
+      onPointerMove={onHandleMove}
+      onPointerUp={onHandleUp}
+      onPointerCancel={onHandleUp}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "stretch",
+        touchAction: "none", padding: isMobile ? "8px 4px" : "4px 2px",
+        cursor: savingOrder ? "default" : (draggingId === s.id ? "grabbing" : "grab"),
+        opacity: savingOrder && draggingId !== s.id ? 0.4 : 1,
+      }}>
+      <IcGrip size={isMobile ? 18 : 16} color={draggingId === s.id ? "#FF6B6B" : MUTED} />
+    </div>
+  );
+  // Visual state for the row currently being dragged.
+  const dragRowStyle = (s: Sketch): React.CSSProperties => draggingId === s.id
+    ? { background: "rgba(220,38,38,0.10)", borderColor: "rgba(220,38,38,0.45)", boxShadow: "0 6px 18px rgba(0,0,0,0.35)" }
+    : {};
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -1388,14 +1539,15 @@ function MyMusicPage({ sketches, loadState, onReload }: {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-            <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ספריית הסקיצות שלי</span>
+            <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>הספרייה שלי</span>
+            {savingOrder && <span style={{ fontSize: 11.5, color: MUTED, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>שומר…</span>}
           </div>
           <button onClick={() => setCreateOpen(true)} style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0,
             padding: isMobile ? "8px 12px" : "8px 15px", borderRadius: 9, border: "none", color: "#fff",
             background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12 : 12.5, fontWeight: 700,
             cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: `0 2px 9px rgba(220,38,38,0.26)`,
-          }}><IcUpload size={14} /> העלאת סקיצה</button>
+          }}><IcUpload size={14} /> העלאת קובץ</button>
         </div>
 
         {!isMobile && loadState === "ready" && sketches.length > 0 && (
@@ -1432,13 +1584,14 @@ function MyMusicPage({ sketches, loadState, onReload }: {
                 display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 22px", borderRadius: 12, border: "none",
                 color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: 14, fontWeight: 800,
                 cursor: "pointer", fontFamily: "inherit", boxShadow: `0 5px 18px rgba(220,38,38,0.32)`,
-              }}><IcUpload size={16} /> העלה סקיצה ראשונה</button>
+              }}><IcUpload size={16} /> העלאת קובץ ראשון</button>
             </div>
           ) : isMobile ? (
             displayRows.map(s => (
-              <div key={s.id} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
+              <div key={s.id} ref={el => setRowRef(s.id, el)} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
                 onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}`, cursor: "pointer", outline: "none" }}>
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: `1px solid ${BDR}`, border: "1px solid transparent", borderBottomColor: BDR, cursor: "pointer", outline: "none", transition: "background .14s", ...dragRowStyle(s) }}>
+                {dragHandle(s)}
                 <div onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
                   <SketchRowPlay size={42} player={player} sketch={s} onError={setToast} />
                 </div>
@@ -1455,10 +1608,11 @@ function MyMusicPage({ sketches, loadState, onReload }: {
             ))
           ) : (
             displayRows.map(s => (
-              <div key={s.id} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
+              <div key={s.id} ref={el => setRowRef(s.id, el)} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
                 onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
-                onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", cursor: "pointer", outline: "none", transition: "all .14s" }}>
+                onMouseEnter={e => draggingId ? undefined : rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", cursor: "pointer", outline: "none", transition: "all .14s", ...dragRowStyle(s) }}>
+                {dragHandle(s)}
                 <div onClick={e => e.stopPropagation()} style={{ display: "flex", justifyContent: "center" }}>
                   <SketchRowPlay size={42} player={player} sketch={s} onError={setToast} />
                 </div>
@@ -2318,7 +2472,7 @@ function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCrea
   };
 
   return (
-    <SketchModalShell title="סקיצה חדשה" onClose={onClose} busy={busy}>
+    <SketchModalShell title="העלאת קובץ חדש" onClose={onClose} busy={busy}>
       <SkErr msg={err} />
       <div style={{ marginBottom: 16 }}>
         <label style={skLabel}>שם הפרויקט</label>
@@ -2336,7 +2490,7 @@ function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCrea
         <label style={skLabel}>קובץ אודיו</label>
         <SketchDropzone file={file} error={fileErr} onFile={pickFile} disabled={busy} />
       </div>
-      <button onClick={submit} disabled={!canSubmit} style={skPrimaryBtn(canSubmit)}>{busy ? "מעלה סקיצה…" : "העלה סקיצה"}</button>
+      <button onClick={submit} disabled={!canSubmit} style={skPrimaryBtn(canSubmit)}>{busy ? "מעלה קובץ…" : "העלה קובץ"}</button>
     </SketchModalShell>
   );
 }
