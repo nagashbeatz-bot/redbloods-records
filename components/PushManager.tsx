@@ -1,34 +1,24 @@
 "use client";
 
 /**
- * PushManager — mounts once in AppShell.
- * 1. Registers the service worker
- * 2. Requests notification permission (once, on first visit)
- * 3. Subscribes to Web Push and saves the subscription to the server
+ * PushManager — mounts once in AppShell. Registers the SW + Web Push subscription.
+ * Push is SENT server-side only (cron / agent / availability); this component
+ * NEVER sends a push, never calls /api/push/check, and never fires a test push.
  *
- * Owner + shalev only. Push is SENT server-side (cron / agent / availability) —
- * this component NEVER sends a push, never calls /api/push/check, and never fires
- * a test push on load. It only registers + subscribes.
- *
- * For the shalev artist, a registration failure is surfaced in the UI (owner stays
- * console-only) with a clear reason: unsupported/PWA-not-installed, permission not
- * granted, or the server failed to save the subscription.
+ * Owner: unchanged auto flow (desktop — no gesture requirement).
+ * Shalev: GESTURE-DRIVEN. iOS only honors Notification.requestPermission() from a
+ *   real user tap, so on mount we NEVER auto-request — we only decide what to show
+ *   (an "הפעל התראות" button, or a device-specific instruction). The actual
+ *   permission request + subscribe + save happen on the button tap.
  * Localhost is silenced unless NEXT_PUBLIC_ALLOW_LOCAL_PUSH=true.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const ALLOW_LOCAL_PUSH = process.env.NEXT_PUBLIC_ALLOW_LOCAL_PUSH === "true";
-
-// Distinct failure reasons → a clear Hebrew message (shalev sees these in-UI).
-const PUSH_ERR = {
-  unsupported: "לא הצלחנו להפעיל התראות במכשיר הזה — פתח/י את האפליקציה מהמסך הבית (PWA) כדי לקבל התראות.",
-  permission:  "לא הצלחנו להפעיל התראות במכשיר הזה — יש לאשר התראות עבור האתר.",
-  server:      "לא הצלחנו להפעיל התראות במכשיר הזה — שמירת ההרשמה נכשלה, נסה/י שוב מאוחר יותר.",
-} as const;
 
 function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -39,84 +29,133 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   return arr.buffer as ArrayBuffer;
 }
 
+function localBlocked(): boolean {
+  if (typeof window === "undefined") return false;
+  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  return isLocal && !ALLOW_LOCAL_PUSH;
+}
+
+type Status = "idle" | "prompt" | "working" | "enabled" | "active" | "denied" | "unsupported" | "server";
+
 export default function PushManager() {
   const role = useRole();
-  const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>("idle");
+  const busyRef = useRef(false);
 
-  useEffect(() => {
-    // Owner + the shalev artist only. Victor / Steven / unknown never register a
-    // service worker, see a permission prompt, or create a subscription.
-    if (role !== "owner" && role !== "shalev") return;
-    if (typeof window === "undefined") return;
-
-    // A failure is logged for everyone but only shown in the UI to the artist
-    // (owner keeps the prior console-only behavior → no owner regression).
-    const fail = (reason: keyof typeof PUSH_ERR) => {
-      console.warn(`[push] setup failed for role=${role}: ${reason}`);
-      if (role === "shalev") setErr(PUSH_ERR[reason]);
-    };
-
-    // Web Push unsupported here (e.g. an iOS Safari tab — needs an installed PWA).
-    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-      fail("unsupported");
-      return;
+  // Register the SW + ensure a SINGLE subscription (getSubscription reuses the
+  // existing one → no duplicate) + persist it. No gesture needed here — only
+  // requestPermission is gesture-gated, and the caller handles that first.
+  const ensureSubscribed = useCallback(async () => {
+    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
     }
+    const check = await reg.pushManager.getSubscription(); // verify it exists
+    if (!check) throw Object.assign(new Error("no-subscription"), { reason: "subscribe" });
+    const res = await fetch("/api/red-artists/push-subscribe", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(check.toJSON()),
+    });
+    if (!res.ok) throw Object.assign(new Error("save-failed"), { reason: "server" }); // mark active only on 200
+  }, []);
 
-    // Silence registration on localhost/dev unless explicitly allowed (no UI error).
-    const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (isLocal && !ALLOW_LOCAL_PUSH) return;
-
+  // ── OWNER — unchanged auto flow (desktop; no gesture constraint) ──
+  useEffect(() => {
+    if (role !== "owner") return;
+    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (localBlocked()) return;
     (async () => {
       try {
-        // 1. Register SW
         const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-
-        // 2. Ask permission (only shown once by the browser)
         const permission = await Notification.requestPermission();
-        if (permission !== "granted") { fail("permission"); return; }
-
-        // 3. Subscribe to push
+        if (permission !== "granted") return;
         const existing = await reg.pushManager.getSubscription();
         let sub = existing;
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-        }
-
-        // 4. Save subscription to server — role-scoped endpoint so the device is
-        //    tagged with the right audience ("owner" vs "shalev"). A non-ok
-        //    response means the server did NOT persist it (surfaced to the artist).
-        const subscribeUrl = role === "shalev" ? "/api/red-artists/push-subscribe" : "/api/push/subscribe";
-        const res = await fetch(subscribeUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sub.toJSON()),
-        });
-        if (!res.ok) { fail("server"); return; }
-
-        setErr(null); // registered + persisted OK
-        // Push is sent only via cron / agent / availability — NEVER on page load.
-      } catch (e) {
-        console.warn("Push setup failed:", e);
-        fail("server");
-      }
+        if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+        await fetch("/api/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub.toJSON()) });
+      } catch (e) { console.warn("Push setup failed:", e); }
     })();
   }, [role]);
 
-  if (!err || typeof document === "undefined") return null;
+  // ── SHALEV — mount only DECIDES what to show; it never auto-requests permission ──
+  useEffect(() => {
+    if (role !== "shalev") return;
+    if (typeof window === "undefined") return;
+    if (localBlocked()) { setStatus("idle"); return; }
+    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    if (!supported) { setStatus("unsupported"); return; } // iOS Safari tab (not installed) / no Push
+    if (Notification.permission === "denied") { setStatus("denied"); return; }
+    if (Notification.permission === "default") { setStatus("prompt"); return; } // needs a user tap
+    // Already granted → finish silently (subscribe/save need no gesture) so a
+    // device that granted earlier but lost its DB row is recovered.
+    let alive = true;
+    (async () => {
+      try { await ensureSubscribed(); if (alive) setStatus("active"); }
+      catch { if (alive) setStatus("prompt"); } // couldn't persist → offer the button to retry
+    })();
+    return () => { alive = false; };
+  }, [role, ensureSubscribed]);
+
+  // Gesture handler — requestPermission MUST be the first call (user activation).
+  const onEnable = useCallback(async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const permission = await Notification.requestPermission(); // gesture-gated
+      if (permission === "denied") { setStatus("denied"); return; }
+      if (permission !== "granted") { setStatus("prompt"); return; } // dismissed → still default
+      setStatus("working");
+      try { await ensureSubscribed(); setStatus("enabled"); }
+      catch (e) { setStatus((e as { reason?: string })?.reason === "server" ? "server" : "prompt"); }
+    } finally { busyRef.current = false; }
+  }, [ensureSubscribed]);
+
+  // Auto-fade the success message.
+  useEffect(() => {
+    if (status !== "enabled") return;
+    const t = setTimeout(() => setStatus("active"), 4000);
+    return () => clearTimeout(t);
+  }, [status]);
+
+  // ── UI (shalev only) ──
+  if (role !== "shalev" || typeof document === "undefined") return null;
+  if (status === "idle" || status === "active") return null;
+
+  let msg = "";
+  let action: string | null = null;
+  let tone: "info" | "ok" | "err" = "info";
+  if (status === "prompt")           { msg = "הפעל התראות כדי לקבל עדכונים מהלייבל."; action = "הפעל התראות"; }
+  else if (status === "working")      { msg = "מפעיל התראות…"; }
+  else if (status === "enabled")      { msg = "ההתראות הופעלו בהצלחה"; tone = "ok"; }
+  else if (status === "denied")       { msg = "ההתראות חסומות בהגדרות האייפון. יש להפעיל אותן בהגדרות ולפתוח מחדש את האפליקציה."; tone = "err"; }
+  else if (status === "unsupported")  { msg = "כדי לקבל התראות באייפון, יש להוסיף את האפליקציה למסך הבית ולפתוח אותה מהאייקון."; tone = "err"; }
+  else if (status === "server")       { msg = "לא הצלחנו לשמור את ההרשמה, נסה/י שוב."; action = "נסה שוב"; tone = "err"; }
+
+  const border = tone === "err" ? "rgba(248,113,113,0.4)" : tone === "ok" ? "rgba(52,211,153,0.4)" : "rgba(220,38,38,0.4)";
+  const color  = tone === "err" ? "#FCA5A5" : tone === "ok" ? "#6EE7B7" : "#EDEDF0";
+
   return createPortal(
     <div style={{
       position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100050,
-      maxWidth: "92vw", display: "flex", alignItems: "center", gap: 12,
-      background: "#1A1214", border: "1px solid rgba(248,113,113,0.4)", color: "#FCA5A5",
-      fontSize: 13, fontWeight: 700, lineHeight: 1.5, padding: "12px 16px", borderRadius: 12,
+      width: "min(420px, 92vw)", display: "flex", alignItems: "center", gap: 12,
+      background: "#16121A", border: `1px solid ${border}`, color,
+      fontSize: 13, fontWeight: 700, lineHeight: 1.5, padding: "13px 16px", borderRadius: 14,
       boxShadow: "0 8px 30px rgba(0,0,0,0.6)", fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
     }}>
-      <span>{err}</span>
-      <button onClick={() => setErr(null)} aria-label="סגור" style={{
-        background: "none", border: "none", color: "#FCA5A5", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 2, flexShrink: 0,
+      <span style={{ flex: 1 }}>{msg}</span>
+      {action && (
+        <button onClick={onEnable} disabled={status === "working"} style={{
+          flexShrink: 0, padding: "9px 16px", borderRadius: 10, border: "none", color: "#fff",
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: 13, fontWeight: 800,
+          fontFamily: "inherit", cursor: status === "working" ? "wait" : "pointer", opacity: status === "working" ? 0.7 : 1,
+        }}>{action}</button>
+      )}
+      <button onClick={() => setStatus("idle")} aria-label="סגור" style={{
+        flexShrink: 0, background: "none", border: "none", color, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: 2,
       }}>✕</button>
     </div>,
     document.body,
