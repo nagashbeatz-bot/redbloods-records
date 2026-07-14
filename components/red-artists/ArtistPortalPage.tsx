@@ -1590,7 +1590,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
             displayRows.map(s => (
               <div key={s.id} ref={el => setRowRef(s.id, el)} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
                 onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: `1px solid ${BDR}`, border: "1px solid transparent", borderBottomColor: BDR, cursor: "pointer", outline: "none", transition: "background .14s", ...dragRowStyle(s) }}>
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", border: "1px solid transparent", borderBottomColor: BDR, cursor: "pointer", outline: "none", transition: "background .14s", ...dragRowStyle(s) }}>
                 {dragHandle(s)}
                 <div onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
                   <SketchRowPlay size={42} player={player} sketch={s} onError={setToast} />
