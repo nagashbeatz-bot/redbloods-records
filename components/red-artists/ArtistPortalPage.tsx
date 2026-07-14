@@ -58,6 +58,10 @@ const IcMonitor  = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} 
 const IcUpload   = ({ size = 18, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>;
 const IcX        = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Svg>;
 const IcCloud    = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M12 13v8" /><path d="m8 17 4-4 4 4" /><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" /></Svg>;
+const IcEdit     = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></Svg>;
+const IcTrash    = ({ size = 18, color = "#F87171" }: IcoProps) => <Svg size={size} color={color} fill="none"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></Svg>;
+const IcClock    = ({ size = 14, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></Svg>;
+const IcMusicNote = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></Svg>;
 
 // Single unified play button used in EVERY list across the portal (desktop +
 // mobile): dark circle, subtle red border + glow, clean white SVG play icon.
@@ -211,6 +215,31 @@ export type ShalevSummary = {
   updates: PortalUpdate[];
 };
 type LoadState = "loading" | "ready" | "error";
+
+// ── Standalone sketches library (manifest-backed, NO Projects) ────────────────────
+// Source of truth: GET /api/red-artists/sketches. Client never manages versions/paths.
+export type SketchVersion = {
+  versionNumber: number; fileName: string; filePath: string; extension: string;
+  uploadedAt: string; sizeBytes?: number; durationSeconds?: number;
+};
+export type Sketch = {
+  id: string; title: string; description: string; notes: string;
+  createdAt: string; updatedAt: string;
+  latestVersion: number; latestFilePath: string; latestFileName: string;
+  durationSeconds?: number; versions: SketchVersion[]; archived: boolean; archivedAt?: string | null;
+};
+// Stream URL for a sketch's latest file — the version is a cache-buster so a new V{n}
+// never plays the previous URL from cache.
+function sketchStreamUrl(s: Sketch): string {
+  return `/api/dropbox/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
+}
+// "YYYY-MM-DD..." or ISO → "DD.MM.YYYY".
+function fmtSketchDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = iso.slice(0, 10).split("-");
+  return d.length === 3 ? `${d[2]}.${d[1]}.${d[0]}` : iso;
+}
+
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
   const target = normName(SHALEV_ARTIST);
   return (Array.isArray(projects) ? projects : [])
@@ -261,22 +290,19 @@ export default function ArtistPortalPage() {
   const [tab, setTab] = useState<Tab>("בית");
   const isMobile = useIsMobile();
 
-  // Single source of truth for Shalev's library — used by BOTH the home card and
-  // the "המוזיקה שלי" tab. Fetches the owner-only projects once; no demo data.
-  const [libRows, setLibRows] = useState<LibRow[]>([]);
+  // Single source of truth for the music library — the standalone sketches manifest
+  // (NOT /api/projects). Used by both the home card and the "המוזיקה שלי" tab.
+  const [sketches, setSketches] = useState<Sketch[]>([]);
   const [libState, setLibState] = useState<"loading" | "ready" | "error">("loading");
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/projects")
-      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((projects: Project[]) => {
-        if (!alive) return;
-        setLibRows(getShalevMusicProjects(projects));
-        setLibState("ready");
-      })
-      .catch(() => { if (alive) setLibState("error"); });
-    return () => { alive = false; };
+  const reloadSketches = useCallback(async () => {
+    try {
+      const r = await fetch("/api/red-artists/sketches", { cache: "no-store" });
+      const d = await r.json();
+      if (r.ok && d?.ok && Array.isArray(d.sketches)) { setSketches(d.sketches); setLibState("ready"); }
+      else setLibState("error");
+    } catch { setLibState("error"); }
   }, []);
+  useEffect(() => { void reloadSketches(); }, [reloadSketches]);
 
   // Real shows + balance for Shalev — server-scoped endpoint (owner-only, READ-
   // ONLY, filtered server-side to "שליו טסמה"; no other artist / no label money).
@@ -295,32 +321,31 @@ export default function ArtistPortalPage() {
     return () => { alive = false; };
   }, []);
 
-  // Learn-and-save duration: ONLY for Shalev's rows, ONLY after the global player
-  // has real duration for the currently-playing track, ONLY if that file has none
-  // yet, and AT MOST once per file (durationLearned). Narrow POST → updates local
-  // state on success. Does not touch the player, Dropbox, or other projects.
+  // Learn-and-save duration into the SKETCH MANIFEST (never Projects): once the
+  // global player has a real duration for the playing sketch's latest version and
+  // it has none stored yet, persist it — at most once per file per session.
   const player = usePlayerSafe();
   const playingId = player?.track?.projectId;
   const playerDuration = player?.duration ?? 0;
   useEffect(() => {
     if (!playingId || playerDuration <= 0) return;
-    const row = libRows.find(r => r.id === playingId);
-    if (!row || row.durationSeconds != null || !row.audio?.dropboxPath) return;
+    const s = sketches.find(x => x.id === playingId);
+    if (!s || s.durationSeconds != null || !s.latestFilePath) return;
     const seconds = Math.round(playerDuration);
     if (!(seconds > 0 && seconds < 86400)) return;
-    const key = row.audio.dropboxPath;
+    const key = `${s.id}:${s.latestVersion}`;
     if (durationLearned.has(key)) return;
     durationLearned.add(key); // guard immediately against duplicate fires
-    fetch("/api/red-artists/track-duration", {
+    fetch(`/api/red-artists/sketches/${s.id}/duration`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: row.id, dropboxPath: key, durationSeconds: seconds }),
+      body: JSON.stringify({ versionNumber: s.latestVersion, durationSeconds: seconds }),
     })
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(() => {
-        setLibRows(rows => rows.map(r => (r.id === row.id ? { ...r, durationSeconds: seconds } : r)));
+        setSketches(rows => rows.map(x => (x.id === s.id ? { ...x, durationSeconds: seconds } : x)));
       })
       .catch(() => { durationLearned.delete(key); }); // allow a later retry
-  }, [playingId, playerDuration, libRows]);
+  }, [playingId, playerDuration, sketches]);
 
   return (
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
@@ -400,8 +425,8 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} musicRows={libRows} loadState={libState} summary={summary} summaryState={summaryState} />
-            : tab === "המוזיקה שלי" ? <MyMusicPage rows={libRows} loadState={libState} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} />
+            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
             : tab === "מאזן" ? <BalancePage summary={summary} loadState={summaryState} />
@@ -1257,17 +1282,36 @@ function AvailDayModal({ day, onCancel, onSave }: {
 }
 
 // ── "המוזיקה שלי" page ────────────────────────────────────────────────────────────
-function MusicStatus({ status }: { status: string }) {
-  const c = MUSIC_STATUS_COLOR[status] ?? "#9CA3AF";
-  return <span style={{ fontSize: 11, fontWeight: 800, color: c, background: `${c}24`, border: `1px solid ${c}5A`, borderRadius: 8, padding: "4px 11px", whiteSpace: "nowrap" }}>{status}</span>;
+// Adapt a Sketch → the LibRow shape the shared player helpers already understand.
+// Audio URL carries the version so a new V{n} never plays the previous cached URL.
+function sketchAsLibRow(s: Sketch): LibRow {
+  return {
+    id: s.id, name: s.title, artist: SHALEV_ARTIST, status: "", projectType: "sketch",
+    hasAudio: !!s.latestFilePath,
+    audio: s.latestFilePath ? { name: s.latestFileName, url: sketchStreamUrl(s) } : null,
+    durationSeconds: s.durationSeconds,
+  };
+}
+function SketchRowPlay({ size, player, sketch, onError }: {
+  size: number; player: ReturnType<typeof usePlayerSafe>; sketch: Sketch; onError?: (m: string) => void;
+}) {
+  const { isPlaying, onClick } = libRowPlay(player, sketchAsLibRow(sketch), onError);
+  return <PlayButton size={size} disabled={!sketch.latestFilePath} playing={isPlaying} onClick={onClick} />;
+}
+// Force the global player onto a sketch's latest version (used after a new upload).
+function playSketchLatest(player: ReturnType<typeof usePlayerSafe>, s: Sketch, onError?: (m: string) => void) {
+  if (!s.latestFilePath) return;
+  void playLibRow(player, sketchAsLibRow(s), onError);
 }
 
-function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading" | "ready" | "error" }) {
+function MyMusicPage({ sketches, loadState, onReload }: {
+  sketches: Sketch[]; loadState: "loading" | "ready" | "error"; onReload: () => Promise<void>;
+}) {
   const isMobile = useIsMobile();
+  const player = usePlayerSafe();
 
-  // Upload modal: {mode:"new"} = blank target (header button); {mode:"update"}
-  // = row action, target pre-selected & locked. UI-only (no backend wired yet).
-  const [modal, setModal] = useState<{ mode: "new" | "update"; target: string | null } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Sketch | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
     if (!toast) return;
@@ -1275,52 +1319,53 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
     return () => clearTimeout(t);
   }, [toast]);
 
-  // rows + loadState come from the page-level single source (getShalevMusicProjects).
-  // Show 6 first; "הצג עוד" reveals more (6 → 10 → all).
+  // Keep the edit modal bound to fresh data after a reload (e.g. a new version).
+  useEffect(() => {
+    if (!editing) return;
+    const fresh = sketches.find(s => s.id === editing.id);
+    if (fresh && fresh !== editing) setEditing(fresh);
+    if (!fresh) setEditing(null);
+  }, [sketches, editing]);
+
   const [visibleCount, setVisibleCount] = useState(6);
-  const displayRows = rows.slice(0, visibleCount);
-  const hasMore = visibleCount < rows.length;
-  const showMore = () => setVisibleCount(c => (c < 10 ? 10 : rows.length));
+  const displayRows = sketches.slice(0, visibleCount);
+  const hasMore = visibleCount < sketches.length;
+  const showMore = () => setVisibleCount(c => (c < 10 ? 10 : sketches.length));
 
-  const player = usePlayerSafe();
-
-  // Real KPIs from the shared library — no demo numbers. "—" until loaded; only
-  // metrics we can derive with confidence (count + audio + real ProjectStatus).
   const ready = loadState === "ready";
-  const kpis: { label: string; value: string | number; icon: string }[] = [
-    { label: "סה״כ שירים", value: ready ? rows.length : "—", icon: "♫" },
-    { label: "עם אודיו",   value: ready ? rows.filter(r => r.hasAudio).length : "—", icon: "▶" },
-    { label: "בעבודה",     value: ready ? rows.filter(r => r.status === "בעבודה").length : "—", icon: "✎" },
-    { label: "הושלמו",     value: ready ? rows.filter(r => r.status === "הושלם").length : "—", icon: "✓" },
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const totalVersions = sketches.reduce((n, s) => n + (s.versions?.length ?? 0), 0);
+  const createdThisMonth = sketches.filter(s => (s.createdAt ?? "").slice(0, 7) === thisMonth).length;
+  const updatedThisMonth = sketches.filter(s => (s.updatedAt ?? "").slice(0, 7) === thisMonth).length;
+  const kpis: { label: string; short: string; value: string | number; icon: React.ReactNode }[] = [
+    { label: "סה״כ סקיצות", short: "סקיצות", value: ready ? sketches.length : "—", icon: <IcMusicNote size={22} color="#FF6B6B" /> },
+    { label: "סה״כ גרסאות", short: "גרסאות", value: ready ? totalVersions : "—", icon: <IcUpload size={20} color="#FF6B6B" /> },
+    { label: "נוצרו החודש", short: "נוצרו", value: ready ? createdThisMonth : "—", icon: <IcEdit size={20} color="#FF6B6B" /> },
+    { label: "עודכנו החודש", short: "עודכנו", value: ready ? updatedThisMonth : "—", icon: <IcClock size={20} color="#FF6B6B" /> },
   ];
 
-  // grid template shared EXACTLY by the library header + every row (RTL: play on the
-  // right in its own fixed column, then name, then the technical columns).
-  // Play fixed · שם השיר wide (the focus) · type a touch narrower · status/date/
-  // duration/options fixed & snug so columns sit tight under their headers.
-  // Play (fixed, no header) · שם השיר (wide) · אמן/משתתפים · סטטוס · משך.
-  const cols = "52px minmax(0, 1.7fr) minmax(0, 1.1fr) 130px 72px";
+  // Play (fixed) · שם הסקיצה (wide) · גרסה · עודכן · משך.
+  const cols = "52px minmax(0, 1.9fr) 84px 120px 72px";
   const heads: { label: string; align: "start" | "center" }[] = [
-    { label: "",              align: "center" }, // play column (no header)
-    { label: "שם השיר",       align: "start"  },
-    { label: "אמן / משתתפים", align: "start"  },
-    { label: "סטטוס",         align: "center" },
-    { label: "משך",           align: "center" },
+    { label: "", align: "center" },
+    { label: "שם הסקיצה", align: "start" },
+    { label: "גרסה", align: "center" },
+    { label: "עודכן", align: "center" },
+    { label: "משך", align: "center" },
   ];
+
+  const openEdit = (s: Sketch) => setEditing(s);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
-      {/* ── KPI row (desktop: cards · mobile: compact 4-up strip, no icons) ── */}
+      {/* ── KPI row ── */}
       {isMobile ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
           {kpis.map(k => (
-            <div key={k.label} style={{
-              background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12,
-              padding: "10px 6px", textAlign: "center", minWidth: 0,
-            }}>
+            <div key={k.label} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: "10px 6px", textAlign: "center", minWidth: 0 }}>
               <div style={{ fontSize: 21, fontWeight: 900, color: TEXT, lineHeight: 1.1 }}>{k.value}</div>
-              <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{KPI_SHORT[k.label] ?? k.label}</div>
+              <div style={{ fontSize: 10.5, color: TEXT2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{k.short}</div>
             </div>
           ))}
         </div>
@@ -1332,98 +1377,120 @@ function MyMusicPage({ rows, loadState }: { rows: LibRow[]; loadState: "loading"
                 <div style={{ fontSize: 12.5, color: TEXT2, fontWeight: 600 }}>{k.label}</div>
                 <div style={{ fontSize: 34, fontWeight: 900, color: TEXT, marginTop: 5 }}>{k.value}</div>
               </div>
-              <span style={{ width: 50, height: 50, borderRadius: 14, flexShrink: 0, background: "rgba(220,38,38,0.13)", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{k.icon}</span>
+              <span style={{ width: 50, height: 50, borderRadius: 14, flexShrink: 0, background: "rgba(220,38,38,0.13)", border: `1px solid ${BRAND}44`, display: "flex", alignItems: "center", justifyContent: "center" }}>{k.icon}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── library (full width) ── */}
+      {/* ── library ── */}
       <div style={panel}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-              <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ספריית השירים שלי</span>
-            </div>
-            {/* upload — opens the upload modal (blank target). Compact header action. */}
-            <button onClick={() => setModal({ mode: "new", target: null })} style={{
-              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0,
-              padding: isMobile ? "8px 12px" : "7px 13px", borderRadius: 9, border: "none", color: "#fff",
-              background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12 : 12.5, fontWeight: 700,
-              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: `0 2px 9px rgba(220,38,38,0.26)`,
-            }}><IcUpload size={14} /> העלאת קובץ</button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+            <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ספריית הסקיצות שלי</span>
           </div>
+          <button onClick={() => setCreateOpen(true)} style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0,
+            padding: isMobile ? "8px 12px" : "8px 15px", borderRadius: 9, border: "none", color: "#fff",
+            background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12 : 12.5, fontWeight: 700,
+            cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: `0 2px 9px rgba(220,38,38,0.26)`,
+          }}><IcUpload size={14} /> העלאת סקיצה</button>
+        </div>
 
-          {/* column header — desktop only (mobile uses cards). No inner scroll:
-              the table renders inline and "הצג עוד" simply grows it in the page. */}
-          {!isMobile && (
+        {!isMobile && loadState === "ready" && sketches.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "13px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
             {heads.map((h, i) => (
               <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.05em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
-          )}
+        )}
 
-          {/* rows — desktop: shared grid (aligned columns); mobile: stacked cards */}
-          <div style={{ padding: isMobile ? "2px 0 6px" : "6px 0 8px" }}>
-            {loadState === "loading" ? (
-              <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>טוען…</div>
-            ) : loadState === "error" ? (
-              <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא ניתן לטעון את הספרייה כרגע</div>
-            ) : rows.length === 0 ? (
-              <div style={{ padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא נמצאו פרויקטים שמקושרים לשליו טסמה</div>
-            ) : isMobile ? (
-              displayRows.map(t => (
-                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}` }}>
-                  {/* play (rightmost in RTL) — visual only for now */}
-                  <LibRowPlay size={42} player={player} row={t} onError={setToast} />
-                  {/* name + artist + status (no "שיר"/type subtitle) */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{t.artist}</div>
-                    <div style={{ marginTop: 7 }}><MusicStatus status={t.status} /></div>
-                  </div>
-                  {/* duration (leftmost) — none yet */}
-                  <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{t.durationSeconds != null ? mmss(t.durationSeconds) : "—"}</span>
+        <div style={{ padding: isMobile ? "2px 0 6px" : "6px 0 8px" }}>
+          {loadState === "loading" ? (
+            <div style={{ padding: "10px 0" }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 24px" }}>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+                  <div style={{ flex: 1, height: 14, borderRadius: 7, background: "rgba(255,255,255,0.05)" }} />
                 </div>
-              ))
-            ) : (
-              displayRows.map(t => (
-                <div key={t.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", transition: "all .14s" }}>
-                  {/* play (right column — no header) — visual only for now */}
-                  <div style={{ display: "flex", justifyContent: "center" }}>
-                    <LibRowPlay size={42} player={player} row={t} onError={setToast} />
-                  </div>
-                  {/* name only (no "שיר"/type subtitle in the music tab) */}
-                  <div style={{ minWidth: 0, textAlign: "start" }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                  </div>
-                  {/* artist / participants */}
-                  <div style={{ fontSize: 13, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artist}</div>
-                  {/* status */}
-                  <div style={{ textAlign: "center" }}><MusicStatus status={t.status} /></div>
-                  {/* duration — none yet */}
-                  <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{t.durationSeconds != null ? mmss(t.durationSeconds) : "—"}</div>
+              ))}
+            </div>
+          ) : loadState === "error" ? (
+            <div style={{ padding: "44px 24px", textAlign: "center" }}>
+              <div style={{ fontSize: 13.5, color: MUTED, marginBottom: 14 }}>לא ניתן לטעון את הספרייה כרגע</div>
+              <button onClick={() => void onReload()} style={{ ...linkBtn, fontSize: 13, fontWeight: 800, border: `1px solid ${BDR2}`, borderRadius: 10, padding: "8px 18px" }}>נסה שוב</button>
+            </div>
+          ) : sketches.length === 0 ? (
+            <div style={{ padding: isMobile ? "40px 20px" : "56px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+              <span style={{ width: 66, height: 66, borderRadius: 20, background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IcMusicNote size={30} color="#FF6B6B" /></span>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>אין עדיין סקיצות בספרייה</div>
+                <div style={{ fontSize: 13, color: TEXT2, marginTop: 6, lineHeight: 1.6, maxWidth: 340 }}>העלה את הסקיצה הראשונה שלך — קובץ אודיו, שם וכמה מילים, והיא תופיע כאן עם כל הגרסאות.</div>
+              </div>
+              <button onClick={() => setCreateOpen(true)} style={{
+                display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 22px", borderRadius: 12, border: "none",
+                color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: 14, fontWeight: 800,
+                cursor: "pointer", fontFamily: "inherit", boxShadow: `0 5px 18px rgba(220,38,38,0.32)`,
+              }}><IcUpload size={16} /> העלה סקיצה ראשונה</button>
+            </div>
+          ) : isMobile ? (
+            displayRows.map(s => (
+              <div key={s.id} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
+                onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: `1px solid ${BDR}`, cursor: "pointer", outline: "none" }}>
+                <div onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
+                  <SketchRowPlay size={42} player={player} sketch={s} onError={setToast} />
                 </div>
-              ))
-            )}
-          </div>
-          {loadState === "ready" && rows.length > 0 && (
-            hasMore ? (
-              <button onClick={showMore} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0", fontWeight: 700, borderTop: `1px solid ${BDR}` }}>הצג עוד ⌄</button>
-            ) : (
-              <div style={{ textAlign: "center", padding: "14px 0", fontSize: 12.5, color: MUTED, borderTop: `1px solid ${BDR}` }}>הוצגו כל השירים</div>
-            )
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                  <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ direction: "ltr" }}>V{s.latestVersion}</span>
+                    <span>·</span>
+                    <span>{fmtSketchDate(s.updatedAt)}</span>
+                  </div>
+                </div>
+                <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</span>
+              </div>
+            ))
+          ) : (
+            displayRows.map(s => (
+              <div key={s.id} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
+                onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
+                onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", cursor: "pointer", outline: "none", transition: "all .14s" }}>
+                <div onClick={e => e.stopPropagation()} style={{ display: "flex", justifyContent: "center" }}>
+                  <SketchRowPlay size={42} player={player} sketch={s} onError={setToast} />
+                </div>
+                <div style={{ minWidth: 0, textAlign: "start" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                </div>
+                <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: "ltr" }}>V{s.latestVersion}</div>
+                <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>
+                <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</div>
+              </div>
+            ))
           )}
+        </div>
+        {loadState === "ready" && sketches.length > 0 && (
+          hasMore ? (
+            <button onClick={showMore} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "center", padding: "14px 0", fontWeight: 700, borderTop: `1px solid ${BDR}` }}>הצג עוד</button>
+          ) : sketches.length > 6 ? (
+            <div style={{ textAlign: "center", padding: "14px 0", fontSize: 12.5, color: MUTED, borderTop: `1px solid ${BDR}` }}>הוצגו כל הסקיצות</div>
+          ) : null
+        )}
       </div>
 
-      {/* Internal mock player removed. TODO: wire row Play buttons to the app's
-          GLOBAL player (already synced across the system) instead of a portal-local
-          one — no extra player inside Red Artists. */}
+      {createOpen && <SketchCreateModal
+        onClose={() => setCreateOpen(false)}
+        onCreated={async (s) => { await onReload(); setToast(`הסקיצה "${s.title}" נוצרה`); }}
+      />}
+      {editing && <SketchEditModal
+        sketch={editing} player={player}
+        onClose={() => setEditing(null)}
+        onReload={onReload} onToast={setToast}
+      />}
 
-      {/* upload modal + demo toast */}
-      <UploadModal modal={modal} onClose={() => setModal(null)} onToast={setToast} />
       {toast && typeof document !== "undefined" && createPortal(
         <div style={{
           position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 100040,
@@ -1443,7 +1510,7 @@ const pbtn: React.CSSProperties = {
 };
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, musicRows, loadState, summary, summaryState }: { onOpenMusic: () => void; onOpenShows: () => void; musicRows: LibRow[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
@@ -1471,32 +1538,29 @@ function HomeDashboard({ onOpenMusic, onOpenShows, musicRows, loadState, summary
       {/* ── 3. Main grid (row A) — music-forward in RTL: המוזיקה שלי (right) → ביטים → מאזן ── */}
       <div className="rap-grid-a">
 
-        {/* המוזיקה שלי — up to 4 real projects from the shared source (no demo) */}
+        {/* המוזיקה שלי — up to 4 of the artist's own sketches (manifest source) */}
         <SectionCard title="המוזיקה שלי">
           <div style={{ padding: "8px 12px 6px" }}>
             {loadState === "loading" ? (
               <div style={{ padding: "22px 8px", textAlign: "center", fontSize: 12.5, color: MUTED }}>טוען…</div>
-            ) : musicRows.length === 0 ? (
-              <div style={{ padding: "22px 8px", textAlign: "center", fontSize: 12.5, color: MUTED }}>עדיין אין שירים אמיתיים בספרייה</div>
+            ) : sketches.length === 0 ? (
+              <div style={{ padding: "22px 8px", textAlign: "center", fontSize: 12.5, color: MUTED }}>עדיין אין סקיצות בספרייה</div>
             ) : (
-              musicRows.slice(0, 4).map(t => (
-                <div key={t.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+              sketches.slice(0, 4).map(s => (
+                <div key={s.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 12px", borderRadius: 13, border: "1px solid transparent", transition: "all .14s" }}>
-                  {/* play (rightmost in RTL) — visual only for now */}
-                  <LibRowPlay size={36} player={player} row={t} />
-                  {/* name + artist */}
+                  <SketchRowPlay size={36} player={player} sketch={s} />
                   <div style={{ textAlign: "start", minWidth: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.artist}</div>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                    <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, display: "flex", alignItems: "center", gap: 7 }}>
+                      <span style={{ direction: "ltr" }}>V{s.latestVersion}</span><span>·</span><span>{fmtSketchDate(s.updatedAt)}</span>
+                    </div>
                   </div>
-                  {/* status pushed to the left edge */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginInlineStart: "auto" }}>
-                    <MusicStatus status={t.status} />
-                  </div>
+                  <div style={{ marginInlineStart: "auto", fontSize: 11.5, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : ""}</div>
                 </div>
               ))
             )}
-            <button onClick={onOpenMusic} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>לכל השירים והסקיצות ←</button>
+            <button onClick={onOpenMusic} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "10px 4px 6px" }}>לכל הסקיצות ←</button>
           </div>
         </SectionCard>
 
@@ -2108,118 +2172,42 @@ const dotsBtn: React.CSSProperties = {
 // ── Upload modal (desktop: centered card · mobile: bottom sheet). UI ONLY —
 // no backend is wired for music-file uploads yet, so submit shows a demo toast.
 // A target song/project is REQUIRED; "update" mode locks it to the chosen track.
-function UploadModal({ modal, onClose, onToast }: {
-  modal: { mode: "new" | "update"; target: string | null } | null;
-  onClose: () => void;
-  onToast: (m: string) => void;
+// ── Sketch modals — shared building blocks ────────────────────────────────────
+const SKETCH_EXTS = ["mp3", "wav", "aiff", "aif", "m4a"];
+const skField: React.CSSProperties = {
+  width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
+  border: `1px solid ${BDR2}`, borderRadius: 11, color: TEXT, fontSize: 14,
+  fontFamily: "inherit", padding: "13px 14px", outline: "none", colorScheme: "dark",
+};
+const skLabel: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 8, display: "block" };
+function fmtBytes(n?: number): string {
+  if (!n || n <= 0) return "";
+  const mb = n / (1024 * 1024);
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+}
+function validateSketchFileClient(f: File): string | null {
+  const ext = (f.name.split(".").pop() ?? "").toLowerCase();
+  if (!SKETCH_EXTS.includes(ext)) return "ניתן להעלות קובצי אודיו בלבד (MP3, WAV, AIFF, M4A)";
+  if (f.size <= 0) return "הקובץ ריק";
+  if (f.size > 500 * 1024 * 1024) return "הקובץ גדול מדי (מקסימום 500MB)";
+  return null;
+}
+
+// Reusable dark modal shell (desktop centered · mobile bottom-sheet). Close is
+// blocked while `busy` so an in-flight upload/save can't be interrupted mid-way.
+function SketchModalShell({ title, onClose, busy, children }: {
+  title: string; onClose: () => void; busy: boolean; children: React.ReactNode;
 }) {
   const isMobile = useIsMobile();
-  const open = !!modal;
-  // "new" = סקיצה חדשה (create a new draft) · "update" = עדכון קובץ לשיר קיים.
-  const [tab, setTab]           = useState<"new" | "update">("new");
-  const [song, setSong]         = useState("");
-  const [songOpen, setSongOpen] = useState(false);
-  const [file, setFile]         = useState<File | null>(null);
-  const [note, setNote]         = useState("");
-  const [skitchName, setSkitch] = useState("");
-  const [lyrics, setLyrics]     = useState("");
-  const [drag, setDrag]         = useState(false);
-  const fileRef  = useRef<HTMLInputElement>(null);
-  const songBoxRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    if (open) {
-      setTab(modal!.mode === "update" ? "update" : "new");
-      setSong(modal?.target ?? ""); setSongOpen(false); setFile(null); setNote(""); setSkitch(""); setLyrics(""); setDrag(false);
-    }
-  }, [open, modal?.target, modal?.mode]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  // Close the custom song dropdown on outside click (native <select> popups
-  // render an OS-white list that breaks the dark theme — so we use our own).
-  useEffect(() => {
-    if (!songOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (songBoxRef.current && !songBoxRef.current.contains(e.target as Node)) setSongOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [songOpen]);
-
-  if (!open || typeof document === "undefined") return null;
-  // Song target is locked only when the modal was opened from a row's "עדכן קובץ".
-  const lockedSong = modal!.mode === "update";
-  const canSubmit  = tab === "new"
-    ? (skitchName.trim() !== "" && !!file)
-    : (song.trim() !== "" && !!file);
-
-  const submit = () => {
-    if (!canSubmit) return;
-    onClose();
-    onToast(tab === "new"
-      ? "הסקיצה נקלטה (הדגמה) — חיבור העלאה אמיתי ממתין לאישור"
-      : "היעד והקובץ נקלטו (הדגמה) — חיבור העלאה אמיתי ממתין לאישור");
-  };
-
-  // ── Shared "design system" so both modes render identically (esp. on mobile):
-  // same label spacing, same section gap, same control/textarea/dropzone height. ──
-  const sectionGap = isMobile ? 15 : 16;
-  const ctrlH      = isMobile ? 46 : undefined;   // input / dropdown / locked field
-  const taH        = isMobile ? 84 : undefined;   // every textarea
-  const label: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: isMobile ? 7 : 8 };
-  const section: React.CSSProperties = { marginBottom: sectionGap };
-  const field: React.CSSProperties = {
-    width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
-    border: `1px solid ${BDR2}`, borderRadius: 11, color: TEXT, fontSize: 14,
-    fontFamily: "inherit", padding: "13px 14px", outline: "none", colorScheme: "dark", minHeight: ctrlH,
-  };
-  const textareaStyle: React.CSSProperties = { ...field, minHeight: undefined, height: taH, resize: "none", lineHeight: 1.5 };
-
-  // Shared blocks reused by both tabs.
-  const filePicker = (
-    <div style={section}>
-      <div style={label}>בחר קובץ</div>
-      <div
-        onClick={() => fileRef.current?.click()}
-        onDragOver={e => { e.preventDefault(); setDrag(true); }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); setFile(e.dataTransfer.files?.[0] ?? null); }}
-        style={{
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
-          padding: isMobile ? "24px 14px" : "30px 14px", borderRadius: 13, cursor: "pointer", textAlign: "center",
-          border: `1.5px dashed ${drag ? BRAND : BDR2}`, background: drag ? "rgba(220,38,38,0.08)" : "rgba(255,255,255,0.02)",
-          transition: "all .14s",
-        }}>
-        <IcCloud size={26} color={drag ? "#FF6B6B" : TEXT2} />
-        {file ? (
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
-        ) : (
-          <>
-            <div style={{ fontSize: 13.5, color: TEXT2 }}>{isMobile ? "לחץ לבחירה" : "גרור קובץ לכאן או לחץ לבחירה"}</div>
-            <div style={{ fontSize: 11, color: MUTED, direction: "ltr" }}>MP3, WAV, AIFF, M4A עד 500MB</div>
-          </>
-        )}
-      </div>
-      <input ref={fileRef} type="file" onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
-    </div>
-  );
-
-  const noteBlock = (labelText: string, ph: string) => (
-    <div style={section}>
-      <div style={label}>{labelText}</div>
-      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={ph} rows={2} style={textareaStyle} />
-    </div>
-  );
-
+  }, [onClose, busy]);
+  if (typeof document === "undefined") return null;
   return createPortal(
     <div
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 100030, background: "rgba(0,0,0,0.66)",
         backdropFilter: "blur(3px)", display: "flex", justifyContent: "center",
@@ -2227,109 +2215,283 @@ function UploadModal({ modal, onClose, onToast }: {
         fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
       }}>
       <div style={{
-        width: isMobile ? "100%" : 470, maxWidth: "100%", maxHeight: isMobile ? "92vh" : "88vh",
+        width: isMobile ? "100%" : 480, maxWidth: "100%", maxHeight: isMobile ? "92vh" : "88vh",
         overflowY: "auto", boxSizing: "border-box", direction: "rtl",
         background: "linear-gradient(180deg, #161617 0%, #111112 100%)",
         border: `1px solid ${BDR2}`, borderRadius: isMobile ? "20px 20px 0 0" : 20,
         boxShadow: "0 24px 70px rgba(0,0,0,0.6)", padding: isMobile ? "18px 16px 22px" : "22px 24px 24px",
       }}>
-        {/* header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-            <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}55`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>♫</span>
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#fff" }}>{tab === "new" ? "העלאת סקיצה" : "עדכון קובץ"}</div>
+            <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}55`, display: "flex", alignItems: "center", justifyContent: "center" }}><IcMusicNote size={16} color="#FF6B6B" /></span>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
           </div>
-          <button onClick={onClose} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0, lineHeight: 0 }}><IcX size={20} /></button>
+          <button onClick={() => !busy && onClose()} aria-label="סגור" disabled={busy} style={{ background: "none", border: "none", cursor: busy ? "default" : "pointer", padding: 4, flexShrink: 0, lineHeight: 0, opacity: busy ? 0.4 : 1 }}><IcX size={20} /></button>
         </div>
-
-        {/* mode toggle */}
-        <div style={{ display: "flex", gap: 6, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: 5, marginBottom: 18 }}>
-          {([["new", "סקיצה חדשה"], ["update", "עדכון קובץ"]] as const).map(([val, lbl]) => {
-            const sel = tab === val;
-            return (
-              <button key={val} onClick={() => setTab(val)} style={{
-                flex: 1, padding: "11px 0", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit",
-                fontSize: 13.5, fontWeight: sel ? 800 : 600, whiteSpace: "nowrap",
-                background: sel ? "linear-gradient(180deg, #E5322F, #C01C1C)" : "transparent",
-                color: sel ? "#fff" : TEXT2, boxShadow: sel ? "0 2px 10px rgba(220,38,38,0.3)" : "none", transition: "all .14s",
-              }}>{lbl}</button>
-            );
-          })}
-        </div>
-
-        {tab === "new" ? (
-          <>
-            {/* שם סקיצה */}
-            <div style={section}>
-              <div style={label}>שם סקיצה</div>
-              <input value={skitchName} onChange={e => setSkitch(e.target.value)} placeholder="כתוב שם לסקיצה" style={field} />
-            </div>
-            {/* מילים / טקסט */}
-            <div style={section}>
-              <div style={label}>מילים / טקסט</div>
-              <textarea value={lyrics} onChange={e => setLyrics(e.target.value)} placeholder="כתוב כאן מילים, טקסט או רעיונות…" rows={3} style={textareaStyle} />
-            </div>
-            {noteBlock("הערות", "כתבו הערות, וייב, הפניות או הערות הפקה…")}
-            {filePicker}
-          </>
-        ) : (
-          <>
-            {/* בחר שיר / פרויקט */}
-            <div style={section}>
-              <div style={label}>בחר שיר / פרויקט</div>
-              {lockedSong ? (
-                <div style={{ ...field, display: "flex", alignItems: "center", gap: 8, opacity: 0.85 }}>
-                  <span style={{ color: "#FF6B6B", fontSize: 13 }}>♫</span>{song}
-                </div>
-              ) : (
-                <div ref={songBoxRef} style={{ position: "relative" }}>
-                  <button type="button" onClick={() => setSongOpen(o => !o)} style={{
-                    ...field, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "start",
-                    borderColor: songOpen ? "rgba(220,38,38,0.5)" : BDR2,
-                  }}>
-                    <span style={{ color: song ? TEXT : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song || "בחר שיר / פרויקט…"}</span>
-                    <span style={{ color: TEXT2, fontSize: 10, flexShrink: 0, transform: songOpen ? "rotate(180deg)" : "none", transition: "transform .14s" }}>▼</span>
-                  </button>
-                  {songOpen && (
-                    <div style={{
-                      position: "absolute", top: "calc(100% + 6px)", insetInlineStart: 0, insetInlineEnd: 0, zIndex: 5,
-                      background: "#161617", border: `1px solid ${BDR2}`, borderRadius: 11,
-                      boxShadow: "0 12px 34px rgba(0,0,0,0.6)", overflow: "hidden", maxHeight: 210, overflowY: "auto", padding: 5,
-                    }}>
-                      {LIBRARY.map(t => {
-                        const sel = t.name === song;
-                        return (
-                          <button key={t.name} type="button" onClick={() => { setSong(t.name); setSongOpen(false); }}
-                            onMouseEnter={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.22)" : "rgba(255,255,255,0.05)")}
-                            onMouseLeave={e => (e.currentTarget.style.background = sel ? "rgba(220,38,38,0.16)" : "transparent")}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "start",
-                              padding: "11px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-                              background: sel ? "rgba(220,38,38,0.16)" : "transparent",
-                              color: sel ? "#FF6B6B" : TEXT, fontSize: 13.5, fontWeight: sel ? 800 : 600, fontFamily: "inherit",
-                            }}><span style={{ fontSize: 12, color: "#FF6B6B" }}>♫</span>{t.name}</button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            {filePicker}
-            {noteBlock("הערה (אופציונלי)", "כתוב הערה קצרה על הקובץ…")}
-          </>
-        )}
-
-        {/* submit */}
-        <button onClick={submit} disabled={!canSubmit} style={{
-          width: "100%", boxSizing: "border-box", padding: "14px 0", borderRadius: 12, border: "none", marginTop: 2,
-          color: "#fff", fontSize: 14.5, fontWeight: 800, fontFamily: "inherit",
-          cursor: canSubmit ? "pointer" : "not-allowed", opacity: canSubmit ? 1 : 0.5,
-          background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: canSubmit ? `0 4px 16px rgba(220,38,38,0.32)` : "none",
-        }}>{tab === "new" ? "העלה סקיצה" : "העלה קובץ"}</button>
-        <div style={{ fontSize: 11, color: MUTED, textAlign: "center", marginTop: 10 }}>מצב הדגמה — הקובץ עדיין לא נשלח לשרת</div>
+        {children}
       </div>
     </div>,
     document.body,
+  );
+}
+
+function SketchDropzone({ file, error, onFile, disabled }: {
+  file: File | null; error: string | null; onFile: (f: File | null) => void; disabled?: boolean;
+}) {
+  const isMobile = useIsMobile();
+  const [drag, setDrag] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div>
+      <div
+        onClick={() => !disabled && ref.current?.click()}
+        onDragOver={e => { if (disabled) return; e.preventDefault(); setDrag(true); }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={e => { if (disabled) return; e.preventDefault(); setDrag(false); onFile(e.dataTransfer.files?.[0] ?? null); }}
+        style={{
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: isMobile ? "22px 14px" : "28px 14px", borderRadius: 13, cursor: disabled ? "default" : "pointer", textAlign: "center",
+          border: `1.5px dashed ${error ? "#F87171" : drag ? BRAND : BDR2}`,
+          background: drag ? "rgba(220,38,38,0.08)" : "rgba(255,255,255,0.02)", transition: "all .14s", opacity: disabled ? 0.6 : 1,
+        }}>
+        <IcCloud size={26} color={drag ? "#FF6B6B" : TEXT2} />
+        {file ? (
+          <>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr" }}>{file.name}</div>
+            <div style={{ fontSize: 11.5, color: MUTED, direction: "ltr" }}>{fmtBytes(file.size)} · לחץ להחלפה</div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 13.5, color: TEXT2 }}>{isMobile ? "לחץ לבחירת קובץ" : "גרור קובץ לכאן או לחץ לבחירה"}</div>
+            <div style={{ fontSize: 11, color: MUTED, direction: "ltr" }}>MP3, WAV, AIFF, M4A · עד 500MB</div>
+          </>
+        )}
+      </div>
+      <input ref={ref} type="file" accept=".mp3,.wav,.aiff,.aif,.m4a,audio/*" onChange={e => onFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+      {error && <div style={{ fontSize: 12, color: "#F87171", marginTop: 8, fontWeight: 600 }}>{error}</div>}
+    </div>
+  );
+}
+
+const skPrimaryBtn = (enabled: boolean): React.CSSProperties => ({
+  width: "100%", boxSizing: "border-box", padding: "14px 0", borderRadius: 12, border: "none",
+  color: "#fff", fontSize: 14.5, fontWeight: 800, fontFamily: "inherit",
+  cursor: enabled ? "pointer" : "not-allowed", opacity: enabled ? 1 : 0.5,
+  background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: enabled ? `0 4px 16px rgba(220,38,38,0.32)` : "none",
+});
+function SkErr({ msg }: { msg: string | null }) {
+  if (!msg) return null;
+  return <div style={{ fontSize: 12.5, color: "#F87171", background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.28)", borderRadius: 9, padding: "10px 12px", marginBottom: 14, lineHeight: 1.5 }}>{msg}</div>;
+}
+async function readErr(res: Response, fallback: string): Promise<string> {
+  try { const d = await res.json(); return (d?.error as string) || fallback; } catch { return fallback; }
+}
+
+// ── Create ────────────────────────────────────────────────────────────────────
+function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (s: Sketch) => void | Promise<void> }) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [notes, setNotes] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [fileErr, setFileErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const pickFile = (f: File | null) => { setFile(f); setFileErr(f ? validateSketchFileClient(f) : null); };
+  const canSubmit = title.trim() !== "" && !!file && !fileErr && !busy;
+
+  const submit = async () => {
+    if (!canSubmit || !file) return;
+    setBusy(true); setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("title", title.trim());
+      fd.append("description", description.trim());
+      fd.append("notes", notes.trim());
+      fd.append("file", file);
+      const res = await fetch("/api/red-artists/sketches", { method: "POST", body: fd });
+      if (!res.ok) { setErr(await readErr(res, "יצירת הסקיצה נכשלה")); setBusy(false); return; }
+      const d = await res.json();
+      await onCreated(d.sketch as Sketch);
+      onClose(); // close ONLY after a full success
+    } catch { setErr("שגיאת רשת, נסה שוב"); setBusy(false); }
+  };
+
+  return (
+    <SketchModalShell title="סקיצה חדשה" onClose={onClose} busy={busy}>
+      <SkErr msg={err} />
+      <div style={{ marginBottom: 16 }}>
+        <label style={skLabel}>שם הפרויקט</label>
+        <input value={title} onChange={e => setTitle(e.target.value)} disabled={busy} placeholder="כתוב שם לסקיצה" style={{ ...skField, opacity: busy ? 0.6 : 1 }} />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={skLabel}>תיאור / טקסט <span style={{ color: MUTED, fontWeight: 500 }}>(אופציונלי)</span></label>
+        <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={busy} placeholder="מילים, טקסט או רעיונות…" rows={3} style={{ ...skField, resize: "none", lineHeight: 1.5, opacity: busy ? 0.6 : 1 }} />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={skLabel}>הערות <span style={{ color: MUTED, fontWeight: 500 }}>(אופציונלי)</span></label>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} disabled={busy} placeholder="וייב, הפניות או הערות הפקה…" rows={2} style={{ ...skField, resize: "none", lineHeight: 1.5, opacity: busy ? 0.6 : 1 }} />
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        <label style={skLabel}>קובץ אודיו</label>
+        <SketchDropzone file={file} error={fileErr} onFile={pickFile} disabled={busy} />
+      </div>
+      <button onClick={submit} disabled={!canSubmit} style={skPrimaryBtn(canSubmit)}>{busy ? "מעלה סקיצה…" : "העלה סקיצה"}</button>
+    </SketchModalShell>
+  );
+}
+
+// ── Edit (details · new version · soft delete) ────────────────────────────────
+function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
+  sketch: Sketch; player: ReturnType<typeof usePlayerSafe>;
+  onClose: () => void; onReload: () => Promise<void>; onToast: (m: string) => void;
+}) {
+  const [title, setTitle] = useState(sketch.title);
+  const [description, setDescription] = useState(sketch.description ?? "");
+  const [notes, setNotes] = useState(sketch.notes ?? "");
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsErr, setDetailsErr] = useState<string | null>(null);
+
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [fileErr, setFileErr] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [versionErr, setVersionErr] = useState<string | null>(null);
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+
+  const busy = savingDetails || uploading || deleting;
+  const changed = title.trim() !== sketch.title || description.trim() !== (sketch.description ?? "") || notes.trim() !== (sketch.notes ?? "");
+  const canSaveDetails = changed && title.trim() !== "" && !busy;
+
+  const pickFile = (f: File | null) => { setNewFile(f); setFileErr(f ? validateSketchFileClient(f) : null); };
+
+  const saveDetails = async () => {
+    if (!canSaveDetails) return;
+    setSavingDetails(true); setDetailsErr(null);
+    try {
+      const body: Record<string, string> = {};
+      if (title.trim() !== sketch.title) body.title = title.trim();
+      if (description.trim() !== (sketch.description ?? "")) body.description = description.trim();
+      if (notes.trim() !== (sketch.notes ?? "")) body.notes = notes.trim();
+      const res = await fetch(`/api/red-artists/sketches/${sketch.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (!res.ok) { setDetailsErr(await readErr(res, "שמירת הפרטים נכשלה")); setSavingDetails(false); return; }
+      await onReload();
+      onToast("הפרטים נשמרו");
+      setSavingDetails(false);
+    } catch { setDetailsErr("שגיאת רשת, נסה שוב"); setSavingDetails(false); }
+  };
+
+  const uploadVersion = async () => {
+    if (!newFile || fileErr || busy) return;
+    setUploading(true); setVersionErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", newFile);
+      const res = await fetch(`/api/red-artists/sketches/${sketch.id}/version`, { method: "POST", body: fd });
+      if (!res.ok) { setVersionErr(await readErr(res, "עדכון הגרסה נכשל")); setUploading(false); return; }
+      const d = await res.json();
+      const fresh = d.sketch as Sketch;
+      await onReload();
+      playSketchLatest(player, fresh, onToast);   // the new version becomes what plays
+      onToast(`עודכן לגרסה V${fresh.latestVersion}`);
+      setNewFile(null); setUploading(false);
+    } catch { setVersionErr("שגיאת רשת, נסה שוב"); setUploading(false); }
+  };
+
+  const doDelete = async () => {
+    if (busy) return;
+    setDeleting(true); setDeleteErr(null);
+    try {
+      const res = await fetch(`/api/red-artists/sketches/${sketch.id}`, { method: "DELETE" });
+      if (!res.ok) { setDeleteErr(await readErr(res, "ההסרה נכשלה")); setDeleting(false); return; }
+      await onReload();
+      onToast(`הסקיצה "${sketch.title}" הוסרה מהפורטל`);
+      onClose();
+    } catch { setDeleteErr("שגיאת רשת, נסה שוב"); setDeleting(false); }
+  };
+
+  const sectionBox: React.CSSProperties = { background: "rgba(255,255,255,0.02)", border: `1px solid ${BDR}`, borderRadius: 14, padding: 16, marginBottom: 16 };
+  const secTitle: React.CSSProperties = { fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 12 };
+
+  return (
+    <SketchModalShell title="עריכת סקיצה" onClose={onClose} busy={busy}>
+      {/* details */}
+      <div style={sectionBox}>
+        <div style={secTitle}>פרטי הסקיצה</div>
+        <SkErr msg={detailsErr} />
+        <div style={{ marginBottom: 13 }}>
+          <label style={skLabel}>שם הפרויקט</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} disabled={busy} style={{ ...skField, opacity: busy ? 0.6 : 1 }} />
+        </div>
+        <div style={{ marginBottom: 13 }}>
+          <label style={skLabel}>תיאור / טקסט</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={busy} rows={3} style={{ ...skField, resize: "none", lineHeight: 1.5, opacity: busy ? 0.6 : 1 }} />
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={skLabel}>הערות</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} disabled={busy} rows={2} style={{ ...skField, resize: "none", lineHeight: 1.5, opacity: busy ? 0.6 : 1 }} />
+        </div>
+        <button onClick={saveDetails} disabled={!canSaveDetails} style={{
+          width: "100%", boxSizing: "border-box", padding: "12px 0", borderRadius: 11, border: `1px solid ${canSaveDetails ? BRAND : BDR2}`,
+          color: canSaveDetails ? "#fff" : TEXT2, fontSize: 13.5, fontWeight: 800, fontFamily: "inherit",
+          cursor: canSaveDetails ? "pointer" : "not-allowed", background: canSaveDetails ? "rgba(220,38,38,0.16)" : "transparent",
+        }}>{savingDetails ? "שומר…" : "שמור פרטים"}</button>
+      </div>
+
+      {/* new version */}
+      <div style={sectionBox}>
+        <div style={secTitle}>העלאת גרסה חדשה</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, fontSize: 12.5, color: TEXT2, flexWrap: "wrap" }}>
+          <span>גרסה נוכחית: <b style={{ color: "#FF6B6B", direction: "ltr" }}>V{sketch.latestVersion}</b></span>
+          <span style={{ direction: "ltr", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{sketch.latestFileName}</span>
+        </div>
+        <SkErr msg={versionErr} />
+        <div style={{ marginBottom: 12 }}>
+          <SketchDropzone file={newFile} error={fileErr} onFile={pickFile} disabled={busy} />
+        </div>
+        <button onClick={uploadVersion} disabled={!newFile || !!fileErr || busy} style={{
+          width: "100%", boxSizing: "border-box", padding: "12px 0", borderRadius: 11, border: "none",
+          color: "#fff", fontSize: 13.5, fontWeight: 800, fontFamily: "inherit",
+          cursor: !newFile || !!fileErr || busy ? "not-allowed" : "pointer", opacity: !newFile || !!fileErr || busy ? 0.5 : 1,
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+        }}>{uploading ? `מעלה V${sketch.latestVersion + 1}…` : `עדכן קובץ (V${sketch.latestVersion + 1})`}</button>
+      </div>
+
+      {/* danger zone */}
+      <div style={{ background: "rgba(248,113,113,0.05)", border: "1px solid rgba(248,113,113,0.22)", borderRadius: 14, padding: 16 }}>
+        <div style={{ ...secTitle, color: "#F87171", display: "flex", alignItems: "center", gap: 7 }}><IcTrash size={15} color="#F87171" /> הסרה מהפורטל</div>
+        <SkErr msg={deleteErr} />
+        {!confirmDelete ? (
+          <>
+            <div style={{ fontSize: 12.5, color: TEXT2, lineHeight: 1.6, marginBottom: 12 }}>
+              הסקיצה תוסר מ״המוזיקה שלי״. כל קובצי הגרסאות יישארו שמורים ב-Dropbox, והפעולה לא תשפיע על עמוד הפרויקטים.
+            </div>
+            <button onClick={() => setConfirmDelete(true)} disabled={busy} style={{
+              padding: "10px 16px", borderRadius: 10, border: "1px solid rgba(248,113,113,0.4)", background: "transparent",
+              color: "#F87171", fontSize: 13, fontWeight: 800, fontFamily: "inherit", cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1,
+              display: "inline-flex", alignItems: "center", gap: 7,
+            }}><IcTrash size={14} color="#F87171" /> הסר מהפורטל</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, color: TEXT, lineHeight: 1.6, marginBottom: 12, fontWeight: 600 }}>להסיר את הסקיצה מהפורטל? הקבצים יישמרו ב-Dropbox.</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={doDelete} disabled={busy} style={{
+                flex: "1 1 130px", padding: "11px 0", borderRadius: 10, border: "none", background: "#DC2626",
+                color: "#fff", fontSize: 13, fontWeight: 800, fontFamily: "inherit", cursor: busy ? "default" : "pointer", opacity: deleting ? 0.7 : 1,
+              }}>{deleting ? "מסיר…" : "כן, הסר"}</button>
+              <button onClick={() => setConfirmDelete(false)} disabled={busy} style={{
+                flex: "1 1 130px", padding: "11px 0", borderRadius: 10, border: `1px solid ${BDR2}`, background: "transparent",
+                color: TEXT2, fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+              }}>ביטול</button>
+            </div>
+          </>
+        )}
+      </div>
+    </SketchModalShell>
   );
 }
