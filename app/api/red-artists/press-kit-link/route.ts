@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireShalevAccess } from "@/lib/require-auth";
+import { requireOwner } from "@/lib/require-auth";
 
 /**
  * POST /api/red-artists/press-kit-link
@@ -22,7 +22,7 @@ async function sharing(token: string, endpoint: string, body: unknown): Promise<
 }
 
 export async function POST() {
-  const denied = await requireShalevAccess(); if (denied) return denied;
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { getDropboxToken } = await import("@/lib/dropbox-token");
     const token = await getDropboxToken();

@@ -525,7 +525,7 @@ export default function ArtistPortalPage({ initialRole }: { initialRole?: Client
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
             : tab === "מאזן" ? (isShalev ? null : <BalancePage summary={summary} loadState={summaryState} />)
-            : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage />
+            : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
             : <ComingSoon tab={tab} />}
         </div>
       </div>
@@ -610,7 +610,7 @@ type PerfFile = { name: string; path: string; url: string };
 type UploadKind = "performance" | "pressKit";
 const trackTitle = (name: string) => name.replace(/\.[^.]+$/, "");
 
-function PressAndShowsPage() {
+function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   const [toast, setToast] = useState<string | null>(null);
@@ -737,6 +737,9 @@ function PressAndShowsPage() {
             </div>
             <p style={{ fontSize: 13.5, color: TEXT2, margin: "8px 0 0", lineHeight: 1.6, maxWidth: 460 }}>תמונות יח״צ, לוגו, ביוגרפיה וחומרים לשליחה</p>
           </div>
+          {/* Public press-kit share — OWNER ONLY (creates a public Dropbox link).
+              Hidden for the shalev role; the route is requireOwner regardless. */}
+          {!isShalev && (
           <button onClick={openPressKit} disabled={opening} style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, flexShrink: 0,
             width: isMobile ? "100%" : "auto", minWidth: isMobile ? undefined : 210,
@@ -747,6 +750,7 @@ function PressAndShowsPage() {
             <Svg size={21} color="#fff" fill="none"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6a1 1 0 0 1-.7-.3l-1.4-1.4a1 1 0 0 0-.7-.3H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
             {opening ? "פותח…" : "פתח תיקייה"}
           </button>
+          )}
         </div>
       </div>
 
