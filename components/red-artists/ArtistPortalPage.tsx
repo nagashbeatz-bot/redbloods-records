@@ -267,17 +267,17 @@ function fmtSketchDate(iso: string | null | undefined): string {
 // ── Next release (project_release_details via /api/label/releases) ─────────────────
 export type PortalRelease = { projectId: string; title: string; releaseDate: string; stage: string };
 const RELEASE_OUT_STAGES = new Set(["יצא", "בהשהייה"]);
-// Nearest STRICTLY-FUTURE release for this label artist, matched by the CANONICAL
-// labelArtistId (never by name). Excludes released/shelved and today-or-past (the
-// countdown targets the start of the release day, so a same-day date is already
-// "arrived" — showing it would be misleading). releaseTargetDate is "YYYY-MM-DD".
+// Nearest upcoming release for this label artist, matched by the CANONICAL
+// labelArtistId (never by name). A release counts as "out" ONLY when releasedAt is
+// set or stage is "יצא" — never inferred from the date passing. Today counts as
+// upcoming (shown as "יוצא היום"). releaseTargetDate is "YYYY-MM-DD".
 function getNextRelease(releases: LabelRelease[], artistId: string): PortalRelease | null {
   const todayYmd = new Date().toISOString().slice(0, 10);
   const cand = releases
     .filter(r => r.release && r.release.labelArtistId === artistId
-      && !RELEASE_OUT_STAGES.has(r.release.releaseStage)
+      && !RELEASE_OUT_STAGES.has(r.release.releaseStage)   // not "יצא"/"בהשהייה"
       && !r.release.releasedAt
-      && !!r.release.releaseTargetDate && r.release.releaseTargetDate > todayYmd)
+      && !!r.release.releaseTargetDate && r.release.releaseTargetDate >= todayYmd)
     .sort((a, b) => (a.release!.releaseTargetDate! < b.release!.releaseTargetDate! ? -1 : 1));
   const top = cand[0];
   if (!top?.release?.releaseTargetDate) return null;
@@ -1847,7 +1847,9 @@ function NextReleaseCard({ release }: { release: PortalRelease }) {
         <div style={{ fontSize: 13, color: TEXT2, marginTop: 7, marginBottom: 14 }}>יוצא ב־{fmtSketchDate(release.releaseDate)}</div>
 
         {cd?.done ? (
-          <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יצא</div>
+          // The release day has arrived. NOT "released" (that is only releasedAt / stage
+          // "יצא", which are excluded from selection) — the date passing just means "today".
+          <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יוצא היום</div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
             {units.map(u => <TimerBox key={u.label} value={u.value} label={u.label} />)}
