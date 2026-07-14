@@ -1470,11 +1470,14 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
     { label: "עודכנו החודש", short: "עודכנו", value: ready ? updatedThisMonth : "—", icon: <IcClock size={20} color="#FF6B6B" /> },
   ];
 
-  // The name column holds ONE aligned unit — [grip][play][name] — so the header
-  // "שם הפרויקט" and the three fixed columns stay perfectly in line.
-  const GRIP_W = 20;   // IcGrip 16 + dragHandle 2px×2 padding
-  const PLAY_W = 42;   // SketchRowPlay button size
-  const UNIT_GAP = 12; // gap between grip · play · name (and the header spacers)
+  // The name column is ONE cell holding ONE inner flex — [grip][play][name] —
+  // with a single tight, uniform gap so the three lock onto the same line and
+  // read as one unit. LEAD_W is the exact grip+play+gaps width; the header reuses
+  // it as a spacer so "שם הפרויקט" sits precisely over the project name.
+  const GRIP_W = 20;   // fixed drag-handle box width (desktop)
+  const PLAY_W = 40;   // SketchRowPlay button size
+  const UNIT_GAP = 10; // tight, uniform gap between grip · play · name
+  const LEAD_W = GRIP_W + UNIT_GAP + PLAY_W + UNIT_GAP; // = 80
   // שם הפרויקט (unit) · גרסה · עודכן · משך.
   const cols = "minmax(0, 1.9fr) 84px 120px 72px";
   const heads: { label: string; align: "start" | "center" }[] = [
@@ -1497,8 +1500,9 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
       onPointerUp={onHandleUp}
       onPointerCancel={onHandleUp}
       style={{
-        display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "stretch",
-        touchAction: "none", padding: isMobile ? "8px 4px" : "4px 2px",
+        display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "stretch", flexShrink: 0,
+        width: isMobile ? 30 : GRIP_W, minWidth: isMobile ? 30 : GRIP_W,
+        touchAction: "none", padding: 0,
         cursor: savingOrder ? "default" : (draggingId === s.id ? "grabbing" : "grab"),
         opacity: savingOrder && draggingId !== s.id ? 0.4 : 1,
       }}>
@@ -1560,9 +1564,8 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
               // The name header carries the same grip+play offset as the row so
               // "שם הפרויקט" lands exactly above the project name (not the grip).
               if (i === 0) return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: UNIT_GAP, minWidth: 0 }}>
-                  <span aria-hidden style={{ width: GRIP_W, flexShrink: 0 }} />
-                  <span aria-hidden style={{ width: PLAY_W, flexShrink: 0 }} />
+                <div key={i} style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+                  <span aria-hidden style={{ width: LEAD_W, flexShrink: 0 }} />
                   {label}
                 </div>
               );
@@ -1625,15 +1628,13 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
                 onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
                 onMouseEnter={e => draggingId ? undefined : rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                 style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", cursor: "pointer", outline: "none", transition: "all .14s", ...dragRowStyle(s) }}>
-                {/* [grip][play][name] as one vertically-centered unit */}
+                {/* ONE cell → ONE inner flex: [grip][play][name] locked to one line */}
                 <div style={{ display: "flex", alignItems: "center", gap: UNIT_GAP, minWidth: 0 }}>
                   {dragHandle(s)}
                   <div onClick={e => e.stopPropagation()} style={{ display: "flex", flexShrink: 0 }}>
                     <SketchRowPlay size={PLAY_W} player={player} sketch={s} onError={setToast} />
                   </div>
-                  <div style={{ minWidth: 0, textAlign: "start" }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#FFFFFF", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-                  </div>
+                  <div style={{ fontSize: 15.5, fontWeight: 700, color: "#FFFFFF", lineHeight: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
                 </div>
                 <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: "ltr" }}>V{s.latestVersion}</div>
                 <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>
