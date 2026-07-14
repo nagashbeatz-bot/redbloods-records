@@ -129,7 +129,9 @@ export async function proxy(request: NextRequest) {
   const forbidden = () => carry(NextResponse.json({ error: "forbidden" }, { status: 403 }));
   const toLogin = () => {
     const url = new URL("/login", request.url);
-    url.searchParams.set("redirect", pathname);
+    // Preserve the FULL destination incl. query (e.g. ?tab=schedule) so a push
+    // deep link survives the login round-trip when the session has expired.
+    url.searchParams.set("redirect", pathname + request.nextUrl.search);
     return carry(NextResponse.redirect(url));
   };
 
