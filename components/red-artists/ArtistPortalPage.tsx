@@ -2139,6 +2139,40 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
 //    The chosen path is remembered in localStorage (demo persistence — no DB).
 const AVATAR_KEY  = "rb_artist_avatar_path_shalev";
 const AVATAR_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+// Real ceiling = Dropbox single-request upload (150MB), matching the route. The
+// old 5MB cap was an arbitrary UI block that rejected ordinary phone photos.
+const AVATAR_MAX_BYTES = 150 * 1024 * 1024;
+const AVATAR_MAX_LABEL = "150MB";
+
+type XhrResult = { ok: boolean; status: number; reason?: "network" | "timeout" | "abort"; data: { ok?: boolean; error?: string; path?: string } };
+// XMLHttpRequest (not fetch) so we get REAL upload progress in the browser. No
+// dependency added. Always resolves — never rejects — so the caller can't hang.
+function xhrUploadAvatar(fd: FormData, onProgress: (pct: number) => void): Promise<XhrResult> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/red-artists/profile-image");
+    xhr.timeout = 300000; // 5 min — a large original on a slow link
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100))); };
+    xhr.onload = () => {
+      let data: XhrResult["data"] = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON body */ }
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300 && data?.ok !== false, status: xhr.status, data });
+    };
+    xhr.onerror   = () => resolve({ ok: false, status: 0, reason: "network", data: {} });
+    xhr.ontimeout = () => resolve({ ok: false, status: 0, reason: "timeout", data: {} });
+    xhr.onabort   = () => resolve({ ok: false, status: 0, reason: "abort", data: {} });
+    xhr.send(fd);
+  });
+}
+// Map an upload result → a safe Hebrew message (never a raw 500 body — it can
+// contain a Dropbox path). Known 4xx messages from the route are safe to show.
+function avatarUploadError(r: XhrResult): string {
+  if (r.reason === "timeout" || r.reason === "abort" || r.reason === "network" || r.status === 0) return "החיבור נקטע במהלך ההעלאה";
+  if (r.status === 415) return r.data.error || "הקובץ אינו תמונה תקינה";
+  if (r.status === 413) return r.data.error || `הקובץ גדול מהמגבלה שהשרת מאפשר (מקסימום ${AVATAR_MAX_LABEL})`;
+  if (r.status === 400) return r.data.error || "העלאת התמונה נכשלה. נסה שוב";
+  return "העלאת התמונה נכשלה. נסה שוב"; // 500 etc. — generic, no internals
+}
 // Deterministic path the endpoint writes the cropped avatar to (editor exports
 // JPEG). Used as a cross-device fallback so ANY browser loads the same image
 // even without a localStorage entry; a 404 just falls back to the "ש" initial.
@@ -2207,21 +2241,19 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!AVATAR_MIME.includes(file.type)) { notify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
-    if (file.size > 5 * 1024 * 1024)      { notify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
+    if (!AVATAR_MIME.includes(file.type)) { notify("הקובץ אינו תמונה תקינה"); return; }
+    if (file.size > AVATAR_MAX_BYTES)     { notify(`הקובץ גדול מהמגבלה שהשרת מאפשר (מקסימום ${AVATAR_MAX_LABEL})`); return; }
     // New image → its own crop (defaults). The untouched original is uploaded to
     // Dropbox on save, so a later re-open (any device) edits the true source.
     clearAvatarEdit();
     setEditing({ file });
   }
 
-  // Upload the cropped blob (from the editor's "שמירה") to the existing endpoint.
-  // Returns true on success. Always resolves (30s abort timeout) so the editor
-  // can never hang on "שומר…". Real errors are logged to the console.
-  async function doUpload(blob: Blob, meta: SaveMeta): Promise<boolean> {
+  // Upload the cropped blob (from the editor's "שמירה") via XHR so the editor can
+  // show REAL upload progress. Returns { ok, error? } — a failure never throws and
+  // never mutates the current avatar; the editor keeps the crop/file for a retry.
+  async function doUpload(blob: Blob, meta: SaveMeta, onProgress: (pct: number) => void): Promise<{ ok: boolean; error?: string }> {
     setBusy(true);
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 45000); // two uploads (avatar + maybe the original)
     try {
       const fd = new FormData();
       fd.append("avatar", blob, "avatar.jpg");
@@ -2234,29 +2266,17 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
         fd.append("original", meta.originalFile, meta.originalFileName ?? meta.originalFile.name);
         if (meta.originalFileName) fd.append("originalFileName", meta.originalFileName);
       }
-      const res  = await fetch("/api/red-artists/profile-image", { method: "POST", body: fd, signal: ctrl.signal });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        console.error("[red-artists/avatar] upload failed:", res.status, data);
-        notify(data.error ?? "השמירה נכשלה, נסה שוב");
-        return false;
-      }
-      const p = data.path as string;
-      // Diagnostic: confirms the real path_display vs AVATAR_PATH (cross-device sync).
-      console.info("[red-artists/avatar] saved path:", p, "| AVATAR_PATH:", AVATAR_PATH, "| match:", p === AVATAR_PATH);
+      const res = await xhrUploadAvatar(fd, onProgress);
+      if (!res.ok) return { ok: false, error: avatarUploadError(res) };
+      const p = res.data.path as string;
       avatarPathCache = p;
       avatarVerCache  = Date.now();              // bump only on success → forces the overwritten image to reload
       try { localStorage.setItem(AVATAR_KEY, p); } catch { /* ignore */ }
       setPath(p);
       setVer(avatarVerCache);
-      notify("תמונת הפרופיל עודכנה");
-      return true;
-    } catch (e) {
-      console.error("[red-artists/avatar] upload error:", e);
-      notify(ctrl.signal.aborted ? "השמירה נכשלה (timeout), נסה שוב" : "השמירה נכשלה, נסה שוב");
-      return false;
+      notify("תמונת הפרופיל עודכנה בהצלחה");
+      return { ok: true };
     } finally {
-      clearTimeout(to);
       setBusy(false);
     }
   }
@@ -2307,9 +2327,8 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
         <AvatarEditor
           initialFile={editing.file}
           initialUrl={editing.url}
-          onNotify={notify}
           onCancel={() => setEditing(null)}
-          onSave={async (blob, meta) => { const ok = await doUpload(blob, meta); if (ok) setEditing(null); return ok; }}
+          onSave={async (blob, meta, onProgress) => { const res = await doUpload(blob, meta, onProgress); if (res.ok) setEditing(null); return res; }}
         />
       )}
       {toast && typeof document !== "undefined" && createPortal(
@@ -2343,9 +2362,10 @@ function drawAvatar(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: 
   ctx.drawImage(img, x, y, dw, dh);
 }
 
-function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
+function AvatarEditor({ initialFile, initialUrl, onCancel, onSave }: {
   initialFile?: File; initialUrl?: string;
-  onNotify: (m: string) => void; onCancel: () => void; onSave: (blob: Blob, meta: SaveMeta) => Promise<boolean>;
+  onCancel: () => void;
+  onSave: (blob: Blob, meta: SaveMeta, onProgress: (pct: number) => void) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const isMobile = useIsMobile();
   const D = isMobile ? 236 : 260;
@@ -2367,6 +2387,8 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   const [displaySrc, setDisplay]  = useState<string | null>(initialSrc);
   const [loaded, setLoaded]       = useState(false);
   const [saving, setSaving]       = useState(false);
+  const [progress, setProgress]   = useState(0);            // real upload % (0–100)
+  const [error, setError]         = useState<string | null>(null); // shown INSIDE the modal
   const [zoom, setZoom]           = useState(1);
   const [offset, setOffset]       = useState({ x: 0, y: 0 });
 
@@ -2399,7 +2421,7 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     img.onerror = () => {
       // A stored original that no longer exists → fall back to the avatar image once.
       if (initialUrl && displaySrc !== initialUrl) { cropToApplyRef.current = null; setDisplay(initialUrl); return; }
-      imgRef.current = null; setLoaded(false); onNotify("טעינת התמונה נכשלה — נסה להעלות תמונה חדשה");
+      imgRef.current = null; setLoaded(false); setError("טעינת התמונה נכשלה — נסה להעלות תמונה חדשה");
     };
     img.src = displaySrc;
     return () => { img.onload = null; img.onerror = null; };
@@ -2448,12 +2470,20 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
     drawAvatar(ctx, img, D, D, zoom, offset);
   }, [zoom, offset, loaded, D]);
 
-  // Esc = cancel.
+  // Esc = cancel — but NOT while uploading (don't interrupt the upload).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !saving) onCancel(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [onCancel, saving]);
+
+  // While uploading, warn before a browser/tab close that would abort the upload.
+  useEffect(() => {
+    if (!saving) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [saving]);
 
   const onDown = (e: React.PointerEvent) => {
     if (!loaded) return;
@@ -2469,8 +2499,9 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   const pickReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f) return;
-    if (!AVATAR_MIME.includes(f.type)) { onNotify("סוג קובץ לא נתמך — jpg / png / webp בלבד"); return; }
-    if (f.size > 5 * 1024 * 1024)      { onNotify("הקובץ גדול מדי (מקסימום 5MB)"); return; }
+    if (!AVATAR_MIME.includes(f.type)) { setError("הקובץ אינו תמונה תקינה"); return; }
+    if (f.size > AVATAR_MAX_BYTES)     { setError(`הקובץ גדול מהמגבלה שהשרת מאפשר (מקסימום ${AVATAR_MAX_LABEL})`); return; }
+    setError(null);
     cropToApplyRef.current = null; // a new/replaced image opens at defaults, not the old crop
     clearAvatarEdit();
     setFile(f);
@@ -2493,20 +2524,26 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
   // Bulletproof save: whatever happens, `saving` is always released in finally,
   // so the button can never get stuck on "שומר…".
   const doSave = async () => {
-    if (saving) return;
+    if (saving) return; // prevents a double submit
     const img = imgRef.current;
-    if (!img) { onNotify("אין תמונה לשמירה"); return; }
-    setSaving(true);
+    if (!img) { setError("אין תמונה לשמירה"); return; }
+    setSaving(true); setError(null); setProgress(0);
     try {
       const blob = await renderBlob(img);
       // originalFile only for a freshly picked/replaced image → the server stores
       // it as the re-editing source; a plain re-crop keeps the existing original.
-      const ok = await onSave(blob, { zoom, offset, originalFile: file, originalFileName: file?.name ?? null });
-      if (ok) saveAvatarEdit(zoom, offset);   // refresh the localStorage cache (Dropbox is the source of truth)
-      else onNotify("השמירה נכשלה, נסה שוב");
+      const res = await onSave(blob, { zoom, offset, originalFile: file, originalFileName: file?.name ?? null }, setProgress);
+      if (res.ok) {
+        saveAvatarEdit(zoom, offset);          // refresh the localStorage cache (Dropbox is the source of truth)
+        // parent closes the modal on success (setEditing(null)).
+      } else {
+        // Failure → keep the modal open, the crop + picked file intact, and show
+        // the error IN the modal so a retry is one click away.
+        setError(res.error || "העלאת התמונה נכשלה. נסה שוב");
+      }
     } catch (e) {
       console.error("[avatar-editor] save failed:", e);
-      onNotify("השמירה נכשלה, נסה שוב");
+      setError("העלאת התמונה נכשלה. נסה שוב");
     } finally {
       setSaving(false);                        // no-op if already unmounted on success
     }
@@ -2566,6 +2603,26 @@ function AvatarEditor({ initialFile, initialUrl, onNotify, onCancel, onSave }: {
           background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT, cursor: saving ? "default" : "pointer",
         }}>החלף תמונה</button>
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={pickReplace} />
+
+        {/* error — INSIDE the modal (above the buttons), never a toast behind the overlay */}
+        {error && (
+          <div style={{
+            marginBottom: 12, fontSize: 12.5, fontWeight: 700, color: "#FCA5A5", lineHeight: 1.5,
+            background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.32)", borderRadius: 10, padding: "10px 12px",
+          }}>{error}</div>
+        )}
+
+        {/* real upload progress (from XHR upload.onprogress) */}
+        {saving && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: TEXT2, marginBottom: 6 }}>
+              {progress < 100 ? `מעלה תמונה... ${progress}%` : "מסיים…"}
+            </div>
+            <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #E5322F, #FF6B6B)", borderRadius: 999, transition: "width .15s" }} />
+            </div>
+          </div>
+        )}
 
         {/* cancel + save */}
         <div style={{ display: "flex", gap: 10 }}>

@@ -18,7 +18,11 @@ const ALLOWED: Record<string, string> = {
   "image/png":  "png",
   "image/webp": "webp",
 };
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+// The real infrastructure ceiling = Dropbox single-request /files/upload (150MB);
+// the proxy body limit (512MB) is looser, so Dropbox is binding. The old 5MB cap
+// was an arbitrary block that rejected ordinary phone photos.
+const MAX_BYTES = 150 * 1024 * 1024; // 150MB
+const MAX_LABEL = "150MB";
 // Server-owned folder + filenames — NEVER derived from client input.
 const FOLDER      = "/app/red-artists/shalev-tasama/profile-image";
 const AVATAR_PATH = `${FOLDER}/avatar.jpg`; // editor always exports JPEG
@@ -84,7 +88,9 @@ function parseEditor(raw: string | null): EditorMeta | null {
 }
 
 function streamUrl(path: string): string {
-  return `/api/dropbox/stream?path=${encodeURIComponent(path)}`;
+  // Scoped portal stream (owner|shalev, restricted to Shalev's folder tree) — the
+  // raw /api/dropbox/stream is blocked for the shalev role.
+  return `/api/red-artists/stream?path=${encodeURIComponent(path)}`;
 }
 
 // ── GET: original image + last crop (source of truth for re-editing) ─────────────
@@ -124,7 +130,7 @@ export async function POST(req: NextRequest) {
     if (!avatar) return NextResponse.json({ error: "חסר קובץ" }, { status: 400 });
     const avatarExt = ALLOWED[avatar.type];
     if (!avatarExt)               return NextResponse.json({ error: "סוג קובץ לא נתמך — jpg / png / webp בלבד" }, { status: 415 });
-    if (avatar.size > MAX_BYTES)  return NextResponse.json({ error: "הקובץ גדול מדי (מקסימום 5MB)" },           { status: 413 });
+    if (avatar.size > MAX_BYTES)  return NextResponse.json({ error: `הקובץ גדול מהמגבלה שהשרת מאפשר (מקסימום ${MAX_LABEL})` }, { status: 413 });
 
     const { getDropboxToken } = await import("@/lib/dropbox-token");
     const token = await getDropboxToken();
@@ -138,7 +144,7 @@ export async function POST(req: NextRequest) {
     if (original) {
       originalExt = ALLOWED[original.type];
       if (!originalExt)               return NextResponse.json({ error: "סוג קובץ לא נתמך — jpg / png / webp בלבד" }, { status: 415 });
-      if (original.size > MAX_BYTES)  return NextResponse.json({ error: "הקובץ גדול מדי (מקסימום 5MB)" },           { status: 413 });
+      if (original.size > MAX_BYTES)  return NextResponse.json({ error: `הקובץ גדול מהמגבלה שהשרת מאפשר (מקסימום ${MAX_LABEL})` }, { status: 413 });
       await dbxUpload(token, `${FOLDER}/original.${originalExt}`, original);
     } else {
       // Re-crop of the existing image → keep the original untouched; preserve its
