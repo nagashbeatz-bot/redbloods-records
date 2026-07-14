@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
-import type { Project, LabelRelease } from "@/lib/types";
+import type { Project } from "@/lib/types";
 
 // Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
 // touch-friendly layout. UI only; no data/logic change.
@@ -255,7 +255,7 @@ export type Sketch = {
 // Stream URL for a sketch's latest file — the version is a cache-buster so a new V{n}
 // never plays the previous URL from cache.
 function sketchStreamUrl(s: Sketch): string {
-  return `/api/dropbox/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
+  return `/api/red-artists/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
 // "YYYY-MM-DD..." or ISO → "DD.MM.YYYY".
 function fmtSketchDate(iso: string | null | undefined): string {
@@ -264,31 +264,10 @@ function fmtSketchDate(iso: string | null | undefined): string {
   return d.length === 3 ? `${d[2]}.${d[1]}.${d[0]}` : iso;
 }
 
-// ── Next release (project_release_details via /api/label/releases) ─────────────────
-export type PortalRelease = { projectId: string; title: string; releaseDate: string; stage: string };
-const RELEASE_OUT_STAGES = new Set(["יצא", "בהשהייה"]);
-// Nearest upcoming release for this label artist, matched by the CANONICAL
-// labelArtistId (never by name). A release counts as "out" ONLY when releasedAt is
-// set or stage is "יצא" — never inferred from the date passing. Today counts as
-// upcoming (shown as "יוצא היום"). releaseTargetDate is "YYYY-MM-DD".
-function getNextRelease(releases: LabelRelease[], artistId: string): PortalRelease | null {
-  const todayYmd = new Date().toISOString().slice(0, 10);
-  const cand = releases
-    .filter(r => r.release && r.release.labelArtistId === artistId
-      && !RELEASE_OUT_STAGES.has(r.release.releaseStage)   // not "יצא"/"בהשהייה"
-      && !r.release.releasedAt
-      && !!r.release.releaseTargetDate && r.release.releaseTargetDate >= todayYmd)
-    .sort((a, b) => (a.release!.releaseTargetDate! < b.release!.releaseTargetDate! ? -1 : 1));
-  const top = cand[0];
-  if (!top?.release?.releaseTargetDate) return null;
-  return { projectId: top.projectId, title: top.name, releaseDate: top.release.releaseTargetDate, stage: top.release.releaseStage };
-}
-// The label-artist id from the portal URL (/label/artists/[id]) — the canonical link.
-function currentArtistId(): string | null {
-  if (typeof window === "undefined") return null;
-  const m = window.location.pathname.match(/\/label\/artists\/([0-9a-fA-F-]{36})/);
-  return m ? m[1] : null;
-}
+// ── Next release — the portal's manifest-stored pointer (a sketch + a date). ──────
+// Source of truth = /api/red-artists/next-release (manifest). NOT Projects / not
+// project_release_details. `title` is the chosen sketch's live title.
+export type PortalRelease = { sketchId: string; title: string; releaseDate: string };
 
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
   const target = normName(SHALEV_ARTIST);
@@ -404,20 +383,17 @@ export default function ArtistPortalPage() {
     return () => { alive = false; };
   }, []);
 
-  // Next release — real data from project_release_details via /api/label/releases,
-  // filtered to THIS artist by the canonical labelArtistId (from the URL). No mock,
-  // no name match. `null` when there is no upcoming release → the card is hidden.
+  // Next release — the portal's manifest pointer (a sketch + a date). NOT Projects,
+  // NOT project_release_details. null when unset → the card shows a "set it" prompt.
   const [nextRelease, setNextRelease] = useState<PortalRelease | null>(null);
-  useEffect(() => {
-    let alive = true;
-    const artistId = currentArtistId();
-    if (!artistId) return;
-    fetch("/api/label/releases", { cache: "no-store" })
-      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((rows: LabelRelease[]) => { if (alive && Array.isArray(rows)) setNextRelease(getNextRelease(rows, artistId)); })
-      .catch(() => { /* card stays hidden on failure — home page never breaks */ });
-    return () => { alive = false; };
+  const reloadNextRelease = useCallback(async () => {
+    try {
+      const r = await fetch("/api/red-artists/next-release", { cache: "no-store" });
+      const d = await r.json();
+      if (r.ok && d?.ok) setNextRelease(d.release ?? null);
+    } catch { /* leave as-is — the home page never breaks */ }
   }, []);
+  useEffect(() => { void reloadNextRelease(); }, [reloadNextRelease]);
 
   // Learn-and-save duration into the SKETCH MANIFEST (never Projects): once the
   // global player has a real duration for the playing sketch's latest version and
@@ -523,7 +499,7 @@ export default function ArtistPortalPage() {
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
@@ -1790,88 +1766,180 @@ function TimerBox({ value, label }: { value: string; label: string }) {
   );
 }
 
-function NextReleaseCard({ release }: { release: PortalRelease }) {
+const releaseCardShell: React.CSSProperties = {
+  position: "relative", overflow: "hidden", borderRadius: 22,
+  border: "1px solid rgba(220,38,38,0.45)",
+  background: "radial-gradient(90% 150% at 12% 18%, rgba(220,38,38,0.30) 0%, rgba(220,38,38,0.05) 42%, transparent 68%), linear-gradient(160deg, #1a1314 0%, #0c0a0b 100%)",
+  boxShadow: "0 0 60px rgba(220,38,38,0.12), 0 22px 52px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)",
+};
+function ReleaseHeading() {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+      <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>הריליס הבא</span>
+    </div>
+  );
+}
+function releaseBtnStyle(isMobile: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0,
+    padding: isMobile ? "13px 20px" : "12px 20px", width: isMobile ? "100%" : "auto",
+    borderRadius: 13, cursor: "pointer", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, whiteSpace: "nowrap",
+    color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", transition: "all .15s",
+  };
+}
+
+function NextReleaseCard({ release, sketches, onReload }: {
+  release: PortalRelease | null; sketches: Sketch[]; onReload: () => Promise<void>;
+}) {
   const isMobile = useIsMobile();
-  const cd = useCountdown(releaseTargetMs(release.releaseDate));
+  const [modalOpen, setModalOpen] = useState(false);
+  const cd = useCountdown(release ? releaseTargetMs(release.releaseDate) : 0);
   const pad = (n: number) => String(n).padStart(2, "0");
-  const openDetails = () => { if (typeof window !== "undefined") window.location.href = `/projects/${release.projectId}`; };
+
+  const DetailsBtn = ({ label }: { label: string }) => (
+    <button
+      onClick={() => setModalOpen(true)} style={releaseBtnStyle(isMobile)}
+      onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.7)"; }}
+      onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.10)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.45)"; }}
+      onMouseDown={e => (e.currentTarget.style.transform = "scale(0.97)")}
+      onMouseUp={e => (e.currentTarget.style.transform = "scale(1)")}
+    >{label} <IcChevron size={15} /></button>
+  );
+
+  const modal = modalOpen && (
+    <NextReleaseModal current={release} sketches={sketches} onClose={() => setModalOpen(false)} onSaved={onReload} />
+  );
+
+  // Unset → compact prompt so the release can still be set from the home page.
+  if (!release) {
+    return (
+      <>
+        <div style={{ ...releaseCardShell, padding: isMobile ? "18px 18px" : "20px 26px", display: "flex", flexDirection: isMobile ? "column" : "row", gap: 14, alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between" }}>
+          <div style={{ minWidth: 0 }}>
+            <ReleaseHeading />
+            <div style={{ fontSize: isMobile ? 17 : 19, fontWeight: 800, color: "#fff" }}>עדיין לא הוגדר ריליס הבא</div>
+            <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5 }}>בחר סקיצה וקבע תאריך הוצאה</div>
+          </div>
+          <DetailsBtn label="הגדרת ריליס" />
+        </div>
+        {modal}
+      </>
+    );
+  }
 
   const units: { value: string; label: string }[] = cd
     ? [
-        { value: pad(cd.days), label: "ימים" },
-        { value: pad(cd.hours), label: "שעות" },
-        { value: pad(cd.minutes), label: "דקות" },
-        { value: pad(cd.seconds), label: "שניות" },
+        { value: pad(cd.days), label: "ימים" }, { value: pad(cd.hours), label: "שעות" },
+        { value: pad(cd.minutes), label: "דקות" }, { value: pad(cd.seconds), label: "שניות" },
       ]
     : [
         { value: "—", label: "ימים" }, { value: "—", label: "שעות" },
         { value: "—", label: "דקות" }, { value: "—", label: "שניות" },
       ];
 
-  const detailsBtn = (
-    <button
-      onClick={openDetails}
-      style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0,
-        padding: isMobile ? "13px 20px" : "12px 20px", width: isMobile ? "100%" : "auto",
-        borderRadius: 13, cursor: "pointer", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, whiteSpace: "nowrap",
-        color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", transition: "all .15s",
-      }}
-      onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.7)"; }}
-      onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.10)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.45)"; }}
-      onMouseDown={e => (e.currentTarget.style.transform = "scale(0.97)")}
-      onMouseUp={e => (e.currentTarget.style.transform = "scale(1)")}
-    >לפרטי הריליס <IcChevron size={15} /></button>
+  return (
+    <>
+      <div style={{
+        ...releaseCardShell, padding: isMobile ? "20px 18px" : "24px 26px",
+        display: "flex", gap: isMobile ? 18 : 26, flexDirection: isMobile ? "column" : "row-reverse", alignItems: "center",
+      }}>
+        {/* left (RTL row-reverse): artwork + disc · mobile: top */}
+        <ReleaseArtwork title={release.title} size={isMobile ? 116 : 124} />
+
+        {/* centre: label · title · date · timer */}
+        <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? "center" : "start", width: isMobile ? "100%" : undefined }}>
+          <ReleaseHeading />
+          <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{release.title}</div>
+          <div style={{ fontSize: 13, color: TEXT2, marginTop: 7, marginBottom: 14 }}>יוצא ב־{fmtSketchDate(release.releaseDate)}</div>
+
+          {cd?.done ? (
+            // The release day arrived. NOT "released" — the date passing just means "today".
+            <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יוצא היום</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
+              {units.map(u => <TimerBox key={u.label} value={u.value} label={u.label} />)}
+            </div>
+          )}
+        </div>
+
+        {/* right (RTL row-reverse): details button · mobile: full-width bottom */}
+        <DetailsBtn label="לפרטי הריליס" />
+      </div>
+      {modal}
+    </>
   );
+}
+
+// Modal: choose one of the artist's OWN sketches (manifest, not Projects) + a
+// release date → POST /api/red-artists/next-release. Saves to the manifest.
+function NextReleaseModal({ current, sketches, onClose, onSaved }: {
+  current: PortalRelease | null; sketches: Sketch[]; onClose: () => void; onSaved: () => Promise<void>;
+}) {
+  const [sketchId, setSketchId] = useState(current?.sketchId ?? sketches[0]?.id ?? "");
+  const [date, setDate] = useState(current?.releaseDate ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  const canSave = !!sketchId && validDate && !saving && sketches.length > 0;
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true); setErr(null);
+    try {
+      const res = await fetch("/api/red-artists/next-release", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sketchId, releaseDate: date }),
+      });
+      if (!res.ok) { setErr(await readErr(res, "שמירת הריליס נכשלה")); setSaving(false); return; }
+      await onSaved();
+      onClose();
+    } catch { setErr("שגיאת רשת, נסה שוב"); setSaving(false); }
+  };
 
   return (
-    <div style={{
-      position: "relative", overflow: "hidden", borderRadius: 22,
-      border: "1px solid rgba(220,38,38,0.45)",
-      background: "radial-gradient(90% 150% at 12% 18%, rgba(220,38,38,0.30) 0%, rgba(220,38,38,0.05) 42%, transparent 68%), linear-gradient(160deg, #1a1314 0%, #0c0a0b 100%)",
-      boxShadow: "0 0 60px rgba(220,38,38,0.12), 0 22px 52px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)",
-      padding: isMobile ? "20px 18px" : "24px 26px",
-      display: "flex", gap: isMobile ? 18 : 26,
-      flexDirection: isMobile ? "column" : "row-reverse", alignItems: "center",
-    }}>
-      {/* left (RTL row-reverse): artwork + disc · mobile: top */}
-      <ReleaseArtwork title={release.title} size={isMobile ? 116 : 124} />
-
-      {/* centre: label · title · date · timer */}
-      <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? "center" : "start", width: isMobile ? "100%" : undefined }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>הריליס הבא</span>
+    <SketchModalShell title="פרטי הריליס הבא" onClose={onClose} busy={saving}>
+      <SkErr msg={err} />
+      {sketches.length === 0 ? (
+        <div style={{ fontSize: 13.5, color: TEXT2, lineHeight: 1.7, textAlign: "center", padding: "18px 8px" }}>
+          אין עדיין סקיצות בספרייה.<br />הוסף סקיצה ב״המוזיקה שלי״ ואז ניתן להגדיר ריליס.
         </div>
-        <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{release.title}</div>
-        <div style={{ fontSize: 13, color: TEXT2, marginTop: 7, marginBottom: 14 }}>יוצא ב־{fmtSketchDate(release.releaseDate)}</div>
-
-        {cd?.done ? (
-          // The release day has arrived. NOT "released" (that is only releasedAt / stage
-          // "יצא", which are excluded from selection) — the date passing just means "today".
-          <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יוצא היום</div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
-            {units.map(u => <TimerBox key={u.label} value={u.value} label={u.label} />)}
+      ) : (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <label style={skLabel}>בחר סקיצה</label>
+            <select value={sketchId} onChange={e => setSketchId(e.target.value)} disabled={saving}
+              style={{ ...skField, cursor: "pointer", appearance: "auto", opacity: saving ? 0.6 : 1 }}>
+              {sketches.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+            </select>
           </div>
-        )}
-      </div>
-
-      {/* right (RTL row-reverse): details button · mobile: full-width bottom */}
-      {detailsBtn}
-    </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={skLabel}>תאריך הוצאה</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={saving}
+              style={{ ...skField, colorScheme: "dark", opacity: saving ? 0.6 : 1 }} />
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={save} disabled={!canSave} style={{ ...skPrimaryBtn(canSave), flex: "1 1 150px", width: "auto" }}>{saving ? "שומר…" : "שמור ריליס"}</button>
+            <button onClick={onClose} disabled={saving} style={{
+              flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+              color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: saving ? "default" : "pointer",
+            }}>ביטול</button>
+          </div>
+        </>
+      )}
+    </SketchModalShell>
   );
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void> }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-      {/* ── הריליס הבא (real project_release_details; hidden when none upcoming) ── */}
-      {nextRelease && <NextReleaseCard release={nextRelease} />}
+      {/* ── הריליס הבא — manifest pointer; full card when set, "set it" prompt when not ── */}
+      <NextReleaseCard release={nextRelease} sketches={sketches} onReload={onReloadNextRelease} />
 
       {/* ── "מה מחכה לך עכשיו" ── */}
       <div>
@@ -2094,7 +2162,7 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
     }
   }
 
-  const src = path ? `/api/dropbox/stream?path=${encodeURIComponent(path)}${ver ? `&t=${ver}` : ""}` : null;
+  const src = path ? `/api/red-artists/stream?path=${encodeURIComponent(path)}${ver ? `&t=${ver}` : ""}` : null;
 
   // NOTE: the editor + toast are portaled AND rendered as SIBLINGS of the
   // clickable avatar (not children) — otherwise their clicks bubble through the

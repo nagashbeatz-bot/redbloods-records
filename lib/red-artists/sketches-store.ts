@@ -48,12 +48,20 @@ export interface Sketch {
   archived: boolean;
   archivedAt?: string | null;
 }
+/** The portal's "next release" pointer — a sketch id + a release date (YYYY-MM-DD).
+ * Stored in the manifest (single source of truth); no Projects / project_release_details. */
+export interface NextReleaseRef { sketchId: string; releaseDate: string; updatedAt: string }
+/** A NextReleaseRef resolved against the current sketches (adds the live title). */
+export interface ResolvedNextRelease { sketchId: string; title: string; releaseDate: string; updatedAt: string }
+
 interface Manifest {
   schemaVersion: number;
   sketches: Sketch[];
   /** Explicit display order for ACTIVE sketches (stable ids). Absent on legacy
    * manifests → a deterministic order is derived (see `effectiveOrder`). */
   order?: string[];
+  /** The chosen "next release" (points at one active sketch). Optional/absent. */
+  nextRelease?: NextReleaseRef | null;
 }
 
 /** Typed error whose `code` the routes map to an HTTP status + a Hebrew message. */
@@ -161,7 +169,16 @@ async function readManifest(): Promise<{ manifest: Manifest; rev: string | null 
   const order = Array.isArray(rawOrder)
     ? rawOrder.filter((x): x is string => typeof x === "string")
     : undefined;
-  return { manifest: { schemaVersion: 1, sketches, order }, rev: dl.rev };
+  // Preserve the nextRelease pointer (defensively) so sketch mutations never wipe it.
+  const rawNext = (parsed as { nextRelease?: unknown })?.nextRelease;
+  let nextRelease: NextReleaseRef | null = null;
+  if (rawNext && typeof rawNext === "object") {
+    const n = rawNext as Partial<NextReleaseRef>;
+    if (typeof n.sketchId === "string" && typeof n.releaseDate === "string") {
+      nextRelease = { sketchId: n.sketchId, releaseDate: n.releaseDate, updatedAt: typeof n.updatedAt === "string" ? n.updatedAt : new Date().toISOString() };
+    }
+  }
+  return { manifest: { schemaVersion: 1, sketches, order, nextRelease }, rev: dl.rev };
 }
 
 /** Newest-updated first — the legacy/default ordering. */
@@ -398,6 +415,34 @@ export async function reorderSketches(orderedIds: string[]): Promise<Sketch[]> {
     return m;
   });
   return listSketches();
+}
+
+// ── Next release (manifest-stored pointer to an active sketch) ────────────────
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** The resolved next release, or null when unset / pointing at a missing sketch. */
+export async function getNextReleaseConfig(): Promise<ResolvedNextRelease | null> {
+  const { manifest } = await readManifest();
+  const nr = manifest.nextRelease;
+  if (!nr) return null;
+  const s = manifest.sketches.find((x) => x.id === nr.sketchId && !x.archived);
+  if (!s) return null; // stale pointer (the sketch was deleted/archived)
+  return { sketchId: s.id, title: s.title, releaseDate: nr.releaseDate, updatedAt: nr.updatedAt };
+}
+/** Set the next release to an ACTIVE sketch + a YYYY-MM-DD date. */
+export async function setNextReleaseConfig(sketchId: string, releaseDate: string): Promise<ResolvedNextRelease> {
+  if (typeof sketchId !== "string" || !sketchId) throw new SketchError("BAD_INPUT", "יש לבחור סקיצה");
+  if (!DATE_RE.test(releaseDate) || Number.isNaN(new Date(`${releaseDate}T00:00:00`).getTime())) {
+    throw new SketchError("BAD_INPUT", "תאריך הוצאה לא תקין");
+  }
+  let resolved: ResolvedNextRelease | null = null;
+  await mutateManifest((m) => {
+    const s = m.sketches.find((x) => x.id === sketchId && !x.archived);
+    if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
+    m.nextRelease = { sketchId, releaseDate, updatedAt: new Date().toISOString() };
+    resolved = { sketchId, title: s.title, releaseDate, updatedAt: m.nextRelease.updatedAt };
+    return m;
+  });
+  return resolved!;
 }
 
 export async function setSketchDuration(id: string, versionNumber: number, seconds: number): Promise<void> {
