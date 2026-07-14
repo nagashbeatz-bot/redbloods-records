@@ -1951,7 +1951,9 @@ function NextReleaseCard({ release, sketches, onReload }: {
             // The release day arrived. NOT "released" — the date passing just means "today".
             <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יוצא היום</div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
+            // direction:ltr → days→hours→minutes→seconds read left→right (days on the
+            // left, seconds on the right) inside the RTL card; Hebrew labels unaffected.
+            <div style={{ direction: "ltr", display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
               {units.map(u => <TimerBox key={u.label} value={u.value} label={u.label} />)}
             </div>
           )}
