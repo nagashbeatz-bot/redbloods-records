@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireShalevAccess, getAuthRole } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { listShows } from "@/lib/shows-store";
 
@@ -55,8 +55,12 @@ function addDays(base: Date, n: number): Date {
 const VISIBLE_SHOW_STATUSES = new Set(["אושרה", "נסגר", "בוצע"]);
 
 export async function GET() {
-  const denied = await requireOwner();
+  const denied = await requireShalevAccess();
   if (denied) return denied;
+
+  // The balance/salary block is OWNER-ONLY. Shalev's own portal never receives any
+  // financial figures — it is stripped server-side (not just hidden in the UI).
+  const isShalev = (await getAuthRole()) === "shalev";
 
   try {
     const now = new Date();
@@ -89,33 +93,48 @@ export async function GET() {
       .sort((a, b) => ((a.date ?? "") > (b.date ?? "") ? -1 : (a.date ?? "") < (b.date ?? "") ? 1 : 0)) // most recent first
       .map(slim);
 
-    // ── Balance (artist-fee transactions only) ──────────────────────────────
-    const { data: txRows } = await supabase
-      .from("transactions")
-      .select("id, date, description, amount, currency, payment_status")
-      .eq("category", "שכר אמן")
-      .eq("artist", SHALEV)
-      .eq("expense_scope", "הופעה");
+    // ── Balance (artist-fee transactions only) — OWNER ONLY ─────────────────
+    // For the shalev role we NEVER query or return financial data. The block is
+    // skipped entirely and balance is null (the portal also hides the UI).
+    type Balance = {
+      paidTotal: number; expectedTotal: number; currency: string;
+      payments: { id: string; date: string | null; description: string; amount: number; currency: string }[];
+      hasData: boolean;
+    };
+    let balance: Balance | null = null;
+    if (!isShalev) {
+      const { data: txRows } = await supabase
+        .from("transactions")
+        .select("id, date, description, amount, currency, payment_status")
+        .eq("category", "שכר אמן")
+        .eq("artist", SHALEV)
+        .eq("expense_scope", "הופעה");
 
-    const rows = txRows ?? [];
-    const sum = (status: string) =>
-      rows
-        .filter((t) => t.payment_status === status)
-        .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+      const rows = txRows ?? [];
+      const sum = (status: string) =>
+        rows
+          .filter((t) => t.payment_status === status)
+          .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
 
-    const paidTotal = sum("שולם");
-    const expectedTotal = sum("צפוי");
+      const payments = rows
+        .filter((t) => t.payment_status === "שולם")
+        .sort((a, b) => ((a.date ?? "") > (b.date ?? "") ? -1 : (a.date ?? "") < (b.date ?? "") ? 1 : 0))
+        .map((t) => ({
+          id: t.id as string,
+          date: (t.date as string | null) ?? null,
+          description: (t.description as string) ?? "",
+          amount: Number(t.amount) || 0,
+          currency: (t.currency as string) || "₪",
+        }));
 
-    const payments = rows
-      .filter((t) => t.payment_status === "שולם")
-      .sort((a, b) => ((a.date ?? "") > (b.date ?? "") ? -1 : (a.date ?? "") < (b.date ?? "") ? 1 : 0))
-      .map((t) => ({
-        id: t.id as string,
-        date: (t.date as string | null) ?? null,
-        description: (t.description as string) ?? "",
-        amount: Number(t.amount) || 0,
-        currency: (t.currency as string) || "₪",
-      }));
+      balance = {
+        paidTotal: sum("שולם"),
+        expectedTotal: sum("צפוי"),
+        currency: (rows[0]?.currency as string) || "₪",
+        payments,
+        hasData: rows.length > 0,
+      };
+    }
 
     // ── Weekly schedule + updates ────────────────────────────────────────────
     // Shalev's sessions come from HIS projects only (server-side scoped): resolve
@@ -194,13 +213,7 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       shows: { upcoming, done },
-      balance: {
-        paidTotal,
-        expectedTotal,
-        currency: (rows[0]?.currency as string) || "₪",
-        payments,
-        hasData: rows.length > 0,
-      },
+      balance, // null for the shalev role (financials stripped server-side)
       weekly,
       updates,
     });

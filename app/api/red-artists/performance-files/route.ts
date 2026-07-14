@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireShalevAccess } from "@/lib/require-auth";
 
 /**
  * GET /api/red-artists/performance-files
@@ -20,7 +20,7 @@ function extOf(name: string): string {
 type Entry = { ".tag"?: string; name: string; path_display?: string; path_lower?: string };
 
 export async function GET() {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireShalevAccess(); if (denied) return denied;
   try {
     const { getDropboxToken } = await import("@/lib/dropbox-token");
     const token = await getDropboxToken();

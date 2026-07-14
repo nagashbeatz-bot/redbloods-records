@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireShalevAccess } from "@/lib/require-auth";
 
 // Profile-image storage for the Red Artists portal — Dropbox is the SOURCE OF
 // TRUTH (localStorage on the client is a cache only), so re-editing works from
@@ -89,7 +89,7 @@ function streamUrl(path: string): string {
 
 // ── GET: original image + last crop (source of truth for re-editing) ─────────────
 export async function GET() {
-  const denied = await requireOwner();
+  const denied = await requireShalevAccess();
   if (denied) return denied;
   try {
     const { getDropboxToken } = await import("@/lib/dropbox-token");
@@ -115,7 +115,7 @@ export async function GET() {
 //   form fields: avatar (File, required), original (File, optional — new image),
 //                zoom, posX, posY (numbers), originalFileName (optional string)
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner();
+  const denied = await requireShalevAccess();
   if (denied) return denied;
   try {
     const form = await req.formData();

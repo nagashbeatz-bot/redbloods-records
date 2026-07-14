@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireShalevAccess } from "@/lib/require-auth";
 import { patchDetails, softDeleteSketch, SketchError } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
 
@@ -7,7 +7,7 @@ const ID_RE = /^[0-9a-fA-F-]{36}$/; // uuid — blocks path traversal / arbitrar
 
 // PATCH /api/red-artists/sketches/[id] — edit details only (title/description/notes).
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireShalevAccess(); if (denied) return denied;
   try {
     const { id } = await params;
     if (!ID_RE.test(id)) throw new SketchError("BAD_INPUT", "מזהה סקיצה לא תקין");
@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 // DELETE /api/red-artists/sketches/[id] — soft delete (archived=true). Files stay in
 // Dropbox; the record stays in the manifest. Nothing is physically deleted.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireShalevAccess(); if (denied) return denied;
   try {
     const { id } = await params;
     if (!ID_RE.test(id)) throw new SketchError("BAD_INPUT", "מזהה סקיצה לא תקין");

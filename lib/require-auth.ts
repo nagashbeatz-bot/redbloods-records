@@ -67,3 +67,13 @@ export async function requireStevenAccess(): Promise<NextResponse | null> {
   if (role !== "owner" && role !== "steven") return FORBID();
   return null;
 }
+
+/** Shalev (or owner) — used on the /api/red-artists/* portal endpoints, which are
+ *  all hardcoded server-side to Shalev's own folders/name (single-tenant). Victor,
+ *  Steven and unknown users get 403. */
+export async function requireShalevAccess(): Promise<NextResponse | null> {
+  const role = await getAuthRole();
+  if (role === null) return UNAUTH();
+  if (role !== "owner" && role !== "shalev") return FORBID();
+  return null;
+}

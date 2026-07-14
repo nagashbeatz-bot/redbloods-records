@@ -131,12 +131,12 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const signOutLabel = isVictor ? vt("common.signOut") : role === "steven" ? "Logout" : "יציאה";
 
   // Friendly display name by role (no DB / no profiles system).
-  const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : role === "steven" ? "Steven" : "Redbloods";
-  const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : role === "steven" ? "Sound Engineer" : "";
+  const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : role === "steven" ? "Steven" : role === "shalev" ? "שליו טסמה" : "Redbloods";
+  const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : role === "steven" ? "Sound Engineer" : role === "shalev" ? "אמן" : "";
 
-  // Full nav ONLY for owner; victor/steven → minimal (their own page); null/unknown → none.
-  // role comes pre-hydrated from AppShell (cached before paint) so the owner's
-  // nav stays stable across navigations and suppliers never see the full nav.
+  // Full nav ONLY for owner; victor/steven/shalev → minimal (their own page);
+  // null/unknown → none. role comes pre-hydrated from AppShell (cached before
+  // paint) so the owner's nav stays stable and restricted users never see it.
   const navMain =
     role === "owner"
       ? NAV_MAIN
@@ -144,7 +144,9 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
         ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" }]
         : role === "steven"
           ? [{ href: "/team/steven", label: "Steven", icon: "🎚", iconColor: "#DC2626" }]
-          : [];
+          : role === "shalev"
+            ? [{ href: "/red-artists", label: "האזור שלי", icon: "♫", iconColor: "#DC2626" }]
+            : [];
   const navTools = role === "owner" ? NAV_TOOLS : [];
 
   useEffect(() => {

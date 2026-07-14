@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 
 export const ROLE_CACHE_KEY = "rb_role";
-export type ClientRole = "owner" | "victor" | "steven" | null;
+export type ClientRole = "owner" | "victor" | "steven" | "shalev" | null;
 
 // Runs before paint on the client (avoids nav flicker); falls back to useEffect on the server.
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -21,7 +21,7 @@ export function useRole(): ClientRole {
   useIsoLayoutEffect(() => {
     try {
       const cached = localStorage.getItem(ROLE_CACHE_KEY);
-      if (cached === "owner" || cached === "victor" || cached === "steven") setRole(cached);
+      if (cached === "owner" || cached === "victor" || cached === "steven" || cached === "shalev") setRole(cached);
     } catch { /* ignore */ }
   }, []);
 
@@ -31,7 +31,7 @@ export function useRole(): ClientRole {
       .then((r) => (r.ok ? r.json() : { role: "denied" }))
       .then((d) => {
         if (!alive) return;
-        if (d?.role === "owner" || d?.role === "victor" || d?.role === "steven") {
+        if (d?.role === "owner" || d?.role === "victor" || d?.role === "steven" || d?.role === "shalev") {
           setRole(d.role);
           try { localStorage.setItem(ROLE_CACHE_KEY, d.role); } catch { /* ignore */ }
         } else {

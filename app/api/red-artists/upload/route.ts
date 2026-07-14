@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireShalevAccess } from "@/lib/require-auth";
 import { sanitizeFolder } from "@/lib/project-paths";
 
 /**
@@ -40,7 +40,7 @@ function extOf(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireShalevAccess(); if (denied) return denied;
   try {
     const form = await req.formData();
     const kind = form.get("kind") as string | null;

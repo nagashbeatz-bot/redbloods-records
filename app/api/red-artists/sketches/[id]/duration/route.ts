@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireShalevAccess } from "@/lib/require-auth";
 import { setSketchDuration, SketchError } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
 
@@ -8,7 +8,7 @@ const ID_RE = /^[0-9a-fA-F-]{36}$/;
 // POST /api/red-artists/sketches/[id]/duration — persist a learned track length into
 // the manifest (NEVER writes to Projects). body: { versionNumber, durationSeconds }.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireShalevAccess(); if (denied) return denied;
   try {
     const { id } = await params;
     if (!ID_RE.test(id)) throw new SketchError("BAD_INPUT", "מזהה סקיצה לא תקין");

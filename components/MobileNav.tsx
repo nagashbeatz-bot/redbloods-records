@@ -161,7 +161,9 @@ export default function MobileNav({
       ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" as string | undefined }]
       : role === "steven"
         ? [{ href: "/team/steven", label: "Steven", icon: "🎚", iconColor: "#DC2626" as string | undefined }]
-        : [];
+        : role === "shalev"
+          ? [{ href: "/red-artists", label: "האזור שלי", icon: "♫", iconColor: "#DC2626" as string | undefined }]
+          : [];
 
   useEffect(() => {
     if (role !== "owner" || !MAI_AI_ENABLED) return; // owner-only; skipped while AI is disabled

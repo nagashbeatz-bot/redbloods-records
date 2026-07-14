@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath } from "@/lib/roles";
+import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowedPath } from "@/lib/roles";
 
 // Paths that bypass the auth gate entirely:
 //  • OAuth callbacks — external redirect from Google/Dropbox carrying a one-time
@@ -162,6 +162,7 @@ export async function proxy(request: NextRequest) {
     if (role === "owner") return carry(NextResponse.redirect(new URL("/dashboard", request.url)));
     if (role === "victor") return carry(NextResponse.redirect(new URL("/team/victor", request.url)));
     if (role === "steven") return carry(NextResponse.redirect(new URL("/team/steven", request.url)));
+    if (role === "shalev") return carry(NextResponse.redirect(new URL("/red-artists", request.url)));
     return response;
   }
 
@@ -186,6 +187,14 @@ export async function proxy(request: NextRequest) {
     if (isStevenAllowedPath(pathname)) return response;
     if (isApi) return forbidden();
     return carry(NextResponse.redirect(new URL("/team/steven", request.url)));
+  }
+
+  // Shalev → restricted to his artist portal (/red-artists) + scoped /api/red-artists.
+  // Any other page (incl. /label/artists/[id]) → back to his portal; other APIs → 403.
+  if (role === "shalev") {
+    if (isShalevAllowedPath(pathname)) return response;
+    if (isApi) return forbidden();
+    return carry(NextResponse.redirect(new URL("/red-artists", request.url)));
   }
 
   // Signed in but email not recognized → locked out.
