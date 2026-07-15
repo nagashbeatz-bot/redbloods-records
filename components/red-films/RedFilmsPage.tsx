@@ -184,7 +184,7 @@ function NewProductionModal({ onClose, onCreate, projects }: {
               )}
               {selectedProject && (
                 <div style={{ fontSize: 11, color: "#555", marginTop: 6 }}>
-                  אמן: <span style={{ color: "#A78BFA" }}>{selectedProject.artist || "—"}</span>
+                  אמן: <span style={{ color: "#F87171" }}>{selectedProject.artist || "—"}</span>
                   {clients.find(c => c.name === selectedProject.artist) && (
                     <span style={{ color: "#4ADE80", marginRight: 8 }}>✓ לקוח קיים במערכת</span>
                   )}
@@ -244,7 +244,7 @@ function NewProductionModal({ onClose, onCreate, projects }: {
             <button type="button" onClick={onClose} style={{ padding: "8px 16px", borderRadius: 8, background: "none", border: "1px solid #333", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
               ביטול
             </button>
-            <button type="submit" disabled={saving} style={{ padding: "8px 20px", borderRadius: 8, background: "#3B82F6", border: "none", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: saving ? 0.7 : 1 }}>
+            <button type="submit" disabled={saving} style={{ padding: "8px 20px", borderRadius: 8, background: "linear-gradient(135deg, #EF4444, #B91C1C)", border: "1px solid rgba(248,113,113,0.4)", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: saving ? 0.7 : 1 }}>
               {saving ? "יוצר..." : "צור הפקה"}
             </button>
           </div>
@@ -255,45 +255,68 @@ function NewProductionModal({ onClose, onCreate, projects }: {
   );
 }
 
-// ── KPI card ──────────────────────────────────────────────────────────────────
+// ── Brand palette (Redbloods label reds) ────────────────────────────────────────
+const RED       = "#DC2626";  // brand red
+const RED_LIGHT = "#F87171";  // light red (icons / accents)
 
-function KpiCard({ icon, label, value, color }: { icon: string; label: string; value: number; color: string }) {
+// ── KPI line icons — red, stroke = currentColor ─────────────────────────────────
+const ICON_PROPS = {
+  width: 20, height: 20, viewBox: "0 0 24 24", fill: "none",
+  stroke: "currentColor", strokeWidth: 1.7,
+  strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+};
+const KPI_ICON: Record<string, React.ReactNode> = {
+  total:     <svg {...ICON_PROPS}><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 15h18M8 4v16M16 4v16"/></svg>,
+  planning:  <svg {...ICON_PROPS}><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM8 11h8M8 15h5"/></svg>,
+  shoot:     <svg {...ICON_PROPS}><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>,
+  edit:      <svg {...ICON_PROPS}><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 7.5l12 8.5M8 16.5l12-8.5"/></svg>,
+  published: <svg {...ICON_PROPS}><path d="M12 3c3 1.4 4.6 4.4 4.6 8L15 15H9l-1.6-4C7.4 7.4 9 4.4 12 3z"/><path d="M9 15l-2 2 1.2 2.6L10 18M15 15l2 2-1.2 2.6L14 18"/><circle cx="12" cy="9" r="1.4"/></svg>,
+};
+
+// ── Clapperboard (header tile) ──────────────────────────────────────────────────
+function Clapper({ size = 26 }: { size?: number }) {
   return (
-    <div
-      style={{
-        position: "relative", overflow: "hidden", minWidth: 0,
-        background: "linear-gradient(155deg, rgba(30,30,38,0.9), rgba(17,17,21,0.92))",
-        border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16,
-        padding: "16px 18px",
-        boxShadow: `0 10px 30px rgba(0,0,0,0.35), 0 0 0 1px ${color}12 inset`,
-      }}
-    >
-      {/* colored glow blob */}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="9" width="18" height="10.5" rx="1.6"/>
+      <path d="M3 9 4 5.2 20.6 7.4 21 9"/>
+      <path d="M7.2 9 9.1 5.6M11.6 9 13.5 5.9M16 9 17.9 6.3"/>
+    </svg>
+  );
+}
+
+// ── KPI card ───────────────────────────────────────────────────────────────────
+
+function KpiCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <div style={{
+      position: "relative", overflow: "hidden", minWidth: 0,
+      background: "linear-gradient(160deg, rgba(30,17,19,0.9), rgba(15,11,12,0.95))",
+      border: `1px solid ${RED}2E`, borderRadius: 16, padding: "18px 18px 16px",
+      boxShadow: `0 10px 30px rgba(0,0,0,0.45), 0 0 22px rgba(220,38,38,0.08), inset 0 0 0 1px rgba(220,38,38,0.05)`,
+    }}>
+      {/* red glow blob */}
       <div aria-hidden style={{
-        position: "absolute", top: -34, insetInlineEnd: -22, width: 96, height: 96,
-        borderRadius: "50%", background: color, opacity: 0.16, filter: "blur(30px)", pointerEvents: "none",
+        position: "absolute", top: -30, insetInlineStart: -24, width: 100, height: 100,
+        borderRadius: "50%", background: RED, opacity: 0.14, filter: "blur(32px)", pointerEvents: "none",
       }} />
-      <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 30, fontWeight: 800, color, lineHeight: 1, letterSpacing: "-0.02em" }}>{value}</div>
+      {/* number (centered) + icon circle (floated to the leading-left) */}
+      <div style={{ position: "relative", minHeight: 42, display: "flex", alignItems: "center" }}>
         <div style={{
-          width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-          background: `${color}1A`, border: `1px solid ${color}33`,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+          position: "absolute", insetInlineStart: 0, top: "50%", transform: "translateY(-50%)",
+          width: 42, height: 42, borderRadius: "50%", flexShrink: 0, color: RED_LIGHT,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "radial-gradient(circle at 50% 38%, rgba(220,38,38,0.22), rgba(220,38,38,0.05))",
+          border: `1px solid ${RED}66`,
+          boxShadow: `0 0 16px rgba(220,38,38,0.28), inset 0 0 10px rgba(220,38,38,0.15)`,
         }}>{icon}</div>
+        <div style={{ width: "100%", textAlign: "center", fontSize: 30, fontWeight: 800, color: "#F4F4F6", letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</div>
       </div>
-      <div style={{ position: "relative", fontSize: 12, color: "#7B7B84", marginTop: 11, fontWeight: 600 }}>{label}</div>
+      <div style={{ position: "relative", fontSize: 12, color: "#8A8A90", marginTop: 12, fontWeight: 600, textAlign: "center" }}>{label}</div>
     </div>
   );
 }
 
-// ── Thumbnail placeholder (no image field on Production) ─────────────────────────
-
-const TYPE_ACCENT: Record<string, string> = {
-  "קליפ": "#EC4899", "יום צילום": "#60A5FA", "תוכן סושיאל": "#C084FC",
-  "צילום הופעה": "#F472B6", "צילום סטודיו": "#22D3EE", "מאחורי הקלעים": "#FB923C",
-  "פרסומת": "#FBBF24", "ויזואלייזר": "#A78BFA", "צילום לייב": "#34D399",
-};
-function accentFor(type: string) { return TYPE_ACCENT[type] ?? "#8B5CF6"; }
+// ── Thumbnail placeholder (no image field on Production) — brand red ──────────────
 
 const menuItemS: React.CSSProperties = {
   display: "block", width: "100%", textAlign: "right",
@@ -303,15 +326,15 @@ const menuItemS: React.CSSProperties = {
 };
 
 function Thumb({ p, size = 34 }: { p: Production; size?: number }) {
-  const accent = accentFor(p.production_type);
   const ch = p.title.trim().charAt(0) || "🎬";
   return (
     <div style={{
       width: size, height: size, borderRadius: 9, flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center",
       fontSize: size * 0.44, fontWeight: 800, color: "#fff",
-      background: `linear-gradient(140deg, ${accent}, ${accent}55)`,
-      boxShadow: `0 3px 12px ${accent}40`,
+      background: "linear-gradient(140deg, #DC2626, #7F1D1D)",
+      border: "1px solid rgba(248,113,113,0.35)",
+      boxShadow: "0 3px 12px rgba(220,38,38,0.35)",
     }}>{ch}</div>
   );
 }
@@ -329,7 +352,7 @@ function ConfirmDialog({ title, body, confirmLabel, danger = false, onConfirm, o
         <div style={{ fontSize: 13, color: "#888", marginBottom: 22, lineHeight: 1.6 }}>{body}</div>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, background: "none", border: "1px solid #333", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>ביטול</button>
-          <button onClick={onConfirm} style={{ padding: "8px 20px", borderRadius: 8, background: danger ? "#EF4444" : "#3B82F6", border: "none", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{confirmLabel}</button>
+          <button onClick={onConfirm} style={{ padding: "8px 20px", borderRadius: 8, background: danger ? "#EF4444" : "linear-gradient(135deg, #EF4444, #B91C1C)", border: "none", color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{confirmLabel}</button>
         </div>
       </div>
     </div>,
@@ -485,10 +508,10 @@ export default function RedFilmsPage() {
   return (
     <div style={{ position: "relative", padding: isMobile ? "16px 12px calc(80px + env(safe-area-inset-bottom))" : "22px 16px 100px", maxWidth: isMobile ? "100%" : 1120, margin: "0 auto" }}>
 
-      {/* ── Ambient header glow ── */}
+      {/* ── Ambient header glow (brand red) ── */}
       <div aria-hidden style={{
-        position: "absolute", top: -10, insetInlineStart: 0, right: 0, height: 280, zIndex: 0,
-        background: "radial-gradient(120% 100% at 72% 0%, rgba(236,72,153,0.12), rgba(139,92,246,0.06) 42%, transparent 74%)",
+        position: "absolute", top: -10, insetInlineStart: 0, right: 0, height: 300, zIndex: 0,
+        background: "radial-gradient(120% 100% at 74% 0%, rgba(220,38,38,0.16), rgba(153,27,27,0.06) 42%, transparent 74%)",
         pointerEvents: "none",
       }} />
 
@@ -498,18 +521,18 @@ export default function RedFilmsPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22, gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{
-            width: isMobile ? 46 : 52, height: isMobile ? 46 : 52, borderRadius: 15, flexShrink: 0,
-            background: "linear-gradient(140deg, #EC4899, #8B5CF6)",
+            width: isMobile ? 46 : 54, height: isMobile ? 46 : 54, borderRadius: 15, flexShrink: 0,
+            background: "linear-gradient(150deg, rgba(60,16,18,0.95), rgba(22,10,11,0.95))",
+            border: `1px solid ${RED}66`, color: "#FCA5A5",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: isMobile ? 23 : 26, boxShadow: "0 8px 26px rgba(236,72,153,0.4)",
-          }}>🎬</div>
+            boxShadow: "0 0 22px rgba(220,38,38,0.4), inset 0 0 14px rgba(220,38,38,0.18)",
+          }}><Clapper size={isMobile ? 24 : 28} /></div>
           <div>
             <h1 style={{
               fontSize: isMobile ? 24 : 28, fontWeight: 900, margin: 0, letterSpacing: "-0.02em", lineHeight: 1.1,
-              background: "linear-gradient(90deg, #FFFFFF, #FBCFE8)",
-              WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent",
+              color: "#F5F5F7", textShadow: "0 0 20px rgba(220,38,38,0.25)",
             }}>Red Films</h1>
-            <p style={{ fontSize: 13, color: "#6E6E76", margin: "4px 0 0", fontWeight: 500 }}>
+            <p style={{ fontSize: 13, color: "#7A7A80", margin: "4px 0 0", fontWeight: 500 }}>
               מחלקת הצילום והקליפים של Redbloods Records
             </p>
           </div>
@@ -518,14 +541,14 @@ export default function RedFilmsPage() {
           onClick={() => setCreatingNew(true)}
           style={{
             padding: "11px 20px", borderRadius: 12,
-            background: "linear-gradient(135deg, #EF4444, #EC4899 55%, #8B5CF6)",
-            border: "none", color: "#FFF", fontSize: 13.5, fontWeight: 800,
+            background: "linear-gradient(135deg, #EF4444, #B91C1C)",
+            border: "1px solid rgba(248,113,113,0.45)", color: "#FFF", fontSize: 13.5, fontWeight: 800,
             cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
-            boxShadow: "0 8px 24px rgba(236,72,153,0.38)",
+            boxShadow: "0 0 24px rgba(220,38,38,0.5), 0 8px 22px rgba(220,38,38,0.32)",
             transition: "transform 0.12s, box-shadow 0.15s",
           }}
-          onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 10px 30px rgba(236,72,153,0.5)"; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(236,72,153,0.38)"; }}
+          onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 0 30px rgba(220,38,38,0.65), 0 10px 26px rgba(220,38,38,0.4)"; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 0 24px rgba(220,38,38,0.5), 0 8px 22px rgba(220,38,38,0.32)"; }}
         >
           + הפקה חדשה
         </button>
@@ -537,11 +560,11 @@ export default function RedFilmsPage() {
         gridTemplateColumns: isMobile ? "repeat(2, minmax(0,1fr))" : "repeat(5, minmax(0,1fr))",
         gap: isMobile ? 10 : 12, marginBottom: 24,
       }}>
-        <KpiCard icon="🎬" label="סה״כ הפקות"    value={total}      color="#9CA3AF" />
-        <KpiCard icon="📋" label="בתכנון"         value={inPlanning} color="#60A5FA" />
-        <KpiCard icon="🎥" label="יום צילום נקבע" value={shootSet}   color="#F472B6" />
-        <KpiCard icon="✂️" label="בעריכה / גרסה"  value={inEdit}     color="#FB923C" />
-        <KpiCard icon="🚀" label="פורסם"          value={published}  color="#4ADE80" />
+        <KpiCard icon={KPI_ICON.total}     label="סה״כ הפקות"    value={total}      />
+        <KpiCard icon={KPI_ICON.planning}  label="בתכנון"         value={inPlanning} />
+        <KpiCard icon={KPI_ICON.shoot}     label="יום צילום נקבע" value={shootSet}   />
+        <KpiCard icon={KPI_ICON.edit}      label="בעריכה / גרסה"  value={inEdit}     />
+        <KpiCard icon={KPI_ICON.published} label="פורסם"          value={published}  />
       </div>
 
       {/* ── Filter chips ── */}
@@ -555,10 +578,10 @@ export default function RedFilmsPage() {
               style={{
                 padding: "7px 18px", borderRadius: 999, fontSize: 12.5, fontWeight: 700,
                 cursor: "pointer", fontFamily: "inherit", border: "1px solid",
-                background:  on ? "rgba(236,72,153,0.13)" : "rgba(255,255,255,0.03)",
-                color:       on ? "#F9A8D4" : "#78787F",
-                borderColor: on ? "rgba(236,72,153,0.5)" : "rgba(255,255,255,0.07)",
-                boxShadow:   on ? "0 0 16px rgba(236,72,153,0.18)" : "none",
+                background:  on ? "rgba(220,38,38,0.15)" : "rgba(255,255,255,0.03)",
+                color:       on ? "#FCA5A5" : "#78787F",
+                borderColor: on ? "rgba(220,38,38,0.6)" : "rgba(255,255,255,0.08)",
+                boxShadow:   on ? "0 0 16px rgba(220,38,38,0.3)" : "none",
                 transition: "all 0.15s",
               }}
             >
@@ -582,7 +605,7 @@ export default function RedFilmsPage() {
               <div style={{ fontSize: 13, color: "#6E6E76", marginBottom: 20 }}>לחץ "+ הפקה חדשה" כדי להתחיל</div>
               <button
                 onClick={() => setCreatingNew(true)}
-                style={{ padding: "10px 22px", borderRadius: 11, background: "linear-gradient(135deg, #EF4444, #EC4899 55%, #8B5CF6)", border: "none", color: "#FFF", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 8px 22px rgba(236,72,153,0.35)" }}
+                style={{ padding: "10px 22px", borderRadius: 11, background: "linear-gradient(135deg, #EF4444, #B91C1C)", border: "1px solid rgba(248,113,113,0.45)", color: "#FFF", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 0 22px rgba(220,38,38,0.45), 0 8px 20px rgba(220,38,38,0.3)" }}
               >
                 + הפקה חדשה
               </button>
@@ -597,10 +620,10 @@ export default function RedFilmsPage() {
               key={p.id}
               onClick={() => router.push(`/red-films/${p.id}`)}
               style={{
-                background: "linear-gradient(165deg, rgba(26,26,31,0.9), rgba(17,17,20,0.92))",
-                border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16,
+                background: "linear-gradient(165deg, rgba(26,17,18,0.9), rgba(16,12,13,0.92))",
+                border: `1px solid ${RED}24`, borderRadius: 16,
                 padding: "14px 15px", cursor: "pointer",
-                boxShadow: "0 8px 26px rgba(0,0,0,0.32)",
+                boxShadow: "0 8px 26px rgba(0,0,0,0.36), 0 0 18px rgba(220,38,38,0.05)",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 10 }}>
@@ -628,17 +651,17 @@ export default function RedFilmsPage() {
         </div>
       ) : (
         <div style={{
-          background: "linear-gradient(180deg, rgba(24,24,29,0.72), rgba(17,17,20,0.72))",
-          border: "1px solid rgba(255,255,255,0.06)", borderRadius: 18, overflow: "hidden",
-          boxShadow: "0 14px 44px rgba(0,0,0,0.38)",
+          background: "linear-gradient(180deg, rgba(26,17,18,0.72), rgba(16,12,13,0.78))",
+          border: `1px solid ${RED}24`, borderRadius: 18, overflow: "hidden",
+          boxShadow: "0 14px 44px rgba(0,0,0,0.42), 0 0 26px rgba(220,38,38,0.06)",
         }}>
 
           {/* Table header */}
           <div style={{
             display: "grid", gridTemplateColumns: COL,
             gap: 0, padding: "12px 18px",
-            background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)",
-            fontSize: 10.5, color: "#5C5C64", fontWeight: 800, letterSpacing: "0.02em", alignItems: "center",
+            background: "rgba(220,38,38,0.05)", borderBottom: `1px solid ${RED}24`,
+            fontSize: 10.5, color: "#7C6A6C", fontWeight: 800, letterSpacing: "0.02em", alignItems: "center",
           }}>
             {/* Select-all checkbox */}
             <div onClick={e => e.stopPropagation()}>
@@ -647,7 +670,7 @@ export default function RedFilmsPage() {
                 checked={allSelected}
                 ref={el => { if (el) el.indeterminate = someSelected; }}
                 onChange={toggleAll}
-                style={{ cursor: "pointer", accentColor: "#EC4899", width: 14, height: 14 }}
+                style={{ cursor: "pointer", accentColor: "#DC2626", width: 14, height: 14 }}
               />
             </div>
             {["שם הפקה", "סוג", "אמן / לקוח", "פרויקט", "צלם", "תאריך", "סטטוס", "תקציב", "מחיר ל״ק", ""].map((h, i) => (
@@ -658,7 +681,7 @@ export default function RedFilmsPage() {
           {/* Rows */}
           {visible.map((p, idx) => {
             const isSelected = selectedIds.has(p.id);
-            const rowBg = isSelected ? "rgba(236,72,153,0.08)" : "transparent";
+            const rowBg = isSelected ? "rgba(220,38,38,0.09)" : "transparent";
             return (
               <div
                 key={p.id}
@@ -680,7 +703,7 @@ export default function RedFilmsPage() {
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => toggleOne(p.id)}
-                    style={{ cursor: "pointer", accentColor: "#EC4899", width: 14, height: 14 }}
+                    style={{ cursor: "pointer", accentColor: "#DC2626", width: 14, height: 14 }}
                   />
                 </div>
                 {/* Name + thumbnail */}
@@ -696,7 +719,7 @@ export default function RedFilmsPage() {
                 </div>
                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {p.project_id
-                    ? <span style={{ color: "#60A5FA" }}>{projectName(p.project_id) ?? "…"}</span>
+                    ? <span style={{ color: "#F87171" }}>{projectName(p.project_id) ?? "…"}</span>
                     : <span style={{ color: "#4A4A50" }}>—</span>}
                 </div>
                 <div style={{ color: "#8A8A92" }}>{p.photographer_name || "—"}</div>
@@ -710,12 +733,12 @@ export default function RedFilmsPage() {
                     onClick={() => router.push(`/red-films/${p.id}`)}
                     style={{
                       padding: "5px 12px", borderRadius: 9,
-                      background: "rgba(236,72,153,0.1)", border: "1px solid rgba(236,72,153,0.32)",
-                      color: "#F9A8D4", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                      background: "rgba(220,38,38,0.12)", border: "1px solid rgba(220,38,38,0.42)",
+                      color: "#FCA5A5", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
                       transition: "background 0.15s",
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(236,72,153,0.2)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(236,72,153,0.1)"; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.24)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.12)"; }}
                   >
                     פתח
                   </button>
@@ -768,7 +791,7 @@ export default function RedFilmsPage() {
           boxShadow: "0 8px 40px rgba(0,0,0,0.7)", zIndex: 9000,
           fontSize: 13, color: "#E8E8E8", minWidth: 320,
         }}>
-          <span style={{ color: "#60A5FA", fontWeight: 700 }}>{selectedCount} הפקות נבחרו</span>
+          <span style={{ color: "#FCA5A5", fontWeight: 700 }}>{selectedCount} הפקות נבחרו</span>
           <div style={{ width: 1, height: 20, background: "#333" }} />
 
           {inTrashView ? (
@@ -777,7 +800,7 @@ export default function RedFilmsPage() {
               <button
                 onClick={() => setBulkAction("restore")}
                 disabled={bulkWorking}
-                style={{ padding: "6px 14px", borderRadius: 8, background: "#1D4ED8", border: "none", color: "#FFF", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                style={{ padding: "6px 14px", borderRadius: 8, background: "linear-gradient(135deg, #EF4444, #B91C1C)", border: "1px solid rgba(248,113,113,0.4)", color: "#FFF", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
               >
                 ♻️ שחזר
               </button>
