@@ -2827,25 +2827,37 @@ function SketchModalShell({ title, onClose, busy, children }: {
       onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 100030, background: "rgba(0,0,0,0.66)",
-        backdropFilter: "blur(3px)", display: "flex", justifyContent: "center",
-        alignItems: isMobile ? "flex-end" : "center", padding: isMobile ? 0 : 20,
+        backdropFilter: "blur(3px)", display: "flex", justifyContent: "center", alignItems: "center",
+        // Fixed side margins on mobile + iPhone safe-area top/bottom → never edge-to-edge.
+        padding: isMobile
+          ? "calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 12px)"
+          : 20,
         fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
       }}>
+      {/* Panel: flex column, capped height. Header is FIXED (flex-shrink:0); only
+          the body scrolls (one scroll, never the page behind). Same tokens for
+          BOTH sketch modals → identical width + max footprint on mobile. */}
       <div style={{
-        width: isMobile ? "100%" : 480, maxWidth: "100%", maxHeight: isMobile ? "92vh" : "88vh",
-        overflowY: "auto", boxSizing: "border-box", direction: "rtl",
+        width: "100%", maxWidth: isMobile ? 440 : 480, maxHeight: isMobile ? "88dvh" : "88vh",
+        display: "flex", flexDirection: "column", boxSizing: "border-box", direction: "rtl", overflow: "hidden",
         background: "linear-gradient(180deg, #161617 0%, #111112 100%)",
-        border: `1px solid ${BDR2}`, borderRadius: isMobile ? "20px 20px 0 0" : 20,
-        boxShadow: "0 24px 70px rgba(0,0,0,0.6)", padding: isMobile ? "18px 16px 22px" : "22px 24px 24px",
+        border: `1px solid ${BDR2}`, borderRadius: 20, boxShadow: "0 24px 70px rgba(0,0,0,0.6)",
       }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+        {/* header — fixed, always visible */}
+        <div style={{
+          flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          padding: isMobile ? "15px 16px 13px" : "20px 24px 16px", borderBottom: `1px solid ${BDR}`,
+        }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.16)", border: `1px solid ${BRAND}55`, display: "flex", alignItems: "center", justifyContent: "center" }}><IcMusicNote size={16} color="#FF6B6B" /></span>
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            <div style={{ fontSize: isMobile ? 16.5 : 18, fontWeight: 900, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
           </div>
           <button onClick={() => !busy && onClose()} aria-label="סגור" disabled={busy} style={{ background: "none", border: "none", cursor: busy ? "default" : "pointer", padding: 4, flexShrink: 0, lineHeight: 0, opacity: busy ? 0.4 : 1 }}><IcX size={20} /></button>
         </div>
-        {children}
+        {/* body — the ONLY scroll area */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: isMobile ? "14px 16px 18px" : "18px 24px 24px" }}>
+          {children}
+        </div>
       </div>
     </div>,
     document.body,
@@ -3031,8 +3043,10 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
     } catch { setDeleteErr("שגיאת רשת, נסה שוב"); setDeleting(false); }
   };
 
-  const sectionBox: React.CSSProperties = { background: "rgba(255,255,255,0.02)", border: `1px solid ${BDR}`, borderRadius: 14, padding: 16, marginBottom: 16 };
-  const secTitle: React.CSSProperties = { fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 12 };
+  const isMobile = useIsMobile();
+  // Tighter padding/gaps on mobile so the (content-heavy) edit modal stays compact.
+  const sectionBox: React.CSSProperties = { background: "rgba(255,255,255,0.02)", border: `1px solid ${BDR}`, borderRadius: 14, padding: isMobile ? 13 : 16, marginBottom: isMobile ? 12 : 16 };
+  const secTitle: React.CSSProperties = { fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: isMobile ? 9 : 12 };
 
   return (
     <SketchModalShell title="עריכת סקיצה" onClose={onClose} busy={busy}>
@@ -3040,13 +3054,13 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
       <div style={sectionBox}>
         <div style={secTitle}>פרטי הסקיצה</div>
         <SkErr msg={detailsErr} />
-        <div style={{ marginBottom: 13 }}>
+        <div style={{ marginBottom: isMobile ? 10 : 13 }}>
           <label style={skLabel}>שם הפרויקט</label>
           <input value={title} onChange={e => setTitle(e.target.value)} disabled={busy} style={{ ...skField, opacity: busy ? 0.6 : 1 }} />
         </div>
-        <div style={{ marginBottom: 13 }}>
+        <div style={{ marginBottom: isMobile ? 10 : 13 }}>
           <label style={skLabel}>תיאור / טקסט</label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={busy} rows={3} style={{ ...skField, resize: "none", lineHeight: 1.5, opacity: busy ? 0.6 : 1 }} />
+          <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={busy} rows={isMobile ? 2 : 3} style={{ ...skField, resize: "none", lineHeight: 1.5, opacity: busy ? 0.6 : 1 }} />
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={skLabel}>הערות</label>
