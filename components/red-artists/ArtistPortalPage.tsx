@@ -1477,8 +1477,9 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
   sketches: Sketch[]; loadState: "loading" | "ready" | "error";
   onReload: () => Promise<void>; onReorder: (orderedIds: string[]) => Promise<boolean>; isShalev?: boolean;
 }) {
-  const showHandle = !isShalev; // shalev: no drag handle (reorder is owner-only)
-  const showDate = !isShalev;   // shalev: no date under the sketch name
+  const showHandle = !isShalev;  // shalev: no drag handle (reorder is owner-only)
+  const showDate = !isShalev;    // shalev: no date under the sketch name
+  const showVersion = !isShalev; // shalev: no version (V1/V2) badge
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
 
@@ -1594,11 +1595,16 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
   const UNIT_GAP = 10; // tight, uniform gap between grip · play · name
   // Header spacer = the exact leading width of the name unit (no grip for shalev).
   const LEAD_W = (showHandle ? GRIP_W + UNIT_GAP : 0) + PLAY_W + UNIT_GAP;
-  // שם הפרויקט (unit) · גרסה · [עודכן] · משך. Shalev drops the "עודכן" column.
-  const cols = showDate ? "minmax(0, 1.9fr) 84px 120px 72px" : "minmax(0, 1.9fr) 84px 72px";
+  // שם הפרויקט (unit) · [גרסה] · [עודכן] · משך. Shalev drops both גרסה and עודכן.
+  const cols = [
+    "minmax(0, 1.9fr)",
+    ...(showVersion ? ["84px"] : []),
+    ...(showDate ? ["120px"] : []),
+    "72px",
+  ].join(" ");
   const heads: { label: string; align: "start" | "center" }[] = [
     { label: "שם הפרויקט", align: "start" },
-    { label: "גרסה", align: "center" },
+    ...(showVersion ? [{ label: "גרסה", align: "center" as const }] : []),
     ...(showDate ? [{ label: "עודכן", align: "center" as const }] : []),
     { label: "משך", align: "center" },
   ];
@@ -1729,10 +1735,13 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-                  <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ direction: "ltr" }}>V{s.latestVersion}</span>
-                    {showDate && <><span>·</span><span>{fmtSketchDate(s.updatedAt)}</span></>}
-                  </div>
+                  {(showVersion || showDate) && (
+                    <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                      {showVersion && <span style={{ direction: "ltr" }}>V{s.latestVersion}</span>}
+                      {showVersion && showDate && <span>·</span>}
+                      {showDate && <span>{fmtSketchDate(s.updatedAt)}</span>}
+                    </div>
+                  )}
                 </div>
                 <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</span>
               </div>
@@ -1752,7 +1761,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
                   </div>
                   <div style={{ fontSize: 15.5, fontWeight: 700, color: "#FFFFFF", lineHeight: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
                 </div>
-                <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: "ltr" }}>V{s.latestVersion}</div>
+                {showVersion && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: "ltr" }}>V{s.latestVersion}</div>}
                 {showDate && <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>}
                 <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</div>
               </div>
@@ -2080,9 +2089,12 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
                   <SketchRowPlay size={36} player={player} sketch={s} />
                   <div style={{ textAlign: "start", minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                    {/* version + date — hidden for shalev (no leftover separators) */}
+                    {!isShalev && (
                     <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, display: "flex", alignItems: "center", gap: 7 }}>
                       <span style={{ direction: "ltr" }}>V{s.latestVersion}</span><span>·</span><span>{fmtSketchDate(s.updatedAt)}</span>
                     </div>
+                    )}
                   </div>
                   <div style={{ marginInlineStart: "auto", fontSize: 11.5, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : ""}</div>
                 </div>
