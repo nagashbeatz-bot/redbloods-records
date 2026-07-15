@@ -161,9 +161,9 @@ export default function MobileNav({
       ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" as string | undefined }]
       : role === "steven"
         ? [{ href: "/team/steven", label: "Steven", icon: "🎚", iconColor: "#DC2626" as string | undefined }]
-        : role === "shalev"
-          ? [{ href: "/red-artists", label: "האזור שלי", icon: "♫", iconColor: "#DC2626" as string | undefined }]
-          : [];
+        : [];
+  // shalev has NO fixed bottom bar — his "האזור שלי" + "יציאה" live at the bottom
+  // of the home tab instead (owner/victor/steven bars are unchanged).
 
   useEffect(() => {
     if (role !== "owner" || !MAI_AI_ENABLED) return; // owner-only; skipped while AI is disabled

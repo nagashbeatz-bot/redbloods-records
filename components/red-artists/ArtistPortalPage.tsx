@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
 import { useRole, type ClientRole } from "@/lib/use-role";
+import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { Project } from "@/lib/types";
 
 // Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
@@ -521,7 +522,7 @@ export default function ArtistPortalPage({ initialRole }: { initialRole?: Client
 
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} hideBalance={isShalev} isShalev={isShalev} />
-            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} />
+            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
             : tab === "מאזן" ? (isShalev ? null : <BalancePage summary={summary} loadState={summaryState} />)
@@ -1472,10 +1473,12 @@ function playSketchLatest(player: ReturnType<typeof usePlayerSafe>, s: Sketch, o
   void playLibRow(player, sketchAsLibRow(s), onError);
 }
 
-function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
+function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
   sketches: Sketch[]; loadState: "loading" | "ready" | "error";
-  onReload: () => Promise<void>; onReorder: (orderedIds: string[]) => Promise<boolean>;
+  onReload: () => Promise<void>; onReorder: (orderedIds: string[]) => Promise<boolean>; isShalev?: boolean;
 }) {
+  const showHandle = !isShalev; // shalev: no drag handle (reorder is owner-only)
+  const showDate = !isShalev;   // shalev: no date under the sketch name
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
 
@@ -1542,7 +1545,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
   }, [visibleCount]);
 
   const onHandleDown = (e: React.PointerEvent, id: string) => {
-    if (savingOrder) return;
+    if (isShalev || savingOrder) return; // reorder is owner-only (defense; handle isn't rendered for shalev)
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -1589,13 +1592,14 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
   const GRIP_W = 20;   // fixed drag-handle box width (desktop)
   const PLAY_W = 40;   // SketchRowPlay button size
   const UNIT_GAP = 10; // tight, uniform gap between grip · play · name
-  const LEAD_W = GRIP_W + UNIT_GAP + PLAY_W + UNIT_GAP; // = 80
-  // שם הפרויקט (unit) · גרסה · עודכן · משך.
-  const cols = "minmax(0, 1.9fr) 84px 120px 72px";
+  // Header spacer = the exact leading width of the name unit (no grip for shalev).
+  const LEAD_W = (showHandle ? GRIP_W + UNIT_GAP : 0) + PLAY_W + UNIT_GAP;
+  // שם הפרויקט (unit) · גרסה · [עודכן] · משך. Shalev drops the "עודכן" column.
+  const cols = showDate ? "minmax(0, 1.9fr) 84px 120px 72px" : "minmax(0, 1.9fr) 84px 72px";
   const heads: { label: string; align: "start" | "center" }[] = [
     { label: "שם הפרויקט", align: "start" },
     { label: "גרסה", align: "center" },
-    { label: "עודכן", align: "center" },
+    ...(showDate ? [{ label: "עודכן", align: "center" as const }] : []),
     { label: "משך", align: "center" },
   ];
 
@@ -1719,7 +1723,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
               <div key={s.id} ref={el => setRowRef(s.id, el)} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
                 onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", border: "1px solid transparent", borderBottomColor: BDR, cursor: "pointer", outline: "none", transition: "background .14s", ...dragRowStyle(s) }}>
-                {dragHandle(s)}
+                {showHandle && dragHandle(s)}
                 <div onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
                   <SketchRowPlay size={42} player={player} sketch={s} onError={setToast} />
                 </div>
@@ -1727,8 +1731,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
                   <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ direction: "ltr" }}>V{s.latestVersion}</span>
-                    <span>·</span>
-                    <span>{fmtSketchDate(s.updatedAt)}</span>
+                    {showDate && <><span>·</span><span>{fmtSketchDate(s.updatedAt)}</span></>}
                   </div>
                 </div>
                 <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</span>
@@ -1740,16 +1743,17 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder }: {
                 onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
                 onMouseEnter={e => draggingId ? undefined : rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                 style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", cursor: "pointer", outline: "none", transition: "all .14s", ...dragRowStyle(s) }}>
-                {/* ONE cell → ONE inner flex: [grip][play][name] locked to one line */}
+                {/* ONE cell → ONE inner flex: [grip][play][name] locked to one line
+                    (grip hidden for shalev — reorder is owner-only) */}
                 <div style={{ display: "flex", alignItems: "center", gap: UNIT_GAP, minWidth: 0 }}>
-                  {dragHandle(s)}
+                  {showHandle && dragHandle(s)}
                   <div onClick={e => e.stopPropagation()} style={{ display: "flex", flexShrink: 0 }}>
                     <SketchRowPlay size={PLAY_W} player={player} sketch={s} onError={setToast} />
                   </div>
                   <div style={{ fontSize: 15.5, fontWeight: 700, color: "#FFFFFF", lineHeight: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
                 </div>
                 <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: "ltr" }}>V{s.latestVersion}</div>
-                <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>
+                {showDate && <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>}
                 <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</div>
               </div>
             ))
@@ -2133,6 +2137,23 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
           : (summary?.updates?.length ?? 0) === 0 ? <SchedEmpty text="עדיין אין עדכונים חדשים" />
           : <UpdatesList items={summary!.updates} />}
       </SchedSection>
+
+      {/* ── shalev on mobile — his "האזור שלי" + "יציאה" live here (a tidy page-end
+          area) instead of a fixed bottom bar. Owner/desktop keep their own nav. ── */}
+      {isMobile && isShalev && (
+        <div style={{ display: "flex", gap: 12, marginTop: 6, paddingTop: 18, borderTop: `1px solid ${BDR}` }}>
+          <a href="/red-artists" style={{
+            flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+            padding: "14px 0", borderRadius: 12, textDecoration: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 800,
+            color: TEXT, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`,
+          }}><span style={{ color: "#FF6B6B", fontSize: 16, lineHeight: 1 }}>♫</span> האזור שלי</a>
+          <button onClick={signOutAndRedirect} style={{
+            flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+            padding: "14px 0", borderRadius: 12, border: "1px solid rgba(220,38,38,0.35)", cursor: "pointer",
+            fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "#EF4444", background: "rgba(220,38,38,0.10)",
+          }}><span style={{ fontSize: 15, lineHeight: 1 }}>🚪</span> יציאה</button>
+        </div>
+      )}
     </div>
   );
 }

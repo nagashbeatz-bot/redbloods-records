@@ -29,6 +29,7 @@ export default function AppShell({ children, topRight }: { children: React.React
   const role = useRole();
   const isOwner = role === "owner"; // AI agent + tools are owner-only chrome
   const canRadio = role === "owner" || role === "shalev"; // the external LISTEN radio is available to the artist too
+  const navH = role === "shalev" ? 0 : 56; // shalev has no fixed bottom nav → reserve no space for it
   const { projects } = useProjects();
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);
@@ -212,8 +213,8 @@ export default function AppShell({ children, topRight }: { children: React.React
                 */
                 paddingBottom: isMobile
                   ? playerVisible
-                    ? `calc(56px + ${MOBILE_PLAYER_H + 16}px + env(safe-area-inset-bottom))`
-                    : `calc(56px + env(safe-area-inset-bottom))`
+                    ? `calc(${navH}px + ${MOBILE_PLAYER_H + 16}px + env(safe-area-inset-bottom))`
+                    : `calc(${navH}px + env(safe-area-inset-bottom))`
                   : playerVisible
                     ? PLAYER_H + 8
                     : undefined,
@@ -311,7 +312,7 @@ export default function AppShell({ children, topRight }: { children: React.React
       <div
         className="fixed left-0 right-0 z-50 md:hidden"
         style={{
-          bottom: `calc(56px + env(safe-area-inset-bottom))`,
+          bottom: `calc(${navH}px + env(safe-area-inset-bottom))`,
           transform: playerVisible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.25s",
           pointerEvents: playerVisible ? "auto" : "none",
