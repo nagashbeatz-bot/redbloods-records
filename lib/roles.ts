@@ -36,6 +36,10 @@ export function isVictorAllowedPath(pathname: string): boolean {
   // Salary is owner-only even though it lives under the victor API prefix.
   if (pathname.startsWith("/api/vendor/victor/salary")) return false;
 
+  // The manual "send work to Victor" push is owner-only, even though it lives
+  // under the victor API prefix (requireOwner enforces it in-route too).
+  if (pathname.startsWith("/api/vendor/victor/notify-work")) return false;
+
   const apiAllow = [
     "/api/me",
     "/api/vendor/victor",          // GET stats/work, /projects, /work/[id] (method-guarded per route)

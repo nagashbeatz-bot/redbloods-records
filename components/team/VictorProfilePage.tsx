@@ -1305,6 +1305,12 @@ function VictorProjectDrawer({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  // ── "שלח עבודה לויקטור" (owner-only manual push) ──
+  const [sendConfirm, setSendConfirm] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendDone, setSendDone] = useState(false);
+  const sendingRef = useRef(false); // double-click guard (state lags a fast 2nd click)
   // Brief ("קרא אותי קודם") — owner edits, Victor views.
   const [effectiveBrief, setEffectiveBrief] = useState<string>(work.briefText ?? "");
   const [editingBrief, setEditingBrief] = useState(false);
@@ -1338,6 +1344,37 @@ function VictorProjectDrawer({
 
   // Cancel any in-flight chunked upload when the drawer unmounts (close / switch).
   useEffect(() => () => { uploadAbortRef.current?.abort(); }, []);
+
+  // Manual "send work to Victor": pushes to Victor, then (only if he actually
+  // got it) a confirmation push to the owner. Sends ONLY the workId — the server
+  // reloads the row and builds both texts from vendor_project_work.title, so the
+  // name can't be spoofed and never falls back to a project/artist name.
+  // Changes no status/data; never runs automatically.
+  async function sendWorkToVictor() {
+    if (sendingRef.current) return; // double-click → exactly one request
+    sendingRef.current = true;
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch("/api/vendor/victor/notify-work", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workId: work.id }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) {
+        setSendError(d.error || t("err.networkRetry")); // keeps the confirm open to retry
+        return;
+      }
+      setSendConfirm(false);
+      setSendDone(true);
+    } catch {
+      setSendError(t("err.networkRetry"));
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }
 
   async function patchWork(fields: Partial<VendorWork>) {
     setUpdating(true);
@@ -2667,22 +2704,76 @@ function VictorProjectDrawer({
             </div>
           )}
 
-          {/* ── Send work to Victor (owner only) ──
-               Placeholder UI: intentionally has no onClick — it changes no
-               status, sends no push, creates no alert and calls no route. */}
-          {isOwner && (
-            <button
-              type="button"
-              style={{
-                width: "100%", padding: "11px 0", borderRadius: 12,
-                background: `${PURPLE}14`, border: `1px solid ${PURPLE}44`,
-                color: PURPLE, fontSize: 13, fontWeight: 700,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              {t("drawer.sendWork")}
-            </button>
-          )}
+          {/* ── Send work to Victor (owner only) — manual push, no data change ── */}
+          {isOwner && (!sendConfirm ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSendDone(false);
+                  setSendError(null);
+                  // Canonical Victor name only — never work.projectName / artist.
+                  if (!effectiveTitle.trim()) { setSendError(t("drawer.sendWorkNoTitle")); return; }
+                  setSendConfirm(true);
+                }}
+                style={{
+                  width: "100%", padding: "11px 0", borderRadius: 12,
+                  background: `${PURPLE}14`, border: `1px solid ${PURPLE}44`,
+                  color: PURPLE, fontSize: 13, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {t("drawer.sendWork")}
+              </button>
+              {sendDone && (
+                <div style={{ marginTop: 8, fontSize: 12, color: GREEN, fontWeight: 700, textAlign: "center" }}>
+                  {t("drawer.sendWorkSuccess")}
+                </div>
+              )}
+              {sendError && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: "#FCA5A5", fontWeight: 600, textAlign: "center", unicodeBidi: "plaintext" } as React.CSSProperties}>
+                  {sendError}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ borderRadius: 12, background: `${PURPLE}12`, border: `1px solid ${PURPLE}3A`, padding: "12px 16px" }}>
+              <div style={{ fontSize: 12, color: TEXT2, fontWeight: 700, marginBottom: 10, textAlign: "center", lineHeight: 1.6 }}>
+                {t("drawer.sendWorkConfirm", { title: effectiveTitle.trim() })}
+              </div>
+              {sendError && (
+                <div style={{ fontSize: 11, color: "#FCA5A5", marginBottom: 8, textAlign: "center", unicodeBidi: "plaintext" } as React.CSSProperties}>
+                  {sendError}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={sendWorkToVictor}
+                  disabled={sending}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 9, border: "none",
+                    background: sending ? "#52526A" : PURPLE,
+                    color: "#fff", fontSize: 13, fontWeight: 800,
+                    cursor: sending ? "default" : "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {sending ? t("drawer.sendWorkSending") : t("drawer.confirm")}
+                </button>
+                <button
+                  onClick={() => { setSendConfirm(false); setSendError(null); }}
+                  disabled={sending}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 9,
+                    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)",
+                    color: "#A0A0B0", fontSize: 13, fontWeight: 700,
+                    cursor: sending ? "default" : "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {t("drawer.cancel")}
+                </button>
+              </div>
+            </div>
+          ))}
 
           {/* ── Remove from Victor board (owner only) ── */}
           {isOwner && (!confirmRemove ? (
@@ -2994,6 +3085,24 @@ export default function VictorProfilePage() {
     } catch { /* silent */ }
     finally { setLoading(false); }
   }, []);
+
+  // ── Deep-link: /team/victor?workId=… (from the "new work" push) ──
+  // Opens that work's drawer exactly once. Searches the FULL work list — not the
+  // current tab/filter — which is safe because getVictorWork() ignores the month
+  // and returns every row. UI only: opens the drawer, sends no push and changes
+  // no data. The param is cleared right after so closing + refreshing (or a plain
+  // reload) never reopens it. Read from window.location instead of
+  // useSearchParams() to avoid a Suspense boundary requirement.
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current || loading) return;
+    const wid = new URLSearchParams(window.location.search).get("workId");
+    if (!wid) return;
+    deepLinkedRef.current = true; // once per mount, even if the id no longer exists
+    const match = work.find((w) => w.id === wid);
+    if (match) setSelectedWork(match); // not found (deleted / not his) → ignore silently
+    router.replace("/team/victor", { scroll: false });
+  }, [loading, work, router]);
 
   const fetchSalary = useCallback(async (year: number) => {
     setSalaryLoading(true);
