@@ -160,15 +160,15 @@ export default function MobileNav({
     ? MOBILE_TABS
     : isVictor
       // Victor has exactly one page and the proxy sends him there from anywhere,
-      // so a "Victor" tab was only ever a self-link. No tabs → the bar below
-      // renders a single full-width logout column.
+      // so a "Victor" tab was only ever a self-link. No tabs → no bar at all
+      // (the early return below), exactly like shalev.
       ? []
       : role === "steven"
         ? [{ href: "/team/steven", label: "Steven", icon: "🎚", iconColor: "#DC2626" as string | undefined }]
         : [];
-  // shalev has NO fixed bottom bar — his "האזור שלי" + "יציאה" live at the bottom
-  // of the home tab instead (owner/steven bars are unchanged; victor keeps the
-  // bar but with logout only).
+  // shalev AND victor have NO fixed bottom bar — their logout lives at the end of
+  // their own page content instead (ArtistPortalPage / VictorProfilePage), so it
+  // scrolls with the page rather than pinning a bar. owner/steven are unchanged.
 
   useEffect(() => {
     if (role !== "owner" || !MAI_AI_ENABLED) return; // owner-only; skipped while AI is disabled
@@ -184,10 +184,9 @@ export default function MobileNav({
   );
 
   // Nothing to show while the role is still unknown — never default to the full
-  // nav. Victor is the exception: he has no tabs but still needs the logout bar,
-  // so he must not fall into this early return (shalev deliberately gets no bar
-  // at all and keeps returning null here).
-  if (tabs.length === 0 && !isVictor) return null;
+  // nav. victor + shalev also land here (no tabs → no bar); their logout lives at
+  // the end of their own page content.
+  if (tabs.length === 0) return null;
 
   return (
     <>

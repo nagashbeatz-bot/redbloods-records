@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
@@ -3806,7 +3807,30 @@ export default function VictorProfilePage() {
           </div>
           )}
 
-        </div>
+        </div>{/* main grid */}
+
+        {/* ── Victor on mobile — logout at the END of the page content, so it
+             scrolls with the page instead of pinning a bottom bar (MobileNav
+             renders nothing for him and AppShell reserves no nav height, leaving
+             only the iPhone safe-area inset under this button). Mirrors shalev's
+             page-end area in ArtistPortalPage. Owner never sees it; on desktop
+             the Sidebar footer keeps its own logout. A work drawer is a fixed
+             overlay above this, so it covers the button as required. ── */}
+        {isMobile && myRole === "victor" && (
+          <div style={{ marginTop: 16, paddingTop: 18, borderTop: `1px solid ${BDR}` }}>
+            <button
+              onClick={signOutAndRedirect}
+              style={{
+                width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                padding: "14px 0", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                fontSize: 14, fontWeight: 800, color: "#EF4444",
+                background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.35)",
+              }}
+            >
+              <span style={{ fontSize: 15, lineHeight: 1 }}>🚪</span> {t("common.signOut")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
 
