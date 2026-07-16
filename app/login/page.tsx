@@ -80,7 +80,11 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div dir="rtl" style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      // 100dvh (not 100vh) so the iOS Safari toolbar can't overshoot the height —
+      // consistent with globals.css, which already uses dvh everywhere else.
+      // min-height (not height) keeps the card scrollable if it ever exceeds the
+      // viewport, so centering can never clip its top.
+      minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center",
       background: "#0A0A0A", padding: 20, fontFamily: "inherit",
     }}>
       <div style={{
@@ -108,5 +112,10 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "11px 13px", borderRadius: 11,
   border: "1px solid #303030", background: "#0D0D0D", color: "#E8E8E8",
-  fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+  // 16px is mandatory, not cosmetic: iOS Safari force-zooms the page on focus
+  // whenever a focused input computes to < 16px. That zoom is what magnified the
+  // whole card (and made the 380px card look full-bleed) while typing. There is
+  // no accessible alternative — maximum-scale / user-scalable=no and a
+  // transform:scale counter-hack are both off the table.
+  fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
 };
