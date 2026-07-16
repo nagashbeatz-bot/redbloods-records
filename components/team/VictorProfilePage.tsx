@@ -3249,8 +3249,13 @@ export default function VictorProfilePage() {
     <div style={{
       minHeight: "100%", background: BG, color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
-      // Extra bottom padding on mobile so the last cards clear the bottom nav.
-      padding: isMobile ? "16px 14px 120px" : "32px 28px 80px",
+      // Mobile bottom padding: the owner still has a fixed bottom nav to clear,
+      // so his 120px stays. Victor has no bar any more (his Sign out sits at the
+      // end of the content), so 120px was a leftover reservation showing up as a
+      // black strip under the button — he only needs a small gap. The iPhone
+      // inset itself is NOT added here: AppShell already appends
+      // env(safe-area-inset-bottom) to this content area.
+      padding: isMobile ? (isOwner ? "16px 14px 120px" : "16px 14px 24px") : "32px 28px 80px",
     }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
