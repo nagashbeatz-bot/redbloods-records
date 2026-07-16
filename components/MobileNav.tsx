@@ -151,19 +151,24 @@ export default function MobileNav({
   const [unreadAlerts, setUnreadAlerts] = useState(0);
 
   // Role-gated nav — must mirror the desktop Sidebar so mobile never exposes more
-  // than desktop. Owner → full nav; Victor → only his page; null/unknown → none
-  // (security is also enforced server-side in proxy.ts, this is defense-in-depth).
+  // than desktop. Owner → full nav; Victor → no tab at all (logout only, see
+  // below); null/unknown → none (security is also enforced server-side in
+  // proxy.ts, this is defense-in-depth).
   const isOwner  = role === "owner";
   const isVictor = role === "victor";
   const tabs = isOwner
     ? MOBILE_TABS
     : isVictor
-      ? [{ href: "/team/victor", label: "Victor", icon: "👤", iconColor: "#A855F7" as string | undefined }]
+      // Victor has exactly one page and the proxy sends him there from anywhere,
+      // so a "Victor" tab was only ever a self-link. No tabs → the bar below
+      // renders a single full-width logout column.
+      ? []
       : role === "steven"
         ? [{ href: "/team/steven", label: "Steven", icon: "🎚", iconColor: "#DC2626" as string | undefined }]
         : [];
   // shalev has NO fixed bottom bar — his "האזור שלי" + "יציאה" live at the bottom
-  // of the home tab instead (owner/victor/steven bars are unchanged).
+  // of the home tab instead (owner/steven bars are unchanged; victor keeps the
+  // bar but with logout only).
 
   useEffect(() => {
     if (role !== "owner" || !MAI_AI_ENABLED) return; // owner-only; skipped while AI is disabled
@@ -178,8 +183,11 @@ export default function MobileNav({
     (item) => pathname === item.href || pathname.startsWith(item.href + "/")
   );
 
-  // Nothing to show while the role is still unknown — never default to the full nav.
-  if (tabs.length === 0) return null;
+  // Nothing to show while the role is still unknown — never default to the full
+  // nav. Victor is the exception: he has no tabs but still needs the logout bar,
+  // so he must not fall into this early return (shalev deliberately gets no bar
+  // at all and keeps returning null here).
+  if (tabs.length === 0 && !isVictor) return null;
 
   return (
     <>
