@@ -318,6 +318,8 @@ const HE: Dict = {
   "drawer.sent": "📤 נשלח",
   "drawer.notSentYet": "טרם נשלח",
   "drawer.returned": "📥 חזר",
+  // drawer — send work (owner-only button; UI only for now)
+  "drawer.sendWork": "שלח עבודה לויקטור",
   // drawer — remove
   "drawer.removeProject": "מחק פרויקט 🗑",
   "drawer.removeConfirm": "למחוק מעמוד ויקטור?",
@@ -569,6 +571,7 @@ const EN: Dict = {
   "drawer.sent": "📤 Sent",
   "drawer.notSentYet": "Not sent yet",
   "drawer.returned": "📥 Returned",
+  "drawer.sendWork": "Send work to Viktor",
   "drawer.removeProject": "Delete project 🗑",
   "drawer.removeConfirm": "Remove from Viktor page?",
   "drawer.confirm": "Confirm",
@@ -813,6 +816,7 @@ const RU: Dict = {
   "drawer.sent": "📤 Отправлено",
   "drawer.notSentYet": "Ещё не отправлено",
   "drawer.returned": "📥 Возврат",
+  "drawer.sendWork": "Отправить работу Viktor",
   "drawer.removeProject": "Удалить проект 🗑",
   "drawer.removeConfirm": "Удалить со страницы Viktor?",
   "drawer.confirm": "Подтвердить",

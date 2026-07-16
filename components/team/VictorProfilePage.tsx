@@ -2667,6 +2667,23 @@ function VictorProjectDrawer({
             </div>
           )}
 
+          {/* ── Send work to Victor (owner only) ──
+               Placeholder UI: intentionally has no onClick — it changes no
+               status, sends no push, creates no alert and calls no route. */}
+          {isOwner && (
+            <button
+              type="button"
+              style={{
+                width: "100%", padding: "11px 0", borderRadius: 12,
+                background: `${PURPLE}14`, border: `1px solid ${PURPLE}44`,
+                color: PURPLE, fontSize: 13, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              {t("drawer.sendWork")}
+            </button>
+          )}
+
           {/* ── Remove from Victor board (owner only) ── */}
           {isOwner && (!confirmRemove ? (
             <button
