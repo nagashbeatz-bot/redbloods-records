@@ -7,6 +7,13 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
+import {
+  IconMusic, IconPlay, IconPause, IconSkipBack, IconSkipForward, IconVolume,
+  IconArrowUpRight, IconChevronLeft, IconChevronRight, IconX, IconPencil, IconTrash,
+  IconCheck, IconCheckCircle, IconLogOut, IconCalendar, IconRefresh, IconTarget,
+  IconAlert, IconStar, IconPin, IconFile, IconArchive, IconPaperclip, IconLink,
+  IconUpload, IconDownload, IconInbox, IconNote, IconClipboard, IconFolder, IconCamera,
+} from "./victor-icons";
 
 // Run before paint on the client (falls back to useEffect on the server) so
 // cached role / skeletons settle without a visible flash.
@@ -586,7 +593,7 @@ function AudioPlayer({
           color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 12, fontFamily: "inherit", outline: "none",
         }}>
-          {playing ? "⏸" : "▶"}
+          {playing ? <IconPause size={13} /> : <IconPlay size={13} />}
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
@@ -618,10 +625,10 @@ function AudioPlayer({
             background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent",
             border: `1px solid ${hasUrl ? BDR2 : "transparent"}`,
             cursor: hasUrl ? "pointer" : "not-allowed",
-            color: hasUrl ? TEXT2 : `${MUTED}55`, fontSize: 16, padding: 0,
+            color: hasUrl ? TEXT2 : `${MUTED}55`, padding: 0,
             flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >↓</button>
+        ><IconDownload size={15} /></button>
         {/* Delete button (owner only) */}
         {canDelete && (
         <button
@@ -633,7 +640,7 @@ function AudioPlayer({
             color: "#F87171", fontSize: 13, padding: "3px 8px",
             flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >{t("file.deleteBtn")}</button>
+         ><IconTrash size={11} style={{ marginInlineEnd: 4 }} />{t("file.deleteBtn")}</button>
         )}
       </div>
       {/* Inline delete confirm */}
@@ -738,14 +745,9 @@ function normalizeSegs(list: BriefSegment[], dur: number): BriefSegment[] {
   return out;
 }
 
-// Small inline-SVG icons (feather-style, currentColor) — matches the stroked
-// SVG pattern already used elsewhere (Sidebar/ProjectsTable). No icon library.
-const SVG_BASE = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-function IconPlay() { return (<svg {...SVG_BASE}><path d="M7 5l12 7-12 7V5z" fill="currentColor" stroke="none" /></svg>); }
-function IconPause() { return (<svg {...SVG_BASE}><rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" /></svg>); }
-function IconDownload() { return (<svg {...SVG_BASE}><path d="M12 4v11" /><path d="M7.5 10.5L12 15l4.5-4.5" /><path d="M5 20h14" /></svg>); }
-function IconTrash() { return (<svg {...SVG_BASE} width={13} height={13}><path d="M4 7h16" /><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /><path d="M6.5 7l1 12.5a1 1 0 0 0 1 .9h7a1 1 0 0 0 1-.9L18 7" /></svg>); }
-function IconMusic() { return (<svg {...SVG_BASE} width={11} height={11}><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" fill="currentColor" stroke="none" /><circle cx="16" cy="16" r="3" fill="currentColor" stroke="none" /></svg>); }
+// The page used to declare its own IconPlay/Pause/Download/Trash/Music here.
+// They now live in ./victor-icons together with the rest of the set, so every
+// icon on the Victor pages comes from one place and shares one stroke language.
 
 // Inline brief-audio player with colored structure segments over the timeline.
 // Its own <audio>, guarded by the shared currentVictorAudio so it never plays
@@ -966,16 +968,16 @@ function BriefSegmentPlayer({
           background: playing ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`,
           color: "#fff", cursor: hasUrl ? "pointer" : "not-allowed", display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 13, fontFamily: "inherit", outline: "none",
-        }}>{playing ? <IconPause /> : <IconPlay />}</button>
+        }}>{playing ? <IconPause size={15} /> : <IconPlay size={15} />}</button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div title={name} style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{name}</div>
-          <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}><IconMusic /> {t("seg.title")}</div>
+          <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}><IconMusic size={11} /> {t("seg.title")}</div>
         </div>
         <button onClick={e => { e.stopPropagation(); onDownload(); }} disabled={!hasUrl} title={t("file.download")}
-          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", outline: "none" }}><IconDownload /></button>
+          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", outline: "none" }}><IconDownload size={15} /></button>
         {isOwner && (
           <button onClick={e => { e.stopPropagation(); onDeleteConfirm(); }} title={t("file.delete")}
-            style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 8, cursor: "pointer", color: "#F87171", padding: 0, flexShrink: 0, outline: "none", fontFamily: "inherit" }}><IconTrash /></button>
+            style={{ width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 8, cursor: "pointer", color: "#F87171", padding: 0, flexShrink: 0, outline: "none", fontFamily: "inherit" }}><IconTrash size={13} /></button>
         )}
       </div>
 
@@ -1050,7 +1052,7 @@ function BriefSegmentPlayer({
                 <button onClick={() => setAdvanced(a => !a)}
                   style={{ fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 7, background: advanced ? `${PURPLE}18` : "rgba(255,255,255,0.05)", border: `1px solid ${advanced ? `${PURPLE}55` : BDR2}`, color: advanced ? PURPLE : TEXT2, cursor: "pointer", fontFamily: "inherit", outline: "none" }}>{t("seg.advanced")}</button>
                 <button onClick={() => removeSeg(activeSeg.id)} title={t("file.delete")}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit", outline: "none" }}><IconTrash />{t("file.delete")}</button>
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit", outline: "none" }}><IconTrash size={13} />{t("file.delete")}</button>
                 {saving === "saving" && <span style={{ fontSize: 10, color: MUTED }}>…</span>}
                 {saving === "error" && <span style={{ fontSize: 10, color: RED }}>{t("seg.saveFail")}</span>}
               </div>
@@ -1133,7 +1135,7 @@ function FileRow({
         onClick={() => { if (hasUrl) onDownload(); }}
         style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: hasUrl ? "pointer" : "default" }}
       >
-        <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
+        <IconFile size={18} style={{ color: TEXT2 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
           <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fileExt(name)}</div>
@@ -1149,10 +1151,10 @@ function FileRow({
             background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent",
             border: `1px solid ${hasUrl ? BDR2 : "transparent"}`,
             cursor: hasUrl ? "pointer" : "not-allowed",
-            color: hasUrl ? TEXT2 : `${MUTED}55`, fontSize: 16, padding: 0,
+            color: hasUrl ? TEXT2 : `${MUTED}55`, padding: 0,
             flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >↓</button>
+        ><IconDownload size={15} /></button>
         {/* Delete button (owner only) */}
         {canDelete && (
         <button
@@ -1164,7 +1166,7 @@ function FileRow({
             color: "#F87171", fontSize: 13, padding: "3px 8px",
             flexShrink: 0, outline: "none", fontFamily: "inherit",
           }}
-        >{t("file.deleteBtn")}</button>
+         ><IconTrash size={11} style={{ marginInlineEnd: 4 }} />{t("file.deleteBtn")}</button>
         )}
       </div>
       {/* Inline delete confirm */}
@@ -1226,11 +1228,11 @@ function ReferenceCard({
         {thumb ? (
           <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
-          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: MUTED, fontSize: 26 }}>▶</div>
+          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: MUTED }}><IconPlay size={26} /></div>
         )}
         {vid && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ width: 42, height: 42, borderRadius: "50%", background: "rgba(220,38,38,0.92)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, paddingRight: 2 }}>▶</span>
+            <span style={{ width: 42, height: 42, borderRadius: "50%", background: "rgba(220,38,38,0.92)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", paddingRight: 1 }}><IconPlay size={16} /></span>
           </div>
         )}
       </button>
@@ -1245,16 +1247,16 @@ function ReferenceCard({
         {refItem.note && <div style={{ fontSize: 14, color: "#CFCFD6", marginTop: 9, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", textAlign: "start", unicodeBidi: "plaintext" }}>{refItem.note}</div>}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 9, flexWrap: "wrap" }}>
           {vid ? (
-            <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit" }}>{t("ref.play")}</button>
+            <button onClick={() => onPlay(vid)} style={{ fontSize: 11, fontWeight: 800, color: "#fff", padding: "5px 14px", borderRadius: 8, background: PURPLE, border: "none", cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5 }}><IconPlay size={11} />{t("ref.play")}</button>
           ) : (
-            <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: PURPLE, textDecoration: "none", padding: "5px 12px", borderRadius: 8, background: `${PURPLE}14`, border: `1px solid ${PURPLE}33` }}>{t("ref.openLink")}</a>
+            <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: PURPLE, textDecoration: "none", padding: "5px 12px", borderRadius: 8, background: `${PURPLE}14`, border: `1px solid ${PURPLE}33`, display: "inline-flex", alignItems: "center", gap: 5 }}><IconArrowUpRight size={11} />{t("ref.openLink")}</a>
           )}
-          {vid && <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: MUTED, textDecoration: "none" }}>{t("ref.openYoutube")}</a>}
+          {vid && <a href={refItem.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: MUTED, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}><IconArrowUpRight size={10} />{t("ref.openYoutube")}</a>}
           <div style={{ flex: 1 }} />
           {isOwner && (
             <>
-              <button onClick={onEdit} title={t("file.editTitle")} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>✎</button>
-              <button onClick={onDelete} title={t("file.deleteTitle")} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
+              <button onClick={onEdit} title={t("file.editTitle")} style={{ display: "flex", alignItems: "center", padding: "5px 9px", borderRadius: 7, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}><IconPencil size={13} /></button>
+              <button onClick={onDelete} title={t("file.deleteTitle")} style={{ display: "flex", alignItems: "center", padding: "5px 9px", borderRadius: 7, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", color: "#F87171", cursor: "pointer", fontFamily: "inherit" }}><IconTrash size={13} /></button>
             </>
           )}
         </div>
@@ -1926,10 +1928,12 @@ function VictorProjectDrawer({
         {audio ? (
           <button onClick={() => (nowPlaying ? togglePlayer() : playTrackByFile(file))} title={nowPlaying && pPlaying ? t("player.pause") : t("player.play")}
             style={{ width: big ? 36 : 30, height: big ? 36 : 30, borderRadius: "50%", flexShrink: 0, background: nowPlaying && pPlaying ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: big ? 13 : 11, fontFamily: "inherit" }}>
-            {nowPlaying && pPlaying ? "⏸" : "▶"}
+            {nowPlaying && pPlaying ? <IconPause size={big ? 14 : 12} /> : <IconPlay size={big ? 14 : 12} />}
           </button>
         ) : (
-          <span style={{ fontSize: big ? 20 : 16, flexShrink: 0, width: big ? 36 : 30, textAlign: "center" }}>{/\.(zip|rar|7z)$/i.test(file.name) ? "🗜" : "📄"}</span>
+          <span style={{ flexShrink: 0, width: big ? 36 : 30, color: TEXT2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {/\.(zip|rar|7z)$/i.test(file.name) ? <IconArchive size={big ? 19 : 16} /> : <IconFile size={big ? 19 : 16} />}
+          </span>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div title={file.name} style={{ fontSize: big ? 13.5 : 12.5, fontWeight: 600, color: TEXT, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere", lineHeight: 1.3 } as React.CSSProperties}>{file.name}</div>
@@ -1940,7 +1944,7 @@ function VictorProjectDrawer({
           </div>
         </div>
         <button onClick={() => downloadFile(file, work.id)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
-          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 15, padding: 0, fontFamily: "inherit" }}>↓</button>
+          style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconDownload size={15} /></button>
         {isOwner && (
           deleteConfirmIdx === sentIdx ? (
             <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
@@ -1949,7 +1953,7 @@ function VictorProjectDrawer({
             </div>
           ) : (
             <button onClick={() => { setDeleteConfirmIdx(sentIdx); setDeleteError(false); }} title={t("file.delete")}
-              style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "4px 8px", flexShrink: 0, fontFamily: "inherit" }}>{t("file.deleteBtn")}</button>
+              style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "4px 8px", flexShrink: 0, fontFamily: "inherit" }} ><IconTrash size={11} style={{ marginInlineEnd: 4 }} />{t("file.deleteBtn")}</button>
           )
         )}
       </div>
@@ -1993,7 +1997,7 @@ function VictorProjectDrawer({
       return (
         <button onClick={() => openReviewEditor(key)}
           style={{ marginTop: 4, alignSelf: "flex-start", fontSize: 10.5, fontWeight: 700, padding: "5px 12px", borderRadius: 8, background: `${PURPLE}12`, border: `1px dashed ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5 }}>
-          📝 {t("vreview.add")}
+          <IconNote size={12} /> {t("vreview.add")}
         </button>
       );
     }
@@ -2004,7 +2008,7 @@ function VictorProjectDrawer({
     return (
       <div style={{ marginTop: 8, padding: "11px 13px", borderRadius: 11, background: "rgba(0,0,0,0.22)", border: `1px solid ${PURPLE}3D`, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 800, color: TEXT2 }}>📝 {t("vreview.title")}</span>
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: TEXT2, display: "inline-flex", alignItems: "center", gap: 5 }}><IconNote size={12} /> {t("vreview.title")}</span>
           <span style={{ flex: 1 }} />
           {isOwner && !editing && (
             <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}20`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{t("vreview.edit")}</button>
@@ -2105,9 +2109,9 @@ function VictorProjectDrawer({
             <button onClick={onClose} style={{
               background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`,
               borderRadius: 8, cursor: "pointer", padding: "4px 10px",
-              color: TEXT2, fontSize: 13, lineHeight: 1, fontFamily: "inherit",
-              fontWeight: 700,
-            }}>✕</button>
+              color: TEXT2, lineHeight: 1, fontFamily: "inherit",
+              fontWeight: 700, display: "flex", alignItems: "center",
+            }}><IconX size={14} /></button>
             {/* Project link is OWNER-only — Victor never gets a way into the
                 original project, just the clean work name. */}
             {isOwner ? (
@@ -2121,7 +2125,7 @@ function VictorProjectDrawer({
                     letterSpacing: "0.03em",
                   }}
                 >
-                  {t("drawer.openInProjects")}
+                  <IconArrowUpRight size={12} style={{ marginInlineEnd: 5 }} />{t("drawer.openInProjects")}
                 </button>
               ) : (
                 <span style={{ fontSize: 11, color: MUTED }}>{t("drawer.noLinkedProject")}</span>
@@ -2136,8 +2140,8 @@ function VictorProjectDrawer({
               background: `linear-gradient(135deg, ${PURPLE}30, ${PURPLE}10)`,
               border: `1px solid ${PURPLE}44`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 20,
-            }}>🎵</div>
+              color: PURPLE,
+            }}><IconMusic size={20} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               {editingTitle ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
@@ -2149,8 +2153,8 @@ function VictorProjectDrawer({
                     onKeyDown={e => { if (e.key === "Enter") saveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
                     style={{ ...WT_INPUT, flex: 1, minWidth: 0, fontSize: isMobile ? 16 : 15, fontWeight: 700 }}
                   />
-                  <button onClick={saveTitle} disabled={savingTitle} title={t("drawer.confirm")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: "none", background: savingTitle ? MUTED : GREEN, color: "#fff", fontSize: 14, cursor: savingTitle ? "default" : "pointer", fontFamily: "inherit" }}>✓</button>
-                  <button onClick={() => setEditingTitle(false)} disabled={savingTitle} title={t("drawer.cancel")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.05)", color: TEXT2, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+                  <button onClick={saveTitle} disabled={savingTitle} title={t("drawer.confirm")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: "none", background: savingTitle ? MUTED : GREEN, color: "#fff", cursor: savingTitle ? "default" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconCheck size={15} /></button>
+                  <button onClick={() => setEditingTitle(false)} disabled={savingTitle} title={t("drawer.cancel")} style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.05)", color: TEXT2, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconX size={14} /></button>
                 </div>
               ) : (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -2163,7 +2167,7 @@ function VictorProjectDrawer({
                     {effectiveTitle.trim() || work.projectName}
                   </div>
                   {isOwner && (
-                    <button onClick={() => { setTitleDraft(effectiveTitle); setEditingTitle(true); }} title={t("drawer.editTitle")} style={{ flexShrink: 0, background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", padding: 2, lineHeight: 1 }}>✎</button>
+                    <button onClick={() => { setTitleDraft(effectiveTitle); setEditingTitle(true); }} title={t("drawer.editTitle")} style={{ flexShrink: 0, background: "none", border: "none", color: MUTED, cursor: "pointer", padding: 2, lineHeight: 1, display: "flex", alignItems: "center" }}><IconPencil size={13} /></button>
                   )}
                 </div>
               )}
@@ -2200,7 +2204,7 @@ function VictorProjectDrawer({
             {work.internalDeadline ? (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 12, color: MUTED }}>{t("drawer.deadlineLabel")}</span>
+                  <span style={{ fontSize: 12, color: MUTED, display: "inline-flex", alignItems: "center", gap: 5 }}><IconCalendar size={12} />{t("drawer.deadlineLabel")}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.internalDeadline)}</span>
                 </div>
                 {timingLabel && (
@@ -2232,14 +2236,14 @@ function VictorProjectDrawer({
               <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14 }}>📌</span>
+                    <IconPin size={14} style={{ color: TEXT2 }} />
                     <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("drawer.readme")}</span>
                   </div>
                   {isOwner && !editingBrief && (
                     <button
                       onClick={() => { setBriefDraft(effectiveBrief); setEditingBrief(true); }}
                       style={{ fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}
-                    >{t("drawer.edit")}</button>
+                     ><IconPencil size={11} style={{ marginInlineEnd: 4 }} />{t("drawer.edit")}</button>
                   )}
                 </div>
                 <div style={{ padding: "18px 20px" }}>
@@ -2274,7 +2278,7 @@ function VictorProjectDrawer({
                   {(isOwner || effectiveBriefFiles.length > 0) && (
                     <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${BDR}` }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2 }}>📎 {t("brief.filesTitle")}{effectiveBriefFiles.length > 0 ? ` (${effectiveBriefFiles.length})` : ""}</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: TEXT2, display: "inline-flex", alignItems: "center", gap: 6 }}><IconPaperclip size={13} /> {t("brief.filesTitle")}{effectiveBriefFiles.length > 0 ? ` (${effectiveBriefFiles.length})` : ""}</span>
                         {isOwner && (
                           <button onClick={() => briefFileInputRef.current?.click()} disabled={briefUploading}
                             style={{ fontSize: 11, fontWeight: 700, padding: "4px 11px", borderRadius: 8, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, cursor: briefUploading ? "default" : "pointer", fontFamily: "inherit", opacity: briefUploading ? 0.6 : 1 }}>
@@ -2314,13 +2318,13 @@ function VictorProjectDrawer({
                             const sz = f.size ? (f.size > 1048576 ? `${(f.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1024))} KB`) : "";
                             return (
                               <div key={f.fileRef ?? f.dropboxPath ?? i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}`, minWidth: 0 }}>
-                                <span style={{ fontSize: 15, flexShrink: 0 }}>📄</span>
+                                <IconFile size={15} style={{ color: TEXT2 }} />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div title={f.name} style={{ fontSize: 12.5, fontWeight: 600, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext" } as React.CSSProperties}>{f.name}</div>
                                   <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>{ext}{sz ? ` · ${sz}` : ""}</div>
                                 </div>
                                 <button onClick={() => downloadFile(f, work.id)} disabled={!hasUrl} title={t("file.download")}
-                                  style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", fontSize: 14, padding: 0, fontFamily: "inherit" }}>↓</button>
+                                  style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconDownload size={14} /></button>
                                 {isOwner && (
                                   briefDelPath === f.dropboxPath ? (
                                     <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
@@ -2329,7 +2333,7 @@ function VictorProjectDrawer({
                                     </div>
                                   ) : (
                                     <button onClick={() => setBriefDelPath(f.dropboxPath ?? null)} title={t("file.delete")}
-                                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "3px 7px", flexShrink: 0, fontFamily: "inherit" }}>🗑</button>
+                                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", padding: "4px 7px", flexShrink: 0, fontFamily: "inherit", display: "flex", alignItems: "center" }}><IconTrash size={12} /></button>
                                   )
                                 )}
                               </div>
@@ -2346,7 +2350,7 @@ function VictorProjectDrawer({
               <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14 }}>🔗</span>
+                    <IconLink size={14} style={{ color: TEXT2 }} />
                     <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("drawer.refs")}</span>
                     {effectiveRefs.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}18`, color: PURPLE }}>{effectiveRefs.length}</span>}
                   </div>
@@ -2402,7 +2406,7 @@ function VictorProjectDrawer({
               borderBottom: effectiveFiles.length > 0 ? `1px solid ${BDR}` : "none",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <span style={{ fontSize: 14, flexShrink: 0 }}>🎵</span>
+                <IconMusic size={14} style={{ color: TEXT2 }} />
                 <span style={{ fontSize: 13, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("versions.title")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
@@ -2428,7 +2432,7 @@ function VictorProjectDrawer({
                     fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
                   }}
                 >
-                  {uploading ? (savingDbx ? t("files.saving") : `${uploadProgress}%`) : t("files.upload")}
+                  {uploading ? (savingDbx ? t("files.saving") : `${uploadProgress}%`) : <><IconUpload size={11} style={{ marginInlineEnd: 4 }} />{t("files.upload")}</>}
                 </button>
                 {/* Owner-only: never expose the Dropbox folder link or the total
                     file count to Victor — he only needs Upload. */}
@@ -2444,7 +2448,7 @@ function VictorProjectDrawer({
                         color: "#4A9EFF", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
                       }}
                     >
-                      {t("files.openDropbox")}
+                      <IconArrowUpRight size={11} style={{ marginInlineEnd: 4 }} />{t("files.openDropbox")}
                     </a>
                   ) : (
                     <button
@@ -2457,7 +2461,7 @@ function VictorProjectDrawer({
                         cursor: openingDbx ? "default" : "pointer", opacity: openingDbx ? 0.6 : 1,
                       }}
                     >
-                      {openingDbx ? t("files.opening") : t("files.openDropbox")}
+                      {openingDbx ? t("files.opening") : <><IconArrowUpRight size={11} style={{ marginInlineEnd: 4 }} />{t("files.openDropbox")}</>}
                     </button>
                   )
                 )}
@@ -2477,7 +2481,7 @@ function VictorProjectDrawer({
 
             {effectiveFiles.length === 0 ? (
               <div style={{ padding: "44px 20px", textAlign: "center" }}>
-                <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.22 }}>🎵</div>
+                <div style={{ marginBottom: 12, opacity: 0.22, display: "flex", justifyContent: "center", color: TEXT2 }}><IconMusic size={40} /></div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: TEXT2, marginBottom: 4 }}>{t("files.empty")}</div>
                 <div style={{ fontSize: 12, color: MUTED }}>{t("files.emptySub")}</div>
               </div>
@@ -2489,7 +2493,7 @@ function VictorProjectDrawer({
                   const isOlder = g.key === "__untagged__";
                   const num = /^V\d/.test(g.label) ? g.label.slice(1) : null;
                   const title = num ? `${t("versions.round")} ${num}` : isOlder ? t("versions.olderFiles") : (g.label || t("versions.round"));
-                  const badge = num ? `V${num}` : isOlder ? "🗂" : "♪";
+                  const badge: React.ReactNode = num ? `V${num}` : isOlder ? <IconFolder size={15} /> : <IconMusic size={14} />;
                   const errNode = deleteError && deletingIdx !== null && g.files.some(x => x.sentIdx === deletingIdx)
                     ? <div style={{ fontSize: 10, color: RED, padding: "0 4px" }}>{t("file.retryError")}</div> : null;
                   return isLatest ? (
@@ -2500,7 +2504,7 @@ function VictorProjectDrawer({
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <span style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>{title}</span>
-                            <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}26`, color: PURPLE, border: `1px solid ${PURPLE}55`, whiteSpace: "nowrap" }}>★ {t("versions.latest")}</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${PURPLE}26`, color: PURPLE, border: `1px solid ${PURPLE}55`, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}><IconStar size={10} /> {t("versions.latest")}</span>
                           </div>
                           <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{g.files.length} {t("files.count")}</div>
                         </div>
@@ -2553,7 +2557,7 @@ function VictorProjectDrawer({
               borderBottom: `1px solid ${BDR}`,
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>✅</span>
+                <IconCheckCircle size={15} style={{ color: GREEN }} />
                 <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("drawer.progress")}</span>
               </div>
               <span style={{
@@ -2592,9 +2596,9 @@ function VictorProjectDrawer({
                     border: `2px solid ${t.done ? GREEN : BDR2}`,
                     background: t.done ? `${GREEN}25` : "transparent",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 11, color: GREEN, fontWeight: 900,
+                    color: GREEN, fontWeight: 900,
                   }}>
-                    {t.done ? "✓" : ""}
+                    {t.done ? <IconCheck size={12} strokeWidth={2.4} /> : null}
                   </div>
                   <span style={{
                     flex: 1, fontSize: 13, fontWeight: t.done ? 700 : 500,
@@ -2646,7 +2650,7 @@ function VictorProjectDrawer({
               background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px",
               borderTop: `3px solid ${work.internalDeadline ? (days !== null && days < 0 ? RED : AMBER) : BDR}`,
             }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{t("drawer.deadlineCard")}</div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}><IconCalendar size={12} />{t("drawer.deadlineCard")}</div>
               <div style={{ fontSize: 20, fontWeight: 900, color: days !== null && days < 0 ? RED : TEXT, letterSpacing: "-0.02em", marginBottom: 4 }}>
                 {work.internalDeadline ? fmtDate(work.internalDeadline) : "—"}
               </div>
@@ -2662,11 +2666,11 @@ function VictorProjectDrawer({
               background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, padding: "14px 16px",
               borderTop: `3px solid ${PURPLE}`,
             }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{t("drawer.tracking")}</div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}><IconRefresh size={12} />{t("drawer.tracking")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {work.sentDate ? (
                   <div>
-                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>{t("drawer.sent")}</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2, display: "flex", alignItems: "center", gap: 5 }}><IconUpload size={11} />{t("drawer.sent")}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>{fmtDate(work.sentDate)}</div>
                   </div>
                 ) : (
@@ -2674,7 +2678,7 @@ function VictorProjectDrawer({
                 )}
                 {work.returnedDate && (
                   <div>
-                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>{t("drawer.returned")}</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 2, display: "flex", alignItems: "center", gap: 5 }}><IconInbox size={11} />{t("drawer.returned")}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: GREEN }}>{fmtDate(work.returnedDate)}</div>
                   </div>
                 )}
@@ -2687,7 +2691,7 @@ function VictorProjectDrawer({
           {receivedFiles.length > 0 && (
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" }}>
               <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>📥</span>
+                <IconInbox size={14} style={{ color: TEXT2 }} />
                 <span style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>{t("versions.sourceTitle")}</span>
                 <span style={{ flex: 1 }} />
                 <span style={{ fontSize: 10, color: MUTED }}>{receivedFiles.length}</span>
@@ -2787,7 +2791,7 @@ function VictorProjectDrawer({
                 cursor: "pointer", fontFamily: "inherit",
               }}
             >
-              {t("drawer.removeProject")}
+              <IconTrash size={13} style={{ marginInlineEnd: 6 }} />{t("drawer.removeProject")}
             </button>
           ) : (
             <div style={{
@@ -2872,7 +2876,7 @@ function VictorProjectDrawer({
             <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 18, minWidth: 0, width: "100%" }}>
               {/* cover + now-playing info */}
               <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flexShrink: 1, flexBasis: isMobile ? "44%" : 250, maxWidth: isMobile ? 168 : 320 }}>
-                <div style={{ width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 11, flexShrink: 0, background: `linear-gradient(145deg, ${PURPLE}44, ${PURPLE}18)`, border: `1px solid ${PURPLE}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, boxShadow: `0 0 16px ${PURPLE}22` }}>🎵</div>
+                <div style={{ width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 11, flexShrink: 0, background: `linear-gradient(145deg, ${PURPLE}44, ${PURPLE}18)`, border: `1px solid ${PURPLE}55`, display: "flex", alignItems: "center", justifyContent: "center", color: PURPLE, boxShadow: `0 0 16px ${PURPLE}22` }}><IconMusic size={18} /></div>
                 <div style={{ minWidth: 0 }}>
                   <div title={npItem.file.name} style={{ fontSize: isMobile ? 12.5 : 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", unicodeBidi: "plaintext", textAlign: "start" }}>{npItem.file.name}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
@@ -2883,9 +2887,9 @@ function VictorProjectDrawer({
               </div>
               {/* transport */}
               <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexShrink: 0, direction: "ltr" }}>
-                <button onClick={() => playerStep(-1)} disabled={npIdx <= 0} title={t("player.prev")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: npIdx <= 0 ? "default" : "pointer", opacity: npIdx <= 0 ? 0.35 : 1, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏮</button>
-                <button onClick={togglePlayer} title={pPlaying ? t("player.pause") : t("player.play")} style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: "50%", background: `linear-gradient(145deg, ${PURPLE}, #6D28D9)`, border: "none", color: "#fff", cursor: "pointer", fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0, boxShadow: `0 4px 16px ${PURPLE}55` }}>{pPlaying ? "⏸" : "▶"}</button>
-                <button onClick={() => playerStep(1)} disabled={npIdx < 0 || npIdx >= playlist.length - 1} title={t("player.next")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: (npIdx < 0 || npIdx >= playlist.length - 1) ? "default" : "pointer", opacity: (npIdx < 0 || npIdx >= playlist.length - 1) ? 0.35 : 1, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏭</button>
+                <button onClick={() => playerStep(-1)} disabled={npIdx <= 0} title={t("player.prev")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: npIdx <= 0 ? "default" : "pointer", opacity: npIdx <= 0 ? 0.35 : 1, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}><IconSkipBack size={15} /></button>
+                <button onClick={togglePlayer} title={pPlaying ? t("player.pause") : t("player.play")} style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: "50%", background: `linear-gradient(145deg, ${PURPLE}, #6D28D9)`, border: "none", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0, boxShadow: `0 4px 16px ${PURPLE}55` }}>{pPlaying ? <IconPause size={18} /> : <IconPlay size={18} />}</button>
+                <button onClick={() => playerStep(1)} disabled={npIdx < 0 || npIdx >= playlist.length - 1} title={t("player.next")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: (npIdx < 0 || npIdx >= playlist.length - 1) ? "default" : "pointer", opacity: (npIdx < 0 || npIdx >= playlist.length - 1) ? 0.35 : 1, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}><IconSkipForward size={15} /></button>
               </div>
               {/* progress + time */}
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 7 : 12, minWidth: 0, direction: "ltr" }}>
@@ -2903,26 +2907,26 @@ function VictorProjectDrawer({
               {/* volume (desktop) + download */}
               {!isMobile && (
                 <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, direction: "ltr" }}>
-                  <span style={{ fontSize: 13, color: MUTED }}>🔊</span>
+                  <IconVolume size={14} style={{ color: MUTED }} />
                   <input type="range" min={0} max={1} step={0.01} value={pVol} onChange={e => setPVol(Number(e.target.value))} title="Volume" style={{ width: 84, accentColor: PURPLE, cursor: "pointer" }} />
                 </div>
               )}
-              <button onClick={() => downloadFile(npItem.file, work.id)} title={t("file.download")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>↓</button>
+              <button onClick={() => downloadFile(npItem.file, work.id)} title={t("file.download")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}><IconDownload size={15} /></button>
             </div>
           ) : (
             /* ── Empty state — no track selected. Controls muted/disabled, no download. ── */
             <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 18, minWidth: 0, width: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0, flexShrink: 1, flexBasis: isMobile ? "52%" : 260 }}>
-                <div style={{ width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 11, flexShrink: 0, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, color: MUTED }}>🎵</div>
+                <div style={{ width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 11, flexShrink: 0, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, display: "flex", alignItems: "center", justifyContent: "center", color: MUTED }}><IconMusic size={17} /></div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: isMobile ? 12.5 : 13.5, fontWeight: 700, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("player.noFileSelected")}</div>
                   <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("player.chooseFileToPlay")}</div>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10, flexShrink: 0, direction: "ltr" }}>
-                <button disabled title={t("player.prev")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.4, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏮</button>
-                <button disabled title={t("player.play")} style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: "50%", background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.5, fontSize: 17, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}>▶</button>
-                <button disabled title={t("player.next")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.4, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>⏭</button>
+                <button disabled title={t("player.prev")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.4, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}><IconSkipBack size={15} /></button>
+                <button disabled title={t("player.play")} style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: "50%", background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.5, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", flexShrink: 0 }}><IconPlay size={18} /></button>
+                <button disabled title={t("player.next")} style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: MUTED, cursor: "default", opacity: 0.4, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}><IconSkipForward size={15} /></button>
               </div>
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: isMobile ? 7 : 12, minWidth: 0, direction: "ltr" }}>
                 <span style={{ fontSize: 10.5, color: MUTED, fontVariantNumeric: "tabular-nums", flexShrink: 0, direction: "ltr" }}>0:00</span>
@@ -2933,7 +2937,7 @@ function VictorProjectDrawer({
               </div>
               {!isMobile && (
                 <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, opacity: 0.4, direction: "ltr" }}>
-                  <span style={{ fontSize: 13, color: MUTED }}>🔊</span>
+                  <IconVolume size={14} style={{ color: MUTED }} />
                   <input type="range" min={0} max={1} step={0.01} value={pVol} disabled style={{ width: 84, accentColor: MUTED, cursor: "default" }} />
                 </div>
               )}
@@ -2953,8 +2957,8 @@ function VictorProjectDrawer({
             <button
               onClick={() => setPlayingId(null)}
               title={t("player.close")}
-              style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 32, height: 32, borderRadius: 8, background: "rgba(0,0,0,0.6)", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}
-            >✕</button>
+              style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 32, height: 32, borderRadius: 8, background: "rgba(0,0,0,0.6)", border: `1px solid ${BDR2}`, color: "#fff", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}
+            ><IconX size={15} /></button>
             <iframe
               src={`https://www.youtube.com/embed/${playingId}?autoplay=1`}
               title="YouTube"
@@ -3266,7 +3270,7 @@ export default function VictorProfilePage() {
                 onClick={() => router.push("/team")}
                 style={{ ...btnStyle, display: "flex", alignItems: "center", gap: 6, color: TEXT2, fontSize: 14, fontWeight: 700 }}
               >
-                {t("header.backToList")}
+                <IconChevronRight size={14} />{t("header.backToList")}
               </button>
             )}
             <select
@@ -3293,12 +3297,12 @@ export default function VictorProfilePage() {
             background: CARD, border: `1px solid ${BDR2}`, borderRadius: 14,
             padding: "9px 18px", order: isMobile ? 3 : 0,
           }}>
-            <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>‹</button>
+            <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, color: TEXT2, lineHeight: 1, display: "flex", alignItems: "center" }}><IconChevronLeft size={18} /></button>
             <div style={{ minWidth: 150, textAlign: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{victorMonthYear(month, lang)}</div>
               {loading && <div style={{ fontSize: 9, color: MUTED }}>{t("common.loading")}</div>}
             </div>
-            <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, fontSize: 20, color: TEXT2, lineHeight: 1 }}>›</button>
+            <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, color: TEXT2, lineHeight: 1, display: "flex", alignItems: "center" }}><IconChevronRight size={18} /></button>
           </div>
         </div>
 
@@ -3330,11 +3334,11 @@ export default function VictorProfilePage() {
             {/* Edit overlay — full on desktop hover, small badge on mobile. */}
             {(avatarHover && !isMobile) ? (
               <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, color: "#fff" }}>
-                <span style={{ fontSize: 15 }}>📷</span>
+                <IconCamera size={16} />
                 <span style={{ fontSize: 8.5, fontWeight: 700, textAlign: "center", lineHeight: 1.15, padding: "0 4px" }}>{t("avatar.edit")}</span>
               </div>
             ) : isMobile ? (
-              <div style={{ position: "absolute", bottom: 0, right: 0, width: 20, height: 20, borderRadius: "50%", background: PURPLE, border: "2px solid #0A0A0D", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>📷</div>
+              <div style={{ position: "absolute", bottom: 0, right: 0, width: 20, height: 20, borderRadius: "50%", background: PURPLE, border: "2px solid #0A0A0D", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}><IconCamera size={11} /></div>
             ) : null}
           </div>
 
@@ -3392,10 +3396,10 @@ export default function VictorProfilePage() {
               </div>
             ))
           ) : [
-            { id: "goal",      label: t("kpi.totalMonthly"), value: goal > 0 ? goal : "—", sub: t("kpi.inProgressSub"), color: TEXT,   icon: "🎯" },
-            { id: "completed", label: t("kpi.completed"),    value: completed,              sub: t("kpi.completedOf", { goal }), color: PURPLE, icon: "✅" },
-            { id: "active",    label: t("kpi.inProgress"),   value: active,                 sub: t("kpi.inProgressSub"), color: AMBER,  icon: "🔄" },
-            { id: "stuck",     label: t("kpi.stuck"),        value: stuck,                  sub: t("kpi.stuckSub"),      color: stuck > 0 ? RED : MUTED, icon: "⚠️" },
+            { id: "goal",      label: t("kpi.totalMonthly"), value: goal > 0 ? goal : "—", sub: t("kpi.inProgressSub"), color: TEXT,   icon: <IconTarget size={56} /> },
+            { id: "completed", label: t("kpi.completed"),    value: completed,              sub: t("kpi.completedOf", { goal }), color: PURPLE, icon: <IconCheckCircle size={56} /> },
+            { id: "active",    label: t("kpi.inProgress"),   value: active,                 sub: t("kpi.inProgressSub"), color: AMBER,  icon: <IconRefresh size={56} /> },
+            { id: "stuck",     label: t("kpi.stuck"),        value: stuck,                  sub: t("kpi.stuckSub"),      color: stuck > 0 ? RED : MUTED, icon: <IconAlert size={56} /> },
             {
               id: "salary",
               label: t("kpi.monthlySalary"),
@@ -3457,7 +3461,7 @@ export default function VictorProfilePage() {
               </div>
             ) : displayWork.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center" }}>
-                <div style={{ fontSize: 32, opacity: 0.2, marginBottom: 8 }}>📋</div>
+                <div style={{ opacity: 0.2, marginBottom: 8, display: "flex", justifyContent: "center", color: TEXT2 }}><IconClipboard size={32} /></div>
                 <div style={{ fontSize: 13, color: MUTED }}>{t("projects.empty")}</div>
               </div>
             ) : isMobile ? (
@@ -3467,7 +3471,7 @@ export default function VictorProfilePage() {
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          <span style={{ marginLeft: 4 }}>🎵</span>{victorWorkName(w)}
+                          <IconMusic size={13} style={{ marginLeft: 4, color: MUTED }} />{victorWorkName(w)}
                         </div>
                         {(isOwner || w.internalDeadline) && (
                           <div style={{ fontSize: 12, color: TEXT2, marginTop: 4 }}>
@@ -3502,7 +3506,7 @@ export default function VictorProfilePage() {
                         cursor: "pointer", appearance: "none", WebkitAppearance: "none",
                         WebkitTapHighlightColor: "transparent", transition: "background .14s",
                       }}>
-                      {t("projects.open")}
+                      <IconArrowUpRight size={13} style={{ marginInlineEnd: 6 }} />{t("projects.open")}
                     </button>
                   </div>
                 ))}
@@ -3538,7 +3542,7 @@ export default function VictorProfilePage() {
                           padding: "11px 14px", fontSize: 13, fontWeight: 600, color: TEXT,
                           maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
-                          <span style={{ marginLeft: 4 }}>🎵</span>{victorWorkName(w)}
+                          <IconMusic size={13} style={{ marginLeft: 4, color: MUTED }} />{victorWorkName(w)}
                         </td>
                         {isOwner && (
                           <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>
@@ -3575,7 +3579,7 @@ export default function VictorProfilePage() {
                               cursor: "pointer",
                               transition: "background 0.15s, box-shadow 0.15s",
                             }}>
-                            {t("projects.open")}
+                            <IconArrowUpRight size={13} style={{ marginInlineEnd: 6 }} />{t("projects.open")}
                           </button>
                         </td>
                       </tr>
@@ -3630,7 +3634,7 @@ export default function VictorProfilePage() {
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 16 }}>
                     <span>{t("capacity.ofGoal", { pct })}</span>
                     {pct >= 60
-                      ? <span style={{ color: GREEN, fontWeight: 700 }}>{t("capacity.onTrack")}</span>
+                      ? <span style={{ color: GREEN, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheck size={11} />{t("capacity.onTrack")}</span>
                       : pct > 0
                         ? <span style={{ color: AMBER, fontWeight: 700 }}>{t("capacity.behind")}</span>
                         : null
@@ -3681,7 +3685,7 @@ export default function VictorProfilePage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 240, overflowY: "auto" }}>
                   {allFiles.slice(0, 14).map((f, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 10px", borderRadius: 9, background: CARD2 }}>
-                      <span style={{ fontSize: 13, flexShrink: 0 }}>{f.dir === "in" ? "📥" : "📤"}</span>
+                      <span style={{ flexShrink: 0, color: TEXT2, display: "flex" }}>{f.dir === "in" ? <IconInbox size={13} /> : <IconUpload size={13} />}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {f.dropboxShareUrl ? (
@@ -3718,7 +3722,7 @@ export default function VictorProfilePage() {
                 <div style={{ fontSize: 13, fontWeight: 800, color: TEXT }}>
                   {t("salary.title")} {victorMonthYear(month, lang)}
                 </div>
-                <span style={{ fontSize: 12, color: MUTED }}>✎</span>
+                <IconPencil size={12} style={{ color: MUTED }} />
               </div>
 
               {/* Salary amount */}
@@ -3827,7 +3831,7 @@ export default function VictorProfilePage() {
                 background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.35)",
               }}
             >
-              <span style={{ fontSize: 15, lineHeight: 1 }}>🚪</span> {t("common.signOut")}
+              <IconLogOut size={15} /> {t("common.signOut")}
             </button>
           </div>
         )}
@@ -3948,7 +3952,7 @@ export default function VictorProfilePage() {
             onClick={() => avatarFileRef.current?.click()}
             disabled={avatarUploading}
             style={{ width: "100%", marginTop: 14, padding: "9px 0", borderRadius: 10, background: `${PURPLE}18`, border: `1px solid ${PURPLE}44`, color: PURPLE, fontSize: 12.5, fontWeight: 800, cursor: avatarUploading ? "default" : "pointer", fontFamily: "inherit" }}
-          >📷 {dImg ? t("avatar.replace") : t("avatar.choose")}</button>
+          ><IconCamera size={13} /> {dImg ? t("avatar.replace") : t("avatar.choose")}</button>
 
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             <button onClick={() => setAvatarOpen(false)} disabled={avatarUploading || avatarSaving} style={{ flex: 1, padding: "10px 0", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
