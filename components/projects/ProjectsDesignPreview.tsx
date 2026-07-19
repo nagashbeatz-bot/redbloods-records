@@ -40,6 +40,17 @@ function formatDeadline(iso: string | null): string {
   return new Date(iso).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" });
 }
 
+// Start date, shown ONLY for projects added in the last 21 days; older / missing → "—".
+// Source: canonical Project.startDate ("תאריך תחילת פרויקט", auto-set on creation).
+// Display-only — no backfill, no DB write, no created_at fallback needed.
+function startDateDisplay(iso: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return "—";
+  if (Math.floor((Date.now() - t) / 86400000) > 21) return "—";
+  return new Date(iso).toLocaleDateString("he-IL"); // e.g. 19.7.2026
+}
+
 function formatTimeRemaining(iso: string | null, status: ProjectStatus): string {
   if (!iso || status === "הושלם") return "";
   const days = daysUntilDeadline(iso);
@@ -634,7 +645,7 @@ export default function ProjectsDesignPreview() {
               <div>אמן</div>
               <div>סטטוס</div>
               <div>סוג</div>
-              <div>הכנסה צפויה</div>
+              <div>תאריך התחלה</div>
               <div>יעד / איחור</div>
               <div>הערות</div>
               <div style={{ textAlign: "center" }}>פעולות</div>
@@ -646,7 +657,6 @@ export default function ProjectsDesignPreview() {
               <ProjectRow
                 key={p.id}
                 project={p}
-                finance={financeSummary[p.id]}
                 isLast={i === pageRows.length - 1}
                 onOpen={openProject}
                 player={player}
@@ -660,7 +670,7 @@ export default function ProjectsDesignPreview() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {pageRows.length === 0
               ? <div style={{ padding: 32, textAlign: "center", color: MUTED }}>לא נמצאו פרויקטים</div>
-              : pageRows.map(p => <MobileCard key={p.id} project={p} finance={financeSummary[p.id]} onOpen={openProject} player={player} />)
+              : pageRows.map(p => <MobileCard key={p.id} project={p} onOpen={openProject} player={player} />)
             }
           </div>
         )}
@@ -748,13 +758,13 @@ function pagerBtn(disabled: boolean): React.CSSProperties {
 
 // ── Desktop row ───────────────────────────────────────────────────────────────
 function ProjectRow({
-  project: p, finance, isLast, onOpen, player,
+  project: p, isLast, onOpen, player,
 }: {
-  project: Project; finance?: { paid: number; agreed: number }; isLast: boolean; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe>;
+  project: Project; isLast: boolean; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe>;
 }) {
   const [hovered, setHovered] = useState(false);
-  const dlColor   = deadlineBadgeColor(p);
-  const remaining = finance ? Math.max(0, finance.agreed - finance.paid) : 0;
+  const dlColor    = deadlineBadgeColor(p);
+  const startLabel = startDateDisplay(p.startDate);
 
   // Split multi-artist string into chips
   const artistNames = p.artist
@@ -822,9 +832,9 @@ function ProjectRow({
       {/* Type */}
       <div><TypeBadge type={p.projectType} /></div>
 
-      {/* Expected income */}
-      <div style={{ fontSize: 13, color: remaining > 0 ? "#F59E0B" : MUTED, fontWeight: remaining > 0 ? 700 : 400 }}>
-        {remaining > 0 ? <SensitiveValue>{`₪${remaining.toLocaleString()}`}</SensitiveValue> : "—"}
+      {/* Start date (first 21 days only) */}
+      <div style={{ fontSize: 12.5, color: startLabel === "—" ? MUTED : "#C8C8C8", fontWeight: 500, whiteSpace: "nowrap" }}>
+        {startLabel}
       </div>
 
       {/* Deadline */}
@@ -894,8 +904,8 @@ function CoverArt({ project: p, size }: { project: Project; size: number }) {
 }
 
 // ── Mobile card ───────────────────────────────────────────────────────────────
-function MobileCard({ project: p, finance, onOpen, player }: { project: Project; finance?: { paid: number; agreed: number }; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe> }) {
-  const remaining = finance ? Math.max(0, finance.agreed - finance.paid) : 0;
+function MobileCard({ project: p, onOpen, player }: { project: Project; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe> }) {
+  const startLabel = startDateDisplay(p.startDate);
   const artistList = p.artist ? p.artist.split(/[,،;]/).map(a => a.trim()).filter(Boolean) : [];
   const visibleArtists = artistList.slice(0, 3);
   const extraArtists = artistList.length > 3 ? artistList.length - 3 : 0;
@@ -929,6 +939,9 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
               )}
             </div>
           )}
+          {startLabel !== "—" && (
+            <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 4 }}>תאריך התחלה: {startLabel}</div>
+          )}
         </div>
       </div>
 
@@ -940,11 +953,6 @@ function MobileCard({ project: p, finance, onOpen, player }: { project: Project;
         <div onClick={e => e.stopPropagation()}>
           <UploadButton projectId={p.id} projectName={p.name} artist={p.artist ?? ""} existingFiles={p.files} status={p.status} size="sm" />
         </div>
-        {remaining > 0 && (
-          <span style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginRight: 4 }}>
-            <SensitiveValue>{`₪${remaining.toLocaleString()}`}</SensitiveValue>
-          </span>
-        )}
         <div style={{ flex: 1 }} />
         <div onClick={e => e.stopPropagation()}>
           <StatusDropdown projectId={p.id} status={p.status} small />
