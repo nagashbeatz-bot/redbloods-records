@@ -15,6 +15,7 @@ import JahknoRadioPlayer from "@/components/radio/JahknoRadioPlayer";
 import GlobalProjectDrawerProvider from "@/components/GlobalProjectDrawer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import PushManager from "@/components/PushManager";
+import NotificationsBell from "@/components/dashboard/NotificationsBell";
 import QuickActionsModal from "@/components/quick-actions/QuickActionsModal";
 import { useRole } from "@/lib/use-role";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
@@ -45,6 +46,8 @@ export default function AppShell({ children, topRight }: { children: React.React
   const shellRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
+  // Notifications bell is shown only on the dashboard, beside the LISTEN pill.
+  const isDashboard = pathname === "/dashboard";
 
   useLayoutEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -168,18 +171,26 @@ export default function AppShell({ children, topRight }: { children: React.React
                 <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
                 <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
               </div>
-              {topRight ?? <div style={{ width: 40 }} />}
+              {/* Bell on mobile sits on the topRight side (beside the compact "פעולות" pill),
+                  away from the centered wordmark — avoids header crowding on small screens. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isDashboard && <NotificationsBell />}
+                {topRight ?? <div style={{ width: 40 }} />}
+              </div>
             </div>
 
             {/* Desktop header — CSS hidden on mobile (no JS flash) */}
             <div className="hidden md:flex" style={{ width: "100%", alignItems: "center", justifyContent: "space-between" }}>
-              {canRadio ? (
-                <JahknoRadioPlayer
-                  playerOffset={playerVisible ? PLAYER_H : 0}
-                  sidebarWidth={SIDEBAR_WIDTH}
-                  variant="desktop"
-                />
-              ) : <div />}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {canRadio ? (
+                  <JahknoRadioPlayer
+                    playerOffset={playerVisible ? PLAYER_H : 0}
+                    sidebarWidth={SIDEBAR_WIDTH}
+                    variant="desktop"
+                  />
+                ) : (!isDashboard && <div />)}
+                {isDashboard && <NotificationsBell />}
+              </div>
               {topRight ?? (isOwner && MAI_AI_ENABLED ? (
                 <button
                   onClick={() => setChatOpen(!chatOpen)}
