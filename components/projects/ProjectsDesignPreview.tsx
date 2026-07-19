@@ -40,14 +40,15 @@ function formatDeadline(iso: string | null): string {
   return new Date(iso).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" });
 }
 
-// Start date, shown ONLY for projects added in the last 21 days; older / missing → "—".
-// Source: canonical Project.startDate ("תאריך תחילת פרויקט", auto-set on creation).
-// Display-only — no backfill, no DB write, no created_at fallback needed.
+// Start date, shown ONLY for projects added on/after 2026-06-01; earlier / missing → "—".
+// Source: canonical Project.startDate (DB start_date; auto-set to the creation day on
+// new projects). Calendar-date compare on the stored YYYY-MM-DD prefix (no TZ drift).
+const START_DATE_FLOOR = "2026-06-01";
 function startDateDisplay(iso: string | null): string {
   if (!iso) return "—";
   const t = new Date(iso).getTime();
   if (isNaN(t)) return "—";
-  if (Math.floor((Date.now() - t) / 86400000) > 21) return "—";
+  if (iso.slice(0, 10) < START_DATE_FLOOR) return "—";
   return new Date(iso).toLocaleDateString("he-IL"); // e.g. 19.7.2026
 }
 
