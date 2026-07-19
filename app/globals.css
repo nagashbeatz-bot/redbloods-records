@@ -315,3 +315,17 @@ select:focus {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* ── Dashboard KPI cards — keep all 7 in one row at every width; shrink the
+   amount font (+ side padding) only across intermediate desktop widths so the
+   ₪ amount never overflows/overlaps. Full amount always shown (no ellipsis, no
+   clipping). <768 (mobile) and ≥1680 (wide) keep the inline 44px/15px unchanged.
+   Bands measured against the real 7-col grid (248px sidebar + 32px page padding),
+   verified full-fit with ≥8px margin at 1024/1100/1200/1366/1440/1560/1920. ── */
+@media (min-width:768px)  and (max-width:1023px){ .rb-dash-kpi-num{font-size:10px !important;} .rb-dash-kpi-card{padding-left:7px !important;padding-right:7px !important;} }
+@media (min-width:1024px) and (max-width:1099px){ .rb-dash-kpi-num{font-size:19px !important;} .rb-dash-kpi-card{padding-left:10px !important;padding-right:10px !important;} }
+@media (min-width:1100px) and (max-width:1199px){ .rb-dash-kpi-num{font-size:22px !important;} .rb-dash-kpi-card{padding-left:10px !important;padding-right:10px !important;} }
+@media (min-width:1200px) and (max-width:1365px){ .rb-dash-kpi-num{font-size:25px !important;} .rb-dash-kpi-card{padding-left:11px !important;padding-right:11px !important;} }
+@media (min-width:1366px) and (max-width:1439px){ .rb-dash-kpi-num{font-size:32px !important;} .rb-dash-kpi-card{padding-left:12px !important;padding-right:12px !important;} }
+@media (min-width:1440px) and (max-width:1559px){ .rb-dash-kpi-num{font-size:35px !important;} .rb-dash-kpi-card{padding-left:13px !important;padding-right:13px !important;} }
+@media (min-width:1560px) and (max-width:1679px){ .rb-dash-kpi-num{font-size:39px !important;} .rb-dash-kpi-card{padding-left:14px !important;padding-right:14px !important;} }

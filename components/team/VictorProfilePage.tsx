@@ -3437,11 +3437,17 @@ export default function VictorProfilePage() {
           // so use 2 tracks (otherwise the 3rd track is wasted empty space and the
           // Files/Capacity column is squished). minmax(0,…) keeps the table track
           // shrink-safe; the side tracks get a sensible min width.
+          //
+          // Same columns / order at every desktop width — only the side-column MIN
+          // is fluid: clamp() lets it ease down at intermediate widths so the table
+          // track keeps a usable width instead of being starved (below that the
+          // table scrolls cleanly inside its own overflowX area). At wide desktop
+          // the clamp maxes at 300/340 → identical to before. Nothing stacks.
           gridTemplateColumns: isMobile
             ? "1fr"
             : isOwner
-              ? "minmax(0, 2fr) minmax(300px, 1fr) minmax(300px, 1fr)"
-              : "minmax(0, 2fr) minmax(340px, 1fr)",
+              ? "minmax(0, 2fr) minmax(clamp(210px, 22vw, 300px), 1fr) minmax(clamp(210px, 22vw, 300px), 1fr)"
+              : "minmax(0, 2fr) minmax(clamp(230px, 24vw, 340px), 1fr)",
           gap: isMobile ? 12 : 16, alignItems: "start",
         }}>
 
@@ -3581,7 +3587,7 @@ export default function VictorProfilePage() {
                               padding: "5px 13px", borderRadius: 10,
                               border: "1px solid rgba(255,255,255,0.18)",
                               background: "#D7D7DD",
-                              cursor: "pointer",
+                              cursor: "pointer", whiteSpace: "nowrap",
                               transition: "background 0.15s, box-shadow 0.15s",
                             }}>
                             <IconArrowUpRight size={13} style={{ marginInlineEnd: 6 }} />{t("projects.open")}

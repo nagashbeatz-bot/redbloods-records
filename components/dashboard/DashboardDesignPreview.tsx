@@ -239,6 +239,7 @@ function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouse
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      className="rb-dash-kpi-card"
       style={{
       background: "#1C1C1C", border: `1px solid rgba(255,255,255,0.09)`, borderRadius: 16,
       padding: "18px 15px 14px", minHeight: 140,
@@ -258,7 +259,7 @@ function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouse
           lineHeight: 1.4, textAlign: "right", maxWidth: "52%",
         }}>{label}</span>
       </div>
-      <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color }}>
+      <div className="rb-dash-kpi-num" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color, whiteSpace: "nowrap" }}>
         {typeof count === "string" && /[₪$]/.test(count) ? <SensitiveValue>{count}</SensitiveValue> : count}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
