@@ -21,7 +21,10 @@ export async function GET(req: NextRequest) {
     const now   = new Date();
     const today = now.toISOString().split("T")[0];
     const hour  = now.getUTCHours() + 3; // Israel UTC+3
-    const notifications: Array<{ title: string; body: string; url: string; tag: string }> = [];
+    // projectId/entityType/entityId are optional enrichment — set ONLY on
+    // single-project pushes so the owner's bell opens the ProjectDrawer directly.
+    // Aggregates/summaries stay url-only. All cron pushes are owner-only.
+    const notifications: Array<{ title: string; body: string; url: string; tag: string; projectId?: string; entityType?: string; entityId?: string }> = [];
 
     // ── Load projects ─────────────────────────────────────────────────────────
     const { data: projects } = await supabase
@@ -40,6 +43,9 @@ export async function GET(req: NextRequest) {
         body: "פתח כדי לראות את הפרויקט ולסדר עדיפויות",
         url: "/dashboard",
         tag: "overdue",
+        projectId:  overdue[0].id,
+        entityType: "project",
+        entityId:   overdue[0].id,
       });
     } else if (overdue.length > 1) {
       notifications.push({
@@ -63,6 +69,9 @@ export async function GET(req: NextRequest) {
         body: `עוד ${diff === 1 ? "יום אחד" : `${diff} ימים`} — כדאי לבדוק סטטוס`,
         url: "/dashboard",
         tag: "due-soon",
+        projectId:  soon[0].id,
+        entityType: "project",
+        entityId:   soon[0].id,
       });
     } else if (soon.length > 1) {
       notifications.push({
@@ -137,11 +146,15 @@ export async function GET(req: NextRequest) {
 
     if (stuckRows.length === 1) {
       const proj = Array.isArray(stuckRows[0].projects) ? stuckRows[0].projects[0] : stuckRows[0].projects;
+      // Enrich only when the work is project-linked; standalone (project_id=null)
+      // stays url-only — never guess a project.
+      const pid = (stuckRows[0].project_id as string | null) ?? null;
       notifications.push({
         title: "👥 ויקטור — פרויקט תקוע",
         body: `${proj?.name ?? "פרויקט"} — פעיל מעל ${stuckAfterDays} ימים`,
         url: "/team",
         tag: "victor-stuck",
+        ...(pid ? { projectId: pid, entityType: "project", entityId: pid } : {}),
       });
     } else if (stuckRows.length > 1) {
       notifications.push({

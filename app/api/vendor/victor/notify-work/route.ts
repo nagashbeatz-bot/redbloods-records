@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const { supabase } = await import("@/lib/supabase");
     const { data: row } = await supabase
       .from("vendor_project_work")
-      .select("id, title, vendor_name")
+      .select("id, title, vendor_name, project_id")
       .eq("id", workId)
       .maybeSingle();
 
@@ -49,7 +49,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await notifyVictorNewWork(workId, title);
+    // project_id links the work to a canonical project (null for standalone work);
+    // passed to the OWNER confirmation only — never to Victor's notification.
+    const projectId = (row.project_id as string | null) ?? null;
+    const result = await notifyVictorNewWork(workId, title, projectId);
     if (!result.ok) {
       const MSG: Record<typeof result.reason, string> = {
         "no-victor-subscription": "ויקטור עדיין לא הפעיל התראות במכשיר שלו",

@@ -34,13 +34,15 @@ function fulfilledCount(results: PromiseSettledResult<unknown>[]): number {
   return results.filter((r) => r.status === "fulfilled").length;
 }
 
-export async function notifyVictorNewWork(workId: string, title: string): Promise<NotifyVictorWorkResult> {
+export async function notifyVictorNewWork(workId: string, title: string, projectId: string | null): Promise<NotifyVictorWorkResult> {
   if (!pushAllowed()) return { ok: false, reason: "push-disabled" };
 
   // Same deep link for both audiences — opens the work's drawer on /team/victor.
   const url = `/team/victor?workId=${encodeURIComponent(workId)}`;
 
   // ── 1. Victor — English (his UI is en/ru, never Hebrew) ──
+  // Deliberately NOT enriched with projectId/entity fields: Victor is never shown
+  // project identity, and his notification row must not carry it either.
   const victorResults = await sendPushToRoles(["victor"], {
     title: "New work from Redbloods",
     body:  `A new project was sent to you: ${title}`,
@@ -55,11 +57,18 @@ export async function notifyVictorNewWork(workId: string, title: string): Promis
   if (victorSent === 0) return { ok: false, reason: "victor-send-failed" };
 
   // ── 2. Owner confirmation — ONLY after Victor actually received it ──
+  // Owner-only send → enrich so the owner's bell opens the project drawer directly.
+  // projectId is attached only when the work is project-linked (null = standalone
+  // → left off, url stays the fallback). entity fields describe the source row.
   const ownerResults = await sendPushToRoles(["owner"], {
     title: "העבודה נשלחה לויקטור",
     body:  `העבודה "${title}" נשלחה בהצלחה`,
     url,
     tag:   `victor-work-sent-${workId}`,
+    ...(projectId ? { projectId } : {}),
+    entityType: "vendor_project_work",
+    entityId:   workId,
+    actorName:  "ויקטור",
   });
 
   return { ok: true, victorSent, ownerSent: fulfilledCount(ownerResults) };
