@@ -71,7 +71,25 @@ function isUpcoming(d: string | null): boolean {
 function calcDistributable(s: Show) { return computeShowSplit(s, s.rehearsalCounted ?? 0).netAfterDj; }
 function calcArtistShare(s: Show)   { return computeShowSplit(s, s.rehearsalCounted ?? 0).artistFee; }
 function calcLabelShare(s: Show)    { return computeShowSplit(s, s.rehearsalCounted ?? 0).labelProfit; }
-function calcRemaining(s: Show)     { return Math.max(0, s.show_price - s.advance_payment); }
+// Amount still to collect for a show. Pure display calc (no stored column) — so
+// this applies to every existing show the moment it renders, no backfill.
+// Honours payment_status, matching the system-wide "received = שולם/התקבל" rule:
+//   שולם / התקבל → 0 (received in full)
+//   בוטל          → 0 (nothing to collect)
+//   מקדמה / חלקי  → show_price − advance_payment (only what's left)
+//   לא שולם / צפוי→ show_price − advance_payment (full, advance is usually 0)
+// Previously it ignored payment_status and always returned price − advance, so a
+// fully-paid show still showed its whole price as outstanding.
+function calcRemaining(s: Show) {
+  // Widened to string on purpose: "התקבל" is a transaction status, not part of
+  // the show PaymentStatus type, so it can only reach here as anomalous/legacy
+  // data — which is exactly the case we defend against (kept in-file; the type
+  // in lib/shows-types.ts is left untouched).
+  const ps: string = s.payment_status;
+  if (ps === "שולם" || ps === "התקבל") return 0; // received in full
+  if (ps === "בוטל") return 0;                    // nothing to collect
+  return Math.max(0, s.show_price - s.advance_payment);
+}
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 type TabKey  = "all" | "upcoming" | "unpaid" | "followup" | "done" | "cancelled";
