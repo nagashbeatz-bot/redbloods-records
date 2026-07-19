@@ -450,14 +450,23 @@ export default function ProjectsDesignPreview() {
     if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
   }
 
+  // startDate → sortable ms; missing/invalid sorts LAST within its group.
+  const startTs = (p: Project): number => {
+    if (!p.startDate) return Infinity;
+    const t = new Date(p.startDate).getTime();
+    return isNaN(t) ? Infinity : t;
+  };
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
-    if (a.isOverdue && !b.isOverdue) return -1;
-    if (!a.isOverdue && b.isOverdue) return 1;
-    const dA = daysUntilDeadline(a.deadline);
-    const dB = daysUntilDeadline(b.deadline);
-    if (dA !== null && dB === null) return -1;
-    if (dA === null && dB !== null) return 1;
-    if (dA !== null && dB !== null && dA !== dB) return dA - dB;
+    // Tier 1 — critical deadline logic PRESERVED: overdue projects first.
+    if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+    // Tier 2 — within the same urgency level: "במיקס" first (closest to done).
+    const aMix = a.status === "במיקס";
+    const bMix = b.status === "במיקס";
+    if (aMix !== bMix) return aMix ? -1 : 1;
+    // Tier 3 — oldest startDate first; projects without a valid startDate go last.
+    const sA = startTs(a), sB = startTs(b);
+    if (sA !== sB) return sA - sB;
+    // Tiebreak — name.
     return a.name.localeCompare(b.name, "he");
   }), [filtered]);
 
