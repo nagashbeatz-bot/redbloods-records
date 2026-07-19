@@ -21,7 +21,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const work = await getSoundEngineerWork(id);
     if (!work) return NextResponse.json({ ok: false, error: "עבודה לא נמצאה" }, { status: 404 });
 
-    const result = await notifyStevenMixNotes({ id: work.id, displayName: stevenDisplayName(work) });
+    // work.projectId is already loaded (canonical sound_engineer_work.project_id);
+    // no extra query. null for standalone work → owner stays on the url fallback.
+    const result = await notifyStevenMixNotes({
+      id: work.id,
+      displayName: stevenDisplayName(work),
+      projectId: work.projectId ?? null,
+    });
     return NextResponse.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
