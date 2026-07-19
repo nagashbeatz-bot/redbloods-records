@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
+import { requireVictorAccess, getAuthRole, getAuthUser } from "@/lib/require-auth";
 import { saveSubscription } from "@/lib/push";
 
 /**
@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
     console.warn(`[vendor/victor/push-subscribe] role=${role ?? "none"} → rejected (victor sessions only)`);
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
+  // Bind the device to the authenticated user — never proceed unidentified.
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   let hasEndpoint = false;
   try {
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
       console.warn(`[vendor/victor/push-subscribe] role=victor endpoint=${hasEndpoint} → invalid subscription`);
       return NextResponse.json({ ok: false, error: "פרטי המנוי אינם תקינים" }, { status: 400 });
     }
-    await saveSubscription(sub, "victor"); // throws if the DB rejected the row
+    await saveSubscription(sub, "victor", user.id); // throws if the DB rejected the row
     console.info(`[vendor/victor/push-subscribe] role=victor endpoint=true → saved`);
     return NextResponse.json({ ok: true });
   } catch (e) {

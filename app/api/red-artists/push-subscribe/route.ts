@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireShalevAccess, getAuthRole } from "@/lib/require-auth";
+import { requireShalevAccess, getAuthRole, getAuthUser } from "@/lib/require-auth";
 import { saveSubscription } from "@/lib/push";
 
 /**
@@ -11,6 +11,9 @@ import { saveSubscription } from "@/lib/push";
 export async function POST(req: NextRequest) {
   const denied = await requireShalevAccess(); if (denied) return denied;
   const audience = (await getAuthRole()) === "shalev" ? "shalev" : "owner";
+  // Bind the device to the authenticated user — never proceed unidentified.
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   let hasEndpoint = false;
   try {
     const sub = await req.json();
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
       console.warn(`[red-artists/push-subscribe] role=${audience} endpoint=${hasEndpoint} → invalid subscription`);
       return NextResponse.json({ error: "פרטי המנוי אינם תקינים" }, { status: 400 });
     }
-    await saveSubscription(sub, audience); // throws if the DB rejected the row
+    await saveSubscription(sub, audience, user.id); // throws if the DB rejected the row
     console.info(`[red-artists/push-subscribe] role=${audience} endpoint=true → saved`);
     return NextResponse.json({ ok: true });
   } catch (e) {

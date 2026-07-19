@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireStevenAccess, getAuthRole } from "@/lib/require-auth";
+import { requireStevenAccess, getAuthRole, getAuthUser } from "@/lib/require-auth";
 import { saveSubscription } from "@/lib/push";
 
 /**
@@ -18,9 +18,12 @@ export async function POST(req: NextRequest) {
   if ((await getAuthRole()) !== "steven") {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
+  // Bind the device to the authenticated user — never proceed unidentified.
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   try {
     const sub = await req.json();
-    await saveSubscription(sub, "steven");
+    await saveSubscription(sub, "steven", user.id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("steven push subscribe error:", e);
