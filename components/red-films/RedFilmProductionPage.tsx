@@ -37,6 +37,94 @@ const TEXTAREA_S: CSSProperties = {
 
 const SELECT_S: CSSProperties = { ...INPUT_S, cursor: "pointer" };
 
+// ── Red Films design tokens (matched to the main Red Films page) ───────────────
+const RED = "#DC2626";
+const RED_LIGHT = "#F87171";
+
+// Panel/card recipe — dark red gradient, faint red border + glow (same language
+// as the main Red Films list page).
+const CARD_STYLE: CSSProperties = {
+  position: "relative",
+  background: "linear-gradient(180deg, rgba(24,16,17,0.72), rgba(15,12,13,0.82))",
+  border: `1px solid ${RED}1F`,
+  borderRadius: 18,
+  boxShadow: "0 14px 44px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.04)",
+  padding: "18px 20px",
+  overflow: "hidden",
+};
+// Inner sub-tile inside a card (budget numbers, script blocks, file links).
+const INNER_TILE: CSSProperties = {
+  background: "rgba(220,38,38,0.045)",
+  border: `1px solid ${RED}1A`,
+  borderRadius: 12,
+  padding: "11px 13px",
+};
+
+const ICON_PROPS = {
+  width: 22, height: 22, viewBox: "0 0 24 24", fill: "none",
+  stroke: "currentColor", strokeWidth: 1.7,
+  strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+};
+const KPI_ICON: Record<string, ReactNode> = {
+  budget:   <svg {...ICON_PROPS}><rect x="2.5" y="6" width="19" height="12" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9v6M18 9v6" /></svg>,
+  price:    <svg {...ICON_PROPS}><path d="M20.5 13.5l-7 7L3 10V3.5h6.5z" /><circle cx="7.5" cy="7.5" r="1.1" /></svg>,
+  advance:  <svg {...ICON_PROPS}><rect x="2.5" y="6" width="19" height="13" rx="2.5" /><path d="M2.5 10h19" /><path d="M16.5 14.5h2" /></svg>,
+  type:     <svg {...ICON_PROPS}><rect x="2.5" y="7" width="19" height="13" rx="2" /><path d="M2.5 11h19M8 7l-2 4M13.5 7l-2 4" /></svg>,
+  status:   <svg {...ICON_PROPS}><circle cx="12" cy="12" r="9" /><path d="M8.3 12.4l2.5 2.5 4.7-5.2" /></svg>,
+  calendar: <svg {...ICON_PROPS}><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9.5h18M8 3v3.5M16 3v3.5" /></svg>,
+};
+
+// A single KPI tile — red icon box + value/label, matching the reference row.
+function KpiCard({ icon, label, value, valueColor }: {
+  icon: ReactNode; label: string; value: ReactNode; valueColor?: string;
+}) {
+  return (
+    <div style={{
+      position: "relative",
+      background: "linear-gradient(160deg, rgba(28,16,17,0.9), rgba(14,11,12,0.96))",
+      border: `1px solid ${RED}24`, borderRadius: 16, padding: "15px 16px",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.05)",
+      overflow: "hidden", minWidth: 0,
+    }}>
+      <div style={{ position: "absolute", top: -30, insetInlineStart: -24, width: 92, height: 92, borderRadius: "50%", background: RED, opacity: 0.09, filter: "blur(32px)", pointerEvents: "none" }} />
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{
+          width: 42, height: 42, borderRadius: 12, flexShrink: 0, color: RED_LIGHT,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "radial-gradient(circle at 50% 38%, rgba(220,38,38,0.20), rgba(220,38,38,0.04))",
+          border: `1px solid ${RED}54`,
+          boxShadow: "0 0 12px rgba(220,38,38,0.2), inset 0 0 8px rgba(220,38,38,0.12)",
+        }}>{icon}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 19, fontWeight: 800, color: valueColor ?? "#F4F4F6", letterSpacing: "-0.01em", lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+          <div style={{ fontSize: 12, color: "#96969C", marginTop: 3, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Cover/preview placeholder — no cover field on Production, so a branded red
+// gradient block with a clapper glyph (honest empty visual, on-brand).
+function HeroCover({ mobile }: { mobile: boolean }) {
+  return (
+    <div style={{
+      position: "relative", flexShrink: 0,
+      width: mobile ? "100%" : 230, height: mobile ? 150 : 138,
+      borderRadius: 14, overflow: "hidden",
+      background: "linear-gradient(140deg, #DC2626, #7F1D1D)",
+      border: `1px solid ${RED}5A`,
+      boxShadow: "0 0 22px rgba(220,38,38,0.28), inset 0 0 30px rgba(0,0,0,0.35)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 100% at 30% 0%, rgba(255,255,255,0.14), transparent 55%)", pointerEvents: "none" }} />
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.92 }}>
+        <rect x="2.5" y="7" width="19" height="13" rx="2" /><path d="M2.5 11h19M8 7l-2 4M13.5 7l-2 4M19 7l-2 4" />
+      </svg>
+    </div>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtDate(d: string | null) {
@@ -53,11 +141,7 @@ function fmtNum(n: number) {
 
 function SCard({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
-    <div style={{
-      position: "relative", // explicit stacking context — prevents z-index bleed on iOS
-      background: "#1A1A1A", border: "1px solid #252525",
-      borderRadius: 14, padding: "18px 20px", ...style,
-    }}>
+    <div style={{ ...CARD_STYLE, ...style }}>
       {children}
     </div>
   );
@@ -82,8 +166,11 @@ function SDivider() {
 
 function SectionHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-      <h2 style={{ fontSize: 13, fontWeight: 700, color: "#888", margin: 0 }}>{title}</h2>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10 }}>
+      <h2 style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14, fontWeight: 700, color: "#EDEDF2", margin: 0 }}>
+        <span style={{ width: 3, height: 15, borderRadius: 2, background: `linear-gradient(180deg, ${RED}, #7F1D1D)`, boxShadow: "0 0 8px rgba(220,38,38,0.4)", flexShrink: 0 }} />
+        {title}
+      </h2>
       {children}
     </div>
   );
@@ -104,7 +191,7 @@ function EditActions({ section, editing, saving, onEdit, onSave, onCancel }: {
   return (
     <div style={{ display: "flex", gap: 8 }}>
       <button onClick={onSave} disabled={saving}
-        style={{ fontSize: 11, color: "#FFF", background: "#3B82F6", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "4px 14px", fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
+        style={{ fontSize: 11, color: "#FFF", background: "linear-gradient(135deg, #EF4444, #B91C1C)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "4px 14px", fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
         {saving ? "שומר..." : "✓ שמור"}
       </button>
       <button onClick={onCancel} disabled={saving}
@@ -391,7 +478,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                 <div style={{ gridColumn: "span 4" }}>
                   <SDivider />
                   <div style={{ fontSize: 10, color: "#555" }}>פרויקט מקושר</div>
-                  <div style={{ fontSize: 13, color: "#60A5FA", marginTop: 3 }}>♫ {projectName}</div>
+                  <div style={{ fontSize: 13, color: "#FCA5A5", marginTop: 3 }}>♫ {projectName}</div>
                 </div>
               )}
             </div>
@@ -474,8 +561,8 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   <SDivider />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                     {[["התחלה",prod.script_start],["אמצע",prod.script_middle],["סוף",prod.script_end]].map(([lbl,val]) => (
-                      <div key={lbl} style={{ background: "#141414", border: "1px solid #1E1E1E", borderRadius: 8, padding: "10px 12px" }}>
-                        <div style={{ fontSize: 10, color: "#555", marginBottom: 6, fontWeight: 700 }}>{lbl}</div>
+                      <div key={lbl} style={{ ...INNER_TILE }}>
+                        <div style={{ fontSize: 10, color: "#8A8A92", marginBottom: 6, fontWeight: 700 }}>{lbl}</div>
                         <div style={{ fontSize: 12, color: val ? "#CCC" : "#333", lineHeight: 1.6, whiteSpace: "pre-wrap", fontStyle: val ? "normal" : "italic" }}>{val || "לא הוזן"}</div>
                       </div>
                     ))}
@@ -489,7 +576,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   {prod.photographer_notes && <div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>הערות לצלם</div><div style={{ fontSize: 12, color: "#CCC", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{prod.photographer_notes}</div></div>}
                 </>
               )}
-              {prod.ref_links && (<><SDivider /><div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>רפרנסים</div><div style={{ fontSize: 12, color: "#60A5FA", whiteSpace: "pre-wrap" }}>{prod.ref_links}</div></div></>)}
+              {prod.ref_links && (<><SDivider /><div><div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>רפרנסים</div><div style={{ fontSize: 12, color: "#FCA5A5", whiteSpace: "pre-wrap" }}>{prod.ref_links}</div></div></>)}
             </div>
           )}
         </SCard>
@@ -539,9 +626,9 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   ["מקדמה נדרשת",prod.advance_required ? fmtNum(prod.advance_required) : "—"],
                   ["מקדמה התקבלה",prod.advance_received ? fmtNum(prod.advance_received) : "—"],
                 ].map(([lbl,val]) => (
-                  <div key={lbl} style={{ background: "#141414", border: "1px solid #222", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11, color: "#555" }}>{lbl}</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#E8E8E8", marginTop: 4 }}>{val}</div>
+                  <div key={lbl} style={{ ...INNER_TILE, textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: "#8A8A92" }}>{lbl}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#F4F4F6", marginTop: 4 }}>{val}</div>
                   </div>
                 ))}
               </div>
@@ -618,10 +705,10 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   ["📂 תיקיית עריכה",prod.files_edit_folder],
                   ["✅ גרסה מאושרת",prod.final_version_link],
                 ].map(([lbl,val]) => val ? (
-                  <div key={lbl} style={{ background: "#141414", border: "1px solid #222", borderRadius: 8, padding: "8px 12px" }}>
-                    <div style={{ fontSize: 10, color: "#555", marginBottom: 4 }}>{lbl}</div>
+                  <div key={lbl} style={{ ...INNER_TILE, padding: "9px 12px" }}>
+                    <div style={{ fontSize: 10, color: "#8A8A92", marginBottom: 4 }}>{lbl}</div>
                     <a href={val} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 11, color: "#60A5FA", wordBreak: "break-all" }}>
+                      style={{ fontSize: 11, color: "#FCA5A5", wordBreak: "break-all" }}>
                       {val.length > 40 ? val.slice(0,40)+"..." : val}
                     </a>
                   </div>
@@ -631,7 +718,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                 val ? (
                   <div key={lbl} style={{ marginBottom: 6 }}>
                     <span style={{ fontSize: 11, color: "#555" }}>{lbl}: </span>
-                    <a href={val} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#60A5FA" }}>
+                    <a href={val} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#FCA5A5" }}>
                       {val.length > 50 ? val.slice(0,50)+"..." : val}
                     </a>
                   </div>
@@ -674,161 +761,156 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // Linked project + latest audio — shared by the hero play button (desktop & mobile).
+  const linkedProject = prod.project_id ? (projects.find(p => p.id === prod.project_id) ?? null) : null;
+  const latestAudio   = linkedProject ? getLatestAudioFile(linkedProject.files ?? []) : null;
+  const isThisPlaying = !!prod.project_id && player?.track?.projectId === prod.project_id && !!player?.playing;
+  const isThisLoaded  = !!prod.project_id && player?.track?.projectId === prod.project_id;
+  async function handlePlay() {
+    if (!player || !latestAudio || !linkedProject) return;
+    if (isThisLoaded) { isThisPlaying ? player.pause() : player.resume(); }
+    else { const url = await getFreshPlayUrl(latestAudio); player.play({ projectId: linkedProject.id, projectName: linkedProject.name, artist: linkedProject.artist, fileName: latestAudio.name, url }); }
+  }
+  const createdDate = fmtDate(prod.created_at ? prod.created_at.slice(0, 10) : null);
+  const updatedDate = fmtDate(prod.updated_at ? prod.updated_at.slice(0, 10) : null);
+
+  const ghostBtn: CSSProperties = {
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: "9px 14px", borderRadius: 10, fontSize: 12.5, fontWeight: 700,
+    cursor: "pointer", fontFamily: "inherit", border: `1px solid ${RED}33`,
+    background: "rgba(220,38,38,0.06)", color: "#FCA5A5", textDecoration: "none", whiteSpace: "nowrap",
+  };
+  const mobileAction = (active: boolean): CSSProperties => ({
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+    gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 11,
+    border: `1px solid ${active ? "rgba(220,38,38,0.5)" : RED + "26"}`,
+    background: active ? "rgba(220,38,38,0.14)" : "rgba(220,38,38,0.05)",
+    color: active ? "#FCA5A5" : "#96969C", fontSize: 10, fontWeight: 600,
+    cursor: "pointer", fontFamily: "inherit", textDecoration: "none",
+  });
+  const heroChip: CSSProperties = {
+    fontSize: 11, fontWeight: 600, color: "#8C8C93", background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.09)", borderRadius: 20, padding: "3px 10px",
+  };
+
   return (
-    <div style={{ minHeight: "100%", background: "#111" }}>
+    <div style={{ minHeight: "100%", background: "#0C0C0D", position: "relative" }}>
+      {/* Ambient top red glow */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 260, background: "radial-gradient(120% 100% at 78% 0%, rgba(220,38,38,0.10), rgba(153,27,27,0.03) 45%, transparent 72%)", pointerEvents: "none", zIndex: 0 }} />
 
-      {/* ── Sticky header ── */}
-      <div style={{
-        position: "sticky", top: 0, zIndex: 100,
-        background: "#141414", borderBottom: "1px solid #222",
-        padding: isMobile ? "10px 16px" : "12px 24px",
-      }}>
-        {/* Row 1: back + title + status */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: isMobile ? 10 : 0 }}>
+      <div style={{ position: "relative", zIndex: 1, padding: isMobile ? "14px 12px" : "20px 28px", boxSizing: "border-box", width: "100%" }}>
+
+        {/* ── Top bar: back + breadcrumb ── */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
           <button onClick={() => router.push("/red-films")}
-            style={{ display: "flex", alignItems: "center", gap: 4, color: "#555", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, flexShrink: 0, minHeight: 44, padding: "0 4px" }}>
-            ← {isMobile ? "" : "Red Films"}
+            style={{ display: "flex", alignItems: "center", gap: 6, color: "#8C8C93", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 9, cursor: "pointer", fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, padding: "7px 13px", minHeight: 38 }}>
+            ← חזרה לרשימה
           </button>
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <h1 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: "#F0F0F0", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {prod.title}
-              </h1>
-              <RedFilmsStatusBadge status={prod.status} small />
-              {!isMobile && prod.production_type && (
-                <span style={{ fontSize: 11, color: "#555", background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 6, padding: "2px 8px" }}>
-                  {prod.production_type}
-                </span>
-              )}
-            </div>
-            {!isMobile && (
-              <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
-                {prod.photographer_name && <span>📷 {prod.photographer_name}</span>}
-                {prod.shoot_date && <span>📅 {fmtDate(prod.shoot_date)}</span>}
-                {prod.locations && <span>📍 {prod.locations}</span>}
-                {projectName && <span style={{ color: "#60A5FA" }}>♫ {projectName}</span>}
-              </div>
-            )}
-          </div>
-
           {!isMobile && (
-            <div style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, background: "linear-gradient(135deg, #EC4899, #3B82F6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-              🎬 Red Films
+            <div style={{ fontSize: 12.5, color: "#6E6E76", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+              פרויקטים <span style={{ color: "#4A4A50" }}>/</span> <span style={{ color: RED_LIGHT }}>Red Films</span> <span style={{ color: "#4A4A50" }}>/</span> <span style={{ color: "#C6C6CE" }}>{prod.title}</span>
             </div>
           )}
         </div>
 
-        {/* Row 2 (desktop): action buttons inline */}
-        {!isMobile && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
-            {prod.project_id && (() => {
-              const linkedProject = projects.find(p => p.id === prod.project_id);
-              if (!linkedProject) return null;
-              const latestAudio = getLatestAudioFile(linkedProject.files ?? []);
-              const isThisPlaying = player?.track?.projectId === prod.project_id && player?.playing;
-              const isThisLoaded  = player?.track?.projectId === prod.project_id;
-              async function handlePlay() {
-                if (!player || !latestAudio) return;
-                if (isThisLoaded) { isThisPlaying ? player.pause() : player.resume(); }
-                else { const url = await getFreshPlayUrl(latestAudio); player.play({ projectId: linkedProject!.id, projectName: linkedProject!.name, artist: linkedProject!.artist, fileName: latestAudio.name, url }); }
-              }
-              return (
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }} key="audio">
-                  {latestAudio && (
-                    <button onClick={handlePlay} title={isThisPlaying ? "השהה" : `נגן — ${latestAudio.name}`}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "1px solid", background: isThisLoaded ? "rgba(59,130,246,0.15)" : "none", color: isThisLoaded ? "#60A5FA" : "#888", borderColor: isThisLoaded ? "rgba(59,130,246,0.4)" : "#333" }}>
-                      {isThisPlaying ? "⏸" : "▶"} {isThisPlaying ? "מנגן" : "נגן שיר"}
-                    </button>
-                  )}
-                  <button onClick={() => router.push("/projects")} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "1px solid #333", background: "none", color: "#60A5FA" }}>
-                    ♫ {linkedProject.name}
-                  </button>
+        {/* ── Error banner ── */}
+        {saveErr && (
+          <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 12, color: "#F87171", fontSize: 13, padding: "10px 16px", marginBottom: 14 }}>
+            {saveErr}
+          </div>
+        )}
+
+        {/* ── Hero ── */}
+        <div style={{ ...CARD_STYLE, padding: isMobile ? 16 : "20px 22px", marginBottom: 16 }}>
+          <div style={{ position: "absolute", top: -40, insetInlineStart: -30, width: 180, height: 180, borderRadius: "50%", background: RED, opacity: 0.06, filter: "blur(50px)", pointerEvents: "none" }} />
+          <div style={{ position: "relative", display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 14 : 20, alignItems: isMobile ? "stretch" : "center" }}>
+            <HeroCover mobile={isMobile} />
+
+            {/* Info */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {prod.production_type && (
+                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, color: "#FCA5A5", background: "rgba(220,38,38,0.12)", border: `1px solid ${RED}54`, borderRadius: 7, padding: "3px 10px", marginBottom: 8 }}>
+                  {prod.production_type}
+                </span>
+              )}
+              <h1 style={{ fontSize: isMobile ? 23 : 30, fontWeight: 900, color: "#F5F5F7", margin: 0, letterSpacing: "-0.02em", lineHeight: 1.1, textShadow: "0 0 16px rgba(220,38,38,0.14)" }}>
+                {prod.title}
+              </h1>
+              {(prod.client_name || prod.artist_name) && (
+                <div style={{ fontSize: 14, color: "#C6C6CE", marginTop: 7, fontWeight: 500 }}>
+                  👤 {[prod.client_name, prod.artist_name].filter(Boolean).join(" · ")}
                 </div>
-              );
-            })()}
-            <button onClick={() => setShowLayoutModal(true)} title="התאמת תצוגה"
-              style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 8, fontSize: 12, border: "1px solid #2A2A2A", color: "#555", background: "none", cursor: "pointer", fontFamily: "inherit" }}>
-              ⚙️
-            </button>
-            {prod.dropbox_folder_url ? (
-              <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer"
-                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "1px solid #333", color: "#888", textDecoration: "none", background: "none", fontFamily: "inherit" }}>
-                📁 פתח תיקייה
-              </a>
-            ) : (
-              <button onClick={createDropboxFolder} disabled={creatingFolder}
-                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "1px solid #333", color: "#555", background: "none", cursor: creatingFolder ? "default" : "pointer", fontFamily: "inherit", opacity: creatingFolder ? 0.6 : 1 }}>
-                {creatingFolder ? "יוצר..." : "📁 צור תיקיית Dropbox"}
-              </button>
-            )}
-            {prod.status !== "בוטל" && (
-              <button onClick={() => setTrashConfirm(true)}
-                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)", color: "#F87171", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                🗑️ העבר לסל
-              </button>
+              )}
+              <div style={{ display: "flex", gap: 14, marginTop: 9, fontSize: 12, color: "#78787F", flexWrap: "wrap" }}>
+                {createdDate && <span>תאריך יצירה: <span style={{ color: "#96969C" }}>{createdDate}</span></span>}
+                {updatedDate && <span>עודכן לאחרונה: <span style={{ color: "#96969C" }}>{updatedDate}</span></span>}
+                {prod.shoot_date && <span>📅 צילום: <span style={{ color: "#96969C" }}>{fmtDate(prod.shoot_date)}</span></span>}
+                {prod.locations && <span>📍 {prod.locations}</span>}
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <RedFilmsStatusBadge status={prod.status} />
+                {prod.edit_status && prod.edit_status !== "לא התחיל" && <span style={heroChip}>עריכה: {prod.edit_status}</span>}
+                {prod.collection_status && prod.collection_status !== "לא רלוונטי" && <span style={heroChip}>גבייה: {prod.collection_status}</span>}
+                {projectName && (
+                  <button onClick={() => router.push("/projects")} style={{ fontSize: 11, fontWeight: 700, color: "#FCA5A5", background: "rgba(220,38,38,0.1)", border: `1px solid ${RED}42`, borderRadius: 20, padding: "3px 11px", cursor: "pointer", fontFamily: "inherit" }}>♫ {projectName}</button>
+                )}
+              </div>
+            </div>
+
+            {/* Actions (desktop) */}
+            {!isMobile && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, alignItems: "stretch", minWidth: 150 }}>
+                {latestAudio && (
+                  <button onClick={handlePlay} title={isThisPlaying ? "השהה" : `נגן — ${latestAudio.name}`}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 18px", borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", border: "1px solid rgba(248,113,113,0.4)", background: "linear-gradient(135deg, #EF4444, #B91C1C)", color: "#fff", boxShadow: "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.2)", whiteSpace: "nowrap" }}>
+                    {isThisPlaying ? "⏸ מנגן" : "▶ נגן שיר"}
+                  </button>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {prod.dropbox_folder_url ? (
+                    <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer" style={{ ...ghostBtn, flex: 1 }}>📁 תיקייה</a>
+                  ) : (
+                    <button onClick={createDropboxFolder} disabled={creatingFolder} style={{ ...ghostBtn, flex: 1, opacity: creatingFolder ? 0.6 : 1 }}>{creatingFolder ? "יוצר…" : "📁 צור תיקייה"}</button>
+                  )}
+                  <button onClick={() => setShowLayoutModal(true)} title="התאמת תצוגה" style={{ ...ghostBtn, padding: "9px 12px" }}>⚙️</button>
+                  {prod.status !== "בוטל" && (
+                    <button onClick={() => setTrashConfirm(true)} title="העבר לסל" style={{ ...ghostBtn, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.1)", color: "#F87171", padding: "9px 12px" }}>🗑️</button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
-        )}
 
-        {/* Row 2 (mobile): action grid */}
-        {isMobile && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-            {/* Play */}
-            {prod.project_id && (() => {
-              const linkedProject = projects.find(p => p.id === prod.project_id);
-              if (!linkedProject) return null;
-              const latestAudio = getLatestAudioFile(linkedProject.files ?? []);
-              const isThisPlaying = player?.track?.projectId === prod.project_id && player?.playing;
-              const isThisLoaded  = player?.track?.projectId === prod.project_id;
-              if (!latestAudio) return null;
-              async function handlePlay() {
-                if (!player || !latestAudio) return;
-                if (isThisLoaded) { isThisPlaying ? player.pause() : player.resume(); }
-                else { const url = await getFreshPlayUrl(latestAudio); player.play({ projectId: linkedProject!.id, projectName: linkedProject!.name, artist: linkedProject!.artist, fileName: latestAudio.name, url }); }
-              }
-              return (
-                <button key="play" onClick={handlePlay}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: `1px solid ${isThisLoaded ? "rgba(59,130,246,0.4)" : "#2A2A2A"}`, background: isThisLoaded ? "rgba(59,130,246,0.12)" : "#1A1A1A", color: isThisLoaded ? "#60A5FA" : "#888", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                  <span style={{ fontSize: 18 }}>{isThisPlaying ? "⏸" : "▶"}</span>
-                  {isThisPlaying ? "מנגן" : "נגן"}
+          {/* Actions (mobile grid) */}
+          {isMobile && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 14 }}>
+              {latestAudio && (
+                <button onClick={handlePlay} style={mobileAction(isThisLoaded)}>
+                  <span style={{ fontSize: 18 }}>{isThisPlaying ? "⏸" : "▶"}</span>{isThisPlaying ? "מנגן" : "נגן"}
                 </button>
-              );
-            })()}
-            {/* Dropbox */}
-            {prod.dropbox_folder_url ? (
-              <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer"
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: "1px solid #2A2A2A", background: "#1A1A1A", color: "#888", fontSize: 10, fontWeight: 600, textDecoration: "none", fontFamily: "inherit" }}>
-                <span style={{ fontSize: 18 }}>📁</span>תיקייה
-              </a>
-            ) : (
-              <button onClick={createDropboxFolder} disabled={creatingFolder}
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: "1px solid #2A2A2A", background: "#1A1A1A", color: creatingFolder ? "#444" : "#888", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                <span style={{ fontSize: 18 }}>📁</span>{creatingFolder ? "יוצר..." : "צור תיקייה"}
-              </button>
-            )}
-            {/* Settings */}
-            <button onClick={() => setShowLayoutModal(true)}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, border: "1px solid #2A2A2A", background: "#1A1A1A", color: "#888", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-              <span style={{ fontSize: 18 }}>⚙️</span>תצוגה
-            </button>
-            {/* Trash */}
-            {prod.status !== "בוטל" && (
-              <button onClick={() => setTrashConfirm(true)}
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "10px 6px", minHeight: 54, borderRadius: 10, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#F87171", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                <span style={{ fontSize: 18 }}>🗑️</span>סל
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Error banner ── */}
-      {saveErr && (
-        <div style={{ background: "rgba(239,68,68,0.1)", borderBottom: "1px solid rgba(239,68,68,0.3)", color: "#F87171", fontSize: 13, padding: "10px 24px" }}>
-          {saveErr}
+              )}
+              {prod.dropbox_folder_url ? (
+                <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer" style={mobileAction(false)}><span style={{ fontSize: 18 }}>📁</span>תיקייה</a>
+              ) : (
+                <button onClick={createDropboxFolder} disabled={creatingFolder} style={mobileAction(false)}><span style={{ fontSize: 18 }}>📁</span>{creatingFolder ? "יוצר…" : "צור"}</button>
+              )}
+              <button onClick={() => setShowLayoutModal(true)} style={mobileAction(false)}><span style={{ fontSize: 18 }}>⚙️</span>תצוגה</button>
+              {prod.status !== "בוטל" && (
+                <button onClick={() => setTrashConfirm(true)} style={{ ...mobileAction(false), background: "rgba(239,68,68,0.1)", borderColor: "rgba(239,68,68,0.3)", color: "#F87171" }}><span style={{ fontSize: 18 }}>🗑️</span>סל</button>
+              )}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* ── KPI strip (real fields) ── */}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0,1fr))" : "repeat(5, minmax(0,1fr))", gap: isMobile ? 10 : 14, marginBottom: 4 }}>
+          <KpiCard icon={KPI_ICON.type}    label="סוג הפקה"     value={prod.production_type || "—"} />
+          <KpiCard icon={KPI_ICON.status}  label="סטטוס"        value={prod.status} valueColor="#FCA5A5" />
+          <KpiCard icon={KPI_ICON.budget}  label="תקציב כללי"   value={fmtNum(prod.general_budget)} />
+          <KpiCard icon={KPI_ICON.price}   label="מחיר ללקוח"   value={fmtNum(prod.client_price)} />
+          <KpiCard icon={KPI_ICON.advance} label="מקדמה התקבלה" value={fmtNum(prod.advance_received)} valueColor={prod.advance_received ? "#4ADE80" : undefined} />
+        </div>
+      </div>
 
       {/* ── Body ── */}
       <div style={{ padding: isMobile ? "12px 12px" : "24px 28px", width: "100%", boxSizing: "border-box" }}>
