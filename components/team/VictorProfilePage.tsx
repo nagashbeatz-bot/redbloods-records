@@ -2780,8 +2780,8 @@ function VictorProjectDrawer({
             </div>
           ))}
 
-          {/* ── Delete project — owner (Hebrew) + Victor (English), his own only ── */}
-          {(!confirmRemove ? (
+          {/* ── Remove from Victor board (owner only) ── */}
+          {isOwner && (!confirmRemove ? (
             <button
               onClick={() => { setConfirmRemove(true); setRemoveError(null); }}
               style={{
@@ -2799,11 +2799,6 @@ function VictorProjectDrawer({
               border: "1px solid rgba(239,68,68,0.3)",
               padding: "12px 16px",
             }}>
-              {t("drawer.removeTitle") && (
-                <div style={{ fontSize: 13.5, color: "#FCA5A5", fontWeight: 800, marginBottom: 6, textAlign: "center" }}>
-                  {t("drawer.removeTitle")}
-                </div>
-              )}
               <div style={{ fontSize: 12, color: "#FCA5A5", fontWeight: 700, marginBottom: 10, textAlign: "center" }}>
                 {t("drawer.removeConfirm")}
               </div>
@@ -2818,9 +2813,8 @@ function VictorProjectDrawer({
                     setRemoving(true);
                     setRemoveError(null);
                     try {
-                      // Step 1: delete linked task (owner only — Victor can't delete
-                      // tasks; his work's linked task is cleaned up server-side instead).
-                      if (isOwner && work.linkedTaskId) {
+                      // Step 1: delete linked task (if exists)
+                      if (work.linkedTaskId) {
                         const taskRes = await fetch(`/api/tasks/${work.linkedTaskId}`, { method: "DELETE" });
                         if (!taskRes.ok) {
                           const taskData = await taskRes.json().catch(() => ({}));
@@ -2851,7 +2845,7 @@ function VictorProjectDrawer({
                     cursor: removing ? "default" : "pointer", fontFamily: "inherit",
                   }}
                 >
-                  {removing ? t("drawer.removing") : t("drawer.removeDelete")}
+                  {removing ? t("drawer.removing") : t("drawer.confirm")}
                 </button>
                 <button
                   onClick={() => { setConfirmRemove(false); setRemoveError(null); }}

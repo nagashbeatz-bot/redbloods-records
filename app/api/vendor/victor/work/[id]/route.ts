@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireVictorAccess, getAuthRole } from "@/lib/require-auth";
+import { requireVictorAccess, requireOwner, getAuthRole } from "@/lib/require-auth";
 
 // Victor may only patch file/folder fields — never status/work-state/deadlines.
 const VICTOR_PATCH_FIELDS = new Set(["filesSent", "filesReceived", "dropboxFolder", "dropboxShareLink"]);
@@ -118,31 +118,10 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Owner + Victor may delete; any other role → 403.
-  const denied = await requireVictorAccess(); if (denied) return denied;
+  const denied = await requireOwner(); if (denied) return denied;
   try {
     const { id } = await params;
-    const { getVictorWorkById, deleteVictorWork } = await import("@/lib/vendor-store");
-
-    const work = await getVictorWorkById(id);
-    if (!work) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
-
-    // Ownership guard: this endpoint manages Victor's rows only. Victor (and owner)
-    // may delete only vendorName === "victor" rows — never another vendor's work.
-    if (work.vendorName !== "victor") {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
-
-    // Clean up the linked tracking task server-side (Victor can't delete tasks
-    // himself). Non-fatal — the work is deleted regardless. For the owner this is
-    // usually already gone (deleted client-side first) → a harmless no-op.
-    if (work.linkedTaskId) {
-      try {
-        const { deleteTask } = await import("@/lib/tasks-store");
-        await deleteTask(work.linkedTaskId);
-      } catch { /* non-fatal */ }
-    }
-
+    const { deleteVictorWork } = await import("@/lib/vendor-store");
     await deleteVictorWork(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
