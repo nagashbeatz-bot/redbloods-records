@@ -66,12 +66,30 @@ function isUpcoming(d: string | null): boolean {
   if (!d) return false;
   return new Date(d) >= new Date(new Date().toDateString());
 }
-// Canonical "upcoming show" test — shared by the card, the KPI count and the
-// "קרובות" tab so all three agree on one rule. Upcoming = future/today date, not
-// cancelled, not already performed. payment_status is intentionally NOT a factor
-// (a paid-in-advance future show is still upcoming).
+// ── Canonical show-status helpers (client mirror of lib/shows-finance-sync's
+//    CONFIRMED_STATUSES) ─────────────────────────────────────────────────────
+// Only "confirmed" statuses participate in money; pipeline statuses (ליד חדש /
+// ממתין לתשובה / צריך פולואפ) NEVER do — even with an amount, a date, or an
+// unpaid/"צפוי" payment status.
+const FINANCIALLY_CONFIRMED_STATUSES = new Set<string>(["אושרה", "נסגר", "בוצע"]);
+// Upcoming is stricter: excludes "בוצע" (already performed) — only future-facing.
+const UPCOMING_CONFIRMED_STATUSES = new Set<string>(["אושרה", "נסגר"]);
+
+function isCancelledShow(s: Show): boolean {
+  return s.status === "בוטל" || String(s.payment_status) === "בוטל";
+}
+function isReceivedShow(s: Show): boolean {
+  const ps = String(s.payment_status); // widened: "התקבל" is a tx status, not in the union
+  return ps === "שולם" || ps === "התקבל";
+}
+function isFinanciallyConfirmedShow(s: Show): boolean {
+  return FINANCIALLY_CONFIRMED_STATUSES.has(s.status);
+}
+// Shared by the "הופעות קרובות" card, the upCount KPI, and the "קרובות" tab so
+// all three agree. Upcoming = future/today date, status אושרה/נסגר, not cancelled.
+// payment_status is intentionally NOT a factor (a prepaid future show IS upcoming).
 function isUpcomingShow(s: Show): boolean {
-  return isUpcoming(s.date) && s.status !== "בוטל" && s.status !== "בוצע";
+  return isUpcoming(s.date) && UPCOMING_CONFIRMED_STATUSES.has(s.status) && !isCancelledShow(s);
 }
 // Fin-2: uses the counted rehearsal costs attached by GET /api/shows so the
 // list matches the open show panel (falls back to 0 pre-Fin-2).
@@ -318,6 +336,11 @@ function KpiCard({ label, value, sub, color, icon }: {
 // require a DB migration. To add it: extend SHOW_STATUSES in lib/shows-types.ts + Supabase enum.
 const FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "אושרה", "בוצע", "בוטל"];
 
+// Pipeline (lead/quote) statuses — a record in one of these opens as a "הצעת מחיר".
+const PIPELINE_STATUSES = new Set<string>(["ליד חדש", "ממתין לתשובה", "צריך פולואפ"]);
+// Statuses selectable inside the compact "הצעת מחיר" mode.
+const QUOTE_FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "אושרה"];
+
 interface FormState {
   name: string; artist: string; artist_client_id: string | null;
   date: string; start_time: string; location: string;
@@ -361,18 +384,28 @@ function showToForm(s: Show): FormState {
 interface ClientRow { id: string; name: string; phone: string; type: string; status: string; }
 
 function ShowFormModal({
-  mode, editShow, onClose, onSaved,
+  mode, editShow, onClose, onSaved, onRecordSaved,
 }: {
   mode: "create" | "edit";
   editShow?: Show;
   onClose: () => void;
   onSaved: (msg: string) => void;
+  // Upsert a saved record into the list WITHOUT closing the modal (used when a
+  // "הצעת מחיר — ממתין לתשובה" is sent, so it can be edited/approved in place).
+  onRecordSaved?: (show: Show) => void;
 }) {
   const initForm = mode === "edit" && editShow ? showToForm(editShow) : FORM_DEFAULTS;
   const [form, setForm] = useState<FormState>(initForm);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [addToCalendar, setAddToCalendar] = useState(mode === "create");
+  // Compact "הצעת מחיר" vs full "הופעה" form. A pipeline record opens as a quote.
+  const [formMode, setFormMode] = useState<"show" | "quote">(
+    mode === "edit" && editShow && PIPELINE_STATUSES.has(editShow.status) ? "quote" : "show",
+  );
+  // The record's id once it exists (edit → its id; a quote we POSTed → its new id).
+  // Drives PATCH-vs-POST so a saved quote is never duplicated on a re-click / convert.
+  const [savedId, setSavedId] = useState<string | null>(editShow?.id ?? null);
 
   // Inject spin-button removal CSS once (avoids <style> tag in JSX)
   useEffect(() => {
@@ -485,10 +518,66 @@ function ShowFormModal({
     setForm(prev => ({ ...prev, dj_client_id: c.id, dj_name: c.name }));
   }
 
+  // "הצעת מחיר" primary action.
+  //   status "אושרה"        → convert to the full form IN PLACE (no network; the
+  //                           record is created/updated only on the full-form save).
+  //   status "ממתין לתשובה" → save a lightweight quote/lead (POST, or PATCH if it
+  //                           already exists), keep the modal open, no dup.
+  async function handleQuoteAction() {
+    const contact = form.contact_person.trim();
+    if (form.status === "אושרה") {
+      setAddToCalendar(false); // do NOT auto-enable calendar just because it was approved
+      setErr(null);
+      setFormMode("show");     // switch to full form; keeps every value already entered
+      return;
+    }
+    if (!contact) { setErr("איש קשר חובה בהצעת מחיר"); return; }
+    setSaving(true); setErr(null);
+    try {
+      const autoName =
+        (savedId && form.name.trim()) ? form.name.trim()
+        : contact ? `הצעת מחיר — ${contact}`
+        : `הצעת מחיר — ${form.date || new Date().toISOString().slice(0, 10)}`;
+      const payload: Record<string, unknown> = {
+        name:           autoName,
+        date:           form.date || null,
+        contact_person: contact,
+        phone:          form.phone.trim(),
+        status:         "ממתין לתשובה",
+        payment_status: "לא שולם",
+        show_price:     Number(form.show_price) || 0,
+        // no addToCalendar → no Google Calendar; server keeps Finance clear for ממתין
+      };
+      if (form.booker_client_id) {
+        payload.booker_client_id = form.booker_client_id;
+        payload.booker_name      = contact;
+      }
+      const isUpdate = savedId != null; // dedup: PATCH the existing quote, never a new POST
+      const res = await fetch(isUpdate ? `/api/shows/${savedId}` : "/api/shows", {
+        method:  isUpdate ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? "שגיאה בשמירת ההצעה"); return; }
+      const saved: Show | undefined = data.show;
+      if (saved?.id) {
+        setSavedId(saved.id);                            // re-click now PATCHes (no dup)
+        if (!form.name.trim()) set("name", saved.name);  // keep the auto name in the form
+        onRecordSaved?.(saved);                          // upsert into the list, keep modal open
+      }
+    } catch {
+      setErr("שגיאת רשת — נסה שוב");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (formMode === "quote") { await handleQuoteAction(); return; }
     if (!form.name.trim()) { setErr("שם ההופעה חובה"); return; }
-    if (mode === "create" && addToCalendar && !form.date) {
+    if (addToCalendar && !form.date) {
       setErr("כדי להוסיף ליומן צריך לבחור תאריך");
       return;
     }
@@ -519,13 +608,15 @@ function ShowFormModal({
         payload.booker_client_id = form.booker_client_id;
         payload.booker_name      = form.contact_person.trim();
       }
-      // Send addToCalendar only on create, only when toggled on
-      if (mode === "create" && addToCalendar) {
+      // Send addToCalendar when toggled on — POST (create) and PATCH (convert) both support it.
+      if (addToCalendar) {
         payload.addToCalendar = true;
       }
 
-      const url    = mode === "edit" ? `/api/shows/${editShow!.id}` : "/api/shows";
-      const method = mode === "edit" ? "PATCH" : "POST";
+      // savedId set → PATCH the same record (edit OR a converted quote); else POST.
+      const isUpdate = savedId != null;
+      const url    = isUpdate ? `/api/shows/${savedId}` : "/api/shows";
+      const method = isUpdate ? "PATCH" : "POST";
       const res    = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -534,7 +625,7 @@ function ShowFormModal({
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? "שגיאה בשמירה"); return; }
 
-      if (mode === "edit") {
+      if (isUpdate) {
         onSaved("ההופעה עודכנה בהצלחה ✓");
       } else {
         // Auto-create task if no DJ selected
@@ -670,7 +761,9 @@ function ShowFormModal({
         {/* Header */}
         <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>
-            {mode === "edit" ? "עריכת הופעה" : "הופעה חדשה"}
+            {mode === "edit"
+              ? (formMode === "quote" ? "עריכת הצעת מחיר" : "עריכת הופעה")
+              : (formMode === "quote" ? "הצעת מחיר" : "הופעה חדשה")}
           </div>
           <button onClick={onClose} style={{ background: CARD2, border: `1px solid ${BDR}`, cursor: "pointer", color: TEXT2, fontSize: 14, padding: "6px 10px", borderRadius: 8, lineHeight: 1 }}>✕</button>
         </div>
@@ -678,6 +771,101 @@ function ShowFormModal({
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: "20px 24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
 
+          {/* ── Mode selector — new records only ── */}
+          {mode === "create" && (
+            <div style={{ display: "flex", gap: 6, background: BG2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4 }}>
+              {([["show", "הופעה חדשה"], ["quote", "הצעת מחיר"]] as const).map(([m, label]) => {
+                const active = formMode === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setErr(null);
+                      if (m === "quote" && !QUOTE_FORM_STATUSES.includes(form.status)) set("status", "ממתין לתשובה");
+                      setFormMode(m);
+                    }}
+                    style={{
+                      flex: 1, padding: "8px 0", borderRadius: 7, border: "none", cursor: "pointer",
+                      fontSize: 13, fontWeight: 800, fontFamily: "inherit",
+                      background: active ? BRAND : "transparent",
+                      color: active ? "#fff" : TEXT2, transition: "none",
+                    }}
+                  >{label}</button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Quote mode — compact fields (date / amount / contact / status) ── */}
+          {formMode === "quote" && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>תאריך</label>
+                  <DatePickerInput value={form.date} onChange={v => set("date", v)} placeholder="בחר תאריך" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>סכום ₪</label>
+                  <input type="number" min="0" value={form.show_price} onChange={e => set("show_price", e.target.value)} style={numInputStyle} className="rb-shows-no-spin" placeholder="0" />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>איש קשר *</label>
+                {cliLoad ? (
+                  <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
+                ) : (
+                  <select value={form.booker_client_id ?? ""} onChange={e => selectBooker(e.target.value)} style={inputStyle}>
+                    <option value="">בחר איש קשר…</option>
+                    {bookerClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                )}
+                {!showNewClient && (
+                  <button type="button" onClick={() => { setShowNewClient(true); setNcMsg(null); }}
+                    style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", color: BLUE, fontSize: 12, fontWeight: 700, fontFamily: "inherit", padding: 0 }}>
+                    ＋ איש קשר חדש
+                  </button>
+                )}
+                {showNewClient && (
+                  <div style={{ marginTop: 8, padding: "12px 14px", borderRadius: 10, background: "rgba(59,130,246,0.06)", border: `1px solid rgba(59,130,246,0.2)`, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 2 }}>איש קשר חדש</div>
+                    <input value={ncName} onChange={e => setNcName(e.target.value)} placeholder="שם *" style={{ ...inputStyle, fontSize: 12 }} />
+                    <input value={ncPhone} onChange={e => setNcPhone(e.target.value)} placeholder="טלפון" style={{ ...inputStyle, fontSize: 12 }} />
+                    <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+                      <button type="button" onClick={createNewClient} disabled={ncSaving}
+                        style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: ncSaving ? MUTED : BLUE, color: "#fff", fontSize: 12, fontWeight: 800, cursor: ncSaving ? "default" : "pointer", fontFamily: "inherit" }}>
+                        {ncSaving ? "שומר…" : "צור"}
+                      </button>
+                      <button type="button" onClick={() => { setShowNewClient(false); setNcMsg(null); setNcName(""); setNcPhone(""); }}
+                        style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${BDR2}`, background: "none", color: TEXT2, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                        ביטול
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {ncMsg && (
+                  <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: ncMsg.includes("שגיאה") || ncMsg.includes("לא הצלחנו") || ncMsg.includes("חובה") ? "#EF4444" : GREEN }}>{ncMsg}</div>
+                )}
+              </div>
+
+              <div>
+                <label style={labelStyle}>סטטוס</label>
+                <select value={QUOTE_FORM_STATUSES.includes(form.status) ? form.status : "ממתין לתשובה"} onChange={e => set("status", e.target.value as ShowStatus)} style={inputStyle}>
+                  {QUOTE_FORM_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <div style={{ marginTop: 6, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+                  {form.status === "אושרה"
+                    ? "אישור יעביר למילוי פרטי ההופעה המלאים — ההופעה תיווצר רק בשמירה הסופית."
+                    : "ההצעה תישמר כ״ממתין לתשובה״ — ללא יומן Google, ללא כספים, ולא תופיע בהופעות קרובות."}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── Full show form ── */}
+          {formMode === "show" && (
+          <>
           {/* Row: name + artist */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
@@ -727,8 +915,9 @@ function ShowFormModal({
             </div>
           </div>
 
-          {/* Add to Calendar — create mode only */}
-          {mode === "create" && (
+          {/* Add to Calendar — shown while the record has no calendar event yet
+              (new shows + converted quotes); auto-sync handles shows that already have one */}
+          {!editShow?.calendar_event_id && (
             <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
               <div
                 onClick={() => setAddToCalendar(v => !v)}
@@ -937,6 +1126,8 @@ function ShowFormModal({
             <label style={labelStyle}>הערות</label>
             <textarea value={form.notes} onChange={e => set("notes", e.target.value)} style={{ ...inputStyle, height: 72, resize: "vertical" }} placeholder="הערות נוספות…" />
           </div>
+          </>
+          )}
 
           {/* Error */}
           {err && (
@@ -957,7 +1148,10 @@ function ShowFormModal({
               cursor: saving ? "default" : "pointer",
               boxShadow: saving ? "none" : "0 4px 16px rgba(220,38,38,0.4)",
             }}>
-              {saving ? "שומר…" : mode === "edit" ? "שמור שינויים" : "צור הופעה"}
+              {saving ? "שומר…"
+                : formMode === "quote"
+                  ? (form.status === "אושרה" ? "אשר והמשך למילוי" : (savedId ? "עדכן הצעה" : "שלח הצעה"))
+                  : (savedId ? "שמור שינויים" : "צור הופעה")}
             </button>
           </div>
         </form>
@@ -1607,24 +1801,24 @@ export default function ShowsHubPreview() {
   }, [shows, tab, search, filterSt, filterPay, sort]);
 
   const kpis = useMemo(() => {
-    // ps widened to string: "התקבל" is a transaction status (anomaly on a show),
-    // not part of the PaymentStatus union — mirrors calcRemaining's defence.
-    const isReceived  = (s: Show) => { const ps: string = s.payment_status; return ps === "שולם" || ps === "התקבל"; };
-    const isCancelled = (s: Show) => s.status === "בוטל" || s.payment_status === "בוטל";
-    const active   = shows.filter(s => !isCancelled(s));
-    const expected = active.filter(s => !isReceived(s)); // not cancelled AND not fully paid
-    // Still-uncollected balance: calcRemaining already returns 0 for received /
-    // cancelled shows, so this covers "expected income" per the agreed rules
-    // (partial → only the unpaid balance). Equals "remaining" when no advances.
-    const uncollected = active.reduce((a, s) => a + calcRemaining(s), 0);
+    // A show contributes to a forecast KPI only when it is financially confirmed
+    // (אושרה/נסגר/בוצע), not cancelled, and not already received. Leads/quotes
+    // (ליד חדש/ממתין לתשובה/צריך פולואפ) contribute 0 regardless of amount/date.
+    const forecast = (valueFn: (s: Show) => number) => shows.reduce((sum, s) => {
+      if (!isFinanciallyConfirmedShow(s)) return sum;
+      if (isCancelledShow(s)) return sum;
+      if (isReceivedShow(s)) return sum; // שולם/התקבל → lives in Finance, not the forecast
+      return sum + valueFn(s);
+    }, 0);
+    // partial/advance → calcRemaining gives price − advance; received/cancelled → 0.
+    const uncollected = forecast(calcRemaining);
     return {
       total:       shows.length,
       upCount:     shows.filter(isUpcomingShow).length,
       expIncome:   uncollected,
       remaining:   uncollected,
-      // Label-profit forecast excludes received / cancelled shows; a partial show
-      // keeps its FULL label share (no reliable pro-rata source — not invented).
-      labelProfit: expected.reduce((a, s) => a + calcLabelShare(s), 0),
+      // partial keeps its FULL label share (no reliable pro-rata source).
+      labelProfit: forecast(calcLabelShare),
     };
   }, [shows]);
 
@@ -1757,6 +1951,17 @@ export default function ShowsHubPreview() {
       .catch(() => {});
     // Sync selected panel if editing
     if (modal?.mode === "edit" && modal.show) setSelected(null);
+  }
+
+  // Upsert a saved record into the list WITHOUT closing the modal — used when a
+  // "הצעת מחיר — ממתין לתשובה" is sent, so it stays editable/approvable in place.
+  function handleRecordSaved(saved: Show) {
+    setShows(prev => {
+      const i = prev.findIndex(s => s.id === saved.id);
+      if (i >= 0) { const copy = [...prev]; copy[i] = saved; return copy; }
+      return [saved, ...prev];
+    });
+    setToast({ message: "ההצעה נשמרה ✓", type: "success" });
   }
 
   const selectStyle: React.CSSProperties = {
@@ -2050,6 +2255,7 @@ export default function ShowsHubPreview() {
           editShow={modal.show}
           onClose={() => setModal(null)}
           onSaved={handleSaved}
+          onRecordSaved={handleRecordSaved}
         />
       )}
 
