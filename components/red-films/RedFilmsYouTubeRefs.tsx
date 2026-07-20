@@ -182,19 +182,19 @@ export default function RedFilmsYouTubeRefs({ productionId }: { productionId: st
               <div
                 key={link.id}
                 style={{
-                  background: "#141414", border: "1px solid #222",
-                  borderRadius: 10, overflow: "hidden",
+                  background: "rgba(220,38,38,0.04)", border: "1px solid rgba(220,38,38,0.12)",
+                  borderRadius: 11, overflow: "hidden",
                   opacity: isDeleting ? 0.5 : 1,
                   transition: "opacity 0.2s",
                 }}
               >
                 {/* Card row */}
-                <div style={{ display: "flex", gap: 12, padding: "10px 12px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 14, padding: "12px 14px", alignItems: "center" }}>
                   {/* Thumbnail */}
                   <div
                     onClick={() => !isDeleting && setActiveId(isActive ? null : link.video_id)}
                     style={{
-                      flexShrink: 0, width: 96, height: 54, borderRadius: 6,
+                      flexShrink: 0, width: 108, height: 61, borderRadius: 8,
                       background: "#0D0D0D", overflow: "hidden", cursor: "pointer",
                       position: "relative",
                     }}
@@ -219,13 +219,13 @@ export default function RedFilmsYouTubeRefs({ productionId }: { productionId: st
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
-                      fontSize: 13, fontWeight: 600, color: "#CCC",
+                      fontSize: 13.5, fontWeight: 700, color: "#E6E6EA",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
                       {link.title || link.video_id}
                     </div>
                     <div style={{
-                      fontSize: 11, color: "#444", marginTop: 3,
+                      fontSize: 11, color: "#78787F", marginTop: 3,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
                       {link.url}

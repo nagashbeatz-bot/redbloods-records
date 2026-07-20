@@ -133,8 +133,8 @@ function PdfFullscreenViewer({ doc, onClose }: { doc: Doc; onClose: () => void }
             target="_blank"
             rel="noopener noreferrer"
             style={{
-              fontSize: 11, color: "#60A5FA", textDecoration: "none",
-              padding: "6px 10px", border: "1px solid rgba(59,130,246,0.3)",
+              fontSize: 11, color: "#FCA5A5", textDecoration: "none",
+              padding: "6px 10px", border: "1px solid rgba(220,38,38,0.3)",
               borderRadius: 7, fontFamily: "inherit", whiteSpace: "nowrap",
             }}
           >
@@ -171,8 +171,8 @@ function PdfFullscreenViewer({ doc, onClose }: { doc: Doc; onClose: () => void }
               target="_blank"
               rel="noopener noreferrer"
               style={{
-                padding: "10px 20px", borderRadius: 10, background: "rgba(59,130,246,0.12)",
-                border: "1px solid rgba(59,130,246,0.35)", color: "#60A5FA",
+                padding: "10px 20px", borderRadius: 10, background: "rgba(220,38,38,0.12)",
+                border: "1px solid rgba(220,38,38,0.35)", color: "#FCA5A5",
                 fontSize: 14, fontWeight: 600, textDecoration: "none",
               }}
             >
@@ -370,7 +370,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                 href={viewUrl(candidate)}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ fontSize: 11, color: "#60A5FA", textDecoration: "none", padding: "3px 8px", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 5 }}
+                style={{ fontSize: 11, color: "#FCA5A5", textDecoration: "none", padding: "3px 8px", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 5 }}
               >
                 📁
               </a>
@@ -425,8 +425,8 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                 display: "flex", alignItems: "center", gap: 5,
                 padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
                 cursor: uploading ? "default" : "pointer", fontFamily: "inherit",
-                background: uploading ? "rgba(59,130,246,0.08)" : "rgba(59,130,246,0.12)",
-                border: "1px solid rgba(59,130,246,0.35)", color: "#60A5FA",
+                background: uploading ? "rgba(220,38,38,0.08)" : "rgba(220,38,38,0.12)",
+                border: "1px solid rgba(220,38,38,0.35)", color: "#FCA5A5",
                 opacity: uploading ? 0.6 : 1,
               }}
             >
@@ -450,11 +450,11 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           style={{
-            border: `1px dashed ${dragging ? "#60A5FA" : "#2A2A2A"}`,
+            border: `1px dashed ${dragging ? "#FCA5A5" : "#2A2A2A"}`,
             borderRadius: 10, padding: "14px 16px",
-            background: dragging ? "rgba(59,130,246,0.05)" : "transparent",
+            background: dragging ? "rgba(220,38,38,0.05)" : "transparent",
             transition: "all 0.15s", marginBottom: docs.length ? 14 : 0,
-            textAlign: "center", color: dragging ? "#60A5FA" : "#444", fontSize: 12,
+            textAlign: "center", color: dragging ? "#FCA5A5" : "#444", fontSize: 12,
           }}
         >
           {uploading ? "מעלה..." : "גרור לכאן קובץ להעלאה"}
@@ -465,45 +465,47 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
         ) : docs.length === 0 ? (
           <div style={{ fontSize: 13, color: "#333", fontStyle: "italic", padding: "8px 0" }}>אין מסמכים עדיין</div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {docs.map(doc => (
               <div key={doc.id} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                background: "#141414", border: "1px solid #222",
-                borderRadius: 8, padding: "8px 12px",
+                display: "flex", alignItems: "center", gap: 12,
+                background: "rgba(220,38,38,0.04)", border: "1px solid rgba(220,38,38,0.12)",
+                borderRadius: 11, padding: "12px 14px",
               }}>
                 <span style={{
-                  fontSize: 10, fontWeight: 700, color: TYPE_COLORS[doc.file_type] ?? "#6B7280",
+                  fontSize: 10.5, fontWeight: 700, color: TYPE_COLORS[doc.file_type] ?? "#6B7280",
                   background: `${TYPE_COLORS[doc.file_type] ?? "#6B7280"}18`,
                   border: `1px solid ${TYPE_COLORS[doc.file_type] ?? "#6B7280"}33`,
-                  borderRadius: 5, padding: "2px 7px", flexShrink: 0, whiteSpace: "nowrap",
+                  borderRadius: 6, padding: "3px 9px", flexShrink: 0, whiteSpace: "nowrap",
                 }}>
                   {doc.file_type}
                 </span>
-                <span style={{ flex: 1, fontSize: 12, color: "#CCC", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-                  {doc.file_name}
-                </span>
-                <span style={{ fontSize: 11, color: "#444", flexShrink: 0 }}>
-                  {fmtDate(doc.created_at)}
-                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "#E6E6EA", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {doc.file_name}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#78787F", marginTop: 2 }}>
+                    {fmtDate(doc.created_at)}
+                  </div>
+                </div>
                 {isPdf(doc) && (
                   <button
                     onClick={() => isMobile ? setFullscreenDoc(doc) : setPreviewDocId(id => id === doc.id ? null : doc.id)}
                     style={{
-                      fontSize: 10, color: "#A78BFA", background: "none",
-                      border: "1px solid rgba(167,139,250,0.25)",
-                      borderRadius: 5, padding: "2px 6px",
+                      fontSize: 11, fontWeight: 600, color: "#FCA5A5", background: "rgba(220,38,38,0.06)",
+                      border: "1px solid rgba(220,38,38,0.25)",
+                      borderRadius: 7, padding: "5px 10px",
                       cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
                     }}
                   >
-                    {isMobile ? "קריאה" : (previewDocId === doc.id ? "סגור" : "preview")}
+                    {isMobile ? "קריאה" : (previewDocId === doc.id ? "סגור" : "תצוגה")}
                   </button>
                 )}
                 <a
                   href={viewUrl(doc)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ fontSize: 11, color: "#60A5FA", flexShrink: 0, textDecoration: "none", padding: "3px 8px", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 5 }}
+                  style={{ fontSize: 11, fontWeight: 600, color: "#FCA5A5", flexShrink: 0, textDecoration: "none", padding: "5px 12px", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 7 }}
                 >
                   פתח
                 </a>
@@ -511,7 +513,7 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
                   onClick={() => remove(doc.id)}
                   disabled={deletingId === doc.id}
                   title="הסר מסמך"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#3A3A3A", fontSize: 14, padding: "2px 4px", opacity: deletingId === doc.id ? 0.4 : 1, lineHeight: 1 }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#6B4A4C", fontSize: 15, padding: "2px 4px", opacity: deletingId === doc.id ? 0.4 : 1, lineHeight: 1, flexShrink: 0 }}
                 >
                   ✕
                 </button>

@@ -15,9 +15,12 @@ export const SECTION_LABELS: Record<string, string> = {
   notes:       "הערות",
 };
 
+// Reading order → paired into rows by the 2-col grid on the detail page:
+//   row1: סיכום הפקה | תקציב   row2: רפרנסים | מסמכים   row3: משימות | יוטיוב
+//   then the rest (תקציב מפורט, קונספט, קבצים, הערות).
 export const DEFAULT_ORDER = [
-  "summary", "tasks", "concept", "documents", "youtubeRefs", "references",
-  "budget", "budgetItems", "files", "notes",
+  "summary", "budget", "references", "documents", "tasks", "youtubeRefs",
+  "budgetItems", "concept", "files", "notes",
 ];
 
 // Sections that belong in the creative (right) column; everything else goes in management (left)

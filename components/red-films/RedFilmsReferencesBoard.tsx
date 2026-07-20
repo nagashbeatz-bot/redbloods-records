@@ -258,7 +258,16 @@ function RefGridImage({ src, fallbackSrc, alt, cover }: { src: string; fallbackS
   const [useFallback, setUseFallback] = useState(false);
 
   const activeSrc = useFallback ? fallbackSrc : src;
-  if (errored) return null;
+
+  // Broken preview → designed empty thumbnail (icon + file name), never a black tile.
+  if (errored) {
+    return (
+      <div style={{ position: "relative", width: "100%", height: cover ? "100%" : 120, background: "linear-gradient(135deg, #1c1315, #120c0d)", borderRadius: 8, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: 8, textAlign: "center" }}>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7a4f52" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><circle cx="8.5" cy="9.5" r="1.6" /><path d="M21 16l-5-5-9 8.5" /></svg>
+        <span style={{ fontSize: 10, color: "#8A6F72", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{alt || "ללא תצוגה"}</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "relative", width: "100%", height: cover ? "100%" : undefined, minHeight: cover ? undefined : 80, background: "#111", borderRadius: 8 }}>
@@ -509,13 +518,13 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
           {/* Uniform thumbnail grid — capped preview with "הצג הכל" (no giant collage) */}
           {filtered.length > 0 && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))", gap: 8, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 12 }}>
                 {(showAll ? filtered : filtered.slice(0, PREVIEW_COUNT)).map((ref, i) => (
                   <div
                     key={ref.id}
                     onClick={() => setLightboxIndex(i)}
                     style={{
-                      aspectRatio: "1 / 1", borderRadius: 10, overflow: "hidden",
+                      aspectRatio: "4 / 3", borderRadius: 10, overflow: "hidden",
                       cursor: "pointer", position: "relative", background: "#111",
                       border: "1px solid rgba(220,38,38,0.14)",
                     }}
@@ -532,12 +541,14 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
                 ))}
               </div>
               {filtered.length > PREVIEW_COUNT && (
-                <button
-                  onClick={() => setShowAll(v => !v)}
-                  style={{ width: "100%", padding: "8px 0", marginBottom: 12, borderRadius: 10, border: "1px solid rgba(220,38,38,0.28)", background: "rgba(220,38,38,0.06)", color: "#FCA5A5", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  {showAll ? "הצג פחות ↑" : `הצג הכל (${filtered.length}) ↓`}
-                </button>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                  <button
+                    onClick={() => setShowAll(v => !v)}
+                    style={{ padding: "6px 18px", borderRadius: 20, border: "1px solid rgba(220,38,38,0.28)", background: "rgba(220,38,38,0.06)", color: "#FCA5A5", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    {showAll ? "הצג פחות ↑" : `הצג הכל (${filtered.length}) ↓`}
+                  </button>
+                </div>
               )}
             </>
           )}

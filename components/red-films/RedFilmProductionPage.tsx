@@ -106,21 +106,29 @@ function KpiCard({ icon, label, value, valueColor }: {
 
 // Cover/preview placeholder — no cover field on Production, so a branded red
 // gradient block with a clapper glyph (honest empty visual, on-brand).
-function HeroCover({ mobile }: { mobile: boolean }) {
+function HeroCover({ mobile, label }: { mobile: boolean; label?: string }) {
   return (
     <div style={{
       position: "relative", flexShrink: 0,
-      width: mobile ? "100%" : 340, height: mobile ? 190 : 210,
+      width: mobile ? "100%" : "clamp(320px, 34%, 500px)",
+      aspectRatio: "16 / 9",
       borderRadius: 16, overflow: "hidden",
-      background: "linear-gradient(140deg, #DC2626, #7F1D1D)",
-      border: `1px solid ${RED}5A`,
-      boxShadow: "0 0 28px rgba(220,38,38,0.3), inset 0 0 40px rgba(0,0,0,0.35)",
+      background: "linear-gradient(135deg, #2a1416 0%, #170d0e 55%, #0e0a0b 100%)",
+      border: `1px solid ${RED}3A`,
+      boxShadow: "0 0 30px rgba(220,38,38,0.16), inset 0 0 60px rgba(0,0,0,0.5)",
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 100% at 30% 0%, rgba(255,255,255,0.14), transparent 55%)", pointerEvents: "none" }} />
-      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.9 }}>
-        <rect x="2.5" y="7" width="19" height="13" rx="2" /><path d="M2.5 11h19M8 7l-2 4M13.5 7l-2 4M19 7l-2 4" />
-      </svg>
+      {/* subtle diagonal texture + red key-light */}
+      <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(115deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 8px)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(85% 70% at 74% 12%, rgba(220,38,38,0.24), transparent 62%)", pointerEvents: "none" }} />
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+          <rect x="2.5" y="7" width="19" height="13" rx="2" /><path d="M2.5 11h19M8 7l-2 4M13.5 7l-2 4M19 7l-2 4" />
+        </svg>
+        {label && (
+          <span style={{ maxWidth: "80%", fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.02em", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -167,8 +175,8 @@ function SDivider() {
 function SectionHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10 }}>
-      <h2 style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14, fontWeight: 700, color: "#EDEDF2", margin: 0 }}>
-        <span style={{ width: 3, height: 15, borderRadius: 2, background: `linear-gradient(180deg, ${RED}, #7F1D1D)`, boxShadow: "0 0 8px rgba(220,38,38,0.4)", flexShrink: 0 }} />
+      <h2 style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 15.5, fontWeight: 800, color: "#F4F4F6", margin: 0 }}>
+        <span style={{ width: 3.5, height: 17, borderRadius: 2, background: `linear-gradient(180deg, ${RED}, #7F1D1D)`, boxShadow: "0 0 8px rgba(220,38,38,0.45)", flexShrink: 0 }} />
         {title}
       </h2>
       {children}
@@ -470,8 +478,8 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                 ["לוקיישנים",    prod.locations         || "—"],
               ].map(([lbl, val]) => (
                 <div key={lbl}>
-                  <div style={{ fontSize: 10, color: "#555" }}>{lbl}</div>
-                  <div style={{ fontSize: 13, color: "#CCC", marginTop: 3 }}>{val}</div>
+                  <div style={{ fontSize: 11.5, color: "#8A8A92", fontWeight: 600 }}>{lbl}</div>
+                  <div style={{ fontSize: 14, color: "#D6D6DC", marginTop: 4 }}>{val}</div>
                 </div>
               ))}
               {projectName && (
@@ -626,9 +634,9 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   ["מקדמה נדרשת",prod.advance_required ? fmtNum(prod.advance_required) : "—"],
                   ["מקדמה התקבלה",prod.advance_received ? fmtNum(prod.advance_received) : "—"],
                 ].map(([lbl,val]) => (
-                  <div key={lbl} style={{ ...INNER_TILE, textAlign: "center" }}>
-                    <div style={{ fontSize: 11, color: "#8A8A92" }}>{lbl}</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#F4F4F6", marginTop: 4 }}>{val}</div>
+                  <div key={lbl} style={{ ...INNER_TILE, textAlign: "center", padding: "14px 13px" }}>
+                    <div style={{ fontSize: 11.5, color: "#8A8A92", fontWeight: 600 }}>{lbl}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#F4F4F6", marginTop: 5 }}>{val}</div>
                   </div>
                 ))}
               </div>
@@ -823,62 +831,62 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         {/* ── Hero ── */}
         <div style={{ ...CARD_STYLE, padding: isMobile ? 16 : "26px 26px", marginBottom: 18 }}>
           <div style={{ position: "absolute", top: -40, insetInlineStart: -30, width: 180, height: 180, borderRadius: "50%", background: RED, opacity: 0.06, filter: "blur(50px)", pointerEvents: "none" }} />
-          <div style={{ position: "relative", display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 14 : 20, alignItems: isMobile ? "stretch" : "center" }}>
-            <HeroCover mobile={isMobile} />
+          <div style={{ position: "relative", display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 14 : 26, alignItems: "stretch" }}>
+            <HeroCover mobile={isMobile} label={prod.title} />
 
-            {/* Info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {prod.production_type && (
-                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, color: "#FCA5A5", background: "rgba(220,38,38,0.12)", border: `1px solid ${RED}54`, borderRadius: 7, padding: "3px 10px", marginBottom: 8 }}>
-                  {prod.production_type}
-                </span>
-              )}
-              <h1 style={{ fontSize: isMobile ? 26 : 36, fontWeight: 900, color: "#F5F5F7", margin: 0, letterSpacing: "-0.02em", lineHeight: 1.08, textShadow: "0 0 16px rgba(220,38,38,0.14)" }}>
-                {prod.title}
-              </h1>
-              {(prod.client_name || prod.artist_name) && (
-                <div style={{ fontSize: 15, color: "#C6C6CE", marginTop: 8, fontWeight: 500 }}>
-                  👤 {[prod.client_name, prod.artist_name].filter(Boolean).join(" · ")}
+            {/* Info + actions */}
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+              <div style={{ flex: 1 }}>
+                {prod.production_type && (
+                  <span style={{ display: "inline-block", fontSize: 12, fontWeight: 700, color: "#FCA5A5", background: "rgba(220,38,38,0.12)", border: `1px solid ${RED}54`, borderRadius: 8, padding: "4px 12px", marginBottom: 10 }}>
+                    {prod.production_type}
+                  </span>
+                )}
+                <h1 style={{ fontSize: isMobile ? 27 : 40, fontWeight: 900, color: "#F5F5F7", margin: 0, letterSpacing: "-0.02em", lineHeight: 1.06, textShadow: "0 0 16px rgba(220,38,38,0.14)" }}>
+                  {prod.title}
+                </h1>
+                {(prod.client_name || prod.artist_name) && (
+                  <div style={{ fontSize: 16, color: "#C6C6CE", marginTop: 9, fontWeight: 500 }}>
+                    👤 {[prod.client_name, prod.artist_name].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 16, marginTop: 11, fontSize: 13, color: "#78787F", flexWrap: "wrap" }}>
+                  {createdDate && <span>תאריך יצירה: <span style={{ color: "#A6A6AE" }}>{createdDate}</span></span>}
+                  {updatedDate && <span>עודכן לאחרונה: <span style={{ color: "#A6A6AE" }}>{updatedDate}</span></span>}
+                  {prod.shoot_date && <span>📅 צילום: <span style={{ color: "#A6A6AE" }}>{fmtDate(prod.shoot_date)}</span></span>}
+                  {prod.locations && <span>📍 {prod.locations}</span>}
                 </div>
-              )}
-              <div style={{ display: "flex", gap: 14, marginTop: 9, fontSize: 12, color: "#78787F", flexWrap: "wrap" }}>
-                {createdDate && <span>תאריך יצירה: <span style={{ color: "#96969C" }}>{createdDate}</span></span>}
-                {updatedDate && <span>עודכן לאחרונה: <span style={{ color: "#96969C" }}>{updatedDate}</span></span>}
-                {prod.shoot_date && <span>📅 צילום: <span style={{ color: "#96969C" }}>{fmtDate(prod.shoot_date)}</span></span>}
-                {prod.locations && <span>📍 {prod.locations}</span>}
+                <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+                  <RedFilmsStatusBadge status={prod.status} />
+                  {prod.edit_status && prod.edit_status !== "לא התחיל" && <span style={heroChip}>עריכה: {prod.edit_status}</span>}
+                  {prod.collection_status && prod.collection_status !== "לא רלוונטי" && <span style={heroChip}>גבייה: {prod.collection_status}</span>}
+                  {projectName && (
+                    <button onClick={() => router.push("/projects")} style={{ fontSize: 12, fontWeight: 700, color: "#FCA5A5", background: "rgba(220,38,38,0.1)", border: `1px solid ${RED}42`, borderRadius: 20, padding: "4px 12px", cursor: "pointer", fontFamily: "inherit" }}>♫ {projectName}</button>
+                  )}
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-                <RedFilmsStatusBadge status={prod.status} />
-                {prod.edit_status && prod.edit_status !== "לא התחיל" && <span style={heroChip}>עריכה: {prod.edit_status}</span>}
-                {prod.collection_status && prod.collection_status !== "לא רלוונטי" && <span style={heroChip}>גבייה: {prod.collection_status}</span>}
-                {projectName && (
-                  <button onClick={() => router.push("/projects")} style={{ fontSize: 11, fontWeight: 700, color: "#FCA5A5", background: "rgba(220,38,38,0.1)", border: `1px solid ${RED}42`, borderRadius: 20, padding: "3px 11px", cursor: "pointer", fontFamily: "inherit" }}>♫ {projectName}</button>
-                )}
-              </div>
-            </div>
 
-            {/* Actions (desktop) */}
-            {!isMobile && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0, alignItems: "stretch", minWidth: 150 }}>
-                {latestAudio && (
-                  <button onClick={handlePlay} title={isThisPlaying ? "השהה" : `נגן — ${latestAudio.name}`}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 18px", borderRadius: 11, fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", border: "1px solid rgba(248,113,113,0.4)", background: "linear-gradient(135deg, #EF4444, #B91C1C)", color: "#fff", boxShadow: "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.2)", whiteSpace: "nowrap" }}>
-                    {isThisPlaying ? "⏸ מנגן" : "▶ נגן שיר"}
-                  </button>
-                )}
-                <div style={{ display: "flex", gap: 8 }}>
+              {/* Actions (desktop) — clear grouped row under the details */}
+              {!isMobile && (
+                <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap", alignItems: "center" }}>
+                  {latestAudio && (
+                    <button onClick={handlePlay} title={isThisPlaying ? "השהה" : `נגן — ${latestAudio.name}`}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 26px", borderRadius: 12, fontSize: 14.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", border: "1px solid rgba(248,113,113,0.4)", background: "linear-gradient(135deg, #EF4444, #B91C1C)", color: "#fff", boxShadow: "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.2)", whiteSpace: "nowrap" }}>
+                      {isThisPlaying ? "⏸ מנגן" : "▶ נגן שיר"}
+                    </button>
+                  )}
                   {prod.dropbox_folder_url ? (
-                    <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer" style={{ ...ghostBtn, flex: 1 }}>📁 תיקייה</a>
+                    <a href={prod.dropbox_folder_url} target="_blank" rel="noopener noreferrer" style={{ ...ghostBtn, padding: "11px 20px", fontSize: 13.5 }}>📁 פתח תיקייה</a>
                   ) : (
-                    <button onClick={createDropboxFolder} disabled={creatingFolder} style={{ ...ghostBtn, flex: 1, opacity: creatingFolder ? 0.6 : 1 }}>{creatingFolder ? "יוצר…" : "📁 צור תיקייה"}</button>
+                    <button onClick={createDropboxFolder} disabled={creatingFolder} style={{ ...ghostBtn, padding: "11px 20px", fontSize: 13.5, opacity: creatingFolder ? 0.6 : 1 }}>{creatingFolder ? "יוצר…" : "📁 צור תיקייה"}</button>
                   )}
-                  <button onClick={() => setShowLayoutModal(true)} title="התאמת תצוגה" style={{ ...ghostBtn, padding: "9px 12px" }}>⚙️</button>
+                  <button onClick={() => setShowLayoutModal(true)} title="התאמת תצוגה" style={{ ...ghostBtn, padding: "11px 15px", fontSize: 14 }}>⚙️</button>
                   {prod.status !== "בוטל" && (
-                    <button onClick={() => setTrashConfirm(true)} title="העבר לסל" style={{ ...ghostBtn, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.1)", color: "#F87171", padding: "9px 12px" }}>🗑️</button>
+                    <button onClick={() => setTrashConfirm(true)} title="העבר לסל" style={{ ...ghostBtn, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.1)", color: "#F87171", padding: "11px 15px", fontSize: 14 }}>🗑️</button>
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Actions (mobile grid) */}
@@ -912,15 +920,17 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* ── Body ── Balanced masonry: sections flow to fill both columns (no empty
-          half-screen). Order + visibility still come from the layout system.
-          Big bottom padding keeps the last sections clear of the floating player. */}
+      {/* ── Body ── Explicit 2-col grid: sections keep their reading order and are
+          paired into rows (row heights may differ, but both columns advance
+          together so the page ends balanced — no lone long column, no empty half).
+          Order + visibility come from the layout system. Bottom padding clears
+          the floating audio player. */}
       <div style={{ position: "relative", zIndex: 1, padding: isMobile ? "6px 12px 140px" : "8px 28px 140px", width: "100%", boxSizing: "border-box" }}>
-        <div style={{ columns: isMobile ? 1 : 2, columnGap: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 18, alignItems: "start" }}>
           {layout.order
             .filter(sId => !layout.hidden.includes(sId))
             .map(sId => (
-              <div key={sId} style={{ breakInside: "avoid", marginBottom: 18 }}>
+              <div key={sId} style={{ minWidth: 0 }}>
                 {renderSection(sId)}
               </div>
             ))}
