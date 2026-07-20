@@ -66,6 +66,13 @@ function isUpcoming(d: string | null): boolean {
   if (!d) return false;
   return new Date(d) >= new Date(new Date().toDateString());
 }
+// Canonical "upcoming show" test — shared by the card, the KPI count and the
+// "קרובות" tab so all three agree on one rule. Upcoming = future/today date, not
+// cancelled, not already performed. payment_status is intentionally NOT a factor
+// (a paid-in-advance future show is still upcoming).
+function isUpcomingShow(s: Show): boolean {
+  return isUpcoming(s.date) && s.status !== "בוטל" && s.status !== "בוצע";
+}
 // Fin-2: uses the counted rehearsal costs attached by GET /api/shows so the
 // list matches the open show panel (falls back to 0 pre-Fin-2).
 function calcDistributable(s: Show) { return computeShowSplit(s, s.rehearsalCounted ?? 0).netAfterDj; }
@@ -1552,7 +1559,7 @@ export default function ShowsHubPreview() {
 
   const upcoming = useMemo(() =>
     [...shows]
-      .filter(s => (s.date === null || isUpcoming(s.date)) && s.status !== "בוטל")
+      .filter(isUpcomingShow)
       .sort((a, b) => (a.date ?? "9").localeCompare(b.date ?? "9"))
       .slice(0, 5),
     [shows]
@@ -1560,7 +1567,7 @@ export default function ShowsHubPreview() {
 
   const tabCounts = useMemo(() => ({
     all:       shows.length,
-    upcoming:  shows.filter(s => isUpcoming(s.date) && s.status !== "בוטל").length,
+    upcoming:  shows.filter(isUpcomingShow).length,
     unpaid:    shows.filter(s => s.payment_status === "לא שולם").length,
     followup:  shows.filter(s => s.status === "צריך פולואפ").length,
     done:      shows.filter(s => s.status === "בוצע").length,
@@ -1569,7 +1576,7 @@ export default function ShowsHubPreview() {
 
   function tabFilter(s: Show): boolean {
     switch (tab) {
-      case "upcoming":  return isUpcoming(s.date) && s.status !== "בוטל";
+      case "upcoming":  return isUpcomingShow(s);
       case "unpaid":    return s.payment_status === "לא שולם";
       case "followup":  return s.status === "צריך פולואפ";
       case "done":      return s.status === "בוצע";
@@ -1600,15 +1607,26 @@ export default function ShowsHubPreview() {
   }, [shows, tab, search, filterSt, filterPay, sort]);
 
   const kpis = useMemo(() => {
-    const active = shows.filter(s => s.status !== "בוטל");
+    // ps widened to string: "התקבל" is a transaction status (anomaly on a show),
+    // not part of the PaymentStatus union — mirrors calcRemaining's defence.
+    const isReceived  = (s: Show) => { const ps: string = s.payment_status; return ps === "שולם" || ps === "התקבל"; };
+    const isCancelled = (s: Show) => s.status === "בוטל" || s.payment_status === "בוטל";
+    const active   = shows.filter(s => !isCancelled(s));
+    const expected = active.filter(s => !isReceived(s)); // not cancelled AND not fully paid
+    // Still-uncollected balance: calcRemaining already returns 0 for received /
+    // cancelled shows, so this covers "expected income" per the agreed rules
+    // (partial → only the unpaid balance). Equals "remaining" when no advances.
+    const uncollected = active.reduce((a, s) => a + calcRemaining(s), 0);
     return {
       total:       shows.length,
-      upCount:     upcoming.length,
-      expIncome:   active.reduce((a, s) => a + s.show_price, 0),
-      remaining:   active.reduce((a, s) => a + calcRemaining(s), 0),
-      labelProfit: active.reduce((a, s) => a + calcLabelShare(s), 0),
+      upCount:     shows.filter(isUpcomingShow).length,
+      expIncome:   uncollected,
+      remaining:   uncollected,
+      // Label-profit forecast excludes received / cancelled shows; a partial show
+      // keeps its FULL label share (no reliable pro-rata source — not invented).
+      labelProfit: expected.reduce((a, s) => a + calcLabelShare(s), 0),
     };
-  }, [shows, upcoming]);
+  }, [shows]);
 
   async function cancelShow(id: string, hasCalendar: boolean) {
     const body: Record<string, unknown> = { status: "בוטל" };
