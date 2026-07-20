@@ -1505,6 +1505,25 @@ function VictorProjectDrawer({
     setDeletingIdx(idx);
     setDeleteError(false);
     try {
+      if (!isOwner) {
+        // Victor: secure server-side delete addressed ONLY by the opaque fileRef.
+        // Never sends a Dropbox path or the full filesSent array — the server does
+        // the Dropbox delete + single-entry removal and returns the fresh record,
+        // so no paths are lost and no metadata is corrupted.
+        if (!file.fileRef) { setDeleteError(true); return; }
+        const res = await fetch(`/api/vendor/victor/work/${work.id}/file`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileRef: file.fileRef }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok || !data.work) { setDeleteError(true); return; }
+        setEffectiveFiles(data.work.filesSent ?? []);
+        setEffectiveReviews(data.work.versionReviews ?? {});
+        onRefresh?.();
+        return;
+      }
+      // Owner: existing path-based flow.
       // Try Dropbox delete only when we have a path. The route treats
       // not_found as success, so a file already gone in Dropbox (or with no
       // stored path) is still hard-deleted from the list. Only a real
@@ -1945,11 +1964,18 @@ function VictorProjectDrawer({
         </div>
         <button onClick={() => downloadFile(file, work.id)} disabled={!hasUrl} title={hasUrl ? t("file.download") : t("file.noDownload")}
           style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconDownload size={15} /></button>
-        {isOwner && (
+        {/* Delete a version file — owner (Hebrew) + Victor (English). Victor's
+            delete goes through the secure fileRef endpoint (see handleDeleteFile). */}
+        {(
           deleteConfirmIdx === sentIdx ? (
-            <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-              <button onClick={() => handleDeleteFile(file, sentIdx)} disabled={deletingIdx === sentIdx} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: deletingIdx === sentIdx ? MUTED : RED, border: "none", color: "#fff", cursor: deletingIdx === sentIdx ? "default" : "pointer", fontFamily: "inherit" }}>{deletingIdx === sentIdx ? "…" : t("drawer.confirm")}</button>
-              <button onClick={() => { setDeleteConfirmIdx(null); setDeleteError(false); }} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0, alignItems: "flex-end", maxWidth: 220 }}>
+              {t("file.deleteQ") && (
+                <div style={{ fontSize: 10, color: "#FCA5A5", fontWeight: 700, textAlign: "end", lineHeight: 1.35 }}>{t("file.deleteQ")}</div>
+              )}
+              <div style={{ display: "flex", gap: 5 }}>
+                <button onClick={() => handleDeleteFile(file, sentIdx)} disabled={deletingIdx === sentIdx} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: deletingIdx === sentIdx ? MUTED : RED, border: "none", color: "#fff", cursor: deletingIdx === sentIdx ? "default" : "pointer", fontFamily: "inherit" }}>{deletingIdx === sentIdx ? "…" : t("file.deleteDo")}</button>
+                <button onClick={() => { setDeleteConfirmIdx(null); setDeleteError(false); }} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+              </div>
             </div>
           ) : (
             <button onClick={() => { setDeleteConfirmIdx(sentIdx); setDeleteError(false); }} title={t("file.delete")}
