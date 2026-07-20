@@ -1321,9 +1321,10 @@ function VictorProjectDrawer({
   const [openingDbx, setOpeningDbx] = useState(false);
   const [dbxFallback, setDbxFallback] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
-  const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
+  const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null); // fileId of the row whose confirm is open
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);           // fileId currently being deleted
   const [deleteError, setDeleteError] = useState(false);
+  const deletingRef = useRef<Set<string>>(new Set());                            // atomic double-request guard (no state race)
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -1529,16 +1530,21 @@ function VictorProjectDrawer({
     await patchWork({ references: next });
   }
 
-  async function handleDeleteFile(file: FileLink, idx: number) {
-    setDeleteConfirmIdx(null);
-    setDeletingIdx(idx);
+  // Delete ONE version file, keyed by a stable per-file id (fileRef for Victor,
+  // dropboxPath for owner). The confirm stays open with a disabled "Deleting…"
+  // button until the request settles; a ref guard makes a fast double-click send
+  // exactly one request; the file leaves the list only on success.
+  async function handleDeleteFile(file: FileLink) {
+    const key = fileId(file);
+    if (deletingRef.current.has(key)) return; // already deleting this file → ignore the extra click
+    deletingRef.current.add(key);
+    setDeletingKey(key);
     setDeleteError(false);
     try {
       if (!isOwner) {
         // Victor: secure server-side delete addressed ONLY by the opaque fileRef.
-        // Never sends a Dropbox path or the full filesSent array — the server does
-        // the Dropbox delete + single-entry removal and returns the fresh record,
-        // so no paths are lost and no metadata is corrupted.
+        // The server does the Dropbox delete + single-entry removal and returns the
+        // fresh record, so no paths are lost and no metadata is corrupted.
         if (!file.fileRef) { setDeleteError(true); return; }
         const res = await fetch(`/api/vendor/victor/work/${work.id}/file`, {
           method: "DELETE",
@@ -1549,6 +1555,7 @@ function VictorProjectDrawer({
         if (!res.ok || !data.ok || !data.work) { setDeleteError(true); return; }
         setEffectiveFiles(data.work.filesSent ?? []);
         setEffectiveReviews(data.work.versionReviews ?? {});
+        setDeleteConfirmKey(null);
         onRefresh?.();
         return;
       }
@@ -1563,13 +1570,9 @@ function VictorProjectDrawer({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ dropboxPath: file.dropboxPath }),
         });
-        if (!delRes.ok) {
-          setDeleteError(true);
-          setDeletingIdx(null);
-          return;
-        }
+        if (!delRes.ok) { setDeleteError(true); return; }
       }
-      const filtered = effectiveFiles.filter((_, i) => i !== idx);
+      const filtered = effectiveFiles.filter(f => fileId(f) !== key);
       // When a version loses its LAST file, drop its review too — otherwise a
       // reused version number (e.g. a fresh V1) would inherit the old feedback.
       const remainingKeys = versionKeysOf(filtered);
@@ -1584,11 +1587,13 @@ function VictorProjectDrawer({
       });
       setEffectiveFiles(filtered);
       if (reviewsChanged) setEffectiveReviews(prunedReviews);
+      setDeleteConfirmKey(null);
       onRefresh?.();
     } catch {
       setDeleteError(true);
     } finally {
-      setDeletingIdx(null);
+      deletingRef.current.delete(key);
+      setDeletingKey(null);
     }
   }
 
@@ -2053,22 +2058,26 @@ function VictorProjectDrawer({
           style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: hasUrl ? "rgba(255,255,255,0.05)" : "transparent", border: `1px solid ${hasUrl ? BDR2 : "transparent"}`, color: hasUrl ? TEXT2 : `${MUTED}55`, cursor: hasUrl ? "pointer" : "not-allowed", padding: 0, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}><IconDownload size={15} /></button>
         {/* Delete a version file — owner (Hebrew) + Victor (English). Victor's
             delete goes through the secure fileRef endpoint (see handleDeleteFile). */}
-        {(
-          deleteConfirmIdx === sentIdx ? (
+        {(() => {
+          const fkey = fileId(file);
+          const isDeleting = deletingKey === fkey;
+          return deleteConfirmKey === fkey ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0, alignItems: "flex-end", maxWidth: 220 }}>
               {t("file.deleteQ") && (
                 <div style={{ fontSize: 10, color: "#FCA5A5", fontWeight: 700, textAlign: "end", lineHeight: 1.35 }}>{t("file.deleteQ")}</div>
               )}
               <div style={{ display: "flex", gap: 5 }}>
-                <button onClick={() => handleDeleteFile(file, sentIdx)} disabled={deletingIdx === sentIdx} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: deletingIdx === sentIdx ? MUTED : RED, border: "none", color: "#fff", cursor: deletingIdx === sentIdx ? "default" : "pointer", fontFamily: "inherit" }}>{deletingIdx === sentIdx ? "…" : t("file.deleteDo")}</button>
-                <button onClick={() => { setDeleteConfirmIdx(null); setDeleteError(false); }} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteFile(file); }} disabled={isDeleting}
+                  style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 800, background: isDeleting ? MUTED : RED, border: "none", color: "#fff", cursor: isDeleting ? "default" : "pointer", fontFamily: "inherit" }}>{isDeleting ? t("drawer.removing") : t("file.deleteDo")}</button>
+                <button onClick={(e) => { e.stopPropagation(); if (isDeleting) return; setDeleteConfirmKey(null); setDeleteError(false); }} disabled={isDeleting}
+                  style={{ padding: "4px 9px", borderRadius: 7, fontSize: 10, fontWeight: 700, background: CARD, border: `1px solid ${BDR2}`, color: TEXT2, cursor: isDeleting ? "default" : "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => { setDeleteConfirmIdx(sentIdx); setDeleteError(false); }} title={t("file.delete")}
+            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteConfirmKey(fkey); setDeleteError(false); }} title={t("file.delete")}
               style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.30)", borderRadius: 7, cursor: "pointer", color: "#F87171", fontSize: 12, padding: "4px 8px", flexShrink: 0, fontFamily: "inherit" }} ><IconTrash size={11} style={{ marginInlineEnd: 4 }} />{t("file.deleteBtn")}</button>
-          )
-        )}
+          );
+        })()}
       </div>
     );
   }
@@ -2607,7 +2616,7 @@ function VictorProjectDrawer({
                   const num = /^V\d/.test(g.label) ? g.label.slice(1) : null;
                   const title = num ? `${t("versions.round")} ${num}` : isOlder ? t("versions.olderFiles") : (g.label || t("versions.round"));
                   const badge: React.ReactNode = num ? `V${num}` : isOlder ? <IconFolder size={15} /> : <IconMusic size={14} />;
-                  const errNode = deleteError && deletingIdx !== null && g.files.some(x => x.sentIdx === deletingIdx)
+                  const errNode = deleteError && deleteConfirmKey !== null && g.files.some(x => fileId(x.file) === deleteConfirmKey)
                     ? <div style={{ fontSize: 10, color: RED, padding: "0 4px" }}>{t("file.retryError")}</div> : null;
                   return isLatest ? (
                     /* ── Latest Version — large, prominent card ── */
