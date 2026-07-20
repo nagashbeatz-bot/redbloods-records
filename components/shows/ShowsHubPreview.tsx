@@ -338,8 +338,10 @@ const FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "אושרה", "�
 
 // Pipeline (lead/quote) statuses — a record in one of these opens as a "הצעת מחיר".
 const PIPELINE_STATUSES = new Set<string>(["ליד חדש", "ממתין לתשובה", "צריך פולואפ"]);
-// Statuses selectable inside the compact "הצעת מחיר" mode.
-const QUOTE_FORM_STATUSES: ShowStatus[] = ["ממתין לתשובה", "אושרה"];
+// Statuses selectable inside the compact "הצעת מחיר" mode. Pipeline-only — a
+// quote stays out of Finance/KPIs no matter which of these is chosen. Approval
+// is NOT a status here; it goes through the explicit "הצעה אושרה" button.
+const QUOTE_FORM_STATUSES: ShowStatus[] = ["ליד חדש", "ממתין לתשובה", "צריך פולואפ"];
 
 interface FormState {
   name: string; artist: string; artist_client_id: string | null;
@@ -406,6 +408,13 @@ function ShowFormModal({
   // The record's id once it exists (edit → its id; a quote we POSTed → its new id).
   // Drives PATCH-vs-POST so a saved quote is never duplicated on a re-click / convert.
   const [savedId, setSavedId] = useState<string | null>(editShow?.id ?? null);
+  // True once this record has been approved from a quote (either origin: an
+  // existing pipeline record, or a brand-new quote). Gates the "real name"
+  // validation on the final full-form save so an approved show is never saved
+  // with the auto "הצעת מחיר — …" placeholder name.
+  const [cameFromQuote, setCameFromQuote] = useState(
+    mode === "edit" && editShow ? PIPELINE_STATUSES.has(editShow.status) : false,
+  );
 
   // Inject spin-button removal CSS once (avoids <style> tag in JSX)
   useEffect(() => {
@@ -518,19 +527,13 @@ function ShowFormModal({
     setForm(prev => ({ ...prev, dj_client_id: c.id, dj_name: c.name }));
   }
 
-  // "הצעת מחיר" primary action.
-  //   status "אושרה"        → convert to the full form IN PLACE (no network; the
-  //                           record is created/updated only on the full-form save).
-  //   status "ממתין לתשובה" → save a lightweight quote/lead (POST, or PATCH if it
-  //                           already exists), keep the modal open, no dup.
-  async function handleQuoteAction() {
+  // "הצעת מחיר" secondary action — "שלח הצעה" (new) / "עדכן הצעה" (existing).
+  // Saves a lightweight quote/lead: POST when there is no savedId yet, otherwise
+  // PATCH the SAME record (dedup — never a second row). Keeps it a pipeline record
+  // (status clamped to a pipeline status → no Finance, no Calendar, no KPI) and
+  // keeps the modal open. The artist is persisted on the same show record.
+  async function handleQuoteSave() {
     const contact = form.contact_person.trim();
-    if (form.status === "אושרה") {
-      setAddToCalendar(false); // do NOT auto-enable calendar just because it was approved
-      setErr(null);
-      setFormMode("show");     // switch to full form; keeps every value already entered
-      return;
-    }
     if (!contact) { setErr("איש קשר חובה בהצעת מחיר"); return; }
     setSaving(true); setErr(null);
     try {
@@ -538,15 +541,20 @@ function ShowFormModal({
         (savedId && form.name.trim()) ? form.name.trim()
         : contact ? `הצעת מחיר — ${contact}`
         : `הצעת מחיר — ${form.date || new Date().toISOString().slice(0, 10)}`;
+      // Never persist "אושרה" here — approval only happens via the explicit button.
+      const quoteStatus: ShowStatus =
+        QUOTE_FORM_STATUSES.includes(form.status) ? form.status : "ממתין לתשובה";
       const payload: Record<string, unknown> = {
-        name:           autoName,
-        date:           form.date || null,
-        contact_person: contact,
-        phone:          form.phone.trim(),
-        status:         "ממתין לתשובה",
-        payment_status: "לא שולם",
-        show_price:     Number(form.show_price) || 0,
-        // no addToCalendar → no Google Calendar; server keeps Finance clear for ממתין
+        name:             autoName,
+        artist:           form.artist.trim(),
+        artist_client_id: form.artist_client_id ?? null,
+        date:             form.date || null,
+        contact_person:   contact,
+        phone:            form.phone.trim(),
+        status:           quoteStatus,
+        payment_status:   "לא שולם",
+        show_price:       Number(form.show_price) || 0,
+        // no addToCalendar → no Google Calendar; server keeps Finance clear for pipeline
       };
       if (form.booker_client_id) {
         payload.booker_client_id = form.booker_client_id;
@@ -573,10 +581,27 @@ function ShowFormModal({
     }
   }
 
+  // "הצעת מחיר" primary action — "הצעה אושרה". Purely client-side: convert the
+  // SAME modal to the full "הופעה" form so the user can complete the real details.
+  // Sends NO request and does NOT touch the server — the record is created/updated
+  // only on the final full-form save (PATCH the same savedId, or POST if the quote
+  // was never saved). Independent of the status dropdown value.
+  function handleApproveConvert() {
+    setErr(null);
+    setAddToCalendar(false);  // do NOT auto-enable calendar just because it was approved
+    set("status", "אושרה");   // local only — persisted on the final full-form save
+    setCameFromQuote(true);   // enforce a real name before that final save
+    setFormMode("show");      // switch to full form; keeps every value already entered
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (formMode === "quote") { await handleQuoteAction(); return; }
-    if (!form.name.trim()) { setErr("שם ההופעה חובה"); return; }
+    if (formMode === "quote") { await handleQuoteSave(); return; }
+    const trimmedName = form.name.trim();
+    if (!trimmedName) { setErr(cameFromQuote ? "יש להזין שם הופעה לפני אישור ההצעה" : "שם ההופעה חובה"); return; }
+    // An approved quote must be renamed before it is saved as a real show — never
+    // persist the auto "הצעת מחיר — …" placeholder (universal, harmless for real shows).
+    if (trimmedName.startsWith("הצעת מחיר")) { setErr("יש להזין שם הופעה לפני אישור ההצעה"); return; }
     if (addToCalendar && !form.date) {
       setErr("כדי להוסיף ליומן צריך לבחור תאריך");
       return;
@@ -761,9 +786,9 @@ function ShowFormModal({
         {/* Header */}
         <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${BDR}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>
-            {mode === "edit"
-              ? (formMode === "quote" ? "עריכת הצעת מחיר" : "עריכת הופעה")
-              : (formMode === "quote" ? "הצעת מחיר" : "הופעה חדשה")}
+            {formMode === "quote"
+              ? "הצעת מחיר"
+              : (mode === "edit" ? "עריכת הופעה" : "הופעה חדשה")}
           </div>
           <button onClick={onClose} style={{ background: CARD2, border: `1px solid ${BDR}`, cursor: "pointer", color: TEXT2, fontSize: 14, padding: "6px 10px", borderRadius: 8, lineHeight: 1 }}>✕</button>
         </div>
@@ -849,15 +874,34 @@ function ShowFormModal({
                 )}
               </div>
 
+              {/* Artist — SAME source of truth as the full form (vipClients / selectArtist) */}
+              <div>
+                <label style={labelStyle}>אמן</label>
+                {cliLoad ? (
+                  <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
+                ) : vipClients.length === 0 ? (
+                  <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אמנים מסוג VIP</div>
+                ) : (
+                  <select
+                    value={form.artist_client_id ?? ""}
+                    onChange={e => selectArtist(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">בחר אמן…</option>
+                    {vipClients.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <div>
                 <label style={labelStyle}>סטטוס</label>
                 <select value={QUOTE_FORM_STATUSES.includes(form.status) ? form.status : "ממתין לתשובה"} onChange={e => set("status", e.target.value as ShowStatus)} style={inputStyle}>
                   {QUOTE_FORM_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 <div style={{ marginTop: 6, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-                  {form.status === "אושרה"
-                    ? "אישור יעביר למילוי פרטי ההופעה המלאים — ההופעה תיווצר רק בשמירה הסופית."
-                    : "ההצעה תישמר כ״ממתין לתשובה״ — ללא יומן Google, ללא כספים, ולא תופיע בהופעות קרובות."}
+                  „הצעה אושרה” יעביר למילוי פרטי ההופעה המלאים — ההופעה תיווצר רק בשמירה הסופית. „עדכן הצעה” שומר את ההצעה ללא יומן Google, ללא כספים, ומחוץ להופעות הקרובות.
                 </div>
               </div>
             </>
@@ -1137,22 +1181,43 @@ function ShowFormModal({
           )}
 
           {/* Actions */}
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-            <button type="button" onClick={onClose} style={{
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4, flexWrap: "wrap" }}>
+            <button type="button" onClick={onClose} disabled={saving} style={{
               padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 700,
-              background: "none", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer",
+              background: "none", border: `1px solid ${BDR2}`, color: TEXT2,
+              cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1,
             }}>ביטול</button>
-            <button type="submit" disabled={saving} style={{
-              padding: "10px 24px", borderRadius: 10, fontSize: 13, fontWeight: 800,
-              background: saving ? MUTED : BRAND, border: "none", color: "#fff",
-              cursor: saving ? "default" : "pointer",
-              boxShadow: saving ? "none" : "0 4px 16px rgba(220,38,38,0.4)",
-            }}>
-              {saving ? "שומר…"
-                : formMode === "quote"
-                  ? (form.status === "אושרה" ? "אשר והמשך למילוי" : (savedId ? "עדכן הצעה" : "שלח הצעה"))
-                  : (savedId ? "שמור שינויים" : "צור הופעה")}
-            </button>
+
+            {formMode === "quote" ? (
+              <>
+                {/* Secondary — save/update the pending quote (PATCH existing / POST new); stays a quote */}
+                <button type="button" onClick={handleQuoteSave} disabled={saving} style={{
+                  padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 800,
+                  background: BG2, border: `1px solid ${BDR2}`, color: TEXT,
+                  cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1,
+                }}>
+                  {saving ? "שומר…" : (savedId ? "עדכן הצעה" : "שלח הצעה")}
+                </button>
+                {/* Primary — approve: convert to the full form client-side, NO request */}
+                <button type="button" onClick={handleApproveConvert} disabled={saving} style={{
+                  padding: "10px 24px", borderRadius: 10, fontSize: 13, fontWeight: 800,
+                  background: saving ? MUTED : BRAND, border: "none", color: "#fff",
+                  cursor: saving ? "default" : "pointer",
+                  boxShadow: saving ? "none" : "0 4px 16px rgba(220,38,38,0.4)",
+                }}>
+                  הצעה אושרה
+                </button>
+              </>
+            ) : (
+              <button type="submit" disabled={saving} style={{
+                padding: "10px 24px", borderRadius: 10, fontSize: 13, fontWeight: 800,
+                background: saving ? MUTED : BRAND, border: "none", color: "#fff",
+                cursor: saving ? "default" : "pointer",
+                boxShadow: saving ? "none" : "0 4px 16px rgba(220,38,38,0.4)",
+              }}>
+                {saving ? "שומר…" : (savedId ? "שמור שינויים" : "צור הופעה")}
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -2164,7 +2229,12 @@ export default function ShowsHubPreview() {
                         {filtered.map((s, i) => {
                           const sel = selected?.id === s.id;
                           return (
-                            <tr key={s.id} onClick={() => setSelected(prev => prev?.id === s.id ? null : s)} style={{
+                            <tr key={s.id} onClick={() => {
+                              // Lead/quote rows open the dedicated "הצעת מחיר" modal;
+                              // confirmed shows keep the existing side-panel flow.
+                              if (PIPELINE_STATUSES.has(s.status)) { setSelected(null); setModal({ mode: "edit", show: s }); }
+                              else setSelected(prev => prev?.id === s.id ? null : s);
+                            }} style={{
                               borderBottom: `1px solid ${BDR}`,
                               background: sel ? "rgba(220,38,38,0.06)" : i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.014)",
                               cursor: "pointer",
