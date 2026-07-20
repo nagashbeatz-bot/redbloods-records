@@ -472,6 +472,15 @@ function fmtDur(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Human-readable file size (locale-neutral) for the upload modal.
+function fmtBytes(n: number): string {
+  if (!n || n < 0) return "0 B";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 // Single active Victor-drawer audio — playing one file pauses any other (each
 // row's own "pause" event then resets its UI). Drawer-local; does NOT touch the
 // app's global PlayerProvider.
@@ -1299,6 +1308,16 @@ function VictorProjectDrawer({
   // button shows "saving…" instead of a percentage. Cancels on unmount.
   const [savingDbx, setSavingDbx] = useState(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
+  // ── Upload progress modal ──
+  const [uploadState, setUploadState] = useState<"idle" | "preparing" | "uploading" | "finishing" | "complete" | "cancelled" | "failed">("idle");
+  const [uploadMeta, setUploadMeta] = useState<{ name: string; size: number; index: number; total: number } | null>(null);
+  const [uploadCancelConfirm, setUploadCancelConfirm] = useState(false);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);       // in-flight single-shot request (for abort)
+  const uploadCancelledRef = useRef(false);                 // set on cancel → the batch catch reports "cancelled", never re-adds files
+  const pendingFilesRef = useRef<File[] | null>(null);      // last selection (for "try again")
+  const mountedRef = useRef(true);                          // guards terminal setState after unmount
+  const autoCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uploadActive = uploadState === "preparing" || uploadState === "uploading"; // savingDbx = the commit ("finishing") phase
   const [openingDbx, setOpeningDbx] = useState(false);
   const [dbxFallback, setDbxFallback] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1339,14 +1358,24 @@ function VictorProjectDrawer({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (playingId) setPlayingId(null);
+      else if (uploadActive) setUploadCancelConfirm(true); // don't drop an active upload silently
       else onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, playingId]);
+  }, [onClose, playingId, uploadActive]);
 
-  // Cancel any in-flight chunked upload when the drawer unmounts (close / switch).
-  useEffect(() => () => { uploadAbortRef.current?.abort(); }, []);
+  // Abort any in-flight upload (chunked fetch AND single-shot XHR) when the drawer
+  // unmounts (close / switch), guard terminal setState, and clear the auto-close timer.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      uploadAbortRef.current?.abort();
+      try { xhrRef.current?.abort(); } catch { /* ignore */ }
+      if (autoCloseRef.current) clearTimeout(autoCloseRef.current);
+    };
+  }, []);
 
   // Manual "send work to Victor": pushes to Victor, then (only if he actually
   // got it) a confirmation push to the owner. Sends ONLY the workId — the server
@@ -1580,12 +1609,16 @@ function VictorProjectDrawer({
       fd.append("subFolder", "Production");
       if (versionLabel) fd.append("versionLabel", versionLabel); // omit → file lands under "Older files"
       const xhr = new XMLHttpRequest();
+      xhrRef.current = xhr; // exposed for a real xhr.abort() on cancel/unmount
       xhr.open("POST", "/api/dropbox/vendor-upload");
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadProgress(Math.round(((idx + e.loaded / e.total) / total) * 100));
       };
       xhr.onload = () => {
+        xhrRef.current = null;
         if (xhr.status === 200) {
+          // Skip re-adding if the user cancelled after the request already settled.
+          if (uploadCancelledRef.current) { resolve(); return; }
           try {
             const data = JSON.parse(xhr.responseText) as { ok: boolean; file?: FileLink };
             if (data.ok && data.file) setEffectiveFiles(prev => [...prev, data.file!]);
@@ -1593,7 +1626,8 @@ function VictorProjectDrawer({
           resolve();
         } else reject(new Error(xhr.responseText));
       };
-      xhr.onerror = () => reject(new Error(t("err.network")));
+      xhr.onerror  = () => { xhrRef.current = null; reject(new Error(t("err.network"))); };
+      xhr.onabort  = () => { xhrRef.current = null; reject(new DOMException("aborted", "AbortError")); };
       xhr.send(fd);
     });
   }
@@ -1646,21 +1680,33 @@ function VictorProjectDrawer({
   // One upload batch (a single file-picker selection or drop) = ONE new version.
   // All files in the batch share "V{next}". After it, the new (latest) version
   // opens and older ones collapse (openGroups reset → group defaults apply).
-  async function handleUploadBatch(fileList: FileList | null) {
+  function handleUploadBatch(fileList: FileList | null) {
     const files = fileList ? Array.from(fileList) : [];
-    if (files.length === 0 || uploading) return;
-    // Dispatch by size: >1GB rejected; >140MB uses the chunked upload-session
-    // (Dropbox single-shot maxes ~150MB); otherwise the existing single-shot path.
-    const MAX_BYTES   = 1024 * 1024 * 1024;   // 1GB in-app hard limit
-    const CHUNK_LIMIT = 140 * 1024 * 1024;    // switch to chunked above this
-    if (files.some(f => f.size > MAX_BYTES)) {
+    if (files.length === 0 || uploadActive) return;
+    // >1GB rejected up-front (surfaced in the modal as a failed state).
+    if (files.some(f => f.size > 1024 * 1024 * 1024)) {
       setUploadError(t("files.tooLarge"));
+      setUploadMeta({ name: files[0].name, size: files[0].size, index: 0, total: files.length });
+      setUploadState("failed");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-    setUploading(true);
-    setUploadProgress(0);
+    pendingFilesRef.current = files; // remembered for "try again"
+    runUpload(files);
+  }
+
+  async function runUpload(files: File[]) {
+    // Dispatch by size: >140MB uses the chunked upload-session (Dropbox single-shot
+    // maxes ~150MB); otherwise the existing single-shot path.
+    const CHUNK_LIMIT = 140 * 1024 * 1024;
+    uploadCancelledRef.current = false;
+    if (autoCloseRef.current) { clearTimeout(autoCloseRef.current); autoCloseRef.current = null; }
+    setUploadCancelConfirm(false);
     setUploadError(null);
+    setUploadProgress(0);
+    setUploading(true);
+    setUploadState("preparing");
+    setUploadMeta({ name: files[0].name, size: files[0].size, index: 0, total: files.length });
     // Version rule (per-work, with a 10-minute rolling window):
     //  • latest version updated < 10 min ago → JOIN it (incl. audio) — a follow-up
     //    file is part of the same round, not a new version.
@@ -1701,25 +1747,66 @@ function VictorProjectDrawer({
       // resolves & creates the folder server-side from the workId, so his client
       // sends no folder at all (nothing Artist/Project-revealing reaches him).
       const folder = (isOwner ? await ensureDropboxFolder() : "") ?? "";
-      if (isOwner && !folder) { setUploading(false); return; }
+      if (uploadCancelledRef.current) throw new DOMException("aborted", "AbortError");
+      if (isOwner && !folder) { setUploadError(t("err.upload")); setUploadState("failed"); return; }
+      setUploadState("uploading");
       for (let i = 0; i < files.length; i++) {
+        if (uploadCancelledRef.current) throw new DOMException("aborted", "AbortError");
+        setUploadMeta({ name: files[i].name, size: files[i].size, index: i, total: files.length });
         if (files[i].size > CHUNK_LIMIT) await chunkedUploadOne(files[i], versionLabel, i, files.length);
         else await uploadOne(files[i], folder, versionLabel, i, files.length);
       }
+      if (!mountedRef.current) return;
       // Reveal where the files landed: the version (latest) opens by default;
       // an unlabeled batch opens the "Older files" bucket instead.
       setOpenGroups(versionLabel ? {} : { __untagged__: true });
       onRefresh?.();
+      setUploadProgress(100);
+      setUploadState("complete");
+      // Short, safe auto-close of the modal after success.
+      autoCloseRef.current = setTimeout(() => { if (mountedRef.current) { setUploadState("idle"); setUploadMeta(null); } }, 1600);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t("err.upload");
-      setUploadError(msg);
-      console.error("upload failed", err);
+      if (!mountedRef.current) return;
+      if (uploadCancelledRef.current || (err instanceof DOMException && err.name === "AbortError")) {
+        setUploadState("cancelled");     // real cancel — no file added, no failure shown
+      } else {
+        setUploadError(err instanceof Error ? err.message : t("err.upload"));
+        setUploadState("failed");
+        console.error("upload failed", err);
+      }
     } finally {
       setUploading(false);
-      setUploadProgress(0);
       setSavingDbx(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  // Cancel the active upload: a REAL abort of the in-flight request (single-shot
+  // XHR or chunked fetch). The file is kept OUT of the list and the "cancelled"
+  // state is shown. A chunked session that never reaches "finish" leaves no file.
+  function cancelUpload() {
+    uploadCancelledRef.current = true;
+    try { xhrRef.current?.abort(); } catch { /* ignore */ }
+    try { uploadAbortRef.current?.abort(); } catch { /* ignore */ }
+    setUploadCancelConfirm(false);
+    setUploadProgress(0);
+    setSavingDbx(false);
+    setUploadState("cancelled");
+  }
+  // "Try again" → a brand-new request from 0% for the same selection.
+  function retryUpload() {
+    const files = pendingFilesRef.current;
+    if (files && files.length) runUpload(files);
+  }
+  // Dismiss the modal (only when no transfer is active).
+  function closeUploadModal() {
+    if (autoCloseRef.current) { clearTimeout(autoCloseRef.current); autoCloseRef.current = null; }
+    setUploadState("idle"); setUploadMeta(null); setUploadError(null);
+  }
+  // Guarded drawer close — while a transfer is active, ask to cancel first.
+  function requestClose() {
+    if (uploadActive) { setUploadCancelConfirm(true); return; }
+    onClose();
   }
 
   // Ensure a Dropbox folder exists for this work, creating it on demand.
@@ -2089,7 +2176,7 @@ function VictorProjectDrawer({
     <>
       {/* Backdrop */}
       <div
-        onClick={onClose}
+        onClick={requestClose}
         style={{
           position: "fixed", inset: 0,
           background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)",
@@ -2132,7 +2219,7 @@ function VictorProjectDrawer({
 
           {/* Row 1: close + open-in-projects */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <button onClick={onClose} style={{
+            <button onClick={requestClose} style={{
               background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`,
               borderRadius: 8, cursor: "pointer", padding: "4px 10px",
               color: TEXT2, lineHeight: 1, fontFamily: "inherit",
@@ -2992,6 +3079,90 @@ function VictorProjectDrawer({
               allowFullScreen
               style={{ width: "100%", height: "100%", border: "none" }}
             />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Upload progress modal (owner + Victor; language via i18n) ── */}
+      {uploadState !== "idle" && createPortal(
+        <div
+          dir={lang === "he" ? "rtl" : "ltr"}
+          style={{ position: "fixed", inset: 0, zIndex: 100055, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "'Heebo', Arial, sans-serif" }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ width: "min(460px, 96vw)", background: CARD, border: `1px solid ${PURPLE}44`, borderRadius: 16, padding: "20px 22px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+              <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>{t("upload.modalTitle")}</div>
+              <button
+                title={uploadActive ? t("upload.cancelUpload") : t("upload.close")}
+                onClick={() => { if (savingDbx) return; if (uploadActive) setUploadCancelConfirm(true); else closeUploadModal(); }}
+                style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, color: savingDbx ? MUTED : TEXT2, cursor: savingDbx ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}
+              ><IconX size={14} /></button>
+            </div>
+
+            {/* File name + size (+ n/total for a batch) */}
+            {uploadMeta && (
+              <div style={{ marginBottom: 12, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflowWrap: "anywhere", lineHeight: 1.35 }}>{uploadMeta.name}</div>
+                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>
+                  {fmtBytes(uploadMeta.size)}{uploadMeta.total > 1 ? ` · ${uploadMeta.index + 1} / ${uploadMeta.total}` : ""}
+                </div>
+              </div>
+            )}
+
+            {/* Progress bar + real percentage */}
+            {(uploadState === "preparing" || uploadState === "uploading" || uploadState === "complete") && (
+              <>
+                <div style={{ height: 8, borderRadius: 6, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${uploadState === "complete" ? 100 : uploadProgress}%`, background: uploadState === "complete" ? GREEN : PURPLE, borderRadius: 6, transition: "width 0.2s ease" }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: uploadState === "complete" ? GREEN : TEXT2 }}>
+                    {uploadState === "preparing" ? t("upload.preparing")
+                      : savingDbx ? t("upload.finishing")
+                      : uploadState === "complete" ? t("upload.complete")
+                      : t("upload.uploading")}
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: TEXT, fontVariantNumeric: "tabular-nums" }}>{uploadState === "complete" ? 100 : uploadProgress}%</span>
+                </div>
+              </>
+            )}
+
+            {/* Cancelled / failed */}
+            {uploadState === "cancelled" && <div style={{ fontSize: 13, fontWeight: 700, color: TEXT2 }}>{t("upload.cancelled")}</div>}
+            {uploadState === "failed" && (
+              <div style={{ fontSize: 12.5, color: "#F87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 12px", overflowWrap: "anywhere" }}>
+                {uploadError || t("upload.failed")}
+              </div>
+            )}
+
+            {/* Footer actions */}
+            {(uploadState === "complete" || uploadState === "failed" || uploadState === "cancelled") && (
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+                {uploadState === "complete" && (
+                  <button onClick={closeUploadModal} style={{ fontSize: 12.5, fontWeight: 800, padding: "7px 18px", borderRadius: 9, background: PURPLE, border: "none", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>{t("upload.done")}</button>
+                )}
+                {uploadState !== "complete" && (
+                  <button onClick={closeUploadModal} style={{ fontSize: 12.5, fontWeight: 700, padding: "7px 16px", borderRadius: 9, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("upload.close")}</button>
+                )}
+                {uploadState === "failed" && pendingFilesRef.current && (
+                  <button onClick={retryUpload} style={{ fontSize: 12.5, fontWeight: 800, padding: "7px 18px", borderRadius: 9, background: PURPLE, border: "none", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>{t("upload.tryAgain")}</button>
+                )}
+              </div>
+            )}
+
+            {/* Cancel confirmation (inline, within the same modal) */}
+            {uploadCancelConfirm && (
+              <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 12, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#FCA5A5", marginBottom: 4 }}>{t("upload.cancelTitle")}</div>
+                <div style={{ fontSize: 12, color: TEXT2, marginBottom: 10 }}>{t("upload.cancelDescription")}</div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button onClick={() => setUploadCancelConfirm(false)} style={{ fontSize: 12, fontWeight: 700, padding: "6px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("upload.keepUploading")}</button>
+                  <button onClick={cancelUpload} style={{ fontSize: 12, fontWeight: 800, padding: "6px 14px", borderRadius: 8, background: "#EF4444", border: "none", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>{t("upload.cancelUpload")}</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>,
         document.body
