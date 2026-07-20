@@ -256,7 +256,7 @@ function ItemRow({
         <td style={{ padding: "8px 10px" }}>
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={handleSave} disabled={saving}
-              style={{ fontSize: 11, color: "#FFF", background: "#3B82F6", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "4px 10px", fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
+              style={{ fontSize: 11, color: "#FFF", background: "#DC2626", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "4px 10px", fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
               {saving ? "..." : "✓"}
             </button>
             <button onClick={() => { setEditing(false); setDraft(item); }}
@@ -406,7 +406,7 @@ function AddItemForm({ onAdd }: { onAdd: (fields: Partial<BudgetItem>) => Promis
           ביטול
         </button>
         <button onClick={handleAdd} disabled={saving || !draft.title.trim()}
-          style={{ fontSize: 12, color: "#FFF", background: "#3B82F6", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "6px 16px", fontWeight: 700, opacity: saving || !draft.title.trim() ? 0.6 : 1 }}>
+          style={{ fontSize: 12, color: "#FFF", background: "#DC2626", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", padding: "6px 16px", fontWeight: 700, opacity: saving || !draft.title.trim() ? 0.6 : 1 }}>
           {saving ? "מוסיף..." : "הוסף"}
         </button>
       </div>

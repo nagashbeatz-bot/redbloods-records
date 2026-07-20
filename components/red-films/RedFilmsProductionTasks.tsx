@@ -399,7 +399,10 @@ export default function RedFilmsProductionTasks({ productionId, productionTitle 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: "#888", margin: 0 }}>משימות הפקה</h2>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14, fontWeight: 700, color: "#EDEDF2", margin: 0 }}>
+            <span style={{ width: 3, height: 15, borderRadius: 2, background: "linear-gradient(180deg, #DC2626, #7F1D1D)", boxShadow: "0 0 8px rgba(220,38,38,0.4)", flexShrink: 0 }} />
+            משימות הפקה
+          </h2>
           {tasks.length > 0 && (
             <div style={{ display: "flex", gap: 8, fontSize: 11 }}>
               {open > 0 && <span style={{ color: "#60A5FA" }}>פתוחות {open}</span>}

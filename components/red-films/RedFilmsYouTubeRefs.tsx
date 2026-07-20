@@ -115,11 +115,12 @@ export default function RedFilmsYouTubeRefs({ productionId }: { productionId: st
 
   // ── Render ──
   return (
-    <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, padding: "18px 20px" }}>
+    <div style={{ position: "relative", background: "linear-gradient(180deg, rgba(24,16,17,0.72), rgba(15,12,13,0.82))", border: "1px solid rgba(220,38,38,0.12)", borderRadius: 18, padding: "18px 20px", boxShadow: "0 14px 44px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.04)", overflow: "hidden" }}>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 700, color: "#888", margin: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10 }}>
+        <h2 style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14, fontWeight: 700, color: "#EDEDF2", margin: 0 }}>
+          <span style={{ width: 3, height: 15, borderRadius: 2, background: "linear-gradient(180deg, #DC2626, #7F1D1D)", boxShadow: "0 0 8px rgba(220,38,38,0.4)", flexShrink: 0 }} />
           🎬 רפרנסים מיוטיוב
         </h2>
         {links.length > 0 && (
@@ -143,7 +144,7 @@ export default function RedFilmsYouTubeRefs({ productionId }: { productionId: st
             disabled={adding || !inputUrl.trim()}
             style={{
               flexShrink: 0, padding: "0 16px", height: 32, borderRadius: 6,
-              background: adding || !inputUrl.trim() ? "#1E1E1E" : "#3B82F6",
+              background: adding || !inputUrl.trim() ? "#1E1E1E" : "#DC2626",
               border: "none", color: adding || !inputUrl.trim() ? "#444" : "#FFF",
               fontSize: 13, fontWeight: 700, cursor: adding || !inputUrl.trim() ? "default" : "pointer",
               fontFamily: "inherit", transition: "background 0.15s",
@@ -238,9 +239,9 @@ export default function RedFilmsYouTubeRefs({ productionId }: { productionId: st
                       title={isActive ? "סגור" : "נגן"}
                       style={{
                         padding: "4px 10px", borderRadius: 6, fontSize: 12,
-                        background: isActive ? "rgba(59,130,246,0.15)" : "none",
-                        border: `1px solid ${isActive ? "rgba(59,130,246,0.4)" : "#333"}`,
-                        color: isActive ? "#60A5FA" : "#888",
+                        background: isActive ? "rgba(220,38,38,0.15)" : "none",
+                        border: `1px solid ${isActive ? "rgba(220,38,38,0.4)" : "#333"}`,
+                        color: isActive ? "#FCA5A5" : "#888",
                         cursor: "pointer", fontFamily: "inherit",
                       }}
                     >

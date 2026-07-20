@@ -252,7 +252,7 @@ function Lightbox({ images, index, onClose, onDelete, onNavigate, onTagChange }:
 
 // ── Grid image with skeleton ──────────────────────────────────────────────────
 
-function RefGridImage({ src, fallbackSrc, alt }: { src: string; fallbackSrc: string; alt: string }) {
+function RefGridImage({ src, fallbackSrc, alt, cover }: { src: string; fallbackSrc: string; alt: string; cover?: boolean }) {
   const [loaded,      setLoaded]      = useState(false);
   const [errored,     setErrored]     = useState(false);
   const [useFallback, setUseFallback] = useState(false);
@@ -261,7 +261,7 @@ function RefGridImage({ src, fallbackSrc, alt }: { src: string; fallbackSrc: str
   if (errored) return null;
 
   return (
-    <div style={{ position: "relative", width: "100%", minHeight: 80, background: "#111", borderRadius: 8 }}>
+    <div style={{ position: "relative", width: "100%", height: cover ? "100%" : undefined, minHeight: cover ? undefined : 80, background: "#111", borderRadius: 8 }}>
       {!loaded && (
         <div style={{
           position: "absolute", inset: 0, borderRadius: 8,
@@ -277,7 +277,7 @@ function RefGridImage({ src, fallbackSrc, alt }: { src: string; fallbackSrc: str
           if (!useFallback && fallbackSrc && fallbackSrc !== src) { setUseFallback(true); }
           else { setErrored(true); }
         }}
-        style={{ display: "block", width: "100%", height: "auto", opacity: loaded ? 1 : 0, transition: "opacity 0.25s", borderRadius: 8 }}
+        style={{ display: "block", width: "100%", height: cover ? "100%" : "auto", objectFit: cover ? "cover" : undefined, opacity: loaded ? 1 : 0, transition: "opacity 0.25s", borderRadius: 8 }}
       />
     </div>
   );
@@ -297,6 +297,8 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [activeFilter,  setActiveFilter]  = useState<string>("הכל");
   const [uploadTag,     setUploadTag]     = useState<string>("כללי");
+  const [showAll,       setShowAll]       = useState(false);
+  const PREVIEW_COUNT = 12; // uniform grid preview; "הצג הכל" reveals the rest
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -410,15 +412,16 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ background: "#1A1A1A", border: "1px solid #252525", borderRadius: 14, padding: "18px 20px" }}>
+    <div style={{ position: "relative", background: "linear-gradient(180deg, rgba(24,16,17,0.72), rgba(15,12,13,0.82))", border: "1px solid rgba(220,38,38,0.12)", borderRadius: 18, padding: "18px 20px", boxShadow: "0 14px 44px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.04)", overflow: "hidden" }}>
       <style>{`@keyframes rb-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 700, color: "#888", margin: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 10 }}>
+        <h2 style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14, fontWeight: 700, color: "#EDEDF2", margin: 0 }}>
+          <span style={{ width: 3, height: 15, borderRadius: 2, background: "linear-gradient(180deg, #DC2626, #7F1D1D)", boxShadow: "0 0 8px rgba(220,38,38,0.4)", flexShrink: 0 }} />
           רפרנסים / השראות
           {refs.length > 0 && (
-            <span style={{ fontSize: 11, color: "#444", fontWeight: 400, marginRight: 8 }}>
+            <span style={{ fontSize: 11, color: "#78787F", fontWeight: 400 }}>
               ({refs.length})
             </span>
           )}
@@ -472,9 +475,9 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
                 style={{
                   fontSize: 11, fontWeight: isActive ? 700 : 400,
                   padding: "3px 10px", borderRadius: 20,
-                  border: `1px solid ${isActive ? "#60A5FA" : "#2A2A2A"}`,
-                  background: isActive ? "rgba(96,165,250,0.12)" : "transparent",
-                  color: isActive ? "#60A5FA" : "#666",
+                  border: `1px solid ${isActive ? "rgba(220,38,38,0.6)" : "#2A2A2A"}`,
+                  background: isActive ? "rgba(220,38,38,0.14)" : "transparent",
+                  color: isActive ? "#FCA5A5" : "#78787F",
                   cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
                   transition: "all 0.12s",
                 }}
@@ -503,29 +506,40 @@ export default function RedFilmsReferencesBoard({ productionId }: { productionId
         <div style={{ color: "#444", fontSize: 12, padding: "24px 0", textAlign: "center" }}>טוען רפרנסים...</div>
       ) : (
         <>
-          {/* Masonry grid — filtered */}
+          {/* Uniform thumbnail grid — capped preview with "הצג הכל" (no giant collage) */}
           {filtered.length > 0 && (
-            <div className="ref-masonry" style={{ columns: "3 160px", columnGap: 8, marginBottom: 12 }}>
-              {filtered.map((ref, i) => (
-                <div
-                  key={ref.id}
-                  onClick={() => setLightboxIndex(i)}
-                  style={{
-                    breakInside: "avoid", marginBottom: 8,
-                    borderRadius: 8, overflow: "hidden",
-                    cursor: "pointer", position: "relative", background: "#111",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.opacity = "0.82")}
-                  onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))", gap: 8, marginBottom: 12 }}>
+                {(showAll ? filtered : filtered.slice(0, PREVIEW_COUNT)).map((ref, i) => (
+                  <div
+                    key={ref.id}
+                    onClick={() => setLightboxIndex(i)}
+                    style={{
+                      aspectRatio: "1 / 1", borderRadius: 10, overflow: "hidden",
+                      cursor: "pointer", position: "relative", background: "#111",
+                      border: "1px solid rgba(220,38,38,0.14)",
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = "0.82")}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+                  >
+                    <RefGridImage
+                      src={toDirectUrl(ref.dropbox_url)}
+                      fallbackSrc={toThumbUrl(ref.dropbox_path)}
+                      alt={ref.file_name}
+                      cover
+                    />
+                  </div>
+                ))}
+              </div>
+              {filtered.length > PREVIEW_COUNT && (
+                <button
+                  onClick={() => setShowAll(v => !v)}
+                  style={{ width: "100%", padding: "8px 0", marginBottom: 12, borderRadius: 10, border: "1px solid rgba(220,38,38,0.28)", background: "rgba(220,38,38,0.06)", color: "#FCA5A5", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
                 >
-                  <RefGridImage
-                    src={toDirectUrl(ref.dropbox_url)}
-                    fallbackSrc={toThumbUrl(ref.dropbox_path)}
-                    alt={ref.file_name}
-                  />
-                </div>
-              ))}
-            </div>
+                  {showAll ? "הצג פחות ↑" : `הצג הכל (${filtered.length}) ↓`}
+                </button>
+              )}
+            </>
           )}
 
           {filtered.length === 0 && refs.length > 0 && (

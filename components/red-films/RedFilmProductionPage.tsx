@@ -19,7 +19,7 @@ import RedFilmsStatusBadge, {
   EDIT_STATUSES,
   CLIENT_SOURCES,
 } from "./RedFilmsStatusBadge";
-import { useProductionLayout, CREATIVE_SECTIONS } from "@/lib/production-layout";
+import { useProductionLayout } from "@/lib/production-layout";
 import type { Production } from "./RedFilmProductionDrawer";
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -74,7 +74,8 @@ const KPI_ICON: Record<string, ReactNode> = {
   calendar: <svg {...ICON_PROPS}><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9.5h18M8 3v3.5M16 3v3.5" /></svg>,
 };
 
-// A single KPI tile — red icon box + value/label, matching the reference row.
+// A single KPI tile — big centered value + red icon circle + glow, matching the
+// KPI cards on the main Red Films list page.
 function KpiCard({ icon, label, value, valueColor }: {
   icon: ReactNode; label: string; value: ReactNode; valueColor?: string;
 }) {
@@ -82,24 +83,23 @@ function KpiCard({ icon, label, value, valueColor }: {
     <div style={{
       position: "relative",
       background: "linear-gradient(160deg, rgba(28,16,17,0.9), rgba(14,11,12,0.96))",
-      border: `1px solid ${RED}24`, borderRadius: 16, padding: "15px 16px",
+      border: `1px solid ${RED}24`, borderRadius: 18, padding: "24px 20px 20px",
       boxShadow: "0 10px 30px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.05)",
-      overflow: "hidden", minWidth: 0,
+      overflow: "hidden", minWidth: 0, minHeight: 118,
     }}>
-      <div style={{ position: "absolute", top: -30, insetInlineStart: -24, width: 92, height: 92, borderRadius: "50%", background: RED, opacity: 0.09, filter: "blur(32px)", pointerEvents: "none" }} />
-      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ position: "absolute", top: -32, insetInlineStart: -26, width: 108, height: 108, borderRadius: "50%", background: RED, opacity: 0.09, filter: "blur(34px)", pointerEvents: "none" }} />
+      <div style={{ position: "relative", minHeight: 50, display: "flex", alignItems: "center" }}>
         <div style={{
-          width: 42, height: 42, borderRadius: 12, flexShrink: 0, color: RED_LIGHT,
+          position: "absolute", insetInlineStart: 0, top: "50%", transform: "translateY(-50%)",
+          width: 50, height: 50, borderRadius: "50%", flexShrink: 0, color: RED_LIGHT,
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "radial-gradient(circle at 50% 38%, rgba(220,38,38,0.20), rgba(220,38,38,0.04))",
           border: `1px solid ${RED}54`,
           boxShadow: "0 0 12px rgba(220,38,38,0.2), inset 0 0 8px rgba(220,38,38,0.12)",
         }}>{icon}</div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 19, fontWeight: 800, color: valueColor ?? "#F4F4F6", letterSpacing: "-0.01em", lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
-          <div style={{ fontSize: 12, color: "#96969C", marginTop: 3, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
-        </div>
+        <div style={{ width: "100%", textAlign: "center", fontSize: 30, fontWeight: 800, color: valueColor ?? "#F4F4F6", letterSpacing: "-0.02em", lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 6px" }}>{value}</div>
       </div>
+      <div style={{ position: "relative", fontSize: 13.5, color: "#96969C", marginTop: 15, fontWeight: 600, textAlign: "center" }}>{label}</div>
     </div>
   );
 }
@@ -110,15 +110,15 @@ function HeroCover({ mobile }: { mobile: boolean }) {
   return (
     <div style={{
       position: "relative", flexShrink: 0,
-      width: mobile ? "100%" : 230, height: mobile ? 150 : 138,
-      borderRadius: 14, overflow: "hidden",
+      width: mobile ? "100%" : 340, height: mobile ? 190 : 210,
+      borderRadius: 16, overflow: "hidden",
       background: "linear-gradient(140deg, #DC2626, #7F1D1D)",
       border: `1px solid ${RED}5A`,
-      boxShadow: "0 0 22px rgba(220,38,38,0.28), inset 0 0 30px rgba(0,0,0,0.35)",
+      boxShadow: "0 0 28px rgba(220,38,38,0.3), inset 0 0 40px rgba(0,0,0,0.35)",
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 100% at 30% 0%, rgba(255,255,255,0.14), transparent 55%)", pointerEvents: "none" }} />
-      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.92 }}>
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.9 }}>
         <rect x="2.5" y="7" width="19" height="13" rx="2" /><path d="M2.5 11h19M8 7l-2 4M13.5 7l-2 4M19 7l-2 4" />
       </svg>
     </div>
@@ -821,7 +821,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         )}
 
         {/* ── Hero ── */}
-        <div style={{ ...CARD_STYLE, padding: isMobile ? 16 : "20px 22px", marginBottom: 16 }}>
+        <div style={{ ...CARD_STYLE, padding: isMobile ? 16 : "26px 26px", marginBottom: 18 }}>
           <div style={{ position: "absolute", top: -40, insetInlineStart: -30, width: 180, height: 180, borderRadius: "50%", background: RED, opacity: 0.06, filter: "blur(50px)", pointerEvents: "none" }} />
           <div style={{ position: "relative", display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 14 : 20, alignItems: isMobile ? "stretch" : "center" }}>
             <HeroCover mobile={isMobile} />
@@ -833,11 +833,11 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                   {prod.production_type}
                 </span>
               )}
-              <h1 style={{ fontSize: isMobile ? 23 : 30, fontWeight: 900, color: "#F5F5F7", margin: 0, letterSpacing: "-0.02em", lineHeight: 1.1, textShadow: "0 0 16px rgba(220,38,38,0.14)" }}>
+              <h1 style={{ fontSize: isMobile ? 26 : 36, fontWeight: 900, color: "#F5F5F7", margin: 0, letterSpacing: "-0.02em", lineHeight: 1.08, textShadow: "0 0 16px rgba(220,38,38,0.14)" }}>
                 {prod.title}
               </h1>
               {(prod.client_name || prod.artist_name) && (
-                <div style={{ fontSize: 14, color: "#C6C6CE", marginTop: 7, fontWeight: 500 }}>
+                <div style={{ fontSize: 15, color: "#C6C6CE", marginTop: 8, fontWeight: 500 }}>
                   👤 {[prod.client_name, prod.artist_name].filter(Boolean).join(" · ")}
                 </div>
               )}
@@ -912,32 +912,19 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* ── Body ── */}
-      <div style={{ padding: isMobile ? "12px 12px" : "24px 28px", width: "100%", boxSizing: "border-box" }}>
-        {isMobile ? (
-          /* Mobile: single column, order from layout */
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {layout.order
-              .filter(sId => !layout.hidden.includes(sId))
-              .map(sId => renderSection(sId))}
-          </div>
-        ) : (
-          /* Desktop: 2-column grid */
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
-            {/* Management column */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {layout.order
-                .filter(sId => !layout.hidden.includes(sId) && !CREATIVE_SECTIONS.has(sId))
-                .map(sId => renderSection(sId))}
-            </div>
-            {/* Creative column */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {layout.order
-                .filter(sId => !layout.hidden.includes(sId) && CREATIVE_SECTIONS.has(sId))
-                .map(sId => renderSection(sId))}
-            </div>
-          </div>
-        )}
+      {/* ── Body ── Balanced masonry: sections flow to fill both columns (no empty
+          half-screen). Order + visibility still come from the layout system.
+          Big bottom padding keeps the last sections clear of the floating player. */}
+      <div style={{ position: "relative", zIndex: 1, padding: isMobile ? "6px 12px 140px" : "8px 28px 140px", width: "100%", boxSizing: "border-box" }}>
+        <div style={{ columns: isMobile ? 1 : 2, columnGap: 18 }}>
+          {layout.order
+            .filter(sId => !layout.hidden.includes(sId))
+            .map(sId => (
+              <div key={sId} style={{ breakInside: "avoid", marginBottom: 18 }}>
+                {renderSection(sId)}
+              </div>
+            ))}
+        </div>
       </div>
 
       {/* Layout modal */}

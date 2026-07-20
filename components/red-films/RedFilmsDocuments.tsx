@@ -306,8 +306,9 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
       {/* ── PDF Preview card ────────────────────────────────────────────────────── */}
       {!loading && candidate && (
         <div style={{
-          background: "#1A1A1A", border: "1px solid #252525",
-          borderRadius: 14, overflow: "hidden",
+          background: "linear-gradient(180deg, rgba(24,16,17,0.72), rgba(15,12,13,0.82))",
+          border: "1px solid rgba(220,38,38,0.12)",
+          borderRadius: 16, overflow: "hidden",
         }}>
           {/* Card header */}
           <div style={{
@@ -395,12 +396,16 @@ export default function RedFilmsDocuments({ productionId }: { productionId: stri
 
       {/* ── Documents panel ───────────────────────────────────────────────────── */}
       <div style={{
-        background: "#1A1A1A", border: "1px solid #252525",
-        borderRadius: 14, padding: "18px 20px",
+        position: "relative", background: "linear-gradient(180deg, rgba(24,16,17,0.72), rgba(15,12,13,0.82))",
+        border: "1px solid rgba(220,38,38,0.12)", borderRadius: 18, padding: "18px 20px",
+        boxShadow: "0 14px 44px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.04)", overflow: "hidden",
       }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: "#888", margin: 0 }}>מסמכי הפקה</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 10 }}>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14, fontWeight: 700, color: "#EDEDF2", margin: 0 }}>
+            <span style={{ width: 3, height: 15, borderRadius: 2, background: "linear-gradient(180deg, #DC2626, #7F1D1D)", boxShadow: "0 0 8px rgba(220,38,38,0.4)", flexShrink: 0 }} />
+            מסמכי הפקה
+          </h2>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <select
               value={selectedType}
