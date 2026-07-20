@@ -573,6 +573,17 @@ function ShowFormModal({
         setSavedId(saved.id);                            // re-click now PATCHes (no dup)
         if (!form.name.trim()) set("name", saved.name);  // keep the auto name in the form
         onRecordSaved?.(saved);                          // upsert into the list, keep modal open
+        // Server-authoritative side effects (upsert follow-up task; push on first
+        // send only — added in a later commit). Best-effort: the quote is already
+        // saved, so a failure here never rolls it back.
+        try {
+          const sr = await fetch(`/api/shows/${saved.id}/quote-sent`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+          });
+          if (!sr.ok) setErr("ההצעה נשמרה, אך יצירת משימת הפולואפ נכשלה");
+        } catch {
+          setErr("ההצעה נשמרה, אך יצירת משימת הפולואפ נכשלה");
+        }
       }
     } catch {
       setErr("שגיאת רשת — נסה שוב");
@@ -1815,6 +1826,23 @@ export default function ShowsHubPreview() {
   }, []);
 
   useEffect(() => { loadShows(); }, [loadShows]);
+
+  // Deep-link: /shows?quote={showId} (from a "פתח הצעה" task action) → open that
+  // record in its modal once shows are loaded, then strip the param so a refresh
+  // does not reopen it. URL cleanup sends no request and changes no data.
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current || shows.length === 0) return;
+    deepLinkedRef.current = true;
+    const params  = new URLSearchParams(window.location.search);
+    const quoteId = params.get("quote");
+    if (!quoteId) return;
+    const show = shows.find(s => s.id === quoteId);
+    if (show) { setSelected(null); setModal({ mode: "edit", show }); }
+    params.delete("quote");
+    const qs = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+  }, [shows]);
 
   const upcoming = useMemo(() =>
     [...shows]

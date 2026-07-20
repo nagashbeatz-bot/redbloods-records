@@ -17,6 +17,7 @@ interface Task {
   status:            TaskStatus;
   related_type:      TaskRelatedType;
   related_id:        string | null;
+  show_id:           string | null;
   due_date:          string | null;
   start_time:        string | null;
   end_time:          string | null;
@@ -140,6 +141,13 @@ function stripTechLines(notes: string | null | undefined): string {
 function extractTechLines(notes: string | null | undefined): string {
   if (!notes) return "";
   return notes.split("\n").filter(l => l.startsWith("[")).join("\n");
+}
+
+// A task shadowing a price-quote show carries this hidden marker in its notes.
+// Such tasks link back to /shows?quote={show_id} (see "פתח הצעה" below).
+const QUOTE_FOLLOWUP_MARKER = "[quote_followup]";
+function isQuoteFollowup(task: { show_id: string | null; notes: string | null }): boolean {
+  return !!task.show_id && (task.notes ?? "").includes(QUOTE_FOLLOWUP_MARKER);
 }
 
 function renderNotes(text: string): React.ReactNode[] {
@@ -497,6 +505,19 @@ function TaskDetailModal({ task, clients, projects, onClose, onUpdated, onDelete
               color: relType === "client" ? "#C084FC" : "#60A5FA", cursor: "pointer",
             }}>
             {relType === "client" ? "👤" : "♫"} פתח את {relatedName} ↗
+          </button>
+        )}
+
+        {isQuoteFollowup(task) && (
+          <button type="button"
+            onClick={(e) => { e.stopPropagation(); router.push(`/shows?quote=${task.show_id}`); }}
+            style={{
+              alignSelf: "flex-start", background: "rgba(220,38,38,0.07)",
+              border: "1px solid rgba(220,38,38,0.2)", borderRadius: 8,
+              padding: "6px 12px", fontFamily: "inherit", fontSize: 12,
+              color: "#F87171", cursor: "pointer",
+            }}>
+            🎤 פתח הצעה ↗
           </button>
         )}
 
@@ -889,6 +910,18 @@ function TaskRow({ task, relatedName, today, onOpenDetail }: {
             maxWidth: "100%", display: "block",
           }}>
             {relIcon} {task.related_type === "red_film_production" ? `Red Films / ${relatedName}` : relatedName}
+          </button>
+        ) : isQuoteFollowup(task) ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); router.push(`/shows?quote=${task.show_id}`); }}
+            style={{
+              background: "none", border: "none", padding: 0, fontFamily: "inherit",
+              fontSize: 12, color: "#DC2626", cursor: "pointer",
+              textDecoration: "underline", textDecorationStyle: "dotted",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              maxWidth: "100%", display: "block",
+            }}>
+            🎤 פתח הצעה ↗
           </button>
         ) : (
           <span style={{ fontSize: 11, color: "#333" }}>—</span>

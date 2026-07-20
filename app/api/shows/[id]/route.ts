@@ -88,6 +88,24 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }
     }
 
+    // ── Close the quote follow-up task on a real terminal status change ──────
+    // Server-authoritative: fires ONLY on a saved status transition (never on the
+    // client-side "הצעה אושרה" click). אושרה/נסגר/בוצע → task "בוצע"; בוטל → "בוטל".
+    // Non-fatal, idempotent, no-op when the show has no quote follow-up task.
+    if ("status" in body) {
+      try {
+        const { closeQuoteFollowupTask } = await import("@/lib/show-quote-followup");
+        const { isConfirmedShowStatus } = await import("@/lib/shows-finance-sync");
+        if (show.status === "בוטל") {
+          await closeQuoteFollowupTask(id, "בוטל");
+        } else if (isConfirmedShowStatus(show.status)) {
+          await closeQuoteFollowupTask(id, "בוצע");
+        }
+      } catch (taskErr) {
+        console.error("[shows PATCH] follow-up close error:", taskErr);
+      }
+    }
+
     // ── Google Calendar ─────────────────────────────────────────────────────
     let calendarWarning: string | undefined;
 
