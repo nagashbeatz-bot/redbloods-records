@@ -20,9 +20,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ver
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const { versionId } = await params;
-    const body = (await req.json()) as { timestampSeconds?: number; commentText?: string; author?: string; role?: string };
+    const body = (await req.json()) as { timestampSeconds?: number | null; commentText?: string; author?: string; role?: string };
     const text = (body.commentText ?? "").trim();
     if (!text) return NextResponse.json({ ok: false, error: "טקסט ההערה חסר" }, { status: 400 });
+
+    // Explicit null = a general note (no timecode). Omitted → 0 (legacy timed).
+    const timestampSeconds = body.timestampSeconds === null ? null : Number(body.timestampSeconds ?? 0);
 
     // role is a display discriminator only ("mix" | "acapella" | "instrumental" | "stems").
     // Anything else (incl. legacy/absent) is stored as null = shared/כללי.
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ver
 
     const comment = await createMixComment({
       mixVersionId:     versionId,
-      timestampSeconds: Number(body.timestampSeconds ?? 0),
+      timestampSeconds,
       commentText:      text,
       author:           body.author?.trim() || null,
       role,

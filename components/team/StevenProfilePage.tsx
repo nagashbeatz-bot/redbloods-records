@@ -284,6 +284,7 @@ const TR = {
     vColVersion: "שם גרסה", vColFile: "קובץ", vColType: "סוג", vColSize: "גודל", vColDate: "הועלה", vColStatus: "סטטוס", vColActions: "פעולות",
     vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה",
     cSection: "הערות בזמן", cAdd: "הוסף הערה", cEmpty: "אין הערות לגרסה הזו עדיין", cPlaceholder: "כתוב הערה על הנקודה הזו…", cAtTime: "בזמן",
+    cAddAtTime: "הוסף הערה בזמן הנוכחי", cGeneral: "הערה כללית", cGeneralTitle: "הערה כללית למיקס", cGeneralTag: "כללי",
     cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט", wmMatSub: "Rough Mix · רפרנסים · Stems · הוראות",
@@ -340,6 +341,7 @@ const TR = {
     vColVersion: "Version", vColFile: "File", vColType: "Type", vColSize: "Size", vColDate: "Uploaded", vColStatus: "Status", vColActions: "Actions",
     vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download",
     cSection: "Timestamp comments", cAdd: "Add comment", cEmpty: "No comments on this version yet", cPlaceholder: "Write a note about this point…", cAtTime: "at",
+    cAddAtTime: "Add comment at current time", cGeneral: "General note", cGeneralTitle: "General note for the mix", cGeneralTag: "General",
     cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files", wmMatSub: "Rough Mix · References · Stems · Instructions",
@@ -1431,7 +1433,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
           ))}
         </div>
         {dur > 0 && <div style={{ position: "absolute", top: -2, bottom: 0, left: `${pct}%`, width: 2, background: "#fff", opacity: 0.55, pointerEvents: "none" }} />}
-        {dur > 0 && comments.map((c, i) => {
+        {dur > 0 && comments.filter((c): c is MixComment & { timestampSeconds: number } => c.timestampSeconds !== null).map((c, i) => {
           const col  = roleColor; // each player shows only its own role's comments → role-colored markers
           const isDragging = dragC?.id === c.id;
           const ts   = isDragging ? dragC!.ts : c.timestampSeconds;
@@ -1581,7 +1583,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     }
   }
   const [adding, setAdding]       = useState(false);
-  const [addTs, setAddTs]         = useState(0);
+  const [addTs, setAddTs]         = useState<number | null>(0); // null = general note (no timecode)
+  const [liveTs, setLiveTs]       = useState(0);                // live current time for the primary "add at time" button
   const [newText, setNewText]     = useState("");
   const [savingC, setSavingC]     = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1592,7 +1595,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [hoverCommentId, setHoverCommentId] = useState<string | null>(null); // cross-highlight marker ⇄ shared list
   const playerRefs = useRef<Record<string, VersionPlayerHandle | null>>({}); // per-file player handles (by file id)
   const lastActiveIdRef = useRef<string | null>(null);               // file id of the last-played stacked player
-  const byTs = (a: MixComment, b: MixComment) => a.timestampSeconds - b.timestampSeconds;
+  // General notes (null timecode) sort after timed ones.
+  const tsRank = (c: MixComment) => (c.timestampSeconds === null ? Number.POSITIVE_INFINITY : c.timestampSeconds);
+  const byTs = (a: MixComment, b: MixComment) => tsRank(a) - tsRank(b);
 
   // Load the selected logical version's comments (keyed on the group's primary
   // file id, so all stacked players share one thread).
@@ -1622,6 +1627,12 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     const pid = playerPrimaryId;
     const ts = Math.max(0, Math.floor((pid ? playerRefs.current[pid]?.getCurrentTime() : 0) ?? 0));
     setAddRole(role); setAddTs(ts); setNewText(""); setRolePick(false); setAdding(true);
+  }
+  // General note (no timecode): same role target as a timed note, but addTs = null.
+  function openAddGeneral() {
+    const active = lastActiveIdRef.current ? audioFiles.find(f => f.id === lastActiveIdRef.current) : null;
+    const target = active ?? (audioFiles.length === 1 ? audioFiles[0] : null);
+    setAddRole(target ? target.role : null); setAddTs(null); setNewText(""); setRolePick(false); setAdding(true);
   }
   function saveNewComment() {
     const text = newText.trim();
@@ -1831,7 +1842,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     const ra = COMMENT_ROLE_RANK[roleOfComment(a) ?? ""] ?? 4;
     const rb = COMMENT_ROLE_RANK[roleOfComment(b) ?? ""] ?? 4;
     if (ra !== rb) return ra - rb;
-    if (a.timestampSeconds !== b.timestampSeconds) return a.timestampSeconds - b.timestampSeconds;
+    if (tsRank(a) !== tsRank(b)) return tsRank(a) - tsRank(b);
     return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
   };
   // Bottom-list playback: the player matching the comment's role, else the primary player.
@@ -2074,6 +2085,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                             shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
                             comments={(comments ?? []).filter(c => c.role === f.role)}
                             onPlayStart={() => { lastActiveIdRef.current = f.id; }}
+                            onTime={sec => { if (f.id === (lastActiveIdRef.current ?? playerPrimaryId)) { const s = Math.floor(sec); setLiveTs(prev => (prev === s ? prev : s)); } }}
                             onCommentMove={isSteven ? undefined : moveComment}
                             onCommentHover={setHoverCommentId}
                             onCommentLeave={() => setHoverCommentId(null)}
@@ -2102,11 +2114,17 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   (phase 1); creation is blocked here AND server-side. */}
               {selectedGroup && !isSteven && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {/* Primary — timed comment at the live player position */}
                   <button onClick={openAddComment}
-                    style={{ flex: "1 1 200px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2 }}
+                    style={{ flex: "1 1 220px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: BRAND, border: `1px solid ${BRAND}`, color: "#fff", boxShadow: `0 0 14px ${BRAND}44` }}>
+                    💬 {t.cAddAtTime} · <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtTime(liveTs)}</span>
+                  </button>
+                  {/* Secondary — general note, no timecode */}
+                  <button onClick={openAddGeneral}
+                    style={{ flex: "1 1 150px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2 }}
                     onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.color = TEXT; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = TEXT2; }}>
-                    💬 {t.cAdd}
+                    🗒 {t.cGeneral}
                   </button>
                 </div>
               )}
@@ -2194,7 +2212,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                 )}
                 {adding && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t.cAtTime} {fmtTime(addTs)}</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{addTs === null ? t.cGeneralTitle : `${t.cAtTime} ${fmtTime(addTs)}`}</span>
                     {addRole && <span style={{ fontSize: 9.5, fontWeight: 800, color: ROLE_COLOR[addRole], background: `${ROLE_COLOR[addRole]}1A`, border: `1px solid ${ROLE_COLOR[addRole]}40`, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{roleLabel(addRole, lang)}</span>}
                     <input autoFocus value={newText} onChange={e => setNewText(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
@@ -2218,17 +2236,25 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       const cr = roleOfComment(c);
                       const col = cr ? ROLE_COLOR[cr] : MUTED;
                       const isEditing = editingId === c.id;
+                      const isGeneral = c.timestampSeconds === null; // general note — no timecode / no seek
                       return (
                         <div key={c.id}
                           onMouseEnter={() => setHoverCommentId(c.id)} onMouseLeave={() => setHoverCommentId(cur => (cur === c.id ? null : cur))}
                           style={{ display: "flex", alignItems: "center", flexWrap: narrow ? "wrap" : "nowrap", rowGap: narrow ? 7 : undefined, gap: 10, padding: "11px 13px", borderRadius: 11, background: hoverCommentId === c.id ? `${col}14` : CARD, border: `1px solid ${hoverCommentId === c.id ? col : BDR}`, boxShadow: hoverCommentId === c.id ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : "none", transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
                           <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
-                          <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds)} title={t.vPlay}
-                            style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
-                          </button>
-                          <button onClick={() => playerForComment(c)?.seek(c.timestampSeconds)}
-                            style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds)}</button>
+                          {!isGeneral && (
+                            <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds!)} title={t.vPlay}
+                              style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                            </button>
+                          )}
+                          {isGeneral ? (
+                            <span title={t.cGeneralTitle}
+                              style={{ fontSize: 10, fontWeight: 800, color: TEXT2, background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, padding: "3px 9px", borderRadius: 7, flexShrink: 0, whiteSpace: "nowrap" }}>{t.cGeneralTag}</span>
+                          ) : (
+                            <button onClick={() => playerForComment(c)?.seek(c.timestampSeconds!)}
+                              style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds!)}</button>
+                          )}
                           <span style={{ fontSize: 9.5, fontWeight: 800, color: col, background: `${col}1A`, border: `1px solid ${col}40`, padding: "2px 7px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{cr ? roleLabel(cr, lang) : (rtl ? "כללי" : "Shared")}</span>
                           {isEditing ? (
                             <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
@@ -2236,8 +2262,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                               onBlur={() => saveEditComment(c)}
                               style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
                           ) : (
-                            <div onClick={() => playerForComment(c)?.seek(c.timestampSeconds)} title={c.commentText}
-                              style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, fontSize: 13, color: TEXT, cursor: "pointer", overflow: narrow ? "visible" : "hidden", textOverflow: narrow ? "clip" : "ellipsis", whiteSpace: narrow ? "normal" : "nowrap", wordBreak: narrow ? "break-word" : undefined, lineHeight: narrow ? 1.45 : undefined }}>{c.commentText}</div>
+                            <div onClick={isGeneral ? undefined : () => playerForComment(c)?.seek(c.timestampSeconds!)} title={c.commentText}
+                              style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", overflow: narrow ? "visible" : "hidden", textOverflow: narrow ? "clip" : "ellipsis", whiteSpace: narrow ? "normal" : "nowrap", wordBreak: narrow ? "break-word" : undefined, lineHeight: narrow ? 1.45 : undefined }}>{c.commentText}</div>
                           )}
                           <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
                           {/* edit + delete — owner only; Steven's comments are view-only. */}
@@ -2294,7 +2320,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
             <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${RED}44`, borderRadius: 16, width: "min(420px, 92vw)", padding: "22px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
               <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, marginBottom: 10 }}>{t.cDelTitle}</div>
               <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 8 }}>{t.cDelBody}</div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, marginBottom: 16 }}>{fmtTime(delC.timestampSeconds)} · {delC.commentText}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, marginBottom: 16 }}>{delC.timestampSeconds === null ? t.cGeneralTag : fmtTime(delC.timestampSeconds)} · {delC.commentText}</div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => setDelC(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
                 <button onClick={confirmDeleteComment} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.cDelete}</button>

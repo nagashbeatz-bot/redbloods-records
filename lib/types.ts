@@ -273,7 +273,7 @@ export interface MixVersion {
 export interface MixComment {
   id:               string;
   mixVersionId:     string;
-  timestampSeconds: number;
+  timestampSeconds: number | null;   // null = general note (no timecode); 0 = a real 00:00 comment
   commentText:      string;
   author:           string | null;
   role:             string | null;   // "mix" | "acapella" | "instrumental" | "stems" | null (legacy = shared/כללי)

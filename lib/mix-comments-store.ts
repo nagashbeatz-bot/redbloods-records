@@ -8,10 +8,12 @@ import { supabase } from "@/lib/supabase";
 import type { MixComment } from "@/lib/types";
 
 function mapRow(r: Record<string, unknown>): MixComment {
+  const rawTs = r.timestamp_seconds;
   return {
     id:               r.id                as string,
     mixVersionId:     r.mix_version_id    as string,
-    timestampSeconds: Number(r.timestamp_seconds ?? 0),
+    // null (general note) stays null — never coerced to 0. 0 is a real 00:00 comment.
+    timestampSeconds: rawTs === null || rawTs === undefined ? null : Number(rawTs),
     commentText:      (r.comment_text     as string) ?? "",
     author:           (r.author           as string | null) ?? null,
     role:             (r.role             as string | null) ?? null,
@@ -20,13 +22,13 @@ function mapRow(r: Record<string, unknown>): MixComment {
   };
 }
 
-/** List comments for a version, earliest timestamp first. */
+/** List comments for a version, earliest timestamp first; general notes (null) last. */
 export async function listMixComments(versionId: string): Promise<MixComment[]> {
   const { data, error } = await supabase
     .from("mix_comments")
     .select("*")
     .eq("mix_version_id", versionId)
-    .order("timestamp_seconds", { ascending: true })
+    .order("timestamp_seconds", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => mapRow(r as Record<string, unknown>));
@@ -39,15 +41,21 @@ export async function getMixComment(id: string): Promise<MixComment | null> {
   return data ? mapRow(data as Record<string, unknown>) : null;
 }
 
-/** Add a comment at a given point in time. */
+/**
+ * Add a comment. `timestampSeconds === null` → a general note (stored NULL, no
+ * timecode). A number is a timed comment (0 = a real 00:00 comment; negatives
+ * are clamped to 0). null is NEVER coerced to 0.
+ */
 export async function createMixComment(fields: {
   mixVersionId:     string;
-  timestampSeconds: number;
+  timestampSeconds: number | null;
   commentText:      string;
   author?:          string | null;
   role?:            string | null;
 }): Promise<MixComment> {
-  const ts   = Number.isFinite(fields.timestampSeconds) && fields.timestampSeconds > 0 ? fields.timestampSeconds : 0;
+  const ts   = fields.timestampSeconds === null
+    ? null
+    : (Number.isFinite(fields.timestampSeconds) && fields.timestampSeconds > 0 ? fields.timestampSeconds : 0);
   const text = (fields.commentText ?? "").trim();
   if (!text) throw new Error("טקסט ההערה חסר");
 
@@ -69,7 +77,7 @@ export async function createMixComment(fields: {
 /** Update a comment's text and/or timestamp. */
 export async function updateMixComment(
   id: string,
-  fields: { commentText?: string; timestampSeconds?: number }
+  fields: { commentText?: string; timestampSeconds?: number | null }
 ): Promise<MixComment> {
   const dbUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (fields.commentText !== undefined) {
@@ -78,7 +86,10 @@ export async function updateMixComment(
     dbUpdate.comment_text = text;
   }
   if (fields.timestampSeconds !== undefined) {
-    dbUpdate.timestamp_seconds = Number.isFinite(fields.timestampSeconds) && fields.timestampSeconds > 0 ? fields.timestampSeconds : 0;
+    // null → general note (stored NULL); a number stays as-is (0 = real 00:00).
+    dbUpdate.timestamp_seconds = fields.timestampSeconds === null
+      ? null
+      : (Number.isFinite(fields.timestampSeconds) && fields.timestampSeconds > 0 ? fields.timestampSeconds : 0);
   }
 
   const { data, error } = await supabase
