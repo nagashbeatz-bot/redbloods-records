@@ -922,9 +922,11 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
   artistId?: string; ledger: BalanceLedger | null; loadState: LoadState; onReload: () => Promise<void>;
 }) {
   const isMobile = useIsMobile();
-  const [modal, setModal] = useState<{ mode: "add" } | { mode: "addExpected" } | { mode: "edit"; entry: BalanceEntry } | null>(null);
+  const [modal, setModal] = useState<{ mode: "add" } | { mode: "addExpected" } | { mode: "addExpectedIncome" } | { mode: "edit"; entry: BalanceEntry } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BalanceEntry | null>(null);
-  const [manageOpen, setManageOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);                 // expected EXPENSES manager
+  const [manageIncomeOpen, setManageIncomeOpen] = useState(false);     // expected INCOME manager
+  const [markReceivedTarget, setMarkReceivedTarget] = useState<BalanceEntry | null>(null);
 
   if (loadState === "loading") {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
@@ -935,10 +937,12 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
 
   const totals = ledger?.totals ?? { income: 0, expectedIncome: 0, payments: 0, expenses: 0, expectedExpenses: 0, currentBalance: 0 };
   const entries = ledger?.entries ?? [];
-  // "הוצאות צפויות" are managed via a dedicated modal (below the strip) and are
-  // intentionally EXCLUDED from the main "היסטוריית תנועות" list — never from the DB/API.
+  // The main "היסטוריית תנועות" shows only REALIZED movements. Both expected categories
+  // are managed via their own modals and EXCLUDED from that list (display-only — never
+  // hidden/removed from the DB/API; their totals still feed the cards/strip).
+  const expectedIncomeEntries  = entries.filter(e => e.entryType === "הכנסות צפויות");
   const expectedExpenseEntries = entries.filter(e => e.entryType === "הוצאות צפויות");
-  const historyEntries = entries.filter(e => e.entryType !== "הוצאות צפויות");
+  const historyEntries = entries.filter(e => e.entryType === "הכנסות" || e.entryType === "תשלומים" || e.entryType === "הוצאות");
   const curr = "₪";
   const cb = totals.currentBalance;
   const balColor = cb > 0 ? GREEN : cb < 0 ? BAL_EXP_RED : "#E5E5EA";
@@ -967,15 +971,27 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
         <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>הכנסות פחות תשלומים והוצאות</div>
       </div>
 
-      {/* 4 primary summary cards — all REAL from the ledger */}
+      {/* 4 primary summary cards. "הכנסות צפויות" is clickable → its management modal
+          (view / add / edit / delete / "סמן כהתקבל"). */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: isMobile ? 10 : 16 }}>
         {cards.map(c => {
           const m = BAL_TYPE_META[c.label];
+          const clickable = c.label === "הכנסות צפויות";
           return (
-            <div key={c.label} style={{ ...panel, padding: isMobile ? "16px 14px" : "20px 22px" }}>
+            <div
+              key={c.label}
+              onClick={clickable ? () => setManageIncomeOpen(true) : undefined}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setManageIncomeOpen(true); } } : undefined}
+              onMouseEnter={clickable ? (e) => { e.currentTarget.style.borderColor = `${m.color}55`; } : undefined}
+              onMouseLeave={clickable ? (e) => { e.currentTarget.style.borderColor = BDR2; } : undefined}
+              style={{ ...panel, padding: isMobile ? "16px 14px" : "20px 22px", cursor: clickable ? "pointer" : "default", transition: "border-color .14s" }}
+            >
               <div style={{ fontSize: isMobile ? 13 : 14.5, fontWeight: 800, color: TEXT }}>{c.label}</div>
               <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 900, color: m.color, direction: "ltr", textAlign: "start", marginTop: 8 }}>{fmtMoney(c.value, curr)}</div>
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 5 }}>{m.sub}</div>
+              {clickable && <div style={{ fontSize: 11, color: m.color, marginTop: 4, fontWeight: 700 }}>לחץ לצפייה וניהול ←</div>}
             </div>
           );
         })}
@@ -1069,6 +1085,9 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
 
       {manageOpen && (
         <BalanceExpectedManageModal
+          title="ניהול הוצאות צפויות"
+          addLabel="הוסף הוצאה צפויה"
+          color={BAL_TYPE_META["הוצאות צפויות"].color}
           entries={expectedExpenseEntries}
           total={totals.expectedExpenses}
           onClose={() => setManageOpen(false)}
@@ -1077,11 +1096,33 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
           onDelete={(e) => setDeleteTarget(e)}
         />
       )}
+      {manageIncomeOpen && (
+        <BalanceExpectedManageModal
+          title="ניהול הכנסות צפויות"
+          addLabel="הוסף הכנסה צפויה"
+          color={BAL_TYPE_META["הכנסות צפויות"].color}
+          entries={expectedIncomeEntries}
+          total={totals.expectedIncome}
+          onClose={() => setManageIncomeOpen(false)}
+          onAdd={() => setModal({ mode: "addExpectedIncome" })}
+          onEdit={(e) => setModal({ mode: "edit", entry: e })}
+          onDelete={(e) => setDeleteTarget(e)}
+          onMarkReceived={(e) => setMarkReceivedTarget(e)}
+        />
+      )}
+      {markReceivedTarget && (
+        <BalanceMarkReceivedModal
+          artistId={artistId}
+          entry={markReceivedTarget}
+          onClose={() => setMarkReceivedTarget(null)}
+          onDone={async () => { await onReload(); setMarkReceivedTarget(null); }}
+        />
+      )}
       {modal && (
         <BalanceEntryModal
           artistId={artistId}
           entry={modal.mode === "edit" ? modal.entry : null}
-          defaultType={modal.mode === "addExpected" ? "הוצאות צפויות" : undefined}
+          defaultType={modal.mode === "addExpected" ? "הוצאות צפויות" : modal.mode === "addExpectedIncome" ? "הכנסות צפויות" : undefined}
           onClose={() => setModal(null)}
           onSaved={async () => { await onReload(); setModal(null); }}
         />
@@ -1098,40 +1139,60 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
   );
 }
 
-// Owner-only manager for "הוצאות צפויות" — the one category hidden from the main
-// history list. Lists them with edit/delete + an "add" action (all reuse the same
-// entry/delete modals, stacked on top). Read from the live ledger, so it refreshes
-// after any change. No API/DB/permission change — display-layer management only.
-function BalanceExpectedManageModal({ entries, total, onClose, onAdd, onEdit, onDelete }: {
-  entries: BalanceEntry[]; total: number; onClose: () => void;
-  onAdd: () => void; onEdit: (e: BalanceEntry) => void; onDelete: (e: BalanceEntry) => void;
+// Local YYYY-MM-DD for "today" (used as the default receipt date). Runs only on user
+// interaction (modal mount), never during SSR/hydration → no mismatch.
+function todayYmd(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Owner-only manager for an "expected" category that is hidden from the main history
+// list (הכנסות צפויות / הוצאות צפויות). Lists rows with note + edit/delete + "add".
+// Income also gets a "סמן כהתקבל" action (onMarkReceived). Reuses the entry/delete/mark
+// modals (stacked). Reads the live ledger → refreshes after any change. Display-layer
+// only — no API/DB/permission change.
+function BalanceExpectedManageModal({ title, addLabel, color, entries, total, onClose, onAdd, onEdit, onDelete, onMarkReceived }: {
+  title: string; addLabel: string; color: string; entries: BalanceEntry[]; total: number;
+  onClose: () => void; onAdd: () => void; onEdit: (e: BalanceEntry) => void; onDelete: (e: BalanceEntry) => void;
+  onMarkReceived?: (e: BalanceEntry) => void;
 }) {
-  const expColor = BAL_TYPE_META["הוצאות צפויות"].color;
   return (
-    <BalanceModalShell title="ניהול הוצאות צפויות" onClose={onClose} busy={false}>
+    <BalanceModalShell title={title} onClose={onClose} busy={false}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: TEXT2 }}>סה״כ: <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtMoney(total, "₪")}</b></div>
         <button onClick={onAdd} style={{
           display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 10, cursor: "pointer",
           background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
           fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
-        }}><span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span>הוסף הוצאה צפויה</button>
+        }}><span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span>{addLabel}</button>
       </div>
       {entries.length === 0 ? (
-        <div style={{ padding: "26px 8px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין עדיין הוצאות צפויות</div>
+        <div style={{ padding: "26px 8px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין עדיין רשומות</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {entries.map(e => (
-            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description || "הוצאה צפויה"}</div>
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{fmtShowDate(e.entryDate)}</div>
+            <div key={e.id} style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description || e.entryType}</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{fmtShowDate(e.entryDate)}</div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 900, color, direction: "ltr", flexShrink: 0 }}>{fmtMoney(e.amount, "₪")}</div>
+                <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                  <button onClick={() => onEdit(e)} aria-label="עריכה" style={rowIconBtn}><IcEdit size={16} /></button>
+                  <button onClick={() => onDelete(e)} aria-label="מחיקה" style={rowIconBtn}><IcTrash size={16} /></button>
+                </div>
               </div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: expColor, direction: "ltr", flexShrink: 0 }}>{fmtMoney(e.amount, "₪")}</div>
-              <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                <button onClick={() => onEdit(e)} aria-label="עריכה" style={rowIconBtn}><IcEdit size={16} /></button>
-                <button onClick={() => onDelete(e)} aria-label="מחיקה" style={rowIconBtn}><IcTrash size={16} /></button>
-              </div>
+              {e.note && <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 7, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{e.note}</div>}
+              {onMarkReceived && (
+                <div style={{ marginTop: 9 }}>
+                  <button onClick={() => onMarkReceived(e)} style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 9, cursor: "pointer",
+                    background: "rgba(52,211,153,0.12)", border: `1px solid ${GREEN}55`, color: GREEN,
+                    fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+                  }}>✓ סמן כהתקבל</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1141,6 +1202,51 @@ function BalanceExpectedManageModal({ entries, total, onClose, onAdd, onEdit, on
           width: "100%", padding: "13px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
           color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
         }}>סגור</button>
+      </div>
+    </BalanceModalShell>
+  );
+}
+
+// "סמן כהתקבל" — converts ONE הכנסות צפויות row to הכנסות IN PLACE (no new row, no copy).
+// Uses the existing owner-only PATCH: sends entryType=הכנסות + the chosen receipt date, and
+// carries the row's amount/description/note unchanged (server never touches
+// source_tx_id/artist_id/created_at). Button locked while saving; kept open on error.
+function BalanceMarkReceivedModal({ artistId, entry, onClose, onDone }: {
+  artistId: string; entry: BalanceEntry; onClose: () => void; onDone: () => Promise<void>;
+}) {
+  const [date, setDate] = useState(todayYmd());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  const confirm = async () => {
+    if (!validDate || busy) return;                    // guard: never double-submit
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/label/artists/${artistId}/balance/${entry.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryType: "הכנסות", amount: entry.amount, entryDate: date, description: entry.description, note: entry.note }),
+      });
+      if (!res.ok) { setErr(await readErr(res, "עדכון הרשומה נכשל")); setBusy(false); return; }
+      await onDone();                                   // reload + close; row is now "הכנסות"
+    } catch { setErr("שגיאת רשת, נסה שוב"); setBusy(false); }
+  };
+  return (
+    <BalanceModalShell title="סימון כהתקבל" onClose={onClose} busy={busy}>
+      <SkErr msg={err} />
+      <div style={{ fontSize: 13.5, color: TEXT2, lineHeight: 1.7, marginBottom: 16 }}>
+        העברת <b style={{ color: TEXT }}>{entry.description || "הכנסה צפויה"}</b> על סך{" "}
+        <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtMoney(entry.amount, "₪")}</b> מ״הכנסות צפויות״ ל״הכנסות״. הסכום, התיאור וההערה נשמרים כפי שהם.
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        <label style={skLabel}>תאריך קבלה</label>
+        <DatePickerInput value={date} onChange={setDate} disabled={busy} style={{ ...skField }} />
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={confirm} disabled={!validDate || busy} style={{ ...skPrimaryBtn(validDate && !busy), flex: "1 1 150px", width: "auto" }}>{busy ? "מעדכן…" : "אשר קבלה"}</button>
+        <button onClick={onClose} disabled={busy} style={{
+          flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+        }}>ביטול</button>
       </div>
     </BalanceModalShell>
   );
