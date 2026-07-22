@@ -15,13 +15,9 @@
  * (large files) produces an identical result without duplicating this logic.
  */
 import "server-only";
-import { mixVersionsFolder, finalFilesFolder, sanitizeFolder } from "@/lib/project-paths";
+import { mixVersionsFolder, sanitizeFolder } from "@/lib/project-paths";
 import { createMixVersion } from "@/lib/mix-versions-store";
 import type { MixVersion } from "@/lib/types";
-
-/** Destination subfolder for a version upload. "mix" = /Mix Versions/ (default,
- *  shared behaviour); "final" = /Final Files/ (the "Upload Final Files" flow). */
-export type FolderKind = "mix" | "final";
 
 export const AUDIO_ZIP = /\.(wav|mp3|m4a|aiff?|flac|ogg|zip|rar|7z)$/i;
 
@@ -76,10 +72,9 @@ export type TargetResult =
  */
 export async function resolveVersionTarget(
   workId: string,
-  input: { fileName: string; label: string; addToExisting: boolean; roleParam: string | null; folderKind?: FolderKind }
+  input: { fileName: string; label: string; addToExisting: boolean; roleParam: string | null }
 ): Promise<TargetResult> {
   const { fileName, label, addToExisting, roleParam } = input;
-  const folderKind: FolderKind = input.folderKind ?? "mix"; // default = /Mix Versions/ (unchanged)
   if (!fileName)              return { ok: false, status: 400, error: "חסר קובץ" };
   if (!AUDIO_ZIP.test(fileName)) return { ok: false, status: 400, error: "סוג קובץ לא נתמך (WAV/MP3/AIFF/M4A/FLAC/OGG/ZIP)" };
 
@@ -131,8 +126,7 @@ export async function resolveVersionTarget(
     cleanFileName = ext ? `${numbered}.${ext}` : numbered;
   }
 
-  const folderOpts  = { projectId, artist, projectName, workId, dropboxFolder };
-  const folder      = folderKind === "final" ? finalFilesFolder(folderOpts) : mixVersionsFolder(folderOpts);
+  const folder      = mixVersionsFolder({ projectId, artist, projectName, workId, dropboxFolder });
   const dropboxPath = `${folder}/${cleanFileName}`;
 
   const fileType = ["wav", "mp3", "m4a", "aiff", "aif", "flac", "ogg"].includes(ext)
@@ -195,12 +189,12 @@ export async function finalizeMixVersion(args: {
  *  have authorized. Large files use the chunked upload-session route instead. */
 export async function uploadMixVersionFile(
   workId: string,
-  input: { file: File; label: string; addToExisting: boolean; roleParam: string | null; durationSeconds: number | null; folderKind?: FolderKind }
+  input: { file: File; label: string; addToExisting: boolean; roleParam: string | null; durationSeconds: number | null }
 ): Promise<UploadResult> {
-  const { file, label, addToExisting, roleParam, durationSeconds, folderKind } = input;
+  const { file, label, addToExisting, roleParam, durationSeconds } = input;
   if (!file) return { ok: false, status: 400, error: "חסר קובץ" };
 
-  const resolved = await resolveVersionTarget(workId, { fileName: file.name, label, addToExisting, roleParam, folderKind });
+  const resolved = await resolveVersionTarget(workId, { fileName: file.name, label, addToExisting, roleParam });
   if (!resolved.ok) return resolved;
   const { target } = resolved;
 

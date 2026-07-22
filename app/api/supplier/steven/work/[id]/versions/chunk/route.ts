@@ -75,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       // Resolve the physical target (folder + clean name + label) — same logic as
       // the single-shot route, so naming/dedupe/label are identical.
-      const resolved = await resolveVersionTarget(workId, { fileName, label, addToExisting, roleParam, folderKind: "final" });
+      const resolved = await resolveVersionTarget(workId, { fileName, label, addToExisting, roleParam });
       if (!resolved.ok) return NextResponse.json({ ok: false, error: resolved.error }, { status: resolved.status });
       const { target } = resolved;
 

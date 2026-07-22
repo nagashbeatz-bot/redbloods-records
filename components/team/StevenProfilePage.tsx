@@ -1537,6 +1537,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   // versions/comments SUFFIXES match; only the prefix (and /work for versions) differ.
   const API = isSteven ? "/api/supplier/steven" : "/api/sound-engineer";
   const versionsUrl = isSteven ? `/api/supplier/steven/work/${work.id}/versions` : `/api/sound-engineer/${work.id}/versions`;
+  // "Upload Final Files" endpoints — SEPARATE from mix versions (own store /Final Files/).
+  const finalFilesUrl = isSteven ? `/api/supplier/steven/work/${work.id}/final-files` : `/api/sound-engineer/${work.id}/final-files`;
   const commentsUrl = (vid: string) => `${API}/versions/${vid}/comments`;
   const commentUrl  = (cid: string) => `${API}/comments/${cid}`;
   const narrow = useIsNarrow(760);
@@ -1831,16 +1833,70 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     } catch { return null; }
   }
 
-  // Run the whole batch sequentially, CONTINUING on a per-file failure. A file marked
-  // "done" is skipped on a retry → succeeded files are never re-uploaded (no duplicate
-  // mix_versions). The first success establishes the version label; every later file
-  // (and every retry) joins it, so a batch never fragments into multiple versions.
+  // ── Final-files client uploads (SEPARATE store; never mix_versions) ──────────────
+  // Single-shot via XHR (real %). Returns {ok,status} so a 409 conflict can be localized.
+  function uploadSingleFinalXhr(file: File, onPct: (p: number) => void): Promise<{ ok: boolean; status: number }> {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", finalFilesUrl);
+      xhr.upload.onprogress = e => { if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100)); };
+      xhr.onload = () => {
+        let d: { ok?: boolean } = {};
+        try { d = JSON.parse(xhr.responseText); } catch { /* non-JSON */ }
+        const ok = xhr.status >= 200 && xhr.status < 300 && !!d.ok;
+        if (ok) onPct(100);
+        resolve({ ok, status: xhr.status });
+      };
+      xhr.onerror = () => resolve({ ok: false, status: 0 });
+      const fd = new FormData();
+      fd.append("file", file);          // ONLY the file — original name kept, no label/role
+      xhr.send(fd);
+    });
+  }
+
+  // Chunked (>140MB up to 1GB). fileName is sent at `start` so a name clash 409s before
+  // any bytes stream. Returns {ok,status}.
+  async function uploadChunkedFinal(file: File, onPct: (p: number) => void): Promise<{ ok: boolean; status: number }> {
+    const CHUNK = 8 * 1024 * 1024;
+    const total = file.size;
+    const base  = `${finalFilesUrl}/chunk`;
+    const post  = (qs: string, body: Blob) => fetch(`${base}?${qs}`, { method: "POST", body });
+    try {
+      let offset = Math.min(CHUNK, total);
+      let res = await post(`action=start&fileName=${encodeURIComponent(file.name)}`, file.slice(0, offset));
+      let d = await res.json().catch(() => ({} as { ok?: boolean; sessionId?: string }));
+      if (!res.ok || !d.ok || !d.sessionId) return { ok: false, status: res.status };
+      const sessionId = d.sessionId;
+      onPct(Math.min(99, Math.round((offset / total) * 100)));
+      while (offset < total) {
+        const end = Math.min(offset + CHUNK, total);
+        const isLast = end >= total;
+        const qs = isLast
+          ? `action=finish&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}&fileName=${encodeURIComponent(file.name)}`
+          : `action=append&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}`;
+        res = await post(qs, file.slice(offset, end));
+        d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) return { ok: false, status: res.status };
+        offset = end;
+        onPct(Math.min(99, Math.round((offset / total) * 100)));
+      }
+      onPct(100);
+      return { ok: true, status: 200 };
+    } catch { return { ok: false, status: 0 }; }
+  }
+
+  // Run the whole batch sequentially, CONTINUING on a per-file failure (done files are
+  // skipped on retry). The GREEN "Upload Final Files" flow (mode "new") goes to the
+  // SEPARATE final-files store (/Final Files/ — never mix_versions, never the player /
+  // versions list / project-files / version counter). "Add to this version" (mode
+  // "existing") stays a real mix-version upload.
   async function runFinalUpload() {
     const picker = rolePicker;
     if (!picker || uploading) return;                       // no double-submit
     setUploading(true);
-    let label = picker.label ?? (picker.mode === "existing" ? selectedGroup?.label : undefined);
-    if (picker.mode === "existing" && !label) { setUploading(false); return; }
+    const isFinal = picker.mode === "new";                  // green button → final files
+    let label = isFinal ? undefined : (picker.label ?? selectedGroup?.label);
+    if (!isFinal && !label) { setUploading(false); return; }
 
     const setItem = (i: number, patch: Partial<{ status: RpStatus; pct: number; error: string }>) =>
       setRolePicker(p => p ? { ...p, items: p.items.map((x, idx) => idx === i ? { ...x, ...patch } : x) } : p);
@@ -1854,20 +1910,30 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       }
       setItem(i, { status: "uploading", pct: 0, error: undefined });
       const onPct = (p: number) => setItem(i, { pct: p });
-      const v = it.file.size > VER_CHUNK_LIMIT
-        ? await uploadChunkedVersion(it.file, { label, addToExisting: !!label, role: it.role }, onPct)
-        : await uploadSingleVersionXhr(it.file, { label, addToExisting: !!label, role: it.role }, onPct);
-      if (v) {
-        if (!label) { label = v.label; if (picker.mode === "new") setSel(v.id); } // first success = the version
-        setItem(i, { status: "done", pct: 100 });
-        setVersions(prev => [v, ...(prev ?? [])]);           // incremental; done items are never re-run
+
+      if (isFinal) {
+        // Final files: nothing touches versions / player / selection / counter.
+        const r = it.file.size > VER_CHUNK_LIMIT
+          ? await uploadChunkedFinal(it.file, onPct)
+          : await uploadSingleFinalXhr(it.file, onPct);
+        if (r.ok) setItem(i, { status: "done", pct: 100 });
+        else setItem(i, { status: "error", error: r.status === 409
+          ? (rtl ? "כבר קיים קובץ בשם הזה בתיקיית הקבצים הסופיים" : "A file with this name already exists in the final files folder.")
+          : (rtl ? "ההעלאה נכשלה" : "Upload failed") });
       } else {
-        setItem(i, { status: "error", error: rtl ? "ההעלאה נכשלה" : "Upload failed" });
+        // Mix-version upload (add to the selected version).
+        const v = it.file.size > VER_CHUNK_LIMIT
+          ? await uploadChunkedVersion(it.file, { label, addToExisting: !!label, role: it.role }, onPct)
+          : await uploadSingleVersionXhr(it.file, { label, addToExisting: !!label, role: it.role }, onPct);
+        if (v) {
+          if (!label) label = v.label;
+          setItem(i, { status: "done", pct: 100 });
+          setVersions(prev => [v, ...(prev ?? [])]);
+        } else setItem(i, { status: "error", error: rtl ? "ההעלאה נכשלה" : "Upload failed" });
       }
     }
-    // Persist the label for a retry (no fragmentation) and move to the summary state —
-    // the modal NEVER auto-closes; the user sees the outcome and closes it themselves.
-    setRolePicker(p => p ? { ...p, label, phase: "summary" } : p);
+    // Move to the summary state — the modal NEVER auto-closes.
+    setRolePicker(p => p ? { ...p, label: isFinal ? undefined : label, phase: "summary" } : p);
     setUploading(false);
   }
 
