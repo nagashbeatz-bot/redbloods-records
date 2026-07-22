@@ -1714,22 +1714,6 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     return () => { alive = false; };
   }, [work.id]);
 
-  // Upload ONE file. `label` + `addToExisting` group several files under one
-  // logical version (no DB); no label → the server auto-assigns the next "Mix N".
-  // `role` is the user's per-file pick → the server names the file accordingly.
-  async function postOneFile(file: File, opts: { label?: string; addToExisting?: boolean; role?: FileRole }): Promise<MixVersion | null> {
-    const fd = new FormData();
-    fd.append("file", file);
-    if (opts.label) fd.append("label", opts.label);
-    if (opts.addToExisting) fd.append("addToExisting", "1");
-    if (opts.role) fd.append("role", opts.role);
-    try {
-      const d = await fetch(versionsUrl, { method: "POST", body: fd }).then(r => r.json());
-      if (d.ok && d.version) return d.version as MixVersion;
-      return null; // caller (runRolePickerUpload) shows a friendly inline error
-    } catch { return null; }
-  }
-
   // After files are chosen, open the per-file role picker (auto-suggested from the
   // filename; the user can change each before uploading). Nothing uploads yet.
   function openRolePicker(mode: "new" | "existing", list: FileList | null) {
@@ -1741,53 +1725,6 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     setRolePicker({ mode, items: files.map(f => ({ file: f, role: detectRole(f.name) })) });
   }
 
-  // Confirm the picker → upload each file with its chosen role, one at a time, with
-  // a visible per-file counter. On failure it STOPS with an inline error, keeps the
-  // modal + role choices, and drops the already-succeeded files so a retry continues
-  // WITHOUT duplicating (the version label is carried so remaining files join it).
-  async function runRolePickerUpload() {
-    const picker = rolePicker;
-    if (!picker || picker.items.length === 0 || uploading) return;
-    const total = picker.items.length;
-    // Established version label: an existing-version selection, or one carried from a
-    // previous partial attempt. Empty for a fresh "new" batch (first file creates it).
-    let label: string | undefined = picker.label ?? (picker.mode === "existing" ? selectedGroup?.label : undefined);
-    if (picker.mode === "existing" && !label) return;
-    setUploading(true); setRpError(null);
-    const created: MixVersion[] = [];
-    try {
-      for (let i = 0; i < total; i++) {
-        const it = picker.items[i];
-        setUpProgress({ done: i, total, current: it.file.name });
-        const v = label
-          ? await postOneFile(it.file, { label, addToExisting: true, role: it.role })
-          : await postOneFile(it.file, { role: it.role }); // first file of a NEW version
-        if (!v) {
-          // Persist what succeeded (so it isn't lost / re-uploaded), carry the label,
-          // and keep only the remaining files in the picker for a clean retry.
-          if (created.length > 0) {
-            setVersions(prev => [...created, ...(prev ?? [])]);
-            if (picker.mode === "new" && !picker.label) setSel(created[0].id);
-          }
-          setRolePicker({ mode: picker.mode, items: picker.items.slice(i), label });
-          setRpError(rtl ? "העלאת קובץ נכשלה — נסה שוב" : "A file failed to upload — try again");
-          return;
-        }
-        if (!label) label = v.label; // first NEW file established the version label
-        created.push(v);
-      }
-      setUpProgress({ done: total, total, current: "" });
-      setVersions(prev => [...created, ...(prev ?? [])]);
-      if (picker.mode === "new" && !picker.label && created[0]) setSel(created[0].id);
-      notify(t.vUploaded);
-      setRolePicker(null);
-    } catch {
-      setRpError(rtl ? "העלאה נכשלה — נסה שוב" : "Upload failed — try again");
-    } finally {
-      setUploading(false);
-      setUpProgress(null);
-    }
-  }
 
   // ── "Upload Final Files" (Steven) — multi-file, size-dispatched, Railway-safe ──
   // Size dispatch mirrors the work-materials uploader: ≤140MB single-shot (XHR → real
@@ -2083,44 +2020,26 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
               <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("new", e.target.files)} />
               <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
 
-              {isSteven ? (
-                /* Steven — prominent GREEN "Upload Final Files" (multiple, up to 1GB/file). */
-                <div style={{ ...subCard, border: "1px solid rgba(34,197,94,0.32)" }}>
-                  <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon /> {t.uploadFiles}</span></div>
-                  <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                    <button
-                      type="button"
-                      onClick={() => { if (!uploading) newVersionInputRef.current?.click(); }}
-                      disabled={uploading}
-                      onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
-                      onDragLeave={e => { e.preventDefault(); setDrag(false); }}
-                      onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("new", e.dataTransfer.files); }}
-                      style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12, border: drag ? "2px solid #22C55E" : "none", cursor: uploading ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff", background: uploading ? MUTED : "linear-gradient(180deg, #22C55E, #16A34A)", boxShadow: uploading ? "none" : "0 6px 18px rgba(34,197,94,0.30)", opacity: uploading ? 0.7 : 1, transition: "all .15s" }}
-                    >
-                      {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadFinalBtn}</>}
-                    </button>
-                    <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.55, textAlign: "center" }}>{t.uploadFinalHint}</div>
-                  </div>
+              {/* Prominent GREEN "Upload Final Files" — SAME area + multi-upload/chunked
+                  flow for BOTH Owner and Steven (each posts to its own role-scoped route
+                  via versionsUrl). No amber single-shot branch remains. */}
+              <div style={{ ...subCard, border: "1px solid rgba(34,197,94,0.32)" }}>
+                <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon /> {t.uploadFiles}</span></div>
+                <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                  <button
+                    type="button"
+                    onClick={() => { if (!uploading) newVersionInputRef.current?.click(); }}
+                    disabled={uploading}
+                    onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
+                    onDragLeave={e => { e.preventDefault(); setDrag(false); }}
+                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("new", e.dataTransfer.files); }}
+                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12, border: drag ? "2px solid #22C55E" : "none", cursor: uploading ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff", background: uploading ? MUTED : "linear-gradient(180deg, #22C55E, #16A34A)", boxShadow: uploading ? "none" : "0 6px 18px rgba(34,197,94,0.30)", opacity: uploading ? 0.7 : 1, transition: "all .15s" }}
+                  >
+                    {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadFinalBtn}</>}
+                  </button>
+                  <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.55, textAlign: "center" }}>{t.uploadFinalHint}</div>
                 </div>
-              ) : (
-                /* Owner — the existing amber dropzone (unchanged single-shot flow). */
-                <div style={{ ...subCard, border: "1px solid rgba(245,158,11,0.28)" }}>
-                  <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon /> {t.uploadFiles}</span></div>
-                  <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div
-                      onClick={() => { if (!uploading) newVersionInputRef.current?.click(); }}
-                      onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
-                      onDragLeave={e => { e.preventDefault(); setDrag(false); }}
-                      onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("new", e.dataTransfer.files); }}
-                      style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, textAlign: "center", padding: "16px 12px", borderRadius: 12, cursor: uploading ? "default" : "pointer", border: `2px dashed ${drag ? "#F59E0B" : "rgba(245,158,11,0.42)"}`, background: drag ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.05)", transition: "all .15s" }}
-                    >
-                      <div style={{ opacity: 0.9, color: drag ? "#F59E0B" : "#D89A3A", display: "flex", justifyContent: "center" }}><UploadIcon size={26} /></div>
-                      <div style={{ fontSize: 12.5, fontWeight: 800, color: uploading ? BRAND : TEXT }}>{uploading ? t.vUploading : t.uploadNewVersionBtn}</div>
-                      <div style={{ fontSize: 10, color: MUTED }}>{t.uploadHint}</div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
 
               {/* Project files (files of the selected version) */}
               <div style={subCard}>
@@ -2527,7 +2446,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
               )}
               <div style={{ padding: "14px 18px", borderTop: `1px solid ${BDR}`, display: "flex", gap: 10 }}>
                 <button onClick={() => { if (!uploading) { setRolePicker(null); setRpError(null); } }} disabled={uploading} style={{ ...ghostBtn, flex: 1, justifyContent: "center", opacity: uploading ? 0.6 : 1 }}>{t.cancel}</button>
-                <button onClick={isSteven ? runFinalUpload : runRolePickerUpload} disabled={uploading} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: uploading ? MUTED : (isSteven ? "linear-gradient(180deg, #22C55E, #16A34A)" : BRAND), border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>{uploading ? <><WMSpinner size={12} color="#fff" /> {t.vUploading}</> : (isSteven && rolePicker.items.some(x => x.status === "error")) ? `↻ ${t.rpRetry}` : `⬆ ${t.rpUpload}`}</button>
+                <button onClick={runFinalUpload} disabled={uploading} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: uploading ? MUTED : "linear-gradient(180deg, #22C55E, #16A34A)", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>{uploading ? <><WMSpinner size={12} color="#fff" /> {t.vUploading}</> : rolePicker.items.some(x => x.status === "error") ? `↻ ${t.rpRetry}` : `⬆ ${t.rpUpload}`}</button>
               </div>
             </div>
           </div>
