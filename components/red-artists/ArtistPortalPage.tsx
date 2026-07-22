@@ -496,6 +496,9 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
           @keyframes rapProgress { from { width: 0%; } to { width: 100%; } }
           .rap-tabs { scrollbar-width: none; -ms-overflow-style: none; }
           .rap-tabs::-webkit-scrollbar { display: none; }
+          /* Balance amount field — no native number spinner (clean, uniform). */
+          .rap-num::-webkit-outer-spin-button, .rap-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+          .rap-num { -moz-appearance: textfield; appearance: textfield; }
         `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
@@ -1152,14 +1155,14 @@ function BalanceEntryModal({ artistId, entry, onClose, onSaved }: {
       <div style={{ marginBottom: 16 }}>
         <label style={skLabel}>סוג רשומה</label>
         <select value={entryType} onChange={e => setEntryType(e.target.value as BalanceType)} disabled={busy}
-          style={{ ...skField, cursor: "pointer", appearance: "auto", opacity: busy ? 0.6 : 1 }}>
-          {BALANCE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          style={{ ...skField, color: TEXT, cursor: "pointer", appearance: "auto", opacity: busy ? 0.6 : 1 }}>
+          {BALANCE_TYPES.map(t => <option key={t} value={t} style={{ background: "#161617", color: TEXT }}>{t}</option>)}
         </select>
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={skLabel}>סכום (₪)</label>
         <input type="number" inputMode="decimal" min="0" step="1" value={amount} onChange={e => setAmount(e.target.value)} disabled={busy}
-          placeholder="0" style={{ ...skField, direction: "ltr", textAlign: "start", opacity: busy ? 0.6 : 1 }} />
+          placeholder="0" className="rap-num" style={{ ...skField, color: TEXT, direction: "ltr", textAlign: "right", opacity: busy ? 0.6 : 1 }} />
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={skLabel}>תיאור</label>
