@@ -25,7 +25,7 @@ export default async function Page({ params }: { params: Promise<{ artistId: str
 
   return (
     <AppShell>
-      {isPortalArtist ? <ArtistPortalPage /> : <ArtistPage artistId={artistId} />}
+      {isPortalArtist ? <ArtistPortalPage artistId={artistId} /> : <ArtistPage artistId={artistId} />}
     </AppShell>
   );
 }
