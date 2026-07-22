@@ -61,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!sessionId) return NextResponse.json({ ok: false, error: "sessionId חסר" }, { status: 400 });
       if (!fileName)  return NextResponse.json({ ok: false, error: "חסר שם קובץ" }, { status: 400 });
 
-      const resolved = await resolveVersionTarget(workId, { fileName, label, addToExisting, roleParam });
+      const resolved = await resolveVersionTarget(workId, { fileName, label, addToExisting, roleParam, folderKind: "final" });
       if (!resolved.ok) return NextResponse.json({ ok: false, error: resolved.error }, { status: resolved.status });
       const { target } = resolved;
 

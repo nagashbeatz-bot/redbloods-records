@@ -65,3 +65,22 @@ export function mixVersionsFolder(opts: {
   }
   return `/Sound Engineer/${opts.workId}/Mix Versions`;
 }
+
+/**
+ * "Final Files" folder — the destination for the "Upload Final Files" flow
+ * (masters / stems / instrumental / acapella / delivery). Same work/project
+ * hierarchy as mixVersionsFolder, only a different leaf subfolder — so it lives
+ * next to "Mix Versions", never replacing it. Rename-proof like the sibling.
+ */
+export function finalFilesFolder(opts: {
+  projectId: string | null;
+  artist?: string;
+  projectName?: string;
+  workId: string;
+  dropboxFolder?: string | null;
+}): string {
+  if (opts.projectId) {
+    return `${projectBaseFolder(opts.artist ?? "", opts.projectName ?? "", opts.projectId, opts.dropboxFolder)}/Final Files`;
+  }
+  return `/Sound Engineer/${opts.workId}/Final Files`;
+}

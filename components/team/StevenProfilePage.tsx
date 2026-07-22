@@ -294,6 +294,7 @@ const TR = {
     uploadNewVersionBtn: "+ העלה גרסה חדשה", addToVersionBtn: "+ הוסף קובץ לגרסה הזו",
     uploadHint: "גרור קבצים לכאן · נגן = mp3/wav · ערוצים = zip/rar",
     rpTitle: "בחר סוג לכל קובץ", rpSubNew: "גרסה חדשה", rpSubExisting: "מוסיף לגרסה",
+    rpAddMore: "הוסף עוד קבצים", rpClose: "סגור", rpSuccessAll: "עבודה טובה! כל הקבצים הועלו בהצלחה 😊", rpAllFailed: "כל הקבצים נכשלו",
     rpHint: "מיקס/אקפלה/אינסטרומנטל = נגן · ערוצים = הורדה בלבד", rpUpload: "העלה",
     versionFiles: "קבצי הגרסה", versionFilesSub: "מסומנים בזמן אמת — הערות משותפות לגרסה זו",
     sharedComments: "הערות משותפות לגרסה", sharedCommentsSub: "ההערות משותפות לכל שלושת הקבצים",
@@ -352,6 +353,7 @@ const TR = {
     uploadNewVersionBtn: "+ Upload new version", addToVersionBtn: "+ Add file to this version",
     uploadHint: "Drag files here · player = mp3/wav · stems = zip/rar",
     rpTitle: "Choose a type for each file", rpSubNew: "New version", rpSubExisting: "Adding to",
+    rpAddMore: "Add More Files", rpClose: "Close", rpSuccessAll: "Great job! All files were uploaded successfully 😊", rpAllFailed: "All files failed",
     rpHint: "Mix/Acapella/Instrumental = player · Stems = download only", rpUpload: "Upload",
     versionFiles: "Version files", versionFilesSub: "Marked in real time — comments are shared for this version",
     sharedComments: "Shared comments for this version", sharedCommentsSub: "Comments are shared across all three files",
@@ -1545,9 +1547,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [uploading, setUploading] = useState(false);
   const [drag, setDrag]           = useState(false);
   // Per-file role picker shown after files are chosen (before upload).
-  const [rolePicker, setRolePicker] = useState<{ mode: "new" | "existing"; items: { file: File; role: FileRole; status?: RpStatus; pct?: number; error?: string }[]; label?: string } | null>(null);
-  const [upProgress, setUpProgress] = useState<{ done: number; total: number; current: string } | null>(null); // batch upload progress
-  const [rpError, setRpError]       = useState<string | null>(null); // inline error in the role picker
+  const [rolePicker, setRolePicker] = useState<{ mode: "new" | "existing"; items: { file: File; role: FileRole; status?: RpStatus; pct?: number; error?: string }[]; label?: string; phase?: "select" | "summary" } | null>(null);
+  const moreFilesInputRef = useRef<HTMLInputElement | null>(null); // "Add more files" (append to the open batch)
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
@@ -1716,23 +1717,57 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
 
   // After files are chosen, open the per-file role picker (auto-suggested from the
   // filename; the user can change each before uploading). Nothing uploads yet.
+  // Size thresholds for the final-files flow (kept here so the picker helpers can flag
+  // oversize files up-front). ≤140MB single-shot; >140MB→1GB chunked; >1GB rejected.
+  const VER_MAX_BYTES   = 1024 * 1024 * 1024;   // 1GB hard limit per file
+  const VER_CHUNK_LIMIT = 140 * 1024 * 1024;    // switch to chunked above this
+
+  // Dedup key for a picked file — name + size + lastModified.
+  const fileKey = (f: File) => `${f.name}::${f.size}::${f.lastModified}`;
+  // Build a picker item. Oversize (>1GB) files are flagged as a permanent error up-front
+  // (shown in the list, never uploaded — no partial upload started).
+  const makeItem = (f: File): { file: File; role: FileRole; status?: RpStatus; error?: string } =>
+    f.size > VER_MAX_BYTES
+      ? { file: f, role: detectRole(f.name), status: "error", error: rtl ? "גדול מ-1GB — לא ניתן להעלות" : "Over 1GB — can't upload" }
+      : { file: f, role: detectRole(f.name) };
+
   function openRolePicker(mode: "new" | "existing", list: FileList | null) {
     const files = list ? Array.from(list) : [];
     if (newVersionInputRef.current) newVersionInputRef.current.value = "";
     if (addFileInputRef.current) addFileInputRef.current.value = "";
     if (files.length === 0 || uploading) return;
     if (mode === "existing" && !selectedGroup) return;
-    setRolePicker({ mode, items: files.map(f => ({ file: f, role: detectRole(f.name) })) });
+    // A fresh, empty batch each time the button is pressed; dedup the initial selection.
+    const seen = new Set<string>();
+    const items: ReturnType<typeof makeItem>[] = [];
+    for (const f of files) { const k = fileKey(f); if (!seen.has(k)) { seen.add(k); items.push(makeItem(f)); } }
+    setRolePicker({ mode, items, phase: "select" });
+  }
+
+  // "Add more files" — append to the OPEN batch (dedup by fileKey), never replace.
+  function appendFiles(list: FileList | null) {
+    if (moreFilesInputRef.current) moreFilesInputRef.current.value = "";
+    const files = list ? Array.from(list) : [];
+    if (files.length === 0 || uploading) return;
+    setRolePicker(p => {
+      if (!p || p.phase === "summary") return p;
+      const seen = new Set(p.items.map(it => fileKey(it.file)));
+      const add = files.filter(f => !seen.has(fileKey(f))).map(makeItem);
+      return add.length ? { ...p, items: [...p.items, ...add] } : p;
+    });
+  }
+
+  // Remove a file from the list before upload (blocked while uploading / in summary).
+  function removeItem(idx: number) {
+    setRolePicker(p => (p && p.phase !== "summary" && !uploading) ? { ...p, items: p.items.filter((_, i) => i !== idx) } : p);
   }
 
 
-  // ── "Upload Final Files" (Steven) — multi-file, size-dispatched, Railway-safe ──
-  // Size dispatch mirrors the work-materials uploader: ≤140MB single-shot (XHR → real
-  // %); >140MB up to 1GB streams 8MB chunks through the versions/chunk route (never the
-  // whole file in memory / over the proxy). Both land in mix_versions exactly like the
-  // single-shot path. Sequential (concurrency=1) → no Railway request flood.
-  const VER_MAX_BYTES   = 1024 * 1024 * 1024;   // 1GB hard limit per file
-  const VER_CHUNK_LIMIT = 140 * 1024 * 1024;    // switch to chunked above this
+  // ── "Upload Final Files" — multi-file, size-dispatched, Railway-safe (Owner+Steven) ──
+  // ≤140MB single-shot (XHR → real %); >140MB up to 1GB streams 8MB chunks through the
+  // versions/chunk route (never the whole file in memory / over the proxy). Sequential
+  // (concurrency=1) → no Railway request flood. Role is auto-classified server-side from
+  // the filename (no manual picker). Files land under /Final Files/ in mix_versions.
 
   // Single-shot upload via XHR so we get a REAL request-body progress %. ≤140MB.
   function uploadSingleVersionXhr(
@@ -1803,20 +1838,19 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   async function runFinalUpload() {
     const picker = rolePicker;
     if (!picker || uploading) return;                       // no double-submit
-    setUploading(true); setRpError(null); setUpProgress(null);
+    setUploading(true);
     let label = picker.label ?? (picker.mode === "existing" ? selectedGroup?.label : undefined);
     if (picker.mode === "existing" && !label) { setUploading(false); return; }
 
     const setItem = (i: number, patch: Partial<{ status: RpStatus; pct: number; error: string }>) =>
       setRolePicker(p => p ? { ...p, items: p.items.map((x, idx) => idx === i ? { ...x, ...patch } : x) } : p);
 
-    let ok = 0, fail = 0;
     for (let i = 0; i < picker.items.length; i++) {
       const it = picker.items[i];
-      if (it.status === "done") { ok++; continue; }         // retry skips succeeded files
-      if (it.file.size > VER_MAX_BYTES) {
-        setItem(i, { status: "error", pct: 0, error: rtl ? "גדול מ-1GB — העלה ישירות ל-Dropbox" : "Over 1GB — upload directly to Dropbox" });
-        fail++; continue;
+      if (it.status === "done") continue;                   // retry skips succeeded files
+      if (it.file.size > VER_MAX_BYTES) {                    // oversize: never upload (flagged up-front too)
+        setItem(i, { status: "error", pct: 0, error: rtl ? "גדול מ-1GB — לא ניתן להעלות" : "Over 1GB — can't upload" });
+        continue;
       }
       setItem(i, { status: "uploading", pct: 0, error: undefined });
       const onPct = (p: number) => setItem(i, { pct: p });
@@ -1827,16 +1861,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
         if (!label) { label = v.label; if (picker.mode === "new") setSel(v.id); } // first success = the version
         setItem(i, { status: "done", pct: 100 });
         setVersions(prev => [v, ...(prev ?? [])]);           // incremental; done items are never re-run
-        ok++;
       } else {
         setItem(i, { status: "error", error: rtl ? "ההעלאה נכשלה" : "Upload failed" });
-        fail++;
       }
     }
-    setRolePicker(p => p ? { ...p, label } : p);             // persist label for retry (no fragmentation)
+    // Persist the label for a retry (no fragmentation) and move to the summary state —
+    // the modal NEVER auto-closes; the user sees the outcome and closes it themselves.
+    setRolePicker(p => p ? { ...p, label, phase: "summary" } : p);
     setUploading(false);
-    if (fail === 0) { notify(t.vUploaded); setRolePicker(null); }
-    else setRpError(rtl ? `הועלו ${ok} · נכשלו ${fail}` : `${ok} uploaded · ${fail} failed`);
   }
 
   function setVersionStatus(v: MixVersion, status: string) {
@@ -2019,6 +2051,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   "add file to this version" button. Kept mounted for both roles. */}
               <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("new", e.target.files)} />
               <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
+              <input ref={moreFilesInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => appendFiles(e.target.files)} />
 
               {/* Prominent GREEN "Upload Final Files" — SAME area + multi-upload/chunked
                   flow for BOTH Owner and Steven (each posts to its own role-scoped route
@@ -2385,33 +2418,60 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
         )}
 
         {/* Per-file role picker — opens after files are chosen, before upload */}
-        {rolePicker && (
-          <div onClick={() => { if (!uploading) { setRolePicker(null); setRpError(null); } }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${BRAND}44`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+        {rolePicker && (() => {
+          const items = rolePicker.items;
+          const phase = rolePicker.phase ?? "select";
+          const doneCount = items.filter(x => x.status === "done").length;
+          const failCount = items.filter(x => x.status === "error").length;
+          const uploadableCount = items.filter(x => x.status !== "done" && x.file.size <= VER_MAX_BYTES).length;
+          const canRemove = !uploading && phase !== "summary";
+          const canUpload = !uploading && uploadableCount > 0;
+          return (
+          <div onClick={() => { if (!uploading) setRolePicker(null); }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}"}</style>
+            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid rgba(34,197,94,0.35)`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
               <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${BDR}` }}>
-                <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><SlidersIcon size={16} /> {t.rpTitle}</div>
-                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
-                  {rolePicker.mode === "new" ? t.rpSubNew : `${t.rpSubExisting}: ${selectedGroup?.label ?? ""}`} · {t.rpHint}
-                </div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon size={16} /> {t.uploadFinalBtn}</div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{t.uploadFinalHint}</div>
               </div>
+
+              {/* Summary banner (after an upload run — the modal never auto-closes) */}
+              {phase === "summary" && !uploading && (
+                <div style={{ padding: "12px 18px 0" }}>
+                  {failCount === 0 ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, fontWeight: 800, color: "#86EFAC", background: "rgba(34,197,94,0.12)", border: `1px solid rgba(34,197,94,0.4)`, borderRadius: 11, padding: "12px 13px" }}>
+                      <span style={{ fontSize: 17 }}>✓</span> {t.rpSuccessAll}
+                    </div>
+                  ) : doneCount > 0 ? (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#FBBF24", background: "rgba(245,158,11,0.10)", border: `1px solid rgba(245,158,11,0.4)`, borderRadius: 11, padding: "12px 13px" }}>
+                      {rtl ? `${doneCount} קבצים הועלו בהצלחה, ${failCount} נכשלו.` : `${doneCount} files uploaded successfully, ${failCount} failed.`}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#FCA5A5", background: "rgba(239,68,68,0.1)", border: `1px solid ${RED}55`, borderRadius: 11, padding: "12px 13px" }}>⚠ {t.rpAllFailed}</div>
+                  )}
+                </div>
+              )}
+
               <div style={{ padding: "14px 18px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                {rolePicker.items.map((it, idx) => {
-                  const st = it.status; // per-file status (Steven "final files" batch)
-                  const locked = st === "uploading" || st === "done";
+                {items.map((it, idx) => {
+                  const st = it.status;
                   const badge = st === "done" ? { txt: `✓ ${t.rpStDone}`, col: "#22C55E" }
                     : st === "error" ? { txt: `✗ ${t.rpStFailed}`, col: "#F87171" }
                     : st === "uploading" ? { txt: `${it.pct ?? 0}%`, col: BRAND }
-                    : null;
+                    : { txt: t.rpStPending, col: MUTED };
                   return (
                   <div key={idx} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "9px 11px", borderRadius: 11, background: CARD2, border: `1px solid ${st === "error" ? `${RED}55` : BDR}` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[it.role]}22`, color: ROLE_COLOR[it.role], display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{isAudioName(it.file.name) ? <MusicIcon size={14} /> : <BoxIcon size={14} />}</span>
-                      <div title={it.file.name} style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{it.file.name}</div>
-                      {badge && <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: badge.col, whiteSpace: "nowrap" }}>{badge.txt}</span>}
-                      <select value={it.role} disabled={locked} onChange={e => { const role = e.target.value as FileRole; setRpError(null); setRolePicker(p => p ? { ...p, items: p.items.map((x, i) => i === idx ? { ...x, role } : x) } : p); }}
-                        style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, padding: "6px 8px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${ROLE_COLOR[it.role]}66`, fontFamily: "inherit", outline: "none", cursor: locked ? "default" : "pointer", opacity: locked ? 0.6 : 1 }}>
-                        {ROLE_ORDER.map(r => <option key={r} value={r}>{roleLabel(r, lang)}</option>)}
-                      </select>
+                      <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: "rgba(255,255,255,0.06)", color: TEXT2, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{isAudioName(it.file.name) ? <MusicIcon size={14} /> : <BoxIcon size={14} />}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div title={it.file.name} style={{ fontSize: 12, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: "start", unicodeBidi: "plaintext" } as React.CSSProperties}>{it.file.name}</div>
+                        <div style={{ fontSize: 10, color: MUTED, marginTop: 1, direction: "ltr", textAlign: "start" }}>{fmtBytes(it.file.size)}</div>
+                      </div>
+                      <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: badge.col, whiteSpace: "nowrap" }}>{badge.txt}</span>
+                      {canRemove && (
+                        <button onClick={() => removeItem(idx)} aria-label={rtl ? "הסר" : "Remove"} title={rtl ? "הסר" : "Remove"}
+                          style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: `1px solid ${BDR2}`, background: "transparent", color: TEXT2, cursor: "pointer", fontSize: 13, lineHeight: 1, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                      )}
                     </div>
                     {(st === "uploading" || st === "error") && (
                       <div style={{ height: 4, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
@@ -2422,35 +2482,29 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   </div>
                   );
                 })}
+                {items.length === 0 && <div style={{ padding: "18px 0", textAlign: "center", fontSize: 12.5, color: MUTED }}>{rtl ? "לא נבחרו קבצים" : "No files selected"}</div>}
               </div>
-              {/* Batch progress (per file) + inline error — modal stays open on failure */}
-              {(rpError || upProgress) && (
-                <div style={{ padding: "0 18px 4px", display: "flex", flexDirection: "column", gap: 8 }}>
-                  <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}"}</style>
-                  {rpError && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, color: "#FCA5A5", background: "rgba(239,68,68,0.1)", border: `1px solid ${RED}44`, borderRadius: 10, padding: "8px 11px" }}>⚠ {rpError}</div>
-                  )}
-                  {upProgress && (
-                    <div style={{ background: "#0D0D12", border: `1px solid ${BDR}`, borderRadius: 11, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12, color: TEXT2, fontWeight: 700 }}>
-                        <span>{rtl ? "מעלה" : "Uploading"} {Math.min(upProgress.done + 1, upProgress.total)} {rtl ? "מתוך" : "of"} {upProgress.total}</span>
-                        <WMSpinner size={12} color={BRAND} />
-                      </div>
-                      {upProgress.current && <div title={upProgress.current} style={{ fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", textAlign: rtl ? "right" : "left" } as React.CSSProperties}>{upProgress.current}</div>}
-                      <div style={{ height: 4, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                        <div style={{ height: "100%", borderRadius: 4, background: `linear-gradient(90deg, ${BRAND}, #F87171)`, width: `${Math.round((upProgress.done / upProgress.total) * 100)}%`, transition: "width 0.2s ease" }} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+
               <div style={{ padding: "14px 18px", borderTop: `1px solid ${BDR}`, display: "flex", gap: 10 }}>
-                <button onClick={() => { if (!uploading) { setRolePicker(null); setRpError(null); } }} disabled={uploading} style={{ ...ghostBtn, flex: 1, justifyContent: "center", opacity: uploading ? 0.6 : 1 }}>{t.cancel}</button>
-                <button onClick={runFinalUpload} disabled={uploading} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: uploading ? MUTED : "linear-gradient(180deg, #22C55E, #16A34A)", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: uploading ? "default" : "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>{uploading ? <><WMSpinner size={12} color="#fff" /> {t.vUploading}</> : rolePicker.items.some(x => x.status === "error") ? `↻ ${t.rpRetry}` : `⬆ ${t.rpUpload}`}</button>
+                {uploading ? (
+                  <button disabled style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: MUTED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "default", fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}><WMSpinner size={12} color="#fff" /> {t.vUploading}</button>
+                ) : phase === "summary" ? (
+                  <>
+                    {failCount > 0 && <button onClick={runFinalUpload} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: "linear-gradient(180deg, #22C55E, #16A34A)", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>↻ {t.rpRetry}</button>}
+                    <button onClick={() => setRolePicker(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.rpClose}</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => moreFilesInputRef.current?.click()} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>+ {t.rpAddMore}</button>
+                    <button onClick={() => setRolePicker(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.cancel}</button>
+                    <button onClick={runFinalUpload} disabled={!canUpload} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: canUpload ? "linear-gradient(180deg, #22C55E, #16A34A)" : MUTED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: canUpload ? "pointer" : "default", opacity: canUpload ? 1 : 0.6, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>⬆ {t.rpUpload}</button>
+                  </>
+                )}
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const durationSeconds = Number.isFinite(durationParsed) && durationParsed > 0 ? Math.round(durationParsed) : null;
 
     const result = await uploadMixVersionFile(workId, {
-      file: file as File, label, addToExisting, roleParam, durationSeconds,
+      file: file as File, label, addToExisting, roleParam, durationSeconds, folderKind: "final",
     });
     if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
     return NextResponse.json({ ok: true, version: result.version });
