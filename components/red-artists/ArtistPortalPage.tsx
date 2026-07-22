@@ -922,8 +922,9 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
   artistId?: string; ledger: BalanceLedger | null; loadState: LoadState; onReload: () => Promise<void>;
 }) {
   const isMobile = useIsMobile();
-  const [modal, setModal] = useState<{ mode: "add" } | { mode: "edit"; entry: BalanceEntry } | null>(null);
+  const [modal, setModal] = useState<{ mode: "add" } | { mode: "addExpected" } | { mode: "edit"; entry: BalanceEntry } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BalanceEntry | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
 
   if (loadState === "loading") {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
@@ -934,6 +935,10 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
 
   const totals = ledger?.totals ?? { income: 0, expectedIncome: 0, payments: 0, expenses: 0, expectedExpenses: 0, currentBalance: 0 };
   const entries = ledger?.entries ?? [];
+  // "הוצאות צפויות" are managed via a dedicated modal (below the strip) and are
+  // intentionally EXCLUDED from the main "היסטוריית תנועות" list — never from the DB/API.
+  const expectedExpenseEntries = entries.filter(e => e.entryType === "הוצאות צפויות");
+  const historyEntries = entries.filter(e => e.entryType !== "הוצאות צפויות");
   const curr = "₪";
   const cb = totals.currentBalance;
   const balColor = cb > 0 ? GREEN : cb < 0 ? BAL_EXP_RED : "#E5E5EA";
@@ -976,14 +981,22 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
         })}
       </div>
 
-      {/* 5th category — "הוצאות צפויות" as a slim, clear summary strip (visible, not a full card) */}
+      {/* 5th category — "הוצאות צפויות" as a slim, clear summary strip (visible, not a full
+          card). Managed via a dedicated modal (they're hidden from the main history list). */}
       <div style={{ ...panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: isMobile ? "13px 16px" : "14px 22px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: BAL_TYPE_META["הוצאות צפויות"].color, flexShrink: 0 }} />
           <span style={{ fontSize: isMobile ? 13.5 : 14.5, fontWeight: 800, color: TEXT }}>הוצאות צפויות</span>
-          <span style={{ fontSize: 11.5, color: MUTED }}>· {BAL_TYPE_META["הוצאות צפויות"].sub} (לא נכלל ביתרה)</span>
+          {!isMobile && <span style={{ fontSize: 11.5, color: MUTED }}>· {BAL_TYPE_META["הוצאות צפויות"].sub} (לא נכלל ביתרה)</span>}
         </div>
-        <span style={{ fontSize: isMobile ? 17 : 19, fontWeight: 900, color: BAL_TYPE_META["הוצאות צפויות"].color, direction: "ltr", flexShrink: 0 }}>{fmtMoney(totals.expectedExpenses, curr)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          <span style={{ fontSize: isMobile ? 17 : 19, fontWeight: 900, color: BAL_TYPE_META["הוצאות צפויות"].color, direction: "ltr" }}>{fmtMoney(totals.expectedExpenses, curr)}</span>
+          <button onClick={() => setManageOpen(true)} style={{
+            padding: isMobile ? "6px 12px" : "7px 14px", borderRadius: 9, cursor: "pointer",
+            background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
+            fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+          }}>ניהול</button>
+        </div>
       </div>
 
       {/* history — every ledger entry; owner add / edit / delete */}
@@ -1002,14 +1015,14 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
           }}><span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span>הוסף רשומה</button>
         </div>
 
-        {entries.length === 0 ? (
+        {historyEntries.length === 0 ? (
           <div style={{ padding: "34px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין עדיין רשומות מאזן</div>
         ) : isMobile ? (
           <div style={{ padding: "2px 0 6px" }}>
-            {entries.map((h, i) => {
+            {historyEntries.map((h, i) => {
               const m = BAL_TYPE_META[h.entryType];
               return (
-                <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", borderBottom: i < entries.length - 1 ? `1px solid ${BDR}` : "none" }}>
+                <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", borderBottom: i < historyEntries.length - 1 ? `1px solid ${BDR}` : "none" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.description || h.entryType}</div>
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 3, display: "flex", alignItems: "center", gap: 6 }}>
@@ -1033,10 +1046,10 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
                 <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 2 ? "center" : "start" }}>{h}</div>
               ))}
             </div>
-            {entries.map((h, i) => {
+            {historyEntries.map((h, i) => {
               const m = BAL_TYPE_META[h.entryType];
               return (
-                <div key={h.id} style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, alignItems: "center", padding: "13px 24px", borderBottom: i < entries.length - 1 ? `1px solid ${BDR}` : "none" }}>
+                <div key={h.id} style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, alignItems: "center", padding: "13px 24px", borderBottom: i < historyEntries.length - 1 ? `1px solid ${BDR}` : "none" }}>
                   <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "start", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(h.entryDate)}</div>
                   <div style={{ minWidth: 0, textAlign: "start" }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.description || h.entryType}</div>
@@ -1054,10 +1067,21 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
         )}
       </div>
 
+      {manageOpen && (
+        <BalanceExpectedManageModal
+          entries={expectedExpenseEntries}
+          total={totals.expectedExpenses}
+          onClose={() => setManageOpen(false)}
+          onAdd={() => setModal({ mode: "addExpected" })}
+          onEdit={(e) => setModal({ mode: "edit", entry: e })}
+          onDelete={(e) => setDeleteTarget(e)}
+        />
+      )}
       {modal && (
         <BalanceEntryModal
           artistId={artistId}
           entry={modal.mode === "edit" ? modal.entry : null}
+          defaultType={modal.mode === "addExpected" ? "הוצאות צפויות" : undefined}
           onClose={() => setModal(null)}
           onSaved={async () => { await onReload(); setModal(null); }}
         />
@@ -1071,6 +1095,54 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
         />
       )}
     </div>
+  );
+}
+
+// Owner-only manager for "הוצאות צפויות" — the one category hidden from the main
+// history list. Lists them with edit/delete + an "add" action (all reuse the same
+// entry/delete modals, stacked on top). Read from the live ledger, so it refreshes
+// after any change. No API/DB/permission change — display-layer management only.
+function BalanceExpectedManageModal({ entries, total, onClose, onAdd, onEdit, onDelete }: {
+  entries: BalanceEntry[]; total: number; onClose: () => void;
+  onAdd: () => void; onEdit: (e: BalanceEntry) => void; onDelete: (e: BalanceEntry) => void;
+}) {
+  const expColor = BAL_TYPE_META["הוצאות צפויות"].color;
+  return (
+    <BalanceModalShell title="ניהול הוצאות צפויות" onClose={onClose} busy={false}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: TEXT2 }}>סה״כ: <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtMoney(total, "₪")}</b></div>
+        <button onClick={onAdd} style={{
+          display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 10, cursor: "pointer",
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
+          fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+        }}><span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span>הוסף הוצאה צפויה</button>
+      </div>
+      {entries.length === 0 ? (
+        <div style={{ padding: "26px 8px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין עדיין הוצאות צפויות</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {entries.map(e => (
+            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description || "הוצאה צפויה"}</div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 3, direction: "ltr", textAlign: "start" }}>{fmtShowDate(e.entryDate)}</div>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: expColor, direction: "ltr", flexShrink: 0 }}>{fmtMoney(e.amount, "₪")}</div>
+              <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                <button onClick={() => onEdit(e)} aria-label="עריכה" style={rowIconBtn}><IcEdit size={16} /></button>
+                <button onClick={() => onDelete(e)} aria-label="מחיקה" style={rowIconBtn}><IcTrash size={16} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 18 }}>
+        <button onClick={onClose} style={{
+          width: "100%", padding: "13px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+        }}>סגור</button>
+      </div>
+    </BalanceModalShell>
   );
 }
 
@@ -1123,12 +1195,12 @@ function BalanceModalShell({ title, onClose, busy, children }: {
 
 // Add / edit a ledger entry. Server confirms before the modal closes (kept open on
 // error), and the primary button is locked while busy → no double-submit.
-function BalanceEntryModal({ artistId, entry, onClose, onSaved }: {
-  artistId: string; entry: BalanceEntry | null; onClose: () => void; onSaved: () => Promise<void>;
+function BalanceEntryModal({ artistId, entry, onClose, onSaved, defaultType }: {
+  artistId: string; entry: BalanceEntry | null; onClose: () => void; onSaved: () => Promise<void>; defaultType?: BalanceType;
 }) {
   const isEdit = !!entry;
   const [entryDate, setEntryDate] = useState(entry?.entryDate ?? "");
-  const [entryType, setEntryType] = useState<BalanceType>(entry?.entryType ?? "הכנסות");
+  const [entryType, setEntryType] = useState<BalanceType>(entry?.entryType ?? defaultType ?? "הכנסות");
   const [amount, setAmount] = useState(entry ? String(entry.amount) : "");
   const [description, setDescription] = useState(entry?.description ?? "");
   const [note, setNote] = useState(entry?.note ?? "");
