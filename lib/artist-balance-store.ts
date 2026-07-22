@@ -11,7 +11,7 @@ import { supabase } from "./supabase";
  * Scope is ALWAYS by artist_id (label_artists.id) — never by artist name.
  */
 
-export const BALANCE_ENTRY_TYPES = ["שולם לי", "צפוי לי", "הוצאה ששולמה", "הוצאה צפויה"] as const;
+export const BALANCE_ENTRY_TYPES = ["הכנסות", "הכנסות צפויות", "תשלומים", "הוצאות", "הוצאות צפויות"] as const;
 export type BalanceEntryType = (typeof BALANCE_ENTRY_TYPES)[number];
 
 export function isBalanceEntryType(v: unknown): v is BalanceEntryType {
@@ -42,13 +42,15 @@ export interface ArtistBalanceEntry {
   updatedAt: string;
 }
 
-/** Canonical aggregated totals. currentBalance = paid − expPaid (expected NOT counted). */
+/** Canonical aggregated totals. currentBalance = income − payments − expenses
+ *  (expected income/expenses NOT counted). */
 export interface ArtistBalanceTotals {
-  paid: number;            // Σ "שולם לי"
-  expected: number;        // Σ "צפוי לי"
-  expPaid: number;         // Σ "הוצאה ששולמה"
-  expExpected: number;     // Σ "הוצאה צפויה"
-  currentBalance: number;  // paid − expPaid
+  income: number;           // Σ "הכנסות"
+  expectedIncome: number;   // Σ "הכנסות צפויות"
+  payments: number;         // Σ "תשלומים"
+  expenses: number;         // Σ "הוצאות"
+  expectedExpenses: number; // Σ "הוצאות צפויות"
+  currentBalance: number;   // income − payments − expenses
 }
 
 interface DbRow {
@@ -95,11 +97,12 @@ export async function listArtistBalanceEntries(artistId: string): Promise<Artist
 export function computeArtistBalanceTotals(entries: ArtistBalanceEntry[]): ArtistBalanceTotals {
   const sum = (type: BalanceEntryType) =>
     entries.filter((e) => e.entryType === type).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-  const paid = sum("שולם לי");
-  const expected = sum("צפוי לי");
-  const expPaid = sum("הוצאה ששולמה");
-  const expExpected = sum("הוצאה צפויה");
-  return { paid, expected, expPaid, expExpected, currentBalance: paid - expPaid };
+  const income = sum("הכנסות");
+  const expectedIncome = sum("הכנסות צפויות");
+  const payments = sum("תשלומים");
+  const expenses = sum("הוצאות");
+  const expectedExpenses = sum("הוצאות צפויות");
+  return { income, expectedIncome, payments, expenses, expectedExpenses, currentBalance: income - payments - expenses };
 }
 
 /** Create a ledger entry. artistId comes from the URL (verified owner-side), NEVER from the client body. */

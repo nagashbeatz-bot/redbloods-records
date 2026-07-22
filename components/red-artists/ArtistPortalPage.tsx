@@ -245,15 +245,15 @@ type LoadState = "loading" | "ready" | "error";
 
 // ── Owner-only artist balance ledger (GET /api/label/artists/[id]/balance) ────────
 // Manual, independent ledger — NOT sourced from shalev-summary/transactions/Shows.
-// The four canonical entry types + totals mirror lib/artist-balance-store.ts exactly.
-export const BALANCE_TYPES = ["שולם לי", "צפוי לי", "הוצאה ששולמה", "הוצאה צפויה"] as const;
+// The five canonical entry types + totals mirror lib/artist-balance-store.ts exactly.
+export const BALANCE_TYPES = ["הכנסות", "הכנסות צפויות", "תשלומים", "הוצאות", "הוצאות צפויות"] as const;
 export type BalanceType = (typeof BALANCE_TYPES)[number];
 export type BalanceEntry = {
   id: string; artistId: string; entryType: BalanceType; amount: number;
   entryDate: string; description: string; note: string;
   sourceTxId: string | null; createdAt: string; updatedAt: string;
 };
-export type BalanceTotals = { paid: number; expected: number; expPaid: number; expExpected: number; currentBalance: number };
+export type BalanceTotals = { income: number; expectedIncome: number; payments: number; expenses: number; expectedExpenses: number; currentBalance: number };
 export type BalanceLedger = { entries: BalanceEntry[]; totals: BalanceTotals };
 
 // ── Standalone sketches library (manifest-backed, NO Projects) ────────────────────
@@ -547,7 +547,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
         ) : tab === "ההופעות שלי" ? (
           <PortalHero title="ההופעות שלי" subtitle="כל ההופעות הקרובות וההופעות שבוצעו במקום אחד" />
         ) : tab === "מאזן" ? (
-          <PortalHero title="מאזן" subtitle="הכנסות, הוצאות והיסטוריית תשלומים" />
+          <PortalHero title="מאזן" subtitle="הכנסות, תשלומים, הוצאות והיסטוריית תנועות" />
         ) : tab === "קבצי הופעות ויח״צ" ? (
           <PortalHero title="קבצי הופעות ויח״צ" subtitle="כל חומרי ההופעות והיח״צ שלך במקום אחד" />
         ) : (
@@ -904,12 +904,13 @@ function UploadChoiceModal({ onChoose, onClose }: { onChoose: (kind: UploadKind)
 // See [[redbloods-red-artists-boundary]].
 const BAL_EXP_RED = "#F87171";
 
-// Per-type display metadata (color + short caption). Income = green/amber; expenses = red/amber.
+// Per-type display metadata (color + short caption).
 const BAL_TYPE_META: Record<BalanceType, { color: string; sub: string }> = {
-  "שולם לי":       { color: GREEN,       sub: "התקבל בפועל" },
-  "צפוי לי":        { color: AMBER,       sub: "מאושר, טרם התקבל" },
-  "הוצאה ששולמה":  { color: BAL_EXP_RED, sub: "שולם על ידך" },
-  "הוצאה צפויה":   { color: "#C99A4B",   sub: "צפוי לתשלום" },
+  "הכנסות":        { color: GREEN,       sub: "נצבר לזכותך" },
+  "הכנסות צפויות": { color: AMBER,       sub: "צפוי להיצבר" },
+  "תשלומים":       { color: "#6BA3E8",   sub: "הועבר בפועל" },
+  "הוצאות":        { color: BAL_EXP_RED, sub: "הוצא בפועל" },
+  "הוצאות צפויות": { color: "#C99A4B",   sub: "טרם בוצע" },
 };
 
 const rowIconBtn: React.CSSProperties = {
@@ -931,17 +932,18 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון נתונים כספיים כרגע</div>;
   }
 
-  const totals = ledger?.totals ?? { paid: 0, expected: 0, expPaid: 0, expExpected: 0, currentBalance: 0 };
+  const totals = ledger?.totals ?? { income: 0, expectedIncome: 0, payments: 0, expenses: 0, expectedExpenses: 0, currentBalance: 0 };
   const entries = ledger?.entries ?? [];
   const curr = "₪";
   const cb = totals.currentBalance;
   const balColor = cb > 0 ? GREEN : cb < 0 ? BAL_EXP_RED : "#E5E5EA";
 
+  // 4 primary cards; "הוצאות צפויות" (5th category) shown as a slim summary strip below.
   const cards: { label: BalanceType; value: number }[] = [
-    { label: "שולם לי",       value: totals.paid },
-    { label: "צפוי לי",        value: totals.expected },
-    { label: "הוצאה ששולמה",  value: totals.expPaid },
-    { label: "הוצאה צפויה",   value: totals.expExpected },
+    { label: "הכנסות",        value: totals.income },
+    { label: "הכנסות צפויות", value: totals.expectedIncome },
+    { label: "תשלומים",       value: totals.payments },
+    { label: "הוצאות",        value: totals.expenses },
   ];
 
   const histCols = "120px minmax(0, 1.6fr) 120px 84px";
@@ -949,18 +951,18 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
 
-      {/* current balance = paid − expPaid (expected NOT counted) */}
+      {/* current balance = income − payments − expenses (expected NOT counted) */}
       <div style={{
         ...panel, padding: isMobile ? "26px 18px" : "34px 24px", textAlign: "center",
         background: `radial-gradient(120% 140% at 50% -10%, rgba(220,38,38,0.20) 0%, rgba(220,38,38,0.05) 42%, #121012 74%), linear-gradient(180deg, #161617 0%, #111112 100%)`,
         border: `1px solid rgba(220,38,38,0.30)`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 0 60px rgba(220,38,38,0.12), 0 14px 34px rgba(0,0,0,0.4)`,
       }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT2 }}>מאזן נוכחי</div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT2 }}>יתרה נוכחית</div>
         <div style={{ fontSize: isMobile ? 40 : 52, fontWeight: 900, color: balColor, letterSpacing: "-0.03em", marginTop: 6, direction: "ltr", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>{fmtMoney(cb, curr)}</div>
-        <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>שולם לי פחות הוצאות ששולמו</div>
+        <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>הכנסות פחות תשלומים והוצאות</div>
       </div>
 
-      {/* 4 summary cards — all REAL from the ledger */}
+      {/* 4 primary summary cards — all REAL from the ledger */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: isMobile ? 10 : 16 }}>
         {cards.map(c => {
           const m = BAL_TYPE_META[c.label];
@@ -974,12 +976,22 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
         })}
       </div>
 
+      {/* 5th category — "הוצאות צפויות" as a slim, clear summary strip (visible, not a full card) */}
+      <div style={{ ...panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: isMobile ? "13px 16px" : "14px 22px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: BAL_TYPE_META["הוצאות צפויות"].color, flexShrink: 0 }} />
+          <span style={{ fontSize: isMobile ? 13.5 : 14.5, fontWeight: 800, color: TEXT }}>הוצאות צפויות</span>
+          <span style={{ fontSize: 11.5, color: MUTED }}>· {BAL_TYPE_META["הוצאות צפויות"].sub} (לא נכלל ביתרה)</span>
+        </div>
+        <span style={{ fontSize: isMobile ? 17 : 19, fontWeight: 900, color: BAL_TYPE_META["הוצאות צפויות"].color, direction: "ltr", flexShrink: 0 }}>{fmtMoney(totals.expectedExpenses, curr)}</span>
+      </div>
+
       {/* history — every ledger entry; owner add / edit / delete */}
       <div style={panel}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: isMobile ? "14px 16px" : "16px 24px", borderBottom: `1px solid ${BDR}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}`, flexShrink: 0 }} />
-            <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>היסטוריית תשלומים</span>
+            <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>היסטוריית תנועות</span>
           </div>
           <button onClick={() => setModal({ mode: "add" })} style={{
             display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0,
@@ -1116,7 +1128,7 @@ function BalanceEntryModal({ artistId, entry, onClose, onSaved }: {
 }) {
   const isEdit = !!entry;
   const [entryDate, setEntryDate] = useState(entry?.entryDate ?? "");
-  const [entryType, setEntryType] = useState<BalanceType>(entry?.entryType ?? "שולם לי");
+  const [entryType, setEntryType] = useState<BalanceType>(entry?.entryType ?? "הכנסות");
   const [amount, setAmount] = useState(entry ? String(entry.amount) : "");
   const [description, setDescription] = useState(entry?.description ?? "");
   const [note, setNote] = useState(entry?.note ?? "");
@@ -2362,8 +2374,8 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
               </div>
             ) : (
               <>
-                <BalanceRow label="שולם לי" value={fmtMoney(ledger.totals.paid, "₪")} color={GREEN} icon="↑" />
-                <BalanceRow label="צפוי לי" value={fmtMoney(ledger.totals.expected, "₪")} color={TEXT} icon="↓" />
+                <BalanceRow label="הכנסות" value={fmtMoney(ledger.totals.income, "₪")} color={GREEN} icon="↑" />
+                <BalanceRow label="תשלומים" value={fmtMoney(ledger.totals.payments, "₪")} color={TEXT} icon="↓" />
                 {/* Net balance = paid − expenses-paid — highlighted */}
                 <div style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 12,
