@@ -33,6 +33,20 @@ export function isMusicalKey(k: string): boolean {
   return MUSICAL_KEY_SET.has(k);
 }
 
+/**
+ * Normalized form for duplicate-name detection: case-insensitive, whitespace- and
+ * separator-insensitive. "Midnight Ride", "midnight  ride", "midnight-ride" and
+ * "midnight_ride" all normalize to the same value. Never mutates the stored name.
+ */
+export function normalizeBeatName(name: string): string {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export interface Beat {
   id: string;
   name: string;            // display name (owner-typed)
@@ -83,6 +97,13 @@ export async function listBeats(): Promise<Beat[]> {
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data as DbRow[]).map(mapRow);
+}
+
+/** All beat id+name pairs (for the server-side duplicate-name check). Cheap. */
+export async function listBeatNames(): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase.from("beats").select("id, name");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as { id: string; name: string }[];
 }
 
 /** Look up one beat (for the stream endpoint). */

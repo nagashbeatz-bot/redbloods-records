@@ -699,11 +699,9 @@ function KeyFields({ note, type, onNote, onType, disabled }: {
       <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>סולם</label>
       <div style={{ display: "flex", gap: 10 }}>
         <select className="rap-select" value={note} onChange={e => onNote(e.target.value)} disabled={disabled} style={sel}>
-          <option value="" disabled>תו…</option>
           {BEAT_KEY_NOTES.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
         <select className="rap-select" value={type} onChange={e => onType(e.target.value)} disabled={disabled} style={sel}>
-          <option value="" disabled>Major / Minor…</option>
           {BEAT_KEY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
@@ -881,8 +879,8 @@ function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploa
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
   const [genre, setGenre] = useState("");
-  const [note, setNote] = useState("");
-  const [type, setType] = useState("");
+  const [note, setNote] = useState("C");     // valid default key → C Minor (no empty option)
+  const [type, setType] = useState("Minor");
   const [busy, setBusy] = useState(false);
   const [pct, setPct] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -1017,8 +1015,10 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState(beat.name);
   const [genre, setGenre] = useState(beat.genre);
-  const [note, setNote] = useState(initKey.note);
-  const [type, setType] = useState(initKey.type);
+  // Prefill from the beat's key; legacy beats with no key default to C Minor (only
+  // persisted if the owner actually saves — opening the modal never writes to the DB).
+  const [note, setNote] = useState(initKey.note || "C");
+  const [type, setType] = useState(initKey.type || "Minor");
   const [busy, setBusy] = useState(false);
   const [pct, setPct] = useState(0);
   const [err, setErr] = useState<string | null>(null);

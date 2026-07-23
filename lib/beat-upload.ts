@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { dropboxArg } from "@/lib/mix-version-upload";
 import { sanitizeFolder } from "@/lib/project-paths";
 import {
-  createBeat, updateBeatRow, deleteBeat, getBeat,
+  createBeat, updateBeatRow, deleteBeat, getBeat, listBeatNames, normalizeBeatName,
   isBeatGenre, isMusicalKey, type Beat, type BeatGenre,
 } from "@/lib/beats-store";
 
@@ -38,11 +38,23 @@ function extOf(name: string): string {
   return m ? m[1].toLowerCase() : "";
 }
 
-/** Safe base for the Dropbox file name — keeps Hebrew, strips path-illegal chars. */
-function safeBase(displayName: string, fallbackFileName: string): string {
-  const src = (displayName || "").trim() || fallbackFileName.replace(/\.[^.]+$/, "");
-  const cleaned = sanitizeFolder(src).replace(/\.+/g, " ").replace(/\s+/g, " ").trim();
+/**
+ * Safe Dropbox base name built from the OWNER-typed BEAT NAME (never the original
+ * upload filename) — keeps Hebrew/English, strips path-illegal chars + stray dots,
+ * trims, never empty. The uniqueness token is added separately in uniqueFileName.
+ */
+function safeBase(beatName: string): string {
+  const cleaned = sanitizeFolder((beatName || "").trim()).replace(/\.+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned || "beat";
+}
+
+/** Server-side duplicate-name guard. Returns the clashing beat's stored name, or
+ *  null when the name is free. `excludeId` skips the beat being updated (itself). */
+async function findNameClash(beatName: string, excludeId?: string): Promise<string | null> {
+  const norm = normalizeBeatName(beatName);
+  const rows = await listBeatNames();
+  const hit = rows.find((r) => r.id !== excludeId && normalizeBeatName(r.name) === norm);
+  return hit ? hit.name : null;
 }
 
 function pad(n: number): string {
@@ -89,7 +101,7 @@ async function dropboxDeleteChecked(
   return { ok: false, notFound: /not_found/.test(t) };
 }
 
-type Validated = { name: string; genre: BeatGenre; musicalKey: string; buffer: Buffer; ext: string; origName: string };
+type Validated = { name: string; genre: BeatGenre; musicalKey: string; buffer: Buffer; ext: string };
 
 /** Shared validation for create + update (file + key REQUIRED in both). */
 async function validateBeat(file: File | null, rawName: string, rawGenre: string, rawKey: string):
@@ -106,13 +118,13 @@ async function validateBeat(file: File | null, rawName: string, rawGenre: string
   if (file.size <= 0) return { ok: false, status: 400, error: "הקובץ ריק" };
   if (file.size > MAX_BYTES) return { ok: false, status: 413, error: "הקובץ גדול מדי (מקסימום 150MB)" };
   const buffer = Buffer.from(await file.arrayBuffer());
-  return { ok: true, v: { name, genre: rawGenre, musicalKey: key, buffer, ext: extOf(file.name), origName: file.name } };
+  return { ok: true, v: { name, genre: rawGenre, musicalKey: key, buffer, ext: extOf(file.name) } };
 }
 
 /** Upload a validated file to a fresh unique path; returns the ACTUAL Dropbox path/name. */
 async function uploadNewFile(v: Validated, token: string):
   Promise<{ ok: true; path: string; name: string } | { ok: false; status: number; error: string }> {
-  const fileName = uniqueFileName(safeBase(v.name, v.origName), v.ext);
+  const fileName = uniqueFileName(safeBase(v.name), v.ext);
   const dropboxPath = `${BEATS_FOLDER}/${fileName}`;
   const uploadRes = await fetch("https://content.dropboxapi.com/2/files/upload", {
     method: "POST",
@@ -139,6 +151,10 @@ export async function uploadBeatSingle(input: {
   const val = await validateBeat(input.file, input.name, input.genre, input.musicalKey);
   if (!val.ok) return val;
   const { v } = val;
+
+  // Duplicate-name guard — BEFORE any Dropbox upload (never write bytes on a clash).
+  const clash = await findNameClash(v.name);
+  if (clash) return { ok: false, status: 409, error: `כבר קיים ביט בשם דומה: ${clash}. בחר שם אחר.` };
 
   const token = await getToken();
   const up = await uploadNewFile(v, token);
@@ -173,6 +189,11 @@ export async function updateBeatFile(input: {
   const val = await validateBeat(input.file, input.name, input.genre, input.musicalKey);
   if (!val.ok) return val;
   const { v } = val;
+
+  // Duplicate-name guard — BEFORE any Dropbox upload; excludes THIS beat so an
+  // unchanged (or same) name never blocks its own update.
+  const clash = await findNameClash(v.name, input.beatId);
+  if (clash) return { ok: false, status: 409, error: `כבר קיים ביט בשם דומה: ${clash}. בחר שם אחר.` };
 
   const token = await getToken();
   const up = await uploadNewFile(v, token);   // 1) upload NEW file (old stays put)
