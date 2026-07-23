@@ -351,17 +351,9 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
   const [tab, setTabState] = useState<Tab>(DEFAULT_TAB);
   useEffect(() => {
     const sync = () => {
-      let t = tabFromUrl() ?? DEFAULT_TAB;
-      // Shalev may not open the OWNER-only tabs (balance / beats) — force him home
-      // and drop the param (covers a manual ?tab=balance|beats / Back/Forward into it).
-      if (isShalev && (t === "מאזן" || t === "ביטים פנויים")) {
-        t = DEFAULT_TAB;
-        if (typeof window !== "undefined") {
-          const url = new URL(window.location.href);
-          url.searchParams.delete("tab");
-          window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-        }
-      }
+      const t = tabFromUrl() ?? DEFAULT_TAB;
+      // Shalev now sees every tab (מאזן + ביטים are read-only for him), so no tab
+      // is forced back home; ?tab=balance / ?tab=beats open normally.
       setTabState(t);
     };
     sync(); // adopt the tab from the URL on load
@@ -431,14 +423,17 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
   const [ledger, setLedger] = useState<BalanceLedger | null>(null);
   const [ledgerState, setLedgerState] = useState<LoadState>("loading");
   const reloadLedger = useCallback(async () => {
-    if (!isOwner || !artistId) return;
+    // Owner reads the label endpoint (needs the artist id); shalev reads his own
+    // scoped, READ-ONLY endpoint (artist resolved server-side, no id needed).
+    const url = isShalev ? "/api/red-artists/balance" : (isOwner && artistId ? `/api/label/artists/${artistId}/balance` : null);
+    if (!url) return;
     try {
-      const r = await fetch(`/api/label/artists/${artistId}/balance`, { cache: "no-store" });
+      const r = await fetch(url, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) { setLedger({ entries: d.entries ?? [], totals: d.totals }); setLedgerState("ready"); }
       else setLedgerState("error");
     } catch { setLedgerState("error"); }
-  }, [isOwner, artistId]);
+  }, [isOwner, isShalev, artistId]);
   useEffect(() => { void reloadLedger(); }, [reloadLedger]);
 
   // Next release — the portal's manifest pointer (a sketch + a date). NOT Projects,
@@ -531,7 +526,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
           flexWrap: isMobile ? "nowrap" : "wrap",
           overflowX: isMobile ? "auto" : "visible", paddingBottom: isMobile ? 2 : 0,
         }}>
-          {TABS.filter(tb => !(isShalev && (tb === "מאזן" || tb === "ביטים פנויים"))).map(tb => {
+          {TABS.map(tb => {
             const active = tb === tab;
             return (
               <button
@@ -571,7 +566,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
         ) : tab === "מאזן" ? (
           <PortalHero title="מאזן" subtitle="הכנסות, תשלומים, הוצאות והיסטוריית תנועות" />
         ) : tab === "ביטים פנויים" ? (
-          <PortalHero title="ביטים פנויים" badge="♫" subtitle="ניהול ביטים זמינים לעבודה" />
+          <PortalHero title="ביטים פנויים" badge="♫" subtitle={isShalev ? "ביטים זמינים להאזנה" : "ניהול ביטים זמינים לעבודה"} />
         ) : tab === "קבצי הופעות ויח״צ" ? (
           <PortalHero title="קבצי הופעות ויח״צ" subtitle="כל חומרי ההופעות והיח״צ שלך במקום אחד" />
         ) : (
@@ -583,8 +578,8 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
-            : tab === "מאזן" ? (isShalev ? null : <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} />)
-            : tab === "ביטים פנויים" ? (isShalev ? null : <BeatsPage />)
+            : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} readOnly={isShalev} />
+            : tab === "ביטים פנויים" ? <BeatsPage readOnly={isShalev} />
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
             : <ComingSoon tab={tab} />}
         </div>
@@ -709,7 +704,7 @@ function KeyFields({ note, type, onNote, onType, disabled }: {
   );
 }
 
-function BeatsPage() {
+function BeatsPage({ readOnly = false }: { readOnly?: boolean }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   const [beats, setBeats] = useState<BeatItem[]>([]);
@@ -760,7 +755,8 @@ function BeatsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-      {/* ── top action bar — "העלה ביט" (owner-only area) ── */}
+      {/* ── top action bar — "העלה ביט" (OWNER only; shalev is listen-only) ── */}
+      {!readOnly && (
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={() => setUploadOpen(true)} style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9,
@@ -773,12 +769,13 @@ function BeatsPage() {
           <IcUpload size={18} /> העלה ביט
         </button>
       </div>
+      )}
 
       {/* ── list ── */}
       <div style={panel}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 18px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
           <span style={{ fontSize: 16, color: "#FF6B6B", lineHeight: 1 }}>♫</span>
-          <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ביטים זמינים לעבודה</span>
+          <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{readOnly ? "ביטים זמינים להאזנה" : "ביטים זמינים לעבודה"}</span>
         </div>
 
         {!isMobile && beats.length > 0 && (
@@ -806,7 +803,7 @@ function BeatsPage() {
               const keyText = b.musicalKey ?? "לא הוגדר";
               const keyDefined = !!b.musicalKey;
               return isMobile ? (
-                <div key={b.id} onClick={() => setManage(b)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}>
+                <div key={b.id} onClick={readOnly ? undefined : () => setManage(b)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${BDR}`, cursor: readOnly ? "default" : "pointer" }}>
                   <span onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
                     <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
                   </span>
@@ -821,8 +818,9 @@ function BeatsPage() {
                   </div>
                 </div>
               ) : (
-                <div key={b.id} onClick={() => setManage(b)} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s", cursor: "pointer" }}>
+                <div key={b.id} onClick={readOnly ? undefined : () => setManage(b)}
+                  onMouseEnter={readOnly ? undefined : e => rowHover(e, true)} onMouseLeave={readOnly ? undefined : e => rowHover(e, false)}
+                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s", cursor: readOnly ? "default" : "pointer" }}>
                   {/* שם הביט — Play + name together (RTL: Play rightmost) */}
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                     <span onClick={e => e.stopPropagation()} style={{ display: "flex", flexShrink: 0 }}>
@@ -843,9 +841,9 @@ function BeatsPage() {
         </div>
       </div>
 
-      {uploadOpen && <BeatUploadModal onClose={() => setUploadOpen(false)} onUploaded={(msg) => { setUploadOpen(false); setToast(msg); void load(); }} />}
+      {!readOnly && uploadOpen && <BeatUploadModal onClose={() => setUploadOpen(false)} onUploaded={(msg) => { setUploadOpen(false); setToast(msg); void load(); }} />}
 
-      {manage && (
+      {!readOnly && manage && (
         <BeatManageModal
           beat={manage}
           onClose={() => setManage(null)}
@@ -1471,8 +1469,8 @@ const rowIconBtn: React.CSSProperties = {
   padding: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 0,
 };
 
-function BalancePage({ artistId, ledger, loadState, onReload }: {
-  artistId?: string; ledger: BalanceLedger | null; loadState: LoadState; onReload: () => Promise<void>;
+function BalancePage({ artistId, ledger, loadState, onReload, readOnly = false }: {
+  artistId?: string; ledger: BalanceLedger | null; loadState: LoadState; onReload: () => Promise<void>; readOnly?: boolean;
 }) {
   const isMobile = useIsMobile();
   const [modal, setModal] = useState<{ mode: "add" } | { mode: "addExpected" } | { mode: "addExpectedIncome" } | { mode: "edit"; entry: BalanceEntry } | null>(null);
@@ -1484,7 +1482,9 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
   if (loadState === "loading") {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
   }
-  if (loadState === "error" || !artistId) {
+  // Owner needs the artist id (for its endpoints); shalev's read comes from the
+  // scoped endpoint with no id, so a missing id must NOT block his read-only view.
+  if (loadState === "error" || (!readOnly && !artistId)) {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון נתונים כספיים כרגע</div>;
   }
 
@@ -1508,7 +1508,9 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
     { label: "הוצאות",        value: totals.expenses },
   ];
 
-  const histCols = "120px minmax(0, 1.6fr) 120px 84px";
+  // Owner has an action column (edit/delete); read-only (shalev) drops it so no
+  // empty column is left behind.
+  const histCols = readOnly ? "120px minmax(0, 1.6fr) 120px" : "120px minmax(0, 1.6fr) 120px 84px";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
@@ -1529,7 +1531,7 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: isMobile ? 10 : 16 }}>
         {cards.map(c => {
           const m = BAL_TYPE_META[c.label];
-          const clickable = c.label === "הכנסות צפויות";
+          const clickable = c.label === "הכנסות צפויות" && !readOnly; // shalev: view-only, no manage
           return (
             <div
               key={c.label}
@@ -1560,11 +1562,13 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
           <span style={{ fontSize: isMobile ? 17 : 19, fontWeight: 900, color: BAL_TYPE_META["הוצאות צפויות"].color, direction: "ltr" }}>{fmtMoney(totals.expectedExpenses, curr)}</span>
+          {!readOnly && (
           <button onClick={() => setManageOpen(true)} style={{
             padding: isMobile ? "6px 12px" : "7px 14px", borderRadius: 9, cursor: "pointer",
             background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
             fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
           }}>ניהול</button>
+          )}
         </div>
       </div>
 
@@ -1575,6 +1579,7 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}`, flexShrink: 0 }} />
             <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>היסטוריית תנועות</span>
           </div>
+          {!readOnly && (
           <button onClick={() => setModal({ mode: "add" })} style={{
             display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0,
             padding: isMobile ? "8px 12px" : "9px 15px", borderRadius: 11, cursor: "pointer",
@@ -1582,6 +1587,7 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
             color: "#fff", fontSize: isMobile ? 12.5 : 13.5, fontWeight: 800, fontFamily: "inherit",
             boxShadow: "0 4px 14px rgba(220,38,38,0.30)",
           }}><span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span>הוסף רשומה</button>
+          )}
         </div>
 
         {historyEntries.length === 0 ? (
@@ -1600,10 +1606,12 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
                     </div>
                   </div>
                   <div style={{ fontSize: 14.5, fontWeight: 900, color: m.color, direction: "ltr", flexShrink: 0 }}>{fmtMoney(h.amount, curr)}</div>
+                  {!readOnly && (
                   <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
                     <button onClick={() => setModal({ mode: "edit", entry: h })} aria-label="עריכה" style={rowIconBtn}><IcEdit size={16} /></button>
                     <button onClick={() => setDeleteTarget(h)} aria-label="מחיקה" style={rowIconBtn}><IcTrash size={16} /></button>
                   </div>
+                  )}
                 </div>
               );
             })}
@@ -1611,7 +1619,7 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
         ) : (
           <>
             <div style={{ display: "grid", gridTemplateColumns: histCols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.015)" }}>
-              {["תאריך", "פירוט", "סכום", ""].map((h, i) => (
+              {(readOnly ? ["תאריך", "פירוט", "סכום"] : ["תאריך", "פירוט", "סכום", ""]).map((h, i) => (
                 <div key={i} style={{ fontSize: 12, fontWeight: 800, color: "#9A9AA6", letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 2 ? "center" : "start" }}>{h}</div>
               ))}
             </div>
@@ -1625,10 +1633,12 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
                     <div style={{ fontSize: 11, fontWeight: 700, color: m.color, marginTop: 2 }}>{h.entryType}</div>
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 900, color: m.color, direction: "ltr", textAlign: "center" }}>{fmtMoney(h.amount, curr)}</div>
+                  {!readOnly && (
                   <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
                     <button onClick={() => setModal({ mode: "edit", entry: h })} aria-label="עריכה" style={rowIconBtn}><IcEdit size={16} /></button>
                     <button onClick={() => setDeleteTarget(h)} aria-label="מחיקה" style={rowIconBtn}><IcTrash size={16} /></button>
                   </div>
+                  )}
                 </div>
               );
             })}
@@ -1663,7 +1673,7 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
           onMarkReceived={(e) => setMarkReceivedTarget(e)}
         />
       )}
-      {markReceivedTarget && (
+      {markReceivedTarget && artistId && (
         <BalanceMarkReceivedModal
           artistId={artistId}
           entry={markReceivedTarget}
@@ -1671,7 +1681,7 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
           onDone={async () => { await onReload(); setMarkReceivedTarget(null); }}
         />
       )}
-      {modal && (
+      {modal && artistId && (
         <BalanceEntryModal
           artistId={artistId}
           entry={modal.mode === "edit" ? modal.entry : null}
@@ -1680,7 +1690,7 @@ function BalancePage({ artistId, ledger, loadState, onReload }: {
           onSaved={async () => { await onReload(); setModal(null); }}
         />
       )}
-      {deleteTarget && (
+      {deleteTarget && artistId && (
         <BalanceDeleteModal
           artistId={artistId}
           entry={deleteTarget}

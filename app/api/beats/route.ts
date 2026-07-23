@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/lib/require-auth";
+import { requireOwner, requireShalevAccess } from "@/lib/require-auth";
 import { listBeats } from "@/lib/beats-store";
 import { uploadBeatSingle } from "@/lib/beat-upload";
 
-// OWNER-ONLY "free beats" pool. Never exposed to the shalev portal — requireOwner
-// on every method (defense-in-depth on top of the proxy gate).
+// "Free beats" pool. READING (GET list + stream) is open to the owner AND the
+// shalev artist portal (listen-only). WRITING (POST/PATCH/DELETE) stays owner-only.
+// Guards are re-checked per method here on top of the proxy gate.
 
 export const maxDuration = 300;
 
 // GET /api/beats → { beats } (available beats, newest first). Each beat exposes a
 // same-origin stream URL for the global player (never a raw Dropbox path).
 export async function GET() {
-  const denied = await requireOwner(); if (denied) return denied;
+  const denied = await requireShalevAccess(); if (denied) return denied; // owner or shalev
   try {
     const beats = await listBeats();
     return NextResponse.json({

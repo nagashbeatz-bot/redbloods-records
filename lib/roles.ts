@@ -74,7 +74,8 @@ export function isShalevAllowedPath(pathname: string): boolean {
   if (pathname === "/red-artists" || pathname.startsWith("/red-artists/")) return true;
   const apiAllow = [
     "/api/me",
-    "/api/red-artists",            // sketches CRUD/reorder/duration, shalev-summary, performance-files, upload, press-kit-link, profile-image, stream (all Shalev-scoped per route)
+    "/api/red-artists",            // sketches CRUD/reorder/duration, shalev-summary, performance-files, upload, press-kit-link, profile-image, stream, balance (all Shalev-scoped per route)
+    "/api/beats",                  // free-beats pool: GET list + GET [id]/stream only (read/listen); POST/PATCH/DELETE stay requireOwner per route
   ];
   return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
