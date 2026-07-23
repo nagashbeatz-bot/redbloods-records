@@ -675,12 +675,19 @@ function BeatsPage() {
   const [beats, setBeats] = useState<BeatItem[]>([]);
   const [listState, setListState] = useState<LoadState>("loading");
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [manage, setManage] = useState<BeatItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // After an update/delete of a beat that is currently in the global player, stop
+  // it so no stale (old-file / removed) stream URL keeps playing.
+  const stopIfPlaying = useCallback((id: string) => {
+    if (player?.track && player.track.projectId === `beat:${id}`) player.stop();
+  }, [player]);
 
   const load = useCallback(async () => {
     setListState("loading");
@@ -756,18 +763,22 @@ function BeatsPage() {
               const ps = playState(b);
               const genreLabel = BEAT_GENRE_LABEL[b.genre] ?? b.genre;
               return isMobile ? (
-                <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}` }}>
-                  <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                <div key={b.id} onClick={() => setManage(b)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}>
+                  <span onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
+                    <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                  </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
                     <div style={{ marginTop: 5 }}><GenreBadge label={genreLabel} /></div>
                   </div>
                 </div>
               ) : (
-                <div key={b.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
-                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                <div key={b.id} onClick={() => setManage(b)} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s", cursor: "pointer" }}>
                   <div style={{ display: "flex", justifyContent: "center" }}>
-                    <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                    <span onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
+                      <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                    </span>
                   </div>
                   <div style={{ minWidth: 0, textAlign: "start" }}>
                     <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
@@ -781,6 +792,15 @@ function BeatsPage() {
       </div>
 
       {uploadOpen && <BeatUploadModal onClose={() => setUploadOpen(false)} onUploaded={(msg) => { setUploadOpen(false); setToast(msg); void load(); }} />}
+
+      {manage && (
+        <BeatManageModal
+          beat={manage}
+          onClose={() => setManage(null)}
+          onUpdated={(id) => { setManage(null); stopIfPlaying(id); setToast("הביט עודכן"); void load(); }}
+          onDeleted={(id) => { setManage(null); stopIfPlaying(id); setToast("הביט הוסר"); void load(); }}
+        />
+      )}
 
       {toast && typeof document !== "undefined" && createPortal(
         <div style={{
@@ -919,6 +939,176 @@ function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploa
             }}>{busy ? "בטל" : "סגור"}</button>
           </div>
         </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// Manage an existing beat (OWNER-only). menu → "עדכן ביט" (replace file + name/genre,
+// same id) / "הסר ביט" (confirm → delete file+row). All server ops are requireOwner.
+function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
+  beat: BeatItem;
+  onClose: () => void;
+  onUpdated: (id: string) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [mode, setMode] = useState<"menu" | "edit" | "confirm">("menu");
+
+  // ── edit state (replace the file; same beat id) ──
+  const [file, setFile] = useState<File | null>(null);
+  const [name, setName] = useState(beat.name);
+  const [genre, setGenre] = useState(beat.genre);
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+
+  const canSave = !!file && !!name.trim() && !!genre && !busy;
+
+  function saveUpdate() {
+    if (!file || !name.trim() || !genre || busy) return;
+    setBusy(true); setPct(0); setErr(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("name", name.trim());
+    fd.append("genre", genre);
+    const xhr = new XMLHttpRequest();
+    xhrRef.current = xhr;
+    xhr.open("PATCH", `/api/beats/${beat.id}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) setPct(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      xhrRef.current = null;
+      let d: { ok?: boolean; error?: string } = {};
+      try { d = JSON.parse(xhr.responseText); } catch { /* keep */ }
+      if (xhr.status >= 200 && xhr.status < 300 && d?.ok) onUpdated(beat.id);
+      else { setBusy(false); setErr(d?.error || "העדכון נכשל"); }
+    };
+    xhr.onerror = () => { xhrRef.current = null; setBusy(false); setErr("העדכון נכשל"); };
+    xhr.onabort = () => { xhrRef.current = null; setBusy(false); setPct(0); };
+    xhr.send(fd);
+  }
+
+  // ── delete state ──
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState<string | null>(null);
+  async function doDelete() {
+    if (delBusy) return;
+    setDelBusy(true); setDelErr(null);
+    try {
+      const r = await fetch(`/api/beats/${beat.id}`, { method: "DELETE" });
+      const d = await r.json().catch(() => ({} as { ok?: boolean; error?: string }));
+      if (r.ok && d?.ok) onDeleted(beat.id);
+      else { setDelBusy(false); setDelErr(d?.error || "ההסרה נכשלה"); }
+    } catch { setDelBusy(false); setDelErr("ההסרה נכשלה"); }
+  }
+
+  // Block backdrop-close while any op is in flight (so we never orphan a request).
+  const anyBusy = busy || delBusy;
+  function backdrop() {
+    if (anyBusy) { if (busy && xhrRef.current) xhrRef.current.abort(); return; }
+    onClose();
+  }
+
+  if (typeof document === "undefined") return null;
+  const inputStyle: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 11,
+    background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: TEXT,
+    fontSize: 14, fontFamily: "inherit", outline: "none",
+  };
+
+  return createPortal(
+    <div onClick={backdrop} style={{ position: "fixed", inset: 0, zIndex: 100045, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} dir="rtl" style={{ width: "min(460px, 94vw)", background: "#141416", border: `1px solid ${BDR2}`, borderRadius: 18, overflow: "hidden", fontFamily: "'Heebo', Arial, sans-serif", boxShadow: "0 24px 80px rgba(0,0,0,0.85)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px", borderBottom: `1px solid ${BDR}` }}>
+          <span style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>{mode === "edit" ? "עדכן ביט" : mode === "confirm" ? "להסיר את הביט?" : "ניהול ביט"}</span>
+          <button onClick={backdrop} aria-label="סגור" disabled={anyBusy} style={{ background: "none", border: "none", cursor: anyBusy ? "not-allowed" : "pointer", display: "inline-flex", padding: 2, opacity: anyBusy ? 0.4 : 1 }}><IcX size={18} /></button>
+        </div>
+
+        {mode === "menu" && (
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{beat.name}</div>
+              <div style={{ marginTop: 8 }}><GenreBadge label={BEAT_GENRE_LABEL[beat.genre] ?? beat.genre} /></div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button onClick={() => setMode("edit")} style={{
+                display: "flex", alignItems: "center", gap: 10, textAlign: "start", padding: "13px 16px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 14.5, fontWeight: 700,
+              }}><IcEdit size={18} color="#FF6B6B" /> עדכן ביט</button>
+              <button onClick={() => setMode("confirm")} style={{
+                display: "flex", alignItems: "center", gap: 10, textAlign: "start", padding: "13px 16px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.35)", color: "#F87171", fontSize: 14.5, fontWeight: 700,
+              }}><IcTrash size={18} /> הסר ביט</button>
+            </div>
+          </div>
+        )}
+
+        {mode === "edit" && (
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>קובץ אודיו חדש</label>
+              <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.aif,.aiff,.m4a,.flac,.ogg" disabled={busy}
+                onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+              <button onClick={() => fileRef.current?.click()} disabled={busy} style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", textAlign: "start",
+                padding: "12px 14px", borderRadius: 11, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit",
+                background: "rgba(255,255,255,0.03)", border: `1px dashed ${file ? BRAND + "66" : BDR2}`, color: file ? TEXT : TEXT2, fontSize: 13.5,
+              }}>
+                <IcCloud size={20} color={file ? "#FF6B6B" : TEXT2} />
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file ? file.name : "בחר קובץ אודיו חדש…"}</span>
+              </button>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>שם הביט</label>
+              <input value={name} onChange={e => setName(e.target.value)} disabled={busy} style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>ז׳אנר</label>
+              <select value={genre} onChange={e => setGenre(e.target.value)} disabled={busy} style={{ ...inputStyle, cursor: busy ? "not-allowed" : "pointer" }}>
+                {BEAT_GENRE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            {busy && (
+              <div>
+                <div style={{ height: 8, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg, #E5322F, #C01C1C)", transition: "width .2s" }} />
+                </div>
+                <div style={{ fontSize: 12, color: TEXT2, marginTop: 6, textAlign: "center" }}>מעדכן… {pct}%</div>
+              </div>
+            )}
+            {err && <div style={{ fontSize: 13, color: "#F87171", fontWeight: 600 }}>{err}</div>}
+            <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
+              <button onClick={saveUpdate} disabled={!canSave} style={{
+                flex: 1, padding: "12px 16px", borderRadius: 12, cursor: canSave ? "pointer" : "not-allowed", fontFamily: "inherit",
+                background: canSave ? "linear-gradient(180deg, #E5322F, #C01C1C)" : "rgba(255,255,255,0.06)",
+                border: `1px solid ${canSave ? "rgba(220,38,38,0.55)" : BDR2}`, color: canSave ? "#fff" : MUTED, fontSize: 14.5, fontWeight: 800, opacity: busy ? 0.85 : 1,
+              }}>{busy ? "מעדכן…" : "עדכן"}</button>
+              <button onClick={() => { if (busy && xhrRef.current) { xhrRef.current.abort(); return; } setMode("menu"); setErr(null); }} style={{
+                padding: "12px 18px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 14, fontWeight: 700,
+              }}>{busy ? "בטל" : "חזרה"}</button>
+            </div>
+          </div>
+        )}
+
+        {mode === "confirm" && (
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
+            <p style={{ fontSize: 13.5, color: "#C8C8CC", lineHeight: 1.6, margin: 0 }}>הביט יוסר מהמערכת והקובץ יימחק מ־Dropbox. לא ניתן לבטל את הפעולה.</p>
+            {delErr && <div style={{ fontSize: 13, color: "#F87171", fontWeight: 600 }}>{delErr}</div>}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={doDelete} disabled={delBusy} style={{
+                flex: 1, padding: "12px 16px", borderRadius: 12, cursor: delBusy ? "wait" : "pointer", fontFamily: "inherit",
+                background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "1px solid rgba(220,38,38,0.55)", color: "#fff", fontSize: 14.5, fontWeight: 800, opacity: delBusy ? 0.8 : 1,
+              }}>{delBusy ? "מסיר…" : "הסר ביט"}</button>
+              <button onClick={() => { if (delBusy) return; setMode("menu"); setDelErr(null); }} disabled={delBusy} style={{
+                padding: "12px 18px", borderRadius: 12, cursor: delBusy ? "not-allowed" : "pointer", fontFamily: "inherit",
+                background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 14, fontWeight: 700, opacity: delBusy ? 0.5 : 1,
+              }}>ביטול</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body,

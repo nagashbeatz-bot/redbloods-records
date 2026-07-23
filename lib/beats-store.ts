@@ -106,3 +106,47 @@ export async function createBeat(row: {
   }
   return { status: "ok", beat: mapRow(data as DbRow) };
 }
+
+export type UpdateBeatResult =
+  | { status: "ok"; beat: Beat }
+  | { status: "duplicate" }
+  | { status: "not_found" };
+
+/**
+ * Update a beat row IN PLACE (same id) after a NEW file has been uploaded. Only the
+ * mutable fields change; the id/created_at are preserved. "duplicate" on the unique
+ * dropbox_path violation, "not_found" when the id no longer exists.
+ */
+export async function updateBeatRow(id: string, fields: {
+  name: string;
+  genre: BeatGenre;
+  fileName: string;
+  dropboxPath: string;
+  durationSeconds: number | null;
+}): Promise<UpdateBeatResult> {
+  const { data, error } = await supabase
+    .from("beats")
+    .update({
+      name:             fields.name,
+      genre:            fields.genre,
+      file_name:        fields.fileName,
+      dropbox_path:     fields.dropboxPath,
+      duration_seconds: fields.durationSeconds,
+    })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) {
+    if (error.code === UNIQUE_VIOLATION) return { status: "duplicate" };
+    throw new Error(error.message);
+  }
+  if (!data) return { status: "not_found" };
+  return { status: "ok", beat: mapRow(data as DbRow) };
+}
+
+/** Delete a beat row by id. Returns true when a row was removed. */
+export async function deleteBeat(id: string): Promise<boolean> {
+  const { data, error } = await supabase.from("beats").delete().eq("id", id).select("id");
+  if (error) throw new Error(error.message);
+  return !!data && data.length > 0;
+}
