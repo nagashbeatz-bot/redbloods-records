@@ -753,8 +753,9 @@ function BeatsPage() {
     return { playing, onClick };
   }
 
-  // Play (RTL → rightmost, fixed) · שם הביט · ז׳אנר · סולם · נוצר בתאריך (left).
-  const cols = "52px minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr)";
+  // 4 columns, IDENTICAL for header + rows. Play sits inside the שם הביט column
+  // (with the name). RTL order: שם הביט · ז׳אנר · סולם · נוצר בתאריך.
+  const cols = "minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -782,7 +783,7 @@ function BeatsPage() {
 
         {!isMobile && beats.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
-            {[{ label: "", align: "center" as const }, { label: "שם הביט", align: "start" as const }, { label: "ז׳אנר", align: "start" as const }, { label: "סולם", align: "start" as const }, { label: "נוצר בתאריך", align: "start" as const }].map((h, i) => (
+            {[{ label: "שם הביט", align: "start" as const }, { label: "ז׳אנר", align: "center" as const }, { label: "סולם", align: "center" as const }, { label: "נוצר בתאריך", align: "center" as const }].map((h, i) => (
               <div key={i} style={{ fontSize: 13.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
@@ -822,17 +823,19 @@ function BeatsPage() {
               ) : (
                 <div key={b.id} onClick={() => setManage(b)} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                   style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s", cursor: "pointer" }}>
-                  <div style={{ display: "flex", justifyContent: "center" }}>
-                    <span onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
+                  {/* שם הביט — Play + name together (RTL: Play rightmost) */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <span onClick={e => e.stopPropagation()} style={{ display: "flex", flexShrink: 0 }}>
                       <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
                     </span>
+                    <div style={{ minWidth: 0, fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
                   </div>
-                  <div style={{ minWidth: 0, textAlign: "start" }}>
-                    <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
-                  </div>
-                  <div style={{ textAlign: "start" }}><GenreBadge label={genreLabel} /></div>
-                  <div style={{ textAlign: "start", fontSize: 14, fontWeight: 700, color: keyDefined ? "#CFCFD6" : MUTED, direction: "ltr", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{keyText}</div>
-                  <div style={{ textAlign: "start", fontSize: 13.5, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtSketchDate(b.createdAt)}</div>
+                  {/* ז׳אנר — centered */}
+                  <div style={{ display: "flex", justifyContent: "center" }}><GenreBadge label={genreLabel} /></div>
+                  {/* סולם — centered */}
+                  <div style={{ textAlign: "center", fontSize: 14, fontWeight: 700, color: keyDefined ? "#CFCFD6" : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{keyText}</div>
+                  {/* נוצר בתאריך — centered */}
+                  <div style={{ textAlign: "center", fontSize: 13.5, color: "#CFCFD6", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtSketchDate(b.createdAt)}</div>
                 </div>
               );
             })
@@ -1025,10 +1028,15 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
   const fileRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
-  const canSave = !!file && !!name.trim() && !!genre && !!note && !!type && !busy;
+  // The button is enabled once name/genre/key are valid (a new file is still
+  // required, but we surface that as a clear message on click instead of a silently
+  // disabled button that looks like "update does nothing").
+  const canSave = !!name.trim() && !!genre && !!note && !!type && !busy;
 
   function saveUpdate() {
-    if (!file || !name.trim() || !genre || !note || !type || busy) return;
+    if (busy) return;
+    if (!file) { setErr("יש לבחור קובץ אודיו חדש כדי לעדכן את הביט"); return; }
+    if (!name.trim() || !genre || !note || !type) return;
     setBusy(true); setPct(0); setErr(null);
     const fd = new FormData();
     fd.append("file", file);
@@ -1112,9 +1120,9 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
         {mode === "edit" && (
           <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
-              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>קובץ אודיו חדש</label>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>קובץ אודיו חדש <span style={{ color: "#F87171" }}>*</span> <span style={{ fontWeight: 500, color: MUTED }}>(חובה כדי לשמור עדכון)</span></label>
               <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.aif,.aiff,.m4a,.flac,.ogg" disabled={busy}
-                onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+                onChange={e => { setFile(e.target.files?.[0] ?? null); setErr(null); }} style={{ display: "none" }} />
               <button onClick={() => fileRef.current?.click()} disabled={busy} style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", textAlign: "start",
                 padding: "12px 14px", borderRadius: 11, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit",
