@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requireShalevAccess } from "@/lib/require-auth";
 import { listBeats } from "@/lib/beats-store";
 import { uploadBeatSingle } from "@/lib/beat-upload";
+import { notifyBeatUploaded } from "@/lib/beat-notify";
 
 // "Free beats" pool. READING (GET list + stream) is open to the owner AND the
 // shalev artist portal (listen-only). WRITING (POST/PATCH/DELETE) stays owner-only.
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
     const musicalKey = (form.get("musicalKey") as string | null) ?? "";
     const res = await uploadBeatSingle({ file, name, genre, musicalKey });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
+    // Push owner + shalev — ONLY now that Dropbox + DB have succeeded.
+    await notifyBeatUploaded(res.beat);
     return NextResponse.json({ ok: true, beat: res.beat });
   } catch (err) {
     console.error("[beats] POST", err instanceof Error ? err.message : err);

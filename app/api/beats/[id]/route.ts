@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { updateBeatFile, deleteBeatFully } from "@/lib/beat-upload";
+import { notifyBeatUpdated } from "@/lib/beat-notify";
 
 // OWNER-ONLY beat management. Both methods requireOwner (never exposed to shalev).
 
@@ -22,6 +23,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const musicalKey = (form.get("musicalKey") as string | null) ?? "";
     const res = await updateBeatFile({ beatId: id, file, name, genre, musicalKey });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
+    // Push owner + shalev — ONLY now that the update (metadata, or file + DB) succeeded.
+    await notifyBeatUpdated(res.beat);
     return NextResponse.json({ ok: true, beat: res.beat });
   } catch (err) {
     console.error("[beats] PATCH", err instanceof Error ? err.message : err);
