@@ -14,6 +14,24 @@ function fmt(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// A sensible download filename for a track (never a UUID). If the track name has no
+// audio extension, the secure stream endpoint still serves the real file (Dropbox
+// sets the download name); this attribute is only the same-origin hint.
+function downloadName(track: { fileName?: string; projectName?: string; url: string }): string {
+  const base = (track.fileName?.trim() || track.projectName?.trim() || "track");
+  if (/\.(mp3|wav|m4a|ogg|flac|aiff?|aac)$/i.test(base)) return base;
+  const ext = track.url.match(/\.(mp3|wav|m4a|ogg|flac|aiff?|aac)(?=$|\?)/i)?.[0] ?? "";
+  return base + ext;
+}
+
+function DownloadIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 13 13" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+      <path d="M6.5 1v7M3.5 5.5l3 3 3-3" /><path d="M1.5 10.5h10" />
+    </svg>
+  );
+}
+
 function PlayIcon({ size = 16, color = "#fff" }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 10 12" fill={color} style={{ display: "block" }}>
@@ -76,6 +94,10 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
   };
 
   // ── Mobile 2-row card layout ───────────────────────────────────────────────
+  const miniSkipBtn: React.CSSProperties = {
+    background: "none", border: "none", cursor: "pointer", color: "#8A8A8A",
+    fontSize: 11, fontWeight: 800, padding: "8px 4px", flexShrink: 0, whiteSpace: "nowrap", fontFamily: "inherit",
+  };
   if (mobile) {
     return (
       <div style={{
@@ -83,11 +105,11 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
         borderTop: `1px solid rgba(220,38,38,0.4)`,
         borderBottom: "1px solid rgba(255,255,255,0.04)",
         boxShadow: "0 -6px 24px rgba(0,0,0,0.6), 0 -2px 12px rgba(220,38,38,0.12)",
-        padding: "8px 16px 10px",
+        padding: "8px 14px 10px",
         direction: "rtl",
       }}>
-        {/* Row 1: waveform + name/artist + play + close */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Row 1: waveform + name/artist + download + play + close */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <WaveformBars playing={playing} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F0F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -97,6 +119,15 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
               {track.artist}
             </div>
           </div>
+          {canPlay && (
+            <a href={track.url} download={downloadName(track)} title="הורד קובץ" onClick={e => e.stopPropagation()}
+              style={{
+                width: 38, height: 38, borderRadius: 11, flexShrink: 0, textDecoration: "none",
+                background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#AAA",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            ><DownloadIcon size={15} /></a>
+          )}
           <button
             onClick={canPlay ? (playing ? pause : resume) : undefined}
             style={{
@@ -109,37 +140,48 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
           >{playing ? <PauseIcon size={16} /> : <PlayIcon size={16} />}</button>
           <button onClick={stop} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 22, flexShrink: 0, padding: "0 2px" }}>×</button>
         </div>
-        {/* Row 2: progress bar — tap OR drag to seek. The touch area is tall
-            (~24px) even though the line is thin; touchAction:none so a horizontal
-            drag on the bar scrubs instead of scrolling the page. */}
-        <div
-          ref={barRef}
-          onPointerDown={e => {
-            if (!duration) return;
-            try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
-            draggingRef.current = true;
-            seekFromClientX(e.clientX);
-          }}
-          onPointerMove={e => { if (draggingRef.current) seekFromClientX(e.clientX); }}
-          onPointerUp={e => {
-            draggingRef.current = false;
-            try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-          }}
-          onPointerCancel={() => { draggingRef.current = false; }}
-          style={{ marginTop: 4, padding: "10px 0", cursor: "pointer", position: "relative", touchAction: "none" }}
-        >
-          <div style={{ height: 3, background: "#2A2A2A", borderRadius: 2, position: "relative" }}>
-            <div style={{
-              position: "absolute", left: 0, top: 0, bottom: 0,
-              width: `${progress}%`, background: BRAND, borderRadius: 2,
-              transition: "width 0.1s linear",
-            }} />
-            <div style={{
-              position: "absolute", left: `${progress}%`, top: "50%", transform: "translate(-50%, -50%)",
-              width: 12, height: 12, borderRadius: "50%", background: "#fff",
-              boxShadow: `0 0 8px ${BRAND}`, pointerEvents: "none",
-            }} />
+        {/* Row 2 (LTR so the timeline reads left→right): ⟪10 · time · big seek · time · 10⟫.
+            The touch target is tall (~34px) though the line is thin; touchAction:none +
+            preventDefault/stopPropagation + pointer capture so a horizontal drag scrubs
+            smoothly and NEVER triggers page scroll / swipe-navigation. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, direction: "ltr" }}>
+          <button onClick={() => skip(-10)} aria-label="אחורה 10 שניות" style={miniSkipBtn}>⟪10</button>
+          <span style={{ fontSize: 10, color: "#777", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{fmt(currentTime)}</span>
+          <div
+            ref={barRef}
+            onPointerDown={e => {
+              if (!duration) return;
+              e.preventDefault(); e.stopPropagation();
+              try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+              draggingRef.current = true;
+              seekFromClientX(e.clientX);
+            }}
+            onPointerMove={e => {
+              if (!draggingRef.current) return;
+              e.preventDefault(); e.stopPropagation();
+              seekFromClientX(e.clientX);
+            }}
+            onPointerUp={e => {
+              draggingRef.current = false;
+              try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+            }}
+            onPointerCancel={() => { draggingRef.current = false; }}
+            style={{ flex: 1, minWidth: 0, padding: "14px 0", cursor: "pointer", position: "relative", touchAction: "none" }}
+          >
+            <div style={{ height: 4, background: "#2A2A2A", borderRadius: 2, position: "relative" }}>
+              <div style={{
+                position: "absolute", left: 0, top: 0, bottom: 0,
+                width: `${progress}%`, background: BRAND, borderRadius: 2,
+              }} />
+              <div style={{
+                position: "absolute", left: `${progress}%`, top: "50%", transform: "translate(-50%, -50%)",
+                width: 14, height: 14, borderRadius: "50%", background: "#fff",
+                boxShadow: `0 0 8px ${BRAND}`, pointerEvents: "none",
+              }} />
+            </div>
           </div>
+          <span style={{ fontSize: 10, color: "#777", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{fmt(duration)}</span>
+          <button onClick={() => skip(10)} aria-label="קדימה 10 שניות" style={miniSkipBtn}>10⟫</button>
         </div>
       </div>
     );
@@ -263,7 +305,7 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
             />
           )}
           {canPlay && (
-            <a href={track.url} download title="הורד קובץ"
+            <a href={track.url} download={downloadName(track)} title="הורד קובץ"
               style={{
                 width: 30, height: 30, borderRadius: 9,
                 background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)",
@@ -273,9 +315,7 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
               onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "#CCC"; el.style.background = "rgba(255,255,255,0.1)"; }}
               onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "#777"; el.style.background = "rgba(255,255,255,0.04)"; }}
             >
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6.5 1v7M3.5 5.5l3 3 3-3" /><path d="M1.5 10.5h10" />
-              </svg>
+              <DownloadIcon size={13} />
             </a>
           )}
           <button onClick={stop} title="סגור נגן"
