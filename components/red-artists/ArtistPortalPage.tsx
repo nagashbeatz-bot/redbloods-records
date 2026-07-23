@@ -352,9 +352,9 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
   useEffect(() => {
     const sync = () => {
       let t = tabFromUrl() ?? DEFAULT_TAB;
-      // Shalev may not open the balance tab — force him home and drop the param
-      // (covers a manual ?tab=balance / Back/Forward into it).
-      if (isShalev && t === "מאזן") {
+      // Shalev may not open the OWNER-only tabs (balance / beats) — force him home
+      // and drop the param (covers a manual ?tab=balance|beats / Back/Forward into it).
+      if (isShalev && (t === "מאזן" || t === "ביטים פנויים")) {
         t = DEFAULT_TAB;
         if (typeof window !== "undefined") {
           const url = new URL(window.location.href);
@@ -524,7 +524,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
           flexWrap: isMobile ? "nowrap" : "wrap",
           overflowX: isMobile ? "auto" : "visible", paddingBottom: isMobile ? 2 : 0,
         }}>
-          {TABS.filter(tb => !(isShalev && tb === "מאזן")).map(tb => {
+          {TABS.filter(tb => !(isShalev && (tb === "מאזן" || tb === "ביטים פנויים"))).map(tb => {
             const active = tb === tab;
             return (
               <button
@@ -563,6 +563,8 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
           <PortalHero title="ההופעות שלי" subtitle="כל ההופעות הקרובות וההופעות שבוצעו במקום אחד" />
         ) : tab === "מאזן" ? (
           <PortalHero title="מאזן" subtitle="הכנסות, תשלומים, הוצאות והיסטוריית תנועות" />
+        ) : tab === "ביטים פנויים" ? (
+          <PortalHero title="ביטים פנויים" badge="♫" subtitle="ניהול ביטים זמינים לעבודה" />
         ) : tab === "קבצי הופעות ויח״צ" ? (
           <PortalHero title="קבצי הופעות ויח״צ" subtitle="כל חומרי ההופעות והיח״צ שלך במקום אחד" />
         ) : (
@@ -575,6 +577,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
             : tab === "מאזן" ? (isShalev ? null : <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} />)
+            : tab === "ביטים פנויים" ? (isShalev ? null : <BeatsPage />)
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
             : <ComingSoon tab={tab} />}
         </div>
@@ -647,6 +650,278 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
       <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>🚧</div>
       <div style={{ fontSize: 14, color: TEXT2 }}>האזור הזה עדיין בבנייה — יעודכן בקרוב</div>
     </div>
+  );
+}
+
+// ── ביטים פנויים (free beats) — OWNER-ONLY. Global pool from public.beats +
+// Dropbox /nagashbeatz/beats. Same list/play language as "המוזיקה שלי"; playback
+// through the GLOBAL player. Never rendered for the shalev role (the /api/beats
+// endpoints are requireOwner too, so hiding the tab is not the only guard).
+type BeatItem = { id: string; name: string; genre: string; durationSeconds: number | null; url: string };
+
+// Canonical genre value (DB) → display label (exactly as the product spec names them).
+const BEAT_GENRE_OPTS: { value: string; label: string }[] = [
+  { value: "dancehall", label: "Dancehall" },
+  { value: "rnb",       label: "R&B" },
+  { value: "hiphop",    label: "Hip Hop" },
+  { value: "soul",      label: "Soul" },
+];
+const BEAT_GENRE_LABEL: Record<string, string> =
+  Object.fromEntries(BEAT_GENRE_OPTS.map(o => [o.value, o.label]));
+
+function BeatsPage() {
+  const isMobile = useIsMobile();
+  const player = usePlayerSafe();
+  const [beats, setBeats] = useState<BeatItem[]>([]);
+  const [listState, setListState] = useState<LoadState>("loading");
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const load = useCallback(async () => {
+    setListState("loading");
+    try {
+      const r = await fetch("/api/beats", { cache: "no-store" });
+      const d = await r.json();
+      if (r.ok && d?.ok && Array.isArray(d.beats)) { setBeats(d.beats); setListState("ready"); }
+      else setListState("error");
+    } catch { setListState("error"); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  // Play a beat through the GLOBAL player (no new audio element / no new player).
+  function playState(b: BeatItem) {
+    const cur = !!player?.track && player.track.projectId === `beat:${b.id}`;
+    const playing = cur && !!player?.playing;
+    const onClick = () => {
+      if (!player) return;
+      if (playing) player.pause();
+      else if (cur) player.resume();
+      else player.play({ projectId: `beat:${b.id}`, projectName: b.name, artist: "ביט פנוי", fileName: b.name, url: b.url });
+    };
+    return { playing, onClick };
+  }
+
+  // Play (RTL → rightmost, fixed) · שם הביט (wide) · ז׳אנר (left).
+  const cols = "52px minmax(0, 2fr) minmax(0, 1fr)";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ── top action bar — "העלה ביט" (owner-only area) ── */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={() => setUploadOpen(true)} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9,
+          width: isMobile ? "100%" : "auto",
+          padding: isMobile ? "12px 18px" : "12px 22px", borderRadius: 13, cursor: "pointer",
+          fontFamily: "inherit", background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+          border: "1px solid rgba(220,38,38,0.55)", color: "#fff", fontSize: 14.5, fontWeight: 800,
+          whiteSpace: "nowrap", boxShadow: "0 5px 20px rgba(220,38,38,0.36)",
+        }}>
+          <IcUpload size={18} /> העלה ביט
+        </button>
+      </div>
+
+      {/* ── list ── */}
+      <div style={panel}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 18px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+          <span style={{ fontSize: 16, color: "#FF6B6B", lineHeight: 1 }}>♫</span>
+          <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>ביטים זמינים לעבודה</span>
+        </div>
+
+        {!isMobile && beats.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
+            {[{ label: "", align: "center" as const }, { label: "שם הביט", align: "start" as const }, { label: "ז׳אנר", align: "start" as const }].map((h, i) => (
+              <div key={i} style={{ fontSize: 13.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ maxHeight: isMobile ? 400 : 500, overflowY: "auto", padding: "2px 0 28px", scrollPaddingBottom: 28 }}>
+          {listState === "loading" ? (
+            <div style={{ padding: "44px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>טוען…</div>
+          ) : listState === "error" ? (
+            <div style={{ padding: "44px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>לא ניתן לטעון את הביטים כרגע</div>
+          ) : beats.length === 0 ? (
+            <div style={{ padding: "40px 24px", textAlign: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: TEXT2 }}>עדיין לא הועלו ביטים פנויים</div>
+              <div style={{ fontSize: 12.5, color: MUTED, marginTop: 5 }}>העלה את הביט הראשון</div>
+            </div>
+          ) : (
+            beats.map((b) => {
+              const ps = playState(b);
+              const genreLabel = BEAT_GENRE_LABEL[b.genre] ?? b.genre;
+              return isMobile ? (
+                <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}` }}>
+                  <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
+                    <div style={{ marginTop: 5 }}><GenreBadge label={genreLabel} /></div>
+                  </div>
+                </div>
+              ) : (
+                <div key={b.id} onMouseEnter={e => rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
+                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s" }}>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                  </div>
+                  <div style={{ minWidth: 0, textAlign: "start" }}>
+                    <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
+                  </div>
+                  <div style={{ textAlign: "start" }}><GenreBadge label={genreLabel} /></div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {uploadOpen && <BeatUploadModal onClose={() => setUploadOpen(false)} onUploaded={(msg) => { setUploadOpen(false); setToast(msg); void load(); }} />}
+
+      {toast && typeof document !== "undefined" && createPortal(
+        <div style={{
+          position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 100040,
+          background: "#1A1C22", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 13, fontWeight: 700,
+          padding: "11px 20px", borderRadius: 12, boxShadow: "0 8px 30px rgba(0,0,0,0.6)", fontFamily: "'Heebo', Arial, sans-serif", maxWidth: "90vw", textAlign: "center",
+        }}>{toast}</div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function GenreBadge({ label }: { label: string }) {
+  return (
+    <span style={{
+      display: "inline-block", fontSize: 12.5, fontWeight: 700, color: "#E8B7B7",
+      padding: "3px 11px", borderRadius: 99, whiteSpace: "nowrap",
+      background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}44`,
+    }}>{label}</span>
+  );
+}
+
+// Beat upload — file (audio) + name + genre. Real progress + cancel (XHR). OWNER only
+// (the /api/beats POST is requireOwner). One beat per submit.
+function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded: (msg: string) => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [name, setName] = useState("");
+  const [genre, setGenre] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+
+  const canSubmit = !!file && !!name.trim() && !!genre && !busy;
+
+  function submit() {
+    if (!file || !name.trim() || !genre || busy) return;
+    setBusy(true); setPct(0); setErr(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("name", name.trim());
+    fd.append("genre", genre);
+    const xhr = new XMLHttpRequest();
+    xhrRef.current = xhr;
+    xhr.open("POST", "/api/beats");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) setPct(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      xhrRef.current = null;
+      let d: { ok?: boolean; error?: string } = {};
+      try { d = JSON.parse(xhr.responseText); } catch { /* keep */ }
+      if (xhr.status >= 200 && xhr.status < 300 && d?.ok) onUploaded("הביט עלה בהצלחה");
+      else { setBusy(false); setErr(d?.error || "ההעלאה נכשלה"); }
+    };
+    xhr.onerror = () => { xhrRef.current = null; setBusy(false); setErr("ההעלאה נכשלה"); };
+    xhr.onabort = () => { xhrRef.current = null; setBusy(false); setPct(0); };
+    xhr.send(fd);
+  }
+
+  function cancel() {
+    if (busy && xhrRef.current) { xhrRef.current.abort(); return; } // cancel the in-flight upload
+    onClose();
+  }
+
+  if (typeof document === "undefined") return null;
+  const inputStyle: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 11,
+    background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: TEXT,
+    fontSize: 14, fontFamily: "inherit", outline: "none",
+  };
+
+  return createPortal(
+    <div onClick={cancel} style={{ position: "fixed", inset: 0, zIndex: 100045, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} dir="rtl" style={{ width: "min(460px, 94vw)", background: "#141416", border: `1px solid ${BDR2}`, borderRadius: 18, overflow: "hidden", fontFamily: "'Heebo', Arial, sans-serif", boxShadow: "0 24px 80px rgba(0,0,0,0.85)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px", borderBottom: `1px solid ${BDR}` }}>
+          <span style={{ fontSize: 17, fontWeight: 900, color: TEXT }}>העלה ביט</span>
+          <button onClick={cancel} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", display: "inline-flex", padding: 2 }}><IcX size={18} /></button>
+        </div>
+
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* file */}
+          <div>
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>קובץ אודיו</label>
+            <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.aif,.aiff,.m4a,.flac,.ogg" disabled={busy}
+              onChange={e => { const f = e.target.files?.[0] ?? null; setFile(f); if (f && !name.trim()) setName(f.name.replace(/\.[^.]+$/, "")); }}
+              style={{ display: "none" }} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy} style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", textAlign: "start",
+              padding: "12px 14px", borderRadius: 11, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit",
+              background: "rgba(255,255,255,0.03)", border: `1px dashed ${file ? BRAND + "66" : BDR2}`, color: file ? TEXT : TEXT2, fontSize: 13.5,
+            }}>
+              <IcCloud size={20} color={file ? "#FF6B6B" : TEXT2} />
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file ? file.name : "בחר קובץ אודיו…"}</span>
+            </button>
+          </div>
+
+          {/* name */}
+          <div>
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>שם הביט</label>
+            <input value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="לדוגמה: Midnight Ride" style={inputStyle} />
+          </div>
+
+          {/* genre */}
+          <div>
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>ז׳אנר</label>
+            <select value={genre} onChange={e => setGenre(e.target.value)} disabled={busy} style={{ ...inputStyle, cursor: busy ? "not-allowed" : "pointer" }}>
+              <option value="" disabled>בחר ז׳אנר…</option>
+              {BEAT_GENRE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+
+          {/* progress */}
+          {busy && (
+            <div>
+              <div style={{ height: 8, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg, #E5322F, #C01C1C)", transition: "width .2s" }} />
+              </div>
+              <div style={{ fontSize: 12, color: TEXT2, marginTop: 6, textAlign: "center" }}>מעלה… {pct}%</div>
+            </div>
+          )}
+
+          {err && <div style={{ fontSize: 13, color: "#F87171", fontWeight: 600 }}>{err}</div>}
+
+          {/* actions */}
+          <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
+            <button onClick={submit} disabled={!canSubmit} style={{
+              flex: 1, padding: "12px 16px", borderRadius: 12, cursor: canSubmit ? "pointer" : "not-allowed", fontFamily: "inherit",
+              background: canSubmit ? "linear-gradient(180deg, #E5322F, #C01C1C)" : "rgba(255,255,255,0.06)",
+              border: `1px solid ${canSubmit ? "rgba(220,38,38,0.55)" : BDR2}`, color: canSubmit ? "#fff" : MUTED,
+              fontSize: 14.5, fontWeight: 800, opacity: busy ? 0.85 : 1,
+            }}>{busy ? "מעלה…" : "העלה"}</button>
+            <button onClick={cancel} style={{
+              padding: "12px 18px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+              background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2, fontSize: 14, fontWeight: 700,
+            }}>{busy ? "בטל" : "סגור"}</button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
