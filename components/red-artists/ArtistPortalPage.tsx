@@ -514,6 +514,13 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
           /* Balance amount field — no native number spinner (clean, uniform). */
           .rap-num::-webkit-outer-spin-button, .rap-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
           .rap-num { -moz-appearance: textfield; appearance: textfield; }
+          /* Dark native <select> across the WHOLE portal (incl. modals portaled to
+             <body> — that's why this is a global class rule, not a scoped one).
+             color-scheme:dark makes the native popup dark; the option rules keep it
+             readable on browsers that honour option colors. Never a white dropdown. */
+          select.rap-select { color-scheme: dark; }
+          select.rap-select option { background-color: #171314; color: #F2F2F2; }
+          select.rap-select option:checked { background-color: rgba(220,38,38,0.32); color: #ffffff; }
         `}</style>
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
@@ -691,11 +698,11 @@ function KeyFields({ note, type, onNote, onType, disabled }: {
     <div>
       <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>סולם</label>
       <div style={{ display: "flex", gap: 10 }}>
-        <select value={note} onChange={e => onNote(e.target.value)} disabled={disabled} style={sel}>
+        <select className="rap-select" value={note} onChange={e => onNote(e.target.value)} disabled={disabled} style={sel}>
           <option value="" disabled>תו…</option>
           {BEAT_KEY_NOTES.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <select value={type} onChange={e => onType(e.target.value)} disabled={disabled} style={sel}>
+        <select className="rap-select" value={type} onChange={e => onType(e.target.value)} disabled={disabled} style={sel}>
           <option value="" disabled>Major / Minor…</option>
           {BEAT_KEY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
@@ -954,7 +961,7 @@ function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploa
           {/* genre */}
           <div>
             <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>ז׳אנר</label>
-            <select value={genre} onChange={e => setGenre(e.target.value)} disabled={busy} style={{ ...inputStyle, cursor: busy ? "not-allowed" : "pointer" }}>
+            <select className="rap-select" value={genre} onChange={e => setGenre(e.target.value)} disabled={busy} style={{ ...inputStyle, cursor: busy ? "not-allowed" : "pointer" }}>
               <option value="" disabled>בחר ז׳אנר…</option>
               {BEAT_GENRE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -1123,7 +1130,7 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
             </div>
             <div>
               <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>ז׳אנר</label>
-              <select value={genre} onChange={e => setGenre(e.target.value)} disabled={busy} style={{ ...inputStyle, cursor: busy ? "not-allowed" : "pointer" }}>
+              <select className="rap-select" value={genre} onChange={e => setGenre(e.target.value)} disabled={busy} style={{ ...inputStyle, cursor: busy ? "not-allowed" : "pointer" }}>
                 {BEAT_GENRE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
@@ -1882,7 +1889,7 @@ function BalanceEntryModal({ artistId, entry, onClose, onSaved, defaultType }: {
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={skLabel}>סוג רשומה</label>
-        <select value={entryType} onChange={e => setEntryType(e.target.value as BalanceType)} disabled={busy}
+        <select className="rap-select" value={entryType} onChange={e => setEntryType(e.target.value as BalanceType)} disabled={busy}
           style={{ ...skField, color: TEXT, cursor: "pointer", appearance: "auto", opacity: busy ? 0.6 : 1 }}>
           {BALANCE_TYPES.map(t => <option key={t} value={t} style={{ background: "#161617", color: TEXT }}>{t}</option>)}
         </select>
@@ -2995,7 +3002,7 @@ function NextReleaseModal({ current, sketches, onClose, onSaved }: {
         <>
           <div style={{ marginBottom: 16 }}>
             <label style={skLabel}>בחר סקיצה</label>
-            <select value={sketchId} onChange={e => setSketchId(e.target.value)} disabled={saving}
+            <select className="rap-select" value={sketchId} onChange={e => setSketchId(e.target.value)} disabled={saving}
               style={{ ...skField, cursor: "pointer", appearance: "auto", opacity: saving ? 0.6 : 1 }}>
               {sketches.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
             </select>
@@ -3837,7 +3844,7 @@ function NextWorkModal({ sketches, current, onClose, onSaved }: {
         <>
           <div style={{ marginBottom: 16 }}>
             <label style={skLabel}>בחר פרויקט</label>
-            <select value={sketchId} onChange={e => setSketchId(e.target.value)} disabled={saving}
+            <select className="rap-select" value={sketchId} onChange={e => setSketchId(e.target.value)} disabled={saving}
               style={{ ...skField, cursor: "pointer", appearance: "auto", opacity: saving ? 0.6 : 1 }}>
               {sketches.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
             </select>
