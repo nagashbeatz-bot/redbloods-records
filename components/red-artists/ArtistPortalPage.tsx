@@ -285,6 +285,11 @@ function fmtSketchDate(iso: string | null | undefined): string {
 // project_release_details. `title` is the chosen sketch's live title.
 export type PortalRelease = { sketchId: string; title: string; releaseDate: string };
 
+// ── Next project to work on — OWNER-chosen, manifest-stored pointer (a sketch +
+// an OPTIONAL deadline). Source = /api/red-artists/next-work. SEPARATE from
+// nextRelease (never derived from it). deadline is the project's real, owner-set date.
+export type PortalWork = { sketchId: string; title: string; deadline: string | null };
+
 function getShalevMusicProjects(projects: Project[]): LibRow[] {
   const target = normName(SHALEV_ARTIST);
   return (Array.isArray(projects) ? projects : [])
@@ -438,6 +443,16 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
 
   // Next release — the portal's manifest pointer (a sketch + a date). NOT Projects,
   // NOT project_release_details. null when unset → the card shows a "set it" prompt.
+  const [nextWork, setNextWork] = useState<PortalWork | null>(null);
+  const reloadNextWork = useCallback(async () => {
+    try {
+      const r = await fetch("/api/red-artists/next-work", { cache: "no-store" });
+      const d = await r.json();
+      if (r.ok && d?.ok) setNextWork(d.work ?? null);
+    } catch { /* leave as-is — the home page never breaks */ }
+  }, []);
+  useEffect(() => { void reloadNextWork(); }, [reloadNextWork]);
+
   const [nextRelease, setNextRelease] = useState<PortalRelease | null>(null);
   const reloadNextRelease = useCallback(async () => {
     try {
@@ -555,7 +570,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} hideBalance={isShalev} isShalev={isShalev} ledger={ledger} ledgerState={ledgerState} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} ledger={ledger} ledgerState={ledgerState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
@@ -2481,7 +2496,8 @@ function NextReleaseModal({ current, sketches, onClose, onSaved }: {
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, hideBalance, isShalev, ledger, ledgerState }: { onOpenMusic: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean; ledger: BalanceLedger | null; ledgerState: LoadState }) {
+function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, nextWork, onReloadNextWork, hideBalance, isShalev, ledger, ledgerState }: { onOpenMusic: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean; ledger: BalanceLedger | null; ledgerState: LoadState }) {
+  const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
@@ -2506,19 +2522,28 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
               <ActionCard icon="📅" title="סשן קרוב" body={summaryState === "loading" ? "טוען…" : "אין סשן קרוב כרגע"} />
             );
           })()}
-          {/* הפרויקט הבא לעבודה — real file from "המוזיקה שלי"; deadline = next-release date. */}
-          {(() => {
-            const relSketch = nextRelease ? sketches.find(s => s.id === nextRelease.sketchId) : undefined;
-            const workSketch = relSketch ?? sketches[0];
-            const deadline = relSketch && nextRelease ? nextRelease.releaseDate : null;
-            return workSketch ? (
-              <NextWorkCard sketch={workSketch} deadline={deadline} player={player} onOpenMusic={onOpenMusic} />
-            ) : (
-              <ActionCard icon="🎵" title="הפרויקט הבא לעבודה" body={loadState === "loading" ? "טוען…" : "אין עדיין פרויקט לעבודה"} link="פתח במוזיקה שלי ←" onLink={onOpenMusic} />
-            );
-          })()}
+          {/* הפרויקט הבא לעבודה — OWNER-chosen (manifest), NEVER derived from nextRelease. */}
+          <NextWorkCard
+            sketch={nextWork ? sketches.find(s => s.id === nextWork.sketchId) ?? null : null}
+            hasSelection={!!nextWork}
+            deadline={nextWork?.deadline ?? null}
+            player={player}
+            onOpenMusic={onOpenMusic}
+            canEdit={!isShalev}
+            onEdit={() => setWorkPickerOpen(true)}
+            loading={loadState === "loading"}
+          />
         </div>
       </div>
+
+      {workPickerOpen && !isShalev && (
+        <NextWorkModal
+          sketches={sketches}
+          current={nextWork}
+          onClose={() => setWorkPickerOpen(false)}
+          onSaved={async () => { await onReloadNextWork(); setWorkPickerOpen(false); }}
+        />
+      )}
 
       {/* ── 3. Main grid (row A) — music-forward in RTL: המוזיקה שלי (right) → ביטים → מאזן ── */}
       <div className="rap-grid-a">
@@ -3198,38 +3223,117 @@ function daysUntilYmd(ymd: string): number | null {
 // "המוזיקה שלי"): one file, its latest version, the existing player, an optional
 // deadline (the next-release date), and a shortcut into the music library. Distinct
 // from "הריליס הבא" (the next song to RELEASE) — never merged.
-function NextWorkCard({ sketch, deadline, player, onOpenMusic }: {
-  sketch: Sketch; deadline: string | null; player: ReturnType<typeof usePlayerSafe>; onOpenMusic: () => void;
+function NextWorkCard({ sketch, hasSelection, deadline, player, onOpenMusic, canEdit, onEdit, loading }: {
+  sketch: Sketch | null; hasSelection: boolean; deadline: string | null;
+  player: ReturnType<typeof usePlayerSafe>; onOpenMusic: () => void;
+  canEdit: boolean; onEdit: () => void; loading: boolean;
 }) {
   const days = deadline ? daysUntilYmd(deadline) : null;
+  const hasFile = !!sketch && !!sketch.latestFilePath;
   return (
     <div style={{ ...panel, padding: "18px 24px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* header: icon (right) + OWNER pick/replace button (left) — shalev sees no button */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ width: 50, height: 50, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>♫</div>
-        <button onClick={onOpenMusic} style={{ ...linkBtn, color: "#FF6B6B", fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap" }}>פתח במוזיקה שלי ←</button>
+        {canEdit && (
+          <button onClick={onEdit} style={{ ...linkBtn, color: "#FF6B6B", fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap" }}>{hasSelection ? "החלף פרויקט" : "בחר פרויקט"}</button>
+        )}
       </div>
       <div style={{ fontSize: 16.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>הפרויקט הבא לעבודה</div>
-      {/* the single file — same play component as "המוזיקה שלי" */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <SketchRowPlay size={40} player={player} sketch={sketch} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sketch.title}</div>
-          <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ direction: "ltr" }}>V{sketch.latestVersion}</span><span>·</span><span>{fmtSketchDate(sketch.updatedAt)}</span>
-            {sketch.durationSeconds != null && <><span>·</span><span style={{ direction: "ltr" }}>{mmss(sketch.durationSeconds)}</span></>}
+
+      {/* body: the chosen project — file name + Play only (NO version/date/duration) */}
+      {sketch ? (
+        hasFile ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <SketchRowPlay size={40} player={player} sketch={sketch} />
+            <div style={{ minWidth: 0, flex: 1, fontSize: 15, fontWeight: 700, color: TEXT, lineHeight: 1.35, wordBreak: "break-word" }}>{sketch.title}</div>
           </div>
-        </div>
-      </div>
-      {/* deadline + days-left (from the next-release date, when set) */}
-      {deadline && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 }}>
-          <span style={{ fontSize: 12, color: MUTED }}>דדליין: <span style={{ direction: "ltr", color: TEXT2, fontWeight: 700 }}>{fmtSketchDate(deadline)}</span></span>
-          {days != null && days >= 0 && (
-            <span style={{ fontSize: 10.5, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.12)", border: `1px solid ${BRAND}44`, borderRadius: 7, padding: "3px 10px", whiteSpace: "nowrap" }}>נותרו {days} ימים</span>
-          )}
+        ) : (
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{sketch.title}</div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 5 }}>אין עדיין קובץ מוזיקה לפרויקט הזה</div>
+          </div>
+        )
+      ) : (
+        <div style={{ fontSize: 13.5, color: TEXT2, lineHeight: 1.55 }}>
+          {loading ? "טוען…" : hasSelection ? "הפרויקט שנבחר לא נמצא בספרייה" : canEdit ? "לא נבחר פרויקט — לחץ ״בחר פרויקט״" : "אין עדיין פרויקט לעבודה"}
         </div>
       )}
+
+      {/* footer: real (owner-set) deadline + days-left + open-library button */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          {deadline ? (
+            <>
+              <span style={{ fontSize: 12, color: MUTED }}>דדליין: <span style={{ direction: "ltr", color: TEXT2, fontWeight: 700 }}>{fmtSketchDate(deadline)}</span></span>
+              {days != null && days >= 0 && (
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.12)", border: `1px solid ${BRAND}44`, borderRadius: 7, padding: "3px 10px", whiteSpace: "nowrap" }}>נותרו {days} ימים</span>
+              )}
+            </>
+          ) : sketch ? <span style={{ fontSize: 11.5, color: MUTED }}>לא הוגדר דדליין</span> : <span />}
+        </div>
+        <button onClick={onOpenMusic} style={{ ...linkBtn, color: "#FF6B6B", fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap", flexShrink: 0 }}>פתח במוזיקה שלי ←</button>
+      </div>
     </div>
+  );
+}
+
+// OWNER-only picker for "הפרויקט הבא לעבודה" — choose an active sketch from
+// "המוזיקה שלי" + an OPTIONAL deadline. Persists to the manifest (POST /next-work).
+function NextWorkModal({ sketches, current, onClose, onSaved }: {
+  sketches: Sketch[]; current: PortalWork | null; onClose: () => void; onSaved: () => Promise<void>;
+}) {
+  const [sketchId, setSketchId] = useState(current?.sketchId ?? sketches[0]?.id ?? "");
+  const [deadline, setDeadline] = useState(current?.deadline ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const validDate = deadline === "" || /^\d{4}-\d{2}-\d{2}$/.test(deadline);
+  const canSave = !!sketchId && validDate && !saving && sketches.length > 0;
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true); setErr(null);
+    try {
+      const res = await fetch("/api/red-artists/next-work", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sketchId, deadline: deadline || null }),
+      });
+      if (!res.ok) { setErr(await readErr(res, "שמירת הפרויקט נכשלה")); setSaving(false); return; }
+      await onSaved();
+    } catch { setErr("שגיאת רשת, נסה שוב"); setSaving(false); }
+  };
+
+  return (
+    <SketchModalShell title="הפרויקט הבא לעבודה" onClose={onClose} busy={saving}>
+      <SkErr msg={err} />
+      {sketches.length === 0 ? (
+        <div style={{ fontSize: 13.5, color: TEXT2, lineHeight: 1.7, textAlign: "center", padding: "18px 8px" }}>
+          אין עדיין פרויקטים בספרייה.<br />הוסף פרויקט ב״המוזיקה שלי״ ואז ניתן לבחור.
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <label style={skLabel}>בחר פרויקט</label>
+            <select value={sketchId} onChange={e => setSketchId(e.target.value)} disabled={saving}
+              style={{ ...skField, cursor: "pointer", appearance: "auto", opacity: saving ? 0.6 : 1 }}>
+              {sketches.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={skLabel}>דדליין (אופציונלי)</label>
+            <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} disabled={saving}
+              style={{ ...skField, colorScheme: "dark", opacity: saving ? 0.6 : 1 }} />
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={save} disabled={!canSave} style={{ ...skPrimaryBtn(canSave), flex: "1 1 150px", width: "auto" }}>{saving ? "שומר…" : "שמור"}</button>
+            <button onClick={onClose} disabled={saving} style={{
+              flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+              color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: saving ? "default" : "pointer",
+            }}>ביטול</button>
+          </div>
+        </>
+      )}
+    </SketchModalShell>
   );
 }
 

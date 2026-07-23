@@ -54,6 +54,13 @@ export interface NextReleaseRef { sketchId: string; releaseDate: string; updated
 /** A NextReleaseRef resolved against the current sketches (adds the live title). */
 export interface ResolvedNextRelease { sketchId: string; title: string; releaseDate: string; updatedAt: string }
 
+/** The portal's "next project to work on" pointer — an OWNER-chosen sketch id + an
+ * OPTIONAL owner-set deadline (YYYY-MM-DD | null). Stored in the manifest, fully
+ * SEPARATE from nextRelease (never derived from it). */
+export interface NextWorkRef { sketchId: string; deadline: string | null; updatedAt: string }
+/** A NextWorkRef resolved against the current sketches (adds the live title). */
+export interface ResolvedNextWork { sketchId: string; title: string; deadline: string | null; updatedAt: string }
+
 interface Manifest {
   schemaVersion: number;
   sketches: Sketch[];
@@ -62,6 +69,8 @@ interface Manifest {
   order?: string[];
   /** The chosen "next release" (points at one active sketch). Optional/absent. */
   nextRelease?: NextReleaseRef | null;
+  /** The chosen "next project to work on" (points at one active sketch). Optional. */
+  nextWork?: NextWorkRef | null;
 }
 
 /** Typed error whose `code` the routes map to an HTTP status + a Hebrew message. */
@@ -178,7 +187,16 @@ async function readManifest(): Promise<{ manifest: Manifest; rev: string | null 
       nextRelease = { sketchId: n.sketchId, releaseDate: n.releaseDate, updatedAt: typeof n.updatedAt === "string" ? n.updatedAt : new Date().toISOString() };
     }
   }
-  return { manifest: { schemaVersion: 1, sketches, order, nextRelease }, rev: dl.rev };
+  // Preserve the nextWork pointer too (defensively) so sketch mutations never wipe it.
+  const rawWork = (parsed as { nextWork?: unknown })?.nextWork;
+  let nextWork: NextWorkRef | null = null;
+  if (rawWork && typeof rawWork === "object") {
+    const w = rawWork as Partial<NextWorkRef>;
+    if (typeof w.sketchId === "string") {
+      nextWork = { sketchId: w.sketchId, deadline: typeof w.deadline === "string" ? w.deadline : null, updatedAt: typeof w.updatedAt === "string" ? w.updatedAt : new Date().toISOString() };
+    }
+  }
+  return { manifest: { schemaVersion: 1, sketches, order, nextRelease, nextWork }, rev: dl.rev };
 }
 
 /** Newest-updated first — the legacy/default ordering. */
@@ -440,6 +458,34 @@ export async function setNextReleaseConfig(sketchId: string, releaseDate: string
     if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
     m.nextRelease = { sketchId, releaseDate, updatedAt: new Date().toISOString() };
     resolved = { sketchId, title: s.title, releaseDate, updatedAt: m.nextRelease.updatedAt };
+    return m;
+  });
+  return resolved!;
+}
+
+// ── Next project to work on (manifest-stored, OWNER-chosen; SEPARATE from release) ──
+/** The resolved next-work project, or null when unset / pointing at a missing sketch. */
+export async function getNextWorkConfig(): Promise<ResolvedNextWork | null> {
+  const { manifest } = await readManifest();
+  const nw = manifest.nextWork;
+  if (!nw) return null;
+  const s = manifest.sketches.find((x) => x.id === nw.sketchId && !x.archived);
+  if (!s) return null; // stale pointer (the sketch was deleted/archived)
+  return { sketchId: s.id, title: s.title, deadline: nw.deadline ?? null, updatedAt: nw.updatedAt };
+}
+/** Set the next-work project to an ACTIVE sketch + an OPTIONAL deadline (YYYY-MM-DD | null). */
+export async function setNextWorkConfig(sketchId: string, deadline: string | null): Promise<ResolvedNextWork> {
+  if (typeof sketchId !== "string" || !sketchId) throw new SketchError("BAD_INPUT", "יש לבחור פרויקט");
+  const dl = deadline && deadline.trim() ? deadline.trim() : null;
+  if (dl && (!DATE_RE.test(dl) || Number.isNaN(new Date(`${dl}T00:00:00`).getTime()))) {
+    throw new SketchError("BAD_INPUT", "תאריך דדליין לא תקין");
+  }
+  let resolved: ResolvedNextWork | null = null;
+  await mutateManifest((m) => {
+    const s = m.sketches.find((x) => x.id === sketchId && !x.archived);
+    if (!s) throw new SketchError("NOT_FOUND", "הפרויקט לא נמצא");
+    m.nextWork = { sketchId, deadline: dl, updatedAt: new Date().toISOString() };
+    resolved = { sketchId, title: s.title, deadline: dl, updatedAt: m.nextWork.updatedAt };
     return m;
   });
   return resolved!;
