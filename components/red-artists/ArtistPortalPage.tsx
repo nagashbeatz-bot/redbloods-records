@@ -555,7 +555,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} hideBalance={isShalev} isShalev={isShalev} ledger={ledger} ledgerState={ledgerState} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} hideBalance={isShalev} isShalev={isShalev} ledger={ledger} ledgerState={ledgerState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
@@ -2481,7 +2481,7 @@ function NextReleaseModal({ current, sketches, onClose, onSaved }: {
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, hideBalance, isShalev, ledger, ledgerState }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean; ledger: BalanceLedger | null; ledgerState: LoadState }) {
+function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, hideBalance, isShalev, ledger, ledgerState }: { onOpenMusic: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean; ledger: BalanceLedger | null; ledgerState: LoadState }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
@@ -2497,13 +2497,24 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div className="rap-acts">
-          <ActionCard icon="📅" title="סשן קרוב" body="פגישת אמן והפקה" sub="08.06.2025 · יום ראשון · 18:00" />
+          {/* סשן קרוב — the artist's next real session (weekly, excluding shows). */}
           {(() => {
-            const next = summary?.shows.upcoming?.[0];
-            return next ? (
-              <ActionCard icon="🎤" title="הופעות קרובות" body={next.name} sub={[fmtShowDate(next.date), next.startTime, next.location].filter(Boolean).join(" · ")} link="לכל ההופעות ←" onLink={onOpenShows} />
+            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה");
+            return sess ? (
+              <ActionCard icon="📅" title="סשן קרוב" body={sess.title} sub={[fmtShowDate(sess.date), sess.startTime].filter(Boolean).join(" · ")} />
             ) : (
-              <ActionCard icon="🎤" title="הופעות קרובות" body={summaryState === "loading" ? "טוען…" : "אין הופעות קרובות כרגע"} link="לכל ההופעות ←" onLink={onOpenShows} />
+              <ActionCard icon="📅" title="סשן קרוב" body={summaryState === "loading" ? "טוען…" : "אין סשן קרוב כרגע"} />
+            );
+          })()}
+          {/* הפרויקט הבא לעבודה — real file from "המוזיקה שלי"; deadline = next-release date. */}
+          {(() => {
+            const relSketch = nextRelease ? sketches.find(s => s.id === nextRelease.sketchId) : undefined;
+            const workSketch = relSketch ?? sketches[0];
+            const deadline = relSketch && nextRelease ? nextRelease.releaseDate : null;
+            return workSketch ? (
+              <NextWorkCard sketch={workSketch} deadline={deadline} player={player} onOpenMusic={onOpenMusic} />
+            ) : (
+              <ActionCard icon="🎵" title="הפרויקט הבא לעבודה" body={loadState === "loading" ? "טוען…" : "אין עדיין פרויקט לעבודה"} link="פתח במוזיקה שלי ←" onLink={onOpenMusic} />
             );
           })()}
         </div>
@@ -3172,6 +3183,56 @@ function NewsFlash({ items }: { items: PortalUpdate[] }) {
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────────
+// Whole days from today until a YYYY-MM-DD (null if unparseable). Client-only (runs
+// after the manifest fetch, post-hydration) → no SSR mismatch.
+function daysUntilYmd(ymd: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  if (!m) return null;
+  const target = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  target.setHours(0, 0, 0, 0);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - now.getTime()) / 86400000);
+}
+
+// "הפרויקט הבא לעבודה" — the sketch Shalev should work on now (real data from
+// "המוזיקה שלי"): one file, its latest version, the existing player, an optional
+// deadline (the next-release date), and a shortcut into the music library. Distinct
+// from "הריליס הבא" (the next song to RELEASE) — never merged.
+function NextWorkCard({ sketch, deadline, player, onOpenMusic }: {
+  sketch: Sketch; deadline: string | null; player: ReturnType<typeof usePlayerSafe>; onOpenMusic: () => void;
+}) {
+  const days = deadline ? daysUntilYmd(deadline) : null;
+  return (
+    <div style={{ ...panel, padding: "18px 24px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ width: 50, height: 50, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>♫</div>
+        <button onClick={onOpenMusic} style={{ ...linkBtn, color: "#FF6B6B", fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap" }}>פתח במוזיקה שלי ←</button>
+      </div>
+      <div style={{ fontSize: 16.5, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>הפרויקט הבא לעבודה</div>
+      {/* the single file — same play component as "המוזיקה שלי" */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <SketchRowPlay size={40} player={player} sketch={sketch} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sketch.title}</div>
+          <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ direction: "ltr" }}>V{sketch.latestVersion}</span><span>·</span><span>{fmtSketchDate(sketch.updatedAt)}</span>
+            {sketch.durationSeconds != null && <><span>·</span><span style={{ direction: "ltr" }}>{mmss(sketch.durationSeconds)}</span></>}
+          </div>
+        </div>
+      </div>
+      {/* deadline + days-left (from the next-release date, when set) */}
+      {deadline && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 }}>
+          <span style={{ fontSize: 12, color: MUTED }}>דדליין: <span style={{ direction: "ltr", color: TEXT2, fontWeight: 700 }}>{fmtSketchDate(deadline)}</span></span>
+          {days != null && days >= 0 && (
+            <span style={{ fontSize: 10.5, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.12)", border: `1px solid ${BRAND}44`, borderRadius: 7, padding: "3px 10px", whiteSpace: "nowrap" }}>נותרו {days} ימים</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActionCard({ icon, title, body, sub, link, onLink }: {
   icon: string; title: string; body: string; sub?: string; link?: string; onLink?: () => void;
 }) {
