@@ -184,6 +184,35 @@ export async function updateBeatRow(id: string, fields: {
   return { status: "ok", beat: mapRow(data as DbRow) };
 }
 
+/**
+ * Metadata-only update — changes ONLY name/genre/musical_key. file_name,
+ * dropbox_path and duration_seconds are left exactly as they are (the existing
+ * Dropbox file is untouched). Used when the owner edits a beat without replacing
+ * its audio.
+ */
+export async function updateBeatMeta(id: string, fields: {
+  name: string;
+  genre: BeatGenre;
+  musicalKey: string | null;
+}): Promise<UpdateBeatResult> {
+  const { data, error } = await supabase
+    .from("beats")
+    .update({
+      name:        fields.name,
+      genre:       fields.genre,
+      musical_key: fields.musicalKey,
+    })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) {
+    if (error.code === UNIQUE_VIOLATION) return { status: "duplicate" };
+    throw new Error(error.message);
+  }
+  if (!data) return { status: "not_found" };
+  return { status: "ok", beat: mapRow(data as DbRow) };
+}
+
 /** Delete a beat row by id. Returns true when a row was removed. */
 export async function deleteBeat(id: string): Promise<boolean> {
   const { data, error } = await supabase.from("beats").delete().eq("id", id).select("id");

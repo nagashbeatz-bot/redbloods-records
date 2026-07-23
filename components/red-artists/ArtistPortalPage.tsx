@@ -849,7 +849,7 @@ function BeatsPage() {
         <BeatManageModal
           beat={manage}
           onClose={() => setManage(null)}
-          onUpdated={(id) => { setManage(null); stopIfPlaying(id); setToast("הביט עודכן"); void load(); }}
+          onUpdated={(id, fileReplaced) => { setManage(null); if (fileReplaced) stopIfPlaying(id); setToast("הביט עודכן"); void load(); }}
           onDeleted={(id) => { setManage(null); stopIfPlaying(id); setToast("הביט הוסר"); void load(); }}
         />
       )}
@@ -1008,7 +1008,7 @@ function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploa
 function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
   beat: BeatItem;
   onClose: () => void;
-  onUpdated: (id: string) => void;
+  onUpdated: (id: string, fileReplaced: boolean) => void;
   onDeleted: (id: string) => void;
 }) {
   const [mode, setMode] = useState<"menu" | "edit" | "confirm">("menu");
@@ -1028,18 +1028,18 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
   const fileRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
-  // The button is enabled once name/genre/key are valid (a new file is still
-  // required, but we surface that as a clear message on click instead of a silently
-  // disabled button that looks like "update does nothing").
+  // A new file is OPTIONAL on update — the button is enabled on valid
+  // name/genre/key. With no file it's a metadata-only save (server never touches
+  // Dropbox); with a file the audio is replaced.
   const canSave = !!name.trim() && !!genre && !!note && !!type && !busy;
 
   function saveUpdate() {
     if (busy) return;
-    if (!file) { setErr("יש לבחור קובץ אודיו חדש כדי לעדכן את הביט"); return; }
     if (!name.trim() || !genre || !note || !type) return;
+    const fileReplaced = !!file;
     setBusy(true); setPct(0); setErr(null);
     const fd = new FormData();
-    fd.append("file", file);
+    if (file) fd.append("file", file);       // omit → metadata-only update
     fd.append("name", name.trim());
     fd.append("genre", genre);
     fd.append("musicalKey", `${note} ${type}`);
@@ -1051,7 +1051,7 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
       xhrRef.current = null;
       let d: { ok?: boolean; error?: string } = {};
       try { d = JSON.parse(xhr.responseText); } catch { /* keep */ }
-      if (xhr.status >= 200 && xhr.status < 300 && d?.ok) onUpdated(beat.id);
+      if (xhr.status >= 200 && xhr.status < 300 && d?.ok) onUpdated(beat.id, fileReplaced);
       else { setBusy(false); setErr(d?.error || "העדכון נכשל"); }
     };
     xhr.onerror = () => { xhrRef.current = null; setBusy(false); setErr("העדכון נכשל"); };
@@ -1120,7 +1120,7 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
         {mode === "edit" && (
           <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
-              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>קובץ אודיו חדש <span style={{ color: "#F87171" }}>*</span> <span style={{ fontWeight: 500, color: MUTED }}>(חובה כדי לשמור עדכון)</span></label>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>קובץ אודיו חדש — אופציונלי <span style={{ fontWeight: 500, color: MUTED }}>(השאר ריק כדי לעדכן רק את פרטי הביט)</span></label>
               <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.aif,.aiff,.m4a,.flac,.ogg" disabled={busy}
                 onChange={e => { setFile(e.target.files?.[0] ?? null); setErr(null); }} style={{ display: "none" }} />
               <button onClick={() => fileRef.current?.click()} disabled={busy} style={{
