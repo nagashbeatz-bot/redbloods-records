@@ -25,6 +25,10 @@ export interface AudioTrack {
   artist: string;
   fileName: string;
   url: string;
+  // Optional SAME-ORIGIN attachment endpoint for downloads (separate from `url`,
+  // which is the stream and may 302 cross-origin). When set, the player downloads
+  // via this; when absent it falls back to `url` + the download attribute.
+  downloadUrl?: string;
 }
 
 interface PlayerContextValue {

@@ -201,7 +201,7 @@ function artistTokens(artist: string): string[] {
   return (artist ?? "").split(/[,،;]/).map(normName).filter(Boolean);
 }
 type AudioFile = ReturnType<typeof getLatestAudioFile>; // { name; url; dropboxPath?; ... } | null
-export type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean; audio: AudioFile; durationSeconds?: number };
+export type LibRow = { id: string; name: string; artist: string; status: string; projectType: string; hasAudio: boolean; audio: AudioFile; durationSeconds?: number; downloadUrl?: string };
 function toLibRow(p: Project): LibRow {
   const audio = getLatestAudioFile(p.files ?? []); // existing helper — real audio only, no stems/delivery
   // Read the stored length (if any) off the real FileLink (typed → no cast).
@@ -273,6 +273,10 @@ export type Sketch = {
 function sketchStreamUrl(s: Sketch): string {
   return `/api/red-artists/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
+// Same-origin attachment endpoint (clean filename, no 302/Quick Look on iOS).
+function sketchDownloadUrl(s: Sketch): string {
+  return `/api/red-artists/download?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
+}
 // "YYYY-MM-DD..." or ISO → "DD.MM.YYYY".
 function fmtSketchDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -303,7 +307,7 @@ async function playLibRow(player: ReturnType<typeof usePlayerSafe>, t: LibRow, o
   if (!t.audio || !player) return;
   try {
     const url = await getFreshPlayUrl(t.audio);
-    player.play({ projectId: t.id, projectName: t.name, artist: t.artist, fileName: t.audio.name, url });
+    player.play({ projectId: t.id, projectName: t.name, artist: t.artist, fileName: t.audio.name, url, downloadUrl: t.downloadUrl });
   } catch {
     onError?.("לא ניתן להשמיע כרגע");
   }
@@ -743,7 +747,7 @@ function BeatsPage({ readOnly = false }: { readOnly?: boolean }) {
       if (!player) return;
       if (playing) player.pause();
       else if (cur) player.resume();
-      else player.play({ projectId: `beat:${b.id}`, projectName: b.name, artist: "ביט פנוי", fileName: b.name, url: b.url });
+      else player.play({ projectId: `beat:${b.id}`, projectName: b.name, artist: "ביט פנוי", fileName: b.name, url: b.url, downloadUrl: `/api/beats/${b.id}/download` });
     };
     return { playing, onClick };
   }
@@ -2459,6 +2463,7 @@ function sketchAsLibRow(s: Sketch): LibRow {
     hasAudio: !!s.latestFilePath,
     audio: s.latestFilePath ? { name: s.latestFileName, url: sketchStreamUrl(s) } : null,
     durationSeconds: s.durationSeconds,
+    downloadUrl: s.latestFilePath ? sketchDownloadUrl(s) : undefined,
   };
 }
 function SketchRowPlay({ size, player, sketch, onError }: {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef } from "react";
-import { usePlayerSafe } from "@/components/PlayerProvider";
+import { useRef, useState } from "react";
+import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import UploadButton from "@/components/ui/UploadButton";
 
@@ -29,6 +29,86 @@ function DownloadIcon({ size = 14, color = "currentColor" }: { size?: number; co
     <svg width={size} height={size} viewBox="0 0 13 13" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
       <path d="M6.5 1v7M3.5 5.5l3 3 3-3" /><path d="M1.5 10.5h10" />
     </svg>
+  );
+}
+
+function Spinner({ size = 14 }: { size?: number }) {
+  return (
+    <>
+      <style>{`@keyframes mpSpin{to{transform:rotate(360deg)}}`}</style>
+      <span style={{
+        width: size, height: size, borderRadius: "50%", boxSizing: "border-box",
+        border: "2px solid rgba(255,255,255,0.25)", borderTopColor: "#fff",
+        display: "inline-block", animation: "mpSpin 0.7s linear infinite",
+      }} />
+    </>
+  );
+}
+
+// Extract a clean filename from a Content-Disposition header (RFC 5987 first).
+function parseFilename(cd: string | null): string | null {
+  if (!cd) return null;
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  if (star) { try { return decodeURIComponent(star[1].trim()); } catch { return star[1].trim(); } }
+  const plain = /filename="?([^";]+)"?/i.exec(cd);
+  return plain ? plain[1].trim() : null;
+}
+
+/**
+ * Download control. When the track carries a secure SAME-ORIGIN attachment endpoint
+ * (`downloadUrl`), it fetches the bytes → Blob → clicks a hidden <a download> (so
+ * iOS saves the file instead of opening Quick Look), using the server's clean
+ * filename. Legacy tracks with no downloadUrl keep the plain anchor. Never opens a
+ * new tab / window.open / navigates the app.
+ */
+function DownloadControl({ track, size, iconSize, radius }: {
+  track: AudioTrack; size: number; iconSize: number; radius: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(false);
+  const box: React.CSSProperties = {
+    width: size, height: size, borderRadius: radius, flexShrink: 0, textDecoration: "none",
+    background: "rgba(255,255,255,0.05)", border: `1px solid ${err ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.1)"}`,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: err ? "#F87171" : "#AAA",
+  };
+
+  if (!track.downloadUrl) {
+    return (
+      <a href={track.url} download={downloadName(track)} title="הורד קובץ" onClick={e => e.stopPropagation()}
+        style={{ ...box, cursor: "pointer" }}>
+        <DownloadIcon size={iconSize} />
+      </a>
+    );
+  }
+
+  const onClick = async () => {
+    if (busy) return;
+    setBusy(true); setErr(false);
+    try {
+      const res = await fetch(track.downloadUrl!, { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const name = parseFilename(res.headers.get("Content-Disposition")) || downloadName(track);
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+    } catch {
+      setErr(true);
+      setTimeout(() => setErr(false), 3500);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button onClick={onClick} disabled={busy} aria-label="הורד קובץ"
+      title={err ? "ההורדה נכשלה — נסה שוב" : "הורד קובץ"}
+      style={{ ...box, cursor: busy ? "wait" : "pointer", fontFamily: "inherit" }}>
+      {busy ? <Spinner size={iconSize} /> : <DownloadIcon size={iconSize} color={err ? "#F87171" : "currentColor"} />}
+    </button>
   );
 }
 
@@ -119,15 +199,7 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
               {track.artist}
             </div>
           </div>
-          {canPlay && (
-            <a href={track.url} download={downloadName(track)} title="הורד קובץ" onClick={e => e.stopPropagation()}
-              style={{
-                width: 38, height: 38, borderRadius: 11, flexShrink: 0, textDecoration: "none",
-                background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#AAA",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            ><DownloadIcon size={15} /></a>
-          )}
+          {canPlay && <DownloadControl track={track} size={38} iconSize={15} radius={11} />}
           <button
             onClick={canPlay ? (playing ? pause : resume) : undefined}
             style={{
@@ -304,20 +376,7 @@ export default function MiniPlayer({ mobile = false }: { mobile?: boolean }) {
               size="sm"
             />
           )}
-          {canPlay && (
-            <a href={track.url} download={downloadName(track)} title="הורד קובץ"
-              style={{
-                width: 30, height: 30, borderRadius: 9,
-                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: "#777", textDecoration: "none", flexShrink: 0,
-              }}
-              onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "#CCC"; el.style.background = "rgba(255,255,255,0.1)"; }}
-              onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "#777"; el.style.background = "rgba(255,255,255,0.04)"; }}
-            >
-              <DownloadIcon size={13} />
-            </a>
-          )}
+          {canPlay && <DownloadControl track={track} size={30} iconSize={13} radius={9} />}
           <button onClick={stop} title="סגור נגן"
             style={{ width: 30, height: 30, borderRadius: 9, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer", color: "#666", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.color = "#EEE"; el.style.background = "rgba(255,255,255,0.1)"; }}
