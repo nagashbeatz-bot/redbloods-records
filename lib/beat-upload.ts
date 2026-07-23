@@ -4,7 +4,7 @@ import { dropboxArg } from "@/lib/mix-version-upload";
 import { sanitizeFolder } from "@/lib/project-paths";
 import {
   createBeat, updateBeatRow, deleteBeat, getBeat,
-  isBeatGenre, type Beat, type BeatGenre,
+  isBeatGenre, isMusicalKey, type Beat, type BeatGenre,
 } from "@/lib/beats-store";
 
 /**
@@ -89,22 +89,24 @@ async function dropboxDeleteChecked(
   return { ok: false, notFound: /not_found/.test(t) };
 }
 
-type Validated = { name: string; genre: BeatGenre; buffer: Buffer; ext: string; origName: string };
+type Validated = { name: string; genre: BeatGenre; musicalKey: string; buffer: Buffer; ext: string; origName: string };
 
-/** Shared validation for create + update (file REQUIRED in both). */
-async function validateBeat(file: File | null, rawName: string, rawGenre: string):
+/** Shared validation for create + update (file + key REQUIRED in both). */
+async function validateBeat(file: File | null, rawName: string, rawGenre: string, rawKey: string):
   Promise<{ ok: true; v: Validated } | { ok: false; status: number; error: string }> {
   if (!file) return { ok: false, status: 400, error: "חסר קובץ" };
   const name = (rawName ?? "").trim();
   if (!name) return { ok: false, status: 400, error: "יש להזין שם לביט" };
   if (!isBeatGenre(rawGenre)) return { ok: false, status: 400, error: "יש לבחור ז׳אנר" };
+  const key = (rawKey ?? "").trim();
+  if (!isMusicalKey(key)) return { ok: false, status: 400, error: "יש לבחור סולם (תו + Major/Minor)" };
   if (!AUDIO_EXT.test(file.name)) {
     return { ok: false, status: 400, error: "סוג קובץ לא נתמך (MP3/WAV/AIFF/M4A/FLAC/OGG)" };
   }
   if (file.size <= 0) return { ok: false, status: 400, error: "הקובץ ריק" };
   if (file.size > MAX_BYTES) return { ok: false, status: 413, error: "הקובץ גדול מדי (מקסימום 150MB)" };
   const buffer = Buffer.from(await file.arrayBuffer());
-  return { ok: true, v: { name, genre: rawGenre, buffer, ext: extOf(file.name), origName: file.name } };
+  return { ok: true, v: { name, genre: rawGenre, musicalKey: key, buffer, ext: extOf(file.name), origName: file.name } };
 }
 
 /** Upload a validated file to a fresh unique path; returns the ACTUAL Dropbox path/name. */
@@ -132,9 +134,9 @@ async function uploadNewFile(v: Validated, token: string):
 
 /** Create one beat (single-shot). Caller must have authorized (owner-only). */
 export async function uploadBeatSingle(input: {
-  file: File | null; name: string; genre: string;
+  file: File | null; name: string; genre: string; musicalKey: string;
 }): Promise<BeatUploadResult> {
-  const val = await validateBeat(input.file, input.name, input.genre);
+  const val = await validateBeat(input.file, input.name, input.genre, input.musicalKey);
   if (!val.ok) return val;
   const { v } = val;
 
@@ -143,7 +145,7 @@ export async function uploadBeatSingle(input: {
   if (!up.ok) return up;
 
   try {
-    const res = await createBeat({ name: v.name, genre: v.genre, fileName: up.name, dropboxPath: up.path, durationSeconds: null });
+    const res = await createBeat({ name: v.name, genre: v.genre, musicalKey: v.musicalKey, fileName: up.name, dropboxPath: up.path, durationSeconds: null });
     if (res.status === "duplicate") {
       await dropboxDelete(token, up.path); // remove the orphan we just made
       return { ok: false, status: 409, error: "כבר קיים ביט זהה" };
@@ -162,13 +164,13 @@ export async function uploadBeatSingle(input: {
  * if the DB update fails.
  */
 export async function updateBeatFile(input: {
-  beatId: string; file: File | null; name: string; genre: string;
+  beatId: string; file: File | null; name: string; genre: string; musicalKey: string;
 }): Promise<BeatUploadResult> {
   if (!ID_RE.test(input.beatId)) return { ok: false, status: 400, error: "מזהה לא תקין" };
   const existing = await getBeat(input.beatId);
   if (!existing) return { ok: false, status: 404, error: "הביט לא נמצא" };
 
-  const val = await validateBeat(input.file, input.name, input.genre);
+  const val = await validateBeat(input.file, input.name, input.genre, input.musicalKey);
   if (!val.ok) return val;
   const { v } = val;
 
@@ -179,7 +181,7 @@ export async function updateBeatFile(input: {
   try {
     // 2/3) point the same row at the new file (only after the bytes are safely stored)
     const res = await updateBeatRow(input.beatId, {
-      name: v.name, genre: v.genre, fileName: up.name, dropboxPath: up.path, durationSeconds: null,
+      name: v.name, genre: v.genre, musicalKey: v.musicalKey, fileName: up.name, dropboxPath: up.path, durationSeconds: null,
     });
     if (res.status === "duplicate") {
       await dropboxDelete(token, up.path);    // delete ONLY the new file; never the old one

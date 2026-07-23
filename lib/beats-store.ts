@@ -21,10 +21,23 @@ export function isBeatGenre(g: string): g is BeatGenre {
   return GENRE_SET.has(g);
 }
 
+/** Musical key — stored canonically as "<note> <type>" (e.g. "G Minor"), matching
+ * the beats_musical_key_check DB constraint (24 combinations). Nullable in the DB
+ * (legacy beats have none → "לא הוגדר" in the UI); required by the create/update flow. */
+export const BEAT_KEY_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
+export const BEAT_KEY_TYPES = ["Major", "Minor"] as const;
+const MUSICAL_KEY_SET = new Set<string>(
+  BEAT_KEY_NOTES.flatMap((n) => BEAT_KEY_TYPES.map((t) => `${n} ${t}`)),
+);
+export function isMusicalKey(k: string): boolean {
+  return MUSICAL_KEY_SET.has(k);
+}
+
 export interface Beat {
   id: string;
   name: string;            // display name (owner-typed)
   genre: BeatGenre;
+  musicalKey: string | null; // "<note> <type>" e.g. "G Minor", or null (legacy)
   fileName: string;        // real unique file name on Dropbox
   dropboxPath: string;     // real path returned by Dropbox
   durationSeconds: number | null;
@@ -36,6 +49,7 @@ interface DbRow {
   id: string;
   name: string;
   genre: string;
+  musical_key: string | null;
   file_name: string;
   dropbox_path: string;
   duration_seconds: number | string | null;
@@ -48,6 +62,7 @@ function mapRow(db: DbRow): Beat {
     id: db.id,
     name: db.name,
     genre: (isBeatGenre(db.genre) ? db.genre : "soul") as BeatGenre,
+    musicalKey: db.musical_key ?? null,
     fileName: db.file_name,
     dropboxPath: db.dropbox_path,
     durationSeconds: db.duration_seconds != null ? Number(db.duration_seconds) : null,
@@ -85,6 +100,7 @@ export type CreateBeatResult =
 export async function createBeat(row: {
   name: string;
   genre: BeatGenre;
+  musicalKey: string | null;
   fileName: string;
   dropboxPath: string;
   durationSeconds: number | null;
@@ -94,6 +110,7 @@ export async function createBeat(row: {
     .insert({
       name:             row.name,
       genre:            row.genre,
+      musical_key:      row.musicalKey,
       file_name:        row.fileName,
       dropbox_path:     row.dropboxPath,
       duration_seconds: row.durationSeconds,
@@ -120,6 +137,7 @@ export type UpdateBeatResult =
 export async function updateBeatRow(id: string, fields: {
   name: string;
   genre: BeatGenre;
+  musicalKey: string | null;
   fileName: string;
   dropboxPath: string;
   durationSeconds: number | null;
@@ -129,6 +147,7 @@ export async function updateBeatRow(id: string, fields: {
     .update({
       name:             fields.name,
       genre:            fields.genre,
+      musical_key:      fields.musicalKey,
       file_name:        fields.fileName,
       dropbox_path:     fields.dropboxPath,
       duration_seconds: fields.durationSeconds,

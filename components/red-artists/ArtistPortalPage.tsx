@@ -657,7 +657,7 @@ function ComingSoon({ tab: _tab }: { tab: Tab }) {
 // Dropbox /nagashbeatz/beats. Same list/play language as "המוזיקה שלי"; playback
 // through the GLOBAL player. Never rendered for the shalev role (the /api/beats
 // endpoints are requireOwner too, so hiding the tab is not the only guard).
-type BeatItem = { id: string; name: string; genre: string; durationSeconds: number | null; url: string };
+type BeatItem = { id: string; name: string; genre: string; musicalKey: string | null; durationSeconds: number | null; createdAt: string; url: string };
 
 // Canonical genre value (DB) → display label (exactly as the product spec names them).
 const BEAT_GENRE_OPTS: { value: string; label: string }[] = [
@@ -668,6 +668,41 @@ const BEAT_GENRE_OPTS: { value: string; label: string }[] = [
 ];
 const BEAT_GENRE_LABEL: Record<string, string> =
   Object.fromEntries(BEAT_GENRE_OPTS.map(o => [o.value, o.label]));
+
+// Musical key: two selects (note + Major/Minor) combined to a canonical "<note> <type>".
+const BEAT_KEY_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const BEAT_KEY_TYPES = ["Major", "Minor"];
+function splitMusicalKey(k: string | null): { note: string; type: string } {
+  if (!k) return { note: "", type: "" };
+  const i = k.lastIndexOf(" ");
+  return i > 0 ? { note: k.slice(0, i), type: k.slice(i + 1) } : { note: "", type: "" };
+}
+
+// Two-select musical-key field (תו + Major/Minor) shared by upload + edit forms.
+function KeyFields({ note, type, onNote, onType, disabled }: {
+  note: string; type: string; onNote: (v: string) => void; onType: (v: string) => void; disabled?: boolean;
+}) {
+  const sel: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 11,
+    background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: TEXT,
+    fontSize: 14, fontFamily: "inherit", outline: "none", cursor: disabled ? "not-allowed" : "pointer",
+  };
+  return (
+    <div>
+      <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: TEXT2, marginBottom: 7 }}>סולם</label>
+      <div style={{ display: "flex", gap: 10 }}>
+        <select value={note} onChange={e => onNote(e.target.value)} disabled={disabled} style={sel}>
+          <option value="" disabled>תו…</option>
+          {BEAT_KEY_NOTES.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <select value={type} onChange={e => onType(e.target.value)} disabled={disabled} style={sel}>
+          <option value="" disabled>Major / Minor…</option>
+          {BEAT_KEY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
 
 function BeatsPage() {
   const isMobile = useIsMobile();
@@ -713,8 +748,8 @@ function BeatsPage() {
     return { playing, onClick };
   }
 
-  // Play (RTL → rightmost, fixed) · שם הביט (wide) · ז׳אנר (left).
-  const cols = "52px minmax(0, 2fr) minmax(0, 1fr)";
+  // Play (RTL → rightmost, fixed) · שם הביט · ז׳אנר · סולם · נוצר בתאריך (left).
+  const cols = "52px minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr)";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -742,7 +777,7 @@ function BeatsPage() {
 
         {!isMobile && beats.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
-            {[{ label: "", align: "center" as const }, { label: "שם הביט", align: "start" as const }, { label: "ז׳אנר", align: "start" as const }].map((h, i) => (
+            {[{ label: "", align: "center" as const }, { label: "שם הביט", align: "start" as const }, { label: "ז׳אנר", align: "start" as const }, { label: "סולם", align: "start" as const }, { label: "נוצר בתאריך", align: "start" as const }].map((h, i) => (
               <div key={i} style={{ fontSize: 13.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
@@ -762,14 +797,21 @@ function BeatsPage() {
             beats.map((b) => {
               const ps = playState(b);
               const genreLabel = BEAT_GENRE_LABEL[b.genre] ?? b.genre;
+              const keyText = b.musicalKey ?? "לא הוגדר";
+              const keyDefined = !!b.musicalKey;
               return isMobile ? (
-                <div key={b.id} onClick={() => setManage(b)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}>
+                <div key={b.id} onClick={() => setManage(b)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${BDR}`, cursor: "pointer" }}>
                   <span onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
                     <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
-                    <div style={{ marginTop: 5 }}><GenreBadge label={genreLabel} /></div>
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 6 }}>
+                      <GenreBadge label={genreLabel} />
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: keyDefined ? "#CFCFD6" : MUTED, direction: "ltr" }}>{keyText}</span>
+                      <span style={{ fontSize: 12, color: MUTED }}>·</span>
+                      <span style={{ fontSize: 12.5, color: MUTED, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtSketchDate(b.createdAt)}</span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -784,6 +826,8 @@ function BeatsPage() {
                     <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
                   </div>
                   <div style={{ textAlign: "start" }}><GenreBadge label={genreLabel} /></div>
+                  <div style={{ textAlign: "start", fontSize: 14, fontWeight: 700, color: keyDefined ? "#CFCFD6" : MUTED, direction: "ltr", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{keyText}</div>
+                  <div style={{ textAlign: "start", fontSize: 13.5, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtSketchDate(b.createdAt)}</div>
                 </div>
               );
             })
@@ -830,21 +874,24 @@ function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploa
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
   const [genre, setGenre] = useState("");
+  const [note, setNote] = useState("");
+  const [type, setType] = useState("");
   const [busy, setBusy] = useState(false);
   const [pct, setPct] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
-  const canSubmit = !!file && !!name.trim() && !!genre && !busy;
+  const canSubmit = !!file && !!name.trim() && !!genre && !!note && !!type && !busy;
 
   function submit() {
-    if (!file || !name.trim() || !genre || busy) return;
+    if (!file || !name.trim() || !genre || !note || !type || busy) return;
     setBusy(true); setPct(0); setErr(null);
     const fd = new FormData();
     fd.append("file", file);
     fd.append("name", name.trim());
     fd.append("genre", genre);
+    fd.append("musicalKey", `${note} ${type}`);
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
     xhr.open("POST", "/api/beats");
@@ -913,6 +960,9 @@ function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploa
             </select>
           </div>
 
+          {/* musical key */}
+          <KeyFields note={note} type={type} onNote={setNote} onType={setType} disabled={busy} />
+
           {/* progress */}
           {busy && (
             <div>
@@ -956,24 +1006,28 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
   const [mode, setMode] = useState<"menu" | "edit" | "confirm">("menu");
 
   // ── edit state (replace the file; same beat id) ──
+  const initKey = splitMusicalKey(beat.musicalKey);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState(beat.name);
   const [genre, setGenre] = useState(beat.genre);
+  const [note, setNote] = useState(initKey.note);
+  const [type, setType] = useState(initKey.type);
   const [busy, setBusy] = useState(false);
   const [pct, setPct] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
-  const canSave = !!file && !!name.trim() && !!genre && !busy;
+  const canSave = !!file && !!name.trim() && !!genre && !!note && !!type && !busy;
 
   function saveUpdate() {
-    if (!file || !name.trim() || !genre || busy) return;
+    if (!file || !name.trim() || !genre || !note || !type || busy) return;
     setBusy(true); setPct(0); setErr(null);
     const fd = new FormData();
     fd.append("file", file);
     fd.append("name", name.trim());
     fd.append("genre", genre);
+    fd.append("musicalKey", `${note} ${type}`);
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
     xhr.open("PATCH", `/api/beats/${beat.id}`);
@@ -1030,7 +1084,10 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
           <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{beat.name}</div>
-              <div style={{ marginTop: 8 }}><GenreBadge label={BEAT_GENRE_LABEL[beat.genre] ?? beat.genre} /></div>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <GenreBadge label={BEAT_GENRE_LABEL[beat.genre] ?? beat.genre} />
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: beat.musicalKey ? "#CFCFD6" : MUTED, direction: "ltr" }}>{beat.musicalKey ?? "לא הוגדר"}</span>
+              </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button onClick={() => setMode("edit")} style={{
@@ -1070,6 +1127,7 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
                 {BEAT_GENRE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
+            <KeyFields note={note} type={type} onNote={setNote} onType={setType} disabled={busy} />
             {busy && (
               <div>
                 <div style={{ height: 8, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>

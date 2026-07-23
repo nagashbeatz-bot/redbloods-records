@@ -19,7 +19,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const file = form.get("file") as File | null;
     const name = (form.get("name") as string | null) ?? "";
     const genre = (form.get("genre") as string | null) ?? "";
-    const res = await updateBeatFile({ beatId: id, file, name, genre });
+    const musicalKey = (form.get("musicalKey") as string | null) ?? "";
+    const res = await updateBeatFile({ beatId: id, file, name, genre, musicalKey });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
     return NextResponse.json({ ok: true, beat: res.beat });
   } catch (err) {

@@ -20,7 +20,9 @@ export async function GET() {
         id: b.id,
         name: b.name,
         genre: b.genre,
+        musicalKey: b.musicalKey,
         durationSeconds: b.durationSeconds,
+        createdAt: b.createdAt,
         url: `/api/beats/${b.id}/stream`,
       })),
     });
@@ -38,7 +40,8 @@ export async function POST(req: NextRequest) {
     const file = form.get("file") as File | null;
     const name = (form.get("name") as string | null) ?? "";
     const genre = (form.get("genre") as string | null) ?? "";
-    const res = await uploadBeatSingle({ file, name, genre });
+    const musicalKey = (form.get("musicalKey") as string | null) ?? "";
+    const res = await uploadBeatSingle({ file, name, genre, musicalKey });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
     return NextResponse.json({ ok: true, beat: res.beat });
   } catch (err) {
