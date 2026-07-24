@@ -277,6 +277,7 @@ export interface MixComment {
   commentText:      string;
   author:           string | null;
   role:             string | null;   // "mix" | "acapella" | "instrumental" | "stems" | null (legacy = shared/כללי)
+  status:           "open" | "resolved"; // פתוחה / טופלה — DB default "open"
   createdAt:        string;
   updatedAt:        string;
 }

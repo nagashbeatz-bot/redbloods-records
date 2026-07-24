@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { updateMixComment, deleteMixComment } from "@/lib/mix-comments-store";
 
-/** PATCH /api/sound-engineer/comments/[commentId] — edit text and/or timestamp. */
+/** PATCH /api/sound-engineer/comments/[commentId] — edit text, timestamp and/or status. */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ commentId: string }> }) {
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const { commentId } = await params;
-    const body = (await req.json()) as { commentText?: string; timestampSeconds?: number };
+    const body = (await req.json()) as { commentText?: string; timestampSeconds?: number; status?: "open" | "resolved" };
     const comment = await updateMixComment(commentId, body);
     return NextResponse.json({ ok: true, comment });
   } catch (err) {

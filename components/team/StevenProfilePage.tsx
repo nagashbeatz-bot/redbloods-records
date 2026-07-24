@@ -1600,6 +1600,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [addRole, setAddRole]     = useState<FileRole | null>(null); // role the new comment attaches to
   const [rolePick, setRolePick]   = useState(false);                 // fallback picker when no active player
   const [hoverCommentId, setHoverCommentId] = useState<string | null>(null); // cross-highlight marker ⇄ shared list
+  const [commentFilter, setCommentFilter] = useState<"open" | "all" | "resolved">("open"); // default: open, so pending work is front-and-center
+  const [statusUpdating, setStatusUpdating] = useState<Set<string>>(new Set()); // comment ids mid-PATCH — blocks a double-click re-send
   const playerRefs = useRef<Record<string, VersionPlayerHandle | null>>({}); // per-file player handles (by file id)
   const lastActiveIdRef = useRef<string | null>(null);               // file id of the last-played stacked player
   // General notes (null timecode) sort after timed ones.
@@ -1695,6 +1697,23 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       .then(r => r.json())
       .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "עדכון הזמן נכשל" : "Failed to update time"); } })
       .catch(() => { setComments(prev); notify(rtl ? "עדכון הזמן נכשל" : "Failed to update time"); });
+  }
+  // Toggle open ⇄ resolved. Optimistic + revert on failure (same pattern as
+  // the other comment mutations above); statusUpdating blocks a double-click
+  // from firing a second PATCH for the same comment while one is in flight.
+  function toggleCommentStatus(c: MixComment) {
+    if (statusUpdating.has(c.id)) return;
+    const next: "open" | "resolved" = c.status === "open" ? "resolved" : "open";
+    const prev = comments;
+    setStatusUpdating(s => new Set(s).add(c.id));
+    setComments(cur => cur?.map(x => (x.id === c.id ? { ...x, status: next } : x)) ?? null);
+    fetch(commentUrl(c.id), {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: next }),
+    })
+      .then(r => r.json())
+      .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "עדכון הסטטוס נכשל" : "Failed to update status"); } })
+      .catch(() => { setComments(prev); notify(rtl ? "עדכון הסטטוס נכשל" : "Failed to update status"); })
+      .finally(() => setStatusUpdating(s => { const n = new Set(s); n.delete(c.id); return n; }));
   }
 
   useEffect(() => {
@@ -2021,6 +2040,27 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     return best?.id ?? null;
   }, [comments, liveTs]);
 
+  // "הכל" (all) view: open first, then resolved; within each status group the
+  // existing role→timecode order (commentSort) is preserved untouched. The
+  // "פתוחות"/"טופלו" (open/resolved) filtered views already contain only one
+  // status each, so they just reuse commentSort directly.
+  const commentSortAll = (a: MixComment, b: MixComment): number => {
+    if (a.status !== b.status) return a.status === "open" ? -1 : 1;
+    return commentSort(a, b);
+  };
+  // Counts are always over the FULL comment list for this version — never the
+  // already-filtered subset — so switching filters never changes the numbers.
+  const commentCounts = useMemo(() => {
+    const all = comments ?? [];
+    const open = all.filter(c => c.status === "open").length;
+    return { open, all: all.length, resolved: all.length - open };
+  }, [comments]);
+  const visibleComments = useMemo(() => {
+    const all = comments ?? [];
+    const filtered = commentFilter === "all" ? all : all.filter(c => (commentFilter === "open" ? c.status === "open" : c.status === "resolved"));
+    return filtered.slice().sort(commentFilter === "all" ? commentSortAll : commentSort);
+  }, [comments, commentFilter]);
+
   // Mix Versions folder = the directory the versions physically live in. Every
   // version is stored DIRECTLY under it, so the parent dir of any version's
   // (app-relative) dropboxPath IS the folder. null until ≥1 version exists (the
@@ -2310,6 +2350,19 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
                   </div>
                   <div style={{ padding: "12px 16px 16px" }}>
+                    {/* Status filter — counts are always over the FULL comment
+                        list, never the already-filtered view. Default: open. */}
+                    {comments !== null && comments.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <PillGroup<"open" | "all" | "resolved">
+                          value={commentFilter}
+                          options={["open", "all", "resolved"]}
+                          onChange={setCommentFilter}
+                          colorFor={o => (o === "open" ? RED : o === "resolved" ? GREEN : TEXT2)}
+                          labelFor={o => `${o === "open" ? (rtl ? "פתוחות" : "Open") : o === "resolved" ? (rtl ? "טופלו" : "Resolved") : (rtl ? "הכל" : "All")} (${commentCounts[o]})`}
+                        />
+                      </div>
+                    )}
                     {rolePick && (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44`, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: TEXT2, whiteSpace: "nowrap" }}>{rtl ? "שייך הערה ל:" : "Attach comment to:"}</span>
@@ -2343,9 +2396,19 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       <RowsSkeleton rows={2} height={44} pad="0" />
                     ) : comments.length === 0 ? (
                       !adding && !rolePick && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
+                    ) : visibleComments.length === 0 ? (
+                      // Comments exist, just none match the current filter (e.g. no
+                      // open ones left) — distinct from the "no comments at all" state.
+                      !adding && !rolePick && (
+                        <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>
+                          {commentFilter === "open" ? (rtl ? "אין הערות פתוחות" : "No open comments")
+                            : commentFilter === "resolved" ? (rtl ? "אין הערות שטופלו" : "No resolved comments")
+                            : t.cEmpty}
+                        </div>
+                      )
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: "min(52vh, 520px)", overflowY: "auto" }}>
-                        {[...comments].sort(commentSort).map((c, i) => {
+                        {visibleComments.map((c, i) => {
                           const cr = roleOfComment(c);
                           const col = cr ? ROLE_COLOR[cr] : MUTED;
                           const isEditing = editingId === c.id;
@@ -2384,6 +2447,18 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                                   style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", overflow: narrow ? "visible" : "hidden", textOverflow: narrow ? "clip" : "ellipsis", whiteSpace: narrow ? "normal" : "nowrap", wordBreak: narrow ? "break-word" : undefined, lineHeight: narrow ? 1.45 : undefined }}>{c.commentText}</div>
                               )}
                               <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
+                              {/* Status toggle — a small dedicated pill, not the whole
+                                  row; both owner and Steven may use it (Steven's ONLY
+                                  write ability on a comment). Never deletes on toggle. */}
+                              <button onClick={() => toggleCommentStatus(c)} disabled={statusUpdating.has(c.id)}
+                                title={c.status === "open" ? (rtl ? "סמן כטופלה" : "Mark as resolved") : (rtl ? "החזר לפתוחה" : "Mark as open")}
+                                style={{
+                                  fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 7, flexShrink: 0, whiteSpace: "nowrap", fontFamily: "inherit",
+                                  cursor: statusUpdating.has(c.id) ? "wait" : "pointer", border: `1px solid ${(c.status === "open" ? RED : GREEN)}55`,
+                                  background: `${(c.status === "open" ? RED : GREEN)}1A`, color: c.status === "open" ? RED : GREEN, opacity: statusUpdating.has(c.id) ? 0.6 : 1,
+                                }}>
+                                {c.status === "open" ? (rtl ? "פתוחה" : "Open") : (rtl ? "טופלה" : "Resolved")}
+                              </button>
                               {/* edit + delete — owner only; Steven's comments are view-only. */}
                               {!isSteven && !isEditing && (
                                 <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}

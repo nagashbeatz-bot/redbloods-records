@@ -17,6 +17,7 @@ function mapRow(r: Record<string, unknown>): MixComment {
     commentText:      (r.comment_text     as string) ?? "",
     author:           (r.author           as string | null) ?? null,
     role:             (r.role             as string | null) ?? null,
+    status:           r.status === "resolved" ? "resolved" : "open",
     createdAt:        (r.created_at        as string) ?? "",
     updatedAt:        (r.updated_at        as string) ?? "",
   };
@@ -74,10 +75,10 @@ export async function createMixComment(fields: {
   return mapRow(data as Record<string, unknown>);
 }
 
-/** Update a comment's text and/or timestamp. */
+/** Update a comment's text, timestamp and/or status. Owner-only callers. */
 export async function updateMixComment(
   id: string,
-  fields: { commentText?: string; timestampSeconds?: number | null }
+  fields: { commentText?: string; timestampSeconds?: number | null; status?: "open" | "resolved" }
 ): Promise<MixComment> {
   const dbUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (fields.commentText !== undefined) {
@@ -91,10 +92,34 @@ export async function updateMixComment(
       ? null
       : (Number.isFinite(fields.timestampSeconds) && fields.timestampSeconds > 0 ? fields.timestampSeconds : 0);
   }
+  if (fields.status !== undefined) {
+    if (fields.status !== "open" && fields.status !== "resolved") throw new Error("סטטוס לא תקין");
+    dbUpdate.status = fields.status;
+  }
 
   const { data, error } = await supabase
     .from("mix_comments")
     .update(dbUpdate)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return mapRow(data as Record<string, unknown>);
+}
+
+/**
+ * Update ONLY a comment's status — the sole write Steven is allowed. Kept as
+ * its own narrow function (rather than routing through updateMixComment) so
+ * the Steven-safe write path can never accidentally touch text/timestamp/
+ * role/author even if a caller passed extra fields; the API route validates
+ * the request body shape before calling this, but this function is itself
+ * incapable of writing anything except status.
+ */
+export async function updateMixCommentStatus(id: string, status: "open" | "resolved"): Promise<MixComment> {
+  if (status !== "open" && status !== "resolved") throw new Error("סטטוס לא תקין");
+  const { data, error } = await supabase
+    .from("mix_comments")
+    .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
     .single();
