@@ -54,18 +54,55 @@ function parseFilename(cd: string | null): string | null {
   return plain ? plain[1].trim() : null;
 }
 
+function ShareIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+      <path d="M12 3v12" /><path d="M8 7l4-4 4 4" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+    </svg>
+  );
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+  mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", ogg: "audio/ogg",
+  flac: "audio/flac", aiff: "audio/aiff", aif: "audio/aiff", aac: "audio/aac",
+};
+function guessMime(name: string): string {
+  const ext = name.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() ?? "";
+  return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
+// Touch-primary device (phone/tablet) — feature detection, not UA sniffing. Used to
+// decide whether to open the native Share Sheet instead of a browser download.
+function isTouchPrimary(): boolean {
+  if (typeof window === "undefined") return false;
+  try { return !!window.matchMedia?.("(pointer: coarse)")?.matches; } catch { return false; }
+}
+function blobDownload(blob: Blob, name: string) {
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objUrl; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+}
+
 /**
  * Download control. When the track carries a secure SAME-ORIGIN attachment endpoint
- * (`downloadUrl`), it fetches the bytes → Blob → clicks a hidden <a download> (so
- * iOS saves the file instead of opening Quick Look), using the server's clean
- * filename. Legacy tracks with no downloadUrl keep the plain anchor. Never opens a
- * new tab / window.open / navigates the app.
+ * (`downloadUrl`), it fetches the bytes → Blob → clean filename (from
+ * Content-Disposition). On a TOUCH device that supports the File Share API it opens
+ * the native Share Sheet with a real File (iOS → "Save to Files" / WhatsApp /
+ * AirDrop, no Quick Look, no navigation); on desktop/Android it does a normal Blob
+ * download. Legacy tracks with no downloadUrl keep the plain anchor. Never uses
+ * window.open / opens a new tab / navigates the app.
  */
 function DownloadControl({ track, size, iconSize, radius }: {
   track: AudioTrack; size: number; iconSize: number; radius: number;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
+  // Heuristic for the icon/label only; the real path is decided at click time via
+  // navigator.canShare({ files }) with the actual file.
+  const shareMode = isTouchPrimary() && typeof navigator !== "undefined"
+    && typeof navigator.share === "function" && typeof navigator.canShare === "function";
+
   const box: React.CSSProperties = {
     width: size, height: size, borderRadius: radius, flexShrink: 0, textDecoration: "none",
     background: "rgba(255,255,255,0.05)", border: `1px solid ${err ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.1)"}`,
@@ -90,11 +127,22 @@ function DownloadControl({ track, size, iconSize, radius }: {
       if (!res.ok) throw new Error(String(res.status));
       const blob = await res.blob();
       const name = parseFilename(res.headers.get("Content-Disposition")) || downloadName(track);
-      const objUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objUrl; a.download = name;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+
+      // Touch + File Share API → native Share Sheet with a real file (no Quick Look).
+      if (shareMode) {
+        const file = new File([blob], name, { type: blob.type || guessMime(name) });
+        if (navigator.canShare?.({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: name });
+            return; // user shared / saved, or is handling it
+          } catch (e) {
+            if ((e as Error)?.name === "AbortError") return; // cancelled the sheet → NOT an error
+            throw e;
+          }
+        }
+      }
+      // Desktop / Android / no File Share → normal download.
+      blobDownload(blob, name);
     } catch {
       setErr(true);
       setTimeout(() => setErr(false), 3500);
@@ -103,11 +151,14 @@ function DownloadControl({ track, size, iconSize, radius }: {
     }
   };
 
+  const label = shareMode ? "שמור או שתף" : "הורד קובץ";
   return (
-    <button onClick={onClick} disabled={busy} aria-label="הורד קובץ"
-      title={err ? "ההורדה נכשלה — נסה שוב" : "הורד קובץ"}
+    <button onClick={onClick} disabled={busy} aria-label={label}
+      title={err ? "לא ניתן היה להכין את הקובץ לשמירה" : label}
       style={{ ...box, cursor: busy ? "wait" : "pointer", fontFamily: "inherit" }}>
-      {busy ? <Spinner size={iconSize} /> : <DownloadIcon size={iconSize} color={err ? "#F87171" : "currentColor"} />}
+      {busy ? <Spinner size={iconSize} />
+        : shareMode ? <ShareIcon size={iconSize} color={err ? "#F87171" : "currentColor"} />
+        : <DownloadIcon size={iconSize} color={err ? "#F87171" : "currentColor"} />}
     </button>
   );
 }
