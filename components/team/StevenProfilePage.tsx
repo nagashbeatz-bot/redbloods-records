@@ -1440,7 +1440,9 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
         </div>
         {dur > 0 && <div style={{ position: "absolute", top: -2, bottom: 0, left: `${pct}%`, width: 2, background: "#fff", opacity: 0.55, pointerEvents: "none" }} />}
         {dur > 0 && comments.filter((c): c is MixComment & { timestampSeconds: number } => c.timestampSeconds !== null).map((c, i) => {
-          const col  = roleColor; // each player shows only its own role's comments → role-colored markers
+          // Resolved always wins: its marker (and hover/active ring, which reuses
+          // this same `col` below) stays green, never reverting to the role color.
+          const col  = c.status === "resolved" ? GREEN : roleColor;
           const isDragging = dragC?.id === c.id;
           const ts   = isDragging ? dragC!.ts : c.timestampSeconds;
           const left = Math.min(100, Math.max(0, (ts / dur) * 100));
@@ -2389,9 +2391,15 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                           // instead, UNLESS it's also currently active (the
                           // temporary interaction signal wins over the resting state).
                           const isActive = hoverCommentId === c.id || nearestActiveId === c.id;
-                          const cardBg     = isActive ? `${col}14` : isResolved ? `${GREEN}12` : CARD;
-                          const cardBorder = isActive ? col        : isResolved ? `${GREEN}77` : BDR;
-                          const cardShadow = isActive ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : isResolved ? `0 0 0 1px ${GREEN}33` : "none";
+                          // Resolved ALWAYS wins — hover/active/focus/near-playback never
+                          // pulls a resolved comment back to red/role-color. It only gets
+                          // a slightly stronger green when also active, staying in the
+                          // same green language throughout.
+                          const cardBg     = isResolved ? (isActive ? `${GREEN}22` : `${GREEN}12`) : (isActive ? `${col}14` : CARD);
+                          const cardBorder = isResolved ? (isActive ? GREEN : `${GREEN}77`) : (isActive ? col : BDR);
+                          const cardShadow = isResolved
+                            ? (isActive ? `0 0 0 1px ${GREEN}77, 0 0 14px ${GREEN}66` : `0 0 0 1px ${GREEN}33`)
+                            : (isActive ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : "none");
                           return (
                             <div key={c.id}
                               onMouseEnter={() => setHoverCommentId(c.id)} onMouseLeave={() => setHoverCommentId(cur => (cur === c.id ? null : cur))}
