@@ -287,6 +287,7 @@ const TR = {
     vDelTitle: "למחוק את הגרסה?", vDelBody: "הקובץ יימחק מ-Dropbox ומהרשימה. פעולה בלתי הפיכה.", vDelYes: "מחק גרסה", vDownload: "הורדה",
     cSection: "הערות בזמן", cAdd: "הוסף הערה", cEmpty: "אין הערות לגרסה הזו עדיין", cPlaceholder: "כתוב הערה על הנקודה הזו…", cAtTime: "בזמן",
     cAddAtTime: "הוסף הערה בזמן הנוכחי", cGeneral: "הערה כללית", cGeneralTitle: "הערה כללית למיקס", cGeneralTag: "כללי",
+    cResolved: "בוצע", cMarkDone: "סמן כבוצע", cMarkOpen: "סמן כפתוחה",
     cLoading: "טוען הערות…", cLoadFail: "טעינת ההערות נכשלה", cEdit: "ערוך", cDelete: "מחק", cDelTitle: "למחוק את ההערה?", cDelBody: "ההערה תוסר לצמיתות.",
     playerSection: "נגן והערות", playerEmptyTitle: "נגן והערות יתווספו בקרוב", playerEmpty: "נגן והערות לפי נקודות זמן בשיר יתווספו בקרוב",
     versionsForProject: "גרסאות לפרויקט", uploadFiles: "העלאת קבצים", projectFiles: "קבצי הפרויקט", wmMatSub: "Rough Mix · רפרנסים · Stems · הוראות",
@@ -346,6 +347,7 @@ const TR = {
     vDelTitle: "Delete this version?", vDelBody: "The file will be removed from Dropbox and the list. This cannot be undone.", vDelYes: "Delete version", vDownload: "Download",
     cSection: "Timestamp comments", cAdd: "Add comment", cEmpty: "No comments on this version yet", cPlaceholder: "Write a note about this point…", cAtTime: "at",
     cAddAtTime: "Add comment at current time", cGeneral: "General note", cGeneralTitle: "General note for the mix", cGeneralTag: "General",
+    cResolved: "DONE", cMarkDone: "Mark as done", cMarkOpen: "Mark as open",
     cLoading: "Loading comments…", cLoadFail: "Failed to load comments", cEdit: "Edit", cDelete: "Delete", cDelTitle: "Delete this comment?", cDelBody: "The comment will be permanently removed.",
     playerSection: "Player & Comments", playerEmptyTitle: "Player & comments coming soon", playerEmpty: "A player and time-stamped comments will be added soon",
     versionsForProject: "Project versions", uploadFiles: "Upload files", projectFiles: "Project files", wmMatSub: "Rough Mix · References · Stems · Instructions",
@@ -2339,7 +2341,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                         no separate state. All comments always show together. */}
                     {comments !== null && comments.length > 0 && (
                       <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
-                        {isSteven ? `${resolvedCount} of ${comments.length} done` : `בוצעו ${resolvedCount} מתוך ${comments.length}`}
+                        {rtl ? `בוצעו ${resolvedCount} מתוך ${comments.length}` : `${resolvedCount} of ${comments.length} done`}
                       </div>
                     )}
                     {rolePick && (
@@ -2441,13 +2443,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                                   {/* Status toggle — a small dedicated pill, not the whole
                                       row/card; both owner and Steven may use it (Steven's
                                       ONLY write ability on a comment). Never deletes. */}
+                                  {/* Language-driven (t/lang — the SAME source every other
+                                      string on this screen uses), never role-driven: an
+                                      English-language screen always reads in English, a
+                                      Hebrew-language screen always reads in Hebrew,
+                                      regardless of who (owner/Steven) is viewing it. */}
                                   <button onClick={() => toggleCommentStatus(c)} disabled={statusUpdating.has(c.id)}
-                                    title={isSteven
-                                      ? (isResolved ? "Mark as open" : "Mark as done")
-                                      : (isResolved ? "סמן כפתוחה" : "סמן כבוצע")}
-                                    aria-label={isSteven
-                                      ? (isResolved ? "Mark as open" : "Mark as done")
-                                      : (isResolved ? "סמן כפתוחה" : "סמן כבוצע")}
+                                    title={isResolved ? t.cMarkOpen : t.cMarkDone}
+                                    aria-label={isResolved ? t.cMarkOpen : t.cMarkDone}
                                     style={{
                                       display: "inline-flex", alignItems: "center", fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap", fontFamily: "inherit",
                                       padding: isResolved ? "3px 10px" : "4px 8px", borderRadius: 7,
@@ -2456,7 +2459,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                                       background: isResolved ? `${GREEN}1A` : "rgba(255,255,255,0.04)",
                                       color: isResolved ? GREEN : MUTED, opacity: statusUpdating.has(c.id) ? 0.6 : 1,
                                     }}>
-                                    {isResolved ? (isSteven ? "✓ DONE" : "✓ בוצע") : "✓"}
+                                    {isResolved ? `✓ ${t.cResolved}` : "✓"}
                                   </button>
                                   {/* edit + delete — owner only; Steven's comments are view-only. */}
                                   {!isSteven && !isEditing && (
