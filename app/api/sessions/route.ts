@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { touchProject, ensureProjectStartDate } from "@/lib/projects-store";
 import { requireOwner } from "@/lib/require-auth";
+import { notifySessionCreatedForShalev } from "@/lib/session-notify";
 
 const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 
@@ -228,6 +229,15 @@ export async function POST(req: NextRequest) {
       // Auto-fill start_date from earliest session if not yet set
       ensureProjectStartDate(projectId).catch(() => {});
     }
+
+    // Push owner + Shalev iff this session belongs to one of his real projects
+    // (checked inside — a no-op otherwise). Fire-and-forget: only reached once
+    // the session row above has actually been created, and a push failure must
+    // never fail this response.
+    notifySessionCreatedForShalev({
+      id: data.id, projectId: data.project_id ?? null,
+      date: data.date, startTime: data.start_time, endTime: data.end_time,
+    }).catch((e) => console.error("[sessions POST] shalev push error:", e));
 
     return NextResponse.json({ session: data, calendarError });
   } catch (err) {
