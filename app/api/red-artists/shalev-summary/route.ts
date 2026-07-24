@@ -25,13 +25,14 @@ import { listShows } from "@/lib/shows-store";
  *   Exact artist match (not collaborations) — a multi-artist "שכר אמן" row is
  *   ambiguous to attribute, so it is not counted.
  *
- * Weekly: Shalev's real schedule for the CURRENT Sunday–Saturday calendar
+ * Weekly: Shalev's real schedule for the UPCOMING Sunday–Saturday calendar
  *   week (same week the portal's availability grid shows — not a rolling
- *   "today + 6 days" window) — sessions from the `sessions` table that belong
- *   to HIS projects (project.artist token match; project-linked only —
- *   independent title-only sessions are NOT attributed) merged with his
- *   upcoming shows in the same window. NO money. Each session item carries its
- *   own `id` so the portal can manage/delete it.
+ *   "today + 6 days" window, and not the current/already-under-way week) —
+ *   sessions from the `sessions` table that belong to HIS projects
+ *   (project.artist token match; project-linked only — independent
+ *   title-only sessions are NOT attributed) merged with his upcoming shows in
+ *   the same window. NO money. Each session item carries its own `id` so the
+ *   portal can manage/delete it.
  *
  * Updates: derived ONLY from those real events (approved/booked shows +
  *   scheduled sessions / clip shoots). No project_actions, no agent_alerts, no
@@ -69,11 +70,13 @@ export async function GET() {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     const today = ymd(now);
-    // "weekly" must show the SAME Sunday–Saturday calendar week as the portal's
-    // availability grid — not a rolling "today + 6 days" window (which used to
-    // drift out of sync with it and could clip/omit days already in the week).
-    const weekStart = ymd(addDays(now, -now.getDay()));
-    const weekEnd   = ymd(addDays(now, 6 - now.getDay()));
+    // "weekly" must show the SAME upcoming Sunday–Saturday week as the portal's
+    // availability grid (never a rolling "today + 6 days" window, and never
+    // the current/already-under-way week) — the nearest coming Sunday (today
+    // itself counts if today IS Sunday) through the Saturday after it.
+    const nextSundayOffset = now.getDay() === 0 ? 0 : 7 - now.getDay();
+    const weekStart = ymd(addDays(now, nextSundayOffset));
+    const weekEnd   = ymd(addDays(now, nextSundayOffset + 6));
 
     // ── Shows (money stripped) ──────────────────────────────────────────────
     const allShows = await listShows();
@@ -175,7 +178,7 @@ export async function GET() {
       return d !== 0 ? d : (a.startTime ?? "").localeCompare(b.startTime ?? "");
     };
 
-    // weekly = Shalev's sessions in the current Sun–Sat week + his upcoming shows in that window.
+    // weekly = Shalev's sessions in the UPCOMING Sun–Sat week + his shows in that window.
     const weekly = [
       ...sessions
         .filter((s) => !!s.date && s.date <= weekEnd)

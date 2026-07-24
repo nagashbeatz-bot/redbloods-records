@@ -2084,24 +2084,26 @@ function ShowsPage({ summary, loadState }: { summary: ShalevSummary | null; load
 }
 
 // ── Availability (לו״ז ועדכונים tab) — REAL persistence via
-// /api/red-artists/availability. The 7-day grid always represents the CURRENT
-// Sunday–Saturday calendar week — recomputed fresh from "today" on every load,
-// never a stale saved snapshot from a week that has already passed. ──
+// /api/red-artists/availability. The 7-day grid always represents the UPCOMING
+// (next) Sunday–Saturday calendar week — recomputed fresh from "today" on
+// every load, never a stale saved snapshot from a week that has already
+// passed. ──
 type AvailDay = { day: string; date: string; available: boolean; from: string };
-// The canonical "this week" — day name + "DD.MM" label + a real, year-aware
+// The canonical "next week" — day name + "DD.MM" label + a real, year-aware
 // ISO date. Both "הזמינות שלי" and "היומן השבועי שלי" render from this SAME
 // array so they can never drift apart or disagree on which week is showing.
 type WeekDay = { day: string; date: string; iso: string };
 const HEB_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const AVAIL_TIMES = ["10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
 
-// The current Israeli calendar week (ראשון→שבת) containing "today". Computed
-// fresh on the client (in an effect) to keep the dates correct without risking
-// an SSR/client hydration mismatch.
-function computeCurrentWeek(): WeekDay[] {
+// The upcoming Israeli calendar week (ראשון→שבת): the next Sunday (today
+// itself only counts if it IS Sunday) through the following Saturday.
+// Computed fresh on the client (in an effect) to keep the dates correct
+// without risking an SSR/client hydration mismatch.
+function computeNextWeek(): WeekDay[] {
   const today = new Date();
   const sunday = new Date(today);
-  sunday.setDate(today.getDate() - today.getDay()); // back up to this week's Sunday
+  sunday.setDate(today.getDate() + (today.getDay() === 0 ? 0 : 7 - today.getDay()));
   return HEB_DAYS.map((day, i) => {
     const d = new Date(sunday);
     d.setDate(sunday.getDate() + i);
@@ -2217,11 +2219,11 @@ function UpdatesList({ items }: { items: PortalUpdate[] }) {
 }
 
 // A saved availability day carries only "DD.MM" (no year — see
-// computeCurrentWeek). Used ONLY to test whether a saved snapshot still
-// belongs to the current week (a simple "closest year" heuristic is safe for
-// that: if the month looks far enough behind the current month to only make
-// sense next year, e.g. saved in December and viewed in January, roll the
-// year forward) — the actual current week's own dates are computed exactly,
+// computeNextWeek). Used ONLY to test whether a saved snapshot still belongs
+// to the canonical week (a simple "closest year" heuristic is safe for that:
+// if the month looks far enough behind the current month to only make sense
+// next year, e.g. saved in December and viewed in January, roll the year
+// forward) — the canonical week's own dates are always computed exactly,
 // never through this heuristic.
 function availDayToIso(dm: string): string {
   const [ddStr, mmStr] = dm.split(".");
@@ -2243,7 +2245,7 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   // THE single source of truth for "which week is showing" — both sections
   // render off this same array, so they can never disagree on day/date/order.
   // Computed once per mount (a stable week for the life of the tab).
-  const week = useMemo(() => computeCurrentWeek(), []);
+  const week = useMemo(() => computeNextWeek(), []);
   const todayIso = useMemo(() => todayIsraelIso(), []);
 
   // Availability days are lifted up here (out of AvailabilityBody) so the
@@ -2259,18 +2261,23 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
         const d = await r.json().catch(() => ({}));
         if (!alive) return;
         const av = d?.availability;
-        // Only trust the saved snapshot when its 7 dates actually match THIS
-        // week — otherwise it's a snapshot from a week that has already ended
-        // (or one sent ahead of time for a future week) and must never be
-        // shown/used as if it were the active week.
         const days = Array.isArray(av?.days) ? (av.days as AvailDay[]) : null;
-        const matchesThisWeek = !!days && days.length === 7 && days.every((sd, i) => availDayToIso(sd.date) === week[i].iso);
-        if (r.ok && d?.ok && matchesThisWeek && days) {
-          setAvailDays(days);
+        if (r.ok && d?.ok && days && days.length === 7) {
+          // The saved snapshot's OWN dates only matter to detect a week
+          // rollover. What Shalev actually marked (available/from) is never
+          // reset — if the snapshot belongs to a different week than the
+          // canonical one, it's carried forward onto the matching weekday
+          // (ראשון→ראשון, שלישי→שלישי, …) of THIS week instead of being
+          // wiped, and stays as-is once the dates already match.
+          const matches = days.every((sd, i) => availDayToIso(sd.date) === week[i].iso);
+          const applied = matches
+            ? days
+            : days.map((sd, i) => ({ day: week[i].day, date: week[i].date, available: sd.available, from: sd.from }));
+          setAvailDays(applied);
           setAvailLastUpdate({ sentBy: av.sentBy, sentAt: av.sentAt });
           return;
         }
-      } catch { /* fall through to a blank current week */ }
+      } catch { /* fall through to a blank week */ }
       if (alive) {
         setAvailDays(week.map(w => ({ day: w.day, date: w.date, available: false, from: "" })));
         setAvailLastUpdate(null);
