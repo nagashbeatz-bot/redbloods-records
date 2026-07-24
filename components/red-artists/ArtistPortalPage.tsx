@@ -234,7 +234,7 @@ function fmtMoney(n: number, curr = "₪"): string {
 export type PortalShow = { id: string; name: string; date: string | null; startTime: string | null; location: string; status: string };
 export type PortalPayment = { id: string; date: string | null; description: string; amount: number; currency: string };
 export type WeeklyItem = { type: string; title: string; date: string | null; startTime: string | null; endTime?: string | null; location?: string | null };
-export type PortalUpdate = { type: string; title: string; description: string; date: string | null };
+export type PortalUpdate = { type: string; title: string; description: string; date: string | null; startTime?: string | null; endTime?: string | null };
 export type ShalevSummary = {
   shows: { upcoming: PortalShow[]; done: PortalShow[] };
   balance: { paidTotal: number; expectedTotal: number; currency: string; payments: PortalPayment[]; hasData: boolean };
@@ -2153,19 +2153,23 @@ function SchedTypePill({ type }: { type: string }) {
 }
 
 // Weekly schedule list — real sessions + shows for the next 7 days (no money).
+// A session/meeting/clip-shoot shows only its type pill + day/date + hours — no
+// project name, no location. Shows (הופעה) and the synthetic "זמינות" entry keep
+// their own name (a show's own public name; availability's own status label).
 function WeeklyList({ items }: { items: WeeklyItem[] }) {
   return (
     <div style={{ padding: "4px 0 6px" }}>
       {items.map((ev, i) => {
         const time = ev.startTime ? (ev.endTime ? `${ev.startTime}–${ev.endTime}` : ev.startTime) : null;
+        const showTitle = ev.type === "הופעה" || ev.type === "זמינות";
         return (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 20px", borderBottom: i < items.length - 1 ? `1px solid ${BDR}` : "none" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
                 <SchedTypePill type={ev.type} />
-                <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>
+                {showTitle && <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>}
               </div>
-              {ev.location && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5 }}>{ev.location}</div>}
+              {showTitle && ev.location && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5 }}>{ev.location}</div>}
             </div>
             <div style={{ textAlign: "start", flexShrink: 0 }}>
               <div style={{ fontSize: 13, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(ev.date)}</div>
@@ -2179,17 +2183,21 @@ function WeeklyList({ items }: { items: WeeklyItem[] }) {
 }
 
 // Updates list — derived only from real approved shows + scheduled sessions.
+// Sessions/meetings show only type + day/date + hours (no project name); shows
+// keep their own name + location (a show's own public name, not an internal one).
 function UpdatesList({ items }: { items: PortalUpdate[] }) {
   return (
     <div style={{ padding: "4px 0 6px" }}>
       {items.map((u, i) => {
         const col = SCHED_TYPE_COLOR[u.type] ?? BRAND;
+        const hours = u.startTime ? (u.endTime ? `${u.startTime}–${u.endTime}` : u.startTime) : null;
+        const secondary = u.type === "הופעה" ? u.description : hours;
         return (
           <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "13px 20px", borderBottom: i < items.length - 1 ? `1px solid ${BDR}` : "none" }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: col, marginTop: 6, flexShrink: 0, boxShadow: `0 0 7px ${col}` }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{u.title}</div>
-              {u.description && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{u.description}</div>}
+              {secondary && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3, direction: u.type === "הופעה" ? undefined : "ltr" }}>{secondary}</div>}
             </div>
             <div style={{ fontSize: 12, color: MUTED, direction: "ltr", flexShrink: 0, fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(u.date)}</div>
           </div>
@@ -2416,16 +2424,12 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
                 <div style={{ fontSize: 12, color: MUTED, marginTop: 3, direction: "ltr" }}>{d.date}</div>
               </div>
               {booked ? (
+                // Type pill + hours only — no project name (day/date already shown above).
                 <>
                   <SchedTypePill type={booked.type} />
                   <div style={{ fontSize: 12, color: TEXT2, minHeight: 16, direction: "ltr" }}>
                     {booked.startTime ? (booked.endTime ? `${booked.startTime}–${booked.endTime}` : booked.startTime) : ""}
                   </div>
-                  {booked.title && (
-                    <div style={{ fontSize: 11.5, color: TEXT2, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
-                      {booked.title}
-                    </div>
-                  )}
                 </>
               ) : (
                 <>
@@ -3189,11 +3193,12 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div className="rap-acts">
-          {/* סשן קרוב — the artist's next real session (weekly, excluding shows). */}
+          {/* סשן קרוב — the artist's next real session (weekly, excluding shows).
+              Type only ("סשן"/"פגישה"/...) — no project name. */}
           {(() => {
-            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה");
+            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה" && w.type !== "זמינות");
             return sess ? (
-              <ActionCard icon="📅" title="סשן קרוב" body={sess.title} sub={[fmtShowDate(sess.date), sess.startTime].filter(Boolean).join(" · ")} />
+              <ActionCard icon="📅" title="סשן קרוב" body={sess.type} sub={[fmtShowDate(sess.date), sess.startTime].filter(Boolean).join(" · ")} />
             ) : (
               <ActionCard icon="📅" title="סשן קרוב" body={summaryState === "loading" ? "טוען…" : "אין סשן קרוב כרגע"} />
             );

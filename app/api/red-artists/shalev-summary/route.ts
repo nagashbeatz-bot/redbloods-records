@@ -193,17 +193,21 @@ export async function GET() {
     ].sort(byDateTime);
 
     // updates = derived only from real approved/booked shows + scheduled sessions.
+    // Sessions intentionally carry no project name / location here — the portal
+    // only ever shows "type + day/date + hours" for a session (no project title).
     const updates = [
       ...upcoming.map((sh) => ({
         type: "הופעה",
         title: "הופעה אושרה",
         description: [sh.name, sh.location].filter(Boolean).join(" · "),
         date: sh.date,
+        startTime: sh.startTime ?? null,
+        endTime: null as string | null,
       })),
       ...sessions.map((s) => {
         const t = s.session_type || "סשן";
         const title = t === "צילום קליפ" ? "נקבע צילום קליפ" : t === "פגישה" ? "נקבעה פגישה" : "נקבע לך סשן";
-        return { type: t, title, description: [sessTitle(s), s.location].filter(Boolean).join(" · "), date: s.date };
+        return { type: t, title, description: "", date: s.date, startTime: s.start_time ?? null, endTime: s.end_time ?? null };
       }),
     ]
       .filter((u) => !!u.date)
