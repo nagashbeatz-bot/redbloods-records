@@ -314,6 +314,15 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
   // ── Check a slot (recommended or manual) and show confirm ────────────────
   async function checkAndConfirm(startIso: string, endIso: string, label: string) {
+    // Never let a new session be confirmed for a date/time that's already
+    // passed — catches both a stale pre-filled date (e.g. an expired day-cube)
+    // and a manually-picked past time, regardless of which tab it came from.
+    // Edit mode is exempt: editing an existing (possibly already-past) session
+    // is a legitimate action, not a new booking.
+    if (!isEdit && new Date(startIso).getTime() < Date.now()) {
+      setPhase({ error: "לא ניתן לקבוע סשן בתאריך או בשעה שכבר עברו" });
+      return;
+    }
     setSelectedStart(startIso);
     prevMinutesRef.current = minutes;
     // Edit mode: skip the availability check (the session's own event would

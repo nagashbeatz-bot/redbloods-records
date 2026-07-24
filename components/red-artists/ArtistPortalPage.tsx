@@ -233,7 +233,7 @@ function fmtMoney(n: number, curr = "₪"): string {
 // Shalev's artist-fee ("שכר אמן") transactions. Empty/"—" when no real source.
 export type PortalShow = { id: string; name: string; date: string | null; startTime: string | null; location: string; status: string };
 export type PortalPayment = { id: string; date: string | null; description: string; amount: number; currency: string };
-export type WeeklyItem = { type: string; title: string; date: string | null; startTime: string | null; endTime?: string | null; location?: string | null };
+export type WeeklyItem = { id?: string; type: string; title: string; date: string | null; startTime: string | null; endTime?: string | null; location?: string | null };
 export type PortalUpdate = { type: string; title: string; description: string; date: string | null; startTime?: string | null; endTime?: string | null };
 export type ShalevSummary = {
   shows: { upcoming: PortalShow[]; done: PortalShow[] };
@@ -2083,27 +2083,39 @@ function ShowsPage({ summary, loadState }: { summary: ShalevSummary | null; load
   );
 }
 
-// ── Availability (לו״ז ועדכונים tab) — simple next-week availability. UI ONLY,
-// hardcoded demo + local toggle. Future step: artist updates it → owner sees it
-// → schedules a session → it flows back. No DB/API/Calendar wired here yet. ──
+// ── Availability (לו״ז ועדכונים tab) — REAL persistence via
+// /api/red-artists/availability. The 7-day grid always represents the CURRENT
+// Sunday–Saturday calendar week — recomputed fresh from "today" on every load,
+// never a stale saved snapshot from a week that has already passed. ──
 type AvailDay = { day: string; date: string; available: boolean; from: string };
+// The canonical "this week" — day name + "DD.MM" label + a real, year-aware
+// ISO date. Both "הזמינות שלי" and "היומן השבועי שלי" render from this SAME
+// array so they can never drift apart or disagree on which week is showing.
+type WeekDay = { day: string; date: string; iso: string };
 const HEB_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const AVAIL_TIMES = ["10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
 
-// Next Israeli week (ראשון→שבת): the Sunday AFTER the current week, + 6 days.
-// Every day defaults to "לא פנוי". Computed on the client (in an effect) to keep
-// the dates correct without risking an SSR/client hydration mismatch.
-function computeNextWeek(): AvailDay[] {
+// The current Israeli calendar week (ראשון→שבת) containing "today". Computed
+// fresh on the client (in an effect) to keep the dates correct without risking
+// an SSR/client hydration mismatch.
+function computeCurrentWeek(): WeekDay[] {
   const today = new Date();
-  const nextSunday = new Date(today);
-  nextSunday.setDate(today.getDate() + (7 - today.getDay())); // day 0 = Sunday
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - today.getDay()); // back up to this week's Sunday
   return HEB_DAYS.map((day, i) => {
-    const d = new Date(nextSunday);
-    d.setDate(nextSunday.getDate() + i);
-    const dd = String(d.getDate()).padStart(2, "0");
+    const d = new Date(sunday);
+    d.setDate(sunday.getDate() + i);
+    const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return { day, date: `${dd}.${mm}`, available: false, from: "" };
+    const dd = String(d.getDate()).padStart(2, "0");
+    return { day, date: `${dd}.${mm}`, iso: `${yyyy}-${mm}-${dd}` };
   });
+}
+
+// "Today" as YYYY-MM-DD, Israel timezone — used to gate "קבע סשן" on days that
+// have already passed within the displayed week.
+function todayIsraelIso(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
 }
 
 // ── לו״ז ועדכונים tab — three clearly separated sections (UI only, no writes):
@@ -2132,14 +2144,11 @@ function SchedEmpty({ text }: { text: string }) {
 }
 
 // Event/update type colors (no purple): הופעה red · סשן blue · צילום קליפ amber · פגישה green.
-// "זמינות" (a sent-but-not-yet-booked availability day) is intentionally muted —
-// it is secondary info, never a real event (see SchedulePage's weekly merge).
 const SCHED_TYPE_COLOR: Record<string, string> = {
   "הופעה":     "#FF6B6B",
   "סשן":       BLUE,
   "צילום קליפ": AMBER,
   "פגישה":     GREEN,
-  "זמינות":    MUTED,
 };
 
 function SchedTypePill({ type }: { type: string }) {
@@ -2152,16 +2161,16 @@ function SchedTypePill({ type }: { type: string }) {
   );
 }
 
-// Weekly schedule list — real sessions + shows for the next 7 days (no money).
-// A session/meeting/clip-shoot shows only its type pill + day/date + hours — no
-// project name, no location. Shows (הופעה) and the synthetic "זמינות" entry keep
-// their own name (a show's own public name; availability's own status label).
+// Weekly schedule list (used by the home page's compact preview) — real
+// sessions + shows only (no money). A session/meeting/clip-shoot shows only its
+// type pill + day/date + hours — no project name, no location. Shows (הופעה)
+// keep their own name + location (a show's own public name, not an internal one).
 function WeeklyList({ items }: { items: WeeklyItem[] }) {
   return (
     <div style={{ padding: "4px 0 6px" }}>
       {items.map((ev, i) => {
         const time = ev.startTime ? (ev.endTime ? `${ev.startTime}–${ev.endTime}` : ev.startTime) : null;
-        const showTitle = ev.type === "הופעה" || ev.type === "זמינות";
+        const showTitle = ev.type === "הופעה";
         return (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 20px", borderBottom: i < items.length - 1 ? `1px solid ${BDR}` : "none" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -2207,11 +2216,13 @@ function UpdatesList({ items }: { items: PortalUpdate[] }) {
   );
 }
 
-// A saved availability day carries only "DD.MM" (no year — see computeNextWeek).
-// Availability days are always near-term (this week / next week), so a simple
-// "closest year" heuristic is safe: if the month looks far enough behind the
-// current month to only make sense next year (e.g. saved in December, viewed
-// in January), roll the year forward.
+// A saved availability day carries only "DD.MM" (no year — see
+// computeCurrentWeek). Used ONLY to test whether a saved snapshot still
+// belongs to the current week (a simple "closest year" heuristic is safe for
+// that: if the month looks far enough behind the current month to only make
+// sense next year, e.g. saved in December and viewed in January, roll the
+// year forward) — the actual current week's own dates are computed exactly,
+// never through this heuristic.
 function availDayToIso(dm: string): string {
   const [ddStr, mmStr] = dm.split(".");
   const dd = Number(ddStr), mm = Number(mmStr);
@@ -2229,10 +2240,16 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   const loading = loadState === "loading";
   const error   = loadState === "error";
 
-  // Availability days are lifted up here (out of AvailabilityBody) so both the
-  // day-cube "already scheduled" overlay AND the weekly-calendar merge below
-  // can see them from a single fetch — no behavior change to the send/edit flow.
-  const [availDays, setAvailDays] = useState<AvailDay[]>(() => HEB_DAYS.map(day => ({ day, date: "", available: false, from: "" })));
+  // THE single source of truth for "which week is showing" — both sections
+  // render off this same array, so they can never disagree on day/date/order.
+  // Computed once per mount (a stable week for the life of the tab).
+  const week = useMemo(() => computeCurrentWeek(), []);
+  const todayIso = useMemo(() => todayIsraelIso(), []);
+
+  // Availability days are lifted up here (out of AvailabilityBody) so the
+  // day-cube "already scheduled" overlay can see the real weekly data too —
+  // no behavior change to the send/edit flow itself.
+  const [availDays, setAvailDays] = useState<AvailDay[]>(() => week.map(w => ({ day: w.day, date: w.date, available: false, from: "" })));
   const [availLastUpdate, setAvailLastUpdate] = useState<{ sentBy: "owner" | "shalev"; sentAt: string } | null>(null);
   useEffect(() => {
     let alive = true;
@@ -2242,71 +2259,71 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
         const d = await r.json().catch(() => ({}));
         if (!alive) return;
         const av = d?.availability;
-        if (r.ok && d?.ok && av && Array.isArray(av.days) && av.days.length === 7) {
-          setAvailDays(av.days as AvailDay[]);
+        // Only trust the saved snapshot when its 7 dates actually match THIS
+        // week — otherwise it's a snapshot from a week that has already ended
+        // (or one sent ahead of time for a future week) and must never be
+        // shown/used as if it were the active week.
+        const days = Array.isArray(av?.days) ? (av.days as AvailDay[]) : null;
+        const matchesThisWeek = !!days && days.length === 7 && days.every((sd, i) => availDayToIso(sd.date) === week[i].iso);
+        if (r.ok && d?.ok && matchesThisWeek && days) {
+          setAvailDays(days);
           setAvailLastUpdate({ sentBy: av.sentBy, sentAt: av.sentAt });
           return;
         }
-      } catch { /* fall through to a blank week */ }
-      if (alive) setAvailDays(computeNextWeek());
+      } catch { /* fall through to a blank current week */ }
+      if (alive) {
+        setAvailDays(week.map(w => ({ day: w.day, date: w.date, available: false, from: "" })));
+        setAvailLastUpdate(null);
+      }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [week]);
 
   // Real session/show already on the books for a given date (YYYY-MM-DD) — used
-  // both to show "סשן" info on the matching day-cube and to suppress a redundant
-  // availability entry in the weekly list for that same date (req. 6).
+  // to show "סשן"/hours info on the matching day in BOTH the availability grid
+  // and the weekly-calendar grid, and to power the owner's manage/delete modal.
   const weeklyByIso = useMemo(() => {
     const m = new Map<string, WeeklyItem>();
     for (const w of weekly) if (w.date && !m.has(w.date)) m.set(w.date, w);
     return m;
   }, [weekly]);
 
-  // Availability days Shalev marked "פנוי" with no real session/show yet on that
-  // date become a secondary "זמינות" entry in the weekly list (req. 4) — never a
-  // session, never counted, and dropped the moment a real session lands on it.
-  const availabilityExtra: WeeklyItem[] = useMemo(() => (
-    availDays
-      .filter(d => d.available && d.date)
-      .map(d => ({ iso: availDayToIso(d.date), from: d.from }))
-      .filter(({ iso }) => iso && !weeklyByIso.has(iso))
-      .map(({ iso, from }) => ({
-        type: "זמינות", title: "פנוי לסשן", date: iso,
-        startTime: from || null, endTime: null, location: null,
-      }))
-  ), [availDays, weeklyByIso]);
-
-  const mergedWeekly = useMemo(
-    () => [...weekly, ...availabilityExtra].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")),
-    [weekly, availabilityExtra],
-  );
-
   // "קבע סשן" on a day-cube — opens the SAME global quick-actions modal (owner-only
   // entry point elsewhere in the app) pre-filled with Shalev as the client and that
-  // day's date; if he marked an available start time, it's pre-filled too.
-  const handleBookSession = (day: AvailDay) => {
+  // day's date (the exact `week[i].iso`, not a re-derived guess); if he marked an
+  // available start time, it's pre-filled too.
+  const handleBookSession = (day: AvailDay, iso: string) => {
     window.dispatchEvent(new CustomEvent("rb:quick-actions", {
-      detail: { clientName: SHALEV_ARTIST, date: availDayToIso(day.date), time: day.available && day.from ? day.from : undefined },
+      detail: { clientName: SHALEV_ARTIST, date: iso, time: day.available && day.from ? day.from : undefined },
     }));
   };
+
+  // Owner clicked a real session on the weekly-calendar grid — opens the
+  // manage/delete modal for that exact session.
+  const [managing, setManaging] = useState<{ item: WeeklyItem; day: WeekDay } | null>(null);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
       {/* 1) availability — Shalev marks when he's free (existing logic, untouched) */}
-      <SchedSection title="הזמינות שלי" subtitle="בחר מתי אתה פנוי לשבוע הקרוב">
+      <SchedSection title="הזמינות שלי" subtitle="בחר מתי אתה פנוי לשבוע הזה">
         <AvailabilityBody
           days={availDays} setDays={setAvailDays}
           lastUpdate={availLastUpdate} setLastUpdate={setAvailLastUpdate}
           isOwner={isOwner} onBookSession={handleBookSession} weeklyByIso={weeklyByIso}
+          week={week} todayIso={todayIso}
         />
       </SchedSection>
-      {/* 2) weekly calendar — Shalev's REAL sessions + shows for the next 7 days,
-             plus his own sent-availability days that have nothing booked yet */}
+      {/* 2) weekly calendar — Shalev's REAL sessions + shows for the SAME week,
+             as 7 cubes (never availability — that lives only in section 1). */}
       <SchedSection title="היומן השבועי שלי" subtitle="כל מה שכבר נקבע לך השבוע">
         {loading ? <SchedEmpty text="טוען…" />
           : error ? <SchedEmpty text="לא ניתן לטעון כרגע" />
-          : mergedWeekly.length === 0 ? <SchedEmpty text="אין אירועים מתוכננים השבוע" />
-          : <WeeklyList items={mergedWeekly} />}
+          : (
+            <WeeklyCalendarGrid
+              week={week} weeklyByIso={weeklyByIso} isOwner={isOwner}
+              onManageSession={(item, day) => setManaging({ item, day })}
+            />
+          )}
       </SchedSection>
       {/* 3) label updates — derived from real shows/sessions only */}
       <SchedSection title="עדכונים מהלייבל">
@@ -2315,7 +2332,169 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
           : updates.length === 0 ? <SchedEmpty text="עדיין אין עדכונים חדשים" />
           : <UpdatesList items={updates} />}
       </SchedSection>
+
+      {managing && (
+        <SessionManageModal
+          item={managing.item} day={managing.day}
+          onClose={() => setManaging(null)}
+          onDeleted={() => setManaging(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// Weekly calendar — 7 cubes, Sunday→Saturday, THE SAME dates as the
+// availability grid above. Never shows availability/פנוי info — only real
+// booked events (or a soft "אין אירוע" empty state). Owner may click a real
+// SESSION (not a show) to open the manage/delete modal.
+function WeeklyCalendarGrid({ week, weeklyByIso, isOwner, onManageSession }: {
+  week: WeekDay[]; weeklyByIso: Map<string, WeeklyItem>; isOwner?: boolean;
+  onManageSession: (item: WeeklyItem, day: WeekDay) => void;
+}) {
+  const isMobile = useIsMobile();
+  return (
+    <div style={{ padding: isMobile ? "14px 14px 16px" : "16px 22px 20px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)", gap: isMobile ? 10 : 12 }}>
+        {week.map((w) => {
+          const ev = weeklyByIso.get(w.iso);
+          // Shows are display-only here (a separate lifecycle/module) — only a
+          // real `sessions`-table row (has an id, isn't a show) is manageable.
+          const clickable = !!isOwner && !!ev && ev.type !== "הופעה" && !!ev.id;
+          const hours = ev?.startTime ? (ev.endTime ? `${ev.startTime}–${ev.endTime}` : ev.startTime) : "";
+          return (
+            <div
+              key={w.day}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={clickable ? () => onManageSession(ev!, w) : undefined}
+              onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onManageSession(ev!, w); } } : undefined}
+              style={{
+                ...panel, padding: isMobile ? "16px 10px" : "18px 12px", fontFamily: "inherit",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center",
+                border: `1px solid ${BDR2}`, cursor: clickable ? "pointer" : "default",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 800, color: TEXT }}>{w.day}</div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 3, direction: "ltr" }}>{w.date}</div>
+              </div>
+              {ev ? (
+                <>
+                  <SchedTypePill type={ev.type} />
+                  <div style={{ fontSize: 12, color: TEXT2, minHeight: 16, direction: "ltr" }}>{hours}</div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: MUTED, minHeight: 16 }}>אין אירוע</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Owner-only manage/delete modal for a real session — opened from a
+// WeeklyCalendarGrid cube. Uses the EXISTING DELETE /api/sessions/[id] route,
+// which already removes the linked Google Calendar event via calendar_event_id
+// (best-effort) — no separate/duplicate deletion path.
+function SessionManageModal({ item, day, onClose, onDeleted }: {
+  item: WeeklyItem; day: WeekDay; onClose: () => void; onDeleted: () => void;
+}) {
+  const isMobile = useIsMobile();
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const hours = item.startTime ? (item.endTime ? `${item.startTime}–${item.endTime}` : item.startTime) : null;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function doDelete() {
+    if (!item.id || deleting) return;
+    setDeleting(true); setError(null);
+    try {
+      const r = await fetch(`/api/sessions/${item.id}`, { method: "DELETE" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d?.ok === false) { setError((d?.error as string) || "מחיקת הסשן נכשלה"); setDeleting(false); return; }
+      // Same refresh signal as creating a session — every place reading
+      // shalev-summary (day-cube, weekly grid, home, updates) updates itself,
+      // no manual refresh.
+      document.dispatchEvent(new CustomEvent("rb-session-created"));
+      onDeleted();
+    } catch {
+      setError("שגיאת רשת, נסה שוב");
+      setDeleting(false);
+    }
+  }
+
+  if (typeof document === "undefined") return null;
+
+  const btnBase: React.CSSProperties = {
+    flex: 1, padding: "12px 0", borderRadius: 11, border: "none", cursor: "pointer",
+    fontFamily: "inherit", fontSize: 14, fontWeight: 700, boxSizing: "border-box",
+  };
+
+  return createPortal(
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100035, background: "rgba(0,0,0,0.66)",
+        backdropFilter: "blur(3px)", display: "flex", justifyContent: "center",
+        alignItems: isMobile ? "flex-end" : "center", padding: isMobile ? 0 : 20,
+        fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      }}>
+      <div style={{
+        width: isMobile ? "100%" : 420, maxWidth: "100%", boxSizing: "border-box", direction: "rtl",
+        maxHeight: isMobile ? "85vh" : "88vh", overflowY: "auto",
+        background: "linear-gradient(180deg, #161617 0%, #111112 100%)", border: `1px solid ${BDR2}`,
+        borderRadius: isMobile ? "20px 20px 0 0" : 20, boxShadow: "0 24px 70px rgba(0,0,0,0.6)",
+        padding: isMobile ? "18px 16px calc(22px + env(safe-area-inset-bottom))" : "22px 24px 24px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+          <div style={{ fontSize: 17, fontWeight: 900, color: "#fff" }}>ניהול סשן</div>
+          <button type="button" onClick={onClose} aria-label="סגור" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><IcX size={20} /></button>
+        </div>
+
+        <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, borderRadius: 12, padding: "14px 16px", marginBottom: 18 }}>
+          <div style={{ marginBottom: 10 }}><SchedTypePill type={item.type} /></div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>
+            {day.day} <span style={{ direction: "ltr", display: "inline-block", color: TEXT2, fontWeight: 600 }}>{day.date}</span>
+          </div>
+          {hours && <div style={{ fontSize: 13, color: TEXT2, marginTop: 6, direction: "ltr" }}>{hours}</div>}
+        </div>
+
+        {error && <div style={{ fontSize: 12.5, color: "#F87171", marginBottom: 14 }}>{error}</div>}
+
+        {!confirming ? (
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" onClick={onClose} style={{ ...btnBase, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT }}>סגור</button>
+            <button type="button" onClick={() => setConfirming(true)} disabled={!item.id} style={{
+              ...btnBase, fontWeight: 800, color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+              boxShadow: "0 4px 16px rgba(220,38,38,0.32)", opacity: item.id ? 1 : 0.5, cursor: item.id ? "pointer" : "not-allowed",
+            }}>הסר סשן</button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 13.5, color: TEXT, lineHeight: 1.6 }}>
+              להסיר את הסשן מיום {day.day} {day.date}{hours ? ` בשעות ${hours}` : ""}?
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button type="button" onClick={() => setConfirming(false)} disabled={deleting} style={{ ...btnBase, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT }}>ביטול</button>
+              <button type="button" onClick={doDelete} disabled={deleting} style={{
+                ...btnBase, fontWeight: 800, color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+                boxShadow: "0 4px 16px rgba(220,38,38,0.32)", cursor: deleting ? "wait" : "pointer", opacity: deleting ? 0.75 : 1,
+              }}>{deleting ? "מסיר…" : "אישור הסרה"}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2333,14 +2512,16 @@ function fmtWhen(iso: string): string {
 // sent drives the "last updated" text. `days`/`lastUpdate` are now owned by
 // SchedulePage (lifted up so the weekly-calendar merge sees the same data
 // without a second fetch) — this component only edits/sends them.
-function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, onBookSession, weeklyByIso }: {
+function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, onBookSession, weeklyByIso, week, todayIso }: {
   days: AvailDay[];
   setDays: React.Dispatch<React.SetStateAction<AvailDay[]>>;
   lastUpdate: { sentBy: "owner" | "shalev"; sentAt: string } | null;
   setLastUpdate: React.Dispatch<React.SetStateAction<{ sentBy: "owner" | "shalev"; sentAt: string } | null>>;
   isOwner?: boolean;
-  onBookSession: (day: AvailDay) => void;
+  onBookSession: (day: AvailDay, iso: string) => void;
   weeklyByIso: Map<string, WeeklyItem>;
+  week: WeekDay[];
+  todayIso: string;
 }) {
   const isMobile = useIsMobile();
   const [editIdx, setEditIdx] = useState<number | null>(null); // day being edited in the modal
@@ -2399,9 +2580,11 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
           const c = d.available ? GREEN : "#F87171";
           // A real session/show already booked this date takes over as the
           // primary info on the card (req. 5/6) — the availability badge steps
-          // aside instead of showing alongside it.
-          const iso = d.date ? availDayToIso(d.date) : "";
+          // aside instead of showing alongside it. `iso` comes straight from
+          // the canonical `week` array (exact), not the heuristic parser.
+          const iso = week[i]?.iso ?? "";
           const booked = iso ? weeklyByIso.get(iso) : undefined;
+          const isPast = !!iso && iso < todayIso;
           return (
             // Plain card is its own click target (opens the availability editor);
             // the "קבע סשן" button below is a real nested <button>, so this
@@ -2442,17 +2625,21 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
                   </div>
                 </>
               )}
-              {/* Owner-only — shown on every day, available or not. Never shown to Shalev. */}
+              {/* Owner-only — shown on every day, available or not. Disabled (not
+                  just hidden) once the day itself is in the past, so a stale/expired
+                  day can never open the booking modal. Never shown to Shalev. */}
               {isOwner && (
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); onBookSession(d); }}
+                  disabled={isPast}
+                  onClick={(e) => { e.stopPropagation(); if (!isPast) onBookSession(d, iso); }}
                   style={{
                     display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
                     marginTop: 2, padding: isMobile ? "9px 6px" : "8px 8px", borderRadius: 9, border: "none",
                     color: "#fff", fontSize: isMobile ? 12 : 11.5, fontWeight: 800, fontFamily: "inherit",
-                    cursor: "pointer", width: "100%", boxSizing: "border-box",
-                    background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+                    cursor: isPast ? "not-allowed" : "pointer", width: "100%", boxSizing: "border-box",
+                    background: isPast ? "rgba(255,255,255,0.06)" : "linear-gradient(180deg, #E5322F, #C01C1C)",
+                    opacity: isPast ? 0.55 : 1,
                   }}
                 >
                   📅 קבע סשן
@@ -3193,10 +3380,14 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div className="rap-acts">
-          {/* סשן קרוב — the artist's next real session (weekly, excluding shows).
+          {/* סשן קרוב — the artist's next real, still-UPCOMING session (weekly,
+              excluding shows). `weekly` now spans the whole Sun–Sat week (incl.
+              days already past within it, so the day-cubes can show them too) —
+              so this must explicitly exclude past dates, or an already-passed
+              session earlier in the week would outrank the real next one.
               Type only ("סשן"/"פגישה"/...) — no project name. */}
           {(() => {
-            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה" && w.type !== "זמינות");
+            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה" && (w.date ?? "") >= todayIsraelIso());
             return sess ? (
               <ActionCard icon="📅" title="סשן קרוב" body={sess.type} sub={[fmtShowDate(sess.date), sess.startTime].filter(Boolean).join(" · ")} />
             ) : (
