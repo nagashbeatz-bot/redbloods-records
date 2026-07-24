@@ -1600,7 +1600,6 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [addRole, setAddRole]     = useState<FileRole | null>(null); // role the new comment attaches to
   const [rolePick, setRolePick]   = useState(false);                 // fallback picker when no active player
   const [hoverCommentId, setHoverCommentId] = useState<string | null>(null); // cross-highlight marker ⇄ shared list
-  const [commentFilter, setCommentFilter] = useState<"open" | "all" | "resolved">("open"); // default: open, so pending work is front-and-center
   const [statusUpdating, setStatusUpdating] = useState<Set<string>>(new Set()); // comment ids mid-PATCH — blocks a double-click re-send
   const playerRefs = useRef<Record<string, VersionPlayerHandle | null>>({}); // per-file player handles (by file id)
   const lastActiveIdRef = useRef<string | null>(null);               // file id of the last-played stacked player
@@ -2040,26 +2039,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     return best?.id ?? null;
   }, [comments, liveTs]);
 
-  // "הכל" (all) view: open first, then resolved; within each status group the
-  // existing role→timecode order (commentSort) is preserved untouched. The
-  // "פתוחות"/"טופלו" (open/resolved) filtered views already contain only one
-  // status each, so they just reuse commentSort directly.
-  const commentSortAll = (a: MixComment, b: MixComment): number => {
-    if (a.status !== b.status) return a.status === "open" ? -1 : 1;
-    return commentSort(a, b);
-  };
-  // Counts are always over the FULL comment list for this version — never the
-  // already-filtered subset — so switching filters never changes the numbers.
-  const commentCounts = useMemo(() => {
-    const all = comments ?? [];
-    const open = all.filter(c => c.status === "open").length;
-    return { open, all: all.length, resolved: all.length - open };
-  }, [comments]);
-  const visibleComments = useMemo(() => {
-    const all = comments ?? [];
-    const filtered = commentFilter === "all" ? all : all.filter(c => (commentFilter === "open" ? c.status === "open" : c.status === "resolved"));
-    return filtered.slice().sort(commentFilter === "all" ? commentSortAll : commentSort);
-  }, [comments, commentFilter]);
+  // Small optional non-clickable counter only — no filtering/reordering by
+  // status: all comments always show together, in the existing role→timecode
+  // order (commentSort, unchanged); a resolved comment is never moved or hidden.
+  const resolvedCount = useMemo(() => (comments ?? []).filter(c => c.status === "resolved").length, [comments]);
 
   // Mix Versions folder = the directory the versions physically live in. Every
   // version is stored DIRECTLY under it, so the parent dir of any version's
@@ -2350,17 +2333,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
                   </div>
                   <div style={{ padding: "12px 16px 16px" }}>
-                    {/* Status filter — counts are always over the FULL comment
-                        list, never the already-filtered view. Default: open. */}
+                    {/* Small, non-clickable counter only — no filter tabs/pills,
+                        no separate state. All comments always show together. */}
                     {comments !== null && comments.length > 0 && (
-                      <div style={{ marginBottom: 12 }}>
-                        <PillGroup<"open" | "all" | "resolved">
-                          value={commentFilter}
-                          options={["open", "all", "resolved"]}
-                          onChange={setCommentFilter}
-                          colorFor={o => (o === "open" ? RED : o === "resolved" ? GREEN : TEXT2)}
-                          labelFor={o => `${o === "open" ? (rtl ? "פתוחות" : "Open") : o === "resolved" ? (rtl ? "טופלו" : "Resolved") : (rtl ? "הכל" : "All")} (${commentCounts[o]})`}
-                        />
+                      <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+                        {isSteven ? `${resolvedCount} of ${comments.length} done` : `בוצעו ${resolvedCount} מתוך ${comments.length}`}
                       </div>
                     )}
                     {rolePick && (
@@ -2396,78 +2373,89 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       <RowsSkeleton rows={2} height={44} pad="0" />
                     ) : comments.length === 0 ? (
                       !adding && !rolePick && <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>{t.cEmpty}</div>
-                    ) : visibleComments.length === 0 ? (
-                      // Comments exist, just none match the current filter (e.g. no
-                      // open ones left) — distinct from the "no comments at all" state.
-                      !adding && !rolePick && (
-                        <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "14px 0" }}>
-                          {commentFilter === "open" ? (rtl ? "אין הערות פתוחות" : "No open comments")
-                            : commentFilter === "resolved" ? (rtl ? "אין הערות שטופלו" : "No resolved comments")
-                            : t.cEmpty}
-                        </div>
-                      )
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: "min(52vh, 520px)", overflowY: "auto" }}>
-                        {visibleComments.map((c, i) => {
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: "min(52vh, 520px)", overflowY: "auto" }}>
+                        {[...comments].sort(commentSort).map((c, i) => {
                           const cr = roleOfComment(c);
                           const col = cr ? ROLE_COLOR[cr] : MUTED;
                           const isEditing = editingId === c.id;
                           const isGeneral = c.timestampSeconds === null; // general note — no timecode / no seek
+                          const isResolved = c.status === "resolved";
                           // Highlighted when hovered (marker ⇄ list cross-highlight,
                           // unchanged) OR when playback is currently near this
                           // comment's timecode (nearestActiveId) — same subtle
                           // treatment either way, never a louder/separate style.
+                          // A resolved comment gets its own subtle green tint
+                          // instead, UNLESS it's also currently active (the
+                          // temporary interaction signal wins over the resting state).
                           const isActive = hoverCommentId === c.id || nearestActiveId === c.id;
+                          const cardBg     = isActive ? `${col}14` : isResolved ? `${GREEN}12` : CARD;
+                          const cardBorder = isActive ? col        : isResolved ? `${GREEN}77` : BDR;
+                          const cardShadow = isActive ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : isResolved ? `0 0 0 1px ${GREEN}33` : "none";
                           return (
                             <div key={c.id}
                               onMouseEnter={() => setHoverCommentId(c.id)} onMouseLeave={() => setHoverCommentId(cur => (cur === c.id ? null : cur))}
-                              style={{ display: "flex", alignItems: "center", flexWrap: narrow ? "wrap" : "nowrap", rowGap: narrow ? 7 : undefined, gap: 10, padding: "11px 13px", borderRadius: 11, background: isActive ? `${col}14` : CARD, border: `1px solid ${isActive ? col : BDR}`, boxShadow: isActive ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : "none", transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
-                              <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
-                              {!isGeneral && (
-                                <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds!)} title={t.vPlay}
-                                  style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
-                                </button>
-                              )}
-                              {isGeneral ? (
-                                <span title={t.cGeneralTitle}
-                                  style={{ fontSize: 10, fontWeight: 800, color: TEXT2, background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, padding: "3px 9px", borderRadius: 7, flexShrink: 0, whiteSpace: "nowrap" }}>{t.cGeneralTag}</span>
-                              ) : (
-                                <button onClick={() => playerForComment(c)?.seek(c.timestampSeconds!)}
-                                  style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds!)}</button>
-                              )}
-                              <span style={{ fontSize: 9.5, fontWeight: 800, color: col, background: `${col}1A`, border: `1px solid ${col}40`, padding: "2px 7px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{cr ? roleLabel(cr, lang) : (rtl ? "כללי" : "Shared")}</span>
+                              style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 13px", borderRadius: 11, background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow, transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
+                              {/* Row 1 — number · play · timecode/general · role. Never
+                                  squeezed against the text (that's its own row below). */}
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span style={{ width: 23, height: 23, borderRadius: "50%", flexShrink: 0, background: col, color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</span>
+                                {!isGeneral && (
+                                  <button onClick={() => playerForComment(c)?.playFrom(c.timestampSeconds!)} title={t.vPlay}
+                                    style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: BRAND, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+                                  </button>
+                                )}
+                                {isGeneral ? (
+                                  <span title={t.cGeneralTitle}
+                                    style={{ fontSize: 10, fontWeight: 800, color: TEXT2, background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, padding: "3px 9px", borderRadius: 7, flexShrink: 0, whiteSpace: "nowrap" }}>{t.cGeneralTag}</span>
+                                ) : (
+                                  <button onClick={() => playerForComment(c)?.seek(c.timestampSeconds!)}
+                                    style={{ fontSize: 11.5, fontWeight: 800, color: col, background: "transparent", border: "none", cursor: "pointer", fontVariantNumeric: "tabular-nums", flexShrink: 0, fontFamily: "inherit" }}>{fmtTime(c.timestampSeconds!)}</button>
+                                )}
+                                <span style={{ fontSize: 9.5, fontWeight: 800, color: col, background: `${col}1A`, border: `1px solid ${col}40`, padding: "2px 7px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{cr ? roleLabel(cr, lang) : (rtl ? "כללי" : "Shared")}</span>
+                              </div>
+                              {/* Row 2 — the full comment text. Natural wrap, grows the
+                                  card to fit any length; never clipped/ellipsized. */}
                               {isEditing ? (
                                 <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
                                   onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
                                   onBlur={() => saveEditComment(c)}
-                                  style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, padding: "5px 9px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                                  style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
                               ) : (
-                                <div onClick={isGeneral ? undefined : () => playerForComment(c)?.seek(c.timestampSeconds!)} title={c.commentText}
-                                  style={{ flex: narrow ? "1 1 100%" : 1, order: narrow ? 2 : undefined, minWidth: 0, fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", overflow: narrow ? "visible" : "hidden", textOverflow: narrow ? "clip" : "ellipsis", whiteSpace: narrow ? "normal" : "nowrap", wordBreak: narrow ? "break-word" : undefined, lineHeight: narrow ? 1.45 : undefined }}>{c.commentText}</div>
+                                <div onClick={isGeneral ? undefined : () => playerForComment(c)?.seek(c.timestampSeconds!)}
+                                  style={{ fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.5 }}>{c.commentText}</div>
                               )}
-                              <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
-                              {/* Status toggle — a small dedicated pill, not the whole
-                                  row; both owner and Steven may use it (Steven's ONLY
-                                  write ability on a comment). Never deletes on toggle. */}
-                              <button onClick={() => toggleCommentStatus(c)} disabled={statusUpdating.has(c.id)}
-                                title={c.status === "open" ? (rtl ? "סמן כטופלה" : "Mark as resolved") : (rtl ? "החזר לפתוחה" : "Mark as open")}
-                                style={{
-                                  fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 7, flexShrink: 0, whiteSpace: "nowrap", fontFamily: "inherit",
-                                  cursor: statusUpdating.has(c.id) ? "wait" : "pointer", border: `1px solid ${(c.status === "open" ? RED : GREEN)}55`,
-                                  background: `${(c.status === "open" ? RED : GREEN)}1A`, color: c.status === "open" ? RED : GREEN, opacity: statusUpdating.has(c.id) ? 0.6 : 1,
-                                }}>
-                                {c.status === "open" ? (rtl ? "פתוחה" : "Open") : (rtl ? "טופלה" : "Resolved")}
-                              </button>
-                              {/* edit + delete — owner only; Steven's comments are view-only. */}
-                              {!isSteven && !isEditing && (
-                                <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
-                                  style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                                  onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
-                              )}
-                              {!isSteven && <button onClick={() => setDelC(c)} title={t.cDelete}
-                                style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                                onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>}
+                              {/* Row 3 — relative time · status toggle · edit/delete */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  {/* Status toggle — a small dedicated pill, not the whole
+                                      row/card; both owner and Steven may use it (Steven's
+                                      ONLY write ability on a comment). Never deletes. */}
+                                  <button onClick={() => toggleCommentStatus(c)} disabled={statusUpdating.has(c.id)}
+                                    title={isResolved ? (rtl ? "החזר לפתוחה" : "Mark as open") : (rtl ? "סמן כבוצע" : "Mark as done")}
+                                    style={{
+                                      display: "inline-flex", alignItems: "center", fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap", fontFamily: "inherit",
+                                      padding: isResolved ? "3px 10px" : "4px 8px", borderRadius: 7,
+                                      cursor: statusUpdating.has(c.id) ? "wait" : "pointer",
+                                      border: `1px solid ${isResolved ? `${GREEN}66` : BDR2}`,
+                                      background: isResolved ? `${GREEN}1A` : "rgba(255,255,255,0.04)",
+                                      color: isResolved ? GREEN : MUTED, opacity: statusUpdating.has(c.id) ? 0.6 : 1,
+                                    }}>
+                                    {isResolved ? (isSteven ? "✓ DONE" : "✓ בוצע") : "✓"}
+                                  </button>
+                                  {/* edit + delete — owner only; Steven's comments are view-only. */}
+                                  {!isSteven && !isEditing && (
+                                    <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
+                                      style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                                      onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
+                                  )}
+                                  {!isSteven && <button onClick={() => setDelC(c)} title={t.cDelete}
+                                    style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+                                    onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>}
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
