@@ -49,6 +49,13 @@ const MONEY_MODES: { id: MoneyMode; label: string; status: string; dateLabel: st
   { id: "expected", label: "צפוי להיכנס", status: "צפוי",     dateLabel: "תאריך צפוי" },
   { id: "collect",  label: "צריך לגבות",  status: "לא שולם",  dateLabel: "תאריך גבייה" },
 ];
+// Sessions have no client/artist field of their own when project-less
+// (independent) — only a project links a session back to an artist. A
+// session booked for שליו טסמה without a project can therefore NEVER show up
+// in his portal (there's nothing to match it by), so a project is required
+// once he's the selected client — regardless of how this modal was opened.
+const SHALEV_CLIENT_NAME = "שליו טסמה";
+
 type MoneyAssoc = "project" | "general";
 const INCOME_CATEGORIES = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תשלום מלא", "תוספת / חריגה", "אחר"];
 const MONEY_PAYMENT_METHODS = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
@@ -113,6 +120,10 @@ export default function QuickActionsModal({ initialProjectId, initialClientName,
     () => visibleProjects.find((p) => p.id === projectId) ?? null,
     [visibleProjects, projectId],
   );
+
+  // Shalev is the selected client → a real project is mandatory (see
+  // SHALEV_CLIENT_NAME above), no independent/project-less session allowed.
+  const requiresProject = clientName === SHALEV_CLIENT_NAME;
 
   // Load client names once (read-only; never creates clients).
   useEffect(() => {
@@ -400,10 +411,17 @@ export default function QuickActionsModal({ initialProjectId, initialClientName,
                   {clientName ? "אין פרויקטים ללקוח זה." : "אין פרויקטים זמינים."}
                 </div>
               )}
+              {requiresProject && !selectedProject && (
+                <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 6 }}>
+                  יש לבחור אחד מהפרויקטים של שליו כדי שהסשן יופיע בפורטל שלו — סשן ללא פרויקט לא ניתן לשיוך אליו.
+                </div>
+              )}
             </Field>
 
-            {/* Independent session — manual name shown in-app + in Google Calendar */}
-            {!selectedProject && (
+            {/* Independent session — manual name shown in-app + in Google Calendar.
+                Hidden when a project is required (Shalev): a project-less session
+                would be created but could never be linked back to him. */}
+            {!selectedProject && !requiresProject && (
               <Field label="שם הסשן / שם שיופיע ביומן *">
                 <input
                   value={sessionTitle}
@@ -445,7 +463,7 @@ export default function QuickActionsModal({ initialProjectId, initialClientName,
             {/* Actions */}
             <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
               {(() => {
-                const canProceed = !!selectedProject || sessionTitle.trim().length > 0;
+                const canProceed = requiresProject ? !!selectedProject : (!!selectedProject || sessionTitle.trim().length > 0);
                 return (
               <button
                 onClick={() => canProceed && setPhase("schedule")}

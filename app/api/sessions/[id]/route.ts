@@ -122,16 +122,27 @@ export async function DELETE(
     const { error } = await supabase.from("sessions").delete().eq("id", id);
     if (error) throw new Error(error.message);
 
-    // Also delete from Google Calendar (best-effort)
+    // Also delete from Google Calendar (best-effort) — the local session row
+    // is already gone at this point regardless of what happens here; the
+    // outcome is reported back so a caller (e.g. the Shalev portal's session
+    // manager) can warn about a possibly-orphaned calendar event instead of
+    // silently claiming full success.
     const calEventId = session?.calendar_event_id as string | null;
+    let calendarDeleted: boolean | null = null; // null = no event was linked, nothing to delete
+    let calendarError: string | null = null;
     if (calEventId) {
       try {
         const { deleteCalendarEvent, isConnected } = await import("@/lib/google-calendar");
         if (await isConnected()) {
           await deleteCalendarEvent(calEventId);
+          calendarDeleted = true;
+        } else {
+          calendarDeleted = false;
+          calendarError = "Google Calendar לא מחובר";
         }
-      } catch {
-        // Calendar deletion is non-fatal
+      } catch (calErr) {
+        calendarDeleted = false;
+        calendarError = calErr instanceof Error ? calErr.message : "מחיקת האירוע מ-Google Calendar נכשלה";
       }
     }
 
@@ -139,7 +150,7 @@ export async function DELETE(
     const delProjectId = (session as { project_id?: string } | null)?.project_id;
     if (delProjectId) touchProject(delProjectId).catch(() => {});
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, calendarDeleted, calendarError });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     console.error("[sessions DELETE id]", msg);

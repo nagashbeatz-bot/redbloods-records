@@ -418,12 +418,15 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
       .catch(() => setSummaryState("error"));
   }, []);
   useEffect(() => { reloadSummary(); }, [reloadSummary]);
-  // A session created anywhere (e.g. via the schedule page's "קבע סשן" button,
-  // which opens the SAME global quick-actions modal) should refresh this real
-  // data — same signal pattern as rb-finance-updated.
+  // A session created/deleted anywhere (e.g. via the schedule page's "קבע סשן"
+  // button, which opens the SAME global quick-actions modal) should refresh
+  // this real data — same signal + same target as rb-finance-updated
+  // (dispatched via document.dispatchEvent, so the listener must be on
+  // `document` too — a `window` listener never sees a non-bubbling event
+  // dispatched on `document`, which silently broke the auto-refresh).
   useEffect(() => {
-    window.addEventListener("rb-session-created", reloadSummary);
-    return () => window.removeEventListener("rb-session-created", reloadSummary);
+    document.addEventListener("rb-session-created", reloadSummary);
+    return () => document.removeEventListener("rb-session-created", reloadSummary);
   }, [reloadSummary]);
 
   // Owner-only balance ledger — the manual, independent per-artist ledger. Replaces
@@ -2413,6 +2416,10 @@ function SessionManageModal({ item, day, onClose, onDeleted }: {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True once the LOCAL session row is confirmed gone (even if the Google
+  // Calendar side failed) — hides "הסר סשן" so a second click can't attempt
+  // to delete an already-removed row.
+  const [removed, setRemoved] = useState(false);
   const hours = item.startTime ? (item.endTime ? `${item.startTime}–${item.endTime}` : item.startTime) : null;
 
   useEffect(() => {
@@ -2428,10 +2435,18 @@ function SessionManageModal({ item, day, onClose, onDeleted }: {
       const r = await fetch(`/api/sessions/${item.id}`, { method: "DELETE" });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d?.ok === false) { setError((d?.error as string) || "מחיקת הסשן נכשלה"); setDeleting(false); return; }
-      // Same refresh signal as creating a session — every place reading
-      // shalev-summary (day-cube, weekly grid, home, updates) updates itself,
-      // no manual refresh.
+      // The local session row is gone at this point either way — refresh
+      // everywhere regardless of the calendar outcome below.
       document.dispatchEvent(new CustomEvent("rb-session-created"));
+      setRemoved(true);
+      if (d.calendarDeleted === false) {
+        // Don't claim full success — the session was removed here, but the
+        // Google Calendar event may still exist. Stay open so this is seen.
+        setConfirming(false);
+        setError(`הסשן הוסר מהמערכת, אך ייתכן שהאירוע נשאר ביומן Google (${(d.calendarError as string) || "שגיאה לא ידועה"}).`);
+        setDeleting(false);
+        return;
+      }
       onDeleted();
     } catch {
       setError("שגיאת רשת, נסה שוב");
@@ -2480,10 +2495,12 @@ function SessionManageModal({ item, day, onClose, onDeleted }: {
         {!confirming ? (
           <div style={{ display: "flex", gap: 10 }}>
             <button type="button" onClick={onClose} style={{ ...btnBase, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT }}>סגור</button>
-            <button type="button" onClick={() => setConfirming(true)} disabled={!item.id} style={{
-              ...btnBase, fontWeight: 800, color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)",
-              boxShadow: "0 4px 16px rgba(220,38,38,0.32)", opacity: item.id ? 1 : 0.5, cursor: item.id ? "pointer" : "not-allowed",
-            }}>הסר סשן</button>
+            {!removed && (
+              <button type="button" onClick={() => setConfirming(true)} disabled={!item.id} style={{
+                ...btnBase, fontWeight: 800, color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+                boxShadow: "0 4px 16px rgba(220,38,38,0.32)", opacity: item.id ? 1 : 0.5, cursor: item.id ? "pointer" : "not-allowed",
+              }}>הסר סשן</button>
+            )}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
