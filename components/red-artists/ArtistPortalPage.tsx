@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
 import { useRole, type ClientRole } from "@/lib/use-role";
@@ -408,18 +408,23 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
   // ONLY, filtered server-side to "שליו טסמה"; no other artist / no label money).
   const [summary, setSummary] = useState<ShalevSummary | null>(null);
   const [summaryState, setSummaryState] = useState<LoadState>("loading");
-  useEffect(() => {
-    let alive = true;
+  const reloadSummary = useCallback(() => {
     fetch("/api/red-artists/shalev-summary")
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
-        if (!alive) return;
         if (d?.ok) { setSummary({ shows: d.shows, balance: d.balance, weekly: d.weekly ?? [], updates: d.updates ?? [] }); setSummaryState("ready"); }
         else setSummaryState("error");
       })
-      .catch(() => { if (alive) setSummaryState("error"); });
-    return () => { alive = false; };
+      .catch(() => setSummaryState("error"));
   }, []);
+  useEffect(() => { reloadSummary(); }, [reloadSummary]);
+  // A session created anywhere (e.g. via the schedule page's "קבע סשן" button,
+  // which opens the SAME global quick-actions modal) should refresh this real
+  // data — same signal pattern as rb-finance-updated.
+  useEffect(() => {
+    window.addEventListener("rb-session-created", reloadSummary);
+    return () => window.removeEventListener("rb-session-created", reloadSummary);
+  }, [reloadSummary]);
 
   // Owner-only balance ledger — the manual, independent per-artist ledger. Replaces
   // the old shalev-summary.balance for BOTH the tab and the home card. Fetched only
@@ -581,7 +586,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} ledger={ledger} ledgerState={ledgerState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
-            : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} />
+            : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} />
             : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} readOnly={isShalev} />
             : tab === "ביטים פנויים" ? <BeatsPage readOnly={isShalev} />
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
@@ -2127,11 +2132,14 @@ function SchedEmpty({ text }: { text: string }) {
 }
 
 // Event/update type colors (no purple): הופעה red · סשן blue · צילום קליפ amber · פגישה green.
+// "זמינות" (a sent-but-not-yet-booked availability day) is intentionally muted —
+// it is secondary info, never a real event (see SchedulePage's weekly merge).
 const SCHED_TYPE_COLOR: Record<string, string> = {
   "הופעה":     "#FF6B6B",
   "סשן":       BLUE,
   "צילום קליפ": AMBER,
   "פגישה":     GREEN,
+  "זמינות":    MUTED,
 };
 
 function SchedTypePill({ type }: { type: string }) {
@@ -2191,24 +2199,106 @@ function UpdatesList({ items }: { items: PortalUpdate[] }) {
   );
 }
 
-function SchedulePage({ summary, loadState }: { summary: ShalevSummary | null; loadState: LoadState }) {
+// A saved availability day carries only "DD.MM" (no year — see computeNextWeek).
+// Availability days are always near-term (this week / next week), so a simple
+// "closest year" heuristic is safe: if the month looks far enough behind the
+// current month to only make sense next year (e.g. saved in December, viewed
+// in January), roll the year forward.
+function availDayToIso(dm: string): string {
+  const [ddStr, mmStr] = dm.split(".");
+  const dd = Number(ddStr), mm = Number(mmStr);
+  if (!dd || !mm) return "";
+  const now = new Date();
+  let year = now.getFullYear();
+  if (mm < now.getMonth() + 1 - 6) year += 1;
+  return `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary | null; loadState: LoadState; isOwner?: boolean }) {
   const isMobile = useIsMobile();
   const weekly  = summary?.weekly  ?? [];
   const updates = summary?.updates ?? [];
   const loading = loadState === "loading";
   const error   = loadState === "error";
+
+  // Availability days are lifted up here (out of AvailabilityBody) so both the
+  // day-cube "already scheduled" overlay AND the weekly-calendar merge below
+  // can see them from a single fetch — no behavior change to the send/edit flow.
+  const [availDays, setAvailDays] = useState<AvailDay[]>(() => HEB_DAYS.map(day => ({ day, date: "", available: false, from: "" })));
+  const [availLastUpdate, setAvailLastUpdate] = useState<{ sentBy: "owner" | "shalev"; sentAt: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/red-artists/availability", { cache: "no-store" });
+        const d = await r.json().catch(() => ({}));
+        if (!alive) return;
+        const av = d?.availability;
+        if (r.ok && d?.ok && av && Array.isArray(av.days) && av.days.length === 7) {
+          setAvailDays(av.days as AvailDay[]);
+          setAvailLastUpdate({ sentBy: av.sentBy, sentAt: av.sentAt });
+          return;
+        }
+      } catch { /* fall through to a blank week */ }
+      if (alive) setAvailDays(computeNextWeek());
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Real session/show already on the books for a given date (YYYY-MM-DD) — used
+  // both to show "סשן" info on the matching day-cube and to suppress a redundant
+  // availability entry in the weekly list for that same date (req. 6).
+  const weeklyByIso = useMemo(() => {
+    const m = new Map<string, WeeklyItem>();
+    for (const w of weekly) if (w.date && !m.has(w.date)) m.set(w.date, w);
+    return m;
+  }, [weekly]);
+
+  // Availability days Shalev marked "פנוי" with no real session/show yet on that
+  // date become a secondary "זמינות" entry in the weekly list (req. 4) — never a
+  // session, never counted, and dropped the moment a real session lands on it.
+  const availabilityExtra: WeeklyItem[] = useMemo(() => (
+    availDays
+      .filter(d => d.available && d.date)
+      .map(d => ({ iso: availDayToIso(d.date), from: d.from }))
+      .filter(({ iso }) => iso && !weeklyByIso.has(iso))
+      .map(({ iso, from }) => ({
+        type: "זמינות", title: "פנוי לסשן", date: iso,
+        startTime: from || null, endTime: null, location: null,
+      }))
+  ), [availDays, weeklyByIso]);
+
+  const mergedWeekly = useMemo(
+    () => [...weekly, ...availabilityExtra].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")),
+    [weekly, availabilityExtra],
+  );
+
+  // "קבע סשן" on a day-cube — opens the SAME global quick-actions modal (owner-only
+  // entry point elsewhere in the app) pre-filled with Shalev as the client and that
+  // day's date; if he marked an available start time, it's pre-filled too.
+  const handleBookSession = (day: AvailDay) => {
+    window.dispatchEvent(new CustomEvent("rb:quick-actions", {
+      detail: { clientName: SHALEV_ARTIST, date: availDayToIso(day.date), time: day.available && day.from ? day.from : undefined },
+    }));
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
       {/* 1) availability — Shalev marks when he's free (existing logic, untouched) */}
       <SchedSection title="הזמינות שלי" subtitle="בחר מתי אתה פנוי לשבוע הקרוב">
-        <AvailabilityBody />
+        <AvailabilityBody
+          days={availDays} setDays={setAvailDays}
+          lastUpdate={availLastUpdate} setLastUpdate={setAvailLastUpdate}
+          isOwner={isOwner} onBookSession={handleBookSession} weeklyByIso={weeklyByIso}
+        />
       </SchedSection>
-      {/* 2) weekly calendar — Shalev's REAL sessions + shows for the next 7 days */}
+      {/* 2) weekly calendar — Shalev's REAL sessions + shows for the next 7 days,
+             plus his own sent-availability days that have nothing booked yet */}
       <SchedSection title="היומן השבועי שלי" subtitle="כל מה שכבר נקבע לך השבוע">
         {loading ? <SchedEmpty text="טוען…" />
           : error ? <SchedEmpty text="לא ניתן לטעון כרגע" />
-          : weekly.length === 0 ? <SchedEmpty text="אין אירועים מתוכננים השבוע" />
-          : <WeeklyList items={weekly} />}
+          : mergedWeekly.length === 0 ? <SchedEmpty text="אין אירועים מתוכננים השבוע" />
+          : <WeeklyList items={mergedWeekly} />}
       </SchedSection>
       {/* 3) label updates — derived from real shows/sessions only */}
       <SchedSection title="עדכונים מהלייבל">
@@ -2230,39 +2320,24 @@ function fmtWhen(iso: string): string {
 }
 
 // Availability picker (7 days + send) — REAL persistence via
-// /api/red-artists/availability (global settings store). Load marks the last
-// saved days (NO push); "שלח" saves + triggers role-aware push server-side.
-// Both owner and shalev may send; who sent drives the "last updated" text.
-function AvailabilityBody() {
+// /api/red-artists/availability (global settings store). "שלח" saves +
+// triggers role-aware push server-side. Both owner and shalev may send; who
+// sent drives the "last updated" text. `days`/`lastUpdate` are now owned by
+// SchedulePage (lifted up so the weekly-calendar merge sees the same data
+// without a second fetch) — this component only edits/sends them.
+function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, onBookSession, weeklyByIso }: {
+  days: AvailDay[];
+  setDays: React.Dispatch<React.SetStateAction<AvailDay[]>>;
+  lastUpdate: { sentBy: "owner" | "shalev"; sentAt: string } | null;
+  setLastUpdate: React.Dispatch<React.SetStateAction<{ sentBy: "owner" | "shalev"; sentAt: string } | null>>;
+  isOwner?: boolean;
+  onBookSession: (day: AvailDay) => void;
+  weeklyByIso: Map<string, WeeklyItem>;
+}) {
   const isMobile = useIsMobile();
-  // Start with day names + blank dates (identical on server & client → no
-  // hydration mismatch); replaced on mount by the last saved value (or next week).
-  const [days, setDays] = useState<AvailDay[]>(() => HEB_DAYS.map(day => ({ day, date: "", available: false, from: "" })));
-  const [lastUpdate, setLastUpdate] = useState<{ sentBy: "owner" | "shalev"; sentAt: string } | null>(null);
   const [editIdx, setEditIdx] = useState<number | null>(null); // day being edited in the modal
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "warn" | "err"; text: string } | null>(null);
-
-  // Load the last saved availability (GET — NEVER sends push). Fall back to a
-  // blank next week when nothing was ever sent.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch("/api/red-artists/availability", { cache: "no-store" });
-        const d = await r.json().catch(() => ({}));
-        if (!alive) return;
-        const av = d?.availability;
-        if (r.ok && d?.ok && av && Array.isArray(av.days) && av.days.length === 7) {
-          setDays(av.days as AvailDay[]);
-          setLastUpdate({ sentBy: av.sentBy, sentAt: av.sentAt });
-          return;
-        }
-      } catch { /* fall through to a blank week */ }
-      if (alive) setDays(computeNextWeek());
-    })();
-    return () => { alive = false; };
-  }, []);
 
   const saveDay = (i: number, patch: { available: boolean; from: string }) => {
     setDays(ds => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
@@ -2314,24 +2389,72 @@ function AvailabilityBody() {
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)", gap: isMobile ? 10 : 12 }}>
         {days.map((d, i) => {
           const c = d.available ? GREEN : "#F87171";
+          // A real session/show already booked this date takes over as the
+          // primary info on the card (req. 5/6) — the availability badge steps
+          // aside instead of showing alongside it.
+          const iso = d.date ? availDayToIso(d.date) : "";
+          const booked = iso ? weeklyByIso.get(iso) : undefined;
           return (
-            <button key={d.day} onClick={() => setEditIdx(i)} style={{
-              ...panel, padding: isMobile ? "16px 10px" : "18px 12px", cursor: "pointer", fontFamily: "inherit",
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center",
-              border: `1px solid ${d.available ? "rgba(52,211,153,0.28)" : BDR2}`, transition: "border-color .14s",
-            }}>
+            // Plain card is its own click target (opens the availability editor);
+            // the "קבע סשן" button below is a real nested <button>, so this
+            // wrapper is a div/role=button rather than a <button> (no nested
+            // interactive elements).
+            <div
+              key={d.day}
+              role="button"
+              tabIndex={0}
+              onClick={() => setEditIdx(i)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditIdx(i); } }}
+              style={{
+                ...panel, padding: isMobile ? "16px 10px" : "18px 12px", cursor: "pointer", fontFamily: "inherit",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center",
+                border: `1px solid ${d.available ? "rgba(52,211,153,0.28)" : BDR2}`, transition: "border-color .14s",
+              }}
+            >
               <div>
                 <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 800, color: TEXT }}>{d.day}</div>
                 <div style={{ fontSize: 12, color: MUTED, marginTop: 3, direction: "ltr" }}>{d.date}</div>
               </div>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: c, background: `${c}1A`, border: `1px solid ${c}55`, borderRadius: 999, padding: "4px 12px" }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: c, boxShadow: `0 0 7px ${c}` }} />
-                {d.available ? "פנוי" : "לא פנוי"}
-              </span>
-              <div style={{ fontSize: 12, color: TEXT2, minHeight: 16 }}>
-                {d.available ? (d.from ? `פנוי מ-${d.from}` : "פנוי כל היום") : ""}
-              </div>
-            </button>
+              {booked ? (
+                <>
+                  <SchedTypePill type={booked.type} />
+                  <div style={{ fontSize: 12, color: TEXT2, minHeight: 16, direction: "ltr" }}>
+                    {booked.startTime ? (booked.endTime ? `${booked.startTime}–${booked.endTime}` : booked.startTime) : ""}
+                  </div>
+                  {booked.title && (
+                    <div style={{ fontSize: 11.5, color: TEXT2, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                      {booked.title}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: c, background: `${c}1A`, border: `1px solid ${c}55`, borderRadius: 999, padding: "4px 12px" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: c, boxShadow: `0 0 7px ${c}` }} />
+                    {d.available ? "פנוי" : "לא פנוי"}
+                  </span>
+                  <div style={{ fontSize: 12, color: TEXT2, minHeight: 16 }}>
+                    {d.available ? (d.from ? `פנוי מ-${d.from}` : "פנוי כל היום") : ""}
+                  </div>
+                </>
+              )}
+              {/* Owner-only — shown on every day, available or not. Never shown to Shalev. */}
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onBookSession(d); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
+                    marginTop: 2, padding: isMobile ? "9px 6px" : "8px 8px", borderRadius: 9, border: "none",
+                    color: "#fff", fontSize: isMobile ? 12 : 11.5, fontWeight: 800, fontFamily: "inherit",
+                    cursor: "pointer", width: "100%", boxSizing: "border-box",
+                    background: "linear-gradient(180deg, #E5322F, #C01C1C)",
+                  }}
+                >
+                  📅 קבע סשן
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

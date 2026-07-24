@@ -53,6 +53,10 @@ interface Props {
   onClose:     () => void;
   onSessionCreated?: () => void;
   editSession?: EditSession;        // when set → modal is in edit mode
+  /** Pre-fill the manual date (YYYY-MM-DD) — e.g. a day picked from the Shalev portal. */
+  initialDate?: string;
+  /** Pre-fill the manual start time ("HH:MM"), only applied on a valid working day. */
+  initialTime?: string;
 }
 
 /** Parse "HH:MM" → {h,m}, or null. */
@@ -78,7 +82,7 @@ function isoToIsrael(iso: string): { date: string; time: string } {
   return { date, time };
 }
 
-export default function ScheduleModal({ action, projectId, projectName, artist, onClose, onSessionCreated, editSession }: Props) {
+export default function ScheduleModal({ action, projectId, projectName, artist, onClose, onSessionCreated, editSession, initialDate, initialTime }: Props) {
   const isEdit = !!editSession;
   // Edit mode prefill: duration from the session's start/end, and a manual time.
   const editDurMin = editSession?.start_time && editSession?.end_time
@@ -86,8 +90,15 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
     : action.defaultMinutes;
   const editStartHM = parseHM(editSession?.start_time);
 
+  // A caller-supplied date (e.g. a day picked from the Shalev portal) is only
+  // trusted for a start-time prefill when it's an actual working day — otherwise
+  // the day gets set but the time is left for the user to pick after the
+  // existing "outside working days" override prompt (ManualPicker), matching
+  // the normal manual-date-change flow (which always clears manualHM).
+  const initialDateOk = initialDate ? isWorkingDay(new Date(initialDate + "T12:00:00Z")) : false;
+
   const [minutes,       setMinutes]       = useState(isEdit ? editDurMin : action.defaultMinutes);
-  const [tab,           setTab]           = useState<Tab>(isEdit ? "manual" : "recommended");
+  const [tab,           setTab]           = useState<Tab>(isEdit || initialDate ? "manual" : "recommended");
   const [phase,         setPhase]         = useState<Phase>("idle");
   const [sendToArtist,   setSendToArtist]   = useState(false);
   const [artistEmail,    setArtistEmail]    = useState("");
@@ -176,8 +187,10 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
   // Manual picker state — always Israel calendar date, never UTC
   const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
-  const [manualDate, setManualDate] = useState(isEdit ? (editSession?.date || todayStr) : todayStr);
-  const [manualHM,   setManualHM]   = useState<{ h: number; m: number } | null>(isEdit ? editStartHM : null);
+  const [manualDate, setManualDate] = useState(isEdit ? (editSession?.date || todayStr) : (initialDate || todayStr));
+  const [manualHM,   setManualHM]   = useState<{ h: number; m: number } | null>(
+    isEdit ? editStartHM : (initialDateOk && initialTime ? parseHM(initialTime) : null)
+  );
 
   // Track whether the user has already triggered a slot search at least once
   const [hasSearched, setHasSearched] = useState(false);
@@ -400,6 +413,9 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         const sessData = await sessRes.json().catch(() => ({}));
         savedSessionId = sessData.session?.id ?? null;
         onSessionCreated?.();
+        // Same refresh signal pattern as rb-finance-updated — lets any open
+        // page (e.g. the Shalev portal's schedule tab) reload its own data.
+        document.dispatchEvent(new CustomEvent("rb-session-created"));
 
         // ── Save pending payment if one was staged (project-scoped only) ──
         if (projectId && pendingPayment) {

@@ -41,7 +41,7 @@ export default function AppShell({ children, topRight }: { children: React.React
   const [isMobile, setIsMobile] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [quickActions, setQuickActions] = useState<{ open: boolean; projectId: string | null }>({ open: false, projectId: null });
+  const [quickActions, setQuickActions] = useState<{ open: boolean; projectId: string | null; clientName: string | null; date: string | null; time: string | null }>({ open: false, projectId: null, clientName: null, date: null, time: null });
   const contentRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
@@ -99,11 +99,18 @@ export default function AppShell({ children, topRight }: { children: React.React
     return () => window.removeEventListener("rb:project-selected", handler);
   }, []);
 
-  // Open the global quick-actions modal (e.g. from the "פעולות מהירות" button).
+  // Open the global quick-actions modal (e.g. from the "פעולות מהירות" button, or
+  // pre-filled from the Shalev portal's per-day "קבע סשן" button).
   useEffect(() => {
     const handler = (e: Event) => {
-      const projectId = (e as CustomEvent<{ projectId?: string } | undefined>).detail?.projectId ?? null;
-      setQuickActions({ open: true, projectId });
+      const detail = (e as CustomEvent<{ projectId?: string; clientName?: string; date?: string; time?: string } | undefined>).detail;
+      setQuickActions({
+        open: true,
+        projectId: detail?.projectId ?? null,
+        clientName: detail?.clientName ?? null,
+        date: detail?.date ?? null,
+        time: detail?.time ?? null,
+      });
     };
     window.addEventListener("rb:quick-actions", handler);
     return () => window.removeEventListener("rb:quick-actions", handler);
@@ -343,7 +350,10 @@ export default function AppShell({ children, topRight }: { children: React.React
       {quickActions.open && (
         <QuickActionsModal
           initialProjectId={quickActions.projectId}
-          onClose={() => setQuickActions({ open: false, projectId: null })}
+          initialClientName={quickActions.clientName}
+          initialDate={quickActions.date}
+          initialTime={quickActions.time}
+          onClose={() => setQuickActions({ open: false, projectId: null, clientName: null, date: null, time: null })}
         />
       )}
 

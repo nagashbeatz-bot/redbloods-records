@@ -31,6 +31,12 @@ const CATEGORIES: Category[] = [
 interface Props {
   /** Optional project to pre-select (e.g. when opened from within a project). */
   initialProjectId?: string | null;
+  /** Pre-select a client + jump straight to the session picker (e.g. the Shalev portal's per-day "קבע סשן" button). */
+  initialClientName?: string | null;
+  /** Pre-fill the session date (YYYY-MM-DD), forwarded to ScheduleModal. */
+  initialDate?: string | null;
+  /** Pre-fill the session start time (HH:MM), forwarded to ScheduleModal. */
+  initialTime?: string | null;
   onClose: () => void;
 }
 
@@ -47,9 +53,11 @@ type MoneyAssoc = "project" | "general";
 const INCOME_CATEGORIES = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תשלום מלא", "תוספת / חריגה", "אחר"];
 const MONEY_PAYMENT_METHODS = ["ביט", "העברה בנקאית", "מזומן", "PayPal", "Payoneer", "אשראי", "אחר"];
 
-export default function QuickActionsModal({ initialProjectId, onClose }: Props) {
+export default function QuickActionsModal({ initialProjectId, initialClientName, initialDate, initialTime, onClose }: Props) {
   const { projects } = useProjects();
-  const [phase, setPhase] = useState<Phase>("grid");
+  // A pre-selected client (e.g. from the Shalev portal) jumps straight to the
+  // session picker instead of the generic "מה תרצה לעשות?" grid.
+  const [phase, setPhase] = useState<Phase>(initialClientName ? "picker" : "grid");
 
   // Placeholder feedback — id of the inactive card the user just tapped.
   const [placeholderId, setPlaceholderId] = useState<string | null>(null);
@@ -84,7 +92,7 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
 
   // ── Session-picker state ────────────────────────────────────────────────────
   const [clients, setClients]       = useState<{ name: string }[]>([]);
-  const [clientName, setClientName] = useState<string>("");
+  const [clientName, setClientName] = useState<string>(initialClientName ?? "");
   const [projectId, setProjectId]   = useState<string>(initialProjectId ?? "");
   const [sessionTitle, setSessionTitle] = useState<string>(""); // manual name for an independent (project-less) session
   const [action, setAction]         = useState<ActionDef>(ACTIONS[0]);
@@ -258,6 +266,8 @@ export default function QuickActionsModal({ initialProjectId, onClose }: Props) 
         projectId={selectedProject?.id ?? ""}
         projectName={selectedProject?.name ?? sessionTitle.trim()}
         artist={selectedProject?.artist ?? clientName}
+        initialDate={initialDate ?? undefined}
+        initialTime={initialTime ?? undefined}
         onClose={onClose}
         onSessionCreated={onClose}
       />
