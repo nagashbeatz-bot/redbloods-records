@@ -2434,7 +2434,12 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                                       row/card; both owner and Steven may use it (Steven's
                                       ONLY write ability on a comment). Never deletes. */}
                                   <button onClick={() => toggleCommentStatus(c)} disabled={statusUpdating.has(c.id)}
-                                    title={isResolved ? (rtl ? "החזר לפתוחה" : "Mark as open") : (rtl ? "סמן כבוצע" : "Mark as done")}
+                                    title={isSteven
+                                      ? (isResolved ? "Mark as open" : "Mark as done")
+                                      : (isResolved ? "סמן כפתוחה" : "סמן כבוצע")}
+                                    aria-label={isSteven
+                                      ? (isResolved ? "Mark as open" : "Mark as done")
+                                      : (isResolved ? "סמן כפתוחה" : "סמן כבוצע")}
                                     style={{
                                       display: "inline-flex", alignItems: "center", fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap", fontFamily: "inherit",
                                       padding: isResolved ? "3px 10px" : "4px 8px", borderRadius: 7,
