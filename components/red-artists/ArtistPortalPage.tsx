@@ -224,6 +224,19 @@ function fmtShowDate(d: string | null): string {
   const [y, m, day] = d.split("-");
   return (y && m && day) ? `${day}.${m}.${y}` : d;
 }
+// Hebrew day-of-week name for a "YYYY-MM-DD" date — parsed as plain numbers
+// via Date.UTC (no local-timezone risk) purely to derive the weekday index.
+function dayNameOf(d: string | null): string {
+  if (!d) return "";
+  const [y, m, day] = d.split("-").map(Number);
+  if (!y || !m || !day) return "";
+  return HEB_DAYS[new Date(Date.UTC(y, m - 1, day)).getUTCDay()] ?? "";
+}
+// "יום ראשון, 26.07.2026" — day name + full date.
+function fmtFullDayDate(d: string | null): string {
+  const day = dayNameOf(d);
+  return day ? `יום ${day}, ${fmtShowDate(d)}` : fmtShowDate(d);
+}
 function fmtMoney(n: number, curr = "₪"): string {
   return `${curr}${Math.round(n).toLocaleString("en-US")}`;
 }
@@ -3404,7 +3417,7 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div className="rap-acts">
-          {/* סשן קרוב — the artist's next real, still-UPCOMING session (weekly,
+          {/* הסשן הקרוב — the artist's next real, still-UPCOMING session (weekly,
               excluding shows). `weekly` now spans the whole Sun–Sat week (incl.
               days already past within it, so the day-cubes can show them too) —
               so this must explicitly exclude past dates, or an already-passed
@@ -3412,11 +3425,7 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
               Type only ("סשן"/"פגישה"/...) — no project name. */}
           {(() => {
             const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה" && (w.date ?? "") >= todayIsraelIso());
-            return sess ? (
-              <ActionCard icon="📅" title="סשן קרוב" body={sess.type} sub={[fmtShowDate(sess.date), sess.startTime].filter(Boolean).join(" · ")} />
-            ) : (
-              <ActionCard icon="📅" title="סשן קרוב" body={summaryState === "loading" ? "טוען…" : "אין סשן קרוב כרגע"} />
-            );
+            return <NextSessionCard session={sess ?? null} loading={summaryState === "loading"} />;
           })()}
           {/* הפרויקט הבא לעבודה — OWNER-chosen (manifest), NEVER derived from nextRelease. */}
           <NextWorkCard
@@ -4230,6 +4239,41 @@ function NextWorkModal({ sketches, current, onClose, onSaved }: {
         </>
       )}
     </SketchModalShell>
+  );
+}
+
+// "הסשן הקרוב" — a dedicated, more prominent card (replaces the generic
+// ActionCard for this one spot): type is the big/primary text, day+date is
+// medium underneath, and the hour RANGE (start–end, never just start) is its
+// own bold/legible line — no project name. Same dark/red/panel look as the
+// rest of the portal; taller than the old compact ActionCard by design.
+function NextSessionCard({ session, loading }: {
+  session: { type: string; date: string | null; startTime: string | null; endTime?: string | null } | null;
+  loading: boolean;
+}) {
+  const hours = session?.startTime
+    ? (session.endTime ? `${session.startTime}–${session.endTime}` : session.startTime)
+    : null;
+  return (
+    <div style={{ ...panel, padding: "22px 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 50, height: 50, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>📅</div>
+        <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em" }}>הסשן הקרוב</div>
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 14, color: MUTED }}>טוען…</div>
+      ) : !session ? (
+        <div style={{ fontSize: 14, color: MUTED }}>אין סשן קרוב כרגע</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>{session.type}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT2 }}>{fmtFullDayDate(session.date)}</div>
+          {hours && (
+            <div style={{ fontSize: 21, fontWeight: 800, color: "#FF6B6B", direction: "ltr", textAlign: "right" }}>{hours}</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
