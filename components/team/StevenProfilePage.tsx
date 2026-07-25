@@ -1553,12 +1553,15 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [uploading, setUploading] = useState(false);
   const [drag, setDrag]           = useState(false);
   // Per-file role picker shown after files are chosen (before upload).
-  const [rolePicker, setRolePicker] = useState<{ mode: "new" | "existing"; items: { file: File; role: FileRole; status?: RpStatus; pct?: number; error?: string }[]; label?: string; phase?: "select" | "summary" } | null>(null);
+  // mode: "final" = Upload Final Files (→ final_files store) · "newVersion" = create a
+  // brand-new mix version (auto-named Mix N) · "existing" = add a file to selectedGroup.
+  const [rolePicker, setRolePicker] = useState<{ mode: "final" | "newVersion" | "existing"; items: { file: File; role: FileRole; status?: RpStatus; pct?: number; error?: string }[]; label?: string; phase?: "select" | "summary" } | null>(null);
   const moreFilesInputRef = useRef<HTMLInputElement | null>(null); // "Add more files" (append to the open batch)
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
   const [playReq, setPlayReq]     = useState<{ id: string; nonce: number } | null>(null); // explicit play request
-  const newVersionInputRef = useRef<HTMLInputElement | null>(null);
+  const newMixInputRef = useRef<HTMLInputElement | null>(null);     // "Upload new version" (mode "newVersion")
+  const newVersionInputRef = useRef<HTMLInputElement | null>(null); // "Upload Final Files" (mode "final")
   const addFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Timestamp comments for the selected version ──────────────────────────────
@@ -1755,8 +1758,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       ? { file: f, role: detectRole(f.name), status: "error", error: rtl ? "גדול מ-1GB — לא ניתן להעלות" : "Over 1GB — can't upload" }
       : { file: f, role: detectRole(f.name) };
 
-  function openRolePicker(mode: "new" | "existing", list: FileList | null) {
+  function openRolePicker(mode: "final" | "newVersion" | "existing", list: FileList | null) {
     const files = list ? Array.from(list) : [];
+    if (newMixInputRef.current) newMixInputRef.current.value = "";
     if (newVersionInputRef.current) newVersionInputRef.current.value = "";
     if (addFileInputRef.current) addFileInputRef.current.value = "";
     if (files.length === 0 || uploading) return;
@@ -1908,17 +1912,20 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   }
 
   // Run the whole batch sequentially, CONTINUING on a per-file failure (done files are
-  // skipped on retry). The GREEN "Upload Final Files" flow (mode "new") goes to the
+  // skipped on retry). The GREEN "Upload Final Files" flow (mode "final") goes to the
   // SEPARATE final-files store (/Final Files/ — never mix_versions, never the player /
-  // versions list / project-files / version counter). "Add to this version" (mode
-  // "existing") stays a real mix-version upload.
+  // versions list / project-files / version counter). "Upload new version" (mode
+  // "newVersion") and "Add to this version" (mode "existing") both stay real mix-version
+  // uploads — the only difference is the label: undefined (backend auto-names "Mix N")
+  // for a new version vs. the selected group's label to append to it.
   async function runFinalUpload() {
     const picker = rolePicker;
     if (!picker || uploading) return;                       // no double-submit
     setUploading(true);
-    const isFinal = picker.mode === "new";                  // green button → final files
-    let label = isFinal ? undefined : (picker.label ?? selectedGroup?.label);
-    if (!isFinal && !label) { setUploading(false); return; }
+    const isFinal = picker.mode === "final";                // green button → final files
+    const isNewVersion = picker.mode === "newVersion";       // dedicated "new version" button
+    let label = (isFinal || isNewVersion) ? undefined : (picker.label ?? selectedGroup?.label);
+    if (!isFinal && !isNewVersion && !label) { setUploading(false); return; }
 
     const setItem = (i: number, patch: Partial<{ status: RpStatus; pct: number; error: string }>) =>
       setRolePicker(p => p ? { ...p, items: p.items.map((x, idx) => idx === i ? { ...x, ...patch } : x) } : p);
@@ -1943,7 +1950,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           ? (rtl ? "כבר קיים קובץ בשם הזה בתיקיית הקבצים הסופיים" : "A file with this name already exists in the final files folder.")
           : (rtl ? "ההעלאה נכשלה" : "Upload failed") });
       } else {
-        // Mix-version upload (add to the selected version).
+        // Mix-version upload — creates a new version (label undefined → backend
+        // auto-names "Mix N") or adds to the selected one (label already set).
         const v = it.file.size > VER_CHUNK_LIMIT
           ? await uploadChunkedVersion(it.file, { label, addToExisting: !!label, role: it.role }, onPct)
           : await uploadSingleVersionXhr(it.file, { label, addToExisting: !!label, role: it.role }, onPct);
@@ -2156,15 +2164,35 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                 )}
               </div>
 
-              {/* Hidden inputs (multiple) — used by the upload area AND the center
+              {/* Hidden inputs (multiple) — used by the upload areas AND the center
                   "add file to this version" button. Kept mounted for both roles. */}
-              <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("new", e.target.files)} />
+              <input ref={newMixInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("newVersion", e.target.files)} />
+              <input ref={newVersionInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("final", e.target.files)} />
               <input ref={addFileInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => openRolePicker("existing", e.target.files)} />
               <input ref={moreFilesInputRef} type="file" multiple accept=".wav,.mp3,.m4a,.aiff,.aif,.flac,.ogg,.zip,.rar,.7z" style={{ display: "none" }} onChange={e => appendFiles(e.target.files)} />
 
-              {/* Prominent GREEN "Upload Final Files" — SAME area + multi-upload/chunked
-                  flow for BOTH Owner and Steven (each posts to its own role-scoped route
-                  via versionsUrl). No amber single-shot branch remains. */}
+              {/* "Upload new version" — creates a brand-new mix version (backend
+                  auto-names it "Mix N"). Real mix-version upload via versionsUrl,
+                  same as "Add to this version"; never touches final_files. Shown
+                  even with no selectedGroup — distinct from Final Files below. */}
+              <div style={{ ...subCard, border: "1px solid rgba(0,98,238,0.32)" }}>
+                <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon /> {t.rpSubNew}</span></div>
+                <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                  <button
+                    type="button"
+                    onClick={() => { if (!uploading) newMixInputRef.current?.click(); }}
+                    disabled={uploading}
+                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12, border: "none", cursor: uploading ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff", background: uploading ? MUTED : "linear-gradient(180deg, #0062EE, #0047B8)", boxShadow: uploading ? "none" : "0 6px 18px rgba(0,98,238,0.30)", opacity: uploading ? 0.7 : 1, transition: "all .15s" }}
+                  >
+                    {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadNewVersionBtn}</>}
+                  </button>
+                  <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.55, textAlign: "center" }}>{t.vFileHint}</div>
+                </div>
+              </div>
+
+              {/* "Upload Final Files" — SEPARATE store/flow, isolated from mix_versions.
+                  Same multi-upload/chunked mechanics for BOTH Owner and Steven (each
+                  posts to its own role-scoped route via finalFilesUrl). */}
               <div style={{ ...subCard, border: "1px solid rgba(34,197,94,0.32)" }}>
                 <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon /> {t.uploadFiles}</span></div>
                 <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -2174,7 +2202,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                     disabled={uploading}
                     onDragOver={e => { e.preventDefault(); if (!uploading && !drag) setDrag(true); }}
                     onDragLeave={e => { e.preventDefault(); setDrag(false); }}
-                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("new", e.dataTransfer.files); }}
+                    onDrop={e => { e.preventDefault(); setDrag(false); if (!uploading) openRolePicker("final", e.dataTransfer.files); }}
                     style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12, border: drag ? "2px solid #22C55E" : "none", cursor: uploading ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff", background: uploading ? MUTED : "linear-gradient(180deg, #22C55E, #16A34A)", boxShadow: uploading ? "none" : "0 6px 18px rgba(34,197,94,0.30)", opacity: uploading ? 0.7 : 1, transition: "all .15s" }}
                   >
                     {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadFinalBtn}</>}
@@ -2595,13 +2623,19 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           const uploadableCount = items.filter(x => x.status !== "done" && x.file.size <= VER_MAX_BYTES).length;
           const canRemove = !uploading && phase !== "summary";
           const canUpload = !uploading && uploadableCount > 0;
+          // Modal title/hint follow the mode that opened it — never hardcoded to
+          // "Upload Final Files" regardless of which of the three buttons was used.
+          const modeTitle = rolePicker.mode === "final" ? t.uploadFinalBtn
+            : rolePicker.mode === "newVersion" ? t.uploadNewVersionBtn
+            : t.addToVersionBtn;
+          const modeHint = rolePicker.mode === "final" ? t.uploadFinalHint : t.vFileHint;
           return (
           <div onClick={() => { if (!uploading) setRolePicker(null); }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}"}</style>
             <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid rgba(34,197,94,0.35)`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
               <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${BDR}` }}>
-                <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon size={16} /> {t.uploadFinalBtn}</div>
-                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{t.uploadFinalHint}</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon size={16} /> {modeTitle}</div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{modeHint}</div>
               </div>
 
               {/* Summary banner (after an upload run — the modal never auto-closes) */}
