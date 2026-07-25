@@ -2628,7 +2628,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           const modeTitle = rolePicker.mode === "final" ? t.uploadFinalBtn
             : rolePicker.mode === "newVersion" ? t.uploadNewVersionBtn
             : t.addToVersionBtn;
-          const modeHint = rolePicker.mode === "final" ? t.uploadFinalHint : t.vFileHint;
+          // rpHint explains the role picker (mix/acapella/instrumental/stems) now that
+          // it's back for the two mix-version modes; Final Files keeps its own hint.
+          const modeHint = rolePicker.mode === "final" ? t.uploadFinalHint : t.rpHint;
           // Action-button color follows mode — never hardcoded green regardless of which
           // flow opened the modal: final=green, newVersion=blue (matches its launcher
           // card), existing=BRAND (matches the "Add to this version" chip elsewhere).
@@ -2684,6 +2686,22 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                           style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: `1px solid ${BDR2}`, background: "transparent", color: TEXT2, cursor: "pointer", fontSize: 13, lineHeight: 1, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✕</button>
                       )}
                     </div>
+                    {/* Manual per-file role picker — restored from pre-7837f4c (`177aa44`/`02823c9`).
+                        Originally shown for EVERY item regardless of mode (new-version AND
+                        add-to-existing both had it); Final Files never had one (files keep their
+                        original name/no role). Default = detectRole (makeItem), user can override
+                        before upload; locked once uploading/done, exactly like the original. */}
+                    {rolePicker.mode !== "final" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, paddingInlineStart: 36 }}>
+                        <select
+                          value={it.role}
+                          disabled={st === "uploading" || st === "done"}
+                          onChange={e => { const role = e.target.value as FileRole; setRolePicker(p => p ? { ...p, items: p.items.map((x, i) => i === idx ? { ...x, role } : x) } : p); }}
+                          style={{ fontSize: 12, fontWeight: 700, padding: "6px 8px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${ROLE_COLOR[it.role]}66`, fontFamily: "inherit", outline: "none", cursor: (st === "uploading" || st === "done") ? "default" : "pointer", opacity: (st === "uploading" || st === "done") ? 0.6 : 1 }}>
+                          {ROLE_ORDER.map(r => <option key={r} value={r}>{roleLabel(r, lang)}</option>)}
+                        </select>
+                      </div>
+                    )}
                     {(st === "uploading" || st === "error") && (
                       <div style={{ height: 4, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
                         <div style={{ height: "100%", borderRadius: 4, background: st === "error" ? RED : "linear-gradient(90deg, #22C55E, #86EFAC)", width: `${st === "error" ? 100 : (it.pct ?? 0)}%`, transition: "width 0.2s ease" }} />
