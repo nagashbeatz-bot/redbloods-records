@@ -90,16 +90,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const fileSize  = uploaded.size ?? (offset + buffer.length);
 
       const version = await finalizeMixVersion({ workId, target, finalPath, fileSize, durationSeconds, token });
-
-      // Best-effort owner push (same as the single-shot route). NEVER fail the upload.
-      try {
-        const { queueStevenUploadNotice } = await import("@/lib/steven-notify");
-        await queueStevenUploadNotice(workId, work.projectName, {
-          name:  version.fileName,
-          role:  roleParam || null,
-          label: version.label,
-        });
-      } catch { /* best-effort */ }
+      // Owner push (coalesced ~75s) now fires from the shared finalizeMixVersion()
+      // choke point in lib/mix-version-upload.ts — covers this route AND the owner
+      // route AND both single-shot variants, exactly once per file. Do not re-add it here.
 
       return NextResponse.json({ ok: true, version: sanitizeVersionForSteven(version) });
     }

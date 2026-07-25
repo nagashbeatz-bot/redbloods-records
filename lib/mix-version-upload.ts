@@ -17,6 +17,7 @@
 import "server-only";
 import { mixVersionsFolder, sanitizeFolder } from "@/lib/project-paths";
 import { createMixVersion } from "@/lib/mix-versions-store";
+import { STEVEN_ENGINEER } from "@/lib/steven-scope";
 import type { MixVersion } from "@/lib/types";
 
 export const AUDIO_ZIP = /\.(wav|mp3|m4a|aiff?|flac|ogg|zip|rar|7z)$/i;
@@ -55,6 +56,8 @@ export type UploadResult =
 export type VersionTarget = {
   projectId: string | null;
   engineerName: string | null;
+  workName: string;   // display name for notifications — project name, else work_title (same fallback as SoundEngineerWork.projectName)
+  role: string | null; // raw client-submitted role param (unresolved), for notifications only
   effectiveLabel: string;
   cleanFileName: string;
   dropboxPath: string;
@@ -82,12 +85,13 @@ export async function resolveVersionTarget(
   const { supabase } = await import("@/lib/supabase");
   const { data: work } = await supabase
     .from("sound_engineer_work")
-    .select("id, project_id, engineer_name")
+    .select("id, project_id, engineer_name, work_title")
     .eq("id", workId)
     .maybeSingle();
   if (!work) return { ok: false, status: 404, error: "עבודה לא נמצאה" };
 
   const projectId = (work.project_id as string | null) ?? null;
+  const workTitle = (work.work_title as string | null) ?? null;
   let artist = "", projectName = "";
   let dropboxFolder: string | null = null; // frozen project base folder (rename-proof)
   if (projectId) {
@@ -97,6 +101,8 @@ export async function resolveVersionTarget(
     projectName = project?.name ?? "";
     dropboxFolder = project?.dropboxFolder ?? null;
   }
+  // Same fallback formula as SoundEngineerWork.projectName (lib/sound-engineer-store.ts).
+  const workName = projectId ? (projectName || "פרויקט לא ידוע") : (workTitle || "עבודה עצמאית");
 
   const dot = fileName.lastIndexOf(".");
   const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : "";
@@ -137,6 +143,8 @@ export async function resolveVersionTarget(
     target: {
       projectId,
       engineerName: (work.engineer_name as string | null) ?? null,
+      workName,
+      role: roleParam || null,
       effectiveLabel,
       cleanFileName,
       dropboxPath,
@@ -160,7 +168,7 @@ export async function finalizeMixVersion(args: {
 }): Promise<MixVersion> {
   const { workId, target, finalPath, fileSize, durationSeconds, token } = args;
   try {
-    return await createMixVersion({
+    const version = await createMixVersion({
       id:                  crypto.randomUUID(),
       soundEngineerWorkId: workId,
       projectId:           target.projectId,
@@ -172,6 +180,26 @@ export async function finalizeMixVersion(args: {
       uploadedBy:          target.engineerName,
       durationSeconds,
     });
+
+    // The row is committed — anything a file/version of Steven's work counts as a
+    // "Steven upload" for notification purposes, regardless of whether Owner or
+    // Steven actually clicked upload (business rule). Single choke point for all
+    // 4 call sites (owner/steven × single-shot/chunked) → fires exactly once per
+    // file, no route-level duplication. Best-effort: never fails the upload.
+    if (target.engineerName === STEVEN_ENGINEER) {
+      try {
+        const { queueStevenUploadNotice } = await import("@/lib/steven-notify");
+        await queueStevenUploadNotice(workId, target.workName, {
+          name:  version.fileName,
+          role:  target.role,
+          label: version.label,
+        });
+      } catch (notifyErr) {
+        console.error("[mix-version-upload] notify failed:", notifyErr);
+      }
+    }
+
+    return version;
   } catch (dbErr) {
     // Compensating: DB insert failed after upload → delete the orphaned file.
     try {

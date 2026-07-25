@@ -46,16 +46,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       file: file as File, label, addToExisting, roleParam, durationSeconds,
     });
     if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
-
-    // Best-effort owner push (coalesced ~75s into one summary). NEVER fail the upload.
-    try {
-      const { queueStevenUploadNotice } = await import("@/lib/steven-notify");
-      await queueStevenUploadNotice(workId, work.projectName, {
-        name:  result.version.fileName,
-        role:  roleParam || null,
-        label: result.version.label,
-      });
-    } catch { /* best-effort */ }
+    // Owner push (coalesced ~75s) now fires from the shared finalizeMixVersion()
+    // choke point in lib/mix-version-upload.ts — covers this route AND the owner
+    // route AND both /chunk variants, exactly once per file. Do not re-add it here.
 
     return NextResponse.json({ ok: true, version: sanitizeVersionForSteven(result.version) });
   } catch (err) {
