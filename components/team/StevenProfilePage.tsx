@@ -1956,7 +1956,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           ? await uploadChunkedVersion(it.file, { label, addToExisting: !!label, role: it.role }, onPct)
           : await uploadSingleVersionXhr(it.file, { label, addToExisting: !!label, role: it.role }, onPct);
         if (v) {
-          if (!label) label = v.label;
+          if (!label) { label = v.label; if (isNewVersion) setSel(v.id); } // first success = the version (pre-de4ab8f behavior)
           setItem(i, { status: "done", pct: 100 });
           setVersions(prev => [v, ...(prev ?? [])]);
         } else setItem(i, { status: "error", error: rtl ? "ההעלאה נכשלה" : "Upload failed" });
@@ -2629,10 +2629,18 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
             : rolePicker.mode === "newVersion" ? t.uploadNewVersionBtn
             : t.addToVersionBtn;
           const modeHint = rolePicker.mode === "final" ? t.uploadFinalHint : t.vFileHint;
+          // Action-button color follows mode — never hardcoded green regardless of which
+          // flow opened the modal: final=green, newVersion=blue (matches its launcher
+          // card), existing=BRAND (matches the "Add to this version" chip elsewhere).
+          const modeColor = rolePicker.mode === "final"
+            ? { border: "rgba(34,197,94,0.35)", g1: "#22C55E", g2: "#16A34A", shadow: "rgba(34,197,94,0.30)" }
+            : rolePicker.mode === "newVersion"
+            ? { border: "rgba(0,98,238,0.35)", g1: "#0062EE", g2: "#0047B8", shadow: "rgba(0,98,238,0.30)" }
+            : { border: `${BRAND}59`, g1: BRAND, g2: "#B91C1C", shadow: `${BRAND}4D` };
           return (
           <div onClick={() => { if (!uploading) setRolePicker(null); }} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <style>{"@keyframes wm-spin{to{transform:rotate(360deg)}}"}</style>
-            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid rgba(34,197,94,0.35)`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${modeColor.border}`, borderRadius: 16, width: "min(520px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
               <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${BDR}` }}>
                 <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon size={16} /> {modeTitle}</div>
                 <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{modeHint}</div>
@@ -2693,14 +2701,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   <button disabled style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: MUTED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "default", fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}><WMSpinner size={12} color="#fff" /> {t.vUploading}</button>
                 ) : phase === "summary" ? (
                   <>
-                    {failCount > 0 && <button onClick={runFinalUpload} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: "linear-gradient(180deg, #22C55E, #16A34A)", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>↻ {t.rpRetry}</button>}
+                    {failCount > 0 && <button onClick={runFinalUpload} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: `linear-gradient(180deg, ${modeColor.g1}, ${modeColor.g2})`, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>↻ {t.rpRetry}</button>}
                     <button onClick={() => setRolePicker(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.rpClose}</button>
                   </>
                 ) : (
                   <>
                     <button onClick={() => moreFilesInputRef.current?.click()} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>+ {t.rpAddMore}</button>
                     <button onClick={() => setRolePicker(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.cancel}</button>
-                    <button onClick={runFinalUpload} disabled={!canUpload} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: canUpload ? "linear-gradient(180deg, #22C55E, #16A34A)" : MUTED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: canUpload ? "pointer" : "default", opacity: canUpload ? 1 : 0.6, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>⬆ {t.rpUpload}</button>
+                    <button onClick={runFinalUpload} disabled={!canUpload} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: canUpload ? `linear-gradient(180deg, ${modeColor.g1}, ${modeColor.g2})` : MUTED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: canUpload ? "pointer" : "default", opacity: canUpload ? 1 : 0.6, fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7 }}>⬆ {t.rpUpload}</button>
                   </>
                 )}
               </div>
