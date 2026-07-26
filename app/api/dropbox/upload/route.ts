@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { projectBaseFolder, sanitizeFolder } from "@/lib/project-paths";
+import { commitFileToProject } from "@/lib/project-file-commit";
 
 // Allow up to 5 minutes for large audio file uploads (WAV/FLAC can be 200MB+)
 export const maxDuration = 300;
@@ -12,32 +13,6 @@ function dropboxArg(obj: Record<string, unknown>): string {
   return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
     `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
   );
-}
-
-async function createDropboxShareLink(token: string, path: string): Promise<string> {
-  const res = await fetch(
-    "https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ path, settings: { requested_visibility: "public" } }),
-    }
-  );
-
-  if (res.ok) {
-    const data = (await res.json()) as { url: string };
-    return data.url;
-  }
-
-  const err = (await res.json()) as Record<string, unknown>;
-  // If link already exists, Dropbox returns it inside the error
-  const errObj = err.error as Record<string, unknown> | undefined;
-  if (errObj?.[".tag"] === "shared_link_already_exists") {
-    const inner = errObj.shared_link_already_exists as Record<string, unknown> | undefined;
-    const url = (inner?.metadata as Record<string, string> | undefined)?.url;
-    if (url) return url;
-  }
-  throw new Error((err.error_summary as string) ?? "Failed to create Dropbox share link");
 }
 
 export async function POST(req: NextRequest) {
@@ -113,38 +88,11 @@ export async function POST(req: NextRequest) {
     const uploaded = (await uploadRes.json()) as { path_display: string; name: string };
     const finalPath = uploaded.path_display;
 
-    // ── 2. Build URLs ──────────────────────────────────────────────────────────
-    // Internal stream URL (for the in-app player)
-    const fileUrl = `/api/dropbox/stream?path=${encodeURIComponent(finalPath)}`;
-
-    // ── 2b. Create Dropbox permanent share link ──────────────────────────────
-    let shareUrl = "";
-    let shareLinkError = "";
-    try {
-      shareUrl = await createDropboxShareLink(token, finalPath);
-    } catch (e) {
-      shareLinkError = e instanceof Error ? e.message : "שגיאה ביצירת לינק";
-    }
-
-    // ── 3. Create a share token → public player page ──────────────────────────
-    // Generate a random token, store it in Supabase settings, return a /share/TOKEN URL.
-    // The /share page shows only a minimal audio player — no app access possible.
-    try {
-      const shareToken = crypto.randomUUID().replace(/-/g, "");
-      const { supabase } = await import("@/lib/supabase");
-      await supabase.from("settings").insert({
-        key:   `share_token_${shareToken}`,
-        value: { dropboxPath: finalPath, fileName: newName, createdAt: new Date().toISOString() },
-      });
-    } catch { /* non-fatal */ }
-
-    // ── 4. Persist to Supabase ────────────────────────────────────────────────
-    const { addFileToProject } = await import("@/lib/projects-store");
-    await addFileToProject(projectId, {
-      name:            newName,
-      url:             fileUrl,
-      dropboxPath:     finalPath,
-      dropboxShareUrl: shareUrl,
+    // ── 2-4. Share link + share token + projects.files — shared with the
+    // auto-duplication path (lib/mix-version-project-copy.ts) so a manual
+    // upload and an auto-copied file end up identical in every way but how
+    // the bytes arrived at `finalPath`. ──────────────────────────────────────
+    const { shareUrl, shareLinkError, fileUrl } = await commitFileToProject(token, projectId, finalPath, newName, {
       ...(trackId         ? { trackId }         : {}),
       ...(versionLabel    ? { versionLabel }    : {}),
       ...(durationSeconds ? { durationSeconds } : {}),

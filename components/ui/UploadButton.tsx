@@ -4,8 +4,7 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import type { FileLink } from "@/lib/types";
-
-const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aiff", ".aif"];
+import { AUDIO_EXTS, buildVersionName } from "@/lib/project-file-naming";
 
 // Read an audio file's length LOCALLY (object URL — no network, no Dropbox).
 // Resolves whole seconds, or null on failure/timeout so it NEVER blocks upload.
@@ -77,27 +76,6 @@ interface Props {
 }
 
 type State = "idle" | "uploading" | "done" | "error";
-
-function buildVersionName(
-  artist: string,
-  projectName: string,
-  existingFiles: { name: string }[],
-  ext: string,
-  status?: string,
-  typeOverride?: string
-): string {
-  // Type is the explicit delivery type when given, else derived from status.
-  const type = typeOverride ?? ((status === "במיקס" || status === "הושלם") ? "מאסטר" : "סקיצה");
-  // Version is per type: count existing files already labeled with this type so
-  // "מאסטר V1" starts fresh even if several "סקיצה" files exist. For delivery
-  // types (typeOverride) any extension counts — e.g. Stems may be a .zip.
-  const version = existingFiles.filter((f) =>
-    (typeOverride ? true : AUDIO_EXTS.some((x) => f.name.toLowerCase().endsWith(x))) &&
-    f.name.includes(` - ${type} V`)
-  ).length + 1;
-  const sanitize = (s: string) => s.replace(/[/\\:*?"<>|]/g, "").trim();
-  return `${sanitize(artist)} - ${sanitize(projectName)} - ${type} V${version}.${ext}`;
-}
 
 export default function UploadButton({
   projectId,

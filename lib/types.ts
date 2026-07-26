@@ -226,6 +226,7 @@ export interface FileLink {
   uploadedAt?: string;       // ISO timestamp set at upload — drives the Victor per-work version window (older files lack it)
   segments?: BriefSegment[]; // structure markers — ONLY on brief audio files (owner-authored, Victor read-only). Never on versions.
   fileRef?: string;          // opaque, path-free handle sent to Victor INSTEAD of dropboxPath/url/shareUrl (see sanitizeWorkForVictor). Resolved server-side per work.
+  sourceMixVersionId?: string; // set ONLY on a file auto-duplicated from a mix_versions row (Steven full-mix → project player); absent on manual uploads
 }
 
 /** Canonical song-structure type. Stored (not the display label) so the Victor

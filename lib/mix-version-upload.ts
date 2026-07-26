@@ -58,6 +58,7 @@ export type VersionTarget = {
   engineerName: string | null;
   workName: string;   // display name for notifications — project name, else work_title (same fallback as SoundEngineerWork.projectName)
   role: string | null; // raw client-submitted role param (unresolved), for notifications only
+  resolvedRoleEn: string; // "Mix" | "Acapella" | "Instrumental" | "Stems" — explicit param resolved, else filename-detected; drives auto-duplication to the project player (Mix only)
   effectiveLabel: string;
   cleanFileName: string;
   dropboxPath: string;
@@ -145,6 +146,7 @@ export async function resolveVersionTarget(
       engineerName: (work.engineer_name as string | null) ?? null,
       workName,
       role: roleParam || null,
+      resolvedRoleEn: roleEn,
       effectiveLabel,
       cleanFileName,
       dropboxPath,
@@ -196,6 +198,26 @@ export async function finalizeMixVersion(args: {
         });
       } catch (notifyErr) {
         console.error("[mix-version-upload] notify failed:", notifyErr);
+      }
+    }
+
+    // Auto-duplicate a FULL MIX (never acapella/instrumental/stems/final-files)
+    // into the ORIGINAL project's player, once the mix_versions row is safely
+    // committed. Project is resolved via target.projectId (the existing
+    // sound_engineer_work.project_id link) — never by filename. Best-effort:
+    // never fails or rolls back the mix-version upload itself.
+    if (target.projectId && target.resolvedRoleEn === "Mix") {
+      try {
+        const { duplicateFullMixToProject } = await import("@/lib/mix-version-project-copy");
+        await duplicateFullMixToProject({
+          projectId: target.projectId,
+          sourceDropboxPath: finalPath,
+          fileType: target.fileType,
+          mixVersionId: version.id,
+          token,
+        });
+      } catch (copyErr) {
+        console.error("[mix-version-upload] project copy failed:", copyErr);
       }
     }
 
