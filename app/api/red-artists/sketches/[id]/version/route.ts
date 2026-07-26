@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireShalevAccess } from "@/lib/require-auth";
 import { addVersion, validateAudio, SketchError } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
+import { notifySketchUpdated } from "@/lib/red-artists/sketches-notify";
 
 export const maxDuration = 300;
 const ID_RE = /^[0-9a-fA-F-]{36}$/;
@@ -16,6 +17,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const form = await req.formData();
     const audio = await validateAudio(form.get("file") as File | null);
     const sketch = await addVersion(id, audio);
+    // Push Shalev + (only on a real send) an owner ack — ONLY now that the file
+    // is uploaded and the manifest write has fully succeeded.
+    await notifySketchUpdated(sketch.id, sketch.latestVersion, sketch.title);
     return NextResponse.json({ ok: true, sketch });
   } catch (err) {
     return errResponse(err);
