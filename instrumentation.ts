@@ -124,6 +124,20 @@ export async function register() {
     }
   }, { timezone: TZ });
 
+  // ── Shalev per-session pre-session reminder — fires ~3h before each of his
+  // sessions (Asia/Jerusalem). Same every-minute-tick pattern as the jobs
+  // above; the duplicate-send guard is the atomic DB claim inside the job
+  // itself (lib/shalev-session-reminder-notify.ts), keyed per
+  // session+date+start_time so a reschedule is handled automatically.
+  cron.schedule("* * * * *", async () => {
+    try {
+      const { runShalevSessionReminderTick } = await import("@/lib/shalev-session-reminder-notify");
+      await runShalevSessionReminderTick(new Date());
+    } catch (err) {
+      console.error("[shalev-session-reminder] cron tick failed:", err);
+    }
+  }, { timezone: TZ });
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }
