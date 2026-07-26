@@ -73,6 +73,9 @@ export async function POST(req: NextRequest) {
       const offset       = Number(sp.get("offset") ?? "0");
       const rawName      = sp.get("name") ?? "";
       const versionLabel = sp.get("versionLabel") || undefined;
+      // Same upfront-run-count contract as the single-shot route's "total" field.
+      const runTotalRaw  = Number(sp.get("total") ?? "1");
+      const runTotal     = Number.isFinite(runTotalRaw) && runTotalRaw > 0 ? runTotalRaw : 1;
       if (!workId)    return NextResponse.json({ ok: false, error: "workId חסר" }, { status: 400 });
       if (!sessionId) return NextResponse.json({ ok: false, error: "sessionId חסר" }, { status: 400 });
       if (!rawName)   return NextResponse.json({ ok: false, error: "name חסר" }, { status: 400 });
@@ -158,7 +161,7 @@ export async function POST(req: NextRequest) {
               .from("projects").select("name").eq("id", row.project_id as string).maybeSingle();
             projectName = (proj?.name as string) ?? "";
           }
-          await queueVictorUploadNotice(workId, projectName || "פרויקט");
+          await queueVictorUploadNotice(workId, projectName || "פרויקט", runTotal);
         }
       } catch (e) {
         console.error("[vendor-upload/chunk] notify queue failed (non-fatal):", e);

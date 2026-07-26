@@ -1613,6 +1613,9 @@ function VictorProjectDrawer({
       fd.append("dropboxFolder", folder);
       fd.append("subFolder", "Production");
       if (versionLabel) fd.append("versionLabel", versionLabel); // omit → file lands under "Older files"
+      // This run's own upfront file count — drives the owner push's immediate-vs-
+      // coalesced timing server-side (queueVictorUploadNotice); never touches naming/storage.
+      fd.append("total", String(total));
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr; // exposed for a real xhr.abort() on cancel/unmount
       xhr.open("POST", "/api/dropbox/vendor-upload");
@@ -1666,7 +1669,7 @@ function VictorProjectDrawer({
         const end = Math.min(offset + CHUNK, size);
         const isLast = end >= size;
         const qs = isLast
-          ? `action=finish&workId=${encodeURIComponent(work.id)}&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}&subFolder=Production&name=${encodeURIComponent(uploadName)}${versionLabel ? `&versionLabel=${encodeURIComponent(versionLabel)}` : ""}`
+          ? `action=finish&workId=${encodeURIComponent(work.id)}&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}&subFolder=Production&name=${encodeURIComponent(uploadName)}&total=${total}${versionLabel ? `&versionLabel=${encodeURIComponent(versionLabel)}` : ""}`
           : `action=append&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}`;
         if (isLast) setSavingDbx(true); // last chunk commits server-side → "saving…"
         res = await post(qs, file.slice(offset, end));
@@ -3200,6 +3203,7 @@ export default function VictorProfilePage() {
   const [myRole, setMyRole] = useState<"owner" | "victor" | null>(null);
   const [roleChecked, setRoleChecked] = useState(false); // /api/me settled (success or fail)
   const isOwner = myRole === "owner";
+  const isVictor = myRole === "victor";
 
   // ── Profile avatar (owner + Victor can edit; global via settings/Dropbox) ──
   const [avatar, setAvatar] = useState<{ imageUrl: string | null; zoom: number; posX: number; posY: number }>({ imageUrl: null, zoom: 1, posX: 50, posY: 50 });
@@ -3283,6 +3287,15 @@ export default function VictorProfilePage() {
       .catch(() => {})
       .finally(() => setRoleChecked(true)); // lift the loader gate even if /api/me failed
   }, []);
+
+  // Presence beacon — fire once when Victor lands on his page. The SERVER
+  // decides whether to actually push (30-min visit cooldown), so a refresh,
+  // a second tab, or in-page navigation never spams; owner never fires this.
+  // NOT /api/push/check.
+  useEffect(() => {
+    if (!isVictor) return;
+    fetch("/api/vendor/victor/ping", { method: "POST" }).catch(() => {});
+  }, [isVictor]);
 
   const fetchMonth = useCallback(async (m: string) => {
     setLoading(true);

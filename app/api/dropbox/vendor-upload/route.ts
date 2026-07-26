@@ -34,6 +34,11 @@ export async function POST(req: NextRequest) {
     // Optional version tag (e.g. "V3") — one upload batch shares one label so the
     // UI can group a round together. Additive only: absent → behaves as before.
     const versionLabel = (formData.get("versionLabel") as string | null) || undefined;
+    // The client's own upfront file count for this upload run (files.length at
+    // the moment it started) — drives the immediate-vs-coalesced push decision
+    // in queueVictorUploadNotice. Missing/invalid → treated as a solo file.
+    const runTotalRaw = Number(formData.get("total") ?? "1");
+    const runTotal    = Number.isFinite(runTotalRaw) && runTotalRaw > 0 ? runTotalRaw : 1;
 
     if (!file || !workId) {
       return NextResponse.json({ error: "׳—׳¡׳¨׳™׳ ׳₪׳¨׳׳˜׳¨׳™׳: file, workId, dropboxFolder" }, { status: 400 });
@@ -130,7 +135,7 @@ export async function POST(req: NextRequest) {
             .from("projects").select("name").eq("id", row.project_id as string).maybeSingle();
           projectName = (proj?.name as string) ?? "";
         }
-        await queueVictorUploadNotice(workId, projectName || "פרויקט");
+        await queueVictorUploadNotice(workId, projectName || "פרויקט", runTotal);
       }
     } catch (e) {
       console.error("[vendor-upload] notify queue failed (non-fatal):", e);
