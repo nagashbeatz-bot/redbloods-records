@@ -106,6 +106,16 @@ export async function register() {
     } catch (err) {
       console.error("[steven-notify] flush tick failed:", err);
     }
+    // Fallback ONLY — the primary signal is the client's explicit
+    // batch-complete call right after its upload loop finishes. This catches
+    // an abandoned batch (tab closed/crash) so a real upload is never
+    // silently un-notified.
+    try {
+      const { flushStaleFinalFilesBatches } = await import("@/lib/final-files-batch-notify");
+      await flushStaleFinalFilesBatches();
+    } catch (err) {
+      console.error("[final-files-batch] flush tick failed:", err);
+    }
   }, { timezone: TZ });
 
   // ── Shalev weekly sessions summary — Sunday 10:00–10:15 Asia/Jerusalem window ──

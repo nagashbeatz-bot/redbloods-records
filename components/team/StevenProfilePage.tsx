@@ -1861,7 +1861,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
 
   // ── Final-files client uploads (SEPARATE store; never mix_versions) ──────────────
   // Single-shot via XHR (real %). Returns {ok,status} so a 409 conflict can be localized.
-  function uploadSingleFinalXhr(file: File, onPct: (p: number) => void): Promise<{ ok: boolean; status: number }> {
+  function uploadSingleFinalXhr(file: File, batchId: string, onPct: (p: number) => void): Promise<{ ok: boolean; status: number }> {
     return new Promise((resolve) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", finalFilesUrl);
@@ -1876,13 +1876,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       xhr.onerror = () => resolve({ ok: false, status: 0 });
       const fd = new FormData();
       fd.append("file", file);          // ONLY the file — original name kept, no label/role
+      fd.append("batchId", batchId);    // groups this file into the owner-notification batch (server-side only)
       xhr.send(fd);
     });
   }
 
   // Chunked (>140MB up to 1GB). fileName is sent at `start` so a name clash 409s before
   // any bytes stream. Returns {ok,status}.
-  async function uploadChunkedFinal(file: File, onPct: (p: number) => void): Promise<{ ok: boolean; status: number }> {
+  async function uploadChunkedFinal(file: File, batchId: string, onPct: (p: number) => void): Promise<{ ok: boolean; status: number }> {
     const CHUNK = 8 * 1024 * 1024;
     const total = file.size;
     const base  = `${finalFilesUrl}/chunk`;
@@ -1898,7 +1899,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
         const end = Math.min(offset + CHUNK, total);
         const isLast = end >= total;
         const qs = isLast
-          ? `action=finish&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}&fileName=${encodeURIComponent(file.name)}`
+          ? `action=finish&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}&fileName=${encodeURIComponent(file.name)}&batchId=${encodeURIComponent(batchId)}`
           : `action=append&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}`;
         res = await post(qs, file.slice(offset, end));
         d = await res.json().catch(() => ({}));
@@ -1926,6 +1927,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     const isNewVersion = picker.mode === "newVersion";       // dedicated "new version" button
     let label = (isFinal || isNewVersion) ? undefined : (picker.label ?? selectedGroup?.label);
     if (!isFinal && !isNewVersion && !label) { setUploading(false); return; }
+    // ONE id per upload RUN (not per file, not per work) — a retry run mints its
+    // own fresh id, so its own summary push is independent of whatever a prior
+    // run already sent. Groups every file below into a single owner summary
+    // push, sent server-side once this run's loop below has fully settled.
+    const batchId = isFinal ? crypto.randomUUID() : "";
 
     const setItem = (i: number, patch: Partial<{ status: RpStatus; pct: number; error: string }>) =>
       setRolePicker(p => p ? { ...p, items: p.items.map((x, idx) => idx === i ? { ...x, ...patch } : x) } : p);
@@ -1943,8 +1949,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       if (isFinal) {
         // Final files: nothing touches versions / player / selection / counter.
         const r = it.file.size > VER_CHUNK_LIMIT
-          ? await uploadChunkedFinal(it.file, onPct)
-          : await uploadSingleFinalXhr(it.file, onPct);
+          ? await uploadChunkedFinal(it.file, batchId, onPct)
+          : await uploadSingleFinalXhr(it.file, batchId, onPct);
         if (r.ok) setItem(i, { status: "done", pct: 100 });
         else setItem(i, { status: "error", error: r.status === 409
           ? (rtl ? "כבר קיים קובץ בשם הזה בתיקיית הקבצים הסופיים" : "A file with this name already exists in the final files folder.")
@@ -1961,6 +1967,16 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           setVersions(prev => [v, ...(prev ?? [])]);
         } else setItem(i, { status: "error", error: rtl ? "ההעלאה נכשלה" : "Upload failed" });
       }
+    }
+    // Every item in this run has now reached a terminal state (done/error) —
+    // the explicit signal that the batch is over. Fire-and-forget: a failure
+    // here must never block the UI (the files themselves are already saved).
+    if (isFinal) {
+      fetch(`${finalFilesUrl}/batch-complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId }),
+      }).catch(() => {});
     }
     // Move to the summary state — the modal NEVER auto-closes.
     setRolePicker(p => p ? { ...p, label: isFinal ? undefined : label, phase: "summary" } : p);

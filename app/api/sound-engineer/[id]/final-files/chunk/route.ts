@@ -59,6 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const sessionId = sp.get("sessionId") ?? "";
       const offset    = Number(sp.get("offset") ?? "0");
       const fileName  = (sp.get("fileName") ?? "").trim();
+      const batchId   = sp.get("batchId");
       if (!sessionId) return NextResponse.json({ ok: false, error: "sessionId חסר" }, { status: 400 });
       const nameErr = validateFinalFileName(fileName);
       if (nameErr) return NextResponse.json({ ok: false, error: nameErr }, { status: 400 });
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ ok: false, error: `Dropbox: ${t}` }, { status: 500 });
       }
       const uploaded = (await res.json()) as { path_display: string; size?: number };
-      const fin = await finalizeFinalFile({ workId, target: resolved.target, fileName, finalPath: uploaded.path_display, fileSize: uploaded.size ?? (offset + buffer.length), token });
+      const fin = await finalizeFinalFile({ workId, target: resolved.target, fileName, finalPath: uploaded.path_display, fileSize: uploaded.size ?? (offset + buffer.length), token, batchId });
       if (!fin.ok) return NextResponse.json({ ok: false, error: fin.error }, { status: fin.status });
       return NextResponse.json({ ok: true, file: { id: fin.file.id, fileName: fin.file.fileName } });
     }

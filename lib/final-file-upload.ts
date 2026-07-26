@@ -2,6 +2,7 @@ import "server-only";
 import { finalFilesFolder } from "@/lib/project-paths";
 import { dropboxArg } from "@/lib/mix-version-upload";
 import { finalFileNameExists, createFinalFile, type FinalFile } from "@/lib/final-files-store";
+import { STEVEN_ENGINEER } from "@/lib/steven-scope";
 
 /**
  * "Upload Final Files" upload core — server-only, SEPARATE from mix versions.
@@ -33,7 +34,12 @@ function extType(name: string): string | null {
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : null;
 }
 
-export type FinalTarget = { projectId: string | null; engineerName: string | null; folder: string };
+export type FinalTarget = {
+  projectId: string | null;
+  engineerName: string | null;
+  workName: string; // display name for notifications — project name, else work_title (same fallback as mix-version-upload's resolveVersionTarget)
+  folder: string;
+};
 export type TargetResult = { ok: true; target: FinalTarget } | { ok: false; status: number; error: string };
 
 /** Resolve the /Final Files/ folder for a work (same work/project hierarchy). */
@@ -41,12 +47,13 @@ export async function resolveFinalTarget(workId: string): Promise<TargetResult> 
   const { supabase } = await import("@/lib/supabase");
   const { data: work } = await supabase
     .from("sound_engineer_work")
-    .select("id, project_id, engineer_name")
+    .select("id, project_id, engineer_name, work_title")
     .eq("id", workId)
     .maybeSingle();
   if (!work) return { ok: false, status: 404, error: "עבודה לא נמצאה" };
 
   const projectId = (work.project_id as string | null) ?? null;
+  const workTitle = (work.work_title as string | null) ?? null;
   let artist = "", projectName = "", dropboxFolder: string | null = null;
   if (projectId) {
     const { getProject } = await import("@/lib/projects-store");
@@ -55,8 +62,12 @@ export async function resolveFinalTarget(workId: string): Promise<TargetResult> 
     projectName = project?.name ?? "";
     dropboxFolder = project?.dropboxFolder ?? null;
   }
+  const workName = projectId ? (projectName || "פרויקט לא ידוע") : (workTitle || "עבודה עצמאית");
   const folder = finalFilesFolder({ projectId, artist, projectName, workId, dropboxFolder });
-  return { ok: true, target: { projectId, engineerName: (work.engineer_name as string | null) ?? null, folder } };
+  return {
+    ok: true,
+    target: { projectId, engineerName: (work.engineer_name as string | null) ?? null, workName, folder },
+  };
 }
 
 export type FinalUploadResult =
@@ -76,11 +87,12 @@ async function dropboxDelete(token: string, path: string): Promise<void> {
 /**
  * Persist a final file whose bytes are ALREADY at `finalPath` in Dropbox. On a
  * unique (name/path) violation the just-uploaded file is deleted and 409 is returned.
- * Shared by the single-shot and chunked finish paths.
+ * Shared by the single-shot and chunked finish paths — the ONE choke point every
+ * successful final-file save passes through (Owner+Steven × single-shot+chunked).
  */
 export async function finalizeFinalFile(args: {
   workId: string; target: FinalTarget; fileName: string; finalPath: string;
-  fileSize: number | null; token: string;
+  fileSize: number | null; token: string; batchId?: string | null;
 }): Promise<FinalUploadResult> {
   const res = await createFinalFile({
     workId: args.workId,
@@ -95,6 +107,24 @@ export async function finalizeFinalFile(args: {
     await dropboxDelete(args.token, args.finalPath);   // compensating: remove the orphan
     return { ok: false, status: 409, error: FINAL_CONFLICT_MSG };
   }
+
+  // The row is committed — anything uploaded into Steven's work counts as a
+  // "Steven uploaded final files" batch for owner-notification purposes,
+  // regardless of whether Owner or Steven actually clicked upload (business
+  // rule — same as mix-version-upload.ts's queueStevenUploadNotice gate).
+  // Best-effort: never fails the upload. Requires an explicit batchId — a
+  // client-side "Upload Final Files" run generates one and passes it on every
+  // file in that run, so the eventual summary push is keyed to the BATCH, not
+  // just workId (a work can have several batches over time).
+  if (args.batchId && args.target.engineerName === STEVEN_ENGINEER) {
+    try {
+      const { recordFinalFileBatchSuccess } = await import("@/lib/final-files-batch-notify");
+      await recordFinalFileBatchSuccess(args.batchId, args.workId, args.target.workName);
+    } catch (notifyErr) {
+      console.error("[final-file-upload] batch record failed:", notifyErr);
+    }
+  }
+
   return { ok: true, file: res.file };
 }
 
@@ -102,7 +132,7 @@ export async function finalizeFinalFile(args: {
  * Single-shot upload (≤150MB) of one final file, keeping the original name. Caller
  * must have authorized the write for `workId`.
  */
-export async function uploadFinalFileSingle(workId: string, file: File): Promise<FinalUploadResult> {
+export async function uploadFinalFileSingle(workId: string, file: File, batchId?: string | null): Promise<FinalUploadResult> {
   if (!file) return { ok: false, status: 400, error: "חסר קובץ" };
   const nameErr = validateFinalFileName(file.name);
   if (nameErr) return { ok: false, status: 400, error: nameErr };
@@ -138,5 +168,5 @@ export async function uploadFinalFileSingle(workId: string, file: File): Promise
     return { ok: false, status: 500, error: `Dropbox: ${detail}` };
   }
   const uploaded = (await uploadRes.json()) as { path_display: string };
-  return finalizeFinalFile({ workId, target, fileName: file.name, finalPath: uploaded.path_display, fileSize: file.size, token });
+  return finalizeFinalFile({ workId, target, fileName: file.name, finalPath: uploaded.path_display, fileSize: file.size, token, batchId });
 }
