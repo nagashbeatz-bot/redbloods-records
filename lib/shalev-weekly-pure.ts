@@ -10,6 +10,15 @@ export const TZ = "Asia/Jerusalem";
 const HEB_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 export const SHALEV_SCHEDULE_URL = "/red-artists?tab=schedule"; // same deep-link lib/session-notify.ts uses
 
+// A week's job may retry up to this many total attempts (explicit failures AND
+// crash/stuck recoveries count uniformly toward this cap — see JobDeps.claimWeek).
+export const MAX_ATTEMPTS = 3;
+// A "processing" claim older than this is presumed crashed (never reached
+// markWeekDone) and becomes eligible for atomic recovery — short enough to allow
+// several recovery attempts inside the 15-minute run window, long enough that a
+// normal run (a few DB/push round-trips) is never mistaken for stuck.
+export const STUCK_PROCESSING_TIMEOUT_MS = 3 * 60 * 1000;
+
 // ── Pure date helpers (Asia/Jerusalem, DST-safe via Intl — never a fixed UTC offset) ──
 
 function ymdInTZ(d: Date, tz: string): string {
@@ -44,27 +53,43 @@ export function computeWeekRange(now: Date, tz: string = TZ): WeekRange {
   return { weekStart, weekEnd };
 }
 
-/** True only during the Sunday 10:00 Asia/Jerusalem minute — the cron tick calls
- *  this every minute and only proceeds when it returns true. */
-export function isShalevWeeklyDue(now: Date, tz: string = TZ): boolean {
+/** True during the Sunday 10:00–10:15 (inclusive) Asia/Jerusalem window — the
+ *  cron tick calls this every minute and only proceeds while it's true. A
+ *  window (not a single minute) gives a missed-10:00 tick (redeploy, crash,
+ *  restart) a chance to still fire via a later minute in the same window;
+ *  the DB claim (not this window check) is what prevents a duplicate SEND. */
+export function isShalevWeeklyWindowOpen(now: Date, tz: string = TZ): boolean {
   const dow = now.toLocaleString("en-US", { timeZone: tz, weekday: "short" }); // "Sun".."Sat"
-  const time = now.toLocaleString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false });
-  return dow === "Sun" && time === "10:00";
+  const hm2 = now.toLocaleString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false });
+  const [h, m] = hm2.split(":").map(Number);
+  return dow === "Sun" && h === 10 && m >= 0 && m <= 15;
 }
 
 // ── Sessions (canonical read, mirrors shalev-summary's ownership + status rule) ──
+//
+// IMPORTANT: the connection to `projects` is used ONLY to determine which
+// sessions belong to Shalev (project_id membership, per the ownership rule
+// /api/red-artists/shalev-summary already uses). It must NEVER be used to
+// build the notification TEXT — the title comes exclusively from the
+// session's own `session_type` / `title` fields, never `projects.name`,
+// never an artist/song name. This was a real bug found in production data:
+// a session with `title=null, session_type="סשן"` was resolving its display
+// text to the LINKED PROJECT's name ("חלהס אמפיאנו") because the old title
+// fallback chain included `projectNameById.get(project_id)`. Fixed by
+// removing project data from ShalevSessionInfo/mapSessionRows entirely —
+// there is no `projectNameById` parameter anymore, so it's structurally
+// impossible for a project name to leak into the title again.
 
 export interface ShalevSessionInfo {
   id: string;
   date: string;
   startTime: string | null;
   endTime: string | null;
-  title: string;
+  title: string; // ALWAYS derived from session_type/title only — see note above
 }
 
 export interface RawSessionRow {
   id: string;
-  project_id: string | null;
   title: string | null;
   date: string | null;
   start_time: string | null;
@@ -73,10 +98,12 @@ export interface RawSessionRow {
   status: string | null;
 }
 
-/** Pure: exclude cancelled sessions, resolve display title, sort chronologically.
- *  Exported so "cancelled excluded" / "sorted soonest-first" are directly
+/** Pure: exclude cancelled sessions, resolve display title from SESSION fields
+ *  ONLY (session_type first, then title, else the literal word "סשן" — never
+ *  a project/artist/song name), sort chronologically. Exported so "cancelled
+ *  excluded" / "sorted soonest-first" / "no project name" are directly
  *  unit-testable without a database. */
-export function mapSessionRows(rows: RawSessionRow[], projectNameById: Map<string, string>): ShalevSessionInfo[] {
+export function mapSessionRows(rows: RawSessionRow[]): ShalevSessionInfo[] {
   return rows
     .filter((r) => r.status !== "בוטל" && !!r.date)
     .map((r) => ({
@@ -84,7 +111,7 @@ export function mapSessionRows(rows: RawSessionRow[], projectNameById: Map<strin
       date: r.date as string,
       startTime: r.start_time,
       endTime: r.end_time,
-      title: r.title || (r.project_id ? projectNameById.get(r.project_id) : null) || r.session_type || "סשן",
+      title: (r.session_type || "").trim() || (r.title || "").trim() || "סשן",
     }))
     .sort((a, b) => (a.date !== b.date ? a.date.localeCompare(b.date) : (a.startTime ?? "").localeCompare(b.startTime ?? "")));
 }
@@ -109,6 +136,11 @@ export function buildShalevBody(sessions: ShalevSessionInfo[]): string {
   return [intro, ...shown, ...tail].join("\n");
 }
 
+/** Owner ack body — singular/plural Hebrew (count=1 gets its own sentence, not "1 סשנים"). */
+export function buildOwnerAckBody(count: number): string {
+  return count === 1 ? "נשלח לשליו סשן אחד לשבוע הקרוב." : `נשלחו לשליו ${count} סשנים לשבוע הקרוב.`;
+}
+
 // ── Push-result classification (pure) ────────────────────────────────────────
 
 /** Distinguishes "no active subscription" (empty results) from "webpush actually
@@ -118,15 +150,22 @@ export function classifyPushResult(results: { status: string }[]): "sent" | "no_
   return results.some((r) => r.status === "fulfilled") ? "sent" : "send_failed";
 }
 
+export type FailReason = "no_subscription" | "send_failed";
+
 export type WeeklyOutcome =
   | { kind: "skipped_duplicate" }
   | { kind: "no_sessions" }
   | { kind: "sent"; count: number }
-  | { kind: "no_subscription"; count: number }
-  | { kind: "send_failed"; count: number };
+  | { kind: "no_subscription"; count: number; final: boolean }
+  | { kind: "send_failed"; count: number; final: boolean };
 
 // ── Orchestration — injectable deps so the branches are testable without a
 //    real DB/webpush call; lib/shalev-weekly-notify.ts supplies real deps. ──
+
+export interface ClaimResult {
+  claimed: boolean;
+  attempt: number; // meaningful only when claimed=true; 1-based
+}
 
 export interface PushLikePayload {
   title: string;
@@ -138,11 +177,16 @@ export interface PushLikePayload {
 
 export interface JobDeps {
   fetchSessions: (weekStart: string, weekEnd: string) => Promise<ShalevSessionInfo[]>;
-  claimWeek: (key: string) => Promise<boolean>; // true = claimed now, proceed
+  /** Atomic claim/retry-claim for this week. See lib/shalev-weekly-notify.ts's
+   *  claimWeekReal for the real (Postgres CAS-based) implementation and the
+   *  exact state machine this must implement. */
+  claimWeek: (key: string, now: Date) => Promise<ClaimResult>;
   markWeekDone: (key: string, value: Record<string, unknown>) => Promise<void>;
   sendToShalev: (payload: PushLikePayload) => Promise<{ status: string }[]>;
   sendOwnerAck: (count: number, weekStart: string) => Promise<void>;
-  sendOwnerFail: (reason: "no_subscription" | "send_failed", count: number, weekStart: string) => Promise<void>;
+  /** Called ONLY when attempts are exhausted (or this is otherwise the final
+   *  attempt) — never once per failed attempt, so the owner is never spammed. */
+  sendOwnerFail: (reason: FailReason, count: number, weekStart: string) => Promise<void>;
   log: (msg: string) => void;
   logError: (msg: string, err?: unknown) => void;
 }
@@ -153,17 +197,19 @@ export async function runShalevWeeklySessionsJobCore(now: Date, deps: JobDeps): 
   const { weekStart, weekEnd } = computeWeekRange(now);
   const claimKey = `shalev_weekly_sessions:${weekStart}`;
 
-  const claimed = await deps.claimWeek(claimKey);
-  if (!claimed) {
-    deps.log(`${claimKey} already claimed — skipping (no duplicate send)`);
+  const claim = await deps.claimWeek(claimKey, now);
+  if (!claim.claimed) {
+    deps.log(`${claimKey} not claimed (already sent/no_sessions/exhausted, or a concurrent run holds it) — skipping`);
     return { kind: "skipped_duplicate" };
   }
+  const isFinalAttempt = claim.attempt >= MAX_ATTEMPTS;
+  const nowIso = now.toISOString();
 
   try {
     const sessions = await deps.fetchSessions(weekStart, weekEnd);
     if (sessions.length === 0) {
-      deps.log(`no sessions for week ${weekStart}..${weekEnd} — no push sent`);
-      await deps.markWeekDone(claimKey, { status: "no_sessions", weekStart, weekEnd });
+      deps.log(`no sessions for week ${weekStart}..${weekEnd} — no push sent (attempt ${claim.attempt})`);
+      await deps.markWeekDone(claimKey, { status: "no_sessions", weekStart, weekEnd, attempt_count: claim.attempt, lastAttemptAt: nowIso });
       return { kind: "no_sessions" };
     }
 
@@ -179,19 +225,26 @@ export async function runShalevWeeklySessionsJobCore(now: Date, deps: JobDeps): 
 
     if (cls === "sent") {
       await deps.sendOwnerAck(sessions.length, weekStart);
-      await deps.markWeekDone(claimKey, { status: "sent", weekStart, weekEnd, count: sessions.length });
-      deps.log(`sent to Shalev: ${sessions.length} session(s), week ${weekStart}`);
+      await deps.markWeekDone(claimKey, { status: "sent", weekStart, weekEnd, count: sessions.length, attempt_count: claim.attempt, lastAttemptAt: nowIso });
+      deps.log(`sent to Shalev: ${sessions.length} session(s), week ${weekStart}, attempt ${claim.attempt}`);
       return { kind: "sent", count: sessions.length };
     } else {
-      await deps.sendOwnerFail(cls, sessions.length, weekStart);
-      await deps.markWeekDone(claimKey, { status: "failed", weekStart, weekEnd, reason: cls, count: sessions.length });
-      deps.logError(`FAILED to reach Shalev (${cls}) for week ${weekStart} — ${sessions.length} session(s) found`);
-      return { kind: cls, count: sessions.length };
+      if (isFinalAttempt) await deps.sendOwnerFail(cls, sessions.length, weekStart);
+      await deps.markWeekDone(claimKey, {
+        status: "failed", weekStart, weekEnd, reason: cls, count: sessions.length, attempt_count: claim.attempt, lastAttemptAt: nowIso,
+      });
+      deps.logError(
+        `attempt ${claim.attempt}/${MAX_ATTEMPTS} FAILED to reach Shalev (${cls}) for week ${weekStart}` +
+        (isFinalAttempt ? " — attempts exhausted, owner notified" : " — will retry within the window"),
+      );
+      return { kind: cls, count: sessions.length, final: isFinalAttempt };
     }
   } catch (err) {
-    deps.logError(`job crashed for week ${weekStart}`, err);
+    deps.logError(`job crashed (attempt ${claim.attempt}/${MAX_ATTEMPTS}) for week ${weekStart}`, err);
+    if (isFinalAttempt) await deps.sendOwnerFail("send_failed", 0, weekStart).catch(() => {});
     await deps.markWeekDone(claimKey, {
-      status: "error", weekStart, weekEnd, error: err instanceof Error ? err.message : String(err),
+      status: "failed", weekStart, weekEnd, reason: "crashed", attempt_count: claim.attempt, lastAttemptAt: nowIso,
+      error: err instanceof Error ? err.message : String(err),
     }).catch(() => {});
     throw err;
   }

@@ -108,15 +108,17 @@ export async function register() {
     }
   }, { timezone: TZ });
 
-  // ── Shalev weekly sessions summary — Sunday 10:00 Asia/Jerusalem only ────────
+  // ── Shalev weekly sessions summary — Sunday 10:00–10:15 Asia/Jerusalem window ──
   // Same every-minute-tick + toLocaleString(timeZone) pattern as the reports
-  // above (DST-safe — never a fixed UTC offset). The real duplicate-send guard
-  // is a DB claim inside the job itself (lib/shalev-weekly-notify.ts), not this
-  // tick — a redeploy or a second cron instance can never send twice.
+  // above (DST-safe — never a fixed UTC offset). A window (not a single minute)
+  // means a missed 10:00 tick (redeploy/crash/restart) can still fire later in
+  // the same window. The real duplicate-send guard is an atomic DB claim inside
+  // the job itself (lib/shalev-weekly-notify.ts) — a redeploy, a stuck/crashed
+  // attempt, or two overlapping cron instances can never both send.
   cron.schedule("* * * * *", async () => {
     try {
-      const { isShalevWeeklyDue, runShalevWeeklyJob } = await import("@/lib/shalev-weekly-notify");
-      if (isShalevWeeklyDue(new Date())) await runShalevWeeklyJob();
+      const { isShalevWeeklyWindowOpen, runShalevWeeklyJob } = await import("@/lib/shalev-weekly-notify");
+      if (isShalevWeeklyWindowOpen(new Date())) await runShalevWeeklyJob();
     } catch (err) {
       console.error("[shalev-weekly] cron tick failed:", err);
     }
