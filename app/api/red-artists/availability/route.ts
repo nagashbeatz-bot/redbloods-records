@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireShalevAccess, getAuthRole } from "@/lib/require-auth";
 import { getAvailability, saveAvailability, notifyAvailability, type Sender } from "@/lib/red-artists/availability";
+import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 // GET /api/red-artists/availability — the last saved weekly availability.
 // Owner or shalev only. NEVER sends push (page load must be side-effect free).
 export async function GET() {
   const denied = await requireShalevAccess(); if (denied) return denied;
   try {
-    const availability = await getAvailability();
+    const availability = await getAvailability(SHALEV_SLUG);
     return NextResponse.json({ ok: true, availability });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "server error" }, { status: 500 });
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(days)) {
       return NextResponse.json({ ok: false, error: "days נדרש" }, { status: 400 });
     }
-    const availability = await saveAvailability(days, sentBy);
+    const availability = await saveAvailability(SHALEV_SLUG, days, sentBy);
     const push = await notifyAvailability(sentBy); // after a successful save; non-fatal
     return NextResponse.json({ ok: true, availability, push });
   } catch (e) {

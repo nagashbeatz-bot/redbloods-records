@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireShalevAccess } from "@/lib/require-auth";
 import { patchDetails, softDeleteSketch, SketchError } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
+import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 const ID_RE = /^[0-9a-fA-F-]{36}$/; // uuid — blocks path traversal / arbitrary ids
 
@@ -17,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (typeof body.description === "string") patch.description = body.description;
     if (typeof body.notes === "string") patch.notes = body.notes;
     if (Object.keys(patch).length === 0) throw new SketchError("BAD_INPUT", "אין שינויים לשמירה");
-    const sketch = await patchDetails(id, patch);
+    const sketch = await patchDetails(SHALEV_SLUG, id, patch);
     return NextResponse.json({ ok: true, sketch });
   } catch (err) {
     return errResponse(err);
@@ -31,7 +32,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params;
     if (!ID_RE.test(id)) throw new SketchError("BAD_INPUT", "מזהה סקיצה לא תקין");
-    await softDeleteSketch(id);
+    await softDeleteSketch(SHALEV_SLUG, id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return errResponse(err);

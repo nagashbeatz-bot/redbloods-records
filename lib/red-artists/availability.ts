@@ -1,14 +1,21 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { sendPushToRoles } from "@/lib/push";
+import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 /**
- * Shalev's weekly availability — a single global record in the existing `settings`
+ * Weekly availability — a single record per artist in the existing `settings`
  * key/value table (NO schema change; mirrors lib/maintenance.ts). Upsert-by-key
  * overwrites in place, so a new send replaces the previous one with no duplicates.
  * No auto-reset at week start — the last saved value persists until re-sent.
+ *
+ * Multi-artist: keyed by `slug` (lib/red-artists/portal-config.ts) so each
+ * portal artist gets a completely separate record. Shalev keeps his EXACT
+ * legacy key (`shalev_weekly_availability`) — no data migration needed.
  */
-const KEY = "shalev_weekly_availability";
+function keyFor(slug: string): string {
+  return slug === SHALEV_SLUG ? "shalev_weekly_availability" : `weekly_availability_${slug}`;
+}
 
 export type AvailabilityDay = { day: string; date: string; available: boolean; from: string };
 export type Sender = "owner" | "shalev";
@@ -32,9 +39,9 @@ function cleanDays(input: unknown): AvailabilityDay[] {
   });
 }
 
-/** Read the last saved availability (global). Returns null when nothing was sent yet. */
-export async function getAvailability(): Promise<StoredAvailability | null> {
-  const { data } = await supabase.from("settings").select("value").eq("key", KEY).maybeSingle();
+/** Read the last saved availability for `slug`. Returns null when nothing was sent yet. */
+export async function getAvailability(slug: string): Promise<StoredAvailability | null> {
+  const { data } = await supabase.from("settings").select("value").eq("key", keyFor(slug)).maybeSingle();
   const v = data?.value as Partial<StoredAvailability> | null;
   if (!v || !Array.isArray(v.days)) return null;
   return {
@@ -45,10 +52,10 @@ export async function getAvailability(): Promise<StoredAvailability | null> {
 }
 
 /** Overwrite the availability in place (upsert-by-key → never duplicate rows). */
-export async function saveAvailability(days: unknown, sentBy: Sender): Promise<StoredAvailability> {
+export async function saveAvailability(slug: string, days: unknown, sentBy: Sender): Promise<StoredAvailability> {
   const stored: StoredAvailability = { days: cleanDays(days), sentBy, sentAt: new Date().toISOString() };
   await supabase.from("settings").upsert(
-    { key: KEY, value: stored as unknown as Record<string, unknown> },
+    { key: keyFor(slug), value: stored as unknown as Record<string, unknown> },
     { onConflict: "key" },
   );
   return stored;
@@ -67,6 +74,10 @@ const TAG = "rb-availability";
 /**
  * Send the two role-specific notifications AFTER a successful save. Never throws —
  * a push failure is reported but must NOT undo the save (the caller keeps the row).
+ *
+ * ONLY ever fires for Shalev (the "shalev" push role doesn't exist for any other
+ * artist yet) — the caller must skip this entirely for any other artist, per the
+ * explicit rule that this task never adds new push behavior.
  */
 export async function notifyAvailability(sentBy: Sender): Promise<{ sent: boolean; error?: string }> {
   if (!pushAllowed()) return { sent: false, error: "push-disabled-non-production" };

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requireShalevAccess } from "@/lib/require-auth";
 import { getNextWorkConfig, setNextWorkConfig } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
+import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 // The portal's "next project to work on" — OWNER-chosen, manifest-stored, fully
 // SEPARATE from nextRelease. Readable by the artist (shalev) so his home card shows
@@ -11,7 +12,7 @@ import { errResponse } from "@/lib/red-artists/sketches-http";
 export async function GET() {
   const denied = await requireShalevAccess(); if (denied) return denied;
   try {
-    const work = await getNextWorkConfig();
+    const work = await getNextWorkConfig(SHALEV_SLUG);
     return NextResponse.json({ ok: true, work });
   } catch (err) {
     return errResponse(err);
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const deadlineRaw = body?.deadline;
     const deadline = typeof deadlineRaw === "string" && deadlineRaw.trim() ? deadlineRaw.trim() : null;
-    const work = await setNextWorkConfig(String(body?.sketchId ?? ""), deadline);
+    const work = await setNextWorkConfig(SHALEV_SLUG, String(body?.sketchId ?? ""), deadline);
     return NextResponse.json({ ok: true, work });
   } catch (err) {
     return errResponse(err);

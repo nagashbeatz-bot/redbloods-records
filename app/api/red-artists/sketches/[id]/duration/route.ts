@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireShalevAccess } from "@/lib/require-auth";
 import { setSketchDuration, SketchError } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
+import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 const ID_RE = /^[0-9a-fA-F-]{36}$/;
 
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const versionNumber = Number(body.versionNumber);
     const durationSeconds = Number(body.durationSeconds);
     if (!Number.isFinite(versionNumber) || versionNumber < 1) throw new SketchError("BAD_INPUT", "מספר גרסה לא תקין");
-    await setSketchDuration(id, Math.round(versionNumber), Math.round(durationSeconds));
+    await setSketchDuration(SHALEV_SLUG, id, Math.round(versionNumber), Math.round(durationSeconds));
     return NextResponse.json({ ok: true });
   } catch (err) {
     return errResponse(err);

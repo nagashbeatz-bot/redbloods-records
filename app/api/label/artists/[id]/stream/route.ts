@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireShalevAccess } from "@/lib/require-auth";
+import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
 import { isPathWithinArtist } from "@/lib/red-artists/portal-files";
-import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 /**
- * GET /api/red-artists/stream?path=/app/red-artists/shalev-tasama/...
+ * GET /api/label/artists/[id]/stream?path=/app/red-artists/{slug}/...
  *
- * Scoped audio stream for Shalev's OWN portal (owner or shalev). Unlike the raw
- * /api/dropbox/stream (arbitrary path → any Dropbox file), this endpoint is
- * guarded AND hard-restricted to Shalev's own folder tree, so opening the portal
- * to the shalev role can never expose another project's/artist's files.
+ * Owner-only scoped audio stream for THIS artist's own portal preview.
+ * HARD-restricted to this artist's own folder tree — resolved server-side
+ * from the URL id, never trusted from the client — so it can never expose
+ * another artist's/project's files.
  */
-export async function GET(req: NextRequest) {
-  const denied = await requireShalevAccess();
-  if (denied) return denied;
+export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+  const access = await resolveOwnerPortalAccess(id);
+  if (!access.ok) return access.response;
 
   const path = req.nextUrl.searchParams.get("path");
   if (!path) return NextResponse.json({ error: "path נדרש" }, { status: 400 });
-  // Hard scope: only files inside Shalev's own tree; no traversal.
-  if (!isPathWithinArtist(SHALEV_SLUG, path)) {
+  if (!isPathWithinArtist(access.config.slug, path)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -36,9 +35,9 @@ export async function GET(req: NextRequest) {
     body: JSON.stringify({ path }),
   });
   if (!res.ok) {
-    console.error("[red-artists/stream]", await res.text().catch(() => ""));
+    console.error("[label/artists/[id]/stream]", await res.text().catch(() => ""));
     return NextResponse.json({ error: "שגיאה בטעינת הקובץ" }, { status: 502 });
   }
   const data = (await res.json()) as { link: string };
-  return NextResponse.redirect(data.link, 302); // audio element follows to Dropbox CDN
+  return NextResponse.redirect(data.link, 302);
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requireShalevAccess } from "@/lib/require-auth";
 import { getNextReleaseConfig, setNextReleaseConfig } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
+import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
 
 // GET /api/red-artists/next-release — the portal's chosen next release (from the
 // manifest; resolved against the live sketches). null when unset. Readable by the
@@ -9,7 +10,7 @@ import { errResponse } from "@/lib/red-artists/sketches-http";
 export async function GET() {
   const denied = await requireShalevAccess(); if (denied) return denied;
   try {
-    const release = await getNextReleaseConfig();
+    const release = await getNextReleaseConfig(SHALEV_SLUG);
     return NextResponse.json({ ok: true, release });
   } catch (err) {
     return errResponse(err);
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   const denied = await requireOwner(); if (denied) return denied;
   try {
     const body = await req.json().catch(() => ({}));
-    const release = await setNextReleaseConfig(String(body.sketchId ?? ""), String(body.releaseDate ?? ""));
+    const release = await setNextReleaseConfig(SHALEV_SLUG, String(body.sketchId ?? ""), String(body.releaseDate ?? ""));
     return NextResponse.json({ ok: true, release });
   } catch (err) {
     return errResponse(err);

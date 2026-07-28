@@ -1,12 +1,29 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
 import { useRole, type ClientRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+
+// Resolved per-render identity for whichever artist's portal is being shown:
+//   apiBase    — Shalev's own session always uses his existing flat routes
+//                (default, unchanged production behavior); the owner
+//                previewing ANY artist (e.g. Avi) uses that artist's scoped
+//                /api/label/artists/[id]/* routes instead.
+//   artistName — the real display name ("שליו טסמה" / "אבי מולה" / ...),
+//                never hardcoded downstream — avoids Shalev's name leaking
+//                into another artist's greeting/avatar caption/labels.
+// Set ONCE by the top-level ArtistPortalPage component and read via
+// usePortalContext() everywhere else — avoids prop-drilling through every
+// intermediate card/modal component in this large file.
+interface PortalCtx { apiBase: string; artistName: string }
+const PortalApiContext = createContext<PortalCtx>({ apiBase: "/api/red-artists", artistName: "שליו טסמה" });
+function usePortalContext(): PortalCtx {
+  return useContext(PortalApiContext);
+}
 
 // Mobile breakpoint (≤640px) — switches the portal to a stacked, card-based,
 // touch-friendly layout. UI only; no data/logic change.
@@ -282,13 +299,15 @@ export type Sketch = {
   durationSeconds?: number; versions: SketchVersion[]; archived: boolean; archivedAt?: string | null;
 };
 // Stream URL for a sketch's latest file — the version is a cache-buster so a new V{n}
-// never plays the previous URL from cache.
-function sketchStreamUrl(s: Sketch): string {
-  return `/api/red-artists/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
+// never plays the previous URL from cache. `base` defaults to Shalev's own
+// existing endpoint (unchanged) — callers pass the resolved apiBase when
+// rendering an owner-previewed artist so playback stays scoped to THAT artist.
+function sketchStreamUrl(s: Sketch, base: string = "/api/red-artists"): string {
+  return `${base}/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
 // Same-origin attachment endpoint (clean filename, no 302/Quick Look on iOS).
-function sketchDownloadUrl(s: Sketch): string {
-  return `/api/red-artists/download?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
+function sketchDownloadUrl(s: Sketch, base: string = "/api/red-artists"): string {
+  return `${base}/download?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
 // "YYYY-MM-DD..." or ISO → "DD.MM.YYYY".
 function fmtSketchDate(iso: string | null | undefined): string {
@@ -353,7 +372,7 @@ function rowHover(e: React.MouseEvent<HTMLElement>, on: boolean) {
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────────
-export default function ArtistPortalPage({ initialRole, artistId }: { initialRole?: ClientRole; artistId?: string } = {}) {
+export default function ArtistPortalPage({ initialRole, artistId, artistName: artistNameProp }: { initialRole?: ClientRole; artistId?: string; artistName?: string } = {}) {
   // The balance area (tab + home card) is OWNER-ONLY. `initialRole` comes from the
   // server (flash-free); useRole confirms it client-side. Shalev never sees balance
   // (also stripped server-side in shalev-summary).
@@ -391,14 +410,26 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
   // (NOT /api/projects). Used by both the home card and the "המוזיקה שלי" tab.
   const [sketches, setSketches] = useState<Sketch[]>([]);
   const [libState, setLibState] = useState<"loading" | "ready" | "error">("loading");
+  // One resolved API base for every Red-Artists-portal endpoint in this
+  // component: Shalev's own session uses his existing flat routes (unchanged
+  // production behavior); the owner previewing ANY artist (incl. Avi) uses the
+  // new artist-scoped routes. Never both, never neither once role is known —
+  // mirrors reloadLedger's existing isShalev/isOwner+artistId pattern below.
+  const apiBase = isOwner && artistId ? `/api/label/artists/${artistId}` : "/api/red-artists";
+  const summaryUrl = isOwner && artistId ? `/api/label/artists/${artistId}/summary` : "/api/red-artists/shalev-summary";
+  // Real display name for greeting/avatar-caption/labels — never hardcoded to
+  // Shalev downstream. Falls back to his name only for his own /red-artists
+  // session (artistNameProp is never passed there).
+  const artistName = artistNameProp ?? SHALEV_ARTIST;
+
   const reloadSketches = useCallback(async () => {
     try {
-      const r = await fetch("/api/red-artists/sketches", { cache: "no-store" });
+      const r = await fetch(`${apiBase}/sketches`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok && Array.isArray(d.sketches)) { setSketches(d.sketches); setLibState("ready"); }
       else setLibState("error");
     } catch { setLibState("error"); }
-  }, []);
+  }, [apiBase]);
   useEffect(() => { void reloadSketches(); }, [reloadSketches]);
 
   // Persist a new library order. The client sends ids only; the server is the
@@ -406,7 +437,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
   // so the library visually reverts to its previous order.
   const reorderSketchesRemote = useCallback(async (orderedIds: string[]): Promise<boolean> => {
     try {
-      const r = await fetch("/api/red-artists/sketches/reorder", {
+      const r = await fetch(`${apiBase}/sketches/reorder`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderedIds }),
       });
@@ -415,21 +446,22 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
       if (d?.ok && Array.isArray(d.sketches)) setSketches(d.sketches);
       return true;
     } catch { return false; }
-  }, []);
+  }, [apiBase]);
 
-  // Real shows + balance for Shalev — server-scoped endpoint (owner-only, READ-
-  // ONLY, filtered server-side to "שליו טסמה"; no other artist / no label money).
+  // Real shows + balance for this artist — server-scoped endpoint (owner-only,
+  // READ-ONLY, filtered server-side to the resolved artist's own name; no
+  // other artist / no label money).
   const [summary, setSummary] = useState<ShalevSummary | null>(null);
   const [summaryState, setSummaryState] = useState<LoadState>("loading");
   const reloadSummary = useCallback(() => {
-    fetch("/api/red-artists/shalev-summary")
+    fetch(summaryUrl)
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
         if (d?.ok) { setSummary({ shows: d.shows, balance: d.balance, weekly: d.weekly ?? [], updates: d.updates ?? [] }); setSummaryState("ready"); }
         else setSummaryState("error");
       })
       .catch(() => setSummaryState("error"));
-  }, []);
+  }, [summaryUrl]);
   useEffect(() => { reloadSummary(); }, [reloadSummary]);
   // A session created/deleted anywhere (e.g. via the schedule page's "קבע סשן"
   // button, which opens the SAME global quick-actions modal) should refresh
@@ -466,21 +498,21 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
   const [nextWork, setNextWork] = useState<PortalWork | null>(null);
   const reloadNextWork = useCallback(async () => {
     try {
-      const r = await fetch("/api/red-artists/next-work", { cache: "no-store" });
+      const r = await fetch(`${apiBase}/next-work`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) setNextWork(d.work ?? null);
     } catch { /* leave as-is — the home page never breaks */ }
-  }, []);
+  }, [apiBase]);
   useEffect(() => { void reloadNextWork(); }, [reloadNextWork]);
 
   const [nextRelease, setNextRelease] = useState<PortalRelease | null>(null);
   const reloadNextRelease = useCallback(async () => {
     try {
-      const r = await fetch("/api/red-artists/next-release", { cache: "no-store" });
+      const r = await fetch(`${apiBase}/next-release`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) setNextRelease(d.release ?? null);
     } catch { /* leave as-is — the home page never breaks */ }
-  }, []);
+  }, [apiBase]);
   useEffect(() => { void reloadNextRelease(); }, [reloadNextRelease]);
 
   // Learn-and-save duration into the SKETCH MANIFEST (never Projects): once the
@@ -498,7 +530,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
     const key = `${s.id}:${s.latestVersion}`;
     if (durationLearned.has(key)) return;
     durationLearned.add(key); // guard immediately against duplicate fires
-    fetch(`/api/red-artists/sketches/${s.id}/duration`, {
+    fetch(`${apiBase}/sketches/${s.id}/duration`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ versionNumber: s.latestVersion, durationSeconds: seconds }),
     })
@@ -507,9 +539,10 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
         setSketches(rows => rows.map(x => (x.id === s.id ? { ...x, durationSeconds: seconds } : x)));
       })
       .catch(() => { durationLearned.delete(key); }); // allow a later retry
-  }, [playingId, playerDuration, sketches]);
+  }, [playingId, playerDuration, sketches, apiBase]);
 
   return (
+    <PortalApiContext.Provider value={{ apiBase, artistName }}>
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
       <div style={{ maxWidth: 1400, margin: "0 auto", width: "100%" }}>
@@ -575,7 +608,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
             position, so React reuses the instance across tabs and the avatar
             never remounts/reloads (no "ש" flash on tab switch). Content varies. */}
         {tab === "בית" ? (
-          <PortalHero title="ברוך הבא, שליו" emoji="👋" canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
+          <PortalHero title={`ברוך הבא, ${artistName.split(" ")[0]}`} emoji="👋" canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
               <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
@@ -610,6 +643,7 @@ export default function ArtistPortalPage({ initialRole, artistId }: { initialRol
         </div>
       </div>
     </div>
+    </PortalApiContext.Provider>
   );
 }
 
@@ -621,6 +655,7 @@ function PortalHero({ title, emoji, badge, subtitle, canEditAvatar, children }: 
   title: string; emoji?: string; badge?: string; subtitle?: string; canEditAvatar?: boolean; children?: React.ReactNode;
 }) {
   const isMobile = useIsMobile();
+  const { artistName } = usePortalContext();
   return (
     <div style={{
       position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid rgba(220,38,38,0.34)`,
@@ -639,7 +674,7 @@ function PortalHero({ title, emoji, badge, subtitle, canEditAvatar, children }: 
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 13 : 16, minWidth: isMobile ? "100%" : 232 }}>
           <ArtistAvatar canEdit={!!canEditAvatar} />
           <div style={{ textAlign: "start", minWidth: 0 }}>
-            <div style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>שליו טסמה</div>
+            <div style={{ fontSize: isMobile ? 19 : 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>{artistName}</div>
             <div style={{ fontSize: isMobile ? 12 : 13, color: TEXT2, marginTop: 3 }}>אמן • Redbloods Records</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 7, padding: "3px 11px 3px 9px", borderRadius: 99, background: "rgba(52,211,153,0.10)", border: "1px solid rgba(52,211,153,0.30)" }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
@@ -1224,6 +1259,7 @@ const trackTitle = (name: string) => name.replace(/\.[^.]+$/, "");
 function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
+  const { apiBase, artistName } = usePortalContext();
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
     if (!toast) return;
@@ -1237,12 +1273,12 @@ function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
   const loadFiles = useCallback(async () => {
     setListState("loading");
     try {
-      const r = await fetch("/api/red-artists/performance-files");
+      const r = await fetch(`${apiBase}/performance-files`);
       const d = await r.json();
       if (r.ok && d.ok) { setFiles(Array.isArray(d.files) ? d.files : []); setListState("ready"); }
       else setListState("error");
     } catch { setListState("error"); }
-  }, []);
+  }, [apiBase]);
   useEffect(() => { void loadFiles(); }, [loadFiles]);
 
   // Upload — one general button → choice modal → native picker per kind.
@@ -1270,7 +1306,7 @@ function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
       const fd = new FormData();
       fd.append("kind", kind);
       fd.append("file", file);
-      const r = await fetch("/api/red-artists/upload", { method: "POST", body: fd });
+      const r = await fetch(`${apiBase}/upload`, { method: "POST", body: fd });
       const d = await r.json().catch(() => ({} as { ok?: boolean; error?: string }));
       if (!r.ok || !d.ok) { setToast(d.error || "ההעלאה נכשלה"); return; }
       if (kind === "performance") { await loadFiles(); setToast("הקובץ עלה לחומרים להופעות"); }
@@ -1287,7 +1323,7 @@ function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
     setOpening(true);
     const w = typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
     try {
-      const r = await fetch("/api/red-artists/press-kit-link", { method: "POST" });
+      const r = await fetch(`${apiBase}/press-kit-link`, { method: "POST" });
       const d = await r.json().catch(() => ({} as { ok?: boolean; shareLink?: string; error?: string }));
       if (r.ok && d.ok && d.shareLink) { if (w) w.location.href = d.shareLink; else window.open(d.shareLink, "_blank"); }
       else { w?.close(); setToast(d.error || "לא ניתן לפתוח את התיקייה"); }
@@ -1303,7 +1339,7 @@ function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
       if (!player) return;
       if (playing) player.pause();
       else if (cur) player.resume();
-      else player.play({ projectId: `perf:${f.path}`, projectName: trackTitle(f.name), artist: SHALEV_ARTIST, fileName: f.name, url: f.url });
+      else player.play({ projectId: `perf:${f.path}`, projectName: trackTitle(f.name), artist: artistName, fileName: f.name, url: f.url });
     };
     return { playing, onClick };
   }
@@ -1401,7 +1437,7 @@ function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
                   <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{trackTitle(f.name)}</div>
-                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{SHALEV_ARTIST}</div>
+                    <div style={{ fontSize: 12, color: TEXT2, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl" }}>{artistName}</div>
                   </div>
                   <span style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>—</span>
                 </div>
@@ -1414,7 +1450,7 @@ function PressAndShowsPage({ isShalev }: { isShalev?: boolean }) {
                   <div style={{ minWidth: 0, textAlign: "start" }}>
                     <div style={{ fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{trackTitle(f.name)}</div>
                   </div>
-                  <div style={{ fontSize: 14, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{SHALEV_ARTIST}</div>
+                  <div style={{ fontSize: 14, color: "#CFCFD6", textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artistName}</div>
                   <div style={{ fontSize: 13.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>—</div>
                 </div>
               );
@@ -2253,6 +2289,7 @@ function availDayToIso(dm: string): string {
 
 function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary | null; loadState: LoadState; isOwner?: boolean }) {
   const isMobile = useIsMobile();
+  const { apiBase, artistName } = usePortalContext();
   const weekly  = summary?.weekly  ?? [];
   const updates = summary?.updates ?? [];
   const loading = loadState === "loading";
@@ -2273,7 +2310,7 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
     let alive = true;
     (async () => {
       try {
-        const r = await fetch("/api/red-artists/availability", { cache: "no-store" });
+        const r = await fetch(`${apiBase}/availability`, { cache: "no-store" });
         const d = await r.json().catch(() => ({}));
         if (!alive) return;
         const av = d?.availability;
@@ -2300,7 +2337,7 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
       }
     })();
     return () => { alive = false; };
-  }, [week]);
+  }, [week, apiBase]);
 
   // Real session/show already on the books for a given date (YYYY-MM-DD) — used
   // to show "סשן"/hours info on the matching day in BOTH the availability grid
@@ -2317,7 +2354,7 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   // available start time, it's pre-filled too.
   const handleBookSession = (day: AvailDay, iso: string) => {
     window.dispatchEvent(new CustomEvent("rb:quick-actions", {
-      detail: { clientName: SHALEV_ARTIST, date: iso, time: day.available && day.from ? day.from : undefined },
+      detail: { clientName: artistName, date: iso, time: day.available && day.from ? day.from : undefined },
     }));
   };
 
@@ -2561,6 +2598,7 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
   todayIso: string;
 }) {
   const isMobile = useIsMobile();
+  const { apiBase } = usePortalContext();
   const [editIdx, setEditIdx] = useState<number | null>(null); // day being edited in the modal
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "warn" | "err"; text: string } | null>(null);
@@ -2575,7 +2613,7 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
     if (sending) return;
     setSending(true); setStatus(null);
     try {
-      const r = await fetch("/api/red-artists/availability", {
+      const r = await fetch(`${apiBase}/availability`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ days }),
       });
@@ -2808,25 +2846,26 @@ function AvailDayModal({ day, onCancel, onSave }: {
 // ── "המוזיקה שלי" page ────────────────────────────────────────────────────────────
 // Adapt a Sketch → the LibRow shape the shared player helpers already understand.
 // Audio URL carries the version so a new V{n} never plays the previous cached URL.
-function sketchAsLibRow(s: Sketch): LibRow {
+function sketchAsLibRow(s: Sketch, base?: string, artistName?: string): LibRow {
   return {
-    id: s.id, name: s.title, artist: SHALEV_ARTIST, status: "", projectType: "sketch",
+    id: s.id, name: s.title, artist: artistName ?? SHALEV_ARTIST, status: "", projectType: "sketch",
     hasAudio: !!s.latestFilePath,
-    audio: s.latestFilePath ? { name: s.latestFileName, url: sketchStreamUrl(s) } : null,
+    audio: s.latestFilePath ? { name: s.latestFileName, url: sketchStreamUrl(s, base) } : null,
     durationSeconds: s.durationSeconds,
-    downloadUrl: s.latestFilePath ? sketchDownloadUrl(s) : undefined,
+    downloadUrl: s.latestFilePath ? sketchDownloadUrl(s, base) : undefined,
   };
 }
 function SketchRowPlay({ size, player, sketch, onError }: {
   size: number; player: ReturnType<typeof usePlayerSafe>; sketch: Sketch; onError?: (m: string) => void;
 }) {
-  const { isPlaying, onClick } = libRowPlay(player, sketchAsLibRow(sketch), onError);
+  const { apiBase, artistName } = usePortalContext();
+  const { isPlaying, onClick } = libRowPlay(player, sketchAsLibRow(sketch, apiBase, artistName), onError);
   return <PlayButton size={size} disabled={!sketch.latestFilePath} playing={isPlaying} onClick={onClick} />;
 }
 // Force the global player onto a sketch's latest version (used after a new upload).
-function playSketchLatest(player: ReturnType<typeof usePlayerSafe>, s: Sketch, onError?: (m: string) => void) {
+function playSketchLatest(player: ReturnType<typeof usePlayerSafe>, s: Sketch, onError?: (m: string) => void, base?: string, artistName?: string) {
   if (!s.latestFilePath) return;
-  void playLibRow(player, sketchAsLibRow(s), onError);
+  void playLibRow(player, sketchAsLibRow(s, base, artistName), onError);
 }
 
 function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
@@ -3344,6 +3383,7 @@ function NextReleaseCard({ release, sketches, onReload, canEdit = true }: {
 function NextReleaseModal({ current, sketches, onClose, onSaved }: {
   current: PortalRelease | null; sketches: Sketch[]; onClose: () => void; onSaved: () => Promise<void>;
 }) {
+  const { apiBase } = usePortalContext();
   const [sketchId, setSketchId] = useState(current?.sketchId ?? sketches[0]?.id ?? "");
   const [date, setDate] = useState(current?.releaseDate ?? "");
   const [saving, setSaving] = useState(false);
@@ -3355,7 +3395,7 @@ function NextReleaseModal({ current, sketches, onClose, onSaved }: {
     if (!canSave) return;
     setSaving(true); setErr(null);
     try {
-      const res = await fetch("/api/red-artists/next-release", {
+      const res = await fetch(`${apiBase}/next-release`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sketchId, releaseDate: date }),
       });
@@ -3548,10 +3588,14 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
   );
 }
 
-// ── Artist avatar — shows initial "ש" or an uploaded profile image ────────────────
-//    Upload goes to an isolated Dropbox folder via /api/red-artists/profile-image.
-//    The chosen path is remembered in localStorage (demo persistence — no DB).
-const AVATAR_KEY  = "rb_artist_avatar_path_shalev";
+// ── Artist avatar — shows initial letter or an uploaded profile image ─────────────
+//    Upload goes to an isolated Dropbox folder via {apiBase}/profile-image.
+//    The chosen path is remembered in localStorage (demo persistence — no DB),
+//    keyed per-artist (apiBase) so Shalev's and Avi's cached avatar paths can
+//    never bleed into each other on the same browser/device.
+function avatarKeyFor(apiBase: string): string {
+  return `rb_artist_avatar_path:${apiBase}`;
+}
 const AVATAR_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 // Real ceiling = Dropbox single-request upload (150MB), matching the route. The
 // old 5MB cap was an arbitrary UI block that rejected ordinary phone photos.
@@ -3561,10 +3605,10 @@ const AVATAR_MAX_LABEL = "150MB";
 type XhrResult = { ok: boolean; status: number; reason?: "network" | "timeout" | "abort"; data: { ok?: boolean; error?: string; path?: string } };
 // XMLHttpRequest (not fetch) so we get REAL upload progress in the browser. No
 // dependency added. Always resolves — never rejects — so the caller can't hang.
-function xhrUploadAvatar(fd: FormData, onProgress: (pct: number) => void): Promise<XhrResult> {
+function xhrUploadAvatar(fd: FormData, onProgress: (pct: number) => void, apiBase: string): Promise<XhrResult> {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/red-artists/profile-image");
+    xhr.open("POST", `${apiBase}/profile-image`);
     xhr.timeout = 300000; // 5 min — a large original on a slow link
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100))); };
     xhr.onload = () => {
@@ -3588,34 +3632,51 @@ function avatarUploadError(r: XhrResult): string {
   return "העלאת התמונה נכשלה. נסה שוב"; // 500 etc. — generic, no internals
 }
 // Deterministic path the endpoint writes the cropped avatar to (editor exports
-// JPEG). Used as a cross-device fallback so ANY browser loads the same image
-// even without a localStorage entry; a 404 just falls back to the "ש" initial.
-const AVATAR_PATH = "/app/red-artists/shalev-tasama/profile-image/avatar.jpg";
+// JPEG) — ONLY known for Shalev's own default session (his real, hardcoded
+// production Dropbox path); used as a cross-device fallback so ANY browser
+// loads his image even without a localStorage entry. For any other artist
+// (owner-preview) there's no such guess — start with null (a brief "initial
+// letter" flash until the real fetch resolves is correct, not a bug — it just
+// means the client can't derive a server-side Dropbox path from `apiBase`).
+const SHALEV_AVATAR_PATH = "/app/red-artists/shalev-tasama/profile-image/avatar.jpg";
+function defaultAvatarPathFor(apiBase: string): string | null {
+  return apiBase === "/api/red-artists" ? SHALEV_AVATAR_PATH : null;
+}
 // Session-level cache so the avatar survives remounts / tab-switches without
-// flashing back to "ש" or refetching. Seeded with the deterministic path so the
-// FIRST render already has a src (no null→"ש" flash). Updated on upload / 404.
-let avatarPathCache: string | null = AVATAR_PATH;
-let avatarVerCache = 0;                            // 0 = stable URL; only bumped after a successful upload
+// flashing back to the initial letter or refetching — keyed per-artist
+// (apiBase) so two different artists' portals (Shalev vs. an owner-previewed
+// artist) can never show each other's cached image. Updated on upload / 404.
+const avatarCache = new Map<string, { path: string | null; ver: number }>();
+function getAvatarCache(apiBase: string): { path: string | null; ver: number } {
+  const existing = avatarCache.get(apiBase);
+  if (existing) return existing;
+  const fresh = { path: defaultAvatarPathFor(apiBase), ver: 0 };
+  avatarCache.set(apiBase, fresh);
+  return fresh;
+}
 
 // Last crop-editor state (zoom + pan) for the avatar — remembered so reopening
 // the editor on the SAME image starts where the user left off, not from scratch.
-// This is METADATA ONLY (localStorage, no DB); it never replaces the image itself.
-const AVATAR_EDIT_KEY = "red-artists:shalev-tasama:profile-image-editor";
+// This is METADATA ONLY (localStorage, no DB); it never replaces the image
+// itself. Keyed per-artist (apiBase) for the same cross-artist reason as above.
+function avatarEditKeyFor(apiBase: string): string {
+  return `red-artists:avatar-editor:${apiBase}`;
+}
 type AvatarEdit = { zoom: number; position: { x: number; y: number } };
-function loadAvatarEdit(): AvatarEdit | null {
+function loadAvatarEdit(apiBase: string): AvatarEdit | null {
   try {
-    const raw = localStorage.getItem(AVATAR_EDIT_KEY);
+    const raw = localStorage.getItem(avatarEditKeyFor(apiBase));
     if (!raw) return null;
     const v = JSON.parse(raw) as AvatarEdit;
     if (typeof v?.zoom === "number" && typeof v?.position?.x === "number" && typeof v?.position?.y === "number") return v;
   } catch { /* ignore */ }
   return null;
 }
-function saveAvatarEdit(zoom: number, offset: { x: number; y: number }) {
-  try { localStorage.setItem(AVATAR_EDIT_KEY, JSON.stringify({ zoom, position: offset })); } catch { /* ignore */ }
+function saveAvatarEdit(apiBase: string, zoom: number, offset: { x: number; y: number }) {
+  try { localStorage.setItem(avatarEditKeyFor(apiBase), JSON.stringify({ zoom, position: offset })); } catch { /* ignore */ }
 }
-function clearAvatarEdit() {
-  try { localStorage.removeItem(AVATAR_EDIT_KEY); } catch { /* ignore */ }
+function clearAvatarEdit(apiBase: string) {
+  try { localStorage.removeItem(avatarEditKeyFor(apiBase)); } catch { /* ignore */ }
 }
 
 // What the editor hands back on save: the crop params for the exported avatar,
@@ -3624,8 +3685,10 @@ function clearAvatarEdit() {
 type SaveMeta = { zoom: number; offset: { x: number; y: number }; originalFile: File | null; originalFileName: string | null };
 
 function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
-  const [path, setPath]   = useState<string | null>(avatarPathCache);
-  const [ver, setVer]     = useState(avatarVerCache); // cache-bust after re-upload (overwrites same path)
+  const { apiBase, artistName } = usePortalContext();
+  const initialCache = getAvatarCache(apiBase);
+  const [path, setPath]   = useState<string | null>(initialCache.path);
+  const [ver, setVer]     = useState(initialCache.ver); // cache-bust after re-upload (overwrites same path)
   const [hover, setHover] = useState(false);
   const [busy, setBusy]   = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -3637,12 +3700,14 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
   useEffect(() => {
     // Pick up a stored path once (client only) and keep the module cache in sync.
     // NO cache-bust here — the URL stays stable across mounts so the browser can
-    // reuse the image and we never flash back to "ש" on a tab switch / refresh.
+    // reuse the image and we never flash back to the initial letter on a tab
+    // switch / refresh. Keyed per-artist (apiBase) — see avatarKeyFor.
     try {
-      const p = localStorage.getItem(AVATAR_KEY);
-      if (p && p !== avatarPathCache) { avatarPathCache = p; setPath(p); }
+      const cache = getAvatarCache(apiBase);
+      const p = localStorage.getItem(avatarKeyFor(apiBase));
+      if (p && p !== cache.path) { cache.path = p; setPath(p); }
     } catch { /* ignore */ }
-  }, []);
+  }, [apiBase]);
 
   // Editing is only allowed from the home tab. If the tab changes while the
   // editor is open (canEdit → false), close it so it can't linger elsewhere.
@@ -3659,7 +3724,7 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
     if (file.size > AVATAR_MAX_BYTES)     { notify(`הקובץ גדול מהמגבלה שהשרת מאפשר (מקסימום ${AVATAR_MAX_LABEL})`); return; }
     // New image → its own crop (defaults). The untouched original is uploaded to
     // Dropbox on save, so a later re-open (any device) edits the true source.
-    clearAvatarEdit();
+    clearAvatarEdit(apiBase);
     setEditing({ file });
   }
 
@@ -3680,14 +3745,15 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
         fd.append("original", meta.originalFile, meta.originalFileName ?? meta.originalFile.name);
         if (meta.originalFileName) fd.append("originalFileName", meta.originalFileName);
       }
-      const res = await xhrUploadAvatar(fd, onProgress);
+      const res = await xhrUploadAvatar(fd, onProgress, apiBase);
       if (!res.ok) return { ok: false, error: avatarUploadError(res) };
       const p = res.data.path as string;
-      avatarPathCache = p;
-      avatarVerCache  = Date.now();              // bump only on success → forces the overwritten image to reload
-      try { localStorage.setItem(AVATAR_KEY, p); } catch { /* ignore */ }
+      const cache = getAvatarCache(apiBase);
+      cache.path = p;
+      cache.ver  = Date.now();              // bump only on success → forces the overwritten image to reload
+      try { localStorage.setItem(avatarKeyFor(apiBase), p); } catch { /* ignore */ }
       setPath(p);
-      setVer(avatarVerCache);
+      setVer(cache.ver);
       notify("תמונת הפרופיל עודכנה בהצלחה");
       return { ok: true };
     } finally {
@@ -3695,7 +3761,7 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
     }
   }
 
-  const src = path ? `/api/red-artists/stream?path=${encodeURIComponent(path)}${ver ? `&t=${ver}` : ""}` : null;
+  const src = path ? `${apiBase}/stream?path=${encodeURIComponent(path)}${ver ? `&t=${ver}` : ""}` : null;
 
   // NOTE: the editor + toast are portaled AND rendered as SIBLINGS of the
   // clickable avatar (not children) — otherwise their clicks bubble through the
@@ -3724,8 +3790,8 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
         }}>
           {src ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={src} alt="תמונת פרופיל" onError={() => { avatarPathCache = null; setPath(null); try { localStorage.removeItem(AVATAR_KEY); } catch { /* ignore */ } }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          ) : "ש"}
+            <img src={src} alt="תמונת פרופיל" onError={() => { getAvatarCache(apiBase).path = null; setPath(null); try { localStorage.removeItem(avatarKeyFor(apiBase)); } catch { /* ignore */ } }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (artistName.trim()[0] ?? "")}
           {/* hover / busy overlay */}
           <div style={{
             position: "absolute", inset: 0, borderRadius: "50%", display: "flex", flexDirection: "column",
@@ -3782,6 +3848,7 @@ function AvatarEditor({ initialFile, initialUrl, onCancel, onSave }: {
   onSave: (blob: Blob, meta: SaveMeta, onProgress: (pct: number) => void) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const isMobile = useIsMobile();
+  const { apiBase } = usePortalContext();
   const D = isMobile ? 236 : 260;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef    = useRef<HTMLImageElement | null>(null);
@@ -3792,7 +3859,7 @@ function AvatarEditor({ initialFile, initialUrl, onCancel, onSave }: {
   // then overrides it with the source-of-truth crop + the true original image, so
   // re-editing works from ANY device (localStorage is only a cache).
   const cropToApplyRef = useRef<{ zoom: number; position: { x: number; y: number } } | null>(
-    initialFile ? null : loadAvatarEdit()
+    initialFile ? null : loadAvatarEdit(apiBase)
   );
   // Instant fallback source = the current avatar (always fresh). The Dropbox GET
   // below swaps in the true ORIGINAL for editing (source of truth, any device).
@@ -3849,14 +3916,14 @@ function AvatarEditor({ initialFile, initialUrl, onCancel, onSave }: {
   useEffect(() => {
     if (initialFile) return; // a freshly picked file has no remote source
     let alive = true;
-    fetch("/api/red-artists/profile-image")
+    fetch(`${apiBase}/profile-image`)
       .then(r => (r.ok ? r.json() : null))
       .then((d) => {
         if (!alive || !d?.ok) return;
         const crop = (d.editor && typeof d.editor.zoom === "number" && d.editor.position)
           ? { zoom: d.editor.zoom as number, position: d.editor.position as { x: number; y: number } }
           : null;
-        if (crop) { try { saveAvatarEdit(crop.zoom, crop.position); } catch { /* ignore */ } } // refresh cache
+        if (crop) { try { saveAvatarEdit(apiBase, crop.zoom, crop.position); } catch { /* ignore */ } } // refresh cache
         if (d.original?.url) {
           // Switch to the true original → the load effect re-applies the crop on load.
           cropToApplyRef.current = crop;
@@ -3917,7 +3984,7 @@ function AvatarEditor({ initialFile, initialUrl, onCancel, onSave }: {
     if (f.size > AVATAR_MAX_BYTES)     { setError(`הקובץ גדול מהמגבלה שהשרת מאפשר (מקסימום ${AVATAR_MAX_LABEL})`); return; }
     setError(null);
     cropToApplyRef.current = null; // a new/replaced image opens at defaults, not the old crop
-    clearAvatarEdit();
+    clearAvatarEdit(apiBase);
     setFile(f);
   };
 
@@ -3948,7 +4015,7 @@ function AvatarEditor({ initialFile, initialUrl, onCancel, onSave }: {
       // it as the re-editing source; a plain re-crop keeps the existing original.
       const res = await onSave(blob, { zoom, offset, originalFile: file, originalFileName: file?.name ?? null }, setProgress);
       if (res.ok) {
-        saveAvatarEdit(zoom, offset);          // refresh the localStorage cache (Dropbox is the source of truth)
+        saveAvatarEdit(apiBase, zoom, offset);          // refresh the localStorage cache (Dropbox is the source of truth)
         // parent closes the modal on success (setEditing(null)).
       } else {
         // Failure → keep the modal open, the crop + picked file intact, and show
@@ -4188,6 +4255,7 @@ function NextWorkCard({ sketch, hasSelection, deadline, player, onOpenMusic, can
 function NextWorkModal({ sketches, current, onClose, onSaved }: {
   sketches: Sketch[]; current: PortalWork | null; onClose: () => void; onSaved: () => Promise<void>;
 }) {
+  const { apiBase } = usePortalContext();
   const [sketchId, setSketchId] = useState(current?.sketchId ?? sketches[0]?.id ?? "");
   const [deadline, setDeadline] = useState(current?.deadline ?? "");
   const [saving, setSaving] = useState(false);
@@ -4199,7 +4267,7 @@ function NextWorkModal({ sketches, current, onClose, onSaved }: {
     if (!canSave) return;
     setSaving(true); setErr(null);
     try {
-      const res = await fetch("/api/red-artists/next-work", {
+      const res = await fetch(`${apiBase}/next-work`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sketchId, deadline: deadline || null }),
       });
@@ -4460,6 +4528,7 @@ async function readErr(res: Response, fallback: string): Promise<string> {
 
 // ── Create ────────────────────────────────────────────────────────────────────
 function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (s: Sketch) => void | Promise<void> }) {
+  const { apiBase } = usePortalContext();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
@@ -4480,7 +4549,7 @@ function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCrea
       fd.append("description", description.trim());
       fd.append("notes", notes.trim());
       fd.append("file", file);
-      const res = await fetch("/api/red-artists/sketches", { method: "POST", body: fd });
+      const res = await fetch(`${apiBase}/sketches`, { method: "POST", body: fd });
       if (!res.ok) { setErr(await readErr(res, "יצירת הסקיצה נכשלה")); setBusy(false); return; }
       const d = await res.json();
       await onCreated(d.sketch as Sketch);
@@ -4517,6 +4586,7 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
   sketch: Sketch; player: ReturnType<typeof usePlayerSafe>;
   onClose: () => void; onReload: () => Promise<void>; onToast: (m: string) => void;
 }) {
+  const { apiBase, artistName } = usePortalContext();
   const [title, setTitle] = useState(sketch.title);
   const [description, setDescription] = useState(sketch.description ?? "");
   const [notes, setNotes] = useState(sketch.notes ?? "");
@@ -4546,7 +4616,7 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
       if (title.trim() !== sketch.title) body.title = title.trim();
       if (description.trim() !== (sketch.description ?? "")) body.description = description.trim();
       if (notes.trim() !== (sketch.notes ?? "")) body.notes = notes.trim();
-      const res = await fetch(`/api/red-artists/sketches/${sketch.id}`, {
+      const res = await fetch(`${apiBase}/sketches/${sketch.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       if (!res.ok) { setDetailsErr(await readErr(res, "שמירת הפרטים נכשלה")); setSavingDetails(false); return; }
@@ -4562,12 +4632,12 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
     try {
       const fd = new FormData();
       fd.append("file", newFile);
-      const res = await fetch(`/api/red-artists/sketches/${sketch.id}/version`, { method: "POST", body: fd });
+      const res = await fetch(`${apiBase}/sketches/${sketch.id}/version`, { method: "POST", body: fd });
       if (!res.ok) { setVersionErr(await readErr(res, "עדכון הגרסה נכשל")); setUploading(false); return; }
       const d = await res.json();
       const fresh = d.sketch as Sketch;
       await onReload();
-      playSketchLatest(player, fresh, onToast);   // the new version becomes what plays
+      playSketchLatest(player, fresh, onToast, apiBase, artistName);   // the new version becomes what plays
       onToast(`עודכן לגרסה V${fresh.latestVersion}`);
       setNewFile(null); setUploading(false);
     } catch { setVersionErr("שגיאת רשת, נסה שוב"); setUploading(false); }
@@ -4577,7 +4647,7 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
     if (busy) return;
     setDeleting(true); setDeleteErr(null);
     try {
-      const res = await fetch(`/api/red-artists/sketches/${sketch.id}`, { method: "DELETE" });
+      const res = await fetch(`${apiBase}/sketches/${sketch.id}`, { method: "DELETE" });
       if (!res.ok) { setDeleteErr(await readErr(res, "ההסרה נכשלה")); setDeleting(false); return; }
       await onReload();
       onToast(`הסקיצה "${sketch.title}" הוסרה מהפורטל`);

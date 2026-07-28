@@ -4,20 +4,28 @@ import { getDropboxToken } from "@/lib/dropbox-token";
 import { sanitizeFolder } from "@/lib/project-paths";
 
 /**
- * Standalone "המוזיקה שלי" store for the Shalev portal — a Dropbox-backed manifest
- * is the SINGLE SOURCE OF TRUTH (no Projects, no DB). All reads/writes are
- * server-side; the client never sends a path or manages version numbers.
+ * "המוזיקה שלי" store — a Dropbox-backed manifest is the SINGLE SOURCE OF TRUTH
+ * (no Projects, no DB). All reads/writes are server-side; the client never
+ * sends a path or manages version numbers.
  *
- *   files:    /app/red-artists/shalev-tasama/uploads/sketches/{id}/{title} V{n}.{ext}
- *   manifest: /app/red-artists/shalev-tasama/uploads/sketches/manifest.json
+ * Multi-artist: every function takes an explicit `slug` (from
+ * lib/red-artists/portal-config.ts) so each portal artist gets a completely
+ * separate manifest/file tree — never shared, never cross-visible:
+ *
+ *   files:    /app/red-artists/{slug}/uploads/sketches/{id}/{title} V{n}.{ext}
+ *   manifest: /app/red-artists/{slug}/uploads/sketches/manifest.json
+ *
+ * Shalev's slug ("shalev-tasama") is the exact literal his existing production
+ * data already lives under — passing it here reproduces the original paths
+ * byte-for-byte, so his data needs no migration.
  *
  * Concurrency: manifest writes are conditional on the Dropbox file `rev`
  * (mode=update{rev}); a rev clash → read-modify-write retry. A brand-new manifest
  * is created with mode=add. Corrupt manifest is NEVER silently overwritten.
  */
 
-const ROOT = "/app/red-artists/shalev-tasama/uploads/sketches";
-const MANIFEST_PATH = `${ROOT}/manifest.json`;
+function rootFor(slug: string): string { return `/app/red-artists/${slug}/uploads/sketches`; }
+function manifestPathFor(slug: string): string { return `${rootFor(slug)}/manifest.json`; }
 
 export const SKETCH_AUDIO_EXT = ["mp3", "wav", "aiff", "aif", "m4a"] as const;
 const AUDIO_EXT = new Set<string>(SKETCH_AUDIO_EXT);
@@ -164,8 +172,8 @@ function normalizeSketch(raw: Partial<Sketch> & { id?: string }): Sketch | null 
   };
 }
 
-async function readManifest(): Promise<{ manifest: Manifest; rev: string | null }> {
-  const dl = await dbxDownload(MANIFEST_PATH);
+async function readManifest(slug: string): Promise<{ manifest: Manifest; rev: string | null }> {
+  const dl = await dbxDownload(manifestPathFor(slug));
   if (!dl) return { manifest: emptyManifest(), rev: null };
   let parsed: unknown;
   try { parsed = JSON.parse(dl.content); }
@@ -220,14 +228,14 @@ function effectiveOrder(m: Manifest): string[] {
 }
 
 /** Read-modify-write with rev-conditional save; retries on a concurrent-write clash. */
-async function mutateManifest(fn: (m: Manifest) => Manifest): Promise<Manifest> {
+async function mutateManifest(slug: string, fn: (m: Manifest) => Manifest): Promise<Manifest> {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { manifest, rev } = await readManifest();
+    const { manifest, rev } = await readManifest(slug);
     const next = fn(structuredClone(manifest));
     const body = Buffer.from(JSON.stringify(next, null, 2), "utf8");
     const mode: UploadMode = rev ? { ".tag": "update", update: rev } : { ".tag": "add" };
     try {
-      await dbxUpload(MANIFEST_PATH, body, mode);
+      await dbxUpload(manifestPathFor(slug), body, mode);
       return next;
     } catch (e) {
       if (e instanceof SketchError && e.code === "CONFLICT") continue; // someone else wrote — retry
@@ -269,18 +277,18 @@ export async function validateAudio(file: File | null): Promise<UploadedAudio> {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-/** Active (non-archived) sketches in the manifest's effective display order. */
-export async function listSketches(): Promise<Sketch[]> {
-  const { manifest } = await readManifest();
+/** Active (non-archived) sketches in the manifest's effective display order, for the artist `slug`. */
+export async function listSketches(slug: string): Promise<Sketch[]> {
+  const { manifest } = await readManifest(slug);
   const pos = new Map(effectiveOrder(manifest).map((id, i) => [id, i]));
   return manifest.sketches
     .filter((s) => !s.archived)
     .sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
 }
 
-async function uploadVersionFile(id: string, title: string, version: number, audio: UploadedAudio): Promise<SketchVersion> {
+async function uploadVersionFile(slug: string, id: string, title: string, version: number, audio: UploadedAudio): Promise<SketchVersion> {
   const fileName = `${safeBase(title)} V${version}.${audio.ext}`;
-  const path = `${ROOT}/${id}/${fileName}`;
+  const path = `${rootFor(slug)}/${id}/${fileName}`;
   // add + autorename → NEVER overwrites an existing file; we store the ACTUAL
   // returned path/name so the file↔version link stays correct even if renamed.
   const meta = await dbxUpload(path, audio.buffer, { ".tag": "add" }, true);
@@ -294,24 +302,24 @@ async function uploadVersionFile(id: string, title: string, version: number, aud
   };
 }
 
-export async function createSketch(input: {
+export async function createSketch(slug: string, input: {
   title: string; description?: string; notes?: string; audio: UploadedAudio;
 }): Promise<Sketch> {
   const title = input.title.trim().replace(/\s+/g, " ");
   if (!title) throw new SketchError("BAD_INPUT", "יש להזין שם לסקיצה");
 
   // Pre-check duplicate (cheap read) before uploading, to avoid orphan files.
-  const { manifest: pre } = await readManifest();
+  const { manifest: pre } = await readManifest(slug);
   if (pre.sketches.some((s) => !s.archived && normTitle(s.title) === normTitle(title))) {
     throw new SketchError("DUP_TITLE", "כבר קיימת סקיצה פעילה עם השם הזה");
   }
 
   const id = randomUUID();
-  const version = await uploadVersionFile(id, title, 1, input.audio); // file uploaded FIRST
+  const version = await uploadVersionFile(slug, id, title, 1, input.audio); // file uploaded FIRST
 
   const now = new Date().toISOString();
   try {
-    await mutateManifest((m) => {
+    await mutateManifest(slug, (m) => {
       // Re-check under lock (race window since the pre-check).
       if (m.sketches.some((s) => !s.archived && normTitle(s.title) === normTitle(title))) {
         throw new SketchError("DUP_TITLE", "כבר קיימת סקיצה פעילה עם השם הזה");
@@ -332,20 +340,20 @@ export async function createSketch(input: {
     console.error(`[sketches] ORPHAN after create — file ${version.filePath} saved but manifest not updated`);
     throw new SketchError("SAVE_FAILED", "הקובץ הועלה אך שמירת הסקיצה נכשלה. נסה שוב או פנה לתמיכה");
   }
-  const created = (await readManifest()).manifest.sketches.find((s) => s.id === id);
+  const created = (await readManifest(slug)).manifest.sketches.find((s) => s.id === id);
   return created!;
 }
 
-export async function addVersion(id: string, audio: UploadedAudio): Promise<Sketch> {
-  const { manifest } = await readManifest();
+export async function addVersion(slug: string, id: string, audio: UploadedAudio): Promise<Sketch> {
+  const { manifest } = await readManifest(slug);
   const existing = manifest.sketches.find((s) => s.id === id && !s.archived);
   if (!existing) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
 
   const nextVersion = existing.latestVersion + 1;
-  const version = await uploadVersionFile(id, existing.title, nextVersion, audio); // upload FIRST
+  const version = await uploadVersionFile(slug, id, existing.title, nextVersion, audio); // upload FIRST
 
   try {
-    await mutateManifest((m) => {
+    await mutateManifest(slug, (m) => {
       // Freeze the current positions BEFORE bumping updatedAt so a new version
       // never moves the item (and legacy manifests gain a stable order now).
       const frozen = effectiveOrder(m);
@@ -368,11 +376,11 @@ export async function addVersion(id: string, audio: UploadedAudio): Promise<Sket
     console.error(`[sketches] ORPHAN after version — file ${version.filePath} saved but manifest not updated`);
     throw new SketchError("SAVE_FAILED", "הקובץ הועלה אך עדכון הגרסה נכשל. נסה שוב או פנה לתמיכה");
   }
-  return (await readManifest()).manifest.sketches.find((s) => s.id === id)!;
+  return (await readManifest(slug)).manifest.sketches.find((s) => s.id === id)!;
 }
 
-export async function patchDetails(id: string, patch: { title?: string; description?: string; notes?: string }): Promise<Sketch> {
-  return (await mutateManifest((m) => {
+export async function patchDetails(slug: string, id: string, patch: { title?: string; description?: string; notes?: string }): Promise<Sketch> {
+  return (await mutateManifest(slug, (m) => {
     // Editing details never moves the item; freeze positions (also seeds a
     // stable order on a legacy manifest) before touching updatedAt.
     const frozen = effectiveOrder(m);
@@ -394,8 +402,8 @@ export async function patchDetails(id: string, patch: { title?: string; descript
   })).sketches.find((s) => s.id === id)!;
 }
 
-export async function softDeleteSketch(id: string): Promise<void> {
-  await mutateManifest((m) => {
+export async function softDeleteSketch(slug: string, id: string): Promise<void> {
+  await mutateManifest(slug, (m) => {
     const s = m.sketches.find((x) => x.id === id);
     if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
     s.archived = true;
@@ -412,9 +420,9 @@ export async function softDeleteSketch(id: string): Promise<void> {
  * Server-side we reject unknown/archived/duplicate ids, and any active item the
  * client omitted (stale client) is preserved at the end so nothing is ever lost.
  */
-export async function reorderSketches(orderedIds: string[]): Promise<Sketch[]> {
+export async function reorderSketches(slug: string, orderedIds: string[]): Promise<Sketch[]> {
   if (!Array.isArray(orderedIds)) throw new SketchError("BAD_INPUT", "רשימת הסדר אינה תקינה");
-  await mutateManifest((m) => {
+  await mutateManifest(slug, (m) => {
     const activeIds = new Set(m.sketches.filter((s) => !s.archived).map((s) => s.id));
     const seen = new Set<string>();
     for (const id of orderedIds) {
@@ -432,14 +440,14 @@ export async function reorderSketches(orderedIds: string[]): Promise<Sketch[]> {
     m.order = [...orderedIds, ...rest];
     return m;
   });
-  return listSketches();
+  return listSketches(slug);
 }
 
 // ── Next release (manifest-stored pointer to an active sketch) ────────────────
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** The resolved next release, or null when unset / pointing at a missing sketch. */
-export async function getNextReleaseConfig(): Promise<ResolvedNextRelease | null> {
-  const { manifest } = await readManifest();
+export async function getNextReleaseConfig(slug: string): Promise<ResolvedNextRelease | null> {
+  const { manifest } = await readManifest(slug);
   const nr = manifest.nextRelease;
   if (!nr) return null;
   const s = manifest.sketches.find((x) => x.id === nr.sketchId && !x.archived);
@@ -447,13 +455,13 @@ export async function getNextReleaseConfig(): Promise<ResolvedNextRelease | null
   return { sketchId: s.id, title: s.title, releaseDate: nr.releaseDate, updatedAt: nr.updatedAt };
 }
 /** Set the next release to an ACTIVE sketch + a YYYY-MM-DD date. */
-export async function setNextReleaseConfig(sketchId: string, releaseDate: string): Promise<ResolvedNextRelease> {
+export async function setNextReleaseConfig(slug: string, sketchId: string, releaseDate: string): Promise<ResolvedNextRelease> {
   if (typeof sketchId !== "string" || !sketchId) throw new SketchError("BAD_INPUT", "יש לבחור סקיצה");
   if (!DATE_RE.test(releaseDate) || Number.isNaN(new Date(`${releaseDate}T00:00:00`).getTime())) {
     throw new SketchError("BAD_INPUT", "תאריך הוצאה לא תקין");
   }
   let resolved: ResolvedNextRelease | null = null;
-  await mutateManifest((m) => {
+  await mutateManifest(slug, (m) => {
     const s = m.sketches.find((x) => x.id === sketchId && !x.archived);
     if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
     m.nextRelease = { sketchId, releaseDate, updatedAt: new Date().toISOString() };
@@ -465,8 +473,8 @@ export async function setNextReleaseConfig(sketchId: string, releaseDate: string
 
 // ── Next project to work on (manifest-stored, OWNER-chosen; SEPARATE from release) ──
 /** The resolved next-work project, or null when unset / pointing at a missing sketch. */
-export async function getNextWorkConfig(): Promise<ResolvedNextWork | null> {
-  const { manifest } = await readManifest();
+export async function getNextWorkConfig(slug: string): Promise<ResolvedNextWork | null> {
+  const { manifest } = await readManifest(slug);
   const nw = manifest.nextWork;
   if (!nw) return null;
   const s = manifest.sketches.find((x) => x.id === nw.sketchId && !x.archived);
@@ -474,14 +482,14 @@ export async function getNextWorkConfig(): Promise<ResolvedNextWork | null> {
   return { sketchId: s.id, title: s.title, deadline: nw.deadline ?? null, updatedAt: nw.updatedAt };
 }
 /** Set the next-work project to an ACTIVE sketch + an OPTIONAL deadline (YYYY-MM-DD | null). */
-export async function setNextWorkConfig(sketchId: string, deadline: string | null): Promise<ResolvedNextWork> {
+export async function setNextWorkConfig(slug: string, sketchId: string, deadline: string | null): Promise<ResolvedNextWork> {
   if (typeof sketchId !== "string" || !sketchId) throw new SketchError("BAD_INPUT", "יש לבחור פרויקט");
   const dl = deadline && deadline.trim() ? deadline.trim() : null;
   if (dl && (!DATE_RE.test(dl) || Number.isNaN(new Date(`${dl}T00:00:00`).getTime()))) {
     throw new SketchError("BAD_INPUT", "תאריך דדליין לא תקין");
   }
   let resolved: ResolvedNextWork | null = null;
-  await mutateManifest((m) => {
+  await mutateManifest(slug, (m) => {
     const s = m.sketches.find((x) => x.id === sketchId && !x.archived);
     if (!s) throw new SketchError("NOT_FOUND", "הפרויקט לא נמצא");
     m.nextWork = { sketchId, deadline: dl, updatedAt: new Date().toISOString() };
@@ -491,9 +499,9 @@ export async function setNextWorkConfig(sketchId: string, deadline: string | nul
   return resolved!;
 }
 
-export async function setSketchDuration(id: string, versionNumber: number, seconds: number): Promise<void> {
+export async function setSketchDuration(slug: string, id: string, versionNumber: number, seconds: number): Promise<void> {
   if (!(seconds > 0 && seconds < 86400)) return; // ignore implausible values, no error
-  await mutateManifest((m) => {
+  await mutateManifest(slug, (m) => {
     const s = m.sketches.find((x) => x.id === id && !x.archived);
     if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
     const v = s.versions.find((x) => x.versionNumber === versionNumber);
