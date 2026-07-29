@@ -9,6 +9,7 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, availabilityWeekStart, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
+import { countValidDays, hasValidSubmissionForCycle, cycleStartInstant } from "@/lib/shalev-availability-reminder-pure";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -2367,6 +2368,13 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   // no behavior change to the send/edit flow itself.
   const [availDays, setAvailDays] = useState<AvailDay[]>(() => week.map(w => ({ day: w.day, date: w.date, available: false, from: "" })));
   const [availLastUpdate, setAvailLastUpdate] = useState<{ sentBy: "owner" | "shalev"; sentAt: string } | null>(null);
+  // Whether the LAST SAVED submission (not the live-editable draft below) is
+  // still valid for the active reminder cycle — survives a page re-entry
+  // ("הכפתור והמצב צריכים להישאר ברורים גם אם שליו נכנס שוב לעמוד"). Only set
+  // at load time and right after a successful send (AvailabilityBody's
+  // onSent) — never touched by local edits, since those don't change what's
+  // actually persisted server-side until re-sent.
+  const [availValidForCycle, setAvailValidForCycle] = useState(false);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -2389,12 +2397,14 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
             : days.map((sd, i) => ({ day: week[i].day, date: week[i].date, available: sd.available, from: sd.from }));
           setAvailDays(applied);
           setAvailLastUpdate({ sentBy: av.sentBy, sentAt: av.sentAt });
+          setAvailValidForCycle(hasValidSubmissionForCycle({ days: applied, sentAt: av.sentAt }, cycleStartInstant(new Date())));
           return;
         }
       } catch { /* fall through to a blank week */ }
       if (alive) {
         setAvailDays(week.map(w => ({ day: w.day, date: w.date, available: false, from: "" })));
         setAvailLastUpdate(null);
+        setAvailValidForCycle(false);
       }
     })();
     return () => { alive = false; };
@@ -2423,18 +2433,52 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   // manage/delete modal for that exact session.
   const [managing, setManaging] = useState<{ item: WeeklyItem; day: WeekDay } | null>(null);
 
+  // Deep-link from the availability-reminder push (?tab=schedule&focus=availability
+  // — see lib/shalev-availability-reminder-notify.ts). The tab itself is
+  // already selected by the existing ?tab= handling; this only needs to
+  // scroll to + briefly highlight the availability card, and ONLY after this
+  // component's own data has settled (loading → ready/error) so the scroll
+  // lands on the final layout, not a shifting skeleton. Never triggers a
+  // fetch/push of its own — pure client-side navigation.
+  const [focusAvailabilityRequested, setFocusAvailabilityRequested] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("focus") !== "availability") return;
+    url.searchParams.delete("focus");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    setFocusAvailabilityRequested(true);
+  }, []);
+  const [highlightAvailability, setHighlightAvailability] = useState(false);
+  useEffect(() => {
+    if (!focusAvailabilityRequested || loading) return;
+    setFocusAvailabilityRequested(false);
+    const el = document.getElementById("rb-availability-card");
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightAvailability(true);
+    const t = setTimeout(() => setHighlightAvailability(false), 2200);
+    return () => clearTimeout(t);
+  }, [focusAvailabilityRequested, loading]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
       {/* 1) availability — Shalev marks when he's free for NEXT week (existing
              logic, untouched — never navigable). */}
-      <SchedSection title="הזמינות שלי לשבוע הבא" subtitle={`${week[0].date}–${week[6].date} · בחר מתי אתה פנוי`}>
-        <AvailabilityBody
-          days={availDays} setDays={setAvailDays}
-          lastUpdate={availLastUpdate} setLastUpdate={setAvailLastUpdate}
-          isOwner={isOwner} onBookSession={handleBookSession} weeklyByIso={weeklyByIso}
-          week={week} todayIso={todayIso}
-        />
-      </SchedSection>
+      <div id="rb-availability-card" style={{
+        borderRadius: 22, transition: "box-shadow .6s ease",
+        boxShadow: highlightAvailability ? "0 0 0 2px rgba(220,38,38,0.65), 0 0 34px rgba(220,38,38,0.45)" : "none",
+      }}>
+        <SchedSection title="הזמינות שלי לשבוע הבא" subtitle={`${week[0].date}–${week[6].date} · בחר מתי אתה פנוי`}>
+          <AvailabilityBody
+            days={availDays} setDays={setAvailDays}
+            lastUpdate={availLastUpdate} setLastUpdate={setAvailLastUpdate}
+            validForCycle={availValidForCycle} setValidForCycle={setAvailValidForCycle}
+            isOwner={isOwner} onBookSession={handleBookSession} weeklyByIso={weeklyByIso}
+            week={week} todayIso={todayIso}
+          />
+        </SchedSection>
+      </div>
       {/* 2) weekly calendar — Shalev's REAL sessions + shows for a NAVIGABLE
              week (independent of the availability week above), as 7 cubes
              (never availability — that lives only in section 1). */}
@@ -2702,11 +2746,13 @@ function fmtWhen(iso: string): string {
 // sent drives the "last updated" text. `days`/`lastUpdate` are now owned by
 // SchedulePage (lifted up so the weekly-calendar merge sees the same data
 // without a second fetch) — this component only edits/sends them.
-function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, onBookSession, weeklyByIso, week, todayIso }: {
+function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, validForCycle, setValidForCycle, isOwner, onBookSession, weeklyByIso, week, todayIso }: {
   days: AvailDay[];
   setDays: React.Dispatch<React.SetStateAction<AvailDay[]>>;
   lastUpdate: { sentBy: "owner" | "shalev"; sentAt: string } | null;
   setLastUpdate: React.Dispatch<React.SetStateAction<{ sentBy: "owner" | "shalev"; sentAt: string } | null>>;
+  validForCycle: boolean;
+  setValidForCycle: React.Dispatch<React.SetStateAction<boolean>>;
   isOwner?: boolean;
   onBookSession: (day: AvailDay, iso: string) => void;
   weeklyByIso: Map<string, WeeklyItem>;
@@ -2719,6 +2765,11 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "warn" | "err"; text: string } | null>(null);
 
+  // At least 2 DIFFERENT days with a chosen start time — the server enforces
+  // this too (never trust client-only validation), this is just the UI gate.
+  const validDaysCount = countValidDays(days);
+  const canSend = validDaysCount >= 2;
+
   const saveDay = (i: number, patch: { available: boolean; from: string }) => {
     setDays(ds => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
     setEditIdx(null);
@@ -2727,6 +2778,7 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
 
   const send = async () => {
     if (sending) return;
+    if (!canSend) { setStatus({ kind: "err", text: "יש לבחור לפחות שני ימי זמינות שונים לשבוע הבא" }); return; }
     setSending(true); setStatus(null);
     try {
       const r = await fetch(`${apiBase}/availability`, {
@@ -2736,12 +2788,15 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
       const d = await r.json().catch(() => ({}));
       if (r.ok && d?.ok) {
         if (d.availability) setLastUpdate({ sentBy: d.availability.sentBy, sentAt: d.availability.sentAt });
+        // A fresh send that passed the ≥2-day gate is, by definition, valid
+        // for whichever cycle is active right now.
+        setValidForCycle(true);
         // Save succeeded. Only a REAL push failure (not the non-production skip)
         // is surfaced — as a soft warning; the availability is stored regardless.
         const pushFailed = d.push && d.push.sent === false && d.push.error && d.push.error !== "push-disabled-non-production";
         setStatus(pushFailed
           ? { kind: "warn", text: "הזמינות נשמרה, אך שליחת ההתראה נכשלה" }
-          : { kind: "ok", text: "✓ הזמינות נשלחה" });
+          : { kind: "ok", text: "✓ הזמינות נשלחה בהצלחה" });
       } else {
         setStatus({ kind: "err", text: (d?.error as string) || "השליחה נכשלה" });
       }
@@ -2757,13 +2812,20 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
   return (
     <div style={{ padding: isMobile ? "14px 14px 16px" : "16px 22px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 12, color: MUTED }}>לחצו על יום כדי לעדכן זמינות</div>
+        <div style={{ fontSize: 12, color: MUTED }}>לחצו על יום כדי לעדכן זמינות · יש לבחור לפחות שני ימים שונים שבהם אתה זמין</div>
         {lastUpdate && (
           <div style={{ fontSize: 11.5, color: MUTED }}>
             עודכן לאחרונה על ידי {lastUpdate.sentBy === "shalev" ? "שליו" : "הלייבל"} בתאריך {fmtWhen(lastUpdate.sentAt)}
           </div>
         )}
       </div>
+      {/* Persists across page re-entry (unlike `status`, which only exists
+          right after a send in THIS session) — describes what's ACTUALLY
+          saved server-side for the active cycle, so the "did I already send
+          this week?" state is always clear. */}
+      {validForCycle && !status && (
+        <div style={{ fontSize: 13, fontWeight: 700, color: GREEN }}>✓ הזמינות נשלחה בהצלחה לשבוע הבא</div>
+      )}
 
       {/* 7-day grid — desktop 7 across, mobile 2 cols */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)", gap: isMobile ? 10 : 12 }}>
@@ -2841,15 +2903,24 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, isOwner, o
         })}
       </div>
 
-      {/* send */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 2 }}>
-        <button onClick={send} disabled={sending} style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-          padding: "14px 26px", borderRadius: 12, border: "none", color: "#fff", fontSize: 14.5, fontWeight: 800,
-          fontFamily: "inherit", cursor: sending ? "wait" : "pointer", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
-          background: "linear-gradient(180deg, #E5322F, #C01C1C)", width: isMobile ? "100%" : "auto", opacity: sending ? 0.75 : 1,
-        }}>{sending ? "שולח…" : "שלח זמינות לשבוע הבא"}</button>
-        {status && <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{status.text}</span>}
+      {/* send — disabled (not just visually) below 2 valid days; the server
+          re-checks this too, so this is a UX gate, not the only guard. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <button onClick={send} disabled={sending || !canSend} style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+            padding: "14px 26px", borderRadius: 12, border: "none", color: "#fff", fontSize: 14.5, fontWeight: 800,
+            fontFamily: "inherit", cursor: sending ? "wait" : !canSend ? "not-allowed" : "pointer", boxShadow: `0 4px 16px rgba(220,38,38,0.32)`,
+            background: !canSend ? "#4A2020" : "linear-gradient(180deg, #E5322F, #C01C1C)",
+            width: isMobile ? "100%" : "auto", opacity: sending ? 0.75 : !canSend ? 0.7 : 1,
+          }}>{sending ? "שולח…" : "שלח זמינות לשבוע הבא"}</button>
+          {status && <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{status.text}</span>}
+        </div>
+        {!canSend && !status && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#F59E0B" }}>
+            {validDaysCount === 0 ? "לא נבחר אף יום זמין" : "נבחר יום זמין אחד בלבד"} — יש לבחור לפחות שני ימי זמינות שונים לשבוע הבא
+          </span>
+        )}
       </div>
 
       {editIdx !== null && (

@@ -148,6 +148,20 @@ export async function register() {
     }
   }, { timezone: TZ });
 
+  // ── Shalev weekly-availability reminder — up to 3 conditional pushes
+  // (Thu 12:00 / Thu 18:00 / Fri 09:00 Asia/Jerusalem), each skipped once a
+  // valid ≥2-day submission exists for the active cycle. Same every-minute
+  // tick pattern as the jobs above; the duplicate-send guard is the atomic
+  // DB claim inside the job itself (lib/shalev-availability-reminder-notify.ts).
+  cron.schedule("* * * * *", async () => {
+    try {
+      const { runShalevAvailabilityReminderTick } = await import("@/lib/shalev-availability-reminder-notify");
+      await runShalevAvailabilityReminderTick(new Date());
+    } catch (err) {
+      console.error("[shalev-availability-reminder] cron tick failed:", err);
+    }
+  }, { timezone: TZ });
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
 import { getAvailability, saveAvailability } from "@/lib/red-artists/availability";
+import { countValidDays } from "@/lib/shalev-availability-reminder-pure";
 
 // GET /api/label/artists/[id]/availability — this artist's last saved weekly
 // availability. Owner-only preview. NEVER sends push (page load must be
@@ -30,6 +31,17 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const days = (body as { days?: unknown }).days;
     if (!Array.isArray(days)) {
       return NextResponse.json({ ok: false, error: "days נדרש" }, { status: 400 });
+    }
+    // Same "≥2 different days" data-integrity rule as the Shalev-only route
+    // (never trust client-side validation alone) — this is input validation,
+    // not the reminder/push mechanism, which stays Shalev-only.
+    const coerced = days.map((d) => {
+      const o = (d ?? {}) as { available?: unknown; from?: unknown };
+      const available = o.available === true;
+      return { available, from: available && typeof o.from === "string" ? o.from : "" };
+    });
+    if (countValidDays(coerced) < 2) {
+      return NextResponse.json({ ok: false, error: "יש לבחור לפחות שני ימי זמינות שונים לשבוע הבא" }, { status: 400 });
     }
     const availability = await saveAvailability(access.config.slug, days, "owner");
     // Same sentinel the client already treats as "not a real failure" (mirrors
