@@ -3718,6 +3718,36 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
     } catch { /* ignore */ }
   }, [apiBase]);
 
+  // Confirm the real avatar against the server (Dropbox is the source of
+  // truth, per-artist via `apiBase`) — the localStorage/module cache above is
+  // only an instant-paint hint and is empty on any browser/route that hasn't
+  // uploaded through THIS apiBase before (e.g. an artist's owner-preview route
+  // the first time it's opened, even if that artist already has a real photo
+  // saved server-side). Without this, the header would incorrectly show just
+  // the initial letter for an artist who already has a photo. READ-ONLY GET;
+  // artist-scoped by apiBase, so it can never surface another artist's image.
+  useEffect(() => {
+    let alive = true;
+    fetch(`${apiBase}/profile-image`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { ok?: boolean; avatar?: { path: string } | null } | null) => {
+        if (!alive || !d?.ok) return;
+        const p = d.avatar?.path ?? null;
+        const cache = getAvatarCache(apiBase);
+        if (p) {
+          if (p !== cache.path) { cache.path = p; setPath(p); try { localStorage.setItem(avatarKeyFor(apiBase), p); } catch { /* ignore */ } }
+        } else if (cache.path) {
+          // Server confirms no saved avatar — a stale cached path (from a
+          // previous artist's slug reused in dev, or a deleted image) must
+          // not linger and show the wrong photo.
+          cache.path = null; setPath(null);
+          try { localStorage.removeItem(avatarKeyFor(apiBase)); } catch { /* ignore */ }
+        }
+      })
+      .catch(() => { /* keep the instant local/cache fallback */ });
+    return () => { alive = false; };
+  }, [apiBase]);
+
   // Editing is only allowed from the home tab. If the tab changes while the
   // editor is open (canEdit → false), close it so it can't linger elsewhere.
   useEffect(() => { if (!canEdit) setEditing(null); }, [canEdit]);

@@ -1,33 +1,18 @@
 import "server-only";
 import { getLabelArtist, getLabelArtistByName } from "@/lib/label-artists-store";
+import { PORTAL_ARTISTS, SHALEV_NAME, SHALEV_SLUG, isPortalArtistName } from "@/lib/red-artists/portal-registry";
 
 /**
- * The registry of artists who have a full ArtistPortalPage — keyed by their
- * EXACT label_artists.name. Adding a new portal artist is a one-line addition
- * here; nothing else needs to change. `slug` drives Dropbox folder names and
- * settings keys, so it must NEVER change once an artist has real data.
- *
- * Shalev's slug ("shalev-tasama") is the EXACT literal already baked into his
- * existing Dropbox paths (/app/red-artists/shalev-tasama/...) and settings
- * keys — reusing it here means his data needs zero migration.
+ * Server-only DB resolution (artistId/name → row → portal config) on top of
+ * the pure name↔slug registry in portal-registry.ts. Adding a new portal
+ * artist is a one-line addition there; nothing else needs to change.
  */
-const PORTAL_ARTISTS: Record<string, { slug: string }> = {
-  "שליו טסמה": { slug: "shalev-tasama" },
-  "אבי מולה":   { slug: "avi-molla" },
-};
-
-export const SHALEV_NAME = "שליו טסמה";
-export const SHALEV_SLUG = "shalev-tasama";
+export { SHALEV_NAME, SHALEV_SLUG, isPortalArtistName };
 
 export interface ArtistPortalConfig {
   artistId: string;
   name: string;
   slug: string;
-}
-
-/** True iff this exact label_artists.name has a registered portal. */
-export function isPortalArtistName(name: string | null | undefined): boolean {
-  return !!name && Object.prototype.hasOwnProperty.call(PORTAL_ARTISTS, name);
 }
 
 /** Resolve a portal config by label_artists.id (used for owner-driven, artistId-scoped access). */

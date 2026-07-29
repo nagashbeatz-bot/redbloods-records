@@ -7,6 +7,7 @@
 import { useState, useEffect } from "react";
 import type { LabelArtist, LabelRelease, ProjectReleaseDetails, ReleaseStage, LabelArtistStatus } from "@/lib/types";
 import { RELEASE_STAGES, LABEL_ARTIST_STATUSES, RESPONSIBLE_SUGGESTIONS } from "@/lib/types";
+import { slugForPortalArtistName } from "@/lib/red-artists/portal-registry";
 
 // ── tokens ────────────────────────────────────────────────────────────────────
 export const BRAND = "#DC2626";
@@ -97,15 +98,22 @@ export function Card({ children, style }: { children: React.ReactNode; style?: R
   return <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 20, padding: 20, ...style }}>{children}</div>;
 }
 
-// Shalev has an existing profile image in his portal (Dropbox, no DB). Reuse it
-// as his avatar here when label_artists.image_url is empty — display-only, no upload.
-const SHALEV_AVATAR_SRC = `/api/dropbox/stream?path=${encodeURIComponent("/app/red-artists/shalev-tasama/profile-image/avatar.jpg")}`;
+// Any artist with a portal (see lib/red-artists/portal-registry.ts) has their
+// profile-image saved in their OWN isolated Dropbox slug folder (no DB).
+// Reuse that as their avatar here when label_artists.image_url is empty —
+// display-only, no upload from this screen. Slug-scoped path, same
+// deterministic filename the portal itself writes to (portal-files.ts'
+// profileImagePaths) — never a hardcoded single artist, never a shared path.
+function portalAvatarSrc(slug: string): string {
+  return `/api/dropbox/stream?path=${encodeURIComponent(`/app/red-artists/${slug}/profile-image/avatar.jpg`)}`;
+}
 
-/** Effective avatar src: the artist's image_url, else Shalev's portal image, else null. */
+/** Effective avatar src: the artist's image_url, else their own portal image (if
+ *  they have one), else null. */
 export function resolveArtistImage(artist: { name: string; imageUrl: string | null }): string | null {
   if (artist.imageUrl && artist.imageUrl.trim()) return artist.imageUrl.trim();
-  if (artist.name.trim() === "שליו טסמה") return SHALEV_AVATAR_SRC;
-  return null;
+  const slug = slugForPortalArtistName(artist.name.trim());
+  return slug ? portalAvatarSrc(slug) : null;
 }
 
 export function ArtistAvatar({ artist, size = 52, glow = false }: { artist: { name: string; imageUrl: string | null }; size?: number; glow?: boolean }) {

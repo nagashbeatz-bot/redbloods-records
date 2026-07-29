@@ -119,7 +119,16 @@ export const PROFILE_IMAGE_MAX_BYTES = 150 * 1024 * 1024; // 150MB — Dropbox s
 export const PROFILE_IMAGE_MAX_LABEL = "150MB";
 
 export interface ProfileImageEditor { zoom: number; position: { x: number; y: number }; originalExt?: string; originalFileName?: string; updatedAt?: string }
-export interface ProfileImageGetResult { original: { path: string; url: string } | null; editor: { zoom: number; position: { x: number; y: number }; updatedAt: string | null } | null }
+export interface ProfileImageGetResult {
+  // The actually-displayed (cropped) avatar — deterministic per-slug path, the
+  // single source of truth every surface (portal header, label-management
+  // card) should read from. Non-null only once this artist has an editor.json
+  // (i.e. has actually saved a crop at least once) — matches the same
+  // existence signal `original` already relies on below.
+  avatar: { path: string; url: string } | null;
+  original: { path: string; url: string } | null;
+  editor: { zoom: number; position: { x: number; y: number }; updatedAt: string | null } | null;
+}
 export type ImageUploadResult = { ok: true; contentType: string } | { ok: false; status: number; error: string };
 
 async function dbxUpload(token: string, path: string, body: Blob): Promise<string> {
@@ -162,12 +171,13 @@ export function profileImagePaths(slug: string) {
 }
 
 export async function getProfileImage(slug: string, streamUrl: (path: string) => string): Promise<ProfileImageGetResult> {
-  const { editorPath } = profileImagePaths(slug);
+  const { folder, avatarPath, editorPath } = profileImagePaths(slug);
   const { getDropboxToken } = await import("@/lib/dropbox-token");
   const token = await getDropboxToken();
   const meta = parseEditor(await dbxDownloadText(token, editorPath));
-  const originalPath = meta?.originalExt ? `${profileImagePaths(slug).folder}/original.${meta.originalExt}` : null;
+  const originalPath = meta?.originalExt ? `${folder}/original.${meta.originalExt}` : null;
   return {
+    avatar: meta ? { path: avatarPath, url: streamUrl(avatarPath) } : null,
     original: originalPath ? { path: originalPath, url: streamUrl(originalPath) } : null,
     editor: meta ? { zoom: meta.zoom, position: meta.position, updatedAt: meta.updatedAt ?? null } : null,
   };
