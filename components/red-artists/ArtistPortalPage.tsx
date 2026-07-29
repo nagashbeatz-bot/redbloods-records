@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
 import { useRole, type ClientRole } from "@/lib/use-role";
@@ -584,6 +585,31 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           select.rap-select option { background-color: #171314; color: #F2F2F2; }
           select.rap-select option:checked { background-color: rgba(220,38,38,0.32); color: #ffffff; }
         `}</style>
+
+        {/* ── Owner-only "back to label management" — shown ONLY in owner-preview
+            (real role check via useRole()/initialRole, never CSS-only; `artistId`
+            alone would also be true for a hypothetical owner-preview render before
+            role resolves, so both are required). Shalev's own /red-artists session
+            has isOwner=false (role "shalev") AND no artistId, so it never renders
+            there — same will hold for Avi once he has his own login. Right-pointing
+            arrow FIRST in source: in this dir="rtl" context that resolves to the
+            arrow sitting at the right (leading) edge pointing further right/outward
+            — the correct mirrored "back" chevron for RTL (verified by rendering
+            test — the reverse "←"-first arrangement visually points INTO the text,
+            i.e. reads as a forward action, not back). */}
+        {isOwner && artistId && (
+          <div style={{ marginBottom: isMobile ? 14 : 18 }}>
+            <Link href="/label" style={{
+              display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none",
+              fontSize: 13, fontWeight: 700, color: TEXT2,
+              background: "#141415", border: `1px solid ${BDR}`, borderRadius: 100,
+              padding: isMobile ? "8px 14px" : "9px 16px",
+            }}>
+              <span style={{ color: BRAND, fontWeight: 900, fontSize: 15, lineHeight: 1 }}>→</span>
+              <span>חזרה לניהול הלייבל</span>
+            </Link>
+          </div>
+        )}
 
         {/* ── Internal portal nav (horizontal tabs — global sidebar stays the only sidebar) ── */}
         {/* Mobile: single-line, compact, horizontally scrollable so tabs never wrap to a 2nd row. */}
