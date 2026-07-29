@@ -13,7 +13,7 @@ import { getLabelArtist, getLabelArtistByName } from "@/lib/label-artists-store"
  */
 const PORTAL_ARTISTS: Record<string, { slug: string }> = {
   "שליו טסמה": { slug: "shalev-tasama" },
-  "אבי מולה":   { slug: "avi-mola" },
+  "אבי מולה":   { slug: "avi-molla" },
 };
 
 export const SHALEV_NAME = "שליו טסמה";

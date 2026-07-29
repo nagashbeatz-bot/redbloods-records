@@ -26,7 +26,13 @@ export default async function Page({ params }: { params: Promise<{ artistId: str
   return (
     <AppShell>
       {isPortalArtist
-        ? <ArtistPortalPage artistId={artistId} artistName={artistName} />
+        // key={artistId} forces a full unmount/remount when navigating between
+        // two different artists' portals client-side (no full page reload) —
+        // otherwise React would reuse the same component instance and every
+        // local useState (sketches, ledger, nextWork, nextRelease, avatar…)
+        // would keep showing the PREVIOUS artist's data until each fetch
+        // effect happened to re-run and overwrite it.
+        ? <ArtistPortalPage key={artistId} artistId={artistId} artistName={artistName} />
         : <ArtistPage artistId={artistId} />}
     </AppShell>
   );

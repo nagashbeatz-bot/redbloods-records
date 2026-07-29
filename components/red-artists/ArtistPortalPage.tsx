@@ -411,12 +411,21 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [sketches, setSketches] = useState<Sketch[]>([]);
   const [libState, setLibState] = useState<"loading" | "ready" | "error">("loading");
   // One resolved API base for every Red-Artists-portal endpoint in this
-  // component: Shalev's own session uses his existing flat routes (unchanged
-  // production behavior); the owner previewing ANY artist (incl. Avi) uses the
-  // new artist-scoped routes. Never both, never neither once role is known —
-  // mirrors reloadLedger's existing isShalev/isOwner+artistId pattern below.
-  const apiBase = isOwner && artistId ? `/api/label/artists/${artistId}` : "/api/red-artists";
-  const summaryUrl = isOwner && artistId ? `/api/label/artists/${artistId}/summary` : "/api/red-artists/shalev-summary";
+  // component: Shalev's own session (at /red-artists) uses his existing flat
+  // routes (unchanged production behavior); the owner previewing ANY OTHER
+  // artist (incl. Avi, at /label/artists/[id]) uses that artist's scoped
+  // routes instead. Gated on `artistId` ALONE — never on `isOwner` — because
+  // `artistId` is a plain prop resolved server-side and available on the very
+  // first render, whereas `isOwner` depends on useRole()'s async /api/me
+  // round-trip. Gating on isOwner too created a real bug: on a fresh session
+  // (no cached role yet), the FIRST fetch fired before isOwner turned true,
+  // silently falling back to Shalev's own hardcoded route — which the owner
+  // IS authorized to read (requireShalevAccess allows owner), so it actually
+  // returned Shalev's real sketches into Avi's page instead of an empty list.
+  // /red-artists (Shalev's own session) never receives an artistId prop, so
+  // this can never misfire the other way.
+  const apiBase = artistId ? `/api/label/artists/${artistId}` : "/api/red-artists";
+  const summaryUrl = artistId ? `/api/label/artists/${artistId}/summary` : "/api/red-artists/shalev-summary";
   // Real display name for greeting/avatar-caption/labels — never hardcoded to
   // Shalev downstream. Falls back to his name only for his own /red-artists
   // session (artistNameProp is never passed there).
