@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireShalevAccess, getAuthRole } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { listShows } from "@/lib/shows-store";
+import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists/week";
 
 /**
  * GET /api/red-artists/shalev-summary  (owner-only, READ-ONLY)
@@ -46,15 +47,6 @@ function isShalevArtist(artist: string): boolean {
   return (artist ?? "").split(/[,،;]/).map((s) => s.trim()).includes(SHALEV);
 }
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function addDays(base: Date, n: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-
 // Statuses the artist is allowed to see (confirmed bookings + performed).
 const VISIBLE_SHOW_STATUSES = new Set(["אושרה", "נסגר", "בוצע"]);
 
@@ -67,16 +59,17 @@ export async function GET() {
   const isShalev = (await getAuthRole()) === "shalev";
 
   try {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const today = ymd(now);
-    // "weekly" must show the SAME upcoming Sunday–Saturday week as the portal's
-    // availability grid (never a rolling "today + 6 days" window, and never
-    // the current/already-under-way week) — the nearest coming Sunday (today
-    // itself counts if today IS Sunday) through the Saturday after it.
-    const nextSundayOffset = now.getDay() === 0 ? 0 : 7 - now.getDay();
-    const weekStart = ymd(addDays(now, nextSundayOffset));
-    const weekEnd   = ymd(addDays(now, nextSundayOffset + 6));
+    // Israel-timezone date math (lib/red-artists/week.ts) — the server runs
+    // UTC on Railway, so a raw `new Date()` local-getter calc here would put
+    // "today"/the week boundary up to a few hours off around midnight Israel
+    // time. "weekly" must show the SAME upcoming Sunday–Saturday week as the
+    // portal's availability grid (never a rolling "today + 6 days" window,
+    // and never the current/already-under-way week) — the nearest coming
+    // Sunday (today itself counts if today IS Sunday) through the Saturday
+    // after it.
+    const today = ilTodayYMD();
+    const weekStart = availabilityWeekStart();
+    const weekEnd   = weekEndFor(weekStart);
 
     // ── Shows (money stripped) ──────────────────────────────────────────────
     const allShows = await listShows();

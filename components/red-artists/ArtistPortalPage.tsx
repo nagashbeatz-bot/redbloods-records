@@ -8,6 +8,7 @@ import { useRole, type ClientRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+import { ilTodayYMD, availabilityWeekStart, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -2183,28 +2184,13 @@ type WeekDay = { day: string; date: string; iso: string };
 const HEB_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const AVAIL_TIMES = ["10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
 
-// The upcoming Israeli calendar week (ראשון→שבת): the next Sunday (today
-// itself only counts if it IS Sunday) through the following Saturday.
-// Computed fresh on the client (in an effect) to keep the dates correct
-// without risking an SSR/client hydration mismatch.
+// The upcoming Israeli calendar week (ראשון→שבת) for "הזמינות שלי לשבוע הבא":
+// the next Sunday (today itself only counts if it IS Sunday) through the
+// following Saturday. Israel-timezone-safe (lib/red-artists/week.ts) — a raw
+// client `new Date()` would drift around midnight in whatever timezone the
+// browser happens to be in.
 function computeNextWeek(): WeekDay[] {
-  const today = new Date();
-  const sunday = new Date(today);
-  sunday.setDate(today.getDate() + (today.getDay() === 0 ? 0 : 7 - today.getDay()));
-  return HEB_DAYS.map((day, i) => {
-    const d = new Date(sunday);
-    d.setDate(sunday.getDate() + i);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return { day, date: `${dd}.${mm}`, iso: `${yyyy}-${mm}-${dd}` };
-  });
-}
-
-// "Today" as YYYY-MM-DD, Israel timezone — used to gate "קבע סשן" on days that
-// have already passed within the displayed week.
-function todayIsraelIso(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+  return weekDaysFor(availabilityWeekStart());
 }
 
 // ── לו״ז ועדכונים tab — three clearly separated sections (UI only, no writes):
@@ -2330,11 +2316,51 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   const loading = loadState === "loading";
   const error   = loadState === "error";
 
-  // THE single source of truth for "which week is showing" — both sections
-  // render off this same array, so they can never disagree on day/date/order.
-  // Computed once per mount (a stable week for the life of the tab).
+  // The availability week — ALWAYS "next week" (unchanged semantic/logic,
+  // see computeNextWeek). Computed once per mount (stable for the life of
+  // the tab); "הזמינות שלי" never navigates.
   const week = useMemo(() => computeNextWeek(), []);
-  const todayIso = useMemo(() => todayIsraelIso(), []);
+  const todayIso = useMemo(() => ilTodayYMD(), []);
+
+  // The NAVIGABLE calendar week ("היומן השבועי שלי") — a completely separate
+  // concept from the availability week above: defaults to the CURRENT Israel
+  // week (not next week) and can page forward/back to any week. Local state,
+  // reset to the current week on every mount — since the whole
+  // ArtistPortalPage remounts (key={artistId}) when the owner switches
+  // artists, and this tab itself unmounts/remounts on every tab switch (only
+  // the active tab's component is rendered), a plain useState initializer
+  // already satisfies "reset to current week on artist switch" and "default
+  // to current week on entry" with no extra effect needed.
+  const [calWeekStart, setCalWeekStart] = useState<string>(() => currentWeekStart());
+  const calDays = useMemo(() => weekDaysFor(calWeekStart), [calWeekStart]);
+  const isCalCurrentWeek = calWeekStart === currentWeekStart();
+
+  const [calItems, setCalItems] = useState<WeeklyItem[]>([]);
+  const [calState, setCalState] = useState<LoadState>("loading");
+  const reloadCalendar = useCallback(() => {
+    setCalState("loading");
+    fetch(`${apiBase}/weekly?start=${calWeekStart}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.items)) { setCalItems(d.items); setCalState("ready"); }
+        else setCalState("error");
+      })
+      .catch(() => setCalState("error"));
+  }, [apiBase, calWeekStart]);
+  useEffect(() => { reloadCalendar(); }, [reloadCalendar]);
+  // A session created/deleted (owner's manage modal, or "קבע סשן") should
+  // reflect immediately in whichever week is currently displayed — same
+  // event the top-level summary reload already listens to.
+  useEffect(() => {
+    document.addEventListener("rb-session-created", reloadCalendar);
+    return () => document.removeEventListener("rb-session-created", reloadCalendar);
+  }, [reloadCalendar]);
+
+  const calWeeklyByIso = useMemo(() => {
+    const m = new Map<string, WeeklyItem>();
+    for (const it of calItems) if (it.date && !m.has(it.date)) m.set(it.date, it);
+    return m;
+  }, [calItems]);
 
   // Availability days are lifted up here (out of AvailabilityBody) so the
   // day-cube "already scheduled" overlay can see the real weekly data too —
@@ -2399,8 +2425,9 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
-      {/* 1) availability — Shalev marks when he's free (existing logic, untouched) */}
-      <SchedSection title="הזמינות שלי" subtitle="בחר מתי אתה פנוי לשבוע הזה">
+      {/* 1) availability — Shalev marks when he's free for NEXT week (existing
+             logic, untouched — never navigable). */}
+      <SchedSection title="הזמינות שלי לשבוע הבא" subtitle={`${week[0].date}–${week[6].date} · בחר מתי אתה פנוי`}>
         <AvailabilityBody
           days={availDays} setDays={setAvailDays}
           lastUpdate={availLastUpdate} setLastUpdate={setAvailLastUpdate}
@@ -2408,14 +2435,22 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
           week={week} todayIso={todayIso}
         />
       </SchedSection>
-      {/* 2) weekly calendar — Shalev's REAL sessions + shows for the SAME week,
-             as 7 cubes (never availability — that lives only in section 1). */}
-      <SchedSection title="היומן השבועי שלי" subtitle="כל מה שכבר נקבע לך השבוע">
-        {loading ? <SchedEmpty text="טוען…" />
-          : error ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+      {/* 2) weekly calendar — Shalev's REAL sessions + shows for a NAVIGABLE
+             week (independent of the availability week above), as 7 cubes
+             (never availability — that lives only in section 1). */}
+      <SchedSection title="היומן השבועי שלי" subtitle="כל מה שכבר נקבע לך — נווט בין שבועות">
+        <WeekNav
+          rangeLabel={`${calDays[0].date}–${calDays[6].date}`}
+          isCurrent={isCalCurrentWeek}
+          onPrev={() => setCalWeekStart((s) => addDaysYMD(s, -7))}
+          onNext={() => setCalWeekStart((s) => addDaysYMD(s, 7))}
+          onToday={() => setCalWeekStart(currentWeekStart())}
+        />
+        {calState === "loading" ? <SchedEmpty text="טוען…" />
+          : calState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
           : (
             <WeeklyCalendarGrid
-              week={week} weeklyByIso={weeklyByIso} isOwner={isOwner}
+              week={calDays} weeklyByIso={calWeeklyByIso} isOwner={isOwner}
               onManageSession={(item, day) => setManaging({ item, day })}
             />
           )}
@@ -2439,10 +2474,56 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   );
 }
 
-// Weekly calendar — 7 cubes, Sunday→Saturday, THE SAME dates as the
-// availability grid above. Never shows availability/פנוי info — only real
-// booked events (or a soft "אין אירוע" empty state). Owner may click a real
-// SESSION (not a show) to open the manage/delete modal.
+// Week-navigation row for "היומן השבועי שלי" — prev/next + a clear date-range
+// label + "חזרה לשבוע הנוכחי" (only shown when not already on the current
+// week). RTL-correct arrows verified by an actual rendering test (not
+// guessed): a "→" placed FIRST in a button's source, inside a dir="rtl"
+// context, renders at that button's right (leading) edge pointing further
+// right/outward — the correct "previous" direction in RTL (mirrors LTR's
+// "← previous"). Symmetrically "←" placed LAST renders at the left edge
+// pointing further left/outward — "next", matching the forward-navigation
+// arrow convention already used elsewhere in this codebase (e.g. the
+// artist-row pill in LabelPage.tsx: name first, "←" last = forward/deeper).
+function WeekNav({ rangeLabel, isCurrent, onPrev, onNext, onToday }: {
+  rangeLabel: string; isCurrent: boolean; onPrev: () => void; onNext: () => void; onToday: () => void;
+}) {
+  const isMobile = useIsMobile();
+  const navBtn: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 7, fontFamily: "inherit",
+    fontSize: isMobile ? 12 : 12.5, fontWeight: 700, color: TEXT2, background: "#141415",
+    border: `1px solid ${BDR}`, borderRadius: 100, padding: isMobile ? "7px 12px" : "7px 14px",
+    cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+  };
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+      flexWrap: "wrap", padding: isMobile ? "12px 14px 2px" : "14px 22px 2px",
+    }}>
+      <button type="button" onClick={onPrev} style={navBtn}>
+        <span style={{ color: BRAND, fontWeight: 900, fontSize: 14, lineHeight: 1 }}>→</span>
+        <span>שבוע קודם</span>
+      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "center", flex: "1 1 auto" }}>
+        <span style={{ fontSize: isMobile ? 13 : 13.5, fontWeight: 800, color: TEXT, direction: "ltr" }}>{rangeLabel}</span>
+        {!isCurrent && (
+          <button type="button" onClick={onToday} style={{ ...navBtn, color: "#FF6B6B", borderColor: "rgba(220,38,38,0.4)" }}>
+            חזרה לשבוע הנוכחי
+          </button>
+        )}
+      </div>
+      <button type="button" onClick={onNext} style={navBtn}>
+        <span>שבוע הבא</span>
+        <span style={{ color: BRAND, fontWeight: 900, fontSize: 14, lineHeight: 1 }}>←</span>
+      </button>
+    </div>
+  );
+}
+
+// Weekly calendar — 7 cubes, Sunday→Saturday, dates given by the caller
+// (either the availability week or a navigated calendar week — this
+// component doesn't care which). Never shows availability/פנוי info — only
+// real booked events (or a soft "אין אירוע" empty state). Owner may click a
+// real SESSION (not a show) to open the manage/delete modal.
 function WeeklyCalendarGrid({ week, weeklyByIso, isOwner, onManageSession }: {
   week: WeekDay[]; weeklyByIso: Map<string, WeeklyItem>; isOwner?: boolean;
   onManageSession: (item: WeeklyItem, day: WeekDay) => void;
@@ -3499,7 +3580,7 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
               session earlier in the week would outrank the real next one.
               Type only ("סשן"/"פגישה"/...) — no project name. */}
           {(() => {
-            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה" && (w.date ?? "") >= todayIsraelIso());
+            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה" && (w.date ?? "") >= ilTodayYMD());
             return <NextSessionCard session={sess ?? null} loading={summaryState === "loading"} />;
           })()}
           {/* הפרויקט הבא לעבודה — OWNER-chosen (manifest), NEVER derived from nextRelease. */}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
 import { supabase } from "@/lib/supabase";
 import { listShows } from "@/lib/shows-store";
+import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists/week";
 
 /**
  * GET /api/label/artists/[id]/summary  (owner-only, READ-ONLY)
@@ -34,15 +35,6 @@ function isThisArtist(artist: string, name: string): boolean {
   return (artist ?? "").split(/[,،;]/).map((s) => s.trim()).includes(name);
 }
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function addDays(base: Date, n: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-
 // Statuses the artist is allowed to see (confirmed bookings + performed).
 const VISIBLE_SHOW_STATUSES = new Set(["אושרה", "נסגר", "בוצע"]);
 
@@ -53,14 +45,14 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
   const artistName = access.config.name;
 
   try {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const today = ymd(now);
-    // "weekly" shows the SAME upcoming Sunday–Saturday week as the portal's
-    // availability grid (never a rolling window, never the current week).
-    const nextSundayOffset = now.getDay() === 0 ? 0 : 7 - now.getDay();
-    const weekStart = ymd(addDays(now, nextSundayOffset));
-    const weekEnd   = ymd(addDays(now, nextSundayOffset + 6));
+    // Israel-timezone date math (lib/red-artists/week.ts) — see
+    // shalev-summary/route.ts for why a raw `new Date()` local-getter calc
+    // would drift on the server (Railway runs UTC). "weekly" shows the SAME
+    // upcoming Sunday–Saturday week as the portal's availability grid (never
+    // a rolling window, never the current week).
+    const today = ilTodayYMD();
+    const weekStart = availabilityWeekStart();
+    const weekEnd   = weekEndFor(weekStart);
 
     // ── Shows (money stripped) ──────────────────────────────────────────────
     const allShows = await listShows();
