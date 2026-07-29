@@ -256,6 +256,9 @@ export default function LabelPage() {
         .rb-lab-fin { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
         .rb-lab-ops { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
         .rb-lab-artists { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+        .rb-lab-artist-strip { display:flex; flex-wrap:nowrap; gap:12px; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; padding-bottom:4px; scrollbar-width:thin; }
+        .rb-lab-artist-card { flex:1 1 260px; max-width:340px; min-width:220px; scroll-snap-align:start; }
+        @media (max-width:620px){ .rb-lab-artist-card{ flex:0 0 78vw; max-width:78vw; } }
         .rb-lab-money { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:14px; }
         .rb-lab-shows-kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
         .rb-lab-bottom { display:grid; grid-template-columns:1fr 1.25fr; gap:18px; }
@@ -273,6 +276,63 @@ export default function LabelPage() {
           <span style={{ fontSize: 26, filter: "drop-shadow(0 0 12px rgba(220,38,38,0.7))" }}>🎯</span>
         </div>
         <div style={{ fontSize: 14.5, color: "#C9C9C9" }}>סקירה כוללת של אמני הלייבל, הריליסים והפעולות שדורשות טיפול</div>
+      </div>
+
+      {/* Artist strip — first thing after the hero: sets the context for everything below.
+          Same data/links as before (roster, byArtist, ACTIVE_STAGES_SET, artist.status) —
+          only the layout + visual weight changed. Horizontal-scroll flex row so it stays
+          intact as the roster grows; no wrapping. */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <SectionHeader title="בחר אמן" />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => setMarkOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontFamily: "inherit" }}>סמן פרויקט כלייבל</button>
+            <button onClick={() => setCreateOpen(true)} style={{ fontSize: 12.5, fontWeight: 800, color: "#fff", background: BRAND, border: "none", borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontFamily: "inherit" }}>+ ריליס חדש</button>
+          </div>
+        </div>
+        <div className="rb-lab-artist-strip">
+          {busy ? (
+            <span style={{ fontSize: 13, color: MUTED, padding: "22px 4px" }}>טוען…</span>
+          ) : (
+            <>
+              {d.roster.map((artist) => {
+                const activeRels = (d.byArtist.get(artist.id) ?? []).filter((r) => ACTIVE_STAGES_SET.has(r.release.releaseStage));
+                const sc = ARTIST_STATUS_COLOR[artist.status];
+                const isActive = artist.status === "פעיל";
+                return (
+                  <Link key={artist.id} href={`/label/artists/${artist.id}`} title="פתח עמוד אמן" className="rb-lab-artist-card" style={{
+                    position: "relative", display: "flex", alignItems: "center", gap: 14, textDecoration: "none",
+                    background: CARD, borderRadius: 20, padding: "18px 20px",
+                    border: `1px solid ${isActive ? "rgba(220,38,38,0.55)" : BORDER}`,
+                    boxShadow: isActive ? "0 0 0 1px rgba(220,38,38,0.28), 0 0 30px rgba(220,38,38,0.24)" : "none",
+                  }}>
+                    {isActive && (
+                      <span style={{
+                        position: "absolute", top: 10, insetInlineStart: 10, width: 20, height: 20, borderRadius: "50%",
+                        background: BRAND, color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: "0 0 10px rgba(220,38,38,0.6)",
+                      }}>✓</span>
+                    )}
+                    <ArtistAvatar artist={artist} size={60} glow={isActive} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artist.name}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 800, color: sc, display: "flex", alignItems: "center", gap: 5 }}>● {artist.status}</span>
+                      <span style={{ fontSize: 11, color: MUTED }}>{activeRels.length} בצינור</span>
+                    </div>
+                  </Link>
+                );
+              })}
+              <button onClick={() => setAddArtistOpen(true)} type="button" className="rb-lab-artist-card" style={{
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+                background: "rgba(255,255,255,0.02)", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "18px 20px",
+                cursor: "pointer", fontFamily: "inherit", minHeight: 96,
+              }}>
+                <span style={{ fontSize: 22, fontWeight: 900, color: BRAND, lineHeight: 1 }}>+</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: SUB }}>הוסף אמן ללייבל</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {state === "error" && <Card style={{ marginBottom: 20 }}><div style={{ color: "#F87171", textAlign: "center", padding: "10px 0", fontSize: 14 }}>שגיאה בטעינת נתוני הלייבל.</div></Card>}
@@ -312,35 +372,6 @@ export default function LabelPage() {
             <span style={{ fontSize: 24, fontWeight: 900, color: TEXT, lineHeight: 1.1 }}>{t.v}</span>
           </div>
         ))}
-      </div>
-
-      {/* Compact artist nav + actions (replaces the large artists grid) */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
-          {busy ? (
-            <span style={{ fontSize: 13, color: MUTED }}>טוען…</span>
-          ) : d.roster.length === 0 ? (
-            <span style={{ fontSize: 13, color: MUTED }}>אין עדיין אמני לייבל — הוסף אמן כדי להתחיל.</span>
-          ) : d.roster.map((artist) => {
-            const activeRels = (d.byArtist.get(artist.id) ?? []).filter((r) => ACTIVE_STAGES_SET.has(r.release.releaseStage));
-            const sc = ARTIST_STATUS_COLOR[artist.status];
-            return (
-              <Link key={artist.id} href={`/label/artists/${artist.id}`} title="פתח עמוד אמן" style={{ display: "flex", alignItems: "center", gap: 10, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 100, padding: "6px 14px 6px 7px", textDecoration: "none" }}>
-                <ArtistAvatar artist={artist} size={32} />
-                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>{artist.name}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: sc }}>● {artist.status} · {activeRels.length} בצינור</span>
-                </div>
-                <span style={{ fontSize: 13, color: BRAND, fontWeight: 900, marginRight: 2 }}>←</span>
-              </Link>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={() => setAddArtistOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontFamily: "inherit" }}>+ אמן לייבל</button>
-          <button onClick={() => setMarkOpen(true)} style={{ fontSize: 12.5, fontWeight: 700, color: SUB, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontFamily: "inherit" }}>סמן פרויקט כלייבל</button>
-          <button onClick={() => setCreateOpen(true)} style={{ fontSize: 12.5, fontWeight: 800, color: "#fff", background: BRAND, border: "none", borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontFamily: "inherit" }}>+ ריליס חדש</button>
-        </div>
       </div>
 
       {/* Shows — real label finance (computeShowSplit only; no double count) */}
