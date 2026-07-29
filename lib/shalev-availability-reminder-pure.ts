@@ -145,13 +145,25 @@ export function countValidDays(days: MinimalAvailabilityDay[]): number {
   return days.filter((d) => d.available && d.from.trim() !== "").length;
 }
 
+/** True iff `sentAt` is at/after the active cycle's own open instant (Thursday
+ *  08:00 Israel) — i.e. the stored record was actually submitted DURING this
+ *  cycle, not carried over from a prior one. This is the SAME check the form
+ *  uses to decide "show the stored days" vs "start blank" (a stale/prior-
+ *  cycle record is never displayed as if it belongs to the new cycle) and
+ *  that hasValidSubmissionForCycle below builds on — one definition, used by
+ *  the form's load, the ≥2-day/valid check, and the reminder job alike. */
+export function belongsToActiveCycle(sentAt: string | null | undefined, cycleStart: Date): boolean {
+  if (!sentAt) return false;
+  const sentAtMs = Date.parse(sentAt);
+  return !Number.isNaN(sentAtMs) && sentAtMs >= cycleStart.getTime();
+}
+
 /** ≥2 distinct valid days, submitted at/after the active cycle's own start
  *  instant (Thursday 08:00 Israel) — a submission from a PRIOR cycle (stale
  *  `sentAt`) never counts, even if it happened to have ≥2 valid days. */
 export function hasValidSubmissionForCycle(stored: MinimalAvailability | null, cycleStart: Date): boolean {
   if (!stored) return false;
-  const sentAtMs = Date.parse(stored.sentAt);
-  if (Number.isNaN(sentAtMs) || sentAtMs < cycleStart.getTime()) return false;
+  if (!belongsToActiveCycle(stored.sentAt, cycleStart)) return false;
   return countValidDays(stored.days) >= 2;
 }
 

@@ -18,6 +18,7 @@ import {
   activeCycleThursday,
   activeCycle,
   cycleStartInstant,
+  belongsToActiveCycle,
   zonedTimeToUtc,
   isSlotDue,
   REMINDER_SLOTS,
@@ -183,6 +184,56 @@ async function main() {
       sentAt: cycleStart.toISOString(),
     };
     check("sentAt exactly AT cycle start → valid (inclusive boundary)", hasValidSubmissionForCycle(exactlyAtCycleStart, cycleStart));
+  }
+
+  console.log("—— UNIFIED cycle: the form's own load-decision, exactly as ArtistPortalPage.tsx computes it ——");
+  {
+    // A submission from the PREVIOUS cycle (Thursday 2026-07-23's cycle,
+    // target week 26.07–01.08) — simulates what's sitting in `settings`
+    // right before the new cycle opens.
+    const priorCycleSubmission: MinimalAvailability = {
+      days: [{ available: true, from: "16:00" }, { available: true, from: "18:00" }],
+      sentAt: zonedTimeToUtc("2026-07-23", "12:00", TZ).toISOString(), // sent during the OLD cycle
+    };
+
+    // רביעי 23:00 (2026-07-29) — the 07-23 cycle is still active.
+    const wed2300 = zonedTimeToUtc("2026-07-29", "23:00", TZ);
+    check("רביעי 23:00: activeCycle is still the 07-23 cycle", activeCycle(wed2300).thursday === "2026-07-23");
+    check("רביעי 23:00: the old submission STILL belongs to the active cycle (form would show it)", belongsToActiveCycle(priorCycleSubmission.sentAt, cycleStartInstant(wed2300)));
+
+    // חמישי 07:59 (2026-07-30) — still the 07-23 cycle (opens at 08:00).
+    const thu0759 = zonedTimeToUtc("2026-07-30", "07:59", TZ);
+    check("חמישי 07:59: activeCycle is STILL the 07-23 cycle (previous cycle shown)", activeCycle(thu0759).thursday === "2026-07-23");
+    check("חמישי 07:59: the old submission still belongs (form still shows it — correct, cycle hasn't flipped)", belongsToActiveCycle(priorCycleSubmission.sentAt, cycleStartInstant(thu0759)));
+
+    // חמישי 08:00 (2026-07-30) — the NEW cycle (07-30) is now active.
+    const thu0800 = zonedTimeToUtc("2026-07-30", "08:00", TZ);
+    check("חמישי 08:00: activeCycle flips to the NEW 07-30 cycle", activeCycle(thu0800).thursday === "2026-07-30");
+    check("חמישי 08:00: the OLD submission no longer belongs → form shows BLANK", !belongsToActiveCycle(priorCycleSubmission.sentAt, cycleStartInstant(thu0800)));
+    check("חמישי 08:00: new cycle's target week is 02.08–08.08 (what the now-blank form displays)", JSON.stringify(activeCycle(thu0800)) === JSON.stringify({ thursday: "2026-07-30", weekStart: "2026-08-02", weekEnd: "2026-08-08" }));
+
+    // חמישי 12:00 — the reminder job's cycle must be the EXACT SAME one the
+    // form is showing at that same instant (same function, same input).
+    const thu1200 = zonedTimeToUtc("2026-07-30", "12:00", TZ);
+    const formCycle = activeCycle(thu1200);
+    const jobClaimKey = reminderClaimKey("shalev-tasama", activeCycle(thu1200).weekStart, "thu-1200");
+    check("חמישי 12:00: the Push job's claim key uses the form's own weekStart", jobClaimKey === `availability_reminder:shalev-tasama:${formCycle.weekStart}:thu-1200`);
+
+    // A FRESH submission sent right after 08:00 for the NEW cycle — the form
+    // must show IT (not the old one), and reminders must see it as valid.
+    const newCycleSubmission: MinimalAvailability = {
+      days: [{ available: true, from: "16:00" }, { available: true, from: "18:00" }],
+      sentAt: zonedTimeToUtc("2026-07-30", "09:00", TZ).toISOString(),
+    };
+    check("new submission (sent 09:00) belongs to the new 07-30 cycle", belongsToActiveCycle(newCycleSubmission.sentAt, cycleStartInstant(thu1200)));
+    check("new submission also satisfies hasValidSubmissionForCycle (≥2 days)", hasValidSubmissionForCycle(newCycleSubmission, cycleStartInstant(thu1200)));
+
+    // מעבר לחמישי הבא (06.08) — the 07-30 cycle's submission must NOT bleed
+    // into the following cycle; the form for 06.08 starts blank again.
+    const nextThu0800 = zonedTimeToUtc("2026-08-06", "08:00", TZ);
+    check("מעבר לחמישי הבא: activeCycle flips to 08-06", activeCycle(nextThu0800).thursday === "2026-08-06");
+    check("מעבר לחמישי הבא: the 07-30 cycle's submission does NOT belong to the 08-06 cycle → blank again", !belongsToActiveCycle(newCycleSubmission.sentAt, cycleStartInstant(nextThu0800)));
+    check("מעבר לחמישי הבא: new target week is 09.08–15.08", JSON.stringify(activeCycle(nextThu0800)) === JSON.stringify({ thursday: "2026-08-06", weekStart: "2026-08-09", weekEnd: "2026-08-15" }));
   }
 
   console.log("—— reminderClaimKey — exact format from the task ——");

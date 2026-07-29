@@ -8,8 +8,8 @@ import { useRole, type ClientRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
-import { ilTodayYMD, availabilityWeekStart, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
-import { countValidDays, hasValidSubmissionForCycle, cycleStartInstant } from "@/lib/shalev-availability-reminder-pure";
+import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
+import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle } from "@/lib/shalev-availability-reminder-pure";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -2185,13 +2185,17 @@ type WeekDay = { day: string; date: string; iso: string };
 const HEB_DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const AVAIL_TIMES = ["10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
 
-// The upcoming Israeli calendar week (ראשון→שבת) for "הזמינות שלי לשבוע הבא":
-// the next Sunday (today itself only counts if it IS Sunday) through the
-// following Saturday. Israel-timezone-safe (lib/red-artists/week.ts) — a raw
-// client `new Date()` would drift around midnight in whatever timezone the
-// browser happens to be in.
-function computeNextWeek(): WeekDay[] {
-  return weekDaysFor(availabilityWeekStart());
+// "הזמינות שלי לשבוע הבא"'s week is the availability-reminder CYCLE's target
+// week (lib/shalev-availability-reminder-pure.ts's activeCycle) — the SAME
+// helper the scheduler/push job and the ≥2-day/hasValidSubmissionForCycle
+// checks use, so the form and the reminder logic can never disagree about
+// which week is currently open. Flips at Thursday 08:00 Asia/Jerusalem;
+// before that it's still the PREVIOUS cycle's week. (There used to be a
+// separate, older "Monday-flip" computeNextWeek() here — removed, since
+// having two different week-boundary rules for the same feature was exactly
+// the bug being fixed.)
+function computeAvailabilityCycleWeek(now: Date = new Date()): WeekDay[] {
+  return weekDaysFor(activeCycle(now).weekStart);
 }
 
 // ── לו״ז ועדכונים tab — three clearly separated sections (UI only, no writes):
@@ -2292,23 +2296,6 @@ function UpdatesList({ items }: { items: PortalUpdate[] }) {
   );
 }
 
-// A saved availability day carries only "DD.MM" (no year — see
-// computeNextWeek). Used ONLY to test whether a saved snapshot still belongs
-// to the canonical week (a simple "closest year" heuristic is safe for that:
-// if the month looks far enough behind the current month to only make sense
-// next year, e.g. saved in December and viewed in January, roll the year
-// forward) — the canonical week's own dates are always computed exactly,
-// never through this heuristic.
-function availDayToIso(dm: string): string {
-  const [ddStr, mmStr] = dm.split(".");
-  const dd = Number(ddStr), mm = Number(mmStr);
-  if (!dd || !mm) return "";
-  const now = new Date();
-  let year = now.getFullYear();
-  if (mm < now.getMonth() + 1 - 6) year += 1;
-  return `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-}
-
 function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary | null; loadState: LoadState; isOwner?: boolean }) {
   const isMobile = useIsMobile();
   const { apiBase, artistName } = usePortalContext();
@@ -2317,10 +2304,12 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   const loading = loadState === "loading";
   const error   = loadState === "error";
 
-  // The availability week — ALWAYS "next week" (unchanged semantic/logic,
-  // see computeNextWeek). Computed once per mount (stable for the life of
-  // the tab); "הזמינות שלי" never navigates.
-  const week = useMemo(() => computeNextWeek(), []);
+  // The availability week — the active availability-reminder CYCLE's target
+  // week (Thursday 08:00 Asia/Jerusalem flip — see
+  // computeAvailabilityCycleWeek). Computed once per mount (stable for the
+  // life of the tab, consistent with the calendar's own once-per-mount
+  // default below); "הזמינות שלי" never navigates.
+  const week = useMemo(() => computeAvailabilityCycleWeek(), []);
   const todayIso = useMemo(() => ilTodayYMD(), []);
 
   // The NAVIGABLE calendar week ("היומן השבועי שלי") — a completely separate
@@ -2384,20 +2373,23 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
         if (!alive) return;
         const av = d?.availability;
         const days = Array.isArray(av?.days) ? (av.days as AvailDay[]) : null;
-        if (r.ok && d?.ok && days && days.length === 7) {
-          // The saved snapshot's OWN dates only matter to detect a week
-          // rollover. What Shalev actually marked (available/from) is never
-          // reset — if the snapshot belongs to a different week than the
-          // canonical one, it's carried forward onto the matching weekday
-          // (ראשון→ראשון, שלישי→שלישי, …) of THIS week instead of being
-          // wiped, and stays as-is once the dates already match.
-          const matches = days.every((sd, i) => availDayToIso(sd.date) === week[i].iso);
-          const applied = matches
-            ? days
-            : days.map((sd, i) => ({ day: week[i].day, date: week[i].date, available: sd.available, from: sd.from }));
+        const cycleStart = cycleStartInstant(new Date());
+        // A stored submission counts as belonging to the ACTIVE cycle only if
+        // it was sent at/after that cycle's own Thursday-08:00 open — the
+        // EXACT same check the reminder job uses (hasValidSubmissionForCycle
+        // is this plus the ≥2-day count). A submission from a PRIOR cycle
+        // must never be shown as if it belongs to the new one — the new
+        // cycle's form starts blank, full stop, no remap/carry-forward.
+        const isCurrentCycle = belongsToActiveCycle(av?.sentAt, cycleStart);
+        if (r.ok && d?.ok && days && days.length === 7 && isCurrentCycle) {
+          // Same cycle the canonical `week` was computed for → position-based
+          // correspondence is exact (the form always sends 7 entries in
+          // canonical Sun→Sat order), so the day/date LABELS come straight
+          // from `week` and only available/from are carried from storage.
+          const applied = days.map((sd, i) => ({ day: week[i].day, date: week[i].date, available: sd.available, from: sd.from }));
           setAvailDays(applied);
           setAvailLastUpdate({ sentBy: av.sentBy, sentAt: av.sentAt });
-          setAvailValidForCycle(hasValidSubmissionForCycle({ days: applied, sentAt: av.sentAt }, cycleStartInstant(new Date())));
+          setAvailValidForCycle(hasValidSubmissionForCycle({ days: applied, sentAt: av.sentAt }, cycleStart));
           return;
         }
       } catch { /* fall through to a blank week */ }
