@@ -321,7 +321,9 @@ export async function syncShowFinance(show: Show): Promise<void> {
       });
       // Balance-ledger sync (Phase 1, Shalev only — see artist-balance-show-sync.ts).
       // "בוטל" means the fee no longer stands — remove a still-expected synced
-      // entry (never touches one already marked הכנסות); otherwise keep it in sync.
+      // entry (never touches one already marked הכנסות). Otherwise keep it in
+      // sync as "הכנסות צפויות" — payment_status ("שולם" vs "צפוי") never
+      // promotes it to "הכנסות" automatically; that's a manual-only action.
       if (artistStatus === "בוטל") {
         await removeSyncedArtistBalanceEntry(show.linked_artist_expense_transaction_id);
       } else {
@@ -331,7 +333,6 @@ export async function syncShowFinance(show: Show): Promise<void> {
           showDate: show.date,
           transactionId: show.linked_artist_expense_transaction_id,
           amount: effectiveArtistFee,
-          transactionPaymentStatus: artistStatus,
         });
       }
     } else if (shouldHaveArtist) {
@@ -350,15 +351,15 @@ export async function syncShowFinance(show: Show): Promise<void> {
         await supabase.from("shows")
           .update({ linked_artist_expense_transaction_id: id, updated_at: new Date().toISOString() })
           .eq("id", show.id);
-        // Balance-ledger sync — brand-new artist-fee transaction (never "בוטל" here,
-        // shouldHaveArtist already excludes cancelled/no-fee shows).
+        // Balance-ledger sync — brand-new artist-fee transaction, always as
+        // "הכנסות צפויות" regardless of isPaid (never "בוטל" here — shouldHaveArtist
+        // already excludes cancelled/no-fee shows).
         await syncArtistBalanceFromShow({
           showArtist: show.artist,
           showName: show.name,
           showDate: show.date,
           transactionId: id,
           amount: effectiveArtistFee,
-          transactionPaymentStatus: isPaid ? "שולם" : "צפוי",
         });
       }
     }

@@ -1,13 +1,19 @@
 import "server-only";
 import { supabase } from "./supabase";
 import { getLabelArtistByName } from "./label-artists-store";
-import { singleArtistToken, desiredEntryTypeFor, decideSyncAction, decideRemovalAction } from "./artist-balance-show-sync-pure";
+import { singleArtistToken, AUTO_SYNC_ENTRY_TYPE, decideSyncAction, decideRemovalAction } from "./artist-balance-show-sync-pure";
 
 /**
  * Live (one-way, read-derived) sync: a show's artist-fee transaction
  * (transactions.category="שכר אמן", linked via shows.linked_artist_expense_transaction_id)
- * → a matching row in the manual artist_balance_entries ledger, entry_type
- * "הכנסות צפויות" while unpaid, "הכנסות" once the fee is marked שולם.
+ * → a matching row in the manual artist_balance_entries ledger.
+ *
+ * The automatic sync ALWAYS stops at "הכנסות צפויות" — regardless of the
+ * transaction's payment_status (שולם or צפוי). It NEVER creates or promotes a
+ * row to "הכנסות" on its own; that transition is manual-only, via the balance
+ * page's "סמן כהתקבל" action. This is a deliberate business decision — the
+ * automatic sync's job ends at "there's an expected show fee", not "the money
+ * arrived" (only a human confirms that).
  *
  * Phase 1 — Shalev only (explicit allowlist below); no other artist, no Avi.
  *
@@ -19,12 +25,13 @@ import { singleArtistToken, desiredEntryTypeFor, decideSyncAction, decideRemoval
  * read+UPDATE — never a pre-check SELECT before the insert attempt. Any other
  * error is logged explicitly (never silently treated as success).
  *
- * Protection: once a synced entry is "הכנסות" (the artist was actually paid),
- * it is FROZEN — a later show edit never reverts it to "הכנסות צפויות", never
- * changes its amount/date/description, and never deletes it. Only a still-
- * "הכנסות צפויות" entry is ever updated or removed. All branching decisions
- * ("insert vs update vs skip", "delete vs keep") live in the pure, tested
- * lib/artist-balance-show-sync-pure.ts — this file only does the DB I/O.
+ * Protection: once a synced entry is "הכנסות" (marked received — manually,
+ * via "סמן כהתקבל"), it is FROZEN — a later show edit never reverts it to
+ * "הכנסות צפויות", never changes its amount/date/description, and never
+ * deletes it. Only a still-"הכנסות צפויות" entry is ever updated or removed.
+ * All branching decisions ("insert vs update vs skip", "delete vs keep") live
+ * in the pure, tested lib/artist-balance-show-sync-pure.ts — this file only
+ * does the DB I/O.
  */
 
 // Phase-1 allowlist — resolved artist_id must be one of these, or the show is
@@ -54,9 +61,10 @@ async function resolveSyncEnabledArtistId(showArtist: string): Promise<string | 
 
 /**
  * Create-or-update the synced ledger entry for an ACTIVE (non-cancelled)
- * artist-fee transaction. Call this only when the transaction represents a
- * real, still-standing fee (payment_status "שולם" or "צפוי") — never for
- * "בוטל" (use removeSyncedArtistBalanceEntry for that).
+ * artist-fee transaction — ALWAYS as "הכנסות צפויות" (see module doc; the
+ * transaction's payment_status is irrelevant here, on purpose). Call this
+ * only when the transaction represents a real, still-standing fee — never
+ * for "בוטל" (use removeSyncedArtistBalanceEntry for that).
  */
 export async function syncArtistBalanceFromShow(params: {
   showArtist: string;
@@ -64,13 +72,11 @@ export async function syncArtistBalanceFromShow(params: {
   showDate: string | null;
   transactionId: string;
   amount: number;
-  transactionPaymentStatus: string; // "שולם" | "צפוי" (never "בוטל" here)
 }): Promise<void> {
   try {
     const artistId = await resolveSyncEnabledArtistId(params.showArtist);
     if (!artistId) return; // not Shalev / ambiguous / unregistered — silently out of scope
 
-    const desiredType = desiredEntryTypeFor(params.transactionPaymentStatus);
     const entryDate = params.showDate ?? new Date().toISOString().slice(0, 10);
     const description = `הופעה - ${params.showName}`;
 
@@ -78,7 +84,7 @@ export async function syncArtistBalanceFromShow(params: {
     // source_tx_id (verified live) is the sole conflict authority.
     const { error: insertErr } = await supabase.from("artist_balance_entries").insert({
       artist_id: artistId,
-      entry_type: desiredType,
+      entry_type: AUTO_SYNC_ENTRY_TYPE,
       amount: params.amount,
       entry_date: entryDate,
       description,
@@ -106,7 +112,7 @@ export async function syncArtistBalanceFromShow(params: {
     const decision = decideSyncAction(existing);
     if (decision.action !== "update") {
       if (decision.action === "skip_already_received") {
-        console.log(`[artist-balance-show-sync] skip: tx ${params.transactionId} entry already marked הכנסות — not touched`);
+        console.log(`[artist-balance-show-sync] skip: tx ${params.transactionId} entry already marked הכנסות (manually confirmed) — not touched`);
       } else {
         // "insert" here means the post-conflict read found nothing — a genuine
         // inconsistency (the 23505 said a row exists), report it explicitly.
@@ -115,9 +121,11 @@ export async function syncArtistBalanceFromShow(params: {
       return;
     }
 
+    // Still "הכנסות צפויות" — safe to refresh amount/date/description. entry_type
+    // stays AUTO_SYNC_ENTRY_TYPE (never promoted to הכנסות by this function).
     const { error: updateErr } = await supabase
       .from("artist_balance_entries")
-      .update({ entry_type: desiredType, amount: params.amount, entry_date: entryDate, description, updated_at: new Date().toISOString() })
+      .update({ entry_type: AUTO_SYNC_ENTRY_TYPE, amount: params.amount, entry_date: entryDate, description, updated_at: new Date().toISOString() })
       .eq("id", decision.entryId);
     if (updateErr) {
       console.error(`[artist-balance-show-sync] update failed for entry ${decision.entryId} (tx ${params.transactionId}):`, updateErr.message);

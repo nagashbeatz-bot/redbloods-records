@@ -20,10 +20,14 @@ export function singleArtistToken(showArtist: string | null | undefined): string
   return tokens.length === 1 ? tokens[0] : null;
 }
 
-/** "שולם" → הכנסות (realized); any other standing status (e.g. "צפוי") → הכנסות צפויות. */
-export function desiredEntryTypeFor(transactionPaymentStatus: string): "הכנסות" | "הכנסות צפויות" {
-  return transactionPaymentStatus === "שולם" ? "הכנסות" : "הכנסות צפויות";
-}
+/**
+ * The automatic sync NEVER creates or promotes a "הכנסות" (realized) row —
+ * that transition is manual-only, via the balance page's "סמן כהתקבל" action.
+ * Regardless of the show/transaction's payment_status (שולם or צפוי), the
+ * automatic sync always targets "הכנסות צפויות". A row that's already
+ * "הכנסות" is handled separately by decideSyncAction (frozen, never touched).
+ */
+export const AUTO_SYNC_ENTRY_TYPE: "הכנסות צפויות" = "הכנסות צפויות";
 
 export type ExistingEntry = { id: string; entry_type: string };
 
