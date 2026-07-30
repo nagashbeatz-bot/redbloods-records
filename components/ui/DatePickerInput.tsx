@@ -221,42 +221,50 @@ export default function DatePickerInput({
   );
 
   return (
-    <div
-      ref={btnRef}
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      onClick={openPanel}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPanel(); }
-      }}
-      className={className}
-      aria-haspopup="dialog"
-      aria-expanded={open}
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 6,
-        cursor: disabled ? "not-allowed" : "pointer",
-        userSelect: "none",
-        ...style,
-        ...(open ? { borderColor: "rgba(99,102,241,0.55)", boxShadow: "0 0 0 3px rgba(99,102,241,0.14)" } : {}),
-      }}
-    >
-      {/* Visible label — dates read left-to-right even inside an RTL field */}
-      <span style={{ color: value ? "inherit" : undefined, opacity: value ? 1 : 0.35, direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>
-        {value ? fmtHe(value) : placeholder}
-      </span>
+    <>
+      <div
+        ref={btnRef}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        onClick={openPanel}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPanel(); }
+        }}
+        className={className}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+          cursor: disabled ? "not-allowed" : "pointer",
+          userSelect: "none",
+          ...style,
+          ...(open ? { borderColor: "rgba(99,102,241,0.55)", boxShadow: "0 0 0 3px rgba(99,102,241,0.14)" } : {}),
+        }}
+      >
+        {/* Visible label — dates read left-to-right even inside an RTL field */}
+        <span style={{ color: value ? "inherit" : undefined, opacity: value ? 1 : 0.35, direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>
+          {value ? fmtHe(value) : placeholder}
+        </span>
 
-      {/* Calendar icon */}
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
-        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
-        <path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
+        {/* Calendar icon */}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
+          <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
+          <path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
 
+      {/* Portal rendered as a SIBLING of the trigger, not a child of it — a
+          portal's events bubble through the React tree (not the DOM tree), so
+          nesting it inside the trigger's onClick={openPanel} meant every click
+          inside the calendar (e.g. the month-nav arrows) re-triggered openPanel()
+          right after, which re-synced viewY/viewM from `value` and silently
+          cancelled the month change on the same click. */}
       {open && typeof document !== "undefined" && createPortal(panel, document.body)}
-    </div>
+    </>
   );
 }
 
