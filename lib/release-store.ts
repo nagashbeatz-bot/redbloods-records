@@ -1,5 +1,6 @@
 import "server-only";
 import { supabase } from "./supabase";
+import { ilTodayYMD } from "./red-artists/week";
 import type {
   ProjectReleaseDetails,
   LabelRelease,
@@ -237,6 +238,22 @@ export async function listReleasesByArtist(labelArtistId: string): Promise<Label
       };
     })
     .filter((x): x is LabelRelease => x !== null);
+}
+
+/** The nearest today-or-future release for one label artist, or null. A release
+ *  whose target date has already passed is NEVER returned — a stale release
+ *  must disappear from "הריליס הבא" the moment its date is in the past, not
+ *  linger until someone else replaces it. Ties/multiple upcoming releases are
+ *  broken by release_target_date only (never created_at/updated_at). */
+export async function getNextRelease(labelArtistId: string): Promise<{ projectId: string; title: string; releaseDate: string } | null> {
+  const releases = await listReleasesByArtist(labelArtistId);
+  const today = ilTodayYMD();
+  const upcoming = releases
+    .filter((r): r is LabelRelease & { release: ProjectReleaseDetails & { releaseTargetDate: string } } =>
+      !!r.release?.releaseTargetDate && r.release.releaseTargetDate >= today)
+    .sort((a, b) => (a.release.releaseTargetDate < b.release.releaseTargetDate ? -1 : 1));
+  const next = upcoming[0];
+  return next ? { projectId: next.projectId, title: next.name, releaseDate: next.release.releaseTargetDate } : null;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireShalevAccess } from "@/lib/require-auth";
 import { SHALEV_NAME } from "@/lib/red-artists/portal-registry";
+import { resolvePortalConfigByName } from "@/lib/red-artists/portal-config";
 import { isValidYmd, weekStartFor, weekEndFor, currentWeekStart } from "@/lib/red-artists/week";
 import { fetchArtistWeeklyEvents } from "@/lib/red-artists/weekly-events";
 
@@ -23,7 +24,8 @@ export async function GET(req: NextRequest) {
     const raw = req.nextUrl.searchParams.get("start");
     const weekStart = weekStartFor(raw && isValidYmd(raw) ? raw : currentWeekStart());
     const weekEnd = weekEndFor(weekStart);
-    const items = await fetchArtistWeeklyEvents(SHALEV_NAME, weekStart, weekEnd);
+    const config = await resolvePortalConfigByName(SHALEV_NAME);
+    const items = await fetchArtistWeeklyEvents(SHALEV_NAME, weekStart, weekEnd, config?.artistId ?? null);
     return NextResponse.json({ ok: true, weekStart, weekEnd, items });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "server error";

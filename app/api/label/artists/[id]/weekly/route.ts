@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     const raw = req.nextUrl.searchParams.get("start");
     const weekStart = weekStartFor(raw && isValidYmd(raw) ? raw : currentWeekStart());
     const weekEnd = weekEndFor(weekStart);
-    const items = await fetchArtistWeeklyEvents(access.config.name, weekStart, weekEnd);
+    const items = await fetchArtistWeeklyEvents(access.config.name, weekStart, weekEnd, access.config.artistId);
     return NextResponse.json({ ok: true, weekStart, weekEnd, items });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "server error";

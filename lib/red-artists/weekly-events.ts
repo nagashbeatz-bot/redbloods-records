@@ -1,6 +1,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { listShows } from "@/lib/shows-store";
+import { listReleasesByArtist } from "@/lib/release-store";
 
 /**
  * Shared "this artist's real schedule for a given Sun–Sat week" query —
@@ -48,7 +49,7 @@ function byDateTime(a: { date: string | null; startTime?: string | null }, b: { 
   return d !== 0 ? d : (a.startTime ?? "").localeCompare(b.startTime ?? "");
 }
 
-export async function fetchArtistWeeklyEvents(artistName: string, weekStart: string, weekEnd: string): Promise<WeeklyItem[]> {
+export async function fetchArtistWeeklyEvents(artistName: string, weekStart: string, weekEnd: string, labelArtistId?: string | null): Promise<WeeklyItem[]> {
   const { data: projRows } = await supabase.from("projects").select("id, name, artist, is_hidden");
   const artistProjects = (projRows ?? []).filter((p) => !p.is_hidden && isThisArtist(p.artist as string, artistName));
   const projName = new Map(artistProjects.map((p) => [p.id as string, p.name as string]));
@@ -77,6 +78,23 @@ export async function fetchArtistWeeklyEvents(artistName: string, weekStart: str
     !!s.date && s.date >= weekStart && s.date <= weekEnd,
   );
 
+  // Releases (project_release_details, via project_id → project name) — a
+  // Date-only field (YYYY-MM-DD), compared as a plain string against
+  // weekStart/weekEnd exactly like sessions.date, so there's no UTC shift.
+  let releaseItems: WeeklyItem[] = [];
+  if (labelArtistId) {
+    const releases = await listReleasesByArtist(labelArtistId);
+    releaseItems = releases
+      .filter((r) => !!r.release?.releaseTargetDate && r.release.releaseTargetDate >= weekStart && r.release.releaseTargetDate <= weekEnd)
+      .map((r) => ({
+        type: "ריליס",
+        title: r.name,
+        date: r.release!.releaseTargetDate,
+        startTime: null as string | null,
+        endTime: null as string | null,
+      }));
+  }
+
   const items: WeeklyItem[] = [
     ...sessions.map((s) => ({
       id: s.id,
@@ -95,6 +113,7 @@ export async function fetchArtistWeeklyEvents(artistName: string, weekStart: str
       endTime: null as string | null,
       location: sh.location || null,
     })),
+    ...releaseItems,
   ].sort(byDateTime);
 
   return items;

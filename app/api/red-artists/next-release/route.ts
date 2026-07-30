@@ -1,31 +1,24 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireOwner, requireShalevAccess } from "@/lib/require-auth";
-import { getNextReleaseConfig, setNextReleaseConfig } from "@/lib/red-artists/sketches-store";
-import { errResponse } from "@/lib/red-artists/sketches-http";
-import { SHALEV_SLUG } from "@/lib/red-artists/portal-config";
+import { NextResponse } from "next/server";
+import { requireShalevAccess } from "@/lib/require-auth";
+import { getNextRelease } from "@/lib/release-store";
+import { resolvePortalConfigByName } from "@/lib/red-artists/portal-config";
+import { SHALEV_NAME } from "@/lib/red-artists/portal-registry";
 
-// GET /api/red-artists/next-release — the portal's chosen next release (from the
-// manifest; resolved against the live sketches). null when unset. Readable by the
-// artist (shalev) so his home card populates; only the owner may SET it (POST).
+/**
+ * GET /api/red-artists/next-release — Shalev's nearest today-or-future release,
+ * computed live from the label release pipeline (project_release_details), never
+ * a manual pointer. null when there's no upcoming release for him. Read-only —
+ * editing a release's date/stage happens in "ניהול הלייבל" (/label), not here.
+ */
 export async function GET() {
-  const denied = await requireShalevAccess(); if (denied) return denied;
+  const denied = await requireShalevAccess();
+  if (denied) return denied;
   try {
-    const release = await getNextReleaseConfig(SHALEV_SLUG);
+    const config = await resolvePortalConfigByName(SHALEV_NAME);
+    const release = config ? await getNextRelease(config.artistId) : null;
     return NextResponse.json({ ok: true, release });
   } catch (err) {
-    return errResponse(err);
-  }
-}
-
-// POST /api/red-artists/next-release — set it. body: { sketchId, releaseDate }.
-// sketchId MUST be an active sketch from the manifest (never a Project id).
-export async function POST(req: NextRequest) {
-  const denied = await requireOwner(); if (denied) return denied;
-  try {
-    const body = await req.json().catch(() => ({}));
-    const release = await setNextReleaseConfig(SHALEV_SLUG, String(body.sketchId ?? ""), String(body.releaseDate ?? ""));
-    return NextResponse.json({ ok: true, release });
-  } catch (err) {
-    return errResponse(err);
+    const msg = err instanceof Error ? err.message : "server error";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

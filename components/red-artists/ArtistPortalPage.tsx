@@ -85,7 +85,6 @@ const IcEdit     = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} 
 const IcTrash    = ({ size = 18, color = "#F87171" }: IcoProps) => <Svg size={size} color={color} fill="none"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></Svg>;
 const IcClock    = ({ size = 14, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></Svg>;
 const IcMusicNote = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></Svg>;
-const IcChevron  = ({ size = 16, color = "#FF6B6B" }: IcoProps) => <Svg size={size} color={color} fill="none"><polyline points="15 18 9 12 15 6" /></Svg>;
 // Drag handle — six dots (grip). Filled dots read clearly at small sizes.
 const IcGrip = ({ size = 16, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill={color}><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></Svg>;
 
@@ -319,10 +318,11 @@ function fmtSketchDate(iso: string | null | undefined): string {
   return d.length === 3 ? `${d[2]}.${d[1]}.${d[0]}` : iso;
 }
 
-// ── Next release — the portal's manifest-stored pointer (a sketch + a date). ──────
-// Source of truth = /api/red-artists/next-release (manifest). NOT Projects / not
-// project_release_details. `title` is the chosen sketch's live title.
-export type PortalRelease = { sketchId: string; title: string; releaseDate: string };
+// ── Next release — the nearest today-or-future release from the label's OWN
+// release pipeline (project_release_details, via project_id → project name). ──
+// Source of truth = /api/red-artists/next-release → lib/release-store.ts's
+// getNextRelease(labelArtistId). Read-only here; editing happens in "ניהול הלייבל".
+export type PortalRelease = { projectId: string; title: string; releaseDate: string };
 
 // ── Next project to work on — OWNER-chosen, manifest-stored pointer (a sketch +
 // an OPTIONAL deadline). Source = /api/red-artists/next-work. SEPARATE from
@@ -505,8 +505,6 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   }, [isOwner, isShalev, artistId]);
   useEffect(() => { void reloadLedger(); }, [reloadLedger]);
 
-  // Next release — the portal's manifest pointer (a sketch + a date). NOT Projects,
-  // NOT project_release_details. null when unset → the card shows a "set it" prompt.
   const [nextWork, setNextWork] = useState<PortalWork | null>(null);
   const reloadNextWork = useCallback(async () => {
     try {
@@ -517,6 +515,8 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   }, [apiBase]);
   useEffect(() => { void reloadNextWork(); }, [reloadNextWork]);
 
+  // The nearest today-or-future release from the label pipeline — computed
+  // server-side (never a manual pointer); read-only here, see PortalRelease.
   const [nextRelease, setNextRelease] = useState<PortalRelease | null>(null);
   const reloadNextRelease = useCallback(async () => {
     try {
@@ -669,7 +669,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} onReloadNextRelease={reloadNextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} ledger={ledger} ledgerState={ledgerState} />
+          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} />
@@ -2223,12 +2223,13 @@ function SchedEmpty({ text }: { text: string }) {
   return <div style={{ padding: "40px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>{text}</div>;
 }
 
-// Event/update type colors (no purple): הופעה red · סשן blue · צילום קליפ amber · פגישה green.
+// Event/update type colors (no purple): הופעה red · סשן blue · צילום קליפ amber · פגישה green · ריליס teal.
 const SCHED_TYPE_COLOR: Record<string, string> = {
   "הופעה":     "#FF6B6B",
   "סשן":       BLUE,
   "צילום קליפ": AMBER,
   "פגישה":     GREEN,
+  "ריליס":     "#2DD4BF",
 };
 
 function SchedTypePill({ type }: { type: string }) {
@@ -2238,36 +2239,6 @@ function SchedTypePill({ type }: { type: string }) {
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 6px ${col}` }} />
       {type}
     </span>
-  );
-}
-
-// Weekly schedule list (used by the home page's compact preview) — real
-// sessions + shows only (no money). A session/meeting/clip-shoot shows only its
-// type pill + day/date + hours — no project name, no location. Shows (הופעה)
-// keep their own name + location (a show's own public name, not an internal one).
-function WeeklyList({ items }: { items: WeeklyItem[] }) {
-  return (
-    <div style={{ padding: "4px 0 6px" }}>
-      {items.map((ev, i) => {
-        const time = ev.startTime ? (ev.endTime ? `${ev.startTime}–${ev.endTime}` : ev.startTime) : null;
-        const showTitle = ev.type === "הופעה";
-        return (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 20px", borderBottom: i < items.length - 1 ? `1px solid ${BDR}` : "none" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                <SchedTypePill type={ev.type} />
-                {showTitle && <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</span>}
-              </div>
-              {showTitle && ev.location && <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5 }}>{ev.location}</div>}
-            </div>
-            <div style={{ textAlign: "start", flexShrink: 0 }}>
-              <div style={{ fontSize: 13, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(ev.date)}</div>
-              {time && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3, direction: "ltr" }}>{time}</div>}
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -2312,45 +2283,10 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
   const week = useMemo(() => computeAvailabilityCycleWeek(), []);
   const todayIso = useMemo(() => ilTodayYMD(), []);
 
-  // The NAVIGABLE calendar week ("היומן השבועי שלי") — a completely separate
-  // concept from the availability week above: defaults to the CURRENT Israel
-  // week (not next week) and can page forward/back to any week. Local state,
-  // reset to the current week on every mount — since the whole
-  // ArtistPortalPage remounts (key={artistId}) when the owner switches
-  // artists, and this tab itself unmounts/remounts on every tab switch (only
-  // the active tab's component is rendered), a plain useState initializer
-  // already satisfies "reset to current week on artist switch" and "default
-  // to current week on entry" with no extra effect needed.
-  const [calWeekStart, setCalWeekStart] = useState<string>(() => currentWeekStart());
-  const calDays = useMemo(() => weekDaysFor(calWeekStart), [calWeekStart]);
-  const isCalCurrentWeek = calWeekStart === currentWeekStart();
-
-  const [calItems, setCalItems] = useState<WeeklyItem[]>([]);
-  const [calState, setCalState] = useState<LoadState>("loading");
-  const reloadCalendar = useCallback(() => {
-    setCalState("loading");
-    fetch(`${apiBase}/weekly?start=${calWeekStart}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d) => {
-        if (d?.ok && Array.isArray(d.items)) { setCalItems(d.items); setCalState("ready"); }
-        else setCalState("error");
-      })
-      .catch(() => setCalState("error"));
-  }, [apiBase, calWeekStart]);
-  useEffect(() => { reloadCalendar(); }, [reloadCalendar]);
-  // A session created/deleted (owner's manage modal, or "קבע סשן") should
-  // reflect immediately in whichever week is currently displayed — same
-  // event the top-level summary reload already listens to.
-  useEffect(() => {
-    document.addEventListener("rb-session-created", reloadCalendar);
-    return () => document.removeEventListener("rb-session-created", reloadCalendar);
-  }, [reloadCalendar]);
-
-  const calWeeklyByIso = useMemo(() => {
-    const m = new Map<string, WeeklyItem>();
-    for (const it of calItems) if (it.date && !m.has(it.date)) m.set(it.date, it);
-    return m;
-  }, [calItems]);
+  // The NAVIGABLE calendar week ("היומן השבועי שלי") itself is now owned by the
+  // shared WeeklyCalendarSection component below (see useWeeklyCalendar) — the
+  // home page's calendar card uses the exact same component/hook, so the two
+  // can never drift in data source or rendering again.
 
   // Availability days are lifted up here (out of AvailabilityBody) so the
   // day-cube "already scheduled" overlay can see the real weekly data too —
@@ -2421,10 +2357,6 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
     }));
   };
 
-  // Owner clicked a real session on the weekly-calendar grid — opens the
-  // manage/delete modal for that exact session.
-  const [managing, setManaging] = useState<{ item: WeeklyItem; day: WeekDay } | null>(null);
-
   // Deep-link from the availability-reminder push (?tab=schedule&focus=availability
   // — see lib/shalev-availability-reminder-notify.ts). The tab itself is
   // already selected by the existing ?tab= handling; this only needs to
@@ -2473,24 +2405,9 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
       </div>
       {/* 2) weekly calendar — Shalev's REAL sessions + shows for a NAVIGABLE
              week (independent of the availability week above), as 7 cubes
-             (never availability — that lives only in section 1). */}
-      <SchedSection title="היומן השבועי שלי" subtitle="כל מה שכבר נקבע לך — נווט בין שבועות">
-        <WeekNav
-          rangeLabel={`${calDays[0].date}–${calDays[6].date}`}
-          isCurrent={isCalCurrentWeek}
-          onPrev={() => setCalWeekStart((s) => addDaysYMD(s, -7))}
-          onNext={() => setCalWeekStart((s) => addDaysYMD(s, 7))}
-          onToday={() => setCalWeekStart(currentWeekStart())}
-        />
-        {calState === "loading" ? <SchedEmpty text="טוען…" />
-          : calState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
-          : (
-            <WeeklyCalendarGrid
-              week={calDays} weeklyByIso={calWeeklyByIso} isOwner={isOwner}
-              onManageSession={(item, day) => setManaging({ item, day })}
-            />
-          )}
-      </SchedSection>
+             (never availability — that lives only in section 1). Same shared
+             component the home page's "יומן השבוע" card renders. */}
+      <WeeklyCalendarSection title="היומן השבועי שלי" showNavigation isOwner={isOwner} />
       {/* 3) label updates — derived from real shows/sessions only */}
       <SchedSection title="עדכונים מהלייבל">
         {loading ? <SchedEmpty text="טוען…" />
@@ -2498,14 +2415,6 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
           : updates.length === 0 ? <SchedEmpty text="עדיין אין עדכונים חדשים" />
           : <UpdatesList items={updates} />}
       </SchedSection>
-
-      {managing && (
-        <SessionManageModal
-          item={managing.item} day={managing.day}
-          onClose={() => setManaging(null)}
-          onDeleted={() => setManaging(null)}
-        />
-      )}
     </div>
   );
 }
@@ -2555,13 +2464,39 @@ function WeekNav({ rangeLabel, isCurrent, onPrev, onNext, onToday }: {
   );
 }
 
+// One event row inside a day-cube — its own independent click target (only a
+// real `sessions`-table row, i.e. has an id and isn't a show/release, is
+// manageable by the owner).
+function WeeklyEventRow({ ev, day, isOwner, onManageSession }: {
+  ev: WeeklyItem; day: WeekDay; isOwner?: boolean;
+  onManageSession: (item: WeeklyItem, day: WeekDay) => void;
+}) {
+  const clickable = !!isOwner && ev.type !== "הופעה" && ev.type !== "ריליס" && !!ev.id;
+  const hours = ev.startTime ? (ev.endTime ? `${ev.startTime}–${ev.endTime}` : ev.startTime) : "";
+  const showTitle = ev.type === "הופעה" || ev.type === "ריליס";
+  return (
+    <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? () => onManageSession(ev, day) : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onManageSession(ev, day); } } : undefined}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: "100%", cursor: clickable ? "pointer" : "default" }}
+    >
+      <SchedTypePill type={ev.type} />
+      {showTitle && <div style={{ fontSize: 11.5, color: TEXT, fontWeight: 700, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</div>}
+      {!!hours && <div style={{ fontSize: 12, color: TEXT2, direction: "ltr" }}>{hours}</div>}
+    </div>
+  );
+}
+
 // Weekly calendar — 7 cubes, Sunday→Saturday, dates given by the caller
 // (either the availability week or a navigated calendar week — this
 // component doesn't care which). Never shows availability/פנוי info — only
-// real booked events (or a soft "אין אירוע" empty state). Owner may click a
-// real SESSION (not a show) to open the manage/delete modal.
+// real booked events (or a soft "אין אירוע" empty state). A day can hold
+// multiple events (e.g. a session AND a release) — all of them render, each
+// with its own click target where applicable.
 function WeeklyCalendarGrid({ week, weeklyByIso, isOwner, onManageSession }: {
-  week: WeekDay[]; weeklyByIso: Map<string, WeeklyItem>; isOwner?: boolean;
+  week: WeekDay[]; weeklyByIso: Map<string, WeeklyItem[]>; isOwner?: boolean;
   onManageSession: (item: WeeklyItem, day: WeekDay) => void;
 }) {
   const isMobile = useIsMobile();
@@ -2569,33 +2504,24 @@ function WeeklyCalendarGrid({ week, weeklyByIso, isOwner, onManageSession }: {
     <div style={{ padding: isMobile ? "14px 14px 16px" : "16px 22px 20px" }}>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)", gap: isMobile ? 10 : 12 }}>
         {week.map((w) => {
-          const ev = weeklyByIso.get(w.iso);
-          // Shows are display-only here (a separate lifecycle/module) — only a
-          // real `sessions`-table row (has an id, isn't a show) is manageable.
-          const clickable = !!isOwner && !!ev && ev.type !== "הופעה" && !!ev.id;
-          const hours = ev?.startTime ? (ev.endTime ? `${ev.startTime}–${ev.endTime}` : ev.startTime) : "";
+          const evs = weeklyByIso.get(w.iso) ?? [];
           return (
             <div
               key={w.day}
-              role={clickable ? "button" : undefined}
-              tabIndex={clickable ? 0 : undefined}
-              onClick={clickable ? () => onManageSession(ev!, w) : undefined}
-              onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onManageSession(ev!, w); } } : undefined}
               style={{
                 ...panel, padding: isMobile ? "16px 10px" : "18px 12px", fontFamily: "inherit",
                 display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center",
-                border: `1px solid ${BDR2}`, cursor: clickable ? "pointer" : "default",
+                border: `1px solid ${BDR2}`,
               }}
             >
               <div>
                 <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 800, color: TEXT }}>{w.day}</div>
                 <div style={{ fontSize: 12, color: MUTED, marginTop: 3, direction: "ltr" }}>{w.date}</div>
               </div>
-              {ev ? (
-                <>
-                  <SchedTypePill type={ev.type} />
-                  <div style={{ fontSize: 12, color: TEXT2, minHeight: 16, direction: "ltr" }}>{hours}</div>
-                </>
+              {evs.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+                  {evs.map((ev, i) => <WeeklyEventRow key={i} ev={ev} day={w} isOwner={isOwner} onManageSession={onManageSession} />)}
+                </div>
               ) : (
                 <div style={{ fontSize: 12, color: MUTED, minHeight: 16 }}>אין אירוע</div>
               )}
@@ -2721,6 +2647,94 @@ function SessionManageModal({ item, day, onClose, onDeleted }: {
       </div>
     </div>,
     document.body,
+  );
+}
+
+// Shared navigable-week data source for the weekly calendar — extracted so the
+// לו״ז tab's calendar and the home page's calendar card are GUARANTEED to render
+// the exact same data via the exact same fetch, never two divergent copies.
+// Always starts at the CURRENT Israel week; only the tab's WeekNav lets it move.
+function useWeeklyCalendar(apiBase: string) {
+  const [weekStart, setWeekStart] = useState<string>(() => currentWeekStart());
+  const days = useMemo(() => weekDaysFor(weekStart), [weekStart]);
+  const isCurrentWeek = weekStart === currentWeekStart();
+
+  const [items, setItems] = useState<WeeklyItem[]>([]);
+  const [state, setState] = useState<LoadState>("loading");
+  const reload = useCallback(() => {
+    setState("loading");
+    fetch(`${apiBase}/weekly?start=${weekStart}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.items)) { setItems(d.items); setState("ready"); }
+        else setState("error");
+      })
+      .catch(() => setState("error"));
+  }, [apiBase, weekStart]);
+  useEffect(() => { reload(); }, [reload]);
+  // A session created/deleted (owner's manage modal, or "קבע סשן") should reflect
+  // immediately in whichever week is currently displayed — same event the
+  // top-level summary reload already listens to.
+  useEffect(() => {
+    document.addEventListener("rb-session-created", reload);
+    return () => document.removeEventListener("rb-session-created", reload);
+  }, [reload]);
+
+  // Grouped by date (not deduped) — a day can legitimately hold more than one
+  // event (e.g. a session AND a release), and all of them must render.
+  const byIso = useMemo(() => {
+    const m = new Map<string, WeeklyItem[]>();
+    for (const it of items) {
+      if (!it.date) continue;
+      const arr = m.get(it.date);
+      if (arr) arr.push(it); else m.set(it.date, [it]);
+    }
+    return m;
+  }, [items]);
+
+  return { weekStart, setWeekStart, days, isCurrentWeek, state, byIso };
+}
+
+// The weekly-calendar card itself (heading + optional WeekNav + 7-cube grid +
+// manage modal) — the SINGLE component both the לו״ז tab ("היומן השבועי שלי",
+// navigable) and the home page ("יומן השבוע", always the current week) render,
+// so they can never drift in component, data source, or styling again.
+// `showNavigation=false` hides the prev/next/today row and pins the week to
+// "now" — it does not create a second calendar implementation.
+function WeeklyCalendarSection({ title, subtitle, showNavigation = true, isOwner }: {
+  title: string; subtitle?: string; showNavigation?: boolean; isOwner?: boolean;
+}) {
+  const { apiBase } = usePortalContext();
+  const cal = useWeeklyCalendar(apiBase);
+  const [managing, setManaging] = useState<{ item: WeeklyItem; day: WeekDay } | null>(null);
+
+  return (
+    <SchedSection title={title} subtitle={subtitle ?? (showNavigation ? "כל מה שכבר נקבע לך — נווט בין שבועות" : "כל מה שכבר נקבע לך השבוע")}>
+      {showNavigation && (
+        <WeekNav
+          rangeLabel={`${cal.days[0].date}–${cal.days[6].date}`}
+          isCurrent={cal.isCurrentWeek}
+          onPrev={() => cal.setWeekStart((s) => addDaysYMD(s, -7))}
+          onNext={() => cal.setWeekStart((s) => addDaysYMD(s, 7))}
+          onToday={() => cal.setWeekStart(currentWeekStart())}
+        />
+      )}
+      {cal.state === "loading" ? <SchedEmpty text="טוען…" />
+        : cal.state === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+        : (
+          <WeeklyCalendarGrid
+            week={cal.days} weeklyByIso={cal.byIso} isOwner={isOwner}
+            onManageSession={(item, day) => setManaging({ item, day })}
+          />
+        )}
+      {managing && (
+        <SessionManageModal
+          item={managing.item} day={managing.day}
+          onClose={() => setManaging(null)}
+          onDeleted={() => setManaging(null)}
+        />
+      )}
+    </SchedSection>
   );
 }
 
@@ -3461,54 +3475,22 @@ function ReleaseHeading() {
     </div>
   );
 }
-function releaseBtnStyle(isMobile: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0,
-    padding: isMobile ? "13px 20px" : "12px 20px", width: isMobile ? "100%" : "auto",
-    borderRadius: 13, cursor: "pointer", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, whiteSpace: "nowrap",
-    color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", transition: "all .15s",
-  };
-}
-
-function NextReleaseCard({ release, sketches, onReload, canEdit = true }: {
-  release: PortalRelease | null; sketches: Sketch[]; onReload: () => Promise<void>; canEdit?: boolean;
-}) {
+// Read-only — computed live from the label's own release pipeline
+// (project_release_details, via /next-release → getNextRelease). Editing a
+// release's date/stage happens in "ניהול הלייבל" (/label), never here.
+function NextReleaseCard({ release }: { release: PortalRelease | null }) {
   const isMobile = useIsMobile();
-  const [modalOpen, setModalOpen] = useState(false);
   const cd = useCountdown(release ? releaseTargetMs(release.releaseDate) : 0);
   const pad = (n: number) => String(n).padStart(2, "0");
 
-  // Editing the release is OWNER-ONLY (route POST is requireOwner). For the shalev
-  // role the button is not rendered AND the modal is never mounted, so there is no
-  // handler/DOM path to open or update it — the card stays read-only.
-  const DetailsBtn = ({ label }: { label: string }) => canEdit ? (
-    <button
-      onClick={() => setModalOpen(true)} style={releaseBtnStyle(isMobile)}
-      onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.7)"; }}
-      onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.10)"; e.currentTarget.style.borderColor = "rgba(220,38,38,0.45)"; }}
-      onMouseDown={e => (e.currentTarget.style.transform = "scale(0.97)")}
-      onMouseUp={e => (e.currentTarget.style.transform = "scale(1)")}
-    >{label} <IcChevron size={15} /></button>
-  ) : null;
-
-  const modal = canEdit && modalOpen && (
-    <NextReleaseModal current={release} sketches={sketches} onClose={() => setModalOpen(false)} onSaved={onReload} />
-  );
-
-  // Unset → compact prompt so the release can still be set from the home page.
+  // No today-or-future release in the pipeline → passive empty state (no CTA;
+  // setting a release date happens in ניהול הלייבל, not from the portal).
   if (!release) {
     return (
-      <>
-        <div style={{ ...releaseCardShell, padding: isMobile ? "18px 18px" : "20px 26px", display: "flex", flexDirection: isMobile ? "column" : "row", gap: 14, alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between" }}>
-          <div style={{ minWidth: 0 }}>
-            <ReleaseHeading />
-            <div style={{ fontSize: isMobile ? 17 : 19, fontWeight: 800, color: "#fff" }}>עדיין לא הוגדר ריליס הבא</div>
-            <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 5 }}>בחר סקיצה וקבע תאריך הוצאה</div>
-          </div>
-          <DetailsBtn label="הגדרת ריליס" />
-        </div>
-        {modal}
-      </>
+      <div style={{ ...releaseCardShell, padding: isMobile ? "18px 18px" : "20px 26px" }}>
+        <ReleaseHeading />
+        <div style={{ fontSize: isMobile ? 17 : 19, fontWeight: 800, color: "#fff" }}>אין ריליס מתוכנן כרגע</div>
+      </div>
     );
   }
 
@@ -3523,111 +3505,44 @@ function NextReleaseCard({ release, sketches, onReload, canEdit = true }: {
       ];
 
   return (
-    <>
-      <div style={{
-        ...releaseCardShell, padding: isMobile ? "20px 18px" : "24px 26px",
-        display: "flex", gap: isMobile ? 18 : 26, flexDirection: isMobile ? "column" : "row-reverse", alignItems: "center",
-      }}>
-        {/* left (RTL row-reverse): artwork + disc · mobile: top */}
-        <ReleaseArtwork title={release.title} size={isMobile ? 116 : 124} />
+    <div style={{
+      ...releaseCardShell, padding: isMobile ? "20px 18px" : "24px 26px",
+      display: "flex", gap: isMobile ? 18 : 26, flexDirection: isMobile ? "column" : "row-reverse", alignItems: "center",
+    }}>
+      {/* left (RTL row-reverse): artwork + disc · mobile: top */}
+      <ReleaseArtwork title={release.title} size={isMobile ? 116 : 124} />
 
-        {/* centre: label · title · date · timer */}
-        <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? "center" : "start", width: isMobile ? "100%" : undefined }}>
-          <ReleaseHeading />
-          <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{release.title}</div>
-          <div style={{ fontSize: 13, color: TEXT2, marginTop: 7, marginBottom: 14 }}>יוצא ב־{fmtSketchDate(release.releaseDate)}</div>
+      {/* centre: label · title · date · timer */}
+      <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? "center" : "start", width: isMobile ? "100%" : undefined }}>
+        <ReleaseHeading />
+        <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{release.title}</div>
+        <div style={{ fontSize: 13, color: TEXT2, marginTop: 7, marginBottom: 14 }}>יוצא ב־{fmtSketchDate(release.releaseDate)}</div>
 
-          {cd?.done ? (
-            // The release day arrived. NOT "released" — the date passing just means "today".
-            <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יוצא היום</div>
-          ) : (
-            // direction:ltr → days→hours→minutes→seconds read left→right (days on the
-            // left, seconds on the right) inside the RTL card; Hebrew labels unaffected.
-            <div style={{ direction: "ltr", display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
-              {units.map(u => <TimerBox key={u.label} value={u.value} label={u.label} />)}
-            </div>
-          )}
-        </div>
-
-        {/* right (RTL row-reverse): details button · mobile: full-width bottom */}
-        <DetailsBtn label="לפרטי הריליס" />
+        {cd?.done ? (
+          // The release day arrived. NOT "released" — the date passing just means "today".
+          <div style={{ display: "inline-block", fontSize: 15, fontWeight: 800, color: "#FF6B6B", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", borderRadius: 12, padding: "12px 20px" }}>הריליס יוצא היום</div>
+        ) : (
+          // direction:ltr → days→hours→minutes→seconds read left→right (days on the
+          // left, seconds on the right) inside the RTL card; Hebrew labels unaffected.
+          <div style={{ direction: "ltr", display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, maxWidth: isMobile ? "100%" : 420 }}>
+            {units.map(u => <TimerBox key={u.label} value={u.value} label={u.label} />)}
+          </div>
+        )}
       </div>
-      {modal}
-    </>
-  );
-}
-
-// Modal: choose one of the artist's OWN sketches (manifest, not Projects) + a
-// release date → POST /api/red-artists/next-release. Saves to the manifest.
-function NextReleaseModal({ current, sketches, onClose, onSaved }: {
-  current: PortalRelease | null; sketches: Sketch[]; onClose: () => void; onSaved: () => Promise<void>;
-}) {
-  const { apiBase } = usePortalContext();
-  const [sketchId, setSketchId] = useState(current?.sketchId ?? sketches[0]?.id ?? "");
-  const [date, setDate] = useState(current?.releaseDate ?? "");
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
-  const canSave = !!sketchId && validDate && !saving && sketches.length > 0;
-
-  const save = async () => {
-    if (!canSave) return;
-    setSaving(true); setErr(null);
-    try {
-      const res = await fetch(`${apiBase}/next-release`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sketchId, releaseDate: date }),
-      });
-      if (!res.ok) { setErr(await readErr(res, "שמירת הריליס נכשלה")); setSaving(false); return; }
-      await onSaved();
-      onClose();
-    } catch { setErr("שגיאת רשת, נסה שוב"); setSaving(false); }
-  };
-
-  return (
-    <SketchModalShell title="פרטי הריליס הבא" onClose={onClose} busy={saving}>
-      <SkErr msg={err} />
-      {sketches.length === 0 ? (
-        <div style={{ fontSize: 13.5, color: TEXT2, lineHeight: 1.7, textAlign: "center", padding: "18px 8px" }}>
-          אין עדיין סקיצות בספרייה.<br />הוסף סקיצה ב״המוזיקה שלי״ ואז ניתן להגדיר ריליס.
-        </div>
-      ) : (
-        <>
-          <div style={{ marginBottom: 16 }}>
-            <label style={skLabel}>בחר סקיצה</label>
-            <select className="rap-select" value={sketchId} onChange={e => setSketchId(e.target.value)} disabled={saving}
-              style={{ ...skField, cursor: "pointer", appearance: "auto", opacity: saving ? 0.6 : 1 }}>
-              {sketches.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-            </select>
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <label style={skLabel}>תאריך הוצאה</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={saving}
-              style={{ ...skField, colorScheme: "dark", opacity: saving ? 0.6 : 1 }} />
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={save} disabled={!canSave} style={{ ...skPrimaryBtn(canSave), flex: "1 1 150px", width: "auto" }}>{saving ? "שומר…" : "שמור ריליס"}</button>
-            <button onClick={onClose} disabled={saving} style={{
-              flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
-              color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: saving ? "default" : "pointer",
-            }}>ביטול</button>
-          </div>
-        </>
-      )}
-    </SketchModalShell>
+    </div>
   );
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState, nextRelease, onReloadNextRelease, nextWork, onReloadNextWork, hideBalance, isShalev, ledger, ledgerState }: { onOpenMusic: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; onReloadNextRelease: () => Promise<void>; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean; ledger: BalanceLedger | null; ledgerState: LoadState }) {
+function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState, nextRelease, nextWork, onReloadNextWork, hideBalance, isShalev, isOwner, ledger, ledgerState }: { onOpenMusic: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean; isOwner?: boolean; ledger: BalanceLedger | null; ledgerState: LoadState }) {
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-      {/* ── הריליס הבא — manifest pointer; full card when set, "set it" prompt when not ── */}
-      <NextReleaseCard release={nextRelease} sketches={sketches} onReload={onReloadNextRelease} canEdit={!isShalev} />
+      {/* ── הריליס הבא — computed live from the label release pipeline, read-only ── */}
+      <NextReleaseCard release={nextRelease} />
 
       {/* ── "מה מחכה לך עכשיו" ── */}
       <div>
@@ -3731,13 +3646,9 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
         )}
       </div>
 
-      {/* ── 3. Weekly calendar — REAL data, SAME source as the לו״ז tab (summary.weekly) ── */}
-      <SchedSection title="יומן השבוע" subtitle="כל מה שכבר נקבע לך השבוע">
-        {summaryState === "loading" ? <SchedEmpty text="טוען…" />
-          : summaryState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
-          : (summary?.weekly?.length ?? 0) === 0 ? <SchedEmpty text="אין אירועים מתוכננים השבוע" />
-          : <WeeklyList items={summary!.weekly} />}
-      </SchedSection>
+      {/* ── 3. Weekly calendar — the SAME WeeklyCalendarSection component the
+             לו״ז tab renders, pinned to the current week (no navigation). ── */}
+      <WeeklyCalendarSection title="יומן השבוע" showNavigation={false} isOwner={isOwner} />
 
       {/* ── 4. עדכונים מהלייבל — REAL data (summary.updates) ── */}
       <SchedSection title="עדכונים מהלייבל">
