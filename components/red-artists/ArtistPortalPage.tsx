@@ -9,7 +9,7 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
-import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle } from "@/lib/shalev-availability-reminder-pure";
+import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -553,8 +553,78 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
       .catch(() => { durationLearned.delete(key); }); // allow a later retry
   }, [playingId, playerDuration, sketches, apiBase]);
 
+  // ── Mandatory availability modal (Shalev, mobile, Thu 20:00–Sat 21:00 Israel
+  // time — see lib/shalev-availability-reminder-pure.ts's
+  // isMandatoryAvailabilityWindowOpen). Own independent fetch of the SAME
+  // /availability endpoint the schedule tab's form uses, using the SAME
+  // canonical activeCycle/cycleStartInstant/hasValidSubmissionForCycle
+  // functions — never a separate/looser check, and never assumes an "old"
+  // stored record counts. Only ever runs for Shalev's own real session
+  // (never owner / owner-preview / Avi) — isShalev is false for both.
+  const [mandatoryGateState, setMandatoryGateState] = useState<LoadState>("loading");
+  const [mandatoryGateValid, setMandatoryGateValid] = useState(false);
+  const reloadMandatoryGate = useCallback(async () => {
+    if (!isShalev) return;
+    setMandatoryGateState("loading");
+    try {
+      const r = await fetch(`${apiBase}/availability`, { cache: "no-store" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d?.ok) { setMandatoryGateState("error"); return; }
+      const av = d.availability;
+      const days = Array.isArray(av?.days) ? av.days : [];
+      const cycleStart = cycleStartInstant(new Date());
+      setMandatoryGateValid(hasValidSubmissionForCycle({ days, sentAt: av?.sentAt }, cycleStart));
+      setMandatoryGateState("ready");
+    } catch {
+      // A failed check must NEVER block the app or assume "no submission" —
+      // just log and leave the modal hidden (gate stays out of "ready").
+      console.error("[mandatory-availability-modal] gate check failed");
+      setMandatoryGateState("error");
+    }
+  }, [isShalev, apiBase]);
+  useEffect(() => { void reloadMandatoryGate(); }, [reloadMandatoryGate]);
+
+  const [mandatoryWindowOpen, setMandatoryWindowOpen] = useState(false);
+  useEffect(() => {
+    if (!isShalev) return;
+    const check = () => setMandatoryWindowOpen(isMandatoryAvailabilityWindowOpen(new Date()));
+    check();
+    // Re-checked every minute so the modal opens/closes on its own at the
+    // Thu 20:00 / Sat 21:00 boundaries without needing a page reload.
+    const t = setInterval(check, 60_000);
+    return () => clearInterval(t);
+  }, [isShalev]);
+
+  // Not on the schedule tab itself (so the modal never sits on top of the
+  // form the owner just navigated Shalev to), gate finished loading
+  // successfully, and no valid submission yet — reappears the moment `tab`
+  // changes away from schedule again without a valid send, no localStorage.
+  const showMandatoryAvailabilityModal =
+    isShalev && !artistId && isMobile && mandatoryWindowOpen &&
+    mandatoryGateState === "ready" && !mandatoryGateValid && tab !== "לו״ז ועדכונים";
+
+  // "שלח זמינות" click — navigate to the schedule tab and deep-link into the
+  // EXISTING ?focus=availability scroll+highlight mechanism (reused, not
+  // reimplemented). The modal itself has no isOpen flag — the moment `tab`
+  // changes away from "לו״ז ועדכונים", showMandatoryAvailabilityModal above
+  // recomputes to false, so it's never left open over the form. setTab is a
+  // synchronous state setter that cannot itself get "stuck", so even if the
+  // URL write below fails for any reason the tab switch (and modal dismissal)
+  // still always happens.
+  const handleMandatoryAvailabilitySend = useCallback(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("focus", "availability");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      }
+    } catch { /* best-effort — the tab switch below is what actually matters */ }
+    setTab("לו״ז ועדכונים");
+  }, [setTab]);
+
   return (
     <PortalApiContext.Provider value={{ apiBase, artistName }}>
+      {showMandatoryAvailabilityModal && <MandatoryAvailabilityModal onSend={handleMandatoryAvailabilitySend} />}
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
       <div style={{ maxWidth: 1400, margin: "0 auto", width: "100%" }}>
@@ -672,7 +742,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} isOwner={isOwner} />
-            : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} />
+            : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} onAvailabilitySent={reloadMandatoryGate} />
             : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} readOnly={isShalev} />
             : tab === "ביטים פנויים" ? <BeatsPage readOnly={isShalev} />
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
@@ -2353,7 +2423,7 @@ function UpdatesList({ items }: { items: PortalUpdate[] }) {
   );
 }
 
-function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary | null; loadState: LoadState; isOwner?: boolean }) {
+function SchedulePage({ summary, loadState, isOwner, onAvailabilitySent }: { summary: ShalevSummary | null; loadState: LoadState; isOwner?: boolean; onAvailabilitySent?: () => void }) {
   const isMobile = useIsMobile();
   const { apiBase, artistName } = usePortalContext();
   const weekly  = summary?.weekly  ?? [];
@@ -2485,7 +2555,7 @@ function SchedulePage({ summary, loadState, isOwner }: { summary: ShalevSummary 
             lastUpdate={availLastUpdate} setLastUpdate={setAvailLastUpdate}
             validForCycle={availValidForCycle} setValidForCycle={setAvailValidForCycle}
             isOwner={isOwner} onBookSession={handleBookSession} weeklyByIso={weeklyByIso}
-            week={week} todayIso={todayIso}
+            week={week} todayIso={todayIso} onSentSuccess={onAvailabilitySent}
           />
         </SchedSection>
       </div>
@@ -2824,6 +2894,57 @@ function WeeklyCalendarSection({ title, subtitle, showNavigation = true, isOwner
   );
 }
 
+// Mandatory availability modal — Shalev, mobile only, Thu 20:00–Sat 21:00
+// Israel time, shown whenever there's no valid (≥2-day) submission for the
+// active cycle. No X, no "later", no click-outside/Escape dismiss — the
+// caller (ArtistPortalPage) derives visibility from real state (window open +
+// gate not yet valid + not already on the schedule tab), so this component
+// itself has no isOpen/onClose — it's simply not rendered when not needed.
+function MandatoryAvailabilityModal({ onSend }: { onSend: () => void }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 100060, background: "rgba(0,0,0,0.78)",
+        backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20, fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      }}
+    >
+      <div style={{
+        width: "100%", maxWidth: 380, borderRadius: 24, padding: "34px 26px 26px", textAlign: "center",
+        background: "radial-gradient(90% 130% at 50% 0%, rgba(220,38,38,0.14) 0%, transparent 55%), linear-gradient(160deg, #1a1314 0%, #0c0a0b 100%)",
+        border: "1px solid rgba(220,38,38,0.4)",
+        boxShadow: "0 0 60px rgba(220,38,38,0.15), 0 30px 80px rgba(0,0,0,0.6)",
+      }}>
+        <div style={{
+          width: 72, height: 72, borderRadius: "50%", margin: "0 auto 22px",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.4)", boxShadow: "0 0 26px rgba(220,38,38,0.25)",
+        }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="5" width="18" height="16" rx="3" />
+            <path d="M3 10h18" /><path d="M8 3v4" /><path d="M16 3v4" />
+            <path d="M12 13.6c-.8-1-2.5-.9-2.9.3-.35 1 .5 1.85 2.9 3.6 2.4-1.75 3.25-2.6 2.9-3.6-.4-1.2-2.1-1.3-2.9-.3Z" fill="#FF6B6B" stroke="none" />
+          </svg>
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#fff", marginBottom: 12, letterSpacing: "-0.01em" }}>צריך לשלוח זמינות</div>
+        <div style={{ fontSize: 14, color: TEXT2, lineHeight: 1.7, marginBottom: 26 }}>
+          שליו, חסרה לנו הזמינות שלך לשבוע הבא. בחר לפחות שני ימים שמתאימים לך ונמשיך משם.
+        </div>
+        <button
+          type="button" onClick={onSend}
+          style={{
+            width: "100%", padding: "15px 0", borderRadius: 14, border: "none", cursor: "pointer",
+            fontFamily: "inherit", fontSize: 15.5, fontWeight: 800, color: "#fff",
+            background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: "0 8px 24px rgba(220,38,38,0.4)",
+          }}
+        >שלח זמינות</button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // Format an ISO timestamp for the "last updated" line (client-only).
 function fmtWhen(iso: string): string {
   const d = new Date(iso);
@@ -2838,7 +2959,7 @@ function fmtWhen(iso: string): string {
 // sent drives the "last updated" text. `days`/`lastUpdate` are now owned by
 // SchedulePage (lifted up so the weekly-calendar merge sees the same data
 // without a second fetch) — this component only edits/sends them.
-function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, validForCycle, setValidForCycle, isOwner, onBookSession, weeklyByIso, week, todayIso }: {
+function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, validForCycle, setValidForCycle, isOwner, onBookSession, weeklyByIso, week, todayIso, onSentSuccess }: {
   days: AvailDay[];
   setDays: React.Dispatch<React.SetStateAction<AvailDay[]>>;
   lastUpdate: { sentBy: "owner" | "shalev"; sentAt: string } | null;
@@ -2850,6 +2971,7 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, validForCy
   weeklyByIso: Map<string, WeeklyItem>;
   week: WeekDay[];
   todayIso: string;
+  onSentSuccess?: () => void;
 }) {
   const isMobile = useIsMobile();
   const { apiBase } = usePortalContext();
@@ -2883,6 +3005,9 @@ function AvailabilityBody({ days, setDays, lastUpdate, setLastUpdate, validForCy
         // A fresh send that passed the ≥2-day gate is, by definition, valid
         // for whichever cycle is active right now.
         setValidForCycle(true);
+        // Let the top-level mandatory-availability-modal gate know immediately
+        // (its own independent fetch) — no refresh, no localStorage needed.
+        onSentSuccess?.();
         // Save succeeded. Only a REAL push failure (not the non-production skip)
         // is surfaced — as a soft warning; the availability is stored regardless.
         const pushFailed = d.push && d.push.sent === false && d.push.error && d.push.error !== "push-disabled-non-production";

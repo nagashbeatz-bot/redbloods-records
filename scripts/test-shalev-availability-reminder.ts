@@ -28,6 +28,7 @@ import {
   buildReminderPush,
   decideClaimAction,
   processAvailabilityReminderSlot,
+  isMandatoryAvailabilityWindowOpen,
   MAX_ATTEMPTS,
   STUCK_PROCESSING_TIMEOUT_MS,
   type ClaimValue,
@@ -374,6 +375,32 @@ async function main() {
     check("week 1 cycle: sent", r1.kind === "sent");
     check("week 2 cycle (different weekStart → fresh key): also sent, not blocked by week 1", r2.kind === "sent");
     check("2 independent sends across 2 cycles", sends === 2);
+  }
+
+  console.log("—— mandatory-availability-modal window: Thursday 20:00 → Saturday 21:00 (fixed 21:00, user-approved) ——");
+  {
+    // 2026-07-30 is a real Thursday (verified this session).
+    check("Wed 19:59 (day before) → closed", !isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-07-29", "20:00", TZ)));
+    check("Thu 19:59 → closed (before window opens)", !isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-07-30", "19:59", TZ)));
+    check("Thu 20:00 → open (window opens)", isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-07-30", "20:00", TZ)));
+    check("Thu 23:59 → open", isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-07-30", "23:59", TZ)));
+    check("Fri 00:00 → open (all of Friday)", isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-07-31", "00:00", TZ)));
+    check("Fri 12:00 → open", isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-07-31", "12:00", TZ)));
+    check("Fri 23:59 → open", isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-07-31", "23:59", TZ)));
+    check("Sat 00:00 → open", isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-01", "00:00", TZ)));
+    check("Sat 20:59 → open (last minute before cutoff)", isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-01", "20:59", TZ)));
+    check("Sat 21:00 → closed (מוצאי שבת cutoff)", !isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-01", "21:00", TZ)));
+    check("Sat 23:00 → closed", !isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-01", "23:00", TZ)));
+    check("Sun 00:00 (next day) → closed", !isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-02", "00:00", TZ)));
+    check("Mon → closed", !isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-03", "12:00", TZ)));
+    // Independent of the reminder cycle's own Thursday-08:00 "already opened"
+    // adjustment — this window always anchors to THIS calendar week's Thursday,
+    // so it must give the SAME answer regardless of activeCycleThursday's logic.
+    check(
+      "next week's Thursday window is independent of this week's",
+      isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-06", "20:00", TZ)) &&
+      !isMandatoryAvailabilityWindowOpen(zonedTimeToUtc("2026-08-04", "20:00", TZ)),
+    );
   }
 
   console.log(`\n${pass} passed, ${fail} failed\n`);

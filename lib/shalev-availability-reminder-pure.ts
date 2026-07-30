@@ -107,6 +107,33 @@ export function zonedTimeToUtc(date: string, hm: string, tz: string = TZ): Date 
   return new Date(guess.getTime() - offsetMin * 60000);
 }
 
+// ── The mandatory-availability-modal window: Thursday 20:00 → Saturday 21:00 ──
+// (Israel time). Deliberately a FIXED clock hour, not an astronomical/Hebcal
+// havdalah calculation — no such helper or library exists in this codebase,
+// and the user explicitly approved 21:00 as the fixed "מוצאי שבת" cutoff for
+// this specific modal rather than inventing one. Separate concept from the
+// reminder-push cycle above (which stops at Friday 09:00) and from
+// activeCycleThursday (whose "already opened" adjustment is cycle-specific,
+// not relevant here) — this always anchors to THIS calendar week's Thursday.
+
+/** [start, end) of the mandatory-availability-modal window containing `now`'s week. */
+export function mandatoryAvailabilityWindow(now: Date, tz: string = TZ): { start: Date; end: Date } {
+  const today = ymdInTZ(now, tz);
+  const dow = dayOfWeek(today);
+  const daysSinceThu = (dow - 4 + 7) % 7; // Thu=4; 0 if today IS Thursday
+  const thursday = addDaysYMD(today, -daysSinceThu);
+  const start = zonedTimeToUtc(thursday, "20:00", tz);
+  const end = zonedTimeToUtc(addDaysYMD(thursday, 2), "21:00", tz); // Saturday, same week
+  return { start, end };
+}
+
+/** True while `now` (Israel time) is inside the mandatory-availability window. */
+export function isMandatoryAvailabilityWindowOpen(now: Date, tz: string = TZ): boolean {
+  const { start, end } = mandatoryAvailabilityWindow(now, tz);
+  const t = now.getTime();
+  return t >= start.getTime() && t < end.getTime();
+}
+
 // ── The three reminder slots ────────────────────────────────────────────────
 
 export type SlotId = "thu-1200" | "thu-1800" | "fri-0900";
