@@ -118,6 +118,14 @@ function BellIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+function CheckIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ic}>
+      <path d="m5 13 4 4L19 7" />
+    </svg>
+  );
+}
+
 function KindIcon({ kind, size = 17 }: { kind: NotifKind; size?: number }) {
   switch (kind) {
     case "warning":
@@ -155,6 +163,7 @@ export default function NotificationsBell() {
   const [status, setStatus]           = useState<"loading" | "ready" | "error">("loading");
   const [actionError, setActionError] = useState<string | null>(null);
   const [markingAll, setMarkingAll]   = useState(false);
+  const [justReadIds, setJustReadIds] = useState<Set<string>>(new Set()); // brief fade cue only
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const router = useRouter();
@@ -197,26 +206,47 @@ export default function NotificationsBell() {
     if (next) { setActionError(null); refresh(); } // controlled refresh on open only
   };
 
+  // ── Shared "mark one as read" — used by both the row click (which also
+  // navigates) and the standalone ✓ button (which never navigates). Same
+  // PATCH, same optimistic state update, same decrement — one code path. ──
+  const markRead = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/notifications/${id}`, { method: "PATCH" });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const readAt = data.readAt ?? new Date().toISOString();
+      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, readAt } : x)));
+      setUnreadCount((c) => Math.max(0, c - 1)); // decrement exactly once
+      setJustReadIds((prev) => new Set(prev).add(id)); // brief fade cue
+      setTimeout(() => {
+        setJustReadIds((prev) => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
+      }, 350);
+      return true;
+    } catch {
+      setActionError("לא הצלחנו לעדכן את ההתראה");
+      return false;
+    }
+  }, []);
+
   // ── Mark one read on click, then navigate ──
   const onRowClick = async (n: ApiNotification) => {
     setActionError(null);
     if (!n.readAt) {
-      try {
-        const res = await fetch(`/api/notifications/${n.id}`, { method: "PATCH" });
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        const readAt = data.readAt ?? new Date().toISOString();
-        setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, readAt } : x)));
-        setUnreadCount((c) => Math.max(0, c - 1)); // decrement exactly once
-      } catch {
-        setActionError("לא הצלחנו לעדכן את ההתראה");
-        return; // do NOT mark locally, do NOT navigate on failure
-      }
+      const ok = await markRead(n.id);
+      if (!ok) return; // do NOT navigate on failure
     }
     // Navigation: project drawer → internal url → display-only (no wrong nav).
     if (n.projectId) { openProject(n.projectId); setOpen(false); return; }
     if (isSafeInternalUrl(n.url)) { router.push(n.url); setOpen(false); return; }
     // display-only: nothing to navigate to → leave the dropdown open.
+  };
+
+  // ── Mark-as-read ✓ button — read-only action: never opens/navigates, never
+  // closes the dropdown. Already-read is a no-op (button is inert). ──
+  const onMarkReadClick = (n: ApiNotification) => {
+    if (n.readAt) return;
+    setActionError(null);
+    void markRead(n.id);
   };
 
   // ── Mark all read ──
@@ -398,7 +428,15 @@ export default function NotificationsBell() {
                   {tab === "unread" ? "אין התראות שלא נקראו" : "אין התראות עדיין"}
                 </div>
               ) : (
-                shown.map((n) => <NotificationRow key={n.id} n={n} onClick={() => onRowClick(n)} />)
+                shown.map((n) => (
+                  <NotificationRow
+                    key={n.id}
+                    n={n}
+                    onClick={() => onRowClick(n)}
+                    onMarkRead={() => onMarkReadClick(n)}
+                    justRead={justReadIds.has(n.id)}
+                  />
+                ))
               )}
             </div>
 
@@ -469,7 +507,11 @@ function FilterPill({ label, active, onClick, count }: { label: string; active: 
 }
 
 // ── One notification row ───────────────────────────────────────────────────
-function NotificationRow({ n, onClick }: { n: ApiNotification; onClick: () => void }) {
+function NotificationRow({
+  n, onClick, onMarkRead, justRead,
+}: {
+  n: ApiNotification; onClick: () => void; onMarkRead: () => void; justRead: boolean;
+}) {
   const kind = kindOf(n);
   const ts = KIND_STYLE[kind];
   const unread = !n.readAt;
@@ -484,7 +526,8 @@ function NotificationRow({ n, onClick }: { n: ApiNotification; onClick: () => vo
         borderBottom: "1px solid rgba(255,255,255,0.04)",
         background: unread ? "rgba(255,255,255,0.015)" : "transparent",
         cursor: "pointer",
-        transition: "background 0.13s",
+        opacity: justRead ? 0.4 : 1, // short fade cue when marked read — never affects layout
+        transition: "background 0.13s, opacity 0.32s ease",
       }}
       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = unread ? "rgba(255,255,255,0.015)" : "transparent"; }}
@@ -517,6 +560,40 @@ function NotificationRow({ n, onClick }: { n: ApiNotification; onClick: () => vo
       }}>
         <KindIcon kind={kind} />
       </div>
+
+      {/* Mark-as-read ✓ (leftmost — never opens/navigates, never closes the
+          panel; already-read renders checked/gray and is inert). */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onMarkRead(); }}
+        disabled={!unread}
+        title={unread ? "סמן כנקרא" : "נקרא"}
+        aria-label={unread ? "סמן כנקרא" : "נקרא"}
+        aria-pressed={!unread}
+        style={{
+          width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+          marginTop: 2,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 0, fontFamily: "inherit",
+          border: `1.5px solid ${unread ? "rgba(255,255,255,0.22)" : "rgba(16,185,129,0.5)"}`,
+          background: unread ? "transparent" : "rgba(16,185,129,0.14)",
+          color: unread ? "#6E6E6E" : "#10B981",
+          cursor: unread ? "pointer" : "default",
+          transition: "background 0.15s, border-color 0.15s, color 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          if (!unread) return;
+          e.currentTarget.style.borderColor = "rgba(16,185,129,0.6)";
+          e.currentTarget.style.color = "#10B981";
+        }}
+        onMouseLeave={(e) => {
+          if (!unread) return;
+          e.currentTarget.style.borderColor = "rgba(255,255,255,0.22)";
+          e.currentTarget.style.color = "#6E6E6E";
+        }}
+      >
+        <CheckIcon size={13} />
+      </button>
     </div>
   );
 }
