@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImper
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
+import LinkifiedText from "@/components/ui/LinkifiedText";
 import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
@@ -2478,7 +2479,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                                   style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
                               ) : (
                                 <div onClick={isGeneral ? undefined : () => playerForComment(c)?.seek(c.timestampSeconds!)}
-                                  style={{ fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.5 }}>{c.commentText}</div>
+                                  style={{ fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.5 }}><LinkifiedText text={c.commentText} /></div>
                               )}
                               {/* Row 3 — relative time · status toggle · edit/delete */}
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
