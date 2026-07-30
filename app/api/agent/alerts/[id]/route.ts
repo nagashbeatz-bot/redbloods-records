@@ -3,9 +3,10 @@
  * Body: { status: "handled" | "dismissed" | "ignored" }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { updateAlertStatus } from "@/lib/agent/alerts-store";
+import { updateAlertStatus, getAlertById } from "@/lib/agent/alerts-store";
 import { requireOwner } from "@/lib/require-auth";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { WEEK_STRENGTH_ALERT_TYPE } from "@/lib/week-strength-pure";
 import type { AlertStatus } from "@/lib/types";
 
 const VALID_STATUSES: AlertStatus[] = ["new", "handled", "dismissed", "ignored"];
@@ -14,11 +15,20 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Kill-switch — no alert-status writes while the agent is disabled.
-  if (!MAI_AI_ENABLED) return NextResponse.json({ disabled: true }, { status: 503 });
   // Owner-only — Victor must not view/update/handle any agent alert.
   const denied = await requireOwner(); if (denied) return denied;
   const { id } = await params;
+
+  // Kill-switch — while the agent is disabled, only the exempted
+  // WEEK_STRENGTH_ALERT_TYPE alert can still be acted on (mirrors the GET
+  // exemption); every other alert type stays frozen exactly as before.
+  if (!MAI_AI_ENABLED) {
+    const alert = await getAlertById(id);
+    if (!alert || alert.type !== WEEK_STRENGTH_ALERT_TYPE) {
+      return NextResponse.json({ disabled: true }, { status: 503 });
+    }
+  }
+
   try {
     const body   = await req.json();
     const status = body.status as AlertStatus;

@@ -4,7 +4,8 @@ import { createAlertIfNotCoolingDown, updateAlertStatus } from "@/lib/agent/aler
 import { isConfirmedShowStatus } from "@/lib/shows-finance-sync";
 import { availabilityWeekStart, weekEndFor } from "@/lib/red-artists/week";
 import {
-  isWeekClosed, weekUnderstaffedEntityKey, weekStartFromEntityKey, type Activity,
+  isWeekClosed, weekUnderstaffedEntityKey, weekStartFromEntityKey,
+  WEEK_STRENGTH_ALERT_TYPE, type Activity,
 } from "@/lib/week-strength-pure";
 
 /**
@@ -71,7 +72,7 @@ export async function checkWeekStrengthAndAlert(): Promise<void> {
     if (isWeekClosed(activities)) return; // already well-planned — nothing to alert
 
     await createAlertIfNotCoolingDown({
-      type: "week_understaffed",
+      type: WEEK_STRENGTH_ALERT_TYPE,
       severity: "warning",
       title: "השבוע הבא עדיין לא סגור",
       message: "כרגע מתוכננת מעט פעילות לשבוע הבא. מומלץ להתחיל לסגור סשנים, הופעות או ימי צילום.",

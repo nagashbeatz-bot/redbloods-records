@@ -107,6 +107,12 @@ export async function createAlertIfNotCoolingDown(
   return mapRow(data as Record<string, unknown>);
 }
 
+/** Single alert by id, or null if it doesn't exist. */
+export async function getAlertById(id: string): Promise<AgentAlert | null> {
+  const { data } = await supabase.from("agent_alerts").select("*").eq("id", id).maybeSingle();
+  return data ? mapRow(data as Record<string, unknown>) : null;
+}
+
 /** List alerts with optional filters */
 export async function getAlerts(opts: {
   status?: AlertStatus | AlertStatus[];

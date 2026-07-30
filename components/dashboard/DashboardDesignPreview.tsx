@@ -15,7 +15,6 @@ import SensitiveValue from "@/components/ui/SensitiveValue";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import Link from "next/link";
 import TasksAttentionModal from "@/components/dashboard/TasksAttentionModal";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 
 // Minimal calendar event shape (only what preview needs)
 interface CalEvent { title: string; startTime: string; endTime: string; isAllDay: boolean; type: string; artist: string; }
@@ -26,6 +25,7 @@ const ALERT_CATEGORIES = [
   { key: "sessions", label: "סשנים",       icon: "🎵", types: ["session_needs_update", "stale_session"],   color: "#3B82F6", bg: "rgba(59,130,246,0.07)"  },
   { key: "victor",   label: "ויקטור",      icon: "👤", types: ["victor_stuck", "victor_below_pace"],       color: "#A855F7", bg: "rgba(168,85,247,0.07)"  },
   { key: "proposals", label: "הצעות",      icon: "📋", types: ["proposal_followup_due"],                   color: "#06B6D4", bg: "rgba(6,182,212,0.07)"  },
+  { key: "planning",  label: "תכנון שבועי", icon: "📆", types: ["week_understaffed"],                       color: "#EAB308", bg: "rgba(234,179,8,0.07)"  },
 ] as const;
 
 const CLOSED_PROPOSAL = new Set(["נסגר", "לא נסגר"]);
@@ -50,6 +50,7 @@ const ALERT_CATEGORY_EXPLAIN: Record<string, string> = {
   sessions:  "פרויקטים פעילים ללא סשן לאחרונה, או סשנים שעברו וטרם עודכנו.",
   victor:    "פרויקטים תקועים אצל ויקטור או קצב עבודה מתחת ליעד החודשי.",
   proposals: "הצעות מחיר פתוחות שהגיע תאריך המעקב שלהן — צריך לחזור ללקוח.",
+  planning:  "שבוע קרוב עם מעט מדי סשנים, הופעות או ימי צילום מתוכננים.",
 };
 
 function relTime(iso: string): string {
@@ -609,7 +610,9 @@ export default function DashboardDesignPreview() {
   }, []);
 
   useEffect(() => {
-    if (!MAI_AI_ENABLED) return; // agent disabled → no auto alerts fetch (tasks-attention still shows)
+    // Always fetch — the route itself enforces the MAI_AI_ENABLED kill-switch,
+    // exposing only the exempted "week_understaffed" alert while it's off
+    // (see app/api/agent/alerts/route.ts), so no other gated alert leaks here.
     fetch("/api/agent/alerts?status=new&limit=50")
       .then(r => r.json())
       .then(d => setAlerts(Array.isArray(d.alerts) ? d.alerts : []))
