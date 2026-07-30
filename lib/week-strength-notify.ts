@@ -3,7 +3,6 @@ import { supabase } from "@/lib/supabase";
 import { createAlertIfNotCoolingDown, updateAlertStatus } from "@/lib/agent/alerts-store";
 import { isConfirmedShowStatus } from "@/lib/shows-finance-sync";
 import { availabilityWeekStart, weekEndFor } from "@/lib/red-artists/week";
-import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import {
   isWeekClosed, weekUnderstaffedEntityKey, weekStartFromEntityKey, type Activity,
 } from "@/lib/week-strength-pure";
@@ -29,6 +28,14 @@ import {
  *     cooldown-based dedup would eventually insert a duplicate "new" row for
  *     a week that stays open longer than the severity's cooldown window);
  *     it only ever flips an existing row to "handled" via updateAlertStatus.
+ *
+ * Deliberately NOT gated on MAI_AI_ENABLED — unlike the AI chat/report
+ * recommendations, this is a plain deterministic scheduling check (no LLM
+ * call), so it must keep running even while that kill-switch is off. Only
+ * this check is exempt; nothing else in the AI/alerts system is touched —
+ * the alert still lands in the same `agent_alerts` table other MAI-gated UI
+ * (the dashboard card, /insights, /api/agent/alerts) reads from, so it only
+ * becomes visible there once MAI_AI_ENABLED is turned back on.
  */
 
 async function fetchWeekActivities(weekStart: string, weekEnd: string): Promise<Activity[]> {
@@ -57,7 +64,6 @@ async function fetchWeekActivities(weekStart: string, weekEnd: string): Promise<
 /** Friday 10:00 job — creates the alert ONLY if next week isn't closed yet.
  *  Best-effort; never throws. */
 export async function checkWeekStrengthAndAlert(): Promise<void> {
-  if (!MAI_AI_ENABLED) return;
   try {
     const weekStart = availabilityWeekStart(); // next week's Sunday, relative to today (Friday)
     const weekEnd = weekEndFor(weekStart);
@@ -82,7 +88,6 @@ export async function checkWeekStrengthAndAlert(): Promise<void> {
  *  moment its week becomes closed. Cheap no-op when none are open.
  *  Best-effort; never throws. */
 export async function resolveWeekStrengthAlertsIfClosed(): Promise<void> {
-  if (!MAI_AI_ENABLED) return;
   try {
     const { data: openAlerts } = await supabase
       .from("agent_alerts")
