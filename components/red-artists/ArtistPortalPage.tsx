@@ -671,7 +671,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
-            : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} />
+            : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} isOwner={isOwner} />
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} />
             : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} readOnly={isShalev} />
             : tab === "ביטים פנויים" ? <BeatsPage readOnly={isShalev} />
@@ -2079,7 +2079,7 @@ function BalanceDeleteModal({ artistId, entry, onClose, onDeleted }: {
 // financials live ONLY in the מאזן tab. Read-only view: Shalev never creates,
 // edits or deletes a show here (Red Artists is view-only — see
 // [[redbloods-red-artists-boundary]]).
-type Show = { name: string; date: string; time: string; location: string; status: string };
+type Show = { id: string; name: string; date: string; time: string; location: string; status: string };
 // Real show statuses (no purple): אושרה=approved green, נסגר=booked blue, בוצע=done grey.
 const SHOW_STATUS_COLOR: Record<string, string> = {
   "אושרה": GREEN,
@@ -2097,11 +2097,57 @@ function ShowStatusPill({ status }: { status: string }) {
   );
 }
 
+// Owner-only manual "שלח" button — POSTs /api/shows/[id]/notify-artist. Pure
+// client-triggered action (never fires on mount/refresh). The server is the
+// real idempotency gate (fingerprint-keyed settings claim); this local state
+// is UX only — "already_sent" from the server is treated as success (the
+// notification for this exact show version genuinely already went out).
+function NotifyShalevButton({ showId }: { showId: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  const send = async () => {
+    if (state === "sending" || state === "sent") return;
+    setState("sending"); setErrMsg(null);
+    try {
+      const res = await fetch(`/api/shows/${showId}/notify-artist`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (d?.ok || d?.reason === "already_sent") { setState("sent"); return; }
+      setState("error"); setErrMsg(typeof d?.error === "string" ? d.error : "השליחה נכשלה");
+    } catch {
+      setState("error"); setErrMsg("שגיאת רשת, נסה שוב");
+    }
+  };
+
+  const label = state === "sending" ? "שולח…" : state === "sent" ? "נשלח" : state === "error" ? "השליחה נכשלה" : "שלח";
+  const busy = state === "sending" || state === "sent";
+  return (
+    <button
+      type="button" onClick={send} disabled={busy} title={errMsg ?? undefined}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+        padding: "7px 14px", borderRadius: 10, fontFamily: "inherit", fontSize: 12.5, fontWeight: 800,
+        whiteSpace: "nowrap", cursor: busy ? "default" : "pointer", transition: "all .15s",
+        color: state === "sent" ? GREEN : state === "error" ? "#F87171" : "#FF8A8A",
+        background: state === "sent" ? `${GREEN}18` : state === "error" ? "rgba(248,113,113,0.12)" : "rgba(220,38,38,0.10)",
+        border: `1px solid ${state === "sent" ? `${GREEN}44` : state === "error" ? "rgba(248,113,113,0.4)" : "rgba(220,38,38,0.45)"}`,
+        opacity: state === "sending" ? 0.75 : 1,
+      }}
+    >{label}</button>
+  );
+}
+
 // One shows section (הופעות קרובות / הופעות שבוצעו). Desktop = clean grid table,
 // mobile = stacked cards (name / date · time / location / status). NO amounts.
-function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות להצגה כרגע" }: { title: string; shows: Show[]; isMobile: boolean; emptyText?: string }) {
-  const cols = "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
-  const heads = ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
+// `showSendButton` renders the owner-only "שלח" action — only ever passed for
+// the upcoming section (never for done/cancelled shows).
+function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות להצגה כרגע", showSendButton = false, highlightShowId = null }: { title: string; shows: Show[]; isMobile: boolean; emptyText?: string; showSendButton?: boolean; highlightShowId?: string | null }) {
+  const cols = showSendButton
+    ? "minmax(0, 1.4fr) 110px 90px minmax(0, 1.2fr) 110px 90px"
+    : "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
+  const heads = showSendButton
+    ? ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס", ""]
+    : ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
   return (
     <div style={panel}>
       {/* section header — title (right, RTL) + red dot to its left */}
@@ -2115,11 +2161,17 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
       ) : isMobile ? (
         <div style={{ padding: "2px 0 6px" }}>
           {shows.map((s, i) => (
-            <div key={i} style={{ padding: "14px 16px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none" }}>
+            <div key={i} id={`rb-show-${s.id}`} style={{
+              padding: "14px 16px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none", borderRadius: 12, transition: "box-shadow .6s ease",
+              boxShadow: highlightShowId === s.id ? "0 0 0 2px rgba(220,38,38,0.65), 0 0 34px rgba(220,38,38,0.45)" : "none",
+            }}>
               <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>{s.name}</div>
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, direction: "ltr", textAlign: "start" }}>{s.date} · {s.time}</div>
               <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{s.location}</div>
-              <div style={{ marginTop: 9 }}><ShowStatusPill status={s.status} /></div>
+              <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10 }}>
+                <ShowStatusPill status={s.status} />
+                {showSendButton && <NotifyShalevButton showId={s.id} />}
+              </div>
             </div>
           ))}
         </div>
@@ -2131,12 +2183,16 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
             ))}
           </div>
           {shows.map((s, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "17px 24px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none" }}>
+            <div key={i} id={`rb-show-${s.id}`} style={{
+              display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "17px 24px", borderBottom: i < shows.length - 1 ? `1px solid ${BDR}` : "none", transition: "box-shadow .6s ease",
+              boxShadow: highlightShowId === s.id ? "0 0 0 2px rgba(220,38,38,0.65), 0 0 34px rgba(220,38,38,0.45)" : "none",
+            }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.date}</div>
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
               <div style={{ fontSize: 14.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
               <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>
+              {showSendButton && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
             </div>
           ))}
         </>
@@ -2148,11 +2204,41 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
 // Map a server PortalShow (no money) → the display row. Date formatted, time/
 // location fall back to "—".
 function toShowRow(s: PortalShow): Show {
-  return { name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status };
+  return { id: s.id, name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status };
 }
 
-function ShowsPage({ summary, loadState }: { summary: ShalevSummary | null; loadState: LoadState }) {
+function ShowsPage({ summary, loadState, isOwner }: { summary: ShalevSummary | null; loadState: LoadState; isOwner?: boolean }) {
   const isMobile = useIsMobile();
+
+  // Deep-link from the "שלח" push (?tab=shows&focus=show&showId=<id> — see
+  // lib/show-notify.ts). The tab itself is already selected by the existing
+  // ?tab= handling; this only scrolls to + briefly highlights that show's row,
+  // and ONLY after this page's own data has settled — mirrors SchedulePage's
+  // ?focus=availability handling exactly. Pure client-side navigation, never
+  // triggers a fetch/push of its own.
+  const [focusShowId, setFocusShowId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("focus") !== "show") return;
+    const showId = url.searchParams.get("showId");
+    url.searchParams.delete("focus"); url.searchParams.delete("showId");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    if (showId) setFocusShowId(showId);
+  }, []);
+  const [highlightShowId, setHighlightShowId] = useState<string | null>(null);
+  const loading = loadState === "loading";
+  useEffect(() => {
+    if (!focusShowId || loading) return;
+    const id = focusShowId;
+    setFocusShowId(null);
+    const el = document.getElementById(`rb-show-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightShowId(id);
+    const t = setTimeout(() => setHighlightShowId((cur) => (cur === id ? null : cur)), 2200);
+    return () => clearTimeout(t);
+  }, [focusShowId, loading]);
 
   if (loadState === "loading") {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
@@ -2166,7 +2252,7 @@ function ShowsPage({ summary, loadState }: { summary: ShalevSummary | null; load
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
-      <ShowsSection title="הופעות קרובות" shows={upcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" />
+      <ShowsSection title="הופעות קרובות" shows={upcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" showSendButton={!!isOwner} highlightShowId={highlightShowId} />
       <ShowsSection title="הופעות שבוצעו" shows={done} isMobile={isMobile} emptyText="אין עדיין הופעות שבוצעו" />
     </div>
   );
