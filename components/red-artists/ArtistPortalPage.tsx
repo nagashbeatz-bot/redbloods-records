@@ -384,6 +384,21 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const isShalev = role === "shalev";
   const isOwner = role === "owner";
 
+  // Entry beacon — fires once per real app session (a fresh tab, or the app
+  // reopened after being fully closed), never on a reload or in-app navigation
+  // within the same tab. sessionStorage is the client-side session boundary:
+  // it survives reloads but is empty again in a new tab; the server still
+  // applies its own short race-guard (see notifyShalevEntry). Owner previewing
+  // this portal never fires this (isShalev gates it).
+  useEffect(() => {
+    if (!isShalev) return;
+    try {
+      if (sessionStorage.getItem("rb_shalev_entry_pinged")) return;
+      sessionStorage.setItem("rb_shalev_entry_pinged", "1");
+    } catch { /* sessionStorage unavailable — fall through, server race-guard still applies */ }
+    fetch("/api/red-artists/ping", { method: "POST" }).catch(() => {});
+  }, [isShalev]);
+
   // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
   // same tab and Back/Forward work. Initial state is the default (server + first
   // client render match → no hydration mismatch); the real URL is read on mount.
