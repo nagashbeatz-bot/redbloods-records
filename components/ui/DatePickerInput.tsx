@@ -7,8 +7,9 @@
  * builds the calendar ourselves — twin of TimePickerInput's portal pattern.
  *
  * - Trigger shows the date in Hebrew format (D.M.YYYY) or a placeholder.
- * - Month nav: left arrow = previous month, right arrow = next month, always —
- *   never flipped for RTL (a calendar is a timeline, not reading text).
+ * - Month nav: left arrow = next month, right arrow = previous month — an
+ *   explicit RTL-conventioned choice for this Hebrew UI (not the LTR-timeline
+ *   default).
  * - Weekday header + date grid render right-to-left (ראשון on the right), matching
  *   Hebrew calendar convention, via CSS direction (not by reordering days), so
  *   dates land under the correct weekday column without any manual mirroring.
@@ -142,13 +143,14 @@ export default function DatePickerInput({
         direction: "ltr", fontFamily: "inherit",
       }}
     >
-      {/* Header — left arrow = previous month, right arrow = next month. Always,
-          regardless of Hebrew UI: a calendar timeline isn't reading text. */}
+      {/* Header — RTL-conventioned: left arrow = next month, right arrow =
+          previous month (per explicit request — the reverse of the LTR-timeline
+          default, chosen for this Hebrew UI specifically). */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <button
           type="button"
-          onClick={goPrevMonth}
-          aria-label="חודש קודם"
+          onClick={goNextMonth}
+          aria-label="חודש הבא"
           style={navBtnStyle}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -158,8 +160,8 @@ export default function DatePickerInput({
         </div>
         <button
           type="button"
-          onClick={goNextMonth}
-          aria-label="חודש הבא"
+          onClick={goPrevMonth}
+          aria-label="חודש קודם"
           style={navBtnStyle}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
