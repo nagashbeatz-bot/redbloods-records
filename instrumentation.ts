@@ -162,6 +162,23 @@ export async function register() {
     }
   }, { timezone: TZ });
 
+  // ── Week-strength agent alert — creates "השבוע הבא עדיין לא סגור" in the
+  // Friday 10:00–10:15 Asia/Jerusalem window if next week isn't well-planned
+  // yet (≥3 significant activities across ≥2 days). Every tick ALSO
+  // re-checks any already-open alert and clears it the moment its week
+  // becomes closed — cheap no-op when nothing is open, so this isn't tied to
+  // next Friday. Same every-minute-tick pattern as the jobs above.
+  cron.schedule("* * * * *", async () => {
+    try {
+      const { isWeekStrengthCheckWindowOpen } = await import("@/lib/week-strength-pure");
+      const { checkWeekStrengthAndAlert, resolveWeekStrengthAlertsIfClosed } = await import("@/lib/week-strength-notify");
+      if (isWeekStrengthCheckWindowOpen(new Date())) await checkWeekStrengthAndAlert();
+      await resolveWeekStrengthAlertsIfClosed();
+    } catch (err) {
+      console.error("[week-strength] cron tick failed:", err);
+    }
+  }, { timezone: TZ });
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }
