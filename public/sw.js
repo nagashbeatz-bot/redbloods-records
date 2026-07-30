@@ -13,8 +13,41 @@ self.addEventListener("push", (event) => {
     data:    { url: data.url ?? "/dashboard" },
     actions: data.actions ?? [],
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      updateAppBadge(),
+    ])
+  );
 });
+
+// ── App Icon Badge (pilot, owner devices only) ──────────────────────────────
+// Runs on every push so the home-screen icon badge stays correct even while
+// the app is fully closed — this is the one thing a foreground-only update
+// can't cover. Reads the SAME two existing, read-only endpoints the page
+// itself already uses (/api/me for role, /api/notifications for the unread
+// count) — no new endpoint, no count computed/duplicated here, and this is
+// the same-origin request's own session cookie, so it's already scoped to
+// whichever user is signed in on THIS device. Bails immediately for any
+// non-owner role so Victor/Steven/Shalev devices are never touched. Always
+// best-effort: a failure here must never block the actual notification.
+async function updateAppBadge() {
+  if (!("setAppBadge" in self.navigator)) return;
+  try {
+    const meRes = await fetch("/api/me", { credentials: "same-origin" });
+    if (!meRes.ok) return;
+    const me = await meRes.json();
+    if (me?.role !== "owner") return;
+
+    const notifRes = await fetch("/api/notifications", { credentials: "same-origin" });
+    if (!notifRes.ok) return;
+    const data = await notifRes.json();
+    const count = typeof data?.unreadCount === "number" ? data.unreadCount : 0;
+
+    if (count > 0) await self.navigator.setAppBadge(count);
+    else await self.navigator.clearAppBadge();
+  } catch { /* best-effort — badge sync must never block the push */ }
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

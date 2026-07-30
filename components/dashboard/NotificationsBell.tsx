@@ -9,6 +9,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
+import { useRole } from "@/lib/use-role";
+import { syncAppBadge } from "@/lib/app-badge";
 
 // ── API shape (mirrors GET /api/notifications) ─────────────────────────────
 interface ApiNotification {
@@ -157,8 +159,21 @@ export default function NotificationsBell() {
 
   const router = useRouter();
   const { openProject } = useGlobalProjectDrawer();
+  const role = useRole();
+  const isOwner = role === "owner"; // App Icon Badge pilot: owner devices only
 
   useEffect(() => setMounted(true), []);
+
+  // ── App Icon Badge sync (pilot, owner only) ─────────────────────────────
+  // Mirrors the SAME unreadCount this bell already tracks — no separate count
+  // logic, and this bell only ever mounts on /dashboard (owner-only route),
+  // so isOwner is a defensive second gate, not the only one. Foreground-only;
+  // the service worker (public/sw.js) separately updates the badge on push
+  // arrival so it also works while the app is closed.
+  useEffect(() => {
+    if (!isOwner) return;
+    syncAppBadge(unreadCount);
+  }, [isOwner, unreadCount]);
 
   // ── Fetch (read-only). Mount → badge; open → refresh. No polling/realtime. ──
   const refresh = useCallback(async () => {
