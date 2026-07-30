@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 import { SHOW_STATUSES, PAYMENT_STATUSES, computeShowSplit, rehearsalCountedAmount } from "@/lib/shows-types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+import TimePickerInput from "@/components/ui/TimePickerInput";
 import RehearsalModal, { type RehearsalSession } from "@/components/shows/RehearsalModal";
 import { usePrivacyMode } from "@/lib/use-privacy";
 
@@ -768,8 +769,28 @@ function ShowFormModal({
   };
   const numInputStyle: React.CSSProperties = {
     ...inputStyle,
+    // Amounts read as digits, not Hebrew text — keep them LTR so ₪ figures never
+    // reorder, while staying right-aligned to match the rest of the RTL form.
+    direction: "ltr", textAlign: "right",
     // appearance: textfield removes spin arrows in Firefox; Chrome needs the CSS class below
     MozAppearance: "textfield" as React.CSSProperties["MozAppearance"],
+  };
+  // Phone numbers: same reasoning as numInputStyle — LTR digits, right-aligned.
+  const phoneInputStyle: React.CSSProperties = {
+    ...inputStyle, direction: "ltr", textAlign: "right",
+  };
+  // Native <select> chevrons are inconsistent across browsers under dir:rtl —
+  // draw our own so it's reliably on the trailing (left) edge, same on every browser.
+  const selectFieldStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: "none" as React.CSSProperties["appearance"],
+    WebkitAppearance: "none" as React.CSSProperties["WebkitAppearance"],
+    MozAppearance: "none" as React.CSSProperties["MozAppearance"],
+    paddingLeft: 28,
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23A0A0B0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "left 12px center",
   };
   const labelStyle: React.CSSProperties = {
     fontSize: 11, fontWeight: 700, color: MUTED,
@@ -852,7 +873,7 @@ function ShowFormModal({
                 {cliLoad ? (
                   <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
                 ) : (
-                  <select value={form.booker_client_id ?? ""} onChange={e => selectBooker(e.target.value)} style={inputStyle}>
+                  <select value={form.booker_client_id ?? ""} onChange={e => selectBooker(e.target.value)} style={selectFieldStyle}>
                     <option value="">בחר איש קשר…</option>
                     {bookerClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -867,7 +888,7 @@ function ShowFormModal({
                   <div style={{ marginTop: 8, padding: "12px 14px", borderRadius: 10, background: "rgba(59,130,246,0.06)", border: `1px solid rgba(59,130,246,0.2)`, display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 2 }}>איש קשר חדש</div>
                     <input value={ncName} onChange={e => setNcName(e.target.value)} placeholder="שם *" style={{ ...inputStyle, fontSize: 12 }} />
-                    <input value={ncPhone} onChange={e => setNcPhone(e.target.value)} placeholder="טלפון" style={{ ...inputStyle, fontSize: 12 }} />
+                    <input value={ncPhone} onChange={e => setNcPhone(e.target.value)} placeholder="טלפון" style={{ ...phoneInputStyle, fontSize: 12 }} />
                     <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                       <button type="button" onClick={createNewClient} disabled={ncSaving}
                         style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", background: ncSaving ? MUTED : BLUE, color: "#fff", fontSize: 12, fontWeight: 800, cursor: ncSaving ? "default" : "pointer", fontFamily: "inherit" }}>
@@ -896,7 +917,7 @@ function ShowFormModal({
                   <select
                     value={form.artist_client_id ?? ""}
                     onChange={e => selectArtist(e.target.value)}
-                    style={inputStyle}
+                    style={selectFieldStyle}
                   >
                     <option value="">בחר אמן…</option>
                     {vipClients.map(c => (
@@ -908,7 +929,7 @@ function ShowFormModal({
 
               <div>
                 <label style={labelStyle}>סטטוס</label>
-                <select value={QUOTE_FORM_STATUSES.includes(form.status) ? form.status : "ממתין לתשובה"} onChange={e => set("status", e.target.value as ShowStatus)} style={inputStyle}>
+                <select value={QUOTE_FORM_STATUSES.includes(form.status) ? form.status : "ממתין לתשובה"} onChange={e => set("status", e.target.value as ShowStatus)} style={selectFieldStyle}>
                   {QUOTE_FORM_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 <div style={{ marginTop: 6, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
@@ -937,7 +958,7 @@ function ShowFormModal({
                 <select
                   value={form.artist_client_id ?? ""}
                   onChange={e => selectArtist(e.target.value)}
-                  style={inputStyle}
+                  style={selectFieldStyle}
                 >
                   <option value="">בחר אמן…</option>
                   {vipClients.map(c => (
@@ -961,11 +982,11 @@ function ShowFormModal({
             </div>
             <div>
               <label style={labelStyle}>שעה</label>
-              <input
-                type="time"
+              <TimePickerInput
                 value={form.start_time}
-                onChange={e => set("start_time", e.target.value)}
-                style={{ ...inputStyle, colorScheme: "dark" }}
+                onChange={v => set("start_time", v)}
+                placeholder="בחר שעה"
+                style={inputStyle}
               />
             </div>
           </div>
@@ -1010,7 +1031,7 @@ function ShowFormModal({
                 <select
                   value={form.booker_client_id ?? ""}
                   onChange={e => selectBooker(e.target.value)}
-                  style={inputStyle}
+                  style={selectFieldStyle}
                 >
                   <option value="">בחר לקוח…</option>
                   {bookerClients.map(c => (
@@ -1054,7 +1075,7 @@ function ShowFormModal({
                     value={ncPhone}
                     onChange={e => setNcPhone(e.target.value)}
                     placeholder="טלפון"
-                    style={{ ...inputStyle, fontSize: 12 }}
+                    style={{ ...phoneInputStyle, fontSize: 12 }}
                   />
                   <input
                     value={ncEmail}
@@ -1109,7 +1130,7 @@ function ShowFormModal({
             </div>
             <div>
               <label style={labelStyle}>טלפון</label>
-              <input value={form.phone} onChange={e => set("phone", e.target.value)} style={inputStyle} placeholder="050-0000000" />
+              <input value={form.phone} onChange={e => set("phone", e.target.value)} style={phoneInputStyle} placeholder="050-0000000" />
             </div>
           </div>
 
@@ -1126,13 +1147,13 @@ function ShowFormModal({
                 if (v === "אושרה" && isFuture && form.payment_status === "לא שולם") {
                   set("payment_status", "צפוי");
                 }
-              }} style={inputStyle}>
+              }} style={selectFieldStyle}>
                 {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label style={labelStyle}>סטטוס תשלום</label>
-              <select value={form.payment_status} onChange={e => set("payment_status", e.target.value as PaymentStatus)} style={inputStyle}>
+              <select value={form.payment_status} onChange={e => set("payment_status", e.target.value as PaymentStatus)} style={selectFieldStyle}>
                 {(PAYMENT_STATUSES.includes(form.payment_status as typeof PAYMENT_STATUSES[number])
                   ? PAYMENT_STATUSES
                   : [form.payment_status, ...PAYMENT_STATUSES]
@@ -1149,7 +1170,7 @@ function ShowFormModal({
             ) : crewClients.length === 0 ? (
               <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אנשי צוות להצגה</div>
             ) : (
-              <select value={form.dj_client_id ?? ""} onChange={e => selectDj(e.target.value)} style={inputStyle}>
+              <select value={form.dj_client_id ?? ""} onChange={e => selectDj(e.target.value)} style={selectFieldStyle}>
                 <option value="">ללא דיג׳יי</option>
                 {crewClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
