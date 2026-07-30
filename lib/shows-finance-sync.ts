@@ -2,6 +2,7 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import type { Show } from "@/lib/shows-types";
 import { computeShowSplit, rehearsalCountedAmount } from "@/lib/shows-types";
+import { syncArtistBalanceFromShow, removeSyncedArtistBalanceEntry } from "@/lib/artist-balance-show-sync";
 
 const REHEARSAL_SESSION_TYPE = "חזרה להופעה";
 const REHEARSAL_CATEGORY     = "חזרה";
@@ -318,6 +319,21 @@ export async function syncShowFinance(show: Show): Promise<void> {
         description:    artistDescription(show),
         payment_status: artistStatus,
       });
+      // Balance-ledger sync (Phase 1, Shalev only — see artist-balance-show-sync.ts).
+      // "בוטל" means the fee no longer stands — remove a still-expected synced
+      // entry (never touches one already marked הכנסות); otherwise keep it in sync.
+      if (artistStatus === "בוטל") {
+        await removeSyncedArtistBalanceEntry(show.linked_artist_expense_transaction_id);
+      } else {
+        await syncArtistBalanceFromShow({
+          showArtist: show.artist,
+          showName: show.name,
+          showDate: show.date,
+          transactionId: show.linked_artist_expense_transaction_id,
+          amount: effectiveArtistFee,
+          transactionPaymentStatus: artistStatus,
+        });
+      }
     } else if (shouldHaveArtist) {
       const id = await createTransaction({
         type:          "expense",
@@ -334,6 +350,16 @@ export async function syncShowFinance(show: Show): Promise<void> {
         await supabase.from("shows")
           .update({ linked_artist_expense_transaction_id: id, updated_at: new Date().toISOString() })
           .eq("id", show.id);
+        // Balance-ledger sync — brand-new artist-fee transaction (never "בוטל" here,
+        // shouldHaveArtist already excludes cancelled/no-fee shows).
+        await syncArtistBalanceFromShow({
+          showArtist: show.artist,
+          showName: show.name,
+          showDate: show.date,
+          transactionId: id,
+          amount: effectiveArtistFee,
+          transactionPaymentStatus: isPaid ? "שולם" : "צפוי",
+        });
       }
     }
   } catch (e) {
@@ -351,6 +377,9 @@ export async function syncShowFinance(show: Show): Promise<void> {
  */
 export async function deleteShowFinance(show: Show): Promise<number> {
   let deleted = 0;
+  // Captured BEFORE any deletion — source_tx_id lookup below needs the id even
+  // after the transaction row itself is gone (no FK, so it stays a valid key).
+  const artistTxId = show.linked_artist_expense_transaction_id;
   try {
     const ids = [
       show.linked_income_transaction_id,
@@ -376,6 +405,9 @@ export async function deleteShowFinance(show: Show): Promise<number> {
   } catch (e) {
     console.error("[shows-finance-sync] deleteShowFinance error:", e);
   }
+  // Balance-ledger sync: the show is gone, so its artist-fee transaction is
+  // gone too — remove a still-expected synced entry (never one already הכנסות).
+  await removeSyncedArtistBalanceEntry(artistTxId);
   return deleted;
 }
 
