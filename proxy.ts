@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowedPath } from "@/lib/roles";
+import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowedPath, isCleantoneAllowedPath } from "@/lib/roles";
 
 // Paths that bypass the auth gate entirely:
 //  • OAuth callbacks — external redirect from Google/Dropbox carrying a one-time
@@ -165,6 +165,7 @@ export async function proxy(request: NextRequest) {
     if (role === "victor") return carry(NextResponse.redirect(new URL("/team/victor", request.url)));
     if (role === "steven") return carry(NextResponse.redirect(new URL("/team/steven", request.url)));
     if (role === "shalev") return carry(NextResponse.redirect(new URL("/red-artists", request.url)));
+    if (role === "cleantone") return carry(NextResponse.redirect(new URL("/dj-cleantone", request.url)));
     return response;
   }
 
@@ -197,6 +198,15 @@ export async function proxy(request: NextRequest) {
     if (isShalevAllowedPath(pathname)) return response;
     if (isApi) return forbidden();
     return carry(NextResponse.redirect(new URL("/red-artists", request.url)));
+  }
+
+  // DJ CLEANTONE → restricted to his 2-page portal (/dj-cleantone) + scoped
+  // /api/red-artists/cleantone* endpoints. Any other page → back to his
+  // portal; other APIs → 403.
+  if (role === "cleantone") {
+    if (isCleantoneAllowedPath(pathname)) return response;
+    if (isApi) return forbidden();
+    return carry(NextResponse.redirect(new URL("/dj-cleantone", request.url)));
   }
 
   // Signed in but email not recognized → locked out.

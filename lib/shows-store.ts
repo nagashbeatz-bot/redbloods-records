@@ -3,6 +3,8 @@ import { supabase } from "@/lib/supabase";
 export type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
 export { SHOW_STATUSES, PAYMENT_STATUSES } from "@/lib/shows-types";
 import type { Show, ShowStatus, PaymentStatus } from "@/lib/shows-types";
+import { computeDjConfirmationTransition } from "@/lib/shows-types";
+import { CLEANTONE_CLIENT_ID } from "@/lib/red-artists/cleantone";
 
 export type CreateShowInput = Omit<Show, "id" | "created_at" | "updated_at">;
 export type PatchShowInput  = Partial<CreateShowInput>;
@@ -67,6 +69,12 @@ export async function getShow(id: string): Promise<Show | null> {
 }
 
 export async function createShow(input: Partial<CreateShowInput> & { name: string }): Promise<Show> {
+  const djClientId = input.dj_client_id ?? null;
+  const effectiveStatus = input.status ?? "ליד חדש";
+  // A brand-new row has no "previous" DJ — this only ever fires the "DJ
+  // becomes CLEANTONE_CLIENT_ID" branch (never the "removed" branch).
+  const djTransition = computeDjConfirmationTransition(CLEANTONE_CLIENT_ID, null, djClientId, effectiveStatus);
+
   const { data, error } = await supabase
     .from("shows")
     .insert({
@@ -80,12 +88,14 @@ export async function createShow(input: Partial<CreateShowInput> & { name: strin
       location:          input.location          ?? "",
       contact_person:    input.contact_person    ?? "",
       phone:             input.phone             ?? "",
-      status:            input.status            ?? "ליד חדש",
+      status:            effectiveStatus,
       payment_status:    input.payment_status    ?? "לא שולם",
       show_price:        input.show_price        ?? 0,
       dj_fee:            input.dj_fee            ?? 500,
-      dj_client_id:      input.dj_client_id      ?? null,
+      dj_client_id:      djClientId,
       dj_name:           input.dj_name           ?? "",
+      dj_confirmation_status: djTransition?.dj_confirmation_status ?? null,
+      dj_confirmed_at:        djTransition?.dj_confirmed_at ?? null,
       artist_fee:        input.artist_fee        ?? 0,
       advance_payment:   input.advance_payment   ?? 0,
       notes:             input.notes             ?? "",
@@ -98,9 +108,25 @@ export async function createShow(input: Partial<CreateShowInput> & { name: strin
 }
 
 export async function patchShow(id: string, patch: PatchShowInput): Promise<Show> {
+  // Only ever touches dj_confirmation_status/dj_confirmed_at when THIS patch
+  // actually changes dj_client_id — a routine edit (location/time/notes/price/
+  // status alone) never resets an in-flight or already-granted confirmation.
+  const extra: Partial<CreateShowInput> = {};
+  if (Object.prototype.hasOwnProperty.call(patch, "dj_client_id")) {
+    const current = await getShow(id);
+    const oldDjClientId = current?.dj_client_id ?? null;
+    const newDjClientId = patch.dj_client_id ?? null;
+    const effectiveStatus = (Object.prototype.hasOwnProperty.call(patch, "status") ? patch.status : current?.status) ?? null;
+    const transition = computeDjConfirmationTransition(CLEANTONE_CLIENT_ID, oldDjClientId, newDjClientId, effectiveStatus);
+    if (transition) {
+      extra.dj_confirmation_status = transition.dj_confirmation_status;
+      extra.dj_confirmed_at = transition.dj_confirmed_at;
+    }
+  }
+
   const { data, error } = await supabase
     .from("shows")
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({ ...patch, ...extra, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
     .single();

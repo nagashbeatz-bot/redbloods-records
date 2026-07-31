@@ -131,8 +131,8 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
   const signOutLabel = isVictor ? vt("common.signOut") : role === "steven" ? "Logout" : "יציאה";
 
   // Friendly display name by role (no DB / no profiles system).
-  const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : role === "steven" ? "Steven" : role === "shalev" ? "שליו טסמה" : "Redbloods";
-  const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : role === "steven" ? "Sound Engineer" : role === "shalev" ? "אמן" : "";
+  const displayName = role === "owner" ? "NagashBeatz" : role === "victor" ? "Victor" : role === "steven" ? "Steven" : role === "shalev" ? "שליו טסמה" : role === "cleantone" ? "DJ CLEANTONE" : "Redbloods";
+  const displaySub  = role === "owner" ? "מנהל מערכת" : isVictor ? vt("common.supplier") : role === "steven" ? "Sound Engineer" : role === "shalev" ? "אמן" : role === "cleantone" ? "אמן" : "";
 
   // Full nav ONLY for owner; victor/steven/shalev → minimal (their own page);
   // null/unknown → none. role comes pre-hydrated from AppShell (cached before
@@ -146,7 +146,9 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
           ? [{ href: "/team/steven", label: "Steven", icon: "🎚", iconColor: "#DC2626" }]
           : role === "shalev"
             ? [{ href: "/red-artists", label: "האזור שלי", icon: "♫", iconColor: "#DC2626" }]
-            : [];
+            : role === "cleantone"
+              ? [{ href: "/dj-cleantone", label: "האזור שלי", icon: "♫", iconColor: "#DC2626" }]
+              : [];
   const navTools = role === "owner" ? NAV_TOOLS : [];
 
   useEffect(() => {

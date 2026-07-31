@@ -77,3 +77,12 @@ export async function requireShalevAccess(): Promise<NextResponse | null> {
   if (role !== "owner" && role !== "shalev") return FORBID();
   return null;
 }
+
+/** DJ CLEANTONE (or owner) — used on the /api/red-artists/cleantone* endpoints
+ *  (cleantone-summary, cleantone/shows/[id]/confirm). Everyone else gets 403. */
+export async function requireCleantoneAccess(): Promise<NextResponse | null> {
+  const role = await getAuthRole();
+  if (role === null) return UNAUTH();
+  if (role !== "owner" && role !== "cleantone") return FORBID();
+  return null;
+}

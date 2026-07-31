@@ -9,6 +9,13 @@ export const PAYMENT_STATUSES = ["שולם","לא שולם","צפוי","מקדמ
 export type ShowStatus    = typeof SHOW_STATUSES[number];
 export type PaymentStatus = typeof PAYMENT_STATUSES[number] | "חלקי";
 
+// DJ-side confirmation (separate from the show's own lifecycle `status` —
+// never conflated with it). NULL = outside the confirmation system (no DJ
+// linked yet, a legacy pre-feature row, or a DJ linked directly on an
+// already-closed show — never a retroactive confirmation request).
+export const DJ_CONFIRMATION_STATUSES = ["ממתין לאישור", "אושר"] as const;
+export type DjConfirmationStatus = typeof DJ_CONFIRMATION_STATUSES[number];
+
 export interface Show {
   id: string;
   name: string;
@@ -27,6 +34,8 @@ export interface Show {
   dj_fee: number;
   dj_client_id: string | null;
   dj_name: string;
+  dj_confirmation_status: DjConfirmationStatus | null;
+  dj_confirmed_at: string | null;
   artist_fee: number;
   advance_payment: number;
   notes: string;
@@ -103,4 +112,34 @@ export function rehearsalCountedAmount(
 /** True if a rehearsal's payment is "חלקי" — unsupported, surfaced as needs-attention. */
 export function isRehearsalPartial(paymentStatus: string | null | undefined): boolean {
   return paymentStatus === "חלקי";
+}
+
+/**
+ * Pure decision for how a show write should touch dj_confirmation_status /
+ * dj_confirmed_at, shared by createShow and patchShow (lib/shows-store.ts) so
+ * both agree exactly. `null` return = "don't touch these fields" (routine
+ * edits to location/time/notes/price, or a DJ change irrelevant to the given
+ * dj id, must never reset an unrelated confirmation).
+ *
+ *   no DJ change (same id before/after)         → null (untouched)
+ *   DJ becomes `djId`, show still open           → 'ממתין לאישור' (never retroactive on a closed show)
+ *   DJ becomes `djId`, show already בוצע/בוטל    → null status (no fake retroactive request)
+ *   DJ WAS `djId`, changed away / removed         → reset to null
+ *   DJ change between two other, unrelated ids    → null (untouched)
+ */
+export function computeDjConfirmationTransition(
+  djId: string,
+  oldDjClientId: string | null,
+  newDjClientId: string | null,
+  effectiveStatus: string | null,
+): { dj_confirmation_status: DjConfirmationStatus | null; dj_confirmed_at: null } | null {
+  if (newDjClientId === oldDjClientId) return null;
+  if (newDjClientId === djId) {
+    const closed = effectiveStatus === "בוצע" || effectiveStatus === "בוטל";
+    return { dj_confirmation_status: closed ? null : "ממתין לאישור", dj_confirmed_at: null };
+  }
+  if (oldDjClientId === djId) {
+    return { dj_confirmation_status: null, dj_confirmed_at: null };
+  }
+  return null;
 }

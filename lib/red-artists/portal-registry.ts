@@ -10,6 +10,7 @@
 export const PORTAL_ARTISTS: Record<string, { slug: string }> = {
   "שליו טסמה": { slug: "shalev-tasama" },
   "אבי מולה":   { slug: "avi-molla" },
+  "DJ CLEANTONE": { slug: "dj-cleantone" },
 };
 
 export const SHALEV_NAME = "שליו טסמה";

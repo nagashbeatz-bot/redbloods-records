@@ -1,13 +1,14 @@
 /**
  * Phase 2A role resolution — by email, from env (no DB, no profiles table).
- *   OWNER_EMAILS = comma-separated owner emails (full access)
- *   VICTOR_EMAIL = Victor's supplier email (restricted)
- *   STEVEN_EMAIL = Steven's supplier email (restricted, sound engineer)
- *   SHALEV_EMAIL = Shalev Tasama's email (restricted — his artist portal only)
+ *   OWNER_EMAILS     = comma-separated owner emails (full access)
+ *   VICTOR_EMAIL     = Victor's supplier email (restricted)
+ *   STEVEN_EMAIL     = Steven's supplier email (restricted, sound engineer)
+ *   SHALEV_EMAIL     = Shalev Tasama's email (restricted — his artist portal only)
+ *   CLEANTONE_EMAIL  = DJ CLEANTONE's (רועי איוב) email (restricted — his 2-page portal only)
  * Any other authenticated email → "unknown" (treated as not authorized).
  * Safe to import from both proxy.ts and server route helpers (pure, no deps).
  */
-export type UserRole = "owner" | "victor" | "steven" | "shalev" | "unknown";
+export type UserRole = "owner" | "victor" | "steven" | "shalev" | "cleantone" | "unknown";
 
 function emailList(value: string | undefined): string[] {
   return (value ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -23,6 +24,8 @@ export function roleForEmail(email: string | null | undefined): UserRole {
   if (steven && e === steven) return "steven";
   const shalev = (process.env.SHALEV_EMAIL ?? "").trim().toLowerCase();
   if (shalev && e === shalev) return "shalev";
+  const cleantone = (process.env.CLEANTONE_EMAIL ?? "").trim().toLowerCase();
+  if (cleantone && e === cleantone) return "cleantone";
   return "unknown";
 }
 
@@ -76,6 +79,21 @@ export function isShalevAllowedPath(pathname: string): boolean {
     "/api/me",
     "/api/red-artists",            // sketches CRUD/reorder/duration, shalev-summary, performance-files, upload, press-kit-link, profile-image, stream, balance (all Shalev-scoped per route)
     "/api/beats",                  // free-beats pool: GET list + GET [id]/stream only (read/listen); POST/PATCH/DELETE stay requireOwner per route
+  ];
+  return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+/** DJ CLEANTONE's allowed surface — ONLY his 2-page portal (/dj-cleantone) and
+ *  the scoped /api/red-artists/cleantone* endpoints (cleantone-summary +
+ *  cleantone/shows/[id]/confirm). He never reaches /red-artists (Shalev's
+ *  portal), /label/artists/[id] (owner preview of other artists), or any
+ *  other /api/red-artists/* route (those stay Shalev/owner-scoped). */
+export function isCleantoneAllowedPath(pathname: string): boolean {
+  if (pathname === "/dj-cleantone" || pathname.startsWith("/dj-cleantone/")) return true;
+  const apiAllow = [
+    "/api/me",
+    "/api/red-artists/cleantone-summary",
+    "/api/red-artists/cleantone",  // /api/red-artists/cleantone/shows/[id]/confirm
   ];
   return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }

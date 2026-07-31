@@ -30,11 +30,11 @@ export default function AppShell({ children, topRight }: { children: React.React
   const role = useRole();
   const isOwner = role === "owner"; // AI agent + tools are owner-only chrome
   const canRadio = role === "owner" || role === "shalev"; // the external LISTEN radio is available to the artist too
-  // shalev + victor have no fixed bottom nav (their logout sits at the end of
-  // their page content) → reserve no space for a bar. The paddingBottom below
-  // then collapses to env(safe-area-inset-bottom) alone, which is exactly the
-  // small iPhone inset we still want under the last card.
-  const navH = role === "shalev" || role === "victor" ? 0 : 56;
+  // shalev + victor + cleantone have no fixed bottom nav (their logout sits at
+  // the end of their page content) → reserve no space for a bar. The
+  // paddingBottom below then collapses to env(safe-area-inset-bottom) alone,
+  // which is exactly the small iPhone inset we still want under the last card.
+  const navH = role === "shalev" || role === "victor" || role === "cleantone" ? 0 : 56;
   const { projects } = useProjects();
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);

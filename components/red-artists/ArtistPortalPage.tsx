@@ -22,7 +22,7 @@ import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycle
 // Set ONCE by the top-level ArtistPortalPage component and read via
 // usePortalContext() everywhere else — avoids prop-drilling through every
 // intermediate card/modal component in this large file.
-interface PortalCtx { apiBase: string; artistName: string }
+interface PortalCtx { apiBase: string; artistName: string; isCleantone?: boolean }
 const PortalApiContext = createContext<PortalCtx>({ apiBase: "/api/red-artists", artistName: "שליו טסמה" });
 function usePortalContext(): PortalCtx {
   return useContext(PortalApiContext);
@@ -275,6 +275,17 @@ export type ShalevSummary = {
 };
 type LoadState = "loading" | "ready" | "error";
 
+// ── DJ CLEANTONE's own summary (server-scoped, READ-ONLY) ─────────────────────────
+// From GET /api/red-artists/cleantone-summary. Unlike PortalShow, money IS
+// included (djFee is his own fee) and confirmationStatus is his own DJ-side
+// confirmation — completely separate from the show's general `status`.
+export type CleantoneShow = {
+  id: string; name: string; artist: string; date: string | null; startTime: string | null;
+  location: string; djFee: number; status: string;
+  confirmationStatus: "ממתין לאישור" | "אושר" | null; notes: string;
+};
+export type CleantoneSummary = { shows: { upcoming: CleantoneShow[]; done: CleantoneShow[] }; updates: PortalUpdate[] };
+
 // ── Owner-only artist balance ledger (GET /api/label/artists/[id]/balance) ────────
 // Manual, independent ledger — NOT sourced from shalev-summary/transactions/Shows.
 // The five canonical entry types + totals mirror lib/artist-balance-store.ts exactly.
@@ -383,6 +394,12 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const role = liveRole ?? initialRole ?? null;
   const isShalev = role === "shalev";
   const isOwner = role === "owner";
+  // DJ CLEANTONE — a 5th, deliberately minimal role: only "בית" + "ההופעות שלי"
+  // are ever reachable (see visibleTabs below), and none of the sketches/ledger/
+  // next-work/next-release/availability fetches below are relevant to him (his
+  // own data comes from a separate cleantone-summary fetch further down) — each
+  // is explicitly guarded so his session never calls Shalev/owner-scoped routes.
+  const isCleantone = role === "cleantone";
 
   // Entry beacon — fires once per real app session (a fresh tab, or the app
   // reopened after being fully closed), never on a reload or in-app navigation
@@ -399,21 +416,30 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
     fetch("/api/red-artists/ping", { method: "POST" }).catch(() => {});
   }, [isShalev]);
 
+  // DJ CLEANTONE gets exactly 2 of the 7 tabs — enforced here (not just in the
+  // tab bar below) so a crafted `?tab=balance` deep link can never select a
+  // hidden tab client-side either (the real security boundary is still
+  // server-side: isCleantoneAllowedPath in proxy.ts blocks the underlying APIs
+  // regardless of what tab state the client thinks it's on).
+  const visibleTabs: readonly Tab[] = isCleantone ? (["בית", "ההופעות שלי"] as const) : TABS;
+
   // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
   // same tab and Back/Forward work. Initial state is the default (server + first
   // client render match → no hydration mismatch); the real URL is read on mount.
   const [tab, setTabState] = useState<Tab>(DEFAULT_TAB);
   useEffect(() => {
     const sync = () => {
-      const t = tabFromUrl() ?? DEFAULT_TAB;
+      const urlTab = tabFromUrl();
       // Shalev now sees every tab (מאזן + ביטים are read-only for him), so no tab
-      // is forced back home; ?tab=balance / ?tab=beats open normally.
+      // is forced back home; ?tab=balance / ?tab=beats open normally. CLEANTONE
+      // is clamped to visibleTabs — an unlisted/unknown slug falls back to בית.
+      const t = urlTab && visibleTabs.includes(urlTab) ? urlTab : DEFAULT_TAB;
       setTabState(t);
     };
     sync(); // adopt the tab from the URL on load
     window.addEventListener("popstate", sync); // Back/Forward
     return () => window.removeEventListener("popstate", sync);
-  }, [isShalev]);
+  }, [isShalev, visibleTabs]);
   const setTab = useCallback((t: Tab) => {
     setTabState(t);
     if (typeof window === "undefined") return;
@@ -450,13 +476,14 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const artistName = artistNameProp ?? SHALEV_ARTIST;
 
   const reloadSketches = useCallback(async () => {
+    if (isCleantone) return; // no music tab for him — never call apiBase's (Shalev-scoped) sketches route
     try {
       const r = await fetch(`${apiBase}/sketches`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok && Array.isArray(d.sketches)) { setSketches(d.sketches); setLibState("ready"); }
       else setLibState("error");
     } catch { setLibState("error"); }
-  }, [apiBase]);
+  }, [apiBase, isCleantone]);
   useEffect(() => { void reloadSketches(); }, [reloadSketches]);
 
   // Persist a new library order. The client sends ids only; the server is the
@@ -481,6 +508,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [summary, setSummary] = useState<ShalevSummary | null>(null);
   const [summaryState, setSummaryState] = useState<LoadState>("loading");
   const reloadSummary = useCallback(() => {
+    if (isCleantone) return; // his own summary is fetched separately below (cleantoneSummary)
     fetch(summaryUrl)
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
@@ -488,7 +516,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         else setSummaryState("error");
       })
       .catch(() => setSummaryState("error"));
-  }, [summaryUrl]);
+  }, [summaryUrl, isCleantone]);
   useEffect(() => { reloadSummary(); }, [reloadSummary]);
   // A session created/deleted anywhere (e.g. via the schedule page's "קבע סשן"
   // button, which opens the SAME global quick-actions modal) should refresh
@@ -500,6 +528,23 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
     document.addEventListener("rb-session-created", reloadSummary);
     return () => document.removeEventListener("rb-session-created", reloadSummary);
   }, [reloadSummary]);
+
+  // DJ CLEANTONE's own summary — separate endpoint (cleantone-summary), separate
+  // state from `summary` above (different shape: money IS included, since dj_fee
+  // is literally his own fee, and there's no `balance`/`weekly` block for him).
+  const [cleantoneSummary, setCleantoneSummary] = useState<CleantoneSummary | null>(null);
+  const [cleantoneState, setCleantoneState] = useState<LoadState>("loading");
+  const reloadCleantoneSummary = useCallback(() => {
+    if (!isCleantone) return;
+    fetch("/api/red-artists/cleantone-summary")
+      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d) => {
+        if (d?.ok) { setCleantoneSummary({ shows: d.shows, updates: d.updates ?? [] }); setCleantoneState("ready"); }
+        else setCleantoneState("error");
+      })
+      .catch(() => setCleantoneState("error"));
+  }, [isCleantone]);
+  useEffect(() => { reloadCleantoneSummary(); }, [reloadCleantoneSummary]);
 
   // Owner-only balance ledger — the manual, independent per-artist ledger. Replaces
   // the old shalev-summary.balance for BOTH the tab and the home card. Fetched only
@@ -522,24 +567,26 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
 
   const [nextWork, setNextWork] = useState<PortalWork | null>(null);
   const reloadNextWork = useCallback(async () => {
+    if (isCleantone) return; // no music/work tab for him
     try {
       const r = await fetch(`${apiBase}/next-work`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) setNextWork(d.work ?? null);
     } catch { /* leave as-is — the home page never breaks */ }
-  }, [apiBase]);
+  }, [apiBase, isCleantone]);
   useEffect(() => { void reloadNextWork(); }, [reloadNextWork]);
 
   // The nearest today-or-future release from the label pipeline — computed
   // server-side (never a manual pointer); read-only here, see PortalRelease.
   const [nextRelease, setNextRelease] = useState<PortalRelease | null>(null);
   const reloadNextRelease = useCallback(async () => {
+    if (isCleantone) return; // no releases tab for him
     try {
       const r = await fetch(`${apiBase}/next-release`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) setNextRelease(d.release ?? null);
     } catch { /* leave as-is — the home page never breaks */ }
-  }, [apiBase]);
+  }, [apiBase, isCleantone]);
   useEffect(() => { void reloadNextRelease(); }, [reloadNextRelease]);
 
   // Learn-and-save duration into the SKETCH MANIFEST (never Projects): once the
@@ -638,7 +685,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   }, [setTab]);
 
   return (
-    <PortalApiContext.Provider value={{ apiBase, artistName }}>
+    <PortalApiContext.Provider value={{ apiBase, artistName, isCleantone }}>
       {showMandatoryAvailabilityModal && <MandatoryAvailabilityModal onSend={handleMandatoryAvailabilitySend} />}
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
@@ -706,7 +753,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           flexWrap: isMobile ? "nowrap" : "wrap",
           overflowX: isMobile ? "auto" : "visible", paddingBottom: isMobile ? 2 : 0,
         }}>
-          {TABS.map(tb => {
+          {visibleTabs.map(tb => {
             const active = tb === tab;
             return (
               <button
@@ -730,13 +777,23 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
             position, so React reuses the instance across tabs and the avatar
             never remounts/reloads (no "ש" flash on tab switch). Content varies. */}
         {tab === "בית" ? (
-          <PortalHero title={`ברוך הבא, ${artistName.split(" ")[0]}`} emoji="👋" canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
-            </div>
-            <NewsFlash items={summary?.updates ?? []} />
-          </PortalHero>
+          isCleantone ? (
+            <PortalHero title={`ברוך הבא, ${artistName}`} emoji="👋" subtitle="כאן תמצא את פרטי ההופעות שלך ותוכל לאשר אותן.">
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
+              </div>
+              <NewsFlash items={cleantoneSummary?.updates ?? []} />
+            </PortalHero>
+          ) : (
+            <PortalHero title={`ברוך הבא, ${artistName.split(" ")[0]}`} emoji="👋" canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
+              </div>
+              <NewsFlash items={summary?.updates ?? []} />
+            </PortalHero>
+          )
         ) : tab === "המוזיקה שלי" ? (
           <PortalHero title="המוזיקה שלי" badge="♫" subtitle="כל השירים, הסקיצות, המיקסים והמאסטרים במקום אחד" />
         ) : tab === "לו״ז ועדכונים" ? (
@@ -754,9 +811,17 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         )}
 
         <div style={{ marginTop: 20 }}>
-          {tab === "בית" ? <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
+          {tab === "בית" ? (
+            isCleantone
+              ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} />
+              : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
+          )
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
-            : tab === "ההופעות שלי" ? <ShowsPage summary={summary} loadState={summaryState} isOwner={isOwner} />
+            : tab === "ההופעות שלי" ? (
+              isCleantone
+                ? <CleantoneShowsPage summary={cleantoneSummary} loadState={cleantoneState} onReload={reloadCleantoneSummary} />
+                : <ShowsPage summary={summary} loadState={summaryState} isOwner={isOwner} />
+            )
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} onAvailabilitySent={reloadMandatoryGate} />
             : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} readOnly={isShalev} />
             : tab === "ביטים פנויים" ? <BeatsPage readOnly={isShalev} />
@@ -2339,6 +2404,182 @@ function ShowsPage({ summary, loadState, isOwner }: { summary: ShalevSummary | n
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
       <ShowsSection title="הופעות קרובות" shows={upcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" showSendButton={!!isOwner} highlightShowId={highlightShowId} />
       <ShowsSection title="הופעות שבוצעו" shows={done} isMobile={isMobile} emptyText="אין עדיין הופעות שבוצעו" />
+    </div>
+  );
+}
+
+// ── DJ CLEANTONE's own 2 pages (בית + ההופעות שלי) ─────────────────────────────────
+// Deliberately NOT built by conditionally branching HomeDashboard/ShowsPage (which
+// carry sketches/balance/beats/weekly-calendar/availability wiring that doesn't
+// apply to him and would only add risk of a Shalev/Avi regression) — instead these
+// reuse the SAME shared primitives (panel, SectionCard, SchedSection, SchedEmpty,
+// UpdatesList, ShowStatusPill, fmtShowDate, fmtMoney) at the leaf level, wired into
+// the SAME tab mechanism (visibleTabs) as everyone else. See [[project_redbloods_records]].
+
+function CleantoneHome({ summary, loadState, onOpenShows }: { summary: CleantoneSummary | null; loadState: LoadState; onOpenShows: () => void }) {
+  const isMobile = useIsMobile();
+  const nextShow = summary?.shows.upcoming?.[0] ?? null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
+      <SectionCard title="ההופעה הקרובה">
+        {loadState === "loading" ? <SchedEmpty text="טוען…" />
+          : loadState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+          : !nextShow ? <SchedEmpty text="אין הופעות קרובות כרגע" />
+          : (
+            <div style={{ padding: isMobile ? "16px" : "20px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: TEXT }}>{nextShow.name}</div>
+                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 2 }}>עבור: {nextShow.artist || "—"}</div>
+                </div>
+                <ShowStatusPill status={nextShow.status} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 10 : 18, fontSize: 13, color: "#CFCFD6" }}>
+                <span style={{ direction: "ltr" }}>{fmtShowDate(nextShow.date)}{nextShow.startTime ? ` · ${nextShow.startTime}` : ""}</span>
+                <span>{nextShow.location || "—"}</span>
+              </div>
+            </div>
+          )}
+      </SectionCard>
+
+      <SchedSection title="עדכונים מהלייבל">
+        {loadState === "loading" ? <SchedEmpty text="טוען…" />
+          : loadState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
+          : (summary?.updates?.length ?? 0) === 0 ? <SchedEmpty text="עדיין אין עדכונים חדשים" />
+          : <UpdatesList items={summary!.updates} />}
+      </SchedSection>
+
+      <button type="button" onClick={onOpenShows} style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+        padding: "13px 20px", borderRadius: 14, fontFamily: "inherit", fontSize: 14, fontWeight: 800,
+        color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", cursor: "pointer",
+      }}>לכל ההופעות שלי ←</button>
+    </div>
+  );
+}
+
+// One show row — name/artist/date/time/location/fee/status + the DJ-side
+// confirmation state, which is entirely separate from `status`. The "אשר
+// הופעה" button only ever renders when confirmationStatus === 'ממתין לאישור';
+// after a successful POST the row is patched locally from the SERVER's
+// response (never assumed), so it can never show "אושר" without the server
+// having actually said so, and the button can never be clicked twice (it's
+// simply gone once local state reflects the confirmed status).
+function CleantoneShowRow({ show, isMobile, onConfirmed }: {
+  show: CleantoneShow; isMobile: boolean;
+  onConfirmed: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const confirm = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/red-artists/cleantone/shows/${show.id}/confirm`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (d?.ok && d?.confirmation) { onConfirmed(show.id, d.confirmation); setBusy(false); return; }
+      setErr(typeof d?.error === "string" ? d.error : "האישור נכשל");
+    } catch {
+      setErr("שגיאת רשת, נסה שוב");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div id={`rb-cleantone-show-${show.id}`} style={{ padding: isMobile ? "14px 16px" : "18px 22px", borderBottom: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: isMobile ? 15 : 16.5, fontWeight: 800, color: TEXT }}>{show.name}</div>
+          <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 2 }}>עבור: {show.artist || "—"}</div>
+        </div>
+        <ShowStatusPill status={show.status} />
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 10 : 18, fontSize: 13, color: "#CFCFD6" }}>
+        <span style={{ direction: "ltr" }}>{fmtShowDate(show.date)}{show.startTime ? ` · ${show.startTime}` : ""}</span>
+        <span>{show.location || "—"}</span>
+        <span style={{ fontWeight: 800, color: TEXT }}>{fmtMoney(show.djFee)}</span>
+      </div>
+      {show.notes && <div style={{ fontSize: 12.5, color: TEXT2 }}>{show.notes}</div>}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
+        {show.confirmationStatus === "ממתין לאישור" ? (
+          <>
+            <button
+              type="button" onClick={confirm} disabled={busy} title={err ?? undefined}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontFamily: "inherit",
+                fontSize: 13, fontWeight: 800, cursor: busy ? "default" : "pointer", transition: "all .15s",
+                color: err ? "#F87171" : "#FF8A8A",
+                background: err ? "rgba(248,113,113,0.12)" : "rgba(220,38,38,0.10)",
+                border: `1px solid ${err ? "rgba(248,113,113,0.4)" : "rgba(220,38,38,0.45)"}`,
+                opacity: busy ? 0.7 : 1,
+              }}
+            >{busy ? "מאשר…" : err ? "נסה שוב" : "אשר הופעה"}</button>
+            {err && <span style={{ fontSize: 12, color: "#F87171" }}>{err}</span>}
+          </>
+        ) : show.confirmationStatus === "אושר" ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: GREEN }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
+            ההופעה אושרה
+          </span>
+        ) : (
+          <span style={{ fontSize: 12.5, color: MUTED }}>—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CleantoneShowsSection({ title, shows, isMobile, emptyText, onConfirmed }: {
+  title: string; shows: CleantoneShow[]; isMobile: boolean; emptyText: string;
+  onConfirmed: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
+}) {
+  return (
+    <div style={panel}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+        <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>{title}</span>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
+      </div>
+      {shows.length === 0 ? (
+        <div style={{ padding: "34px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>{emptyText}</div>
+      ) : (
+        shows.map((s) => <CleantoneShowRow key={s.id} show={s} isMobile={isMobile} onConfirmed={onConfirmed} />)
+      )}
+    </div>
+  );
+}
+
+function CleantoneShowsPage({ summary, loadState, onReload }: { summary: CleantoneSummary | null; loadState: LoadState; onReload: () => void }) {
+  const isMobile = useIsMobile();
+  // Local mirror of the two lists so a confirm click can patch just that one
+  // row immediately from the server's response, without waiting on a second
+  // round-trip — re-synced whenever a fresh summary arrives.
+  const [localUpcoming, setLocalUpcoming] = useState<CleantoneShow[]>([]);
+  const [localDone, setLocalDone] = useState<CleantoneShow[]>([]);
+  useEffect(() => {
+    setLocalUpcoming(summary?.shows.upcoming ?? []);
+    setLocalDone(summary?.shows.done ?? []);
+  }, [summary]);
+
+  const handleConfirmed = (showId: string, confirmation: { status: string; confirmedAt: string | null }) => {
+    const patch = (rows: CleantoneShow[]) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "אושר" } : r));
+    setLocalUpcoming(patch);
+    setLocalDone(patch);
+    onReload(); // reconcile with the server in the background (no-op visually — local state already matches)
+  };
+
+  if (loadState === "loading") {
+    return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
+  }
+  if (loadState === "error") {
+    return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון הופעות כרגע</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
+      <CleantoneShowsSection title="הופעות קרובות" shows={localUpcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" onConfirmed={handleConfirmed} />
+      <CleantoneShowsSection title="הופעות שבוצעו" shows={localDone} isMobile={isMobile} emptyText="אין עדיין הופעות שבוצעו" onConfirmed={handleConfirmed} />
     </div>
   );
 }
@@ -4001,7 +4242,7 @@ function clearAvatarEdit(apiBase: string) {
 type SaveMeta = { zoom: number; offset: { x: number; y: number }; originalFile: File | null; originalFileName: string | null };
 
 function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
-  const { apiBase, artistName } = usePortalContext();
+  const { apiBase, artistName, isCleantone } = usePortalContext();
   const initialCache = getAvatarCache(apiBase);
   const [path, setPath]   = useState<string | null>(initialCache.path);
   const [ver, setVer]     = useState(initialCache.ver); // cache-bust after re-upload (overwrites same path)
@@ -4034,6 +4275,11 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
   // the initial letter for an artist who already has a photo. READ-ONLY GET;
   // artist-scoped by apiBase, so it can never surface another artist's image.
   useEffect(() => {
+    // DJ CLEANTONE has no /profile-image route (out of scope — no avatar
+    // upload for him) and `apiBase` resolves to Shalev's scoped prefix on his
+    // own session, which isCleantoneAllowedPath correctly blocks — skip the
+    // call entirely rather than let it fail against the auth gate every load.
+    if (isCleantone) return;
     let alive = true;
     fetch(`${apiBase}/profile-image`)
       .then((r) => (r.ok ? r.json() : null))
@@ -4053,7 +4299,7 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
       })
       .catch(() => { /* keep the instant local/cache fallback */ });
     return () => { alive = false; };
-  }, [apiBase]);
+  }, [apiBase, isCleantone]);
 
   // Editing is only allowed from the home tab. If the tab changes while the
   // editor is open (canEdit → false), close it so it can't linger elsewhere.
