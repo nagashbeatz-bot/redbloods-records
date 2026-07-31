@@ -2305,18 +2305,96 @@ function NotifyShalevButton({ showId }: { showId: string }) {
   );
 }
 
-// DJ CLEANTONE's own "אישור הופעה" cell — button when pending, green pill
-// once confirmed, "—" for legacy rows (confirmationStatus=NULL). The button
-// only ever renders for 'ממתין לאישור'; after a successful POST the row is
-// patched locally from the SERVER's response (never assumed) via onConfirmed,
-// so the button can never be clicked twice — it's simply gone once local
-// state reflects the confirmed status. Mirrors NotifyShalevButton's pattern.
+// Small confirm/cancel dialog for unconfirming an already-confirmed show —
+// no bare "click a pill, instantly mutate" allowed. Follows the SAME visual
+// conventions as the existing modal shells in this file (createPortal,
+// backdrop-click + Escape to close, blocked while busy, 88dvh mobile-safe
+// height) — a dedicated small dialog rather than force-fitting the ₪-badge
+// BalanceModalShell, which carries an unrelated visual identity.
+function DjUnconfirmDialog({ showId, onClose, onUnconfirmed }: {
+  showId: string; onClose: () => void;
+  onUnconfirmed: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
+}) {
+  const isMobile = useIsMobile();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, busy]);
+
+  const unconfirm = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/red-artists/cleantone/shows/${showId}/unconfirm`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (d?.ok && d?.confirmation) { onUnconfirmed(showId, d.confirmation); return; } // dialog unmounts via parent state
+      setErr(typeof d?.error === "string" ? d.error : "ביטול האישור נכשל");
+    } catch {
+      setErr("שגיאת רשת, נסה שוב");
+    }
+    setBusy(false);
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100050, background: "rgba(0,0,0,0.66)", backdropFilter: "blur(3px)",
+        display: "flex", justifyContent: "center", alignItems: "center",
+        padding: isMobile ? "calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 12px)" : 20,
+        fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      }}
+    >
+      <div style={{
+        width: "100%", maxWidth: 380, maxHeight: isMobile ? "88dvh" : "88vh", overflowY: "auto", boxSizing: "border-box",
+        background: "linear-gradient(180deg, #161617 0%, #111112 100%)",
+        border: `1px solid ${BDR2}`, borderRadius: 20, boxShadow: "0 24px 70px rgba(0,0,0,0.6)",
+        padding: isMobile ? "20px 18px" : "24px 26px",
+      }}>
+        <div style={{ fontSize: isMobile ? 16.5 : 18, fontWeight: 900, color: "#fff", marginBottom: 10 }}>ביטול אישור הופעה</div>
+        <div style={{ fontSize: 14, color: TEXT2, lineHeight: 1.5, marginBottom: err ? 10 : 20 }}>האם לבטל את אישור ההופעה?</div>
+        {err && <div style={{ fontSize: 13, color: "#F87171", marginBottom: 16 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            type="button" onClick={unconfirm} disabled={busy}
+            style={{
+              flex: 1, padding: "12px 0", borderRadius: 12, fontFamily: "inherit", fontSize: 14, fontWeight: 800,
+              cursor: busy ? "default" : "pointer", color: "#fff",
+              background: busy ? "rgba(220,38,38,0.5)" : BRAND, border: "none", opacity: busy ? 0.75 : 1,
+            }}
+          >{busy ? "מבטל…" : "בטל אישור"}</button>
+          <button
+            type="button" onClick={onClose} disabled={busy}
+            style={{
+              flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+              color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+            }}
+          >חזור</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// DJ CLEANTONE's own "אישור הופעה" cell — button when pending, CLICKABLE green
+// pill once confirmed (opens DjUnconfirmDialog), "—" for legacy rows
+// (confirmationStatus=NULL, never clickable). After a successful POST the row
+// is patched locally from the SERVER's response (never assumed) via
+// onConfirmed, so neither action can ever double-fire — the affordance for
+// the action just taken is simply gone once local state reflects it.
 function DjConfirmCell({ showId, confirmationStatus, onConfirmed }: {
   showId: string; confirmationStatus: "ממתין לאישור" | "אושר" | null | undefined;
   onConfirmed: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [showUnconfirmDialog, setShowUnconfirmDialog] = useState(false);
 
   const confirm = async () => {
     if (busy) return;
@@ -2350,10 +2428,26 @@ function DjConfirmCell({ showId, confirmationStatus, onConfirmed }: {
   }
   if (confirmationStatus === "אושר") {
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: GREEN, background: `${GREEN}18`, border: `1px solid ${GREEN}44`, borderRadius: 999, padding: "5px 13px", whiteSpace: "nowrap" }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
-        אושרה
-      </span>
+      <>
+        <button
+          type="button" onClick={() => setShowUnconfirmDialog(true)}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: GREEN,
+            background: `${GREEN}18`, border: `1px solid ${GREEN}44`, borderRadius: 999, padding: "5px 13px",
+            whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
+          אושרה
+        </button>
+        {showUnconfirmDialog && (
+          <DjUnconfirmDialog
+            showId={showId}
+            onClose={() => setShowUnconfirmDialog(false)}
+            onUnconfirmed={(id, confirmation) => { setShowUnconfirmDialog(false); onConfirmed(id, confirmation); }}
+          />
+        )}
+      </>
     );
   }
   return <span style={{ fontSize: 13, color: MUTED }}>—</span>;
@@ -2372,13 +2466,15 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
   onConfirmed?: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
 }) {
   const isCleantoneVariant = variant === "cleantone";
+  // Cleantone variant has NO status column (show.status is never surfaced to
+  // him at all — only dj_confirmation_status, in its own column).
   const cols = isCleantoneVariant
-    ? "minmax(0, 1.2fr) minmax(0, 1fr) 100px 90px minmax(0, 1fr) 90px 100px 130px"
+    ? "minmax(0, 1.3fr) minmax(0, 1fr) 100px 90px minmax(0, 1.1fr) 90px 130px"
     : showSendButton
       ? "minmax(0, 1.4fr) 110px 90px minmax(0, 1.2fr) 110px 90px"
       : "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
   const heads = isCleantoneVariant
-    ? ["שם הופעה", "שם האמן", "תאריך", "שעת הופעה", "מיקום", "שכר", "סטטוס", "אישור הופעה"]
+    ? ["שם הופעה", "שם האמן", "תאריך", "שעת הופעה", "מיקום", "שכר", "אישור הופעה"]
     : showSendButton
       ? ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס", ""]
       : ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
@@ -2405,7 +2501,7 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{s.location}</div>
               {isCleantoneVariant && <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginTop: 3 }}>{fmtMoney(s.djFee ?? 0)}</div>}
               <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <ShowStatusPill status={s.status} />
+                {!isCleantoneVariant && <ShowStatusPill status={s.status} />}
                 {showSendButton && <NotifyShalevButton showId={s.id} />}
                 {isCleantoneVariant && onConfirmed && <DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} />}
               </div>
@@ -2430,7 +2526,7 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
               <div style={{ fontSize: 14.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
               {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{fmtMoney(s.djFee ?? 0)}</div>}
-              <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>
+              {!isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>}
               {showSendButton && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
               {isCleantoneVariant && onConfirmed && <div style={{ display: "flex", justifyContent: "center" }}><DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} /></div>}
             </div>
@@ -2523,7 +2619,7 @@ function CleantoneHome({ summary, loadState, onOpenShows }: { summary: Cleantone
   const [upcoming, setUpcoming] = useState<Show[]>([]);
   useEffect(() => { setUpcoming((summary?.shows.upcoming ?? []).map(toCleantoneShowRow)); }, [summary]);
   const handleConfirmed = (showId: string, confirmation: { status: string; confirmedAt: string | null }) => {
-    setUpcoming((rows) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "אושר" } : r)));
+    setUpcoming((rows) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "ממתין לאישור" | "אושר" } : r)));
   };
 
   return (
@@ -2567,7 +2663,7 @@ function CleantoneShowsPage({ summary, loadState, onReload }: { summary: Cleanto
   }, [summary]);
 
   const handleConfirmed = (showId: string, confirmation: { status: string; confirmedAt: string | null }) => {
-    const patch = (rows: Show[]) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "אושר" } : r));
+    const patch = (rows: Show[]) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "ממתין לאישור" | "אושר" } : r));
     setLocalUpcoming(patch);
     setLocalDone(patch);
     onReload(); // reconcile with the server in the background (no-op visually — local state already matches)
