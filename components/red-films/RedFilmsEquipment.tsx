@@ -17,6 +17,7 @@
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import DatePickerInput from "@/components/ui/DatePickerInput";
+import { RF, KpiCard, filterChip, neutralBtn, tableShell, tableHeaderBar } from "./redFilmsTheme";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,9 +39,6 @@ interface EquipmentItem {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const RED       = "#DC2626";
-const RED_LIGHT = "#F87171";
 
 export const EQUIPMENT_CATEGORIES = ["מצלמות", "עדשות", "ייצוב", "תאורה", "סאונד", "אביזרים", "אחר"];
 
@@ -80,37 +78,6 @@ function fmtDate(d: string | null): string {
 function fmtMoney(n: number | null): string {
   if (n === null || n === undefined) return "—";
   return `₪${n.toLocaleString("he-IL")}`;
-}
-
-// ── KPI card (same visual as RedFilmsPage's KpiCard — not exported there, so
-//    reproduced here at the same styling; matches this file's existing
-//    per-component duplication convention, e.g. RaiseBudgetModal). ──────────
-function KpiCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
-  return (
-    <div style={{
-      position: "relative", overflow: "hidden", minWidth: 0,
-      background: "linear-gradient(160deg, rgba(28,16,17,0.9), rgba(14,11,12,0.96))",
-      border: `1px solid ${RED}24`, borderRadius: 18, padding: "26px 24px 22px",
-      boxShadow: `0 10px 30px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.05)`,
-    }}>
-      <div aria-hidden style={{
-        position: "absolute", top: -32, insetInlineStart: -26, width: 108, height: 108,
-        borderRadius: "50%", background: RED, opacity: 0.09, filter: "blur(34px)", pointerEvents: "none",
-      }} />
-      <div style={{ position: "relative", minHeight: 50, display: "flex", alignItems: "center" }}>
-        <div style={{
-          position: "absolute", insetInlineStart: 0, top: "50%", transform: "translateY(-50%)",
-          width: 50, height: 50, borderRadius: "50%", flexShrink: 0, color: RED_LIGHT,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "radial-gradient(circle at 50% 38%, rgba(220,38,38,0.20), rgba(220,38,38,0.04))",
-          border: `1px solid ${RED}54`,
-          boxShadow: `0 0 12px rgba(220,38,38,0.2), inset 0 0 8px rgba(220,38,38,0.12)`,
-        }}>{icon}</div>
-        <div style={{ width: "100%", textAlign: "center", fontSize: 34, fontWeight: 800, color: "#F4F4F6", letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</div>
-      </div>
-      <div style={{ position: "relative", fontSize: 13.5, color: "#96969C", marginTop: 16, fontWeight: 600, textAlign: "center" }}>{label}</div>
-    </div>
-  );
 }
 
 const ICON_PROPS = {
@@ -367,10 +334,10 @@ export default function RedFilmsEquipment() {
           style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             padding: isMobile ? "11px 20px" : "13px 24px", borderRadius: 12,
-            background: "linear-gradient(135deg, #EF4444, #B91C1C)",
-            border: "1px solid rgba(248,113,113,0.4)", color: "#FFF", fontSize: isMobile ? 13.5 : 14.5, fontWeight: 800,
+            background: RF.redGrad,
+            border: "1px solid rgba(248,113,113,0.35)", color: "#FFF", fontSize: isMobile ? 13.5 : 14.5, fontWeight: 800,
             cursor: "pointer", fontFamily: "inherit",
-            boxShadow: "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.22)",
+            boxShadow: "0 4px 14px rgba(220,38,38,0.22)",
           }}
         >
           <IcPlus /> הוסף ציוד
@@ -383,11 +350,11 @@ export default function RedFilmsEquipment() {
         gridTemplateColumns: isMobile ? "repeat(2, minmax(0,1fr))" : `repeat(${totalInvestment > 0 || priced.length > 0 ? 5 : 4}, minmax(0,1fr))`,
         gap: isMobile ? 12 : 16, marginBottom: 24,
       }}>
-        <KpiCard icon={<IcBox />} label="סך הכול פריטים" value={totalItems} />
-        <KpiCard icon={<IcTag />} label="קטגוריות" value={categoriesCount} />
-        <KpiCard icon={<IcPlus />} label="נוספו החודש" value={addedThisMonth} />
-        <KpiCard icon={<IcTrash />} label="הוסרו מהמלאי" value={removedCount} />
-        {priced.length > 0 && <KpiCard icon={<IcMoney />} label="סך ההשקעה" value={fmtMoney(totalInvestment)} />}
+        <KpiCard icon={<IcBox />} label="סך הכול פריטים" value={totalItems} valueSize={32} />
+        <KpiCard icon={<IcTag />} label="קטגוריות" value={categoriesCount} valueSize={32} />
+        <KpiCard icon={<IcPlus />} label="נוספו החודש" value={addedThisMonth} valueSize={32} />
+        <KpiCard icon={<IcTrash />} label="הוסרו מהמלאי" value={removedCount} valueSize={32} />
+        {priced.length > 0 && <KpiCard icon={<IcMoney />} label="סך ההשקעה" value={fmtMoney(totalInvestment)} valueSize={26} />}
       </div>
 
       {/* ── Search + status filter ── */}
@@ -396,29 +363,19 @@ export default function RedFilmsEquipment() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="חיפוש ציוד..."
-          style={{ ...INPUT_S, maxWidth: 280, flex: "1 1 220px" }}
+          style={{
+            ...INPUT_S, background: RF.panel, border: `1px solid ${RF.border}`,
+            maxWidth: 280, flex: "1 1 220px", transition: "border-color 0.15s",
+          }}
+          onFocus={e => { e.currentTarget.style.borderColor = "rgba(220,38,38,0.55)"; }}
+          onBlur={e => { e.currentTarget.style.borderColor = RF.border; }}
         />
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-          {(["קיים", "הוסר מהמלאי", "הכל"] as const).map(f => {
-            const on = statusFilter === f;
-            return (
-              <button
-                key={f}
-                onClick={() => setStatusFilter(f)}
-                style={{
-                  padding: "8px 20px", borderRadius: 999, fontSize: 13.5, fontWeight: 700,
-                  cursor: "pointer", fontFamily: "inherit", border: "1px solid",
-                  background:  on ? "rgba(220,38,38,0.15)" : "rgba(255,255,255,0.03)",
-                  color:       on ? "#FCA5A5" : "#78787F",
-                  borderColor: on ? "rgba(220,38,38,0.6)" : "rgba(255,255,255,0.08)",
-                  boxShadow:   on ? "0 0 16px rgba(220,38,38,0.3)" : "none",
-                  transition: "all 0.15s",
-                }}
-              >
-                {f}
-              </button>
-            );
-          })}
+          {(["קיים", "הוסר מהמלאי", "הכל"] as const).map(f => (
+            <button key={f} onClick={() => setStatusFilter(f)} style={filterChip(statusFilter === f)}>
+              {f}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -426,13 +383,13 @@ export default function RedFilmsEquipment() {
       {loading ? (
         <div style={{ color: "#555", fontSize: 13, padding: "40px 0", textAlign: "center" }}>טוען ציוד...</div>
       ) : visible.length === 0 ? (
-        <div style={{ background: "linear-gradient(180deg, rgba(24,24,29,0.6), rgba(17,17,20,0.6))", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 18, padding: "48px 24px", textAlign: "center" }}>
+        <div style={{ background: RF.panel, border: `1px dashed ${RF.border}`, borderRadius: 16, padding: "48px 24px", textAlign: "center" }}>
           <div style={{ fontSize: 34, marginBottom: 12 }}>🎥</div>
-          <div style={{ fontSize: 15, color: "#9A9AA2", fontWeight: 700, marginBottom: 6 }}>
+          <div style={{ fontSize: 15, color: RF.text, fontWeight: 700, marginBottom: 6 }}>
             {items.length === 0 ? "אין עדיין ציוד רשום" : "אין פריטים תואמים"}
           </div>
           {items.length === 0 && (
-            <div style={{ fontSize: 13, color: "#6E6E76" }}>לחץ "+ הוסף ציוד" כדי להתחיל</div>
+            <div style={{ fontSize: 13, color: RF.textMute }}>לחץ "+ הוסף ציוד" כדי להתחיל</div>
           )}
         </div>
       ) : isMobile ? (
@@ -440,9 +397,9 @@ export default function RedFilmsEquipment() {
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           {visible.map(item => (
             <div key={item.id} style={{
-              background: "linear-gradient(165deg, rgba(26,17,18,0.9), rgba(16,12,13,0.92))",
-              border: `1px solid ${RED}24`, borderRadius: 16, padding: "14px 15px",
-              boxShadow: "0 8px 26px rgba(0,0,0,0.36), 0 0 18px rgba(220,38,38,0.05)",
+              background: RF.panel,
+              border: `1px solid ${RF.border}`, borderRadius: 14, padding: "14px 15px",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.3)",
             }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
                 <div style={{ minWidth: 0 }}>
@@ -457,8 +414,8 @@ export default function RedFilmsEquipment() {
                 <span>מי הוסיף: {item.added_by}</span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => setModalItem(item)} style={{ flex: 1, padding: "8px 0", borderRadius: 9, background: "rgba(220,38,38,0.12)", border: "1px solid rgba(220,38,38,0.42)", color: "#FCA5A5", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>ערוך</button>
-                <button onClick={() => setStatusConfirm(item)} style={{ flex: 1, padding: "8px 0", borderRadius: 9, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "#9A9AA2", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                <button onClick={() => setModalItem(item)} style={{ ...neutralBtn, flex: 1, padding: "8px 0", borderRadius: 9, fontSize: 12.5, fontWeight: 700 }}>ערוך</button>
+                <button onClick={() => setStatusConfirm(item)} style={{ ...neutralBtn, flex: 1, padding: "8px 0", borderRadius: 9, fontSize: 12.5, fontWeight: 700 }}>
                   {item.status === "קיים" ? "הסר מהמלאי" : "שחזר למלאי"}
                 </button>
               </div>
@@ -466,16 +423,11 @@ export default function RedFilmsEquipment() {
           ))}
         </div>
       ) : (
-        <div style={{
-          background: "linear-gradient(180deg, rgba(24,16,17,0.72), rgba(15,12,13,0.8))",
-          border: `1px solid ${RED}1F`, borderRadius: 18, overflow: "hidden",
-          boxShadow: "0 14px 44px rgba(0,0,0,0.42), 0 0 14px rgba(220,38,38,0.035)",
-        }}>
+        <div style={tableShell}>
           {/* Table header */}
           <div style={{
-            display: "grid", gridTemplateColumns: COL, gap: 0, padding: "16px 24px",
-            background: "rgba(220,38,38,0.04)", borderBottom: `1px solid ${RED}1F`,
-            fontSize: 12, color: "#847072", fontWeight: 700, letterSpacing: "0.01em", alignItems: "center",
+            ...tableHeaderBar,
+            display: "grid", gridTemplateColumns: COL, gap: 0, padding: "16px 24px", alignItems: "center",
           }}>
             {["שם הציוד", "קטגוריה", "כמות", "תאריך קנייה / הוספה", "מחיר קנייה", "סטטוס", "מי הוסיף", "פעולות"].map((h, i) => (
               <div key={i} style={{ paddingRight: i > 0 ? 8 : 0, textAlign: i === 0 ? "start" : "center" }}>{h}</div>
@@ -504,14 +456,14 @@ export default function RedFilmsEquipment() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 <button
                   onClick={() => setModalItem(item)}
-                  style={{ padding: "6px 12px", borderRadius: 8, background: "rgba(220,38,38,0.12)", border: "1px solid rgba(220,38,38,0.42)", color: "#FCA5A5", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ ...neutralBtn, padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700 }}
                 >
                   ערוך
                 </button>
                 <button
                   onClick={() => setStatusConfirm(item)}
                   title={item.status === "קיים" ? "הסר מהמלאי" : "שחזר למלאי"}
-                  style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#9A9AA2", cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ ...neutralBtn, width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: RF.textSub }}
                 >
                   {item.status === "קיים" ? <IcTrash /> : "↺"}
                 </button>
