@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import RedFilmsStatusBadge, { PRODUCTION_TYPES, PRODUCTION_STATUSES } from "./RedFilmsStatusBadge";
 import type { Production } from "./RedFilmProductionDrawer";
+import RedFilmsEquipment from "./RedFilmsEquipment";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -373,6 +374,9 @@ export default function RedFilmsPage() {
   const [filter,      setFilter]      = useState<"פעילות" | "מבוטלות" | "הכל">("פעילות");
   const [isMobile,    setIsMobile]    = useState(false);
   const [openMenuId,  setOpenMenuId]  = useState<string | null>(null);
+  // Internal tabs — "הפקות" (default, the existing page unchanged) / "ציוד"
+  // (new inventory tab, see RedFilmsEquipment.tsx). Sidebar/route untouched.
+  const [tab, setTab] = useState<"הפקות" | "ציוד">("הפקות");
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -537,23 +541,53 @@ export default function RedFilmsPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setCreatingNew(true)}
-          style={{
-            padding: isMobile ? "12px 22px" : "14px 26px", borderRadius: 13,
-            background: "linear-gradient(135deg, #EF4444, #B91C1C)",
-            border: "1px solid rgba(248,113,113,0.4)", color: "#FFF", fontSize: isMobile ? 14 : 15, fontWeight: 800,
-            cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
-            boxShadow: "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.22)",
-            transition: "transform 0.12s, box-shadow 0.15s",
-          }}
-          onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 0 22px rgba(220,38,38,0.42), 0 8px 22px rgba(220,38,38,0.3)"; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.22)"; }}
-        >
-          + הפקה חדשה
-        </button>
+        {tab === "הפקות" && (
+          <button
+            onClick={() => setCreatingNew(true)}
+            style={{
+              padding: isMobile ? "12px 22px" : "14px 26px", borderRadius: 13,
+              background: "linear-gradient(135deg, #EF4444, #B91C1C)",
+              border: "1px solid rgba(248,113,113,0.4)", color: "#FFF", fontSize: isMobile ? 14 : 15, fontWeight: 800,
+              cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+              boxShadow: "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.22)",
+              transition: "transform 0.12s, box-shadow 0.15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 0 22px rgba(220,38,38,0.42), 0 8px 22px rgba(220,38,38,0.3)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 0 16px rgba(220,38,38,0.3), 0 6px 18px rgba(220,38,38,0.22)"; }}
+          >
+            + הפקה חדשה
+          </button>
+        )}
       </div>
 
+      {/* ── Internal tabs — הפקות (default) / ציוד ── */}
+      <div style={{ display: "flex", gap: isMobile ? 7 : 10, marginBottom: 24 }}>
+        {(["הפקות", "ציוד"] as const).map(tb => {
+          const active = tb === tab;
+          return (
+            <button
+              key={tb}
+              onClick={() => setTab(tb)}
+              style={{
+                fontSize: isMobile ? 12.5 : 13.5, fontWeight: active ? 800 : 600, fontFamily: "inherit", cursor: "pointer",
+                padding: isMobile ? "7px 16px" : "10px 22px", borderRadius: isMobile ? 10 : 12, whiteSpace: "nowrap",
+                background: active ? "linear-gradient(180deg, rgba(220,38,38,0.22), rgba(220,38,38,0.10))" : "#141415",
+                border: `1px solid ${active ? "rgba(220,38,38,0.55)" : "rgba(255,255,255,0.08)"}`,
+                color: active ? "#FF6B6B" : "#78787F",
+                boxShadow: active ? "0 4px 16px rgba(220,38,38,0.22)" : "none",
+                transition: "all .16s",
+              }}
+            >
+              {tb}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "ציוד" ? (
+        <RedFilmsEquipment />
+      ) : (
+      <>
       {/* ── KPI cards ── */}
       <div style={{
         display: "grid",
@@ -914,6 +948,8 @@ export default function RedFilmsPage() {
           onCreate={handleCreated}
           projects={projects}
         />
+      )}
+      </>
       )}
 
       </div>{/* /header-glow layer */}
