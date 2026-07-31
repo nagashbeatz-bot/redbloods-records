@@ -179,6 +179,20 @@ export async function register() {
     }
   }, { timezone: TZ });
 
+  // ── Steven mix-notes reminder — every 4h after the owner clicks "Send
+  // notes" (lib/steven-notes-notify.ts) until Steven uploads a new mix
+  // version for that same work. Same every-minute-tick pattern as the jobs
+  // above; the cadence/dedup guard is the atomic DB claim inside the job
+  // itself (lib/steven-mix-reminder-notify.ts).
+  cron.schedule("* * * * *", async () => {
+    try {
+      const { runStevenMixReminderTick } = await import("@/lib/steven-mix-reminder-notify");
+      await runStevenMixReminderTick(new Date());
+    } catch (err) {
+      console.error("[steven-mix-reminder] cron tick failed:", err);
+    }
+  }, { timezone: TZ });
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }

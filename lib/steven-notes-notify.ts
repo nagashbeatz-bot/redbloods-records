@@ -58,5 +58,15 @@ export async function notifyStevenMixNotes(
   // ── Steven — byte-identical to before: NO projectId / entity / actor ──
   await sendPushToRoles(["steven"], { title, body, url, tag });
 
+  // ── Start (or restart) the "remind Steven every 4h until he uploads a new
+  // version" cycle for this work — see lib/steven-mix-reminder-notify.ts.
+  // Never breaks this function's own (already-sent) immediate push either way.
+  try {
+    const { startOrResetReminderCycle } = await import("@/lib/steven-mix-reminder-notify");
+    await startOrResetReminderCycle(work.id);
+  } catch (err) {
+    console.error(`[steven-mix-reminder] failed to start cycle for work ${work.id}:`, err);
+  }
+
   return { ok: true, sent: true };
 }
