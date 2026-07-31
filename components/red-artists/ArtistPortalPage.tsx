@@ -22,7 +22,7 @@ import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycle
 // Set ONCE by the top-level ArtistPortalPage component and read via
 // usePortalContext() everywhere else — avoids prop-drilling through every
 // intermediate card/modal component in this large file.
-interface PortalCtx { apiBase: string; artistName: string; isCleantone?: boolean }
+interface PortalCtx { apiBase: string; artistName: string; isCleantonePortal?: boolean }
 const PortalApiContext = createContext<PortalCtx>({ apiBase: "/api/red-artists", artistName: "שליו טסמה" });
 function usePortalContext(): PortalCtx {
   return useContext(PortalApiContext);
@@ -215,6 +215,7 @@ const linkBtn: React.CSSProperties = {
 // "שליו טסמה" is one of those tokens — this catches solo AND collaborations,
 // while still requiring the FULL name (never a loose "שליו" substring).
 const SHALEV_ARTIST = "שליו טסמה";
+const CLEANTONE_ARTIST_NAME = "DJ CLEANTONE";
 const normName = (s: string) => (s ?? "").trim().replace(/\s+/g, " ");
 function artistTokens(artist: string): string[] {
   return (artist ?? "").split(/[,،;]/).map(normName).filter(Boolean);
@@ -394,12 +395,21 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const role = liveRole ?? initialRole ?? null;
   const isShalev = role === "shalev";
   const isOwner = role === "owner";
-  // DJ CLEANTONE — a 5th, deliberately minimal role: only "בית" + "ההופעות שלי"
-  // are ever reachable (see visibleTabs below), and none of the sketches/ledger/
-  // next-work/next-release/availability fetches below are relevant to him (his
-  // own data comes from a separate cleantone-summary fetch further down) — each
-  // is explicitly guarded so his session never calls Shalev/owner-scoped routes.
-  const isCleantone = role === "cleantone";
+  const isCleantone = role === "cleantone"; // the VIEWER's own role — only true for his real session
+  // Real display name for greeting/avatar-caption/labels — never hardcoded to
+  // Shalev downstream. Falls back to his name only for his own /red-artists
+  // session (artistNameProp is never passed there). Computed early (moved up
+  // from further below) because isCleantonePortal needs it immediately.
+  const artistName = artistNameProp ?? SHALEV_ARTIST;
+  // DJ CLEANTONE — a 5th, deliberately minimal portal: only "בית" + "ההופעות
+  // שלי" are ever reachable (see visibleTabs below), and none of the sketches/
+  // ledger/next-work/next-release/avatar fetches below are relevant to it.
+  // Gated on WHICH ARTIST'S PORTAL this is (artistName), NOT on the viewer's
+  // role — the owner previewing DJ CLEANTONE via /label/artists/[id] (role
+  // "owner", not "cleantone") must see the exact same restricted portal as
+  // DJ CLEANTONE's own session; isCleantone (role) alone would miss that
+  // preview case entirely, which is exactly the bug this fixes.
+  const isCleantonePortal = isCleantone || artistName === CLEANTONE_ARTIST_NAME;
 
   // Entry beacon — fires once per real app session (a fresh tab, or the app
   // reopened after being fully closed), never on a reload or in-app navigation
@@ -421,7 +431,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // hidden tab client-side either (the real security boundary is still
   // server-side: isCleantoneAllowedPath in proxy.ts blocks the underlying APIs
   // regardless of what tab state the client thinks it's on).
-  const visibleTabs: readonly Tab[] = isCleantone ? (["בית", "ההופעות שלי"] as const) : TABS;
+  const visibleTabs: readonly Tab[] = isCleantonePortal ? (["בית", "ההופעות שלי"] as const) : TABS;
 
   // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
   // same tab and Back/Forward work. Initial state is the default (server + first
@@ -470,20 +480,17 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // this can never misfire the other way.
   const apiBase = artistId ? `/api/label/artists/${artistId}` : "/api/red-artists";
   const summaryUrl = artistId ? `/api/label/artists/${artistId}/summary` : "/api/red-artists/shalev-summary";
-  // Real display name for greeting/avatar-caption/labels — never hardcoded to
-  // Shalev downstream. Falls back to his name only for his own /red-artists
-  // session (artistNameProp is never passed there).
-  const artistName = artistNameProp ?? SHALEV_ARTIST;
+  // (artistName is now defined earlier, right after isCleantonePortal needs it)
 
   const reloadSketches = useCallback(async () => {
-    if (isCleantone) return; // no music tab for him — never call apiBase's (Shalev-scoped) sketches route
+    if (isCleantonePortal) return; // no music tab for him — never call apiBase's (Shalev-scoped) sketches route
     try {
       const r = await fetch(`${apiBase}/sketches`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok && Array.isArray(d.sketches)) { setSketches(d.sketches); setLibState("ready"); }
       else setLibState("error");
     } catch { setLibState("error"); }
-  }, [apiBase, isCleantone]);
+  }, [apiBase, isCleantonePortal]);
   useEffect(() => { void reloadSketches(); }, [reloadSketches]);
 
   // Persist a new library order. The client sends ids only; the server is the
@@ -508,7 +515,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [summary, setSummary] = useState<ShalevSummary | null>(null);
   const [summaryState, setSummaryState] = useState<LoadState>("loading");
   const reloadSummary = useCallback(() => {
-    if (isCleantone) return; // his own summary is fetched separately below (cleantoneSummary)
+    if (isCleantonePortal) return; // his own summary is fetched separately below (cleantoneSummary)
     fetch(summaryUrl)
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
@@ -516,7 +523,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         else setSummaryState("error");
       })
       .catch(() => setSummaryState("error"));
-  }, [summaryUrl, isCleantone]);
+  }, [summaryUrl, isCleantonePortal]);
   useEffect(() => { reloadSummary(); }, [reloadSummary]);
   // A session created/deleted anywhere (e.g. via the schedule page's "קבע סשן"
   // button, which opens the SAME global quick-actions modal) should refresh
@@ -535,7 +542,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [cleantoneSummary, setCleantoneSummary] = useState<CleantoneSummary | null>(null);
   const [cleantoneState, setCleantoneState] = useState<LoadState>("loading");
   const reloadCleantoneSummary = useCallback(() => {
-    if (!isCleantone) return;
+    if (!isCleantonePortal) return;
     fetch("/api/red-artists/cleantone-summary")
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
@@ -543,7 +550,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         else setCleantoneState("error");
       })
       .catch(() => setCleantoneState("error"));
-  }, [isCleantone]);
+  }, [isCleantonePortal]);
   useEffect(() => { reloadCleantoneSummary(); }, [reloadCleantoneSummary]);
 
   // Owner-only balance ledger — the manual, independent per-artist ledger. Replaces
@@ -552,6 +559,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const [ledger, setLedger] = useState<BalanceLedger | null>(null);
   const [ledgerState, setLedgerState] = useState<LoadState>("loading");
   const reloadLedger = useCallback(async () => {
+    if (isCleantonePortal) return; // no מאזן tab for him — not even owner-preview
     // Owner reads the label endpoint (needs the artist id); shalev reads his own
     // scoped, READ-ONLY endpoint (artist resolved server-side, no id needed).
     const url = isShalev ? "/api/red-artists/balance" : (isOwner && artistId ? `/api/label/artists/${artistId}/balance` : null);
@@ -562,31 +570,31 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
       if (r.ok && d?.ok) { setLedger({ entries: d.entries ?? [], totals: d.totals }); setLedgerState("ready"); }
       else setLedgerState("error");
     } catch { setLedgerState("error"); }
-  }, [isOwner, isShalev, artistId]);
+  }, [isOwner, isShalev, artistId, isCleantonePortal]);
   useEffect(() => { void reloadLedger(); }, [reloadLedger]);
 
   const [nextWork, setNextWork] = useState<PortalWork | null>(null);
   const reloadNextWork = useCallback(async () => {
-    if (isCleantone) return; // no music/work tab for him
+    if (isCleantonePortal) return; // no music/work tab for him
     try {
       const r = await fetch(`${apiBase}/next-work`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) setNextWork(d.work ?? null);
     } catch { /* leave as-is — the home page never breaks */ }
-  }, [apiBase, isCleantone]);
+  }, [apiBase, isCleantonePortal]);
   useEffect(() => { void reloadNextWork(); }, [reloadNextWork]);
 
   // The nearest today-or-future release from the label pipeline — computed
   // server-side (never a manual pointer); read-only here, see PortalRelease.
   const [nextRelease, setNextRelease] = useState<PortalRelease | null>(null);
   const reloadNextRelease = useCallback(async () => {
-    if (isCleantone) return; // no releases tab for him
+    if (isCleantonePortal) return; // no releases tab for him
     try {
       const r = await fetch(`${apiBase}/next-release`, { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok) setNextRelease(d.release ?? null);
     } catch { /* leave as-is — the home page never breaks */ }
-  }, [apiBase, isCleantone]);
+  }, [apiBase, isCleantonePortal]);
   useEffect(() => { void reloadNextRelease(); }, [reloadNextRelease]);
 
   // Learn-and-save duration into the SKETCH MANIFEST (never Projects): once the
@@ -685,7 +693,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   }, [setTab]);
 
   return (
-    <PortalApiContext.Provider value={{ apiBase, artistName, isCleantone }}>
+    <PortalApiContext.Provider value={{ apiBase, artistName, isCleantonePortal }}>
       {showMandatoryAvailabilityModal && <MandatoryAvailabilityModal onSend={handleMandatoryAvailabilitySend} />}
     <div dir="rtl" style={{ minHeight: "100%", background: "#0A0A0B", color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", overflowX: "hidden", padding: isMobile ? "18px 12px 28px" : "30px 24px 140px" }}>
       {/* Centered premium island — intentionally NOT full-width (black breathing room around) */}
@@ -777,7 +785,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
             position, so React reuses the instance across tabs and the avatar
             never remounts/reloads (no "ש" flash on tab switch). Content varies. */}
         {tab === "בית" ? (
-          isCleantone ? (
+          isCleantonePortal ? (
             <PortalHero title={`ברוך הבא, ${artistName}`} emoji="👋" subtitle="כאן תמצא את פרטי ההופעות שלך ותוכל לאשר אותן.">
               <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
@@ -812,13 +820,13 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
 
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? (
-            isCleantone
+            isCleantonePortal
               ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} />
               : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
           )
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
             : tab === "ההופעות שלי" ? (
-              isCleantone
+              isCleantonePortal
                 ? <CleantoneShowsPage summary={cleantoneSummary} loadState={cleantoneState} onReload={reloadCleantoneSummary} />
                 : <ShowsPage summary={summary} loadState={summaryState} isOwner={isOwner} />
             )
@@ -4242,7 +4250,7 @@ function clearAvatarEdit(apiBase: string) {
 type SaveMeta = { zoom: number; offset: { x: number; y: number }; originalFile: File | null; originalFileName: string | null };
 
 function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
-  const { apiBase, artistName, isCleantone } = usePortalContext();
+  const { apiBase, artistName } = usePortalContext();
   const initialCache = getAvatarCache(apiBase);
   const [path, setPath]   = useState<string | null>(initialCache.path);
   const [ver, setVer]     = useState(initialCache.ver); // cache-bust after re-upload (overwrites same path)
@@ -4275,11 +4283,13 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
   // the initial letter for an artist who already has a photo. READ-ONLY GET;
   // artist-scoped by apiBase, so it can never surface another artist's image.
   useEffect(() => {
-    // DJ CLEANTONE has no /profile-image route (out of scope — no avatar
-    // upload for him) and `apiBase` resolves to Shalev's scoped prefix on his
-    // own session, which isCleantoneAllowedPath correctly blocks — skip the
-    // call entirely rather than let it fail against the auth gate every load.
-    if (isCleantone) return;
+    // DJ CLEANTONE's OWN session has no artistId prop, so apiBase falls back
+    // to the bare "/api/red-artists" default (Shalev's scoped prefix) — which
+    // isCleantoneAllowedPath correctly blocks for him. Skip the call only in
+    // THIS exact case; the owner-preview route (artistId set → a real
+    // /api/label/artists/[id]/profile-image) is unaffected and still fetches
+    // normally — his avatar is part of the HERO the owner-preview keeps.
+    if (artistName === CLEANTONE_ARTIST_NAME && apiBase === "/api/red-artists") return;
     let alive = true;
     fetch(`${apiBase}/profile-image`)
       .then((r) => (r.ok ? r.json() : null))
@@ -4299,7 +4309,7 @@ function ArtistAvatar({ canEdit = false }: { canEdit?: boolean }) {
       })
       .catch(() => { /* keep the instant local/cache fallback */ });
     return () => { alive = false; };
-  }, [apiBase, isCleantone]);
+  }, [apiBase, artistName]);
 
   // Editing is only allowed from the home tab. If the tab changes while the
   // editor is open (canEdit → false), close it so it can't linger elsewhere.
