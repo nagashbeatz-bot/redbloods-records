@@ -1,13 +1,13 @@
 /**
  * Schedule validation rules — pure, no googleapis, safe for client & server.
  *
- * Working hours: Sunday–Thursday, 10:00–20:00 (Israel).
+ * Working hours: Sunday–Thursday, 10:00–23:00 (Israel).
  * Slot granularity: every 30 minutes.
  * Buffer: 30 min gap before/after sessions & rehearsals.
  */
 
 export const WORK_START_H  = 10;   // inclusive
-export const WORK_END_H    = 20;   // exclusive upper bound (events must END by 20:00)
+export const WORK_END_H    = 23;   // exclusive upper bound (events must END by 23:00) — so 22:00 itself remains a selectable START time for a 1h session (start = WORK_END_H − duration)
 export const WORK_DAYS     = [0, 1, 2, 3, 4]; // Sun=0 … Thu=4
 export const SLOT_STEP_MIN = 30;
 export const BUFFER_MIN    = 30;
