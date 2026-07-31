@@ -10,7 +10,10 @@ import { CLEANTONE_CLIENT_ID } from "@/lib/red-artists/cleantone";
  * that field is display-only). Unlike shalev-summary, money IS returned here:
  * dj_fee is literally DJ CLEANTONE's own fee, not another artist's finances.
  * Cancelled shows (בוטל) are excluded — nothing for him to act on there.
- * Nothing here writes: no transactions, no shows, no Finance sync.
+ * shows.notes is intentionally NEVER returned — it's an internal free-text
+ * field (payment/approval/coordination history), not DJ-facing content; the
+ * UI has nowhere to show it either. Nothing here writes: no transactions, no
+ * shows, no Finance sync.
  */
 export async function GET() {
   const denied = await requireCleantoneAccess();
@@ -30,7 +33,6 @@ export async function GET() {
       djFee: s.dj_fee,
       status: s.status,
       confirmationStatus: s.dj_confirmation_status,
-      notes: s.notes,
     });
 
     const upcoming = mine

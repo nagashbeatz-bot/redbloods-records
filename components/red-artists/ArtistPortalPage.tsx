@@ -280,10 +280,13 @@ type LoadState = "loading" | "ready" | "error";
 // From GET /api/red-artists/cleantone-summary. Unlike PortalShow, money IS
 // included (djFee is his own fee) and confirmationStatus is his own DJ-side
 // confirmation — completely separate from the show's general `status`.
+// notes intentionally NOT included — shows.notes is an internal free-text
+// field (payment/approval/coordination history) that must never reach a
+// supplier-facing portal, not even truncated. See lib/red-artists/cleantone.ts.
 export type CleantoneShow = {
   id: string; name: string; artist: string; date: string | null; startTime: string | null;
   location: string; djFee: number; status: string;
-  confirmationStatus: "ממתין לאישור" | "אושר" | null; notes: string;
+  confirmationStatus: "ממתין לאישור" | "אושר" | null;
 };
 export type CleantoneSummary = { shows: { upcoming: CleantoneShow[]; done: CleantoneShow[] }; updates: PortalUpdate[] };
 
@@ -2509,7 +2512,6 @@ function CleantoneShowRow({ show, isMobile, onConfirmed }: {
         <span>{show.location || "—"}</span>
         <span style={{ fontWeight: 800, color: TEXT }}>{fmtMoney(show.djFee)}</span>
       </div>
-      {show.notes && <div style={{ fontSize: 12.5, color: TEXT2 }}>{show.notes}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
         {show.confirmationStatus === "ממתין לאישור" ? (
           <>
