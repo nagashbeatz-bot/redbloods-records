@@ -274,6 +274,7 @@ const TR = {
     payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם", payDateTitle: "תאריך תשלום", payDateField: "תאריך תשלום",
     noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולות", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
+    tabActiveJobs: "עבודות פעילות", tabJobsHistory: "היסטוריית עבודות", jobsSearchPh: "חיפוש לפי שם פרויקט…", filterAllTypes: "כל סוגי העבודה", noJobsHistory: "אין עדיין עבודות בהיסטוריה", noJobsFiltered: "לא נמצאו עבודות תואמות",
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
     openDropbox: "📦 פתח בדרופבוקס", jobDetails: "פרטי עבודה", agreedPrice: "מחיר שסוכם",
     mixInstructions: "הוראות למיקס", mixInstructionsSub: "מה שסטיבן צריך לדעת לפני שהוא מתחיל", mixInstructionsPh: "כתוב כאן הוראות למיקס — רפרנסים, דגשים על ווקאל/פזמון, מאסטרינג לסטרימינג...", saveInstructions: "שמור הוראות", instructionsSaved: "ההוראות נשמרו",
@@ -334,6 +335,7 @@ const TR = {
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid", payDateTitle: "Payment date", payDateField: "Payment date",
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Work", noJobs: "No Steven jobs yet",
+    tabActiveJobs: "Active Jobs", tabJobsHistory: "Jobs History", jobsSearchPh: "Search by project name…", filterAllTypes: "All work types", noJobsHistory: "No jobs in history yet", noJobsFiltered: "No matching jobs found",
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
     openDropbox: "📦 Open in Dropbox", jobDetails: "Job Details", agreedPrice: "Agreed Price",
     mixInstructions: "Mix Instructions", mixInstructionsSub: "What Steven needs to know before starting", mixInstructionsPh: "Write mix instructions here — references, vocal/chorus focus, streaming-ready master...", saveInstructions: "Save instructions", instructionsSaved: "Instructions saved",
@@ -767,6 +769,12 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const [dragId, setDragId]   = useState<string | null>(null); // row being dragged
   const [overId, setOverId]   = useState<string | null>(null); // current drop target
   const [hoverId, setHoverId] = useState<string | null>(null); // row under cursor (glow)
+  // Active/History jobs tabs — history is strictly status="הושלם" AND pay="שולם"
+  // (both together); everything else (incl. cancelled) stays under Active. Search
+  // + work-type filter apply to whichever tab is showing.
+  const [jobsTab, setJobsTab] = useState<"active" | "history">("active");
+  const [jobsSearch, setJobsSearch] = useState("");
+  const [jobsTypeFilter, setJobsTypeFilter] = useState<WorkType | "">("");
   // Signed-in role — derived from `clientRole ?? initialRole` so it's correct on the
   // VERY FIRST render (SSR + hydration), before useRole()'s /api/me resolves. We key
   // off `=== "steven"` (never `!isOwner`), so an unknown/null role is NON-owner and
@@ -970,10 +978,33 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // Open = not completed and not cancelled (same "open" rule as the Victor page /
   // the /team dashboard). Previously "עבודות פתוחות" showed the TOTAL job count.
   const open    = works.filter(w => w.status !== "הושלם" && w.status !== "בוטל").length;
-  const active  = works.filter(w => w.status === "פעיל").length;
-  const done    = works.filter(w => w.status === "הושלם").length;
   const debt    = works.reduce((s, w) => s + Math.max(0, w.price - w.amountPaid), 0);
   const paidSum = works.reduce((s, w) => s + w.amountPaid, 0);
+
+  // History = BOTH status "הושלם" AND pay "שולם" together. Anything short of
+  // that (incl. cancelled jobs) stays under Active — matches the KPI cards too.
+  const isHistoryWork = (w: Work) => w.status === "הושלם" && w.pay === "שולם";
+  const activeWorksAll  = works.filter(w => !isHistoryWork(w));
+  const historyWorksAll = works.filter(isHistoryWork);
+  const active = activeWorksAll.length;
+  const done   = historyWorksAll.length;
+
+  // Search (project name) + work-type filter, applied to whichever tab is open.
+  const jobsSearchNorm = jobsSearch.trim().toLowerCase();
+  function applyJobsFilters(list: Work[]): Work[] {
+    return list.filter(w =>
+      (!jobsSearchNorm || w.project.toLowerCase().includes(jobsSearchNorm)) &&
+      (!jobsTypeFilter || w.workType === jobsTypeFilter)
+    );
+  }
+  // Active tab: filter only, keep the existing manual/DB order untouched.
+  // History tab: filter, then sort by "תאריך סיום" (when it was actually paid —
+  // paymentDate — falling back to deadline for older rows), newest first.
+  const visibleWorks = jobsTab === "active"
+    ? applyJobsFilters(activeWorksAll)
+    : applyJobsFilters(historyWorksAll)
+        .slice()
+        .sort((a, b) => (b.paymentDate ?? b.deadline ?? "").localeCompare(a.paymentDate ?? a.deadline ?? ""));
   // Payment history — paid works, newest payment first (legacy/no-date rows sort last).
   const paidWorks = [...works].filter(w => w.pay === "שולם").sort((a, b) => (b.paymentDate || "").localeCompare(a.paymentDate || ""));
 
@@ -1074,7 +1105,34 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
           <div style={sectionCard}>
-            <div style={cardHead}>{t.soundJobs}</div>
+            <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* Active / History tabs — history is strictly "הושלם"+"שולם" together */}
+              <div style={{ display: "flex", gap: 6, background: CARD2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4, width: "fit-content" }}>
+                {([["active", t.tabActiveJobs, active], ["history", t.tabJobsHistory, done]] as const).map(([k, label, count]) => {
+                  const tabIsActive = jobsTab === k;
+                  return (
+                    <button key={k} type="button" onClick={() => setJobsTab(k)}
+                      style={{
+                        padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer",
+                        fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap",
+                        background: tabIsActive ? BRAND : "transparent",
+                        color: tabIsActive ? "#fff" : TEXT2,
+                      }}>{label} ({count})</button>
+                  );
+                })}
+              </div>
+              {/* Search + work-type filter — same mechanism for both tabs */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input value={jobsSearch} onChange={e => setJobsSearch(e.target.value)} placeholder={t.jobsSearchPh}
+                  style={{ flex: "1 1 180px", minWidth: 140, padding: "7px 11px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                <select value={jobsTypeFilter} onChange={e => setJobsTypeFilter(e.target.value as WorkType | "")}
+                  style={{ padding: "7px 11px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT, fontSize: 12.5, fontFamily: "inherit", outline: "none" }}>
+                  <option value="">{t.filterAllTypes}</option>
+                  <option value="מיקס מאסטרינג">{wtLabel("מיקס מאסטרינג", lang)}</option>
+                  <option value="מאסטרינג">{wtLabel("מאסטרינג", lang)}</option>
+                </select>
+              </div>
+            </div>
             {narrow ? (
               /* Mobile: each job is a self-contained card (no wide desktop table
                  → no horizontal scroll). Same handlers as the table rows. */
@@ -1083,7 +1141,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                   <RowsSkeleton rows={4} height={96} pad="0" />
                 ) : works.length === 0 ? (
                   <div style={{ padding: "34px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</div>
-                ) : works.map(w => (
+                ) : visibleWorks.length === 0 ? (
+                  <div style={{ padding: "34px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{jobsTab === "history" ? t.noJobsHistory : t.noJobsFiltered}</div>
+                ) : visibleWorks.map(w => (
                   <div key={w.id} onClick={() => setOpenId(w.id)} style={{ background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 12, cursor: "pointer", minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
@@ -1145,13 +1205,15 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                     ))
                   ) : works.length === 0 ? (
                     <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
-                  ) : works.map((w, i) => (
+                  ) : visibleWorks.length === 0 ? (
+                    <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{jobsTab === "history" ? t.noJobsHistory : t.noJobsFiltered}</td></tr>
+                  ) : visibleWorks.map((w, i) => (
                     <tr key={w.id}
                       onClick={() => setOpenId(w.id)}
                       onMouseEnter={() => setHoverId(w.id)}
                       onMouseLeave={() => setHoverId(cur => (cur === w.id ? null : cur))}
-                      onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== w.id) setOverId(w.id); } }}
-                      onDrop={e => { if (dragId) { e.preventDefault(); void reorderWorks(dragId, w.id); } setDragId(null); setOverId(null); }}
+                      onDragOver={e => { if (dragId && jobsTab === "active") { e.preventDefault(); if (overId !== w.id) setOverId(w.id); } }}
+                      onDrop={e => { if (dragId && jobsTab === "active") { e.preventDefault(); void reorderWorks(dragId, w.id); } setDragId(null); setOverId(null); }}
                       style={{
                         borderTop: overId === w.id && dragId ? `2px solid ${BRAND}` : `1px solid ${BDR}`,
                         background: dragId === w.id ? "rgba(220,38,38,0.05)" : hoverId === w.id ? "rgba(220,38,38,0.08)" : (i % 2 ? "rgba(255,255,255,0.01)" : "transparent"),
@@ -1160,8 +1222,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                         transition: "background 0.12s ease",
                       }}>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "0 4px", textAlign: "center", width: 26 }}>
-                        {/* Reorder handle — owner only. */}
-                        {!isSteven && <span
+                        {/* Reorder handle — owner only, and only meaningful on the
+                            Active tab (History is date-sorted, not manually ordered). */}
+                        {!isSteven && jobsTab === "active" && <span
                           draggable
                           onDragStart={e => { setDragId(w.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", w.id); } catch {} }}
                           onDragEnd={() => { setDragId(null); setOverId(null); }}
