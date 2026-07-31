@@ -2240,7 +2240,14 @@ function BalanceDeleteModal({ artistId, entry, onClose, onDeleted }: {
 // financials live ONLY in the מאזן tab. Read-only view: Shalev never creates,
 // edits or deletes a show here (Red Artists is view-only — see
 // [[redbloods-red-artists-boundary]]).
-type Show = { id: string; name: string; date: string; time: string; location: string; status: string };
+// artist/djFee/confirmationStatus are OPTIONAL and only ever populated (via
+// toCleantoneShowRow below) for DJ CLEANTONE's portal — every existing caller
+// (Shalev/Avi/owner-preview, via toShowRow) never sets them, so this is a
+// pure additive extension with zero effect on their rendering.
+type Show = {
+  id: string; name: string; date: string; time: string; location: string; status: string;
+  artist?: string; djFee?: number; confirmationStatus?: "ממתין לאישור" | "אושר" | null;
+};
 // Real show statuses (no purple): אושרה=approved green, נסגר=booked blue, בוצע=done grey.
 const SHOW_STATUS_COLOR: Record<string, string> = {
   "אושרה": GREEN,
@@ -2298,17 +2305,83 @@ function NotifyShalevButton({ showId }: { showId: string }) {
   );
 }
 
+// DJ CLEANTONE's own "אישור הופעה" cell — button when pending, green pill
+// once confirmed, "—" for legacy rows (confirmationStatus=NULL). The button
+// only ever renders for 'ממתין לאישור'; after a successful POST the row is
+// patched locally from the SERVER's response (never assumed) via onConfirmed,
+// so the button can never be clicked twice — it's simply gone once local
+// state reflects the confirmed status. Mirrors NotifyShalevButton's pattern.
+function DjConfirmCell({ showId, confirmationStatus, onConfirmed }: {
+  showId: string; confirmationStatus: "ממתין לאישור" | "אושר" | null | undefined;
+  onConfirmed: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const confirm = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/red-artists/cleantone/shows/${showId}/confirm`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (d?.ok && d?.confirmation) { onConfirmed(showId, d.confirmation); setBusy(false); return; }
+      setErr(typeof d?.error === "string" ? d.error : "האישור נכשל");
+    } catch {
+      setErr("שגיאת רשת, נסה שוב");
+    }
+    setBusy(false);
+  };
+
+  if (confirmationStatus === "ממתין לאישור") {
+    return (
+      <button
+        type="button" onClick={confirm} disabled={busy} title={err ?? undefined}
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+          padding: "7px 14px", borderRadius: 10, fontFamily: "inherit", fontSize: 12.5, fontWeight: 800,
+          whiteSpace: "nowrap", cursor: busy ? "default" : "pointer", transition: "all .15s",
+          color: err ? "#F87171" : "#FF8A8A",
+          background: err ? "rgba(248,113,113,0.12)" : "rgba(220,38,38,0.10)",
+          border: `1px solid ${err ? "rgba(248,113,113,0.4)" : "rgba(220,38,38,0.45)"}`,
+          opacity: busy ? 0.75 : 1,
+        }}
+      >{busy ? "מאשר…" : err ? "נסה שוב" : "אשר הופעה"}</button>
+    );
+  }
+  if (confirmationStatus === "אושר") {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: GREEN, background: `${GREEN}18`, border: `1px solid ${GREEN}44`, borderRadius: 999, padding: "5px 13px", whiteSpace: "nowrap" }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
+        אושרה
+      </span>
+    );
+  }
+  return <span style={{ fontSize: 13, color: MUTED }}>—</span>;
+}
+
 // One shows section (הופעות קרובות / הופעות שבוצעו). Desktop = clean grid table,
-// mobile = stacked cards (name / date · time / location / status). NO amounts.
-// `showSendButton` renders the owner-only "שלח" action — only ever passed for
-// the upcoming section (never for done/cancelled shows).
-function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות להצגה כרגע", showSendButton = false, highlightShowId = null }: { title: string; shows: Show[]; isMobile: boolean; emptyText?: string; showSendButton?: boolean; highlightShowId?: string | null }) {
-  const cols = showSendButton
-    ? "minmax(0, 1.4fr) 110px 90px minmax(0, 1.2fr) 110px 90px"
-    : "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
-  const heads = showSendButton
-    ? ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס", ""]
-    : ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
+// mobile = stacked cards (name / date · time / location / status). NO amounts
+// for the default variant. `showSendButton` renders the owner-only "שלח"
+// action — only ever passed for the upcoming section (never for done/
+// cancelled shows). `variant="cleantone"` is the ONLY thing that adds the
+// artist/fee/confirmation columns — omitted (default "default"), Shalev/Avi/
+// owner-preview get the exact same cols/heads/markup as before this existed.
+function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות להצגה כרגע", showSendButton = false, highlightShowId = null, variant = "default", onConfirmed }: {
+  title: string; shows: Show[]; isMobile: boolean; emptyText?: string; showSendButton?: boolean; highlightShowId?: string | null;
+  variant?: "default" | "cleantone";
+  onConfirmed?: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
+}) {
+  const isCleantoneVariant = variant === "cleantone";
+  const cols = isCleantoneVariant
+    ? "minmax(0, 1.2fr) minmax(0, 1fr) 100px 90px minmax(0, 1fr) 90px 100px 130px"
+    : showSendButton
+      ? "minmax(0, 1.4fr) 110px 90px minmax(0, 1.2fr) 110px 90px"
+      : "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
+  const heads = isCleantoneVariant
+    ? ["שם הופעה", "שם האמן", "תאריך", "שעת הופעה", "מיקום", "שכר", "סטטוס", "אישור הופעה"]
+    : showSendButton
+      ? ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס", ""]
+      : ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
   return (
     <div style={panel}>
       {/* section header — title (right, RTL) + red dot to its left */}
@@ -2327,11 +2400,14 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               boxShadow: highlightShowId === s.id ? "0 0 0 2px rgba(220,38,38,0.65), 0 0 34px rgba(220,38,38,0.45)" : "none",
             }}>
               <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>{s.name}</div>
+              {isCleantoneVariant && <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>עבור: {s.artist || "—"}</div>}
               <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4, direction: "ltr", textAlign: "start" }}>{s.date} · {s.time}</div>
               <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 3 }}>{s.location}</div>
-              <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10 }}>
+              {isCleantoneVariant && <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginTop: 3 }}>{fmtMoney(s.djFee ?? 0)}</div>}
+              <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <ShowStatusPill status={s.status} />
                 {showSendButton && <NotifyShalevButton showId={s.id} />}
+                {isCleantoneVariant && onConfirmed && <DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} />}
               </div>
             </div>
           ))}
@@ -2349,11 +2425,14 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               boxShadow: highlightShowId === s.id ? "0 0 0 2px rgba(220,38,38,0.65), 0 0 34px rgba(220,38,38,0.45)" : "none",
             }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, textAlign: "start", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+              {isCleantoneVariant && <div style={{ fontSize: 14, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.artist || "—"}</div>}
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.date}</div>
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
               <div style={{ fontSize: 14.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
+              {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{fmtMoney(s.djFee ?? 0)}</div>}
               <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>
               {showSendButton && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
+              {isCleantoneVariant && onConfirmed && <div style={{ display: "flex", justifyContent: "center" }}><DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} /></div>}
             </div>
           ))}
         </>
@@ -2366,6 +2445,16 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
 // location fall back to "—".
 function toShowRow(s: PortalShow): Show {
   return { id: s.id, name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status };
+}
+
+// Map a CleantoneShow (money + confirmation, no notes) → the SAME display row
+// shape ShowsSection already renders — this is what lets his portal reuse the
+// identical component instead of a separate one.
+function toCleantoneShowRow(s: CleantoneShow): Show {
+  return {
+    id: s.id, name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status,
+    artist: s.artist || "—", djFee: s.djFee, confirmationStatus: s.confirmationStatus,
+  };
 }
 
 function ShowsPage({ summary, loadState, isOwner }: { summary: ShalevSummary | null; loadState: LoadState; isOwner?: boolean }) {
@@ -2420,39 +2509,32 @@ function ShowsPage({ summary, loadState, isOwner }: { summary: ShalevSummary | n
 }
 
 // ── DJ CLEANTONE's own 2 pages (בית + ההופעות שלי) ─────────────────────────────────
-// Deliberately NOT built by conditionally branching HomeDashboard/ShowsPage (which
-// carry sketches/balance/beats/weekly-calendar/availability wiring that doesn't
-// apply to him and would only add risk of a Shalev/Avi regression) — instead these
-// reuse the SAME shared primitives (panel, SectionCard, SchedSection, SchedEmpty,
-// UpdatesList, ShowStatusPill, fmtShowDate, fmtMoney) at the leaf level, wired into
-// the SAME tab mechanism (visibleTabs) as everyone else. See [[project_redbloods_records]].
+// Reuses the EXACT same ShowsSection/ShowStatusPill component Shalev/Avi's
+// ShowsPage renders (variant="cleantone" adds 3 columns; every other artist's
+// call site is untouched) — not a separate table/card design. Deliberately
+// NOT built by conditionally branching HomeDashboard (which carries sketches/
+// balance/beats/weekly-calendar/availability wiring that doesn't apply to him
+// and would only add risk of a Shalev/Avi regression). See [[project_redbloods_records]].
 
 function CleantoneHome({ summary, loadState, onOpenShows }: { summary: CleantoneSummary | null; loadState: LoadState; onOpenShows: () => void }) {
   const isMobile = useIsMobile();
-  const nextShow = summary?.shows.upcoming?.[0] ?? null;
+  // Local mirror so "אשר הופעה" works from Home too (same table = same real
+  // action, not a read-only preview with a dead-looking empty confirm column).
+  const [upcoming, setUpcoming] = useState<Show[]>([]);
+  useEffect(() => { setUpcoming((summary?.shows.upcoming ?? []).map(toCleantoneShowRow)); }, [summary]);
+  const handleConfirmed = (showId: string, confirmation: { status: string; confirmedAt: string | null }) => {
+    setUpcoming((rows) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "אושר" } : r)));
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
-      <SectionCard title="ההופעה הקרובה">
-        {loadState === "loading" ? <SchedEmpty text="טוען…" />
-          : loadState === "error" ? <SchedEmpty text="לא ניתן לטעון כרגע" />
-          : !nextShow ? <SchedEmpty text="אין הופעות קרובות כרגע" />
-          : (
-            <div style={{ padding: isMobile ? "16px" : "20px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: TEXT }}>{nextShow.name}</div>
-                  <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 2 }}>עבור: {nextShow.artist || "—"}</div>
-                </div>
-                <ShowStatusPill status={nextShow.status} />
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 10 : 18, fontSize: 13, color: "#CFCFD6" }}>
-                <span style={{ direction: "ltr" }}>{fmtShowDate(nextShow.date)}{nextShow.startTime ? ` · ${nextShow.startTime}` : ""}</span>
-                <span>{nextShow.location || "—"}</span>
-              </div>
-            </div>
-          )}
-      </SectionCard>
+      {loadState === "loading" ? (
+        <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>
+      ) : loadState === "error" ? (
+        <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון כרגע</div>
+      ) : (
+        <ShowsSection title="הופעות קרובות" shows={upcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" variant="cleantone" onConfirmed={handleConfirmed} />
+      )}
 
       <SchedSection title="עדכונים מהלייבל">
         {loadState === "loading" ? <SchedEmpty text="טוען…" />
@@ -2461,100 +2543,12 @@ function CleantoneHome({ summary, loadState, onOpenShows }: { summary: Cleantone
           : <UpdatesList items={summary!.updates} />}
       </SchedSection>
 
-      <button type="button" onClick={onOpenShows} style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-        padding: "13px 20px", borderRadius: 14, fontFamily: "inherit", fontSize: 14, fontWeight: 800,
-        color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", cursor: "pointer",
-      }}>לכל ההופעות שלי ←</button>
-    </div>
-  );
-}
-
-// One show row — name/artist/date/time/location/fee/status + the DJ-side
-// confirmation state, which is entirely separate from `status`. The "אשר
-// הופעה" button only ever renders when confirmationStatus === 'ממתין לאישור';
-// after a successful POST the row is patched locally from the SERVER's
-// response (never assumed), so it can never show "אושר" without the server
-// having actually said so, and the button can never be clicked twice (it's
-// simply gone once local state reflects the confirmed status).
-function CleantoneShowRow({ show, isMobile, onConfirmed }: {
-  show: CleantoneShow; isMobile: boolean;
-  onConfirmed: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const confirm = async () => {
-    if (busy) return;
-    setBusy(true); setErr(null);
-    try {
-      const res = await fetch(`/api/red-artists/cleantone/shows/${show.id}/confirm`, { method: "POST" });
-      const d = await res.json().catch(() => ({}));
-      if (d?.ok && d?.confirmation) { onConfirmed(show.id, d.confirmation); setBusy(false); return; }
-      setErr(typeof d?.error === "string" ? d.error : "האישור נכשל");
-    } catch {
-      setErr("שגיאת רשת, נסה שוב");
-    }
-    setBusy(false);
-  };
-
-  return (
-    <div id={`rb-cleantone-show-${show.id}`} style={{ padding: isMobile ? "14px 16px" : "18px 22px", borderBottom: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: isMobile ? 15 : 16.5, fontWeight: 800, color: TEXT }}>{show.name}</div>
-          <div style={{ fontSize: 12.5, color: TEXT2, marginTop: 2 }}>עבור: {show.artist || "—"}</div>
-        </div>
-        <ShowStatusPill status={show.status} />
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? 10 : 18, fontSize: 13, color: "#CFCFD6" }}>
-        <span style={{ direction: "ltr" }}>{fmtShowDate(show.date)}{show.startTime ? ` · ${show.startTime}` : ""}</span>
-        <span>{show.location || "—"}</span>
-        <span style={{ fontWeight: 800, color: TEXT }}>{fmtMoney(show.djFee)}</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
-        {show.confirmationStatus === "ממתין לאישור" ? (
-          <>
-            <button
-              type="button" onClick={confirm} disabled={busy} title={err ?? undefined}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, fontFamily: "inherit",
-                fontSize: 13, fontWeight: 800, cursor: busy ? "default" : "pointer", transition: "all .15s",
-                color: err ? "#F87171" : "#FF8A8A",
-                background: err ? "rgba(248,113,113,0.12)" : "rgba(220,38,38,0.10)",
-                border: `1px solid ${err ? "rgba(248,113,113,0.4)" : "rgba(220,38,38,0.45)"}`,
-                opacity: busy ? 0.7 : 1,
-              }}
-            >{busy ? "מאשר…" : err ? "נסה שוב" : "אשר הופעה"}</button>
-            {err && <span style={{ fontSize: 12, color: "#F87171" }}>{err}</span>}
-          </>
-        ) : show.confirmationStatus === "אושר" ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: GREEN }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: GREEN, boxShadow: `0 0 7px ${GREEN}` }} />
-            ההופעה אושרה
-          </span>
-        ) : (
-          <span style={{ fontSize: 12.5, color: MUTED }}>—</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CleantoneShowsSection({ title, shows, isMobile, emptyText, onConfirmed }: {
-  title: string; shows: CleantoneShow[]; isMobile: boolean; emptyText: string;
-  onConfirmed: (showId: string, confirmation: { status: string; confirmedAt: string | null }) => void;
-}) {
-  return (
-    <div style={panel}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 16px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
-        <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT }}>{title}</span>
-        <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
-      </div>
-      {shows.length === 0 ? (
-        <div style={{ padding: "34px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>{emptyText}</div>
-      ) : (
-        shows.map((s) => <CleantoneShowRow key={s.id} show={s} isMobile={isMobile} onConfirmed={onConfirmed} />)
+      {upcoming.length > 0 && (
+        <button type="button" onClick={onOpenShows} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "13px 20px", borderRadius: 14, fontFamily: "inherit", fontSize: 14, fontWeight: 800,
+          color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", cursor: "pointer",
+        }}>לכל ההופעות שלי ←</button>
       )}
     </div>
   );
@@ -2565,15 +2559,15 @@ function CleantoneShowsPage({ summary, loadState, onReload }: { summary: Cleanto
   // Local mirror of the two lists so a confirm click can patch just that one
   // row immediately from the server's response, without waiting on a second
   // round-trip — re-synced whenever a fresh summary arrives.
-  const [localUpcoming, setLocalUpcoming] = useState<CleantoneShow[]>([]);
-  const [localDone, setLocalDone] = useState<CleantoneShow[]>([]);
+  const [localUpcoming, setLocalUpcoming] = useState<Show[]>([]);
+  const [localDone, setLocalDone] = useState<Show[]>([]);
   useEffect(() => {
-    setLocalUpcoming(summary?.shows.upcoming ?? []);
-    setLocalDone(summary?.shows.done ?? []);
+    setLocalUpcoming((summary?.shows.upcoming ?? []).map(toCleantoneShowRow));
+    setLocalDone((summary?.shows.done ?? []).map(toCleantoneShowRow));
   }, [summary]);
 
   const handleConfirmed = (showId: string, confirmation: { status: string; confirmedAt: string | null }) => {
-    const patch = (rows: CleantoneShow[]) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "אושר" } : r));
+    const patch = (rows: Show[]) => rows.map((r) => (r.id === showId ? { ...r, confirmationStatus: confirmation.status as "אושר" } : r));
     setLocalUpcoming(patch);
     setLocalDone(patch);
     onReload(); // reconcile with the server in the background (no-op visually — local state already matches)
@@ -2588,8 +2582,8 @@ function CleantoneShowsPage({ summary, loadState, onReload }: { summary: Cleanto
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
-      <CleantoneShowsSection title="הופעות קרובות" shows={localUpcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" onConfirmed={handleConfirmed} />
-      <CleantoneShowsSection title="הופעות שבוצעו" shows={localDone} isMobile={isMobile} emptyText="אין עדיין הופעות שבוצעו" onConfirmed={handleConfirmed} />
+      <ShowsSection title="הופעות קרובות" shows={localUpcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" variant="cleantone" onConfirmed={handleConfirmed} />
+      <ShowsSection title="הופעות שבוצעו" shows={localDone} isMobile={isMobile} emptyText="אין עדיין הופעות שבוצעו" variant="cleantone" onConfirmed={handleConfirmed} />
     </div>
   );
 }
