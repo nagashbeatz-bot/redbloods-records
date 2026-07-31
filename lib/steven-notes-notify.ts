@@ -58,7 +58,7 @@ export async function notifyStevenMixNotes(
   // ── Steven — byte-identical to before: NO projectId / entity / actor ──
   await sendPushToRoles(["steven"], { title, body, url, tag });
 
-  // ── Start (or restart) the "remind Steven every 4h until he uploads a new
+  // ── Start (or restart) the "remind Steven every 5h until he uploads a new
   // version" cycle for this work — see lib/steven-mix-reminder-notify.ts.
   // Never breaks this function's own (already-sent) immediate push either way.
   try {

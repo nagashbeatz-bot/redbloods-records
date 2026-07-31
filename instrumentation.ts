@@ -179,7 +179,7 @@ export async function register() {
     }
   }, { timezone: TZ });
 
-  // ── Steven mix-notes reminder — every 4h after the owner clicks "Send
+  // ── Steven mix-notes reminder — every 5h after the owner clicks "Send
   // notes" (lib/steven-notes-notify.ts) until Steven uploads a new mix
   // version for that same work. Same every-minute-tick pattern as the jobs
   // above; the cadence/dedup guard is the atomic DB claim inside the job

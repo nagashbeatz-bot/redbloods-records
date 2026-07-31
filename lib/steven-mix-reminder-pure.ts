@@ -1,12 +1,12 @@
 /**
- * Pure logic for the "remind Steven every 4h until he uploads a new mix
+ * Pure logic for the "remind Steven every 5h until he uploads a new mix
  * version" reminder cycle — no "server-only"/Supabase/push imports, testable
  * from a plain tsx script. Mirrors the split used by
  * lib/shalev-availability-reminder-pure.ts / lib/shalev-weekly-pure.ts.
  *
  * A cycle starts when the owner clicks "Send notes" (lib/steven-notes-notify.ts,
- * unchanged — that immediate push is untouched). From then on, every 4 hours
- * (first reminder at cycleStartAt+4h, each next one at lastReminderAt+4h) a
+ * unchanged — that immediate push is untouched). From then on, every 5 hours
+ * (first reminder at cycleStartAt+5h, each next one at lastReminderAt+5h) a
  * reminder fires UNLESS a mix_versions row for the same work has a created_at
  * strictly after cycleStartAt — that stops the cycle immediately (checked
  * fresh on every tick, no separate hook needed in the upload path). A later
@@ -25,7 +25,7 @@ import { decideClaimAction, type ClaimValue, type ClaimResult, type ClaimDecisio
 export { MAX_ATTEMPTS, STUCK_PROCESSING_TIMEOUT_MS, classifyPushResult, decideClaimAction };
 export type { ClaimValue, ClaimResult, ClaimDecision };
 
-export const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+export const REMINDER_INTERVAL_MS = 5 * 60 * 60 * 1000;
 
 /** One settings row per work with an active cycle — key = cycleStateKey(workId). */
 export interface CycleState {
@@ -57,16 +57,16 @@ export function hasNewerVersion(cycleStartAt: string, latestVersionCreatedAt: st
   return Date.parse(latestVersionCreatedAt) > Date.parse(cycleStartAt);
 }
 
-/** True once 4 real hours have elapsed since the last relevant instant — the
+/** True once 5 real hours have elapsed since the last relevant instant — the
  *  cycle's own start for the FIRST reminder, or the previous reminder's ACTUAL
- *  send time for every one after that (not a rigid cycleStartAt+N*4h grid) —
+ *  send time for every one after that (not a rigid cycleStartAt+N*5h grid) —
  *  so a late-firing tick (e.g. after downtime) can never send a burst: once
  *  reminder #1 fires "late", lastReminderAt becomes ~now, and reminder #2's
  *  window only starts counting from THAT real instant. */
 export function isReminderDue(now: Date, cycle: CycleState): boolean {
   const base = cycle.remindersSent === 0 ? cycle.cycleStartAt : cycle.lastReminderAt;
   if (!base) return false; // defensive — never happens by construction (writer always pairs remindersSent>0 with lastReminderAt)
-  return now.getTime() >= Date.parse(base) + FOUR_HOURS_MS;
+  return now.getTime() >= Date.parse(base) + REMINDER_INTERVAL_MS;
 }
 
 export function buildReminderPush(workName: string): { title: string; body: string } {

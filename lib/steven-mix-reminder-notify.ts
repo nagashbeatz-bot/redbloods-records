@@ -4,7 +4,7 @@ import { sendPushToRoles } from "@/lib/push";
 import { listMixVersions } from "@/lib/mix-versions-store";
 import { getSoundEngineerWork, stevenDisplayName } from "@/lib/sound-engineer-store";
 import {
-  FOUR_HOURS_MS,
+  REMINDER_INTERVAL_MS,
   cycleStateKey,
   cycleClaimKey,
   buildReminderPush,
@@ -18,10 +18,10 @@ import {
   type ReminderCycleDeps,
 } from "@/lib/steven-mix-reminder-pure";
 
-export { cycleStateKey, cycleClaimKey, FOUR_HOURS_MS };
+export { cycleStateKey, cycleClaimKey, REMINDER_INTERVAL_MS };
 
 /**
- * Steven mix-notes reminder — every 4h after the owner clicks "Send notes"
+ * Steven mix-notes reminder — every 5h after the owner clicks "Send notes"
  * (lib/steven-notes-notify.ts, unchanged) until Steven uploads a new mix
  * version for that SAME work. Server-side cron only (see instrumentation.ts).
  * Never triggered by page load/refresh/client code, never runs outside
