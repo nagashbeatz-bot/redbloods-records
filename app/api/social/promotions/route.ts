@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
-import { listPromotions, createPromotion, syncActualExpense } from "@/lib/social-promotions-store";
+import { listPromotions, createPromotion, syncActualExpense, getCampaignPromotionBudget } from "@/lib/social-promotions-store";
 
 // GET /api/social/promotions?campaignId=xxx → promotions (+ derived actual_amount)
 export async function GET(req: NextRequest) {
@@ -8,8 +8,11 @@ export async function GET(req: NextRequest) {
   const campaignId = req.nextUrl.searchParams.get("campaignId");
   if (!campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
   try {
-    const promotions = await listPromotions(campaignId);
-    return NextResponse.json({ promotions });
+    const [promotions, promotion_budget] = await Promise.all([
+      listPromotions(campaignId),
+      getCampaignPromotionBudget(campaignId),
+    ]);
+    return NextResponse.json({ promotions, promotion_budget });
   } catch (e) {
     console.error("[social/promotions] GET error:", e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 500 });

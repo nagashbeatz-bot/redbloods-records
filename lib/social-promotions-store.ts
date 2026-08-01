@@ -68,6 +68,16 @@ export async function listPromotions(campaignId: string): Promise<PromotionWithA
   }));
 }
 
+// Campaign-level total promotion budget (planning only — never a transaction).
+export async function getCampaignPromotionBudget(campaignId: string): Promise<number> {
+  const { data } = await supabase
+    .from("social_campaigns")
+    .select("promotion_budget")
+    .eq("id", campaignId)
+    .maybeSingle();
+  return Number((data as { promotion_budget?: number } | null)?.promotion_budget ?? 0) || 0;
+}
+
 // ── Create / update planning fields ──────────────────────────────────────────
 export async function createPromotion(input: {
   campaign_id: string; channel: string; promo_type: string; name: string;

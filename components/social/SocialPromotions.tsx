@@ -71,6 +71,16 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function SumChip({ c, val, lbl }: { c: string; val: string; lbl: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 14px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: c, flexShrink: 0 }} />
+      <span style={{ fontSize: 15, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{val}</span>
+      <span style={{ fontSize: 11.5, color: TEXT2, fontWeight: 600, whiteSpace: "nowrap" }}>{lbl}</span>
+    </div>
+  );
+}
+
 const MINPUT: CSSProperties = {
   width: "100%", padding: "10px 12px", borderRadius: 9, fontSize: 13,
   background: "rgba(255,255,255,0.085)", border: `1px solid ${BDR2}`,
@@ -239,6 +249,10 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
   const [isMobile, setIsMobile] = useState(false);
   const [modal, setModal]     = useState<Promotion | "new" | null>(null);
   const [delItem, setDelItem] = useState<Promotion | null>(null);
+  const [budget, setBudget]           = useState(0);         // campaign.promotion_budget (planning only)
+  const [editingBudget, setEditBudget] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [savingBudget, setSavingBudget] = useState(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -253,9 +267,24 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
       const res = await fetch(`/api/social/promotions?campaignId=${campaignId}`);
       const d = await res.json().catch(() => ({}));
       setItems(Array.isArray(d.promotions) ? d.promotions : []);
+      setBudget(Number(d.promotion_budget) || 0);
     } catch { setItems([]); }
     finally { setLoading(false); }
   }, [campaignId]);
+
+  async function saveBudget() {
+    const v = Math.max(0, Number(budgetInput) || 0);   // planning only — never a transaction
+    setSavingBudget(true);
+    try {
+      await fetch(`/api/social/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promotion_budget: v }),
+      });
+      setEditBudget(false);
+      await load();
+    } finally { setSavingBudget(false); }
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -266,11 +295,12 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
     } finally { setDelItem(null); }
   }
 
-  // ── Summary ── plannedTotal excludes cancelled; actualTotal from linked txs ──
-  const plannedTotal = items.filter(i => i.status !== "בוטל").reduce((s, i) => s + (Number(i.planned_amount) || 0), 0);
-  const actualTotal  = items.reduce((s, i) => s + (Number(i.actual_amount) || 0), 0);
-  const remaining    = plannedTotal - actualTotal;
-  const overage      = actualTotal > plannedTotal;
+  // ── Summary ── budget = campaign planning; planned excl. cancelled; actual from txs
+  const plannedTotal  = items.filter(i => i.status !== "בוטל").reduce((s, i) => s + (Number(i.planned_amount) || 0), 0);
+  const actualTotal   = items.reduce((s, i) => s + (Number(i.actual_amount) || 0), 0);
+  const unallocated   = Math.max(0, budget - plannedTotal);  // "לא שובץ" — never negative
+  const planOverage   = Math.max(0, plannedTotal - budget);  // "חריגה בתכנון"
+  const actualOverage = Math.max(0, actualTotal - budget);   // "חריגה בפועל"
 
   const COL = "1.7fr 1fr 1fr 1fr 0.9fr 96px";
 
@@ -295,21 +325,45 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
           {addBtn}
         </div>
 
-        {/* Compact summary */}
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-          {[
-            { lbl: "תקציב מתוכנן", val: fmtMoney(plannedTotal), c: AMBER },
-            { lbl: "הוצאה בפועל",  val: fmtMoney(actualTotal),  c: BLUE  },
-            overage
-              ? { lbl: "חריגה", val: fmtMoney(actualTotal - plannedTotal), c: BRAND }
-              : { lbl: "נותר",  val: fmtMoney(remaining),               c: GREEN },
-          ].map(s => (
-            <div key={s.lbl} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 14px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.c, flexShrink: 0 }} />
-              <span style={{ fontSize: 15, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</span>
-              <span style={{ fontSize: 11.5, color: TEXT2, fontWeight: 600, whiteSpace: "nowrap" }}>{s.lbl}</span>
-            </div>
-          ))}
+        {/* Compact summary — total budget (planning) · allocated · actual · unallocated/overage */}
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          {/* תקציב כולל — with inline edit */}
+          <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 14px", borderRadius: 10, background: CARD2, border: `1px solid ${BDR}` }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: MUTED, flexShrink: 0 }} />
+            {editingBudget ? (
+              <>
+                <input
+                  type="number" min={0} step="1" autoFocus
+                  value={budgetInput}
+                  onChange={e => setBudgetInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") saveBudget(); if (e.key === "Escape") setEditBudget(false); }}
+                  disabled={savingBudget}
+                  style={{ width: 92, padding: "3px 7px", borderRadius: 6, background: "rgba(0,0,0,0.35)", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 14, fontWeight: 800, direction: "ltr", textAlign: "right", outline: "none" }}
+                />
+                <button onClick={saveBudget} disabled={savingBudget} title="שמור" style={{ background: "none", border: "none", color: GREEN, fontSize: 15, cursor: "pointer", padding: 0, lineHeight: 1 }}>✓</button>
+                <button onClick={() => setEditBudget(false)} disabled={savingBudget} title="ביטול" style={{ background: "none", border: "none", color: MUTED, fontSize: 15, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 15, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{fmtMoney(budget)}</span>
+                <span style={{ fontSize: 11.5, color: TEXT2, fontWeight: 600, whiteSpace: "nowrap" }}>תקציב כולל</span>
+                <button
+                  onClick={() => { setBudgetInput(budget ? String(budget) : ""); setEditBudget(true); }}
+                  style={{ fontSize: 10.5, fontWeight: 700, color: "#FCA5A5", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", borderRadius: 6, padding: "2px 8px", cursor: "pointer", whiteSpace: "nowrap" }}
+                >עריכת תקציב</button>
+              </>
+            )}
+          </div>
+
+          <SumChip c={AMBER} val={fmtMoney(plannedTotal)} lbl="שובץ" />
+          <SumChip c={BLUE}  val={fmtMoney(actualTotal)}  lbl="בפועל" />
+          {budget > 0 && (planOverage > 0
+            ? <SumChip c={BRAND} val={fmtMoney(planOverage)} lbl="חריגה בתכנון" />
+            : <SumChip c={GREEN} val={fmtMoney(unallocated)} lbl="לא שובץ" />
+          )}
+          {budget > 0 && actualOverage > 0 && (
+            <SumChip c={BRAND} val={fmtMoney(actualOverage)} lbl="חריגה בפועל" />
+          )}
         </div>
       </div>
 
