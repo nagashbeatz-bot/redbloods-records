@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowedPath, isCleantoneAllowedPath } from "@/lib/roles";
+import { roleForEmail, isVictorAllowedPath, isStevenAllowedPath, isShalevAllowedPath, isCleantoneAllowedPath, isAviAllowedPath, AVI_ARTIST_ID } from "@/lib/roles";
 
 // Paths that bypass the auth gate entirely:
 //  • OAuth callbacks — external redirect from Google/Dropbox carrying a one-time
@@ -166,6 +166,7 @@ export async function proxy(request: NextRequest) {
     if (role === "steven") return carry(NextResponse.redirect(new URL("/team/steven", request.url)));
     if (role === "shalev") return carry(NextResponse.redirect(new URL("/red-artists", request.url)));
     if (role === "cleantone") return carry(NextResponse.redirect(new URL("/dj-cleantone", request.url)));
+    if (role === "avi") return carry(NextResponse.redirect(new URL(`/label/artists/${AVI_ARTIST_ID}`, request.url)));
     return response;
   }
 
@@ -207,6 +208,15 @@ export async function proxy(request: NextRequest) {
     if (isCleantoneAllowedPath(pathname)) return response;
     if (isApi) return forbidden();
     return carry(NextResponse.redirect(new URL("/dj-cleantone", request.url)));
+  }
+
+  // Avi Molla → restricted to his OWN artist page (/label/artists/[AVI_ARTIST_ID])
+  // + the read endpoints behind his 3 tabs. Any other page (incl. another
+  // artist's /label/artists/[id]) → back to his page; other APIs → 403.
+  if (role === "avi") {
+    if (isAviAllowedPath(pathname)) return response;
+    if (isApi) return forbidden();
+    return carry(NextResponse.redirect(new URL(`/label/artists/${AVI_ARTIST_ID}`, request.url)));
   }
 
   // Signed in but email not recognized → locked out.

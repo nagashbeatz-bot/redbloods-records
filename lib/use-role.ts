@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 
 export const ROLE_CACHE_KEY = "rb_role";
-export type ClientRole = "owner" | "victor" | "steven" | "shalev" | "cleantone" | null;
+export type ClientRole = "owner" | "victor" | "steven" | "shalev" | "cleantone" | "avi" | null;
 
 // Runs before paint on the client (avoids nav flicker); falls back to useEffect on the server.
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;

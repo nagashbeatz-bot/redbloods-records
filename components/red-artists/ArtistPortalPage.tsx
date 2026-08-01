@@ -399,6 +399,10 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   const isShalev = role === "shalev";
   const isOwner = role === "owner";
   const isCleantone = role === "cleantone"; // the VIEWER's own role — only true for his real session
+  // Avi Molla — restricted to 3 tabs (בית / ההופעות שלי / המוזיקה שלי). Gated on
+  // the VIEWER'S ROLE only (NOT artistName) so the owner previewing Avi via
+  // /label/artists/[id] still sees all 7 tabs, exactly as before.
+  const isAvi = role === "avi";
   // Real display name for greeting/avatar-caption/labels — never hardcoded to
   // Shalev downstream. Falls back to his name only for his own /red-artists
   // session (artistNameProp is never passed there). Computed early (moved up
@@ -434,7 +438,10 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // hidden tab client-side either (the real security boundary is still
   // server-side: isCleantoneAllowedPath in proxy.ts blocks the underlying APIs
   // regardless of what tab state the client thinks it's on).
-  const visibleTabs: readonly Tab[] = isCleantonePortal ? (["בית", "ההופעות שלי"] as const) : TABS;
+  const visibleTabs: readonly Tab[] =
+    isAvi ? (["בית", "ההופעות שלי", "המוזיקה שלי"] as const)
+    : isCleantonePortal ? (["בית", "ההופעות שלי"] as const)
+    : TABS;
 
   // Tab is mirrored in the URL (`?tab=<slug>`) so a refresh keeps the user on the
   // same tab and Back/Forward work. Initial state is the default (server + first
@@ -827,7 +834,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
               ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} />
               : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
           )
-            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} />
+            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} />
             : tab === "ההופעות שלי" ? (
               isCleantonePortal
                 ? <CleantoneShowsPage summary={cleantoneSummary} loadState={cleantoneState} onReload={reloadCleantoneSummary} />
@@ -3628,11 +3635,15 @@ function playSketchLatest(player: ReturnType<typeof usePlayerSafe>, s: Sketch, o
   void playLibRow(player, sketchAsLibRow(s, base, artistName), onError);
 }
 
-function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
+function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi }: {
   sketches: Sketch[]; loadState: "loading" | "ready" | "error";
-  onReload: () => Promise<void>; onReorder: (orderedIds: string[]) => Promise<boolean>; isShalev?: boolean;
+  onReload: () => Promise<void>; onReorder: (orderedIds: string[]) => Promise<boolean>; isShalev?: boolean; isAvi?: boolean;
 }) {
-  const showHandle = !isShalev;  // shalev: no drag handle (reorder is owner-only)
+  // Avi (restricted artist) is view/listen-only here — every write affordance
+  // (upload, edit-on-click, reorder) is hidden. The server also blocks his
+  // writes (sketches/upload POST are owner-only). Owner & Shalev are unaffected.
+  const canManage = !isAvi;
+  const showHandle = !isShalev && canManage;  // shalev: no drag handle (reorder is owner-only)
   const showDate = !isShalev;    // shalev: no date under the sketch name
   const showVersion = !isShalev; // shalev: no version (V1/V2) badge
   const isMobile = useIsMobile();
@@ -3701,7 +3712,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
   }, [visibleCount]);
 
   const onHandleDown = (e: React.PointerEvent, id: string) => {
-    if (isShalev || savingOrder) return; // reorder is owner-only (defense; handle isn't rendered for shalev)
+    if (isShalev || isAvi || savingOrder) return; // reorder is owner-only (defense; handle isn't rendered for shalev/avi)
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -3826,12 +3837,14 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
             <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>הספרייה שלי</span>
             {savingOrder && <span style={{ fontSize: 11.5, color: MUTED, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>שומר…</span>}
           </div>
+          {canManage && (
           <button onClick={() => setCreateOpen(true)} style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0,
             padding: isMobile ? "8px 12px" : "8px 15px", borderRadius: 9, border: "none", color: "#fff",
             background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: isMobile ? 12 : 12.5, fontWeight: 700,
             cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", boxShadow: `0 2px 9px rgba(220,38,38,0.26)`,
           }}><IcUpload size={14} /> העלאת קובץ</button>
+          )}
         </div>
 
         {!isMobile && loadState === "ready" && sketches.length > 0 && (
@@ -3873,16 +3886,18 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
                 <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>אין עדיין סקיצות בספרייה</div>
                 <div style={{ fontSize: 13, color: TEXT2, marginTop: 6, lineHeight: 1.6, maxWidth: 340 }}>העלה את הסקיצה הראשונה שלך — קובץ אודיו, שם וכמה מילים, והיא תופיע כאן עם כל הגרסאות.</div>
               </div>
+              {canManage && (
               <button onClick={() => setCreateOpen(true)} style={{
                 display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 22px", borderRadius: 12, border: "none",
                 color: "#fff", background: "linear-gradient(180deg, #E5322F, #C01C1C)", fontSize: 14, fontWeight: 800,
                 cursor: "pointer", fontFamily: "inherit", boxShadow: `0 5px 18px rgba(220,38,38,0.32)`,
               }}><IcUpload size={16} /> העלאת קובץ ראשון</button>
+              )}
             </div>
           ) : isMobile ? (
             displayRows.map(s => (
               <div key={s.id} ref={el => setRowRef(s.id, el)} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
-                onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
+                onClick={() => { if (canManage) openEdit(s); }} onKeyDown={e => { if (canManage && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openEdit(s); } }}
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", border: "1px solid transparent", borderBottomColor: BDR, cursor: "pointer", outline: "none", transition: "background .14s", ...dragRowStyle(s) }}>
                 {showHandle && dragHandle(s)}
                 <div onClick={e => e.stopPropagation()} style={{ display: "flex" }}>
@@ -3904,7 +3919,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev }: {
           ) : (
             displayRows.map(s => (
               <div key={s.id} ref={el => setRowRef(s.id, el)} role="button" tabIndex={0} aria-label={`עריכת הסקיצה ${s.title}`}
-                onClick={() => openEdit(s)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(s); } }}
+                onClick={() => { if (canManage) openEdit(s); }} onKeyDown={e => { if (canManage && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openEdit(s); } }}
                 onMouseEnter={e => draggingId ? undefined : rowHover(e, true)} onMouseLeave={e => rowHover(e, false)}
                 style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "15px 24px", border: "1px solid transparent", cursor: "pointer", outline: "none", transition: "all .14s", ...dragRowStyle(s) }}>
                 {/* ONE cell → ONE inner flex: [grip][play][name] locked to one line

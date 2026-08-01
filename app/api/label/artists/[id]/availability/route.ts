@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolveOwnerPortalAccess, resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { getAvailability, saveAvailability } from "@/lib/red-artists/availability";
 import { countValidDays } from "@/lib/shalev-availability-reminder-pure";
 
@@ -8,7 +8,7 @@ import { countValidDays } from "@/lib/shalev-availability-reminder-pure";
 // side-effect free — same rule as the Shalev-only route).
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
   try {
     const availability = await getAvailability(access.config.slug);

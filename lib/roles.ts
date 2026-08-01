@@ -8,7 +8,12 @@
  * Any other authenticated email → "unknown" (treated as not authorized).
  * Safe to import from both proxy.ts and server route helpers (pure, no deps).
  */
-export type UserRole = "owner" | "victor" | "steven" | "shalev" | "cleantone" | "unknown";
+export type UserRole = "owner" | "victor" | "steven" | "shalev" | "cleantone" | "avi" | "unknown";
+
+/** Avi Molla's label_artists.id — his portal is served at /label/artists/[this].
+ *  Not secret (appears in the URL); kept here so the allowlist can scope him to
+ *  his OWN artist page only (no IDOR to other artists). */
+export const AVI_ARTIST_ID = "b3499c72-069d-46c9-9c31-52b1db27c51f";
 
 function emailList(value: string | undefined): string[] {
   return (value ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -26,6 +31,8 @@ export function roleForEmail(email: string | null | undefined): UserRole {
   if (shalev && e === shalev) return "shalev";
   const cleantone = (process.env.CLEANTONE_EMAIL ?? "").trim().toLowerCase();
   if (cleantone && e === cleantone) return "cleantone";
+  const avi = (process.env.AVI_EMAIL ?? "").trim().toLowerCase();
+  if (avi && e === avi) return "avi";
   return "unknown";
 }
 
@@ -96,4 +103,29 @@ export function isCleantoneAllowedPath(pathname: string): boolean {
     "/api/red-artists/cleantone",  // /api/red-artists/cleantone/shows/[id]/confirm
   ];
   return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+/** Avi Molla's allowed surface — ONLY his own artist page (/label/artists/[AVI_ARTIST_ID])
+ *  and the READ endpoints behind his 3 tabs (בית / ההופעות שלי / המוזיקה שלי),
+ *  scoped to HIS id. Exact-match only: sketch sub-paths (reorder, [id], version),
+ *  upload, balance, recoup, beats, performance-files, press-kit and every OTHER
+ *  artist's id are all denied. Writes on the allowed routes (next-work/availability/
+ *  profile-image/sketches POST) stay owner-only per route, so this allowlist never
+ *  lets Avi mutate anything. The shows tab reads from /summary (money stripped for
+ *  role "avi" in that route). */
+export function isAviAllowedPath(pathname: string): boolean {
+  if (pathname === "/api/me") return true;
+  if (pathname === `/label/artists/${AVI_ARTIST_ID}`) return true;
+  const base = `/api/label/artists/${AVI_ARTIST_ID}`;
+  const reads = [
+    `${base}/summary`,
+    `${base}/next-work`,
+    `${base}/next-release`,
+    `${base}/availability`,
+    `${base}/weekly`,
+    `${base}/profile-image`,
+    `${base}/sketches`,
+    `${base}/stream`,
+  ];
+  return reads.includes(pathname);
 }

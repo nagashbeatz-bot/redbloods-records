@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { getNextRelease } from "@/lib/release-store";
 
 /**
@@ -10,7 +10,7 @@ import { getNextRelease } from "@/lib/release-store";
  */
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
   try {
     const release = await getNextRelease(access.config.artistId);

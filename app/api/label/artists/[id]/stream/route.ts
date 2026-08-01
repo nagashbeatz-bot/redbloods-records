@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { isPathWithinArtist } from "@/lib/red-artists/portal-files";
 
 /**
@@ -12,7 +12,7 @@ import { isPathWithinArtist } from "@/lib/red-artists/portal-files";
  */
 export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
 
   const path = req.nextUrl.searchParams.get("path");

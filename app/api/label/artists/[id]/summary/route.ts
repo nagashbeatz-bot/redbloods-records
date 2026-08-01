@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { supabase } from "@/lib/supabase";
 import { listShows } from "@/lib/shows-store";
 import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists/week";
@@ -8,7 +8,7 @@ import { availabilityWeekStart, weekEndFor, ilTodayYMD } from "@/lib/red-artists
  * GET /api/label/artists/[id]/summary  (owner-only, READ-ONLY)
  *
  * Owner-preview equivalent of /api/red-artists/shalev-summary, generalized to
- * ANY registered portal artist (resolved via resolveOwnerPortalAccess — the
+ * ANY registered portal artist (resolved via resolvePortalReadAccess — the
  * artist's own name, never a hardcoded literal). Same shape, same rules:
  *
  * Shows: only this artist's shows with status אושרה / נסגר / בוצע, split into
@@ -40,7 +40,7 @@ const VISIBLE_SHOW_STATUSES = new Set(["אושרה", "נסגר", "בוצע"]);
 
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
   const artistName = access.config.name;
 
@@ -179,7 +179,15 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
       .sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : 0))
       .slice(0, 12);
 
-    return NextResponse.json({ ok: true, shows: { upcoming, done }, balance, weekly, updates });
+    // Money is OWNER-ONLY. A restricted artist reading their own summary (role
+    // "avi") never receives balance/payment figures — stripped server-side, not
+    // just hidden in the UI. (The מאזן tab + home balance card are already
+    // owner-gated client-side; this closes the direct-API read.)
+    const safeBalance = access.role === "avi"
+      ? { paidTotal: 0, expectedTotal: 0, currency: balance.currency, payments: [], hasData: false }
+      : balance;
+
+    return NextResponse.json({ ok: true, shows: { upcoming, done }, balance: safeBalance, weekly, updates });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "server error";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });

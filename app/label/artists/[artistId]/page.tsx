@@ -3,6 +3,7 @@ import ArtistPage from "@/components/label/ArtistPage";
 import ArtistPortalPage from "@/components/red-artists/ArtistPortalPage";
 import { getLabelArtist } from "@/lib/label-artists-store";
 import { isPortalArtistName } from "@/lib/red-artists/portal-config";
+import { getAuthRole } from "@/lib/require-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,11 @@ export default async function Page({ params }: { params: Promise<{ artistId: str
     isPortalArtist = false;
   }
 
+  // Role is passed to the portal for flash-free tab gating (Avi → 3 tabs). The
+  // proxy already blocks Avi from any other artistId, so this is UI only.
+  const role = await getAuthRole();
+  const initialRole = role === "unknown" ? null : role;
+
   return (
     <AppShell>
       {isPortalArtist
@@ -32,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ artistId: str
         // local useState (sketches, ledger, nextWork, nextRelease, avatar…)
         // would keep showing the PREVIOUS artist's data until each fetch
         // effect happened to re-run and overwrite it.
-        ? <ArtistPortalPage key={artistId} artistId={artistId} artistName={artistName} />
+        ? <ArtistPortalPage key={artistId} initialRole={initialRole} artistId={artistId} artistName={artistName} />
         : <ArtistPage artistId={artistId} />}
     </AppShell>
   );

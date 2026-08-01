@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolveOwnerPortalAccess, resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { listSketches, createSketch, validateAudio } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
 
@@ -10,7 +10,7 @@ export const maxDuration = 300;
 // Shalev's, never any other artist's).
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
   try {
     const sketches = await listSketches(access.config.slug);

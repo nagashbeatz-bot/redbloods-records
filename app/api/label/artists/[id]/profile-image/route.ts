@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolveOwnerPortalAccess, resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { getProfileImage, saveProfileImage } from "@/lib/red-artists/portal-files";
 
 export const maxDuration = 60;
@@ -12,7 +12,7 @@ function streamUrl(artistId: string, path: string): string {
 // THIS artist (source of truth for re-editing).
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
   try {
     const result = await getProfileImage(access.config.slug, (p) => streamUrl(id, p));

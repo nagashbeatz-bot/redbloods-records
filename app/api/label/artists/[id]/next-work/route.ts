@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolveOwnerPortalAccess, resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { getNextWorkConfig, setNextWorkConfig } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
 
 // GET /api/label/artists/[id]/next-work → { work } (null when unset).
 export async function GET(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
   try {
     const work = await getNextWorkConfig(access.config.slug);
