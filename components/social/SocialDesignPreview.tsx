@@ -1180,6 +1180,13 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
   // Campaigns — show mock stages only for /social-preview (no campaignId); real page shows empty
   const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : (campaignId ? [] : MOCK_CAMPAIGNS);
 
+  // Bottom cards — only render each when it holds real content (no big empty cards).
+  // The weekly board always has real week structure, so it stays. Stages/Activity
+  // are hidden when they have nothing to show; the grid reflows to the visible count.
+  const showStages   = !socialLoading && !!displayCampaigns && displayCampaigns.length > 0;
+  const showActivity = !socialLoading && activityItems.length > 0;
+  const bottomColCount = 1 + (showStages ? 1 : 0) + (showActivity ? 1 : 0);
+
   // ── Weekly board derived data ──────────────────────────────────────────────
   const HEB_MONTHS    = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
   const HEB_DAY_LABELS = ["שבת","ראשון","שני","שלישי","רביעי","חמישי","שישי"];
@@ -1437,41 +1444,46 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
         </div>
 
         {/* ── Block 2: Campaign progress + operational counts ──────────────── */}
-        <SCard style={{ marginBottom: 12, padding: "16px 22px" }}>
+        <SCard style={{ marginBottom: 12, padding: "11px 20px" }}>
           {socialLoading ? (
-            <div style={{ height: 58, borderRadius: 8, background: "rgba(255,255,255,0.05)" }} />
+            <div style={{ height: 46, borderRadius: 8, background: "rgba(255,255,255,0.05)" }} />
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
               {/* Progress ring + bar */}
-              <div style={{ display: "flex", alignItems: "center", gap: 15, flex: "1 1 340px", minWidth: 260 }}>
-                <div style={{ position: "relative", width: 58, height: 58, flexShrink: 0 }}>
-                  <ProgressRing pct={progressPct} color={BRAND} size={58} />
-                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 900, color: TEXT }}>{progressPct}%</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 13, flex: "1 1 340px", minWidth: 260 }}>
+                <div style={{ position: "relative", width: 48, height: 48, flexShrink: 0 }}>
+                  <ProgressRing pct={progressPct} color={allPublished ? GREEN : BRAND} size={48} />
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 900, color: TEXT }}>{progressPct}%</div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: LABEL, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>התקדמות הקמפיין</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 9 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: LABEL, textTransform: "uppercase", letterSpacing: "0.06em" }}>התקדמות הקמפיין</span>
+                    {allPublished && (
+                      <span style={{ fontSize: 10, fontWeight: 800, color: GREEN, background: `${GREEN}1E`, border: `1px solid ${GREEN}44`, borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap" }}>קמפיין הושלם ✓</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: 6 }}>
                     {publishedCount} מתוך {totalCount} פורסמו
                   </div>
-                  <div style={{ height: 7, borderRadius: 6, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${progressPct}%`, borderRadius: 6, background: `linear-gradient(90deg, ${BRAND}, #FF7B50)`, transition: "width .3s" }} />
+                  <div style={{ height: 6, borderRadius: 6, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${progressPct}%`, borderRadius: 6, background: allPublished ? `linear-gradient(90deg, ${GREEN}, #34D399)` : `linear-gradient(90deg, ${BRAND}, #FF7B50)`, transition: "width .3s" }} />
                   </div>
                 </div>
               </div>
               {/* Operational counts (compact) */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
                 {[
                   { lbl: "ממתינים לפרסום", val: countReady ?? 0, c: AMBER  },
                   { lbl: "בעבודה",          val: countWork  ?? 0, c: BLUE   },
                   { lbl: "רעיונות",         val: countDraft ?? 0, c: PURPLE },
                 ].map(s => (
                   <div key={s.lbl} style={{
-                    display: "flex", alignItems: "center", gap: 9,
-                    padding: "9px 14px", borderRadius: 10,
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "7px 13px", borderRadius: 10,
                     background: CARD, border: `1px solid ${BDR}`,
                   }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.c, flexShrink: 0 }} />
-                    <span style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</span>
+                    <span style={{ fontSize: 17, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</span>
                     <span style={{ fontSize: 11.5, color: TEXT2, fontWeight: 600, whiteSpace: "nowrap" }}>{s.lbl}</span>
                   </div>
                 ))}
@@ -1575,12 +1587,16 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                 }}>{filteredRows.length} פריטים</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button onClick={() => setShowAddContent(true)} style={{
-                  fontSize: 12, fontWeight: 800, padding: "8px 20px", borderRadius: 8,
-                  background: BRAND, border: "none", color: "#fff", cursor: "pointer",
-                  boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
-                  transition: "none",
-                }}>+ תוכן חדש</button>
+                {/* Hidden when everything is published — the done-strip above already
+                    carries the primary "+ תוכן חדש", so we avoid a duplicate here. */}
+                {!allPublished && (
+                  <button onClick={() => setShowAddContent(true)} style={{
+                    fontSize: 12, fontWeight: 800, padding: "8px 20px", borderRadius: 8,
+                    background: BRAND, border: "none", color: "#fff", cursor: "pointer",
+                    boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
+                    transition: "none",
+                  }}>+ תוכן חדש</button>
+                )}
                 <button onClick={() => setShowUploadModal(true)} style={{
                   fontSize: 12, fontWeight: 700, padding: "8px 16px", borderRadius: 8,
                   background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2, cursor: "pointer",
@@ -1794,7 +1810,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
               <div style={{ fontSize: 13, color: MUTED }}>אין קבצים שהועלו עדיין</div>
             </div>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
             {socialLoading
               ? Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} style={{ borderRadius: 12, border: `1px solid ${BDR}`, background: CARD2, overflow: "hidden" }}>
@@ -1958,10 +1974,15 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
           </div>
         </SCard>
 
-        {/* ── Block 5: Bottom 3-col grid ────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, minHeight: 360 }}>
+        {/* ── Block 5: Bottom grid (columns reflow to the visible cards) ─────── */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: bottomColCount === 1 ? "1fr" : bottomColCount === 2 ? "1fr 1fr" : "1fr 1fr 1fr",
+          gap: 16,
+        }}>
 
-          {/* Col 1: Active Campaigns */}
+          {/* Col 1: Active Campaigns — only when there are real stages to show */}
+          {showStages && (
           <SCard accent={BRAND} style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2025,6 +2046,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
               הצג את כל השלבים →
             </button>
           </SCard>
+          )}
 
           {/* Col 2: Weekly Board */}
           <SCard style={{ padding: "20px 18px", display: "flex", flexDirection: "column" }}>
@@ -2106,7 +2128,8 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
             </button>
           </SCard>
 
-          {/* Col 3: Activity Feed */}
+          {/* Col 3: Activity Feed — only when there is real recent activity */}
+          {showActivity && (
           <SCard style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2151,6 +2174,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
               </button>
             </div>
           </SCard>
+          )}
 
         </div>
       </div>
