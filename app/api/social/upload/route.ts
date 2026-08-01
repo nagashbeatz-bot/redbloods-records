@@ -98,6 +98,21 @@ export async function POST(req: NextRequest) {
         };
         shareUrl = sd?.error?.shared_link_already_exists?.metadata?.url ?? "";
       }
+      // Fallback: the link already existed but the create response didn't carry its
+      // URL (Dropbox sometimes returns shared_link_already_exists without metadata).
+      // Ask Dropbox for the existing link so we never persist an empty share_link
+      // (that was the cause of blank video thumbnails in the media gallery).
+      if (!shareUrl) {
+        const lRes = await fetch("https://api.dropboxapi.com/2/sharing/list_shared_links", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ path: finalPath, direct_only: true }),
+        });
+        if (lRes.ok) {
+          const ld = (await lRes.json()) as { links?: { url?: string }[] };
+          shareUrl = ld.links?.[0]?.url ?? "";
+        }
+      }
     } catch {}
 
     // Save to DB
