@@ -350,7 +350,14 @@ export default function SocialHubPreview() {
             <div style={{ fontSize: 11, marginTop: 6 }}>לחץ על "+ קמפיין חדש" כדי להתחיל</div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+          <div style={{
+            display: "grid", gap: 14, justifyContent: "start",
+            gridTemplateColumns: isMobile
+              ? "minmax(0, 1fr)"
+              : displayCampaigns.length === 1 ? "minmax(320px, min(63%, 760px))"
+              : displayCampaigns.length === 2 ? "repeat(2, minmax(0, 1fr))"
+              : "repeat(auto-fit, minmax(300px, 1fr))",
+          }}>
             {displayCampaigns.map(camp => {
               const st       = CAMPAIGN_STATUS[camp.status] ?? { label: camp.status, color: MUTED };
               const platforms = (camp.platforms ?? []).filter(p => p !== "other");
@@ -365,7 +372,6 @@ export default function SocialHubPreview() {
                 <div key={camp.id} style={{
                   background: CARD, border: `1px solid ${BDR}`, borderRadius: 16,
                   padding: "15px 17px 16px", display: "flex", flexDirection: "column",
-                  maxWidth: 400,
                 }}>
                   {/* Top: title / artist / date · status · delete */}
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
