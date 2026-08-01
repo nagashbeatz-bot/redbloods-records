@@ -317,10 +317,8 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
       {loading ? (
         <div style={{ padding: "34px 0", textAlign: "center", color: MUTED, fontSize: 13 }}>טוען…</div>
       ) : items.length === 0 ? (
-        <div style={{ padding: "40px 22px", textAlign: "center" }}>
-          <div style={{ fontSize: 30, marginBottom: 10, opacity: 0.3 }}>📣</div>
-          <div style={{ fontSize: 13, color: TEXT2, fontWeight: 600, marginBottom: 4 }}>אין עדיין פעולות קידום</div>
-          <div style={{ fontSize: 11.5, color: MUTED }}>לחץ &ldquo;+ הוסף קידום&rdquo; כדי להתחיל</div>
+        <div style={{ padding: "11px 22px 13px", fontSize: 12.5, color: MUTED }}>
+          אין עדיין פעולות קידום — לחץ &ldquo;+ הוסף קידום&rdquo; כדי להתחיל.
         </div>
       ) : isMobile ? (
         /* Mobile cards */
