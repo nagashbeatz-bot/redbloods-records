@@ -12,15 +12,15 @@ import { SOCIAL_PLATFORM_LABELS } from "@/lib/types";
 import { useSocialCampaigns } from "./useSocialCampaign";
 import CreateCampaignModal from "./CreateCampaignModal";
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const BG     = "#08080F";
-const CARD   = "rgba(255,255,255,0.035)";
-const CARD2  = "rgba(255,255,255,0.06)";
-const BDR    = "rgba(255,255,255,0.09)";
-const BDR2   = "rgba(255,255,255,0.16)";
-const TEXT   = "#F0F0F0";
-const TEXT2  = "#9A9AB0";
-const MUTED  = "#50506A";
+// ── Design tokens (aligned to the campaign page / SocialDesignPreview) ──────────
+const BG     = "#090910";
+const CARD   = "rgba(255,255,255,0.058)";
+const CARD2  = "rgba(255,255,255,0.085)";
+const BDR    = "rgba(255,255,255,0.10)";
+const BDR2   = "rgba(255,255,255,0.18)";
+const TEXT   = "#F2F2F2";
+const TEXT2  = "#A0A0B0";
+const MUTED  = "#52526A";
 const BRAND  = "#DC2626";
 const GREEN  = "#10B981";
 const AMBER  = "#F59E0B";
@@ -37,24 +37,6 @@ const PLT_COLOR: Record<string, string> = {
   facebook:  "#1877F2",
   other:     MUTED,
 };
-const PLT_ICON: Record<string, string> = {
-  instagram: "📸",
-  tiktok:    "🎵",
-  youtube:   "▶",
-  spotify:   "🎧",
-  other:     "•",
-};
-
-// ── Campaign cover gradients ───────────────────────────────────────────────────
-const GRADS = [
-  { bg: "linear-gradient(145deg,#1a0606 0%,#3a1010 100%)", accent: "#DC2626" },
-  { bg: "linear-gradient(145deg,#060b1a 0%,#101c3a 100%)", accent: "#3B82F6" },
-  { bg: "linear-gradient(145deg,#060a08 0%,#0d2415 100%)", accent: "#10B981" },
-  { bg: "linear-gradient(145deg,#10060e 0%,#261028 100%)", accent: "#8B5CF6" },
-  { bg: "linear-gradient(145deg,#080a18 0%,#14163a 100%)", accent: "#06B6D4" },
-  { bg: "linear-gradient(145deg,#100a06 0%,#2a1810 100%)", accent: "#F59E0B" },
-];
-
 // ── Status config ──────────────────────────────────────────────────────────────
 const CAMPAIGN_STATUS: Record<string, { label: string; color: string }> = {
   active:    { label: "פעיל",    color: GREEN  },
@@ -131,6 +113,14 @@ export default function SocialHubPreview() {
   const [confirmDeleteCamp, setConfirmDeleteCamp] = useState<SocialCampaign | null>(null);
   const [deletingCampId, setDeletingCampId]       = useState<string | null>(null);
   const [toast, setToast]                         = useState<{ msg: string; ok: boolean } | null>(null);
+  const [isMobile, setIsMobile]                   = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     if (camLoading) return;
@@ -265,8 +255,8 @@ export default function SocialHubPreview() {
       color: TEXT,
       fontFamily: "'Heebo', Arial, sans-serif",
       direction: "rtl",
-      padding: "32px 32px 72px",
-      maxWidth: 1460,
+      padding: isMobile ? "18px 14px 80px" : "22px 22px 80px",
+      maxWidth: 1520,
       margin: "0 auto",
       width: "100%",
     }}>
@@ -285,10 +275,10 @@ export default function SocialHubPreview() {
           onClick={() => setShowCreate(true)}
           style={{
             display: "flex", alignItems: "center", gap: 7,
-            padding: "10px 20px", borderRadius: 10,
+            padding: "9px 20px", borderRadius: 8,
             background: BRAND, border: "none", color: "#fff",
-            fontSize: 13, fontWeight: 800, cursor: "pointer",
-            boxShadow: "0 4px 20px rgba(220,38,38,0.45)",
+            fontSize: 12.5, fontWeight: 800, cursor: "pointer",
+            boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
             transition: "none", letterSpacing: "0.01em",
           }}
         >
@@ -296,36 +286,31 @@ export default function SocialHubPreview() {
         </button>
       </div>
 
-      {/* ── KPI cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
+      {/* ── Summary (compact — one panel, colour only in the dot) ── */}
+      <div style={{
+        background: CARD, border: `1px solid ${BDR}`, borderRadius: 16,
+        padding: "12px 16px", marginBottom: 20,
+        boxShadow: "0 2px 18px rgba(0,0,0,0.4)",
+        display: "flex", gap: 10, flexWrap: "wrap",
+      }}>
         {[
-          { label: "קמפיינים פעילים", value: activeCampaigns, sub: "פעילים כעת",       icon: "🎯", color: GREEN,  glow: "rgba(16,185,129,0.15)" },
-          { label: "מוכנים לפרסום", value: scheduledCount,   sub: "ממתינים להעלאה",   icon: "📅", color: PURPLE, glow: "rgba(139,92,246,0.15)" },
-          { label: "פורסמו",         value: publishedCount,   sub: "סה״כ פורסמו",       icon: "📤", color: AMBER,  glow: "rgba(245,158,11,0.15)" },
-          { label: "קבצי מדיה",      value: assetsCount,      sub: "קבצים שהועלו",       icon: "📁", color: BRAND,  glow: "rgba(220,38,38,0.15)"  },
-        ].map(kpi => (
-          <div key={kpi.label} style={{
-            background: `linear-gradient(145deg, ${CARD} 0%, ${kpi.glow} 100%)`,
-            border: `1px solid rgba(255,255,255,0.10)`,
-            borderTop: `2px solid ${kpi.color}`,
-            borderRadius: 14,
-            padding: "18px 20px 16px",
-            position: "relative", overflow: "hidden",
+          { label: "קמפיינים פעילים", value: activeCampaigns, c: BRAND },
+          { label: "ממתינים לפרסום",  value: scheduledCount,  c: AMBER },
+          { label: "פורסמו",          value: publishedCount,  c: GREEN },
+          { label: "קבצי מדיה",       value: assetsCount,     c: MUTED },
+        ].map(s => (
+          <div key={s.label} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "9px 16px", borderRadius: 10,
+            background: CARD2, border: `1px solid ${BDR}`,
+            flex: "1 1 160px", minWidth: 0,
           }}>
-            <div style={{ position: "absolute", bottom: -8, left: -6, fontSize: 52, opacity: 0.07, userSelect: "none", lineHeight: 1 }}>{kpi.icon}</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT2, textTransform: "uppercase", letterSpacing: "0.08em" }}>{kpi.label}</div>
-              <div style={{
-                width: 28, height: 28, borderRadius: 8,
-                background: `${kpi.color}1A`, border: `1px solid ${kpi.color}33`,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13,
-              }}>{kpi.icon}</div>
-            </div>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.c, flexShrink: 0 }} />
             {loading
-              ? <div style={{ height: 36, width: "50%", borderRadius: 6, background: "rgba(255,255,255,0.07)", marginBottom: 6 }} />
-              : <div style={{ fontSize: 42, fontWeight: 900, color: kpi.color, lineHeight: 1, marginBottom: 5 }}>{kpi.value}</div>
+              ? <div style={{ height: 18, width: 26, borderRadius: 5, background: "rgba(255,255,255,0.07)" }} />
+              : <span style={{ fontSize: 20, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.value}</span>
             }
-            <div style={{ fontSize: 12, color: MUTED }}>{kpi.sub}</div>
+            <span style={{ fontSize: 12, color: TEXT2, fontWeight: 600, whiteSpace: "nowrap" }}>{s.label}</span>
           </div>
         ))}
       </div>
@@ -365,145 +350,88 @@ export default function SocialHubPreview() {
             <div style={{ fontSize: 11, marginTop: 6 }}>לחץ על "+ קמפיין חדש" כדי להתחיל</div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
-            {displayCampaigns.map((camp, idx) => {
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+            {displayCampaigns.map(camp => {
               const st       = CAMPAIGN_STATUS[camp.status] ?? { label: camp.status, color: MUTED };
-              const grad     = GRADS[idx % GRADS.length];
               const platforms = (camp.platforms ?? []).filter(p => p !== "other");
-              const visPlts  = platforms.slice(0, 4);
-              const extraP   = platforms.length - 4;
+              const visPlts  = platforms.slice(0, 5);
+              const extraP   = platforms.length - 5;
               const itemCount = allItems.filter(i => i.campaign_id === camp.id).length;
-              const fileCount = allFiles.filter(f => f.campaign_id === camp.id).length;
               const publishedItems = allItems.filter(i => i.campaign_id === camp.id && PUBLISHED_S.has(i.status)).length;
+              const pct  = itemCount ? Math.round(publishedItems / itemCount * 100) : 0;
+              const done = itemCount > 0 && publishedItems === itemCount;
 
               return (
                 <div key={camp.id} style={{
-                  background: grad.bg,
-                  border: `1px solid ${BDR2}`,
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                  transition: "none",
+                  background: CARD, border: `1px solid ${BDR}`, borderRadius: 16,
+                  padding: "15px 17px 16px", display: "flex", flexDirection: "column",
+                  maxWidth: 400,
                 }}>
-                  {/* Cover */}
-                  <div style={{
-                    height: 130,
-                    position: "relative",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    overflow: "hidden",
-                    borderBottom: `1px solid rgba(255,255,255,0.06)`,
-                  }}>
-                    {/* Large letter watermark */}
-                    <div style={{
-                      fontSize: 80, fontWeight: 900, opacity: 0.06,
-                      color: grad.accent, userSelect: "none", lineHeight: 1,
-                      position: "absolute",
-                    }}>
-                      {camp.title.charAt(0)}
+                  {/* Top: title / artist / date · status · delete */}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>{camp.title}</div>
+                      {camp.artist_name && <div style={{ fontSize: 12, color: TEXT2 }}>{camp.artist_name}</div>}
+                      {camp.release_date && (
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
+                          📅 {new Date(camp.release_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                        </div>
+                      )}
                     </div>
-                    {/* Glow dot */}
-                    <div style={{
-                      position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
-                      width: 100, height: 40,
-                      background: `radial-gradient(ellipse at center, ${grad.accent}30 0%, transparent 70%)`,
-                    }} />
-
-                    {/* Status badge */}
-                    <div style={{
-                      position: "absolute", top: 10, right: 10,
-                      padding: "3px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700,
-                      background: `${st.color}20`, border: `1px solid ${st.color}50`, color: st.color,
-                    }}>{st.label}</div>
-
-                    {/* Delete button */}
-                    <button
-                      onClick={e => { e.stopPropagation(); e.preventDefault(); setConfirmDeleteCamp(camp); }}
-                      style={{
-                        position: "absolute", top: 8, left: 8,
-                        width: 26, height: 26, borderRadius: 7,
-                        background: "rgba(0,0,0,0.55)", border: "1px solid rgba(220,38,38,0.25)",
-                        color: "rgba(252,165,165,0.7)", fontSize: 12, cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "none", outline: "none", zIndex: 2,
-                      }}
-                      onMouseEnter={e => {
-                        (e.currentTarget as HTMLButtonElement).style.background = "rgba(220,38,38,0.35)";
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(220,38,38,0.6)";
-                        (e.currentTarget as HTMLButtonElement).style.color = "#fff";
-                      }}
-                      onMouseLeave={e => {
-                        (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.55)";
-                        (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(220,38,38,0.25)";
-                        (e.currentTarget as HTMLButtonElement).style.color = "rgba(252,165,165,0.7)";
-                      }}
-                    >🗑</button>
-
-                    {/* Platform icons */}
-                    {visPlts.length > 0 && (
-                      <div style={{ position: "absolute", bottom: 10, left: 10, display: "flex", gap: 4 }}>
-                        {visPlts.map(p => (
-                          <div key={p} title={SOCIAL_PLATFORM_LABELS[p as SocialPlatform] ?? p} style={{
-                            width: 24, height: 24, borderRadius: "50%", fontSize: 12,
-                            background: `${PLT_COLOR[p] ?? MUTED}30`,
-                            border: `1px solid ${PLT_COLOR[p] ?? MUTED}60`,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}>{PLT_ICON[p] ?? "•"}</div>
-                        ))}
-                        {extraP > 0 && (
-                          <div style={{
-                            width: 24, height: 24, borderRadius: "50%", fontSize: 9, fontWeight: 800,
-                            background: CARD2, border: `1px solid ${BDR}`, color: TEXT2,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}>+{extraP}</div>
-                        )}
-                      </div>
-                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <span style={{
+                        padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                        background: `${st.color}2C`, border: `1px solid ${st.color}70`, color: st.color,
+                      }}>{st.label}</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); e.preventDefault(); setConfirmDeleteCamp(camp); }}
+                        title="מחק קמפיין"
+                        style={{
+                          width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                          background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.28)",
+                          color: "rgba(220,38,38,0.6)", fontSize: 12, cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "none", outline: "none",
+                        }}
+                        onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = "rgba(220,38,38,0.18)"; el.style.borderColor = "rgba(220,38,38,0.7)"; el.style.color = "#DC2626"; }}
+                        onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.background = "rgba(220,38,38,0.07)"; el.style.borderColor = "rgba(220,38,38,0.28)"; el.style.color = "rgba(220,38,38,0.6)"; }}
+                      >🗑</button>
+                    </div>
                   </div>
 
-                  {/* Info */}
-                  <div style={{ padding: "14px 16px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, lineHeight: 1.3, marginBottom: 4 }}>{camp.title}</div>
-                    {camp.artist_name && (
-                      <div style={{ fontSize: 12, color: TEXT2, marginBottom: 4 }}>{camp.artist_name}</div>
-                    )}
-                    {camp.release_date && (
-                      <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>
-                        📅 {new Date(camp.release_date).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" })}
-                      </div>
-                    )}
-
-                    {/* Stats row */}
-                    <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1,
-                        padding: "6px 0", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}` }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{itemCount}</div>
-                        <div style={{ fontSize: 9, color: MUTED }}>פריטים</div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1,
-                        padding: "6px 0", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}` }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: GREEN }}>{publishedItems}</div>
-                        <div style={{ fontSize: 9, color: MUTED }}>פורסמו</div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1,
-                        padding: "6px 0", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}` }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: AMBER }}>{fileCount}</div>
-                        <div style={{ fontSize: 9, color: MUTED }}>נכסים</div>
-                      </div>
+                  {/* Progress — X מתוך Y פורסמו */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6 }}>
+                      {publishedItems} מתוך {itemCount} פורסמו
                     </div>
-
-                    {/* Buttons */}
-                    <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
-                      <Link
-                        href={`/social/campaigns/${camp.id}`}
-                        style={{
-                          flex: 1, textAlign: "center",
-                          padding: "8px 0", borderRadius: 9, fontSize: 12, fontWeight: 700,
-                          background: BRAND, color: "#fff", textDecoration: "none",
-                          display: "block", boxShadow: "0 2px 10px rgba(220,38,38,0.35)",
-                        }}
-                      >צפה</Link>
+                    <div style={{ height: 6, borderRadius: 6, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, borderRadius: 6, background: done ? `linear-gradient(90deg, ${GREEN}, #34D399)` : `linear-gradient(90deg, ${BRAND}, #FF7B50)` }} />
                     </div>
+                  </div>
+
+                  {/* Platforms + open */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto" }}>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
+                      {visPlts.map(p => (
+                        <span key={p} title={SOCIAL_PLATFORM_LABELS[p as SocialPlatform] ?? p} style={{
+                          fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 6,
+                          letterSpacing: "0.03em", lineHeight: "16px", whiteSpace: "nowrap",
+                          background: `${PLT_COLOR[p] ?? MUTED}18`, border: `1px solid ${PLT_COLOR[p] ?? MUTED}55`, color: PLT_COLOR[p] ?? MUTED,
+                        }}>{SOCIAL_PLATFORM_LABELS[p as SocialPlatform] ?? p}</span>
+                      ))}
+                      {extraP > 0 && (
+                        <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 6, background: CARD2, border: `1px solid ${BDR}`, color: TEXT2 }}>+{extraP}</span>
+                      )}
+                    </div>
+                    <Link
+                      href={`/social/campaigns/${camp.id}`}
+                      style={{
+                        flexShrink: 0, textAlign: "center", textDecoration: "none",
+                        padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        background: BRAND, color: "#fff",
+                        boxShadow: "0 2px 12px rgba(220,38,38,0.35)",
+                      }}
+                    >פתח קמפיין</Link>
                   </div>
                 </div>
               );
@@ -512,11 +440,17 @@ export default function SocialHubPreview() {
         )}
       </div>
 
-      {/* ── Bottom row ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2fr) minmax(0,1fr)", gap: 16, alignItems: "start" }}>
+      {/* ── Bottom: weekly board full-width, then activity + files side by side ── */}
+      <div style={{
+        display: "grid", gap: 16, alignItems: "start",
+        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+        gridTemplateAreas: isMobile
+          ? `"weekly" "activity" "files"`
+          : `"weekly weekly" "activity files"`,
+      }}>
 
         {/* ── Activity ── */}
-        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
+        <div style={{ gridArea: "activity", background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 14 }}>⚡</span> פעילות אחרונה
           </div>
@@ -557,7 +491,7 @@ export default function SocialHubPreview() {
         </div>
 
         {/* ── Weekly board ── */}
-        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
+        <div style={{ gridArea: "weekly", background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 14 }}>📅</span> לוח תכנון שבועי
@@ -647,7 +581,7 @@ export default function SocialHubPreview() {
         </div>
 
         {/* ── Recent assets ── */}
-        <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
+        <div style={{ gridArea: "files", background: CARD, border: `1px solid ${BDR}`, borderRadius: 16, padding: "22px 24px" }}>
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 14 }}>🗂</span> קבצים אחרונים
           </div>
