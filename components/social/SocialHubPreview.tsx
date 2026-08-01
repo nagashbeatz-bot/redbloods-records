@@ -318,9 +318,9 @@ export default function SocialHubPreview() {
       {/* ── Active campaigns ── */}
       <div style={{
         background: CARD, border: `1px solid ${BDR}`,
-        borderRadius: 16, padding: "20px 22px", marginBottom: 20,
+        borderRadius: 16, padding: "14px 20px 16px", marginBottom: 12,
       }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 800 }}>קמפיינים פעילים</div>
             {!loading && (
