@@ -176,11 +176,11 @@ function PromotionModal({ campaignId, item, onClose, onSaved }: {
         <div style={{ display: "flex", gap: 10, marginBottom: 13 }}>
           <div style={{ flex: 1 }}>
             <label style={LABEL_S}>תקציב מתוכנן (₪)</label>
-            <input type="number" inputMode="decimal" min={0} step="1" style={{ ...MINPUT, direction: "ltr", textAlign: "right" }} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="0" disabled={saving} />
+            <input type="number" inputMode="decimal" min={0} step="1" className="no-spin" style={{ ...MINPUT, direction: "ltr", textAlign: "right" }} value={planned} onChange={e => setPlanned(e.target.value)} placeholder="0" disabled={saving} />
           </div>
           <div style={{ flex: 1 }}>
             <label style={LABEL_S}>הוצאה בפועל (₪)</label>
-            <input type="number" inputMode="decimal" min={0} step="1" style={{ ...MINPUT, direction: "ltr", textAlign: "right" }} value={actual} onChange={e => setActual(e.target.value)} placeholder="0" disabled={saving} />
+            <input type="number" inputMode="decimal" min={0} step="1" className="no-spin" style={{ ...MINPUT, direction: "ltr", textAlign: "right" }} value={actual} onChange={e => setActual(e.target.value)} placeholder="0" disabled={saving} />
           </div>
         </div>
         <div style={{ fontSize: 10.5, color: MUTED, marginTop: -6, marginBottom: 13 }}>
@@ -333,7 +333,7 @@ export default function SocialPromotions({ campaignId }: { campaignId: string })
             {editingBudget ? (
               <>
                 <input
-                  type="number" min={0} step="1" autoFocus
+                  type="number" min={0} step="1" autoFocus className="no-spin"
                   value={budgetInput}
                   onChange={e => setBudgetInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") saveBudget(); if (e.key === "Escape") setEditBudget(false); }}
