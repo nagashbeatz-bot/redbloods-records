@@ -36,10 +36,7 @@ const PLT_COLORS: Record<string, string> = {
 
 // ── Mock Data ──────────────────────────────────────────────────────────────────
 const ARTIST_NAME  = "שליו טסמה";
-const ARTIST_GENRE = "אפרו / פופ";
-const ARTIST_ROLE  = "אמן / יוצר";
 const CAMPAIGN_NAME = "פרנציפ";
-const CAMPAIGN_TYPE = "סינגל";
 const CAMPAIGN_DATE = "30.06.26";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -207,6 +204,46 @@ function PlatformBadge({ platform }: { platform: SocialPlatform }) {
       lineHeight: "16px", flexShrink: 0,
     }}>{label}</span>
   );
+}
+
+// Single 40px media thumbnail shown inside the content cell (first file of a row)
+function RowThumb({ file }: { file: FileCard | null }) {
+  return (
+    <div
+      title={file?.name}
+      style={{
+        width: 40, height: 40, borderRadius: 8, flexShrink: 0, overflow: "hidden",
+        background: file ? file.thumb : "rgba(255,255,255,0.05)",
+        border: `1px solid ${file ? file.accent + "55" : BDR}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      {file && file.type === "image" && file.link && (
+        <img
+          src={toDirectLink(file.link)} alt={file.name} loading="lazy"
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
+      {file && file.type === "video" && file.link && (
+        <video
+          src={toDirectLink(file.link)} muted preload="metadata" playsInline
+          onLoadedMetadata={e => { try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch {} }}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          onError={e => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
+        />
+      )}
+      {!file && <span style={{ fontSize: 15, opacity: 0.4 }}>🎬</span>}
+    </div>
+  );
+}
+
+// Small pill style for the "requires attention" strip
+function attnChipStyle(color: string): React.CSSProperties {
+  return {
+    fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+    background: color + "1E", border: `1px solid ${color}44`, color, whiteSpace: "nowrap",
+  };
 }
 
 // Card with optional colored accent border + glow
@@ -1139,20 +1176,9 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
   const countWork      = socialLoading ? null : rows.filter(r => WORK_STATUSES.has(r.status)).length;
   const countReady     = socialLoading ? null : rows.filter(r => READY_STATUSES.has(r.status)).length;
   const countPublished = socialLoading ? null : rows.filter(r => PUB_STATUSES.has(r.status)).length;
-  const campaignProgress = socialLoading ? null :
-    rows.length === 0 ? "0%" :
-    `${Math.round(rows.filter(r => PUB_STATUSES.has(r.status)).length / rows.length * 100)}%`;
 
   // Campaigns — show mock stages only for /social-preview (no campaignId); real page shows empty
   const displayCampaigns: DisplayCampaign[] | null = socialLoading ? null : (campaignId ? [] : MOCK_CAMPAIGNS);
-
-  const KPI_CARDS: { label: string; sub: string; icon: string; value: number | string | null; color: string }[] = [
-    { label:"התקדמות קמפיין",   sub:"לפי שלבי הקמפיין",   icon:"🎯", value:campaignProgress, color:BRAND     },
-    { label:"רעיון",             sub:"תוכן בשלב רעיון",     icon:"💡", value:countDraft,       color:PURPLE    },
-    { label:"בעבודה",            sub:"תוכן בייצור",          icon:"🎬", value:countWork,        color:BLUE      },
-    { label:"מוכן להעלאה",       sub:"ממתין לפרסום",        icon:"📅", value:countReady,       color:AMBER     },
-    { label:"פורסם",             sub:"מתוך הקמפיין",        icon:"📊", value:countPublished,   color:GREEN     },
-  ];
 
   // ── Weekly board derived data ──────────────────────────────────────────────
   const HEB_MONTHS    = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
@@ -1307,6 +1333,20 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
     rows.map(r => [r.id, r])
   );
 
+  // ── Workflow-view derived values ────────────────────────────────────────────
+  // All computed ONLY from already-loaded rows/files — no new fetch, no new
+  // business logic. rows already arrive ordered by the API (due_date asc), so
+  // "next to publish" = the first loaded row whose status is not published.
+  const publishedCount = countPublished ?? 0;
+  const totalCount     = rows.length;
+  const progressPct    = socialLoading || totalCount === 0 ? 0 : Math.round(publishedCount / totalCount * 100);
+  const nextToPublish  = socialLoading ? null : (rows.find(r => !PUB_STATUSES.has(r.status)) ?? null);
+  const allPublished   = !socialLoading && totalCount > 0 && !nextToPublish;
+  const attnNoDate = socialLoading ? 0 : rows.filter(r => r.publish_date === "—").length;
+  const attnNoFile = socialLoading ? 0 : rows.filter(r => r.assets === 0 && !(filesByContentItem[r.id]?.length)).length;
+  const attnReady  = socialLoading ? 0 : (countReady ?? 0);
+  const hasAttention = attnNoDate + attnNoFile + attnReady > 0;
+
   const selStyle: React.CSSProperties = {
     padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600,
     background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
@@ -1374,120 +1414,150 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
             </h1>
             <span style={{ fontSize: 17 }}>🎯</span>
           </div>
-          <p style={{ margin: 0, fontSize: 12, color: TEXT2 }}>
-            {dynArtistName} · {CAMPAIGN_TYPE} · תאריך יציאה {dynCampaignDate}
-          </p>
-        </div>
-
-        {/* ── Block 2: Artist Card + KPI Row ───────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16, marginBottom: 16 }}>
-
-          {/* Artist Card */}
-          <SCard accent={BRAND} style={{
-            display: "flex", flexDirection: "column", gap: 14, padding: "20px 18px",
-            background: "linear-gradient(145deg, rgba(220,38,38,0.07) 0%, rgba(255,255,255,0.04) 100%)",
-          }}>
-            {/* Top: avatar + name */}
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{
-                width: 72, height: 72, borderRadius: "50%", flexShrink: 0,
-                background: "linear-gradient(145deg, #5A0000, #DC2626 60%, #FF7B50)",
-                border: `2px solid rgba(220,38,38,0.55)`,
-                boxShadow: "0 0 22px rgba(220,38,38,0.4), 0 0 50px rgba(220,38,38,0.1)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 30,
-              }}>🎤</div>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 2 }}>{dynArtistName}</div>
-                <div style={{ fontSize: 11, color: TEXT2 }}>{ARTIST_ROLE}</div>
-                <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{ARTIST_GENRE}</div>
-              </div>
-            </div>
-
-            {/* Stats row */}
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4,
-              padding: "10px 0",
-              borderTop: `1px solid ${BDR}`, borderBottom: `1px solid ${BDR}`,
-            }}>
-              {[
-                { val: socialLoading ? "—" : String(countPublished ?? 0), lbl: "פוסטים"    },
-                { val: socialLoading ? "—" : String(campaigns.filter(c => (c.artist_name ?? "").trim().toLowerCase() === (activeCampaign?.artist_name ?? "").trim().toLowerCase()).length), lbl: "קמפיינים" },
-              ].map(s => (
-                <div key={s.lbl} style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</div>
-                  <div style={{ fontSize: 9, color: MUTED, marginTop: 3, letterSpacing: "0.03em" }}>{s.lbl}</div>
-                </div>
-              ))}
-            </div>
-
-            {artistClient ? (
-              <button onClick={() => setShowClientDrawer(true)} style={{
-                padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                background: "rgba(220,38,38,0.13)", border: "1px solid rgba(220,38,38,0.38)",
-                color: BRAND, cursor: "pointer", outline: "none", width: "100%",
-                boxShadow: "0 2px 10px rgba(220,38,38,0.12)",
-                transition: "none",
-              }}>
-                הצג פרופיל אמן ↗
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <p style={{ margin: 0, fontSize: 12.5, color: TEXT2 }}>
+              {dynArtistName}
+              {activeCampaign?.release_date ? ` · תאריך יציאה ${dynCampaignDate}` : ""}
+            </p>
+            {artistClient && (
+              <button
+                onClick={() => setShowClientDrawer(true)}
+                style={{
+                  fontSize: 11, fontWeight: 700, padding: "4px 11px", borderRadius: 7,
+                  background: "rgba(220,38,38,0.11)", border: "1px solid rgba(220,38,38,0.32)",
+                  color: BRAND, cursor: "pointer", outline: "none", transition: "none",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(220,38,38,0.2)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(220,38,38,0.11)"; }}
+              >
+                הצג בפרופיל אמן ↗
               </button>
-            ) : (
-              <div style={{
-                padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 600,
-                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-                color: "#52526A", width: "100%", textAlign: "center",
-                userSelect: "none",
-              }}>
-                לא נמצא תיק לקוח
-              </div>
             )}
-          </SCard>
-
-          {/* KPI Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
-            {KPI_CARDS.map(kpi => (
-              <SCard key={kpi.label} accent={kpi.color} style={{
-                padding: "18px 18px",
-                display: "flex", flexDirection: "column", justifyContent: "space-between",
-                background: `linear-gradient(145deg, ${kpi.color}09 0%, ${CARD} 100%)`,
-                position: "relative", overflow: "hidden",
-              }}>
-                {/* Ghost icon background */}
-                <div style={{
-                  position: "absolute", bottom: -8, left: -4,
-                  fontSize: 64, opacity: 0.04, userSelect: "none", pointerEvents: "none", lineHeight: 1,
-                }}>{kpi.icon}</div>
-                <div style={{
-                  fontSize: 9, fontWeight: 700, color: LABEL,
-                  textTransform: "uppercase", letterSpacing: "0.07em",
-                  lineHeight: 1.3, marginBottom: 10,
-                }}>{kpi.label}</div>
-                {kpi.value === null
-                  ? <div style={{ height: 42, width: "55%", borderRadius: 6, background: "rgba(255,255,255,0.07)", margin: "0 auto 10px" }} />
-                  : <div style={{
-                      fontSize: 42, fontWeight: 900, color: kpi.color,
-                      lineHeight: 1, marginBottom: 4,
-                      textShadow: `0 0 20px ${kpi.color}40`,
-                    }}>{kpi.value}</div>
-                }
-                {kpi.value !== null && (
-                  <div style={{ fontSize: 10, color: kpi.color, opacity: 0.75, marginBottom: 6 }}>{kpi.sub}</div>
-                )}
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{
-                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-                    background: kpi.color + "22",
-                    display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 10,
-                  }}>{kpi.icon}</span>
-                </div>
-              </SCard>
-            ))}
           </div>
         </div>
 
+        {/* ── Block 2: Campaign progress + operational counts ──────────────── */}
+        <SCard style={{ marginBottom: 12, padding: "16px 22px" }}>
+          {socialLoading ? (
+            <div style={{ height: 58, borderRadius: 8, background: "rgba(255,255,255,0.05)" }} />
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
+              {/* Progress ring + bar */}
+              <div style={{ display: "flex", alignItems: "center", gap: 15, flex: "1 1 340px", minWidth: 260 }}>
+                <div style={{ position: "relative", width: 58, height: 58, flexShrink: 0 }}>
+                  <ProgressRing pct={progressPct} color={BRAND} size={58} />
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 900, color: TEXT }}>{progressPct}%</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: LABEL, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>התקדמות הקמפיין</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 9 }}>
+                    {publishedCount} מתוך {totalCount} פורסמו
+                  </div>
+                  <div style={{ height: 7, borderRadius: 6, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${progressPct}%`, borderRadius: 6, background: `linear-gradient(90deg, ${BRAND}, #FF7B50)`, transition: "width .3s" }} />
+                  </div>
+                </div>
+              </div>
+              {/* Operational counts (compact) */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {[
+                  { lbl: "ממתינים לפרסום", val: countReady ?? 0, c: AMBER  },
+                  { lbl: "בעבודה",          val: countWork  ?? 0, c: BLUE   },
+                  { lbl: "רעיונות",         val: countDraft ?? 0, c: PURPLE },
+                ].map(s => (
+                  <div key={s.lbl} style={{
+                    display: "flex", alignItems: "center", gap: 9,
+                    padding: "9px 14px", borderRadius: 10,
+                    background: CARD, border: `1px solid ${BDR}`,
+                  }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.c, flexShrink: 0 }} />
+                    <span style={{ fontSize: 18, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{s.val}</span>
+                    <span style={{ fontSize: 11.5, color: TEXT2, fontWeight: 600, whiteSpace: "nowrap" }}>{s.lbl}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SCard>
+
+        {/* ── Block 2b: Next to publish (workflow hero) ────────────────────── */}
+        {!socialLoading && (allPublished ? (
+          <SCard accent={GREEN} style={{
+            marginBottom: 12, padding: "14px 20px",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+            background: `linear-gradient(145deg, ${GREEN}0E 0%, ${CARD} 100%)`,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 18, color: GREEN }}>✓</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>כל התוכן המתוכנן בקמפיין פורסם</span>
+            </div>
+            <button onClick={() => setShowAddContent(true)} style={{
+              fontSize: 12, fontWeight: 800, padding: "8px 18px", borderRadius: 8,
+              background: BRAND, border: "none", color: "#fff", cursor: "pointer",
+              boxShadow: "0 2px 12px rgba(220,38,38,0.35)", transition: "none",
+            }}>+ תוכן חדש</button>
+          </SCard>
+        ) : nextToPublish ? (
+          <SCard
+            accent={BRAND}
+            style={{
+              marginBottom: 12, padding: "14px 18px", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+              background: `linear-gradient(145deg, rgba(220,38,38,0.06) 0%, ${CARD} 100%)`,
+            }}
+            // Opens the existing edit modal — the same action a table-row click triggers.
+          >
+            <div
+              onClick={() => setEditingRow(nextToPublish)}
+              style={{ display: "flex", alignItems: "center", gap: 14, flex: "1 1 380px", minWidth: 0 }}
+            >
+              <span style={{
+                fontSize: 10, fontWeight: 800, color: BRAND, letterSpacing: "0.06em",
+                textTransform: "uppercase", background: "rgba(220,38,38,0.12)",
+                border: "1px solid rgba(220,38,38,0.3)", borderRadius: 7, padding: "5px 10px",
+                whiteSpace: "nowrap", flexShrink: 0,
+              }}>הבא לפרסום</span>
+              <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                {nextToPublish.title}
+              </span>
+              <span style={{ fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>
+                {nextToPublish.publish_date === "—" ? "ללא תאריך" : nextToPublish.publish_date}
+                {nextToPublish.publish_time ? ` · ${nextToPublish.publish_time}` : ""}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                {(nextToPublish.platforms ?? []).map(p => <PlatformBadge key={p} platform={p} />)}
+              </div>
+              <StatusBadge status={nextToPublish.status} />
+            </div>
+            <button
+              onClick={() => setEditingRow(nextToPublish)}
+              style={{
+                fontSize: 12, fontWeight: 800, padding: "8px 18px", borderRadius: 8,
+                background: BRAND, border: "none", color: "#fff", cursor: "pointer",
+                boxShadow: "0 2px 12px rgba(220,38,38,0.3)", transition: "none", flexShrink: 0,
+              }}
+            >פתח פריט ↗</button>
+          </SCard>
+        ) : null)}
+
+        {/* ── Block 2c: Requires attention (only if something is computable) ── */}
+        {!socialLoading && hasAttention && (
+          <div style={{
+            marginBottom: 12, padding: "10px 16px", borderRadius: 12,
+            background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)",
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: AMBER, whiteSpace: "nowrap" }}>⚠ דורש טיפול</span>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {attnReady  > 0 && <span style={attnChipStyle(AMBER)}>{attnReady} מוכן לפרסום</span>}
+              {attnNoDate > 0 && <span style={attnChipStyle(TEXT2)}>{attnNoDate} ללא תאריך</span>}
+              {attnNoFile > 0 && <span style={attnChipStyle(TEXT2)}>{attnNoFile} ללא קובץ</span>}
+            </div>
+          </div>
+        )}
+
         {/* ── Block 3: Content Table ───────────────────────────────────────── */}
-        <SCard style={{ marginBottom: 16, padding: 0, overflow: "hidden" }}>
+        <SCard style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
           {/* Header */}
           <div style={{
             padding: "16px 22px 14px",
@@ -1505,17 +1575,17 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                 }}>{filteredRows.length} פריטים</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button onClick={() => setShowUploadModal(true)} style={{
-                  fontSize: 12, fontWeight: 800, padding: "8px 16px", borderRadius: 8,
-                  background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer",
-                  transition: "none",
-                }}>+ העלאת קובץ</button>
                 <button onClick={() => setShowAddContent(true)} style={{
                   fontSize: 12, fontWeight: 800, padding: "8px 20px", borderRadius: 8,
                   background: BRAND, border: "none", color: "#fff", cursor: "pointer",
                   boxShadow: "0 2px 12px rgba(220,38,38,0.4)",
                   transition: "none",
-                }}>+ הוסף תוכן</button>
+                }}>+ תוכן חדש</button>
+                <button onClick={() => setShowUploadModal(true)} style={{
+                  fontSize: 12, fontWeight: 700, padding: "8px 16px", borderRadius: 8,
+                  background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2, cursor: "pointer",
+                  transition: "none",
+                }}>העלה מדיה</button>
               </div>
             </div>
             {/* Controls */}
@@ -1551,7 +1621,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.04)" }}>
-                  {["#", "פריט תוכן", "פלטפורמות", "תאריך פרסום", "קבצי מדיה", "סטטוס", "הערות", ""].map(h => (
+                  {["תוכן", "פלטפורמה", "תאריך", "סטטוס", "פעולה"].map(h => (
                     <th key={h} style={{
                       padding: "11px 16px", textAlign: "right", fontSize: 10,
                       fontWeight: 800, color: TEXT2,
@@ -1565,9 +1635,9 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                 {socialLoading
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i} style={{ borderBottom: `1px solid ${BDR}` }}>
-                        {Array.from({ length: 8 }).map((_, j) => (
+                        {Array.from({ length: 5 }).map((_, j) => (
                           <td key={j} style={{ padding: "15px 16px" }}>
-                            <div style={{ height: 10, borderRadius: 4, background: "rgba(255,255,255,0.06)", width: j === 1 ? "80%" : j === 0 ? "40%" : "60%" }} />
+                            <div style={{ height: 10, borderRadius: 4, background: "rgba(255,255,255,0.06)", width: j === 0 ? "80%" : "55%" }} />
                           </td>
                         ))}
                       </tr>
@@ -1580,15 +1650,17 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = CARD2; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
-                    <td style={{ padding: "15px 16px", whiteSpace: "nowrap" }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: BRAND, display: "inline-block", flexShrink: 0 }} />
-                        <span style={{ fontSize: 11, fontWeight: 700, color: MUTED }}>{row.num}</span>
-                      </span>
-                    </td>
-                    <td style={{ padding: "15px 16px", maxWidth: 220 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {row.title}
+                    <td style={{ padding: "13px 16px", maxWidth: 300 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                        <RowThumb file={filesByContentItem[row.id]?.[0] ?? null} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {row.title}
+                          </div>
+                          {row.content_type && (
+                            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.content_type}</div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td style={{ padding: "15px 16px" }}>
@@ -1602,73 +1674,6 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                     <td style={{ padding: "15px 16px", color: TEXT2, fontSize: 12, whiteSpace: "nowrap" }}>
                       <div>{row.publish_date === "—" ? "לא נקבע" : row.publish_date}</div>
                       <div style={{ fontSize: 10, color: "#A0A0B0", marginTop: 1 }}>{row.publish_time ?? "—"}</div>
-                    </td>
-                    <td style={{ padding: "15px 16px" }} onClick={e => e.stopPropagation()}>
-                      {(() => {
-                        const thumbs = filesByContentItem[row.id] ?? [];
-                        if (thumbs.length > 0) {
-                          const visible = thumbs.slice(0, 3);
-                          const overflow = thumbs.length - 3;
-                          return (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              {visible.map(f => (
-                                <div key={f.id} style={{
-                                  width: 36, height: 36, borderRadius: 7, flexShrink: 0,
-                                  overflow: "hidden", background: f.thumb,
-                                  border: `1px solid ${f.accent}55`,
-                                }} title={f.name}>
-                                  {f.type === "image" && f.link && (
-                                    <img
-                                      src={toDirectLink(f.link)}
-                                      alt={f.name}
-                                      loading="lazy"
-                                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                                    />
-                                  )}
-                                  {f.type === "video" && f.link && (
-                                    <video
-                                      src={toDirectLink(f.link)}
-                                      muted preload="metadata" playsInline
-                                      onLoadedMetadata={e => {
-                                        try { (e.currentTarget as HTMLVideoElement).currentTime = 0.1; } catch {}
-                                      }}
-                                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                                      onError={e => { (e.currentTarget as HTMLVideoElement).style.display = "none"; }}
-                                    />
-                                  )}
-                                </div>
-                              ))}
-                              {overflow > 0 && (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 800, color: TEXT2,
-                                  background: CARD2, border: `1px solid ${BDR2}`,
-                                  borderRadius: 6, padding: "2px 5px", flexShrink: 0,
-                                }}>+{overflow}</span>
-                              )}
-                            </div>
-                          );
-                        }
-                        if (row.assets > 0) {
-                          return (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              {Array.from({ length: Math.min(row.assets, 3) }).map((_, i) => (
-                                <div key={i} style={{
-                                  width: 26, height: 26, borderRadius: 6,
-                                  background: `rgba(220,38,38,${0.1 + i * 0.07})`,
-                                  border: `1px solid ${BDR2}`,
-                                  display: "flex", alignItems: "center", justifyContent: "center",
-                                  fontSize: 11, flexShrink: 0,
-                                }}>🖼</div>
-                              ))}
-                              {row.assets > 3 && (
-                                <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700 }}>+{row.assets - 3}</span>
-                              )}
-                            </div>
-                          );
-                        }
-                        return <span style={{ fontSize: 11, color: MUTED }}>—</span>;
-                      })()}
                     </td>
                     <td style={{ padding: "15px 16px" }}>
                       <div style={{ position: "relative", display: "inline-block" }} onClick={e => e.stopPropagation()}>
@@ -1717,11 +1722,6 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                             })}
                           </div>
                         )}
-                      </div>
-                    </td>
-                    <td style={{ padding: "15px 16px", fontSize: 12, color: row.notes.startsWith("✓") ? GREEN : TEXT2, whiteSpace: "nowrap", maxWidth: 140 }}>
-                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {row.notes || <span style={{ color: MUTED }}>—</span>}
                       </div>
                     </td>
                     <td style={{ padding: "15px 10px", position: "relative" }} onClick={e => e.stopPropagation()}>
@@ -1774,7 +1774,7 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0,
               }}>☁️</div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>תצוגה מקדימה לקבצים שהועלו</div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: TEXT }}>מדיה לקמפיין</div>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
                   {socialLoading ? "טוען..." : `${files.length} קבצים · קמפיין ${dynCampaignName}`}
                 </div>
@@ -1782,9 +1782,9 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
             </div>
             <button style={{
               fontSize: 11, fontWeight: 700, padding: "7px 14px", borderRadius: 8,
-              background: CARD2, border: `1px solid ${BDR2}`, color: TEXT2,
+              background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR}`, color: TEXT2,
               cursor: "pointer", transition: "none",
-            }} onClick={() => setShowUploadModal(true)}>+ העלאת קובץ</button>
+            }} onClick={() => setShowUploadModal(true)}>העלה מדיה</button>
           </div>
 
           {/* Full-width grid */}
