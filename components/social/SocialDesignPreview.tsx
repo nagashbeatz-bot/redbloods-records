@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { SocialCampaign, SocialContentItem, SocialContentFile, SocialContentStatus, SocialPlatform } from "@/lib/types";
 import type { Client } from "@/lib/clients-store";
 import ClientDrawer from "@/components/clients/ClientDrawer";
+import SocialPromotions from "./SocialPromotions";
 import {
   SOCIAL_CONTENT_STATUS_LABELS,
   SOCIAL_CONTENT_STATUS_COLORS,
@@ -1779,6 +1780,11 @@ export default function SocialDesignPreview({ campaignId }: { campaignId?: strin
             </table>
           </div>
         </SCard>
+
+        {/* ── Block 3b: Promotion & budget (between content board and media) ── */}
+        {!socialLoading && activeCampaignId && (
+          <SocialPromotions campaignId={activeCampaignId} />
+        )}
 
         {/* ── Block 4: File Gallery ─────────────────────────────────────────── */}
         <SCard style={{ marginBottom: 16, padding: "18px 22px 20px" }}>
