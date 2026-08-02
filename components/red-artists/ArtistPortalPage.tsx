@@ -832,7 +832,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           {tab === "בית" ? (
             isCleantonePortal
               ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} />
-              : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} hideBalance={isShalev} isShalev={isShalev} isOwner={isOwner} ledger={ledger} ledgerState={ledgerState} />
+              : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} />
           )
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} />
             : tab === "ההופעות שלי" ? (
@@ -4116,7 +4116,7 @@ function NextReleaseCard({ release }: { release: PortalRelease | null }) {
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState, nextRelease, nextWork, onReloadNextWork, hideBalance, isShalev, isOwner, ledger, ledgerState }: { onOpenMusic: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; hideBalance?: boolean; isShalev?: boolean; isOwner?: boolean; ledger: BalanceLedger | null; ledgerState: LoadState }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, nextWork, onReloadNextWork, isShalev, isOwner }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; isShalev?: boolean; isOwner?: boolean }) {
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
@@ -4198,34 +4198,35 @@ function HomeDashboard({ onOpenMusic, sketches, loadState, summary, summaryState
           </div>
         </SectionCard>
 
-        {/* מאזן — OWNER-ONLY mini summary from the manual ledger (same source as the
-            balance tab). Hidden for the shalev role; the ledger is never fetched for him. */}
-        {!hideBalance && (
-        <SectionCard title="מאזן">
-          <div style={{ padding: "14px 18px 18px" }}>
-            {ledgerState !== "ready" || !ledger ? (
-              <div style={{ padding: "18px 4px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>
-                {ledgerState === "loading" ? "טוען…" : ledgerState === "error" ? "לא ניתן לטעון כרגע" : "אין עדיין נתונים כספיים"}
-              </div>
-            ) : (
-              <>
-                <BalanceRow label="הכנסות" value={fmtMoney(ledger.totals.income, "₪")} color={GREEN} icon="↑" />
-                <BalanceRow label="תשלומים" value={fmtMoney(ledger.totals.payments, "₪")} color={TEXT} icon="↓" />
-                {/* Net balance = paid − expenses-paid — highlighted */}
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 12,
-                  padding: "13px 14px", borderRadius: 13,
-                  background: "linear-gradient(180deg, rgba(220,38,38,0.12), rgba(220,38,38,0.04))",
-                  border: `1px solid ${BRAND}44`,
-                }}>
-                  <span style={{ fontSize: 13, color: "#E8B7B7", fontWeight: 700 }}>מאזן נוכחי</span>
-                  <span style={{ fontSize: 22, fontWeight: 900, color: "#FF6B6B", direction: "ltr" }}>{fmtMoney(ledger.totals.currentBalance, "₪")}</span>
-                </div>
-              </>
-            )}
+        {/* ── ההופעה הבאה — the artist's nearest still-upcoming show. Reuses
+            summary.shows.upcoming (already server-sorted soonest-first, see the
+            shalev-summary route) so there is NO extra fetch. Shows name / date /
+            location only — NO time, NO status. Replaces the old מאזן home
+            mini-card for everyone; the full מאזן data still lives in the מאזן tab. ── */}
+        <SectionCard title="ההופעה הבאה">
+          <div style={{ padding: "16px 18px 8px" }}>
+            {summaryState === "loading" ? (
+              <div style={{ padding: "20px 4px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>טוען…</div>
+            ) : (() => {
+              const next = (summary?.shows.upcoming ?? [])[0];
+              if (!next) return <div style={{ padding: "20px 4px", fontSize: 13.5, color: MUTED, textAlign: "center" }}>אין הופעה קרובה</div>;
+              return (
+                <>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{next.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+                    <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}40`, color: "#FF8A8A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>📅</span>
+                    <span style={{ fontSize: 14.5, fontWeight: 700, color: TEXT2, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(next.date)}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                    <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}40`, color: "#FF8A8A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>📍</span>
+                    <span style={{ fontSize: 14.5, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{next.location || "—"}</span>
+                  </div>
+                </>
+              );
+            })()}
+            <button onClick={onOpenShows} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "14px 4px 6px" }}>פתח את ההופעות שלי ←</button>
           </div>
         </SectionCard>
-        )}
       </div>
 
       {/* ── 3. Weekly calendar — the SAME WeeklyCalendarSection component the
@@ -5086,18 +5087,6 @@ function StatusBadge({ status }: { status: SongStatus }) {
   const c = STATUS_COLOR[status];
   return (
     <span style={{ fontSize: 10.5, fontWeight: 700, color: c, background: `${c}1A`, border: `1px solid ${c}40`, borderRadius: 7, padding: "3px 10px", whiteSpace: "nowrap" }}>{status}</span>
-  );
-}
-
-function BalanceRow({ label, value, color, icon }: { label: string; value: string; color: string; icon: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 2px", borderBottom: `1px solid ${BDR}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: `${color}1A`, border: `1px solid ${color}40`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>{icon}</span>
-        <span style={{ fontSize: 13, color: TEXT2 }}>{label}</span>
-      </div>
-      <span style={{ fontSize: 18.5, fontWeight: 800, color, direction: "ltr" }}>{value}</span>
-    </div>
   );
 }
 
