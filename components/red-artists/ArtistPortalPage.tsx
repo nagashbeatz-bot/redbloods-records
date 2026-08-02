@@ -4198,35 +4198,14 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
           </div>
         </SectionCard>
 
-        {/* ── ההופעה הבאה — the artist's nearest still-upcoming show. Reuses
-            summary.shows.upcoming (already server-sorted soonest-first, see the
-            shalev-summary route) so there is NO extra fetch. Shows name / date /
-            location only — NO time, NO status. Replaces the old מאזן home
-            mini-card for everyone; the full מאזן data still lives in the מאזן tab. ── */}
-        <SectionCard title="ההופעה הבאה">
-          <div style={{ padding: "16px 18px 8px" }}>
-            {summaryState === "loading" ? (
-              <div style={{ padding: "20px 4px", fontSize: 12.5, color: MUTED, textAlign: "center" }}>טוען…</div>
-            ) : (() => {
-              const next = (summary?.shows.upcoming ?? [])[0];
-              if (!next) return <div style={{ padding: "20px 4px", fontSize: 13.5, color: MUTED, textAlign: "center" }}>אין הופעה קרובה</div>;
-              return (
-                <>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{next.name}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-                    <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}40`, color: "#FF8A8A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>📅</span>
-                    <span style={{ fontSize: 14.5, fontWeight: 700, color: TEXT2, direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace" }}>{fmtShowDate(next.date)}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
-                    <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, background: "rgba(220,38,38,0.10)", border: `1px solid ${BRAND}40`, color: "#FF8A8A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>📍</span>
-                    <span style={{ fontSize: 14.5, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{next.location || "—"}</span>
-                  </div>
-                </>
-              );
-            })()}
-            <button onClick={onOpenShows} style={{ ...linkBtn, display: "block", width: "100%", textAlign: "start", padding: "14px 4px 6px" }}>פתח את ההופעות שלי ←</button>
-          </div>
-        </SectionCard>
+        {/* ── ההופעה הבאה — same UI family as הסשן הקרוב (see NextShowCard /
+            NextSessionCard). Replaces the old מאזן home mini-card for everyone;
+            the full מאזן data still lives untouched in the מאזן tab. ── */}
+        <NextShowCard
+          show={(summary?.shows.upcoming ?? [])[0] ?? null}
+          loading={summaryState === "loading"}
+          onOpen={onOpenShows}
+        />
       </div>
 
       {/* ── 3. Weekly calendar — the SAME WeeklyCalendarSection component the
@@ -5020,6 +4999,17 @@ function NextWorkModal({ sketches, current, onClose, onSaved }: {
   );
 }
 
+// Shared visual shell for the two home "up next" cards (הסשן הקרוב /
+// ההופעה הבאה) so they read as ONE UI family — same panel, icon chip, title
+// and detail-line styling. Extracted here (never duplicated inline) so the two
+// cards can't drift apart. Every value below is byte-for-byte the original from
+// the session card, so consuming these is a pure refactor with no visual change.
+const nextCardShell: React.CSSProperties = { ...panel, padding: "22px 24px 24px", display: "flex", flexDirection: "column", gap: 16 };
+const nextCardChip: React.CSSProperties = { width: 50, height: 50, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 };
+const nextCardTitle: React.CSSProperties = { fontSize: 20, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em" };
+const nextCardHeadline: React.CSSProperties = { fontSize: 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" };
+const nextCardDetail: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: TEXT2 };
+
 // "הסשן הקרוב" — a dedicated, more prominent card (replaces the generic
 // ActionCard for this one spot): type is the big/primary text, day+date is
 // medium underneath, and the hour RANGE (start–end, never just start) is its
@@ -5033,10 +5023,10 @@ function NextSessionCard({ session, loading }: {
     ? (session.endTime ? `${session.startTime}–${session.endTime}` : session.startTime)
     : null;
   return (
-    <div style={{ ...panel, padding: "22px 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={nextCardShell}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 50, height: 50, borderRadius: 14, background: "linear-gradient(180deg, rgba(220,38,38,0.18), rgba(220,38,38,0.08))", border: `1px solid ${BRAND}44`, color: "#FF6B6B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>📅</div>
-        <div style={{ fontSize: 20, fontWeight: 900, color: TEXT, letterSpacing: "-0.01em" }}>הסשן הקרוב</div>
+        <div style={nextCardChip}>📅</div>
+        <div style={nextCardTitle}>הסשן הקרוב</div>
       </div>
       {loading ? (
         <div style={{ fontSize: 14, color: MUTED }}>טוען…</div>
@@ -5044,13 +5034,44 @@ function NextSessionCard({ session, loading }: {
         <div style={{ fontSize: 14, color: MUTED }}>אין סשן קרוב כרגע</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>{session.type}</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: TEXT2 }}>{fmtFullDayDate(session.date)}</div>
+          <div style={nextCardHeadline}>{session.type}</div>
+          <div style={nextCardDetail}>{fmtFullDayDate(session.date)}</div>
           {hours && (
             <div style={{ fontSize: 21, fontWeight: 800, color: "#FF6B6B", direction: "ltr", textAlign: "right" }}>{hours}</div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// "ההופעה הבאה" — the artist's nearest still-upcoming show, built from the SAME
+// shared shell/chip/title/detail styles as NextSessionCard so the two home
+// cards read as one component family. Name / date / location only — NO time,
+// NO status. Data reused from summary.shows.upcoming (already server-sorted
+// soonest-first in the shalev-summary route) — no fetch/logic/API/DB/push
+// change. Bottom link (pushed to the card's base) opens the "ההופעות שלי" tab.
+function NextShowCard({ show, loading, onOpen }: {
+  show: PortalShow | null; loading: boolean; onOpen: () => void;
+}) {
+  return (
+    <div style={nextCardShell}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={nextCardChip}>📅</div>
+        <div style={nextCardTitle}>ההופעה הבאה</div>
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 14, color: MUTED }}>טוען…</div>
+      ) : !show ? (
+        <div style={{ fontSize: 14, color: MUTED }}>אין הופעה קרובה</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ ...nextCardHeadline, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{show.name}</div>
+          <div style={nextCardDetail}>{fmtFullDayDate(show.date)}</div>
+          <div style={{ ...nextCardDetail, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{show.location || "—"}</div>
+        </div>
+      )}
+      <button onClick={onOpen} style={{ ...linkBtn, color: "#FF6B6B", fontSize: 12.5, fontWeight: 800, textAlign: "start", marginTop: "auto" }}>פתח את ההופעות שלי ←</button>
     </div>
   );
 }
