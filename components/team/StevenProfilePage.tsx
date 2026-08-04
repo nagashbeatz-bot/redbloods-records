@@ -1667,6 +1667,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [savingC, setSavingC]     = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText]   = useState("");
+  // Set true when Escape cancels an edit so the textarea's unmount blur skips
+  // saving. Also keeps Ctrl/⌘+Enter (which routes through blur) to a single save.
+  const editCancelRef = useRef(false);
   const [delC, setDelC]           = useState<MixComment | null>(null);
   const [addRole, setAddRole]     = useState<FileRole | null>(null); // role the new comment attaches to
   const [rolePick, setRolePick]   = useState(false);                 // fallback picker when no active player
@@ -2469,10 +2472,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{addTs === null ? t.cGeneralTitle : `${t.cAtTime} ${fmtTime(addTs)}`}</span>
                         {addRole && <span style={{ fontSize: 9.5, fontWeight: 800, color: ROLE_COLOR[addRole], background: `${ROLE_COLOR[addRole]}1A`, border: `1px solid ${ROLE_COLOR[addRole]}40`, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{roleLabel(addRole, lang)}</span>}
-                        <input autoFocus value={newText} onChange={e => setNewText(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") saveNewComment(); if (e.key === "Escape") setAdding(false); }}
-                          placeholder={t.cPlaceholder}
-                          style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                        <textarea autoFocus value={newText} onChange={e => setNewText(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveNewComment(); } else if (e.key === "Escape") setAdding(false); }}
+                          placeholder={t.cPlaceholder} rows={3}
+                          style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.5, whiteSpace: "pre-wrap" }} />
                         <button onClick={saveNewComment} disabled={!newText.trim() || savingC}
                           style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC ? 1 : 0.5, fontFamily: "inherit" }}>{t.save}</button>
                         <button onClick={() => setAdding(false)}
@@ -2536,13 +2539,17 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                               {/* Row 2 — the full comment text. Natural wrap, grows the
                                   card to fit any length; never clipped/ellipsized. */}
                               {isEditing ? (
-                                <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
-                                  onKeyDown={e => { if (e.key === "Enter") saveEditComment(c); if (e.key === "Escape") setEditingId(null); }}
-                                  onBlur={() => saveEditComment(c)}
-                                  style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                                <textarea autoFocus value={editText} onChange={e => setEditText(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.currentTarget.blur(); }
+                                    else if (e.key === "Escape") { e.preventDefault(); editCancelRef.current = true; setEditingId(null); }
+                                  }}
+                                  onBlur={() => { if (editCancelRef.current) { editCancelRef.current = false; return; } saveEditComment(c); }}
+                                  rows={3}
+                                  style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", borderRadius: 7, background: "#0D0D12", color: TEXT, border: `1px solid ${BRAND}55`, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.5, whiteSpace: "pre-wrap" }} />
                               ) : (
                                 <div onClick={isGeneral ? undefined : () => playerForComment(c)?.seek(c.timestampSeconds!)}
-                                  style={{ fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.5 }}><LinkifiedText text={c.commentText} /></div>
+                                  style={{ fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.5 }}><LinkifiedText text={c.commentText} /></div>
                               )}
                               {/* Row 3 — relative time · status toggle · edit/delete */}
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -2571,7 +2578,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                                   </button>
                                   {/* edit + delete — owner only; Steven's comments are view-only. */}
                                   {!isSteven && !isEditing && (
-                                    <button onClick={() => { setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
+                                    <button onClick={() => { editCancelRef.current = false; setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
                                       style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
                                       onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
                                   )}
