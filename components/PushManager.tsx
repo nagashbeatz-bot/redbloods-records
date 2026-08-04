@@ -19,24 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
-
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
-const ALLOW_LOCAL_PUSH = process.env.NEXT_PUBLIC_ALLOW_LOCAL_PUSH === "true";
-
-function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  const arr = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
-  return arr.buffer as ArrayBuffer;
-}
-
-function localBlocked(): boolean {
-  if (typeof window === "undefined") return false;
-  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  return isLocal && !ALLOW_LOCAL_PUSH;
-}
+import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array, pushSupported, localPushBlocked, subscribeAndSave } from "@/lib/push-client";
 
 type Status = "idle" | "prompt" | "working" | "enabled" | "active" | "denied" | "unsupported" | "server";
 
@@ -62,28 +45,14 @@ export default function PushManager() {
   const ensureSubscribed = useCallback(async () => {
     const endpoint = SUBSCRIBE_ENDPOINT[role ?? ""];
     if (!endpoint) throw Object.assign(new Error("no-endpoint"), { reason: "server" });
-    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-    await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-    }
-    const check = await reg.pushManager.getSubscription(); // verify it exists
-    if (!check) throw Object.assign(new Error("no-subscription"), { reason: "subscribe" });
-    const res = await fetch(endpoint, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(check.toJSON()),
-    });
-    if (!res.ok) throw Object.assign(new Error("save-failed"), { reason: "server" }); // mark active only on 200
+    await subscribeAndSave(endpoint);
   }, [role]);
 
   // ── OWNER — unchanged auto flow (desktop; no gesture constraint) ──
   useEffect(() => {
     if (role !== "owner") return;
     if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    if (localBlocked()) return;
+    if (localPushBlocked()) return;
     (async () => {
       try {
         const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
@@ -101,9 +70,8 @@ export default function PushManager() {
   useEffect(() => {
     if (!gestureRole) return;
     if (typeof window === "undefined") return;
-    if (localBlocked()) { setStatus("idle"); return; }
-    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-    if (!supported) { setStatus("unsupported"); return; } // iOS Safari tab (not installed) / no Push
+    if (localPushBlocked()) { setStatus("idle"); return; }
+    if (!pushSupported()) { setStatus("unsupported"); return; } // iOS Safari tab (not installed) / no Push
     if (Notification.permission === "denied") { setStatus("denied"); return; }
     if (Notification.permission === "default") { setStatus("prompt"); return; } // needs a user tap
     // Already granted → finish silently (subscribe/save need no gesture) so a

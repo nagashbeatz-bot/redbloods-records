@@ -117,7 +117,7 @@ export function isAviAllowedPath(pathname: string): boolean {
   if (pathname === "/api/me") return true;
   if (pathname === `/label/artists/${AVI_ARTIST_ID}`) return true;
   const base = `/api/label/artists/${AVI_ARTIST_ID}`;
-  const reads = [
+  const allowed = [
     `${base}/summary`,
     `${base}/next-work`,
     `${base}/next-release`,
@@ -126,6 +126,10 @@ export function isAviAllowedPath(pathname: string): boolean {
     `${base}/profile-image`,
     `${base}/sketches`,
     `${base}/stream`,
+    // The ONE self-write Avi may perform: register HIS OWN Web Push device
+    // (push_subscriptions row bound to his user id). The route itself gates to
+    // his id / owner and never touches artist data — no other mutation opens up.
+    `${base}/push-subscribe`,
   ];
-  return reads.includes(pathname);
+  return allowed.includes(pathname);
 }

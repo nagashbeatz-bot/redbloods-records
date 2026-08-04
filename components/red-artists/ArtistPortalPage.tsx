@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { getLatestAudioFile, getFreshPlayUrl, usePlayerSafe } from "@/components/PlayerProvider";
 import { useRole, type ClientRole } from "@/lib/use-role";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
+import { pushSupported, localPushBlocked, subscribeAndSave } from "@/lib/push-client";
 import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
@@ -832,7 +833,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           {tab === "בית" ? (
             isCleantonePortal
               ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} />
-              : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} />
+              : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} isAvi={isAvi} apiBase={apiBase} />
           )
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} />
             : tab === "ההופעות שלי" ? (
@@ -4116,7 +4117,7 @@ function NextReleaseCard({ release }: { release: PortalRelease | null }) {
 }
 
 // ── Home dashboard ───────────────────────────────────────────────────────────────
-function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, nextWork, onReloadNextWork, isShalev, isOwner }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; isShalev?: boolean; isOwner?: boolean }) {
+function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary, summaryState, nextRelease, nextWork, onReloadNextWork, isShalev, isOwner, isAvi, apiBase }: { onOpenMusic: () => void; onOpenShows: () => void; sketches: Sketch[]; loadState: LoadState; summary: ShalevSummary | null; summaryState: LoadState; nextRelease: PortalRelease | null; nextWork: PortalWork | null; onReloadNextWork: () => Promise<void>; isShalev?: boolean; isOwner?: boolean; isAvi?: boolean; apiBase?: string }) {
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
@@ -4236,6 +4237,97 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
           }}><span style={{ fontSize: 15, lineHeight: 1 }}>🚪</span> יציאה</button>
         </div>
       )}
+
+      {/* Avi's own home footer — "enable notifications" (recycles the exact
+          Shalev push mechanism via lib/push-client) + logout. Rendered ONLY for
+          role "avi" (never owner-preview / Shalev). */}
+      {isAvi && apiBase && <AviPortalActions pushEndpoint={`${apiBase}/push-subscribe`} />}
+    </div>
+  );
+}
+
+// ── Avi home footer — inline "enable notifications" + logout ──────────────────────
+// Recycles the SAME push flow as Shalev's PushManager (Notification permission →
+// SW register → pushManager.subscribe → save), but as an inline button targeting
+// Avi's own role-gated endpoint. On mount it ONLY reads permission/subscription
+// and sets UI — it NEVER sends a push (send stays server-side; subscribeAndSave
+// just upserts the device row, so a refresh is always safe). Logout reuses the
+// existing signOutAndRedirect. Push is not delivered to Avi until the send-side
+// targets the "avi" audience — a separate, intentional follow-up.
+function AviPortalActions({ pushEndpoint }: { pushEndpoint: string }) {
+  const isMobile = useIsMobile();
+  type PushUi = "checking" | "prompt" | "working" | "active" | "denied" | "unsupported" | "server";
+  const [push, setPush] = useState<PushUi>("checking");
+  const busyRef = useRef(false);
+
+  // Mount: DECIDE state only. Never requests permission, never sends a push.
+  useEffect(() => {
+    if (localPushBlocked()) { setPush("prompt"); return; }        // dev: show the button (harmless)
+    if (!pushSupported()) { setPush("unsupported"); return; }     // iOS tab (not installed) / no Push
+    if (Notification.permission === "denied") { setPush("denied"); return; }
+    if (Notification.permission === "default") { setPush("prompt"); return; } // needs a user tap
+    // Already granted → recover/ensure the subscription (no gesture, no push sent).
+    let alive = true;
+    (async () => {
+      try { await subscribeAndSave(pushEndpoint); if (alive) setPush("active"); }
+      catch { if (alive) setPush("prompt"); }                     // couldn't persist → offer the button
+    })();
+    return () => { alive = false; };
+  }, [pushEndpoint]);
+
+  // Gesture handler — requestPermission MUST be the first call (iOS user activation).
+  const onEnable = useCallback(async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === "denied") { setPush("denied"); return; }
+      if (permission !== "granted") { setPush("prompt"); return; } // dismissed → still default
+      setPush("working");
+      try { await subscribeAndSave(pushEndpoint); setPush("active"); }
+      catch (e) { setPush((e as { reason?: string })?.reason === "server" ? "server" : "prompt"); }
+    } finally { busyRef.current = false; }
+  }, [pushEndpoint]);
+
+  const primaryBtn: React.CSSProperties = {
+    width: "100%", padding: "15px 0", borderRadius: 12, border: "none", cursor: "pointer",
+    fontFamily: "inherit", fontSize: 15, fontWeight: 800, color: "#fff",
+    background: "linear-gradient(180deg, #E5322F, #C01C1C)", boxShadow: "0 8px 24px rgba(220,38,38,0.35)",
+  };
+  const noteBox: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", padding: "13px 16px", borderRadius: 12, textAlign: "center",
+    fontSize: 13.5, fontWeight: 700, lineHeight: 1.5, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.03)", color: TEXT2,
+  };
+
+  return (
+    <div style={{ marginTop: 8, paddingTop: 20, borderTop: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 12, maxWidth: isMobile ? "100%" : 420 }}>
+      {/* Primary action — enable notifications (state-driven, mirrors PushManager copy) */}
+      {push === "prompt" && (
+        <button onClick={onEnable} style={primaryBtn}>🔔 הפעל התראות</button>
+      )}
+      {push === "working" && (
+        <button disabled style={{ ...primaryBtn, opacity: 0.7, cursor: "wait" }}>מפעיל התראות…</button>
+      )}
+      {push === "server" && (
+        <button onClick={onEnable} style={primaryBtn}>לא הצלחנו לשמור — נסה שוב</button>
+      )}
+      {push === "active" && (
+        <div style={{ ...noteBox, color: GREEN, borderColor: `${GREEN}44`, background: `${GREEN}12` }}>✓ ההתראות מופעלות</div>
+      )}
+      {push === "denied" && (
+        <div style={{ ...noteBox, color: "#FCA5A5", borderColor: "rgba(248,113,113,0.4)" }}>ההתראות חסומות בהגדרות האייפון. יש להפעיל אותן בהגדרות ולפתוח מחדש את האפליקציה.</div>
+      )}
+      {push === "unsupported" && (
+        <div style={noteBox}>כדי לקבל התראות באייפון, יש להוסיף את האפליקציה למסך הבית ולפתוח אותה מהאייקון.</div>
+      )}
+
+      {/* Secondary, quieter — logout (never competes with the primary action) */}
+      <button onClick={signOutAndRedirect} style={{
+        width: "100%", padding: "13px 0", borderRadius: 12, cursor: "pointer",
+        border: `1px solid ${BDR2}`, background: "transparent", color: MUTED,
+        fontFamily: "inherit", fontSize: 13.5, fontWeight: 700,
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+      }}><span style={{ fontSize: 14, lineHeight: 1 }}>🚪</span> התנתקות</button>
     </div>
   );
 }
