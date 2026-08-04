@@ -245,18 +245,27 @@ function fmtShowDate(d: string | null): string {
   const [y, m, day] = d.split("-");
   return (y && m && day) ? `${day}.${m}.${y}` : d;
 }
-// Avi's home-hero greeting word, by DEVICE-LOCAL hour: 05–11 → בוקר טוב,
-// 12–16 → צהריים טובים, 17–20 → ערב טוב, 21–04 → לילה טוב (no comma; the ✨ is
-// added by the hero's emoji prop). Intentionally its OWN 4-bucket scheme with a
-// distinct 21:00–04:59 night — NOT the same as the owner-dashboard greeting in
-// DailyHeader/DashboardDesignPreview (which has no night bucket). Kept separate
-// on purpose: the ranges differ by spec, so this is not an accidental fork.
-function aviGreetingWord(d: Date = new Date()): string {
+// Short display name for the home-hero greeting: the portal's first-name token,
+// except the DJ CLEANTONE portal (artistName "DJ CLEANTONE") which greets as
+// "קלינטון". Keyed to the ARTIST on screen, so owner-preview matches the artist.
+function portalGreetingName(artistName: string): string {
+  if (artistName === CLEANTONE_ARTIST_NAME) return "קלינטון";
+  return artistName.split(" ")[0];
+}
+// The ONE shared home-hero greeting for every artist portal (Shalev / Avi /
+// Cleantone) — no per-portal copies. Device-LOCAL hour → 05–11 בוקר טוב,
+// 12–16 צהריים טובים, 17–20 ערב טוב, 21–04 לילה טוב (its own 4-bucket scheme
+// with a distinct 21:00–04:59 night; deliberately separate from the owner
+// dashboard greeting, which has no night bucket). No comma; the ✨ is added by
+// the hero's emoji prop. Keyed to the portal/artist (artistName), never role —
+// so an owner previewing a portal sees the exact greeting that artist sees.
+function portalGreeting(artistName: string, d: Date = new Date()): string {
   const h = d.getHours();
-  if (h >= 5 && h < 12) return "בוקר טוב";
-  if (h >= 12 && h < 17) return "צהריים טובים";
-  if (h >= 17 && h < 21) return "ערב טוב";
-  return "לילה טוב";
+  const word = h >= 5 && h < 12 ? "בוקר טוב"
+    : h >= 12 && h < 17 ? "צהריים טובים"
+    : h >= 17 && h < 21 ? "ערב טוב"
+    : "לילה טוב";
+  return `${word} ${portalGreetingName(artistName)}`;
 }
 // Hebrew day-of-week name for a "YYYY-MM-DD" date — parsed as plain numbers
 // via Date.UTC (no local-timezone risk) purely to derive the weekday index.
@@ -810,7 +819,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
             never remounts/reloads (no "ש" flash on tab switch). Content varies. */}
         {tab === "בית" ? (
           isCleantonePortal ? (
-            <PortalHero title={`ברוך הבא, ${artistName}`} emoji="👋" subtitle="כאן תמצא את פרטי ההופעות שלך ותוכל לאשר אותן.">
+            <PortalHero title={portalGreeting(artistName)} emoji="✨" subtitle="כאן תמצא את פרטי ההופעות שלך ותוכל לאשר אותן.">
               <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
                 <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
@@ -818,7 +827,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
               <NewsFlash items={cleantoneSummary?.updates ?? []} />
             </PortalHero>
           ) : (
-            <PortalHero title={isAvi ? `${aviGreetingWord()} ${artistName.split(" ")[0]}` : `ברוך הבא, ${artistName.split(" ")[0]}`} emoji={isAvi ? "✨" : "👋"} canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
+            <PortalHero title={portalGreeting(artistName)} emoji="✨" canEditAvatar subtitle="זה המקום שלך ליצור, לשחרר ולהוביל. אנחנו כאן כדי לקחת את המוזיקה שלך רחוק.">
               <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, marginBottom: 7 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: BRAND, boxShadow: `0 0 9px ${BRAND}` }} />
                 <span style={{ fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", letterSpacing: "0.02em" }}>עדכונים אחרונים</span>
