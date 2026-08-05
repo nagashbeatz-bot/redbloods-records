@@ -231,10 +231,11 @@ function RRMark({ size = 60 }: { size?: number }) {
 
 // ── KPI Card ──────────────────────────────────────────────────────────────
 
-function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouseLeave }: {
+function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouseLeave, fullWidth }: {
   label: string; count: number | string; sub: string; color: string; icon: string; iconBg: string;
   onMouseEnter?: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave?: () => void;
+  fullWidth?: boolean; // mobile: span both columns (the lone last card) — never set on desktop
 }) {
   return (
     <div
@@ -247,14 +248,15 @@ function KpiCard({ label, count, sub, color, icon, iconBg, onMouseEnter, onMouse
       display: "flex", flexDirection: "column", justifyContent: "space-between",
       boxShadow: `0 2px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px ${color}11`,
       position: "relative", cursor: onMouseEnter ? "default" : undefined,
+      gridColumn: fullWidth ? "span 2" : undefined,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{
+        <div className="rb-dash-kpi-icon" style={{
           width: 36, height: 36, borderRadius: 10, background: iconBg,
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 17, border: `1px solid ${color}30`, boxShadow: `0 0 8px ${color}22`,
         }}>{icon}</div>
-        <span style={{
+        <span className="rb-dash-kpi-label" style={{
           fontSize: 10, fontWeight: 700, color: "#888",
           textTransform: "uppercase", letterSpacing: "0.07em",
           lineHeight: 1.4, textAlign: "right", maxWidth: "52%",
@@ -996,28 +998,28 @@ export default function DashboardDesignPreview() {
           )}
 
           {/* ── Hero header ── */}
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: isMobile ? 18 : 32 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <h1 style={{ fontSize: isMobile ? 30 : 42, fontWeight: 900, color: TEXT, margin: 0, lineHeight: 1, letterSpacing: "-0.03em" }}>{greeting}</h1>
                 <span style={{ fontSize: 26, lineHeight: 1 }}>✦</span>
               </div>
-              <p style={{ fontSize: 14, color: MUTED, margin: "0 0 14px", fontWeight: 500 }}>
+              <p style={{ fontSize: 14, color: MUTED, margin: isMobile ? "0 0 10px" : "0 0 14px", fontWeight: 500 }}>
                 {new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" })}
               </p>
               {displayPills && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: isMobile ? 6 : 8, flexWrap: "wrap" }}>
                   {displayPills.overdue > 0 && (
                     <span style={{
-                      display: "inline-flex", alignItems: "center", gap: 6,
-                      fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 99,
+                      display: "inline-flex", alignItems: "center", gap: isMobile ? 5 : 6,
+                      fontSize: isMobile ? 10.5 : 12, fontWeight: 700, padding: isMobile ? "3px 9px" : "5px 14px", borderRadius: 99,
                       background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444",
                     }}><Dot color="#EF4444" /> {displayPills.overdue} פרויקטים עברו דדליין</span>
                   )}
                   {displayPills.active > 0 && (
                     <span style={{
-                      display: "inline-flex", alignItems: "center", gap: 6,
-                      fontSize: 12, fontWeight: 700, padding: "5px 14px", borderRadius: 99,
+                      display: "inline-flex", alignItems: "center", gap: isMobile ? 5 : 6,
+                      fontSize: isMobile ? 10.5 : 12, fontWeight: 700, padding: isMobile ? "3px 9px" : "5px 14px", borderRadius: 99,
                       background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", color: "#3B82F6",
                     }}><Dot color="#3B82F6" /> {displayPills.active} פרויקטים בעבודה פעילה</span>
                   )}
@@ -1032,26 +1034,28 @@ export default function DashboardDesignPreview() {
           {/* ── KPI grid ── */}
           {!hasMounted ? (
             // SSR / pre-hydration: placeholder שקוף, לא skeleton גדול
-            <div style={{ marginBottom: 26, minHeight: 140 }} />
+            <div style={{ marginBottom: isMobile ? 16 : 26, minHeight: 140 }} />
           ) : displayKpi == null ? (
             // mounted + אין snapshot בכלל: skeleton כרגיל
-            <div className="grid grid-cols-4 md:grid-cols-7" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
+            <div className="grid grid-cols-2 md:grid-cols-7" style={{ gap: isMobile ? 8 : 11, marginBottom: isMobile ? 16 : 26 }}>
               {Array.from({ length: 7 }).map((_, i) => (
                 <div key={i} style={{
                   background: "#1C1C1C", border: "1px solid rgba(255,255,255,0.05)",
-                  borderRadius: 16, minHeight: 140, opacity: 0.4,
+                  borderRadius: 16, minHeight: isMobile ? 96 : 140, opacity: 0.4,
+                  gridColumn: isMobile && i === 6 ? "span 2" : undefined,
                 }} />
               ))}
             </div>
           ) : (
             // mounted + snapshot (cache או live): KPI מלא
-            <div className="grid grid-cols-4 md:grid-cols-7" style={{ gap: isMobile ? 8 : 11, marginBottom: 26 }}>
-              {displayKpi.map((k) => {
+            <div className="grid grid-cols-2 md:grid-cols-7" style={{ gap: isMobile ? 8 : 11, marginBottom: isMobile ? 16 : 26 }}>
+              {displayKpi.map((k, i) => {
                 const bd = kpiBreakdowns[k.label];
                 return (
                   <KpiCard
                     key={k.label}
                     {...k}
+                    fullWidth={isMobile && i === displayKpi.length - 1}
                     onMouseEnter={bd ? (e) => handleKpiEnter(bd.title, k.color, bd.items, e) : undefined}
                     onMouseLeave={bd ? handleKpiLeave : undefined}
                   />
@@ -1061,7 +1065,7 @@ export default function DashboardDesignPreview() {
           )}
 
           {/* ── Middle 3 cards ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: isMobile ? 12 : 18, marginBottom: 26 }}>
+          <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: isMobile ? 12 : 18, marginBottom: isMobile ? 16 : 26 }}>
 
             {/* "דורש טיפול" — agent alerts */}
             <div style={{
