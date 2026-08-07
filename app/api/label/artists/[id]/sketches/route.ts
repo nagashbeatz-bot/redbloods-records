@@ -33,7 +33,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const description = (form.get("description") as string | null) ?? "";
     const notes = (form.get("notes") as string | null) ?? "";
     const audio = await validateAudio(form.get("file") as File | null);
-    const sketch = await createSketch(access.config.slug, { title, description, notes, audio });
+    // Optional companion beat/instrumental — validated only when provided (a
+    // sketch can be created without one). Same audio validation as the sketch.
+    const beatFile = form.get("beat") as File | null;
+    const beat = beatFile ? await validateAudio(beatFile) : undefined;
+    const sketch = await createSketch(access.config.slug, { title, description, notes, audio, beat });
     return NextResponse.json({ ok: true, sketch });
   } catch (err) {
     return errResponse(err);

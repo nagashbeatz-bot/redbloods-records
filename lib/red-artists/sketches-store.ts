@@ -41,6 +41,16 @@ export interface SketchVersion {
   sizeBytes?: number;
   durationSeconds?: number;
 }
+/** Optional companion "beat / instrumental" for a sketch project. A single file
+ *  attached to the project — NOT a version (never in `versions`, never counted,
+ *  never the player's latest). Stored in the manifest like everything else. */
+export interface SketchBeat {
+  fileName: string;
+  filePath: string;
+  extension: string;
+  uploadedAt: string;
+  sizeBytes?: number;
+}
 export interface Sketch {
   id: string;
   title: string;
@@ -53,6 +63,8 @@ export interface Sketch {
   latestFileName: string;
   durationSeconds?: number;
   versions: SketchVersion[];
+  /** Optional companion beat/instrumental — separate from versions. */
+  beat?: SketchBeat | null;
   archived: boolean;
   archivedAt?: string | null;
 }
@@ -148,6 +160,20 @@ async function dbxUpload(path: string, body: Buffer, mode: UploadMode, autorenam
 // ── Manifest helpers ──────────────────────────────────────────────────────────
 function emptyManifest(): Manifest { return { schemaVersion: 1, sketches: [] }; }
 
+/** Defensively parse an optional beat sub-object (absent/legacy → null). */
+function normalizeBeat(raw: unknown): SketchBeat | null {
+  if (!raw || typeof raw !== "object") return null;
+  const b = raw as Partial<SketchBeat>;
+  if (typeof b.filePath !== "string" || !b.filePath) return null;
+  return {
+    fileName: typeof b.fileName === "string" && b.fileName ? b.fileName : (b.filePath.split("/").pop() ?? "beat"),
+    filePath: b.filePath,
+    extension: typeof b.extension === "string" ? b.extension : (extOf(b.filePath) || ""),
+    uploadedAt: typeof b.uploadedAt === "string" ? b.uploadedAt : new Date().toISOString(),
+    sizeBytes: typeof b.sizeBytes === "number" ? b.sizeBytes : undefined,
+  };
+}
+
 /** Defensively fill missing fields on an older/partial manifest entry. */
 function normalizeSketch(raw: Partial<Sketch> & { id?: string }): Sketch | null {
   if (!raw || typeof raw !== "object" || !raw.id) return null;
@@ -167,6 +193,7 @@ function normalizeSketch(raw: Partial<Sketch> & { id?: string }): Sketch | null 
     latestFileName: typeof raw.latestFileName === "string" ? raw.latestFileName : (latest?.fileName ?? ""),
     durationSeconds: typeof raw.durationSeconds === "number" ? raw.durationSeconds : undefined,
     versions,
+    beat: normalizeBeat((raw as { beat?: unknown }).beat),
     archived: raw.archived === true,
     archivedAt: typeof raw.archivedAt === "string" ? raw.archivedAt : null,
   };
@@ -302,8 +329,24 @@ async function uploadVersionFile(slug: string, id: string, title: string, versio
   };
 }
 
+/** Upload the project's companion beat into the SAME per-sketch folder, named
+ *  "{title} ביט.{ext}". add + autorename → never overwrites; the ACTUAL returned
+ *  path/name is stored so the link stays correct. NOT a version. */
+async function uploadBeatFile(slug: string, id: string, title: string, audio: UploadedAudio): Promise<SketchBeat> {
+  const fileName = `${safeBase(title)} ביט.${audio.ext}`;
+  const path = `${rootFor(slug)}/${id}/${fileName}`;
+  const meta = await dbxUpload(path, audio.buffer, { ".tag": "add" }, true);
+  return {
+    fileName: meta.name ?? fileName,
+    filePath: meta.path_display ?? path,
+    extension: audio.ext,
+    uploadedAt: new Date().toISOString(),
+    sizeBytes: meta.size ?? audio.size,
+  };
+}
+
 export async function createSketch(slug: string, input: {
-  title: string; description?: string; notes?: string; audio: UploadedAudio;
+  title: string; description?: string; notes?: string; audio: UploadedAudio; beat?: UploadedAudio;
 }): Promise<Sketch> {
   const title = input.title.trim().replace(/\s+/g, " ");
   if (!title) throw new SketchError("BAD_INPUT", "יש להזין שם לסקיצה");
@@ -315,7 +358,10 @@ export async function createSketch(slug: string, input: {
   }
 
   const id = randomUUID();
-  const version = await uploadVersionFile(slug, id, title, 1, input.audio); // file uploaded FIRST
+  const version = await uploadVersionFile(slug, id, title, 1, input.audio); // sketch file uploaded FIRST
+  // Optional companion beat — uploaded now too (best-effort ordering: sketch
+  // then beat), stored on the project. Never a version, never the player latest.
+  const beat = input.beat ? await uploadBeatFile(slug, id, title, input.beat) : null;
 
   const now = new Date().toISOString();
   try {
@@ -328,7 +374,7 @@ export async function createSketch(slug: string, input: {
         id, title, description: (input.description ?? "").trim(), notes: (input.notes ?? "").trim(),
         createdAt: now, updatedAt: now,
         latestVersion: 1, latestFilePath: version.filePath, latestFileName: version.fileName,
-        versions: [version], archived: false, archivedAt: null,
+        versions: [version], beat, archived: false, archivedAt: null,
       });
       // New sketch goes to the TOP of the library, preserving the rest of the order.
       m.order = [id, ...effectiveOrder(m).filter((x) => x !== id)];
@@ -376,6 +422,24 @@ export async function addVersion(slug: string, id: string, audio: UploadedAudio)
     console.error(`[sketches] ORPHAN after version — file ${version.filePath} saved but manifest not updated`);
     throw new SketchError("SAVE_FAILED", "הקובץ הועלה אך עדכון הגרסה נכשל. נסה שוב או פנה לתמיכה");
   }
+  return (await readManifest(slug)).manifest.sketches.find((s) => s.id === id)!;
+}
+
+/** Attach or replace the project's companion beat. Uploads the file then points
+ *  the manifest at it. Deliberately does NOT touch versions / latestVersion /
+ *  updatedAt / order — the beat must never change what the player plays, the
+ *  sketch numbering, or the library order. */
+export async function setBeat(slug: string, id: string, audio: UploadedAudio): Promise<Sketch> {
+  const { manifest } = await readManifest(slug);
+  const existing = manifest.sketches.find((s) => s.id === id && !s.archived);
+  if (!existing) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
+  const beat = await uploadBeatFile(slug, id, existing.title, audio); // upload FIRST
+  await mutateManifest(slug, (m) => {
+    const s = m.sketches.find((x) => x.id === id);
+    if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
+    s.beat = beat;
+    return m;
+  });
   return (await readManifest(slug)).manifest.sketches.find((s) => s.id === id)!;
 }
 

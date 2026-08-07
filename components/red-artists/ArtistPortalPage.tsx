@@ -80,6 +80,7 @@ const IcVolume   = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} 
 const IcList     = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3.5" y1="6" x2="3.5" y2="6" /><line x1="3.5" y1="12" x2="3.5" y2="12" /><line x1="3.5" y1="18" x2="3.5" y2="18" /></Svg>;
 const IcMonitor  = ({ size = 18, color = MUTED }: IcoProps) => <Svg size={size} color={color} fill="none"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></Svg>;
 const IcUpload   = ({ size = 18, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>;
+const IcDownload = ({ size = 18, color = "#fff" }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></Svg>;
 const IcX        = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></Svg>;
 const IcCloud    = ({ size = 26, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M12 13v8" /><path d="m8 17 4-4 4 4" /><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" /></Svg>;
 const IcEdit     = ({ size = 18, color = TEXT2 }: IcoProps) => <Svg size={size} color={color} fill="none"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></Svg>;
@@ -332,12 +333,44 @@ export type SketchVersion = {
   versionNumber: number; fileName: string; filePath: string; extension: string;
   uploadedAt: string; sizeBytes?: number; durationSeconds?: number;
 };
+export type SketchBeat = { fileName: string; filePath: string; extension: string; uploadedAt: string; sizeBytes?: number };
 export type Sketch = {
   id: string; title: string; description: string; notes: string;
   createdAt: string; updatedAt: string;
   latestVersion: number; latestFilePath: string; latestFileName: string;
-  durationSeconds?: number; versions: SketchVersion[]; archived: boolean; archivedAt?: string | null;
+  durationSeconds?: number; versions: SketchVersion[]; beat?: SketchBeat | null; archived: boolean; archivedAt?: string | null;
 };
+// The DJ CLEANTONE portal greets/labels differently; the beat companion + the
+// "סקיצה N" naming are scoped to Avi's portal only (by artist, never by viewer
+// role — so owner-preview of Avi sees exactly what Avi sees). Other portals
+// (Shalev, Cleantone) keep their existing behaviour untouched.
+const AVI_PORTAL_NAME = "אבי מולה";
+function isAviPortalName(artistName: string | undefined | null): boolean {
+  return artistName === AVI_PORTAL_NAME;
+}
+// The sketch's "current" label for Avi's portal: "סקיצה N" (never "V", never
+// "MIX"); every other portal keeps "V{n}".
+function sketchVersionLabel(n: number, aviPortal: boolean): string {
+  return aviPortal ? `סקיצה ${n}` : `V${n}`;
+}
+// Beat companion download URL (server resolves the path from the sketch id).
+function sketchBeatDownloadUrl(s: Sketch, base: string = "/api/red-artists"): string {
+  return `${base}/beat/download?sketchId=${encodeURIComponent(s.id)}`;
+}
+// Small "ביט" download chip — a purple accent so it reads as a companion, clearly
+// apart from the red sketch. Reachable by Avi (view-only) right in the row, and
+// stops row-click so it never opens the (owner-only) editor. Rendered only when a
+// beat exists, so there's never an empty slot.
+function BeatChip({ href }: { href: string }) {
+  return (
+    <a href={href} download onClick={e => e.stopPropagation()} title="הורדת הביט / אינסטרומנטל"
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, textDecoration: "none",
+        fontSize: 11, fontWeight: 800, color: "#C4B5FD", background: "rgba(139,92,246,0.12)",
+        border: "1px solid rgba(139,92,246,0.42)", borderRadius: 8, padding: "3px 9px", whiteSpace: "nowrap",
+      }}><IcDownload size={12} color="#C4B5FD" /> ביט</a>
+  );
+}
 // Stream URL for a sketch's latest file — the version is a cache-buster so a new V{n}
 // never plays the previous URL from cache. `base` defaults to Shalev's own
 // existing endpoint (unchanged) — callers pass the resolved apiBase when
@@ -3637,8 +3670,11 @@ function AvailDayModal({ day, onCancel, onSave }: {
 // Adapt a Sketch → the LibRow shape the shared player helpers already understand.
 // Audio URL carries the version so a new V{n} never plays the previous cached URL.
 function sketchAsLibRow(s: Sketch, base?: string, artistName?: string): LibRow {
+  // Avi's portal: the player (main + bottom bar) shows "{title} - סקיצה {latest}".
+  // Every other portal keeps just the title — unchanged.
+  const playerName = isAviPortalName(artistName) ? `${s.title} - סקיצה ${s.latestVersion}` : s.title;
   return {
-    id: s.id, name: s.title, artist: artistName ?? SHALEV_ARTIST, status: "", projectType: "sketch",
+    id: s.id, name: playerName, artist: artistName ?? SHALEV_ARTIST, status: "", projectType: "sketch",
     hasAudio: !!s.latestFilePath,
     audio: s.latestFilePath ? { name: s.latestFileName, url: sketchStreamUrl(s, base) } : null,
     durationSeconds: s.durationSeconds,
@@ -3669,6 +3705,8 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
   const showHandle = !isShalev && canManage;  // shalev: no drag handle (reorder is owner-only)
   const showDate = !isShalev;    // shalev: no date under the sketch name
   const showVersion = !isShalev; // shalev: no version (V1/V2) badge
+  const { apiBase, artistName } = usePortalContext();
+  const isAviPortal = isAviPortalName(artistName); // beat + "סקיצה N" naming — Avi's portal only
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
 
@@ -3928,11 +3966,12 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-                  {(showVersion || showDate) && (
-                    <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
-                      {showVersion && <span style={{ direction: "ltr" }}>V{s.latestVersion}</span>}
+                  {(showVersion || showDate || (isAviPortal && s.beat)) && (
+                    <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      {showVersion && <span style={{ direction: isAviPortal ? "rtl" : "ltr" }}>{sketchVersionLabel(s.latestVersion, isAviPortal)}</span>}
                       {showVersion && showDate && <span>·</span>}
                       {showDate && <span>{fmtSketchDate(s.updatedAt)}</span>}
+                      {isAviPortal && s.beat && <BeatChip href={sketchBeatDownloadUrl(s, apiBase)} />}
                     </div>
                   )}
                 </div>
@@ -3953,8 +3992,9 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                     <SketchRowPlay size={PLAY_W} player={player} sketch={s} onError={setToast} />
                   </div>
                   <div style={{ fontSize: 15.5, fontWeight: 700, color: "#FFFFFF", lineHeight: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
+                  {isAviPortal && s.beat && <BeatChip href={sketchBeatDownloadUrl(s, apiBase)} />}
                 </div>
-                {showVersion && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: "ltr" }}>V{s.latestVersion}</div>}
+                {showVersion && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: isAviPortal ? "rtl" : "ltr" }}>{sketchVersionLabel(s.latestVersion, isAviPortal)}</div>}
                 {showDate && <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>}
                 <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</div>
               </div>
@@ -5361,17 +5401,21 @@ async function readErr(res: Response, fallback: string): Promise<string> {
 
 // ── Create ────────────────────────────────────────────────────────────────────
 function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (s: Sketch) => void | Promise<void> }) {
-  const { apiBase } = usePortalContext();
+  const { apiBase, artistName } = usePortalContext();
+  const isAviPortal = isAviPortalName(artistName); // beat field — Avi's portal only
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [fileErr, setFileErr] = useState<string | null>(null);
+  const [beat, setBeat] = useState<File | null>(null);
+  const [beatErr, setBeatErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const pickFile = (f: File | null) => { setFile(f); setFileErr(f ? validateSketchFileClient(f) : null); };
-  const canSubmit = title.trim() !== "" && !!file && !fileErr && !busy;
+  const pickBeat = (f: File | null) => { setBeat(f); setBeatErr(f ? validateSketchFileClient(f) : null); };
+  const canSubmit = title.trim() !== "" && !!file && !fileErr && !beatErr && !busy;
 
   const submit = async () => {
     if (!canSubmit || !file) return;
@@ -5382,6 +5426,7 @@ function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCrea
       fd.append("description", description.trim());
       fd.append("notes", notes.trim());
       fd.append("file", file);
+      if (isAviPortal && beat) fd.append("beat", beat); // optional companion — never a version
       const res = await fetch(`${apiBase}/sketches`, { method: "POST", body: fd });
       if (!res.ok) { setErr(await readErr(res, "יצירת הסקיצה נכשלה")); setBusy(false); return; }
       const d = await res.json();
@@ -5405,10 +5450,16 @@ function SketchCreateModal({ onClose, onCreated }: { onClose: () => void; onCrea
         <label style={skLabel}>הערות <span style={{ color: MUTED, fontWeight: 500 }}>(אופציונלי)</span></label>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} disabled={busy} placeholder="וייב, הפניות או הערות הפקה…" rows={2} style={{ ...skField, resize: "none", lineHeight: 1.5, opacity: busy ? 0.6 : 1 }} />
       </div>
-      <div style={{ marginBottom: 20 }}>
-        <label style={skLabel}>קובץ אודיו</label>
+      <div style={{ marginBottom: isAviPortal ? 16 : 20 }}>
+        <label style={skLabel}>קובץ הסקיצה</label>
         <SketchDropzone file={file} error={fileErr} onFile={pickFile} disabled={busy} />
       </div>
+      {isAviPortal && (
+        <div style={{ marginBottom: 20 }}>
+          <label style={skLabel}>ביט / אינסטרומנטל <span style={{ color: MUTED, fontWeight: 500 }}>(אופציונלי)</span></label>
+          <SketchDropzone file={beat} error={beatErr} onFile={pickBeat} disabled={busy} />
+        </div>
+      )}
       <button onClick={submit} disabled={!canSubmit} style={skPrimaryBtn(canSubmit)}>{busy ? "מעלה קובץ…" : "העלה קובץ"}</button>
     </SketchModalShell>
   );
@@ -5431,11 +5482,19 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
   const [uploading, setUploading] = useState(false);
   const [versionErr, setVersionErr] = useState<string | null>(null);
 
+  const isAviPortal = isAviPortalName(artistName); // beat + "סקיצה N" wording — Avi's portal only
+  const verLabel = (n: number) => sketchVersionLabel(n, isAviPortal);
+  const [beatFile, setBeatFile] = useState<File | null>(null);
+  const [beatFileErr, setBeatFileErr] = useState<string | null>(null);
+  const [beatUploading, setBeatUploading] = useState(false);
+  const [beatErr, setBeatErr] = useState<string | null>(null);
+  const pickBeat = (f: File | null) => { setBeatFile(f); setBeatFileErr(f ? validateSketchFileClient(f) : null); };
+
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
-  const busy = savingDetails || uploading || deleting;
+  const busy = savingDetails || uploading || deleting || beatUploading;
   const changed = title.trim() !== sketch.title || description.trim() !== (sketch.description ?? "") || notes.trim() !== (sketch.notes ?? "");
   const canSaveDetails = changed && title.trim() !== "" && !busy;
 
@@ -5471,9 +5530,25 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
       const fresh = d.sketch as Sketch;
       await onReload();
       playSketchLatest(player, fresh, onToast, apiBase, artistName);   // the new version becomes what plays
-      onToast(`עודכן לגרסה V${fresh.latestVersion}`);
+      onToast(isAviPortal ? `עודכן ל${verLabel(fresh.latestVersion)}` : `עודכן לגרסה V${fresh.latestVersion}`);
       setNewFile(null); setUploading(false);
     } catch { setVersionErr("שגיאת רשת, נסה שוב"); setUploading(false); }
+  };
+
+  // Attach or replace the project's companion beat (owner-only — the whole edit
+  // modal is; setBeat leaves versions / the player latest untouched).
+  const attachBeat = async () => {
+    if (!beatFile || beatFileErr || busy) return;
+    setBeatUploading(true); setBeatErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("beat", beatFile);
+      const res = await fetch(`${apiBase}/sketches/${sketch.id}/beat`, { method: "POST", body: fd });
+      if (!res.ok) { setBeatErr(await readErr(res, "העלאת הביט נכשלה")); setBeatUploading(false); return; }
+      await onReload();
+      onToast(sketch.beat ? "הביט הוחלף" : "הביט צורף לפרויקט");
+      setBeatFile(null); setBeatUploading(false);
+    } catch { setBeatErr("שגיאת רשת, נסה שוב"); setBeatUploading(false); }
   };
 
   const doDelete = async () => {
@@ -5520,9 +5595,9 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
 
       {/* new version */}
       <div style={sectionBox}>
-        <div style={secTitle}>העלאת גרסה חדשה</div>
+        <div style={secTitle}>{isAviPortal ? "העלאת סקיצה חדשה" : "העלאת גרסה חדשה"}</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, fontSize: 12.5, color: TEXT2, flexWrap: "wrap" }}>
-          <span>גרסה נוכחית: <b style={{ color: "#FF6B6B", direction: "ltr" }}>V{sketch.latestVersion}</b></span>
+          <span>{isAviPortal ? "נוכחי" : "גרסה נוכחית"}: <b style={{ color: "#FF6B6B", direction: isAviPortal ? "rtl" : "ltr" }}>{verLabel(sketch.latestVersion)}</b></span>
           <span style={{ direction: "ltr", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{sketch.latestFileName}</span>
         </div>
         <SkErr msg={versionErr} />
@@ -5534,8 +5609,58 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
           color: "#fff", fontSize: 13.5, fontWeight: 800, fontFamily: "inherit",
           cursor: !newFile || !!fileErr || busy ? "not-allowed" : "pointer", opacity: !newFile || !!fileErr || busy ? 0.5 : 1,
           background: "linear-gradient(180deg, #E5322F, #C01C1C)",
-        }}>{uploading ? `מעלה V${sketch.latestVersion + 1}…` : `עדכן קובץ (V${sketch.latestVersion + 1})`}</button>
+        }}>{uploading
+          ? (isAviPortal ? `מעלה ${verLabel(sketch.latestVersion + 1)}…` : `מעלה V${sketch.latestVersion + 1}…`)
+          : (isAviPortal ? `העלה סקיצה חדשה (${verLabel(sketch.latestVersion + 1)})` : `עדכן קובץ (V${sketch.latestVersion + 1})`)}</button>
       </div>
+
+      {/* ── Avi portal only: numbered sketch (version) list + companion beat ── */}
+      {isAviPortal && (
+        <div style={sectionBox}>
+          <div style={secTitle}>סקיצות בפרויקט</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[...sketch.versions].sort((a, b) => b.versionNumber - a.versionNumber).map(v => {
+              const current = v.versionNumber === sketch.latestVersion;
+              return (
+                <div key={v.versionNumber} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                  padding: "9px 12px", borderRadius: 10,
+                  border: `1px solid ${current ? `${BRAND}55` : BDR}`,
+                  background: current ? "rgba(220,38,38,0.08)" : "rgba(255,255,255,0.02)",
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: current ? "#fff" : TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sketch.title} - סקיצה {v.versionNumber}</span>
+                  {current && <span style={{ fontSize: 10.5, fontWeight: 800, color: "#FF8A8A", background: "rgba(220,38,38,0.12)", border: `1px solid ${BRAND}44`, borderRadius: 7, padding: "2px 9px", whiteSpace: "nowrap", flexShrink: 0 }}>עדכנית</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {isAviPortal && (
+        <div style={sectionBox}>
+          <div style={secTitle}>ביט / אינסטרומנטל</div>
+          {sketch.beat ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(139,92,246,0.35)", background: "rgba(139,92,246,0.08)" }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#C4B5FD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sketch.title} - ביט</span>
+              <a href={sketchBeatDownloadUrl(sketch, apiBase)} download onClick={e => e.stopPropagation()} title="הורדת הביט"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, textDecoration: "none", fontSize: 12, fontWeight: 800, color: "#C4B5FD", background: "rgba(139,92,246,0.14)", border: "1px solid rgba(139,92,246,0.45)", borderRadius: 9, padding: "6px 12px" }}><IcDownload size={13} color="#C4B5FD" /> הורדה</a>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: TEXT2, marginBottom: 12 }}>עדיין לא צורף ביט לפרויקט הזה.</div>
+          )}
+          <SkErr msg={beatErr} />
+          <div style={{ marginBottom: 12 }}>
+            <SketchDropzone file={beatFile} error={beatFileErr} onFile={pickBeat} disabled={busy} />
+          </div>
+          <button onClick={attachBeat} disabled={!beatFile || !!beatFileErr || busy} style={{
+            width: "100%", boxSizing: "border-box", padding: "12px 0", borderRadius: 11, border: "none",
+            color: "#fff", fontSize: 13.5, fontWeight: 800, fontFamily: "inherit",
+            cursor: !beatFile || !!beatFileErr || busy ? "not-allowed" : "pointer", opacity: !beatFile || !!beatFileErr || busy ? 0.5 : 1,
+            background: "linear-gradient(180deg, #7C5CD6, #5B3FB0)",
+          }}>{beatUploading ? "מעלה ביט…" : sketch.beat ? "החלף ביט" : "צרף ביט"}</button>
+        </div>
+      )}
 
       {/* danger zone */}
       <div style={{ background: "rgba(248,113,113,0.05)", border: "1px solid rgba(248,113,113,0.22)", borderRadius: 14, padding: 16 }}>

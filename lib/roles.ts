@@ -126,6 +126,10 @@ export function isAviAllowedPath(pathname: string): boolean {
     `${base}/profile-image`,
     `${base}/sketches`,
     `${base}/stream`,
+    // Download of a project's companion BEAT only (his own files) — a narrow,
+    // server-resolved attachment endpoint (never the generic /download). Lets Avi
+    // take a beat home to work on it. Read-only; returns only a beat file.
+    `${base}/beat/download`,
     // The ONE self-write Avi may perform: register HIS OWN Web Push device
     // (push_subscriptions row bound to his user id). The route itself gates to
     // his id / owner and never touches artist data — no other mutation opens up.
