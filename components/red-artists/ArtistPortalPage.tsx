@@ -5515,6 +5515,10 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
 
   const isAviPortal = isAviPortalName(artistName); // beat + "סקיצה N" wording — Avi's portal only
   const verLabel = (n: number) => sketchVersionLabel(n, isAviPortal);
+  const viewerRole = useRole();
+  const isOwnerViewer = viewerRole === "owner"; // "שלח התראה" — owner only (route is requireOwner too)
+  const [notifySending, setNotifySending] = useState(false);
+  const [notifyErr, setNotifyErr] = useState<string | null>(null);
   const [beatFile, setBeatFile] = useState<File | null>(null);
   const [beatFileErr, setBeatFileErr] = useState<string | null>(null);
   const [beatUploading, setBeatUploading] = useState(false);
@@ -5530,6 +5534,21 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
     try { await downloadFileNoNav(sketchBeatDownloadUrl(sketch, apiBase), sketch.beat.fileName); }
     catch { setBeatErr("הורדת הביט נכשלה, נסה שוב"); }
     finally { setBeatDownloading(false); }
+  };
+
+  // OWNER-only manual push. Fires ONLY on this click (never on load/refresh); the
+  // server derives the "סקיצה N" number from the manifest. Sends the SAME push to
+  // Avi + owner. The busy guard makes one click = one send.
+  const sendNotify = async () => {
+    if (notifySending) return;
+    setNotifySending(true); setNotifyErr(null);
+    try {
+      const res = await fetch(`${apiBase}/sketches/${sketch.id}/notify`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.ok) { setNotifyErr(typeof d?.error === "string" ? d.error : "שליחת ההתראה נכשלה"); return; }
+      onToast(d.aviSent ? "ההתראה נשלחה לאבי" : "נשלח — אך לאבי אין מכשיר עם התראות פעילות");
+    } catch { setNotifyErr("שגיאת רשת, נסה שוב"); }
+    finally { setNotifySending(false); }
   };
 
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -5676,6 +5695,20 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
               );
             })}
           </div>
+          {/* OWNER-only manual push (Avi never renders it; the route is requireOwner). */}
+          {isOwnerViewer && (
+            <>
+              <div style={{ marginTop: 12 }}><SkErr msg={notifyErr} /></div>
+              <button type="button" onClick={sendNotify} disabled={notifySending} title="שליחת התראה לאבי על הסקיצה העדכנית"
+                style={{
+                  width: "100%", boxSizing: "border-box", marginTop: notifyErr ? 0 : 12, padding: "12px 0", borderRadius: 11,
+                  border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 13.5, fontWeight: 800, fontFamily: "inherit",
+                  cursor: notifySending ? "default" : "pointer", opacity: notifySending ? 0.7 : 1,
+                  background: notifySending ? "rgba(220,38,38,0.10)" : "rgba(220,38,38,0.16)",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}>{notifySending ? "שולח…" : "🔔 שלח התראה לאבי"}</button>
+            </>
+          )}
         </div>
       )}
 
