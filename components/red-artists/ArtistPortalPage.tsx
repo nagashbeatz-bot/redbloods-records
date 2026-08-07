@@ -361,14 +361,45 @@ function sketchBeatDownloadUrl(s: Sketch, base: string = "/api/red-artists"): st
 // apart from the red sketch. Reachable by Avi (view-only) right in the row, and
 // stops row-click so it never opens the (owner-only) editor. Rendered only when a
 // beat exists, so there's never an empty slot.
-function BeatChip({ href }: { href: string }) {
+// iOS Safari IGNORES <a download> and NAVIGATES to the URL, so an attachment
+// response opens as a full-screen MP3 preview page (leaving the portal). Fetching
+// the bytes into a blob and clicking a temporary object-URL <a download> instead
+// keeps the user on the page and downloads with the real Hebrew filename on both
+// desktop and iOS. Same-origin fetch carries the session cookie (auth unchanged);
+// never touches the player.
+async function downloadFileNoNav(url: string, filename: string): Promise<void> {
+  const res = await fetch(url, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`download failed (${res.status})`);
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(objUrl), 15000);
+}
+
+function BeatChip({ url, filename, onError }: { url: string; filename: string; onError?: (m: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const go = async (e: React.MouseEvent) => {
+    e.stopPropagation(); e.preventDefault(); // never open the (owner-only) editor / navigate
+    if (busy) return;                          // one click = one download (no double-submit)
+    setBusy(true);
+    try { await downloadFileNoNav(url, filename); }
+    catch { onError?.("הורדת הביט נכשלה, נסה שוב"); }
+    finally { setBusy(false); }
+  };
   return (
-    <a href={href} download onClick={e => e.stopPropagation()} title="הורדת הביט / אינסטרומנטל"
+    <button type="button" onClick={go} disabled={busy} title="הורדת הביט / אינסטרומנטל"
       style={{
-        display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, textDecoration: "none",
+        display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontFamily: "inherit",
         fontSize: 11, fontWeight: 800, color: "#C4B5FD", background: "rgba(139,92,246,0.12)",
         border: "1px solid rgba(139,92,246,0.42)", borderRadius: 8, padding: "3px 9px", whiteSpace: "nowrap",
-      }}><IcDownload size={12} color="#C4B5FD" /> ביט</a>
+        cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1,
+      }}><IcDownload size={12} color="#C4B5FD" /> {busy ? "מוריד…" : "ביט"}</button>
   );
 }
 // Stream URL for a sketch's latest file — the version is a cache-buster so a new V{n}
@@ -3971,7 +4002,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                       {showVersion && <span style={{ direction: isAviPortal ? "rtl" : "ltr" }}>{sketchVersionLabel(s.latestVersion, isAviPortal)}</span>}
                       {showVersion && showDate && <span>·</span>}
                       {showDate && <span>{fmtSketchDate(s.updatedAt)}</span>}
-                      {isAviPortal && s.beat && <BeatChip href={sketchBeatDownloadUrl(s, apiBase)} />}
+                      {isAviPortal && s.beat && <BeatChip url={sketchBeatDownloadUrl(s, apiBase)} filename={s.beat.fileName} onError={setToast} />}
                     </div>
                   )}
                 </div>
@@ -3992,7 +4023,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                     <SketchRowPlay size={PLAY_W} player={player} sketch={s} onError={setToast} />
                   </div>
                   <div style={{ fontSize: 15.5, fontWeight: 700, color: "#FFFFFF", lineHeight: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-                  {isAviPortal && s.beat && <BeatChip href={sketchBeatDownloadUrl(s, apiBase)} />}
+                  {isAviPortal && s.beat && <BeatChip url={sketchBeatDownloadUrl(s, apiBase)} filename={s.beat.fileName} onError={setToast} />}
                 </div>
                 {showVersion && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: isAviPortal ? "rtl" : "ltr" }}>{sketchVersionLabel(s.latestVersion, isAviPortal)}</div>}
                 {showDate && <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>}
@@ -5488,7 +5519,18 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
   const [beatFileErr, setBeatFileErr] = useState<string | null>(null);
   const [beatUploading, setBeatUploading] = useState(false);
   const [beatErr, setBeatErr] = useState<string | null>(null);
+  const [beatDownloading, setBeatDownloading] = useState(false);
   const pickBeat = (f: File | null) => { setBeatFile(f); setBeatFileErr(f ? validateSketchFileClient(f) : null); };
+
+  // Download the beat WITHOUT navigating away (iOS-safe blob download — never
+  // opens an MP3 preview page, never touches the player).
+  const downloadBeat = async () => {
+    if (!sketch.beat || beatDownloading) return;
+    setBeatDownloading(true); setBeatErr(null);
+    try { await downloadFileNoNav(sketchBeatDownloadUrl(sketch, apiBase), sketch.beat.fileName); }
+    catch { setBeatErr("הורדת הביט נכשלה, נסה שוב"); }
+    finally { setBeatDownloading(false); }
+  };
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -5643,8 +5685,8 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
           {sketch.beat ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(139,92,246,0.35)", background: "rgba(139,92,246,0.08)" }}>
               <span style={{ fontSize: 13, fontWeight: 800, color: "#C4B5FD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sketch.title} - ביט</span>
-              <a href={sketchBeatDownloadUrl(sketch, apiBase)} download onClick={e => e.stopPropagation()} title="הורדת הביט"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, textDecoration: "none", fontSize: 12, fontWeight: 800, color: "#C4B5FD", background: "rgba(139,92,246,0.14)", border: "1px solid rgba(139,92,246,0.45)", borderRadius: 9, padding: "6px 12px" }}><IcDownload size={13} color="#C4B5FD" /> הורדה</a>
+              <button type="button" onClick={downloadBeat} disabled={beatDownloading} title="הורדת הביט"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, fontFamily: "inherit", fontSize: 12, fontWeight: 800, color: "#C4B5FD", background: "rgba(139,92,246,0.14)", border: "1px solid rgba(139,92,246,0.45)", borderRadius: 9, padding: "6px 12px", cursor: beatDownloading ? "default" : "pointer", opacity: beatDownloading ? 0.7 : 1 }}><IcDownload size={13} color="#C4B5FD" /> {beatDownloading ? "מוריד…" : "הורדה"}</button>
             </div>
           ) : (
             <div style={{ fontSize: 12.5, color: TEXT2, marginBottom: 12 }}>עדיין לא צורף ביט לפרויקט הזה.</div>
