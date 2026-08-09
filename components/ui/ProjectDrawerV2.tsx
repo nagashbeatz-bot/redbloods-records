@@ -808,6 +808,16 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const filesCount  = project.files?.length ?? 0;
   const sessDone    = sessions.filter(s => s.status === "התקיים").length;
   const statusColor = getStatusColor(project.status);
+  // ── "לימודים" (course) mode — a light, session-driven view. Everything gated
+  // on this flag; a regular project renders exactly as before. ──
+  const isCourse    = project.projectType === "לימודים";
+  // "השיעור הבא": the earliest not-done/not-cancelled session dated today-or-later.
+  // Derived from the SAME sessions list — no new data, no DB.
+  const nextSession = isCourse
+    ? [...sessions]
+        .filter(s => !!s.date && s.status !== "התקיים" && s.status !== "בוטל" && (s.date as string) >= new Date().toISOString().slice(0, 10))
+        .sort((a, b) => ((a.date as string) < (b.date as string) ? -1 : (a.date as string) > (b.date as string) ? 1 : (a.start_time ?? "").localeCompare(b.start_time ?? "")))[0] ?? null
+    : null;
 
   async function handlePlay() {
     if (!latestFile || !player) return;
@@ -1078,8 +1088,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                 >✕</button>
               </div>
 
-              {/* Player card — tall */}
-              <div style={{
+              {/* Player card — tall — hidden for a "לימודים" project (no music player) */}
+              {!isCourse && (<div style={{
                 background: "rgba(255,255,255,0.042)",
                 border: `1px solid ${BORDER2}`,
                 borderRadius: 18,
@@ -1207,17 +1217,23 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                     </svg>
                   );
                 })()}
-              </div>
+              </div>)}
             </div>
           </div>
 
           {/* ── Quick Actions ─────────────────────────────────────────────── */}
           <div dir="rtl" style={{ display: "flex", gap: 12, marginBottom: 14 }}>
-            {([
-              { label: "שלח",     icon: "↗",  color: "#8B5CF6", action: "send" },
-              { label: "סשן חדש", icon: "📅", color: BLUE,      action: "session" },
-              { label: "תשלום",   icon: "₪",  color: GREEN,     action: "income" },
-            ] as { label: string; icon: string; color: string; action: string }[]).map(({ label, icon, color, action }) => (
+            {((isCourse
+              ? [
+                  { label: "קבע שיעור", icon: "📅", color: BLUE,  action: "session" },
+                  { label: "תשלום",    icon: "₪",  color: GREEN, action: "income" },
+                ]
+              : [
+                  { label: "שלח",     icon: "↗",  color: "#8B5CF6", action: "send" },
+                  { label: "סשן חדש", icon: "📅", color: BLUE,      action: "session" },
+                  { label: "תשלום",   icon: "₪",  color: GREEN,     action: "income" },
+                ]
+            ) as { label: string; icon: string; color: string; action: string }[]).map(({ label, icon, color, action }) => (
               <button
                 key={label}
                 onClick={() => {
@@ -1250,8 +1266,8 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               </button>
             ))}
 
-            {/* Upload */}
-            <div ref={uploadWrapRef} style={{
+            {/* Upload — music file upload; hidden for "לימודים" (study materials go via the קבצים tab) */}
+            {!isCourse && (<div ref={uploadWrapRef} style={{
               flex: 1, height: 74, borderRadius: 16,
               background: `linear-gradient(160deg, rgba(220,38,38,0.14) 0%, rgba(220,38,38,0.08) 100%)`,
               border: `1.5px solid ${isUploading ? "rgba(220,38,38,0.6)" : uploadDone ? "rgba(16,185,129,0.45)" : "rgba(220,38,38,0.34)"}`,
@@ -1298,7 +1314,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   size="sm"
                 />
               </div>
-            </div>
+            </div>)}
           </div>
 
           {/* ── Tabs ──────────────────────────────────────────────────────── */}
@@ -1311,7 +1327,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             padding: "0 8px",
             overflowX: "auto",
           }}>
-            {PROJECT_TABS.map(tab => {
+            {(isCourse ? PROJECT_TABS.filter(t => t !== "קליפ") : PROJECT_TABS).map(tab => {
               const active = activeTab === tab;
               return (
                 <button
@@ -1338,7 +1354,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
                   onMouseLeave={e => { if (!active) e.currentTarget.style.color = LABEL; }}
                 >
                   <span style={{ fontSize: active ? 17 : 16, lineHeight: 1 }}>{TAB_ICONS[tab]}</span>
-                  {tab}
+                  {isCourse && tab === "סשנים" ? "שיעורים" : tab}
                 </button>
               );
             })}
@@ -1350,6 +1366,9 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
         ══════════════════════════════════════════════════════════════════ */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px 20px" }}>
           {activeTab === "סקירה" ? (
+            isCourse ? (
+              <CourseOverview sessDone={sessDone} nextSession={nextSession} received={received} agreedPrice={agreedPrice} currency={currency} finLoaded={finLoaded} />
+            ) : (
             <OverviewContent
               project={project}
               transactions={transactions}
@@ -1369,6 +1388,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               statusColor={statusColor}
               onTabChange={setActiveTab}
             />
+            )
           ) : activeTab === "כספים" ? (
             privacyHidden ? (
               <PrivacyHiddenCard text="מצב לקוח פעיל — נתוני הכספים של הפרויקט מוסתרים" minHeight={320} />
@@ -1397,7 +1417,17 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             />
             )
           ) : activeTab === "סשנים" ? (
-            <SessionsContent sessions={sessions} sessDone={sessDone} onStatusChange={updateSessionStatus} onEditSession={setEditingSession} />
+            <>
+              {isCourse && (
+                <button onClick={() => setScheduleAction(ACTIONS[0])} style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  marginBottom: 14, padding: "11px 18px", borderRadius: 12, border: "none", cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: "#fff",
+                  background: "linear-gradient(135deg, #DC2626, #B91C1C)",
+                }}>+ קבע שיעור</button>
+              )}
+              <SessionsContent sessions={sessions} sessDone={sessDone} onStatusChange={updateSessionStatus} onEditSession={setEditingSession} />
+            </>
           ) : activeTab === "קבצים" ? (
             <FilesContent project={project} onFileDeleted={refresh} />
           ) : (
@@ -3338,6 +3368,39 @@ function SessionStatusControl({ status, onChange }: { status: string; onChange: 
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── "לימודים" (course) overview — a clean 3-stat panel derived ENTIRELY from the
+// existing sessions + finance (no new data, no DB). Rendered only for a course. ──
+function CourseOverview({ sessDone, nextSession, received, agreedPrice, currency, finLoaded }: {
+  sessDone: number;
+  nextSession: { date: string | null; start_time?: string | null } | null;
+  received: number; agreedPrice: number; currency: string; finLoaded: boolean;
+}) {
+  const nextLabel = nextSession?.date
+    ? `${nextSession.date.split("-").reverse().join(".")}${nextSession.start_time ? ` · ${nextSession.start_time}` : ""}`
+    : "לא נקבע";
+  const paidValue: React.ReactNode = !finLoaded
+    ? "…"
+    : <SensitiveValue>{agreedPrice > 0
+        ? `${currency}${received.toLocaleString()} מתוך ${currency}${agreedPrice.toLocaleString()}`
+        : `${currency}${received.toLocaleString()}`}</SensitiveValue>;
+  const cards: { label: string; value: React.ReactNode; color: string; sub?: string }[] = [
+    { label: "שיעורים שהתקיימו", value: String(sessDone), color: "#A855F7" },
+    { label: "השיעור הבא", value: nextLabel, color: BLUE },
+    { label: "שולם", value: paidValue, color: GREEN, sub: finLoaded && agreedPrice <= 0 ? "טרם הוגדר מחיר מסלול" : undefined },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+      {cards.map((c, i) => (
+        <div key={i} style={{ background: CARD_BG2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "18px 18px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 10 }}>{c.label}</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: c.color, lineHeight: 1.25 }}>{c.value}</div>
+          {c.sub && <div style={{ fontSize: 11, color: TEXT2, marginTop: 6 }}>{c.sub}</div>}
+        </div>
+      ))}
     </div>
   );
 }
