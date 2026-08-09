@@ -1144,7 +1144,10 @@ function IconBtn({ onClick, title, children, style }: { onClick: () => void; tit
 
 // ─── NewProjectForm ───────────────────────────────────────────────────────────
 
-const PROJECT_TYPES_LIST = ["שיר", "קליפ", "EP", "אלבום", "רידים", "אחר"] as const;
+// Kept as a local list (not the canonical PROJECT_TYPES) on purpose: reusing it
+// would REORDER these options (canonical order differs) — a behaviour change we
+// avoid here. "לימודים" is added in its canonical spot (before "אחר").
+const PROJECT_TYPES_LIST = ["שיר", "קליפ", "EP", "אלבום", "רידים", "לימודים", "אחר"] as const;
 const PROJECT_INIT_STATUSES = ["לא התחיל", "בעבודה"] as const;
 
 function NewProjectForm({ client, onClose, onCreated }: {
