@@ -3456,9 +3456,16 @@ function CourseOverview({
         ? `${currency}${received.toLocaleString()} מתוך ${currency}${agreedPrice.toLocaleString()}`
         : `${currency}${received.toLocaleString()}`}</SensitiveValue>;
 
-  const hoursValue = plannedHours == null ? "לא הוגדר יעד" : `${fmtNum(doneHours)} / ${fmtNum(plannedHours)} שעות`;
+  // The "X / Y" ratio is isolated LTR (<bdi dir="ltr">) so RTL bidi never flips
+  // it visually (e.g. "5 / 20" must not render as "20 / 5"). The Hebrew unit
+  // stays in the natural RTL flow. Display-only — no calc/order change.
+  const hoursValue: React.ReactNode = plannedHours == null
+    ? "לא הוגדר יעד"
+    : <><bdi dir="ltr">{fmtNum(doneHours)} / {fmtNum(plannedHours)}</bdi> שעות</>;
   const hoursSub   = plannedHours == null ? `בוצעו ${fmtNum(doneHours)} שעות` : undefined;
-  const daysValue  = plannedDays  == null ? "לא הוגדר יעד" : `${doneDays} / ${plannedDays} ימים`;
+  const daysValue: React.ReactNode = plannedDays == null
+    ? "לא הוגדר יעד"
+    : <><bdi dir="ltr">{doneDays} / {plannedDays}</bdi> ימים</>;
   const daysSub    = plannedDays  == null ? `בוצעו ${doneDays} ימים` : undefined;
 
   const cards: { label: string; value: React.ReactNode; color: string; sub?: string }[] = [
