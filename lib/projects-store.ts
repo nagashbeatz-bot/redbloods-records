@@ -22,6 +22,8 @@ interface DbProject {
   files:          { name: string; assetId?: number; url?: string; dropboxPath?: string; dropboxShareUrl?: string; trackId?: string; versionLabel?: string; category?: string; durationSeconds?: number; size?: number }[];
   work_materials: WorkMaterialsMeta | null;
   dropbox_folder: string | null; // frozen canonical Dropbox base folder (rename-proof)
+  planned_hours:  number | null; // "לימודים" target — total course hours (nullable, >= 0)
+  planned_days:   number | null; // "לימודים" target — total course days  (nullable, >= 0)
   created_at:     string;
   updated_at:     string;
 }
@@ -59,6 +61,8 @@ function dbToProject(db: DbProject): Project {
     updatedAt:     db.updated_at ?? db.created_at ?? "",
     workMaterials: db.work_materials ?? {},
     dropboxFolder: db.dropbox_folder ?? null,
+    plannedHours:  db.planned_hours ?? null,
+    plannedDays:   db.planned_days ?? null,
   };
 }
 
@@ -154,6 +158,8 @@ export async function updateProject(
     project_business_type: string;
     is_hidden:      boolean;
     dropbox_folder: string | null;
+    planned_hours:  number | null;
+    planned_days:   number | null;
     files:          { name: string; assetId?: number; url?: string }[];
   }>
 ): Promise<void> {

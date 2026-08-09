@@ -12,6 +12,7 @@ import { usePrivacyMode } from "@/lib/use-privacy";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
+import { sessionDurationMinutes } from "@/lib/session-duration";
 import type { Project } from "@/lib/types";
 import ScheduleModal from "@/components/project/ScheduleModal";
 import StevenIntakeModal from "@/components/project/StevenIntakeModal";
@@ -811,6 +812,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   // ── "לימודים" (course) mode — a light, session-driven view. Everything gated
   // on this flag; a regular project renders exactly as before. ──
   const isCourse    = project.projectType === "לימודים";
+  // Course actuals — ALWAYS derived from "התקיים" sessions, never stored.
+  //   ימי לימוד שבוצעו = number of "התקיים" sessions (= sessDone)
+  //   שעות לימוד שבוצעו = sum of their durations (midnight-safe; missing times = 0)
+  const doneDays    = sessDone;
+  const doneHours   = sessions
+    .filter(s => s.status === "התקיים")
+    .reduce((sum, s) => sum + (sessionDurationMinutes(s.start_time, s.end_time) ?? 0), 0) / 60;
   // "השיעור הבא": the earliest not-done/not-cancelled session dated today-or-later.
   // Derived from the SAME sessions list — no new data, no DB.
   const nextSession = isCourse
@@ -1367,7 +1375,16 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px 20px" }}>
           {activeTab === "סקירה" ? (
             isCourse ? (
-              <CourseOverview sessDone={sessDone} nextSession={nextSession} received={received} agreedPrice={agreedPrice} currency={currency} finLoaded={finLoaded} />
+              <CourseOverview
+                projectId={projectId}
+                doneHours={doneHours}
+                doneDays={doneDays}
+                plannedHours={project.plannedHours ?? null}
+                plannedDays={project.plannedDays ?? null}
+                nextSession={nextSession}
+                received={received} agreedPrice={agreedPrice} currency={currency} finLoaded={finLoaded}
+                onSaved={refresh}
+              />
             ) : (
             <OverviewContent
               project={project}
@@ -3372,13 +3389,64 @@ function SessionStatusControl({ status, onChange }: { status: string; onChange: 
   );
 }
 
-// ── "לימודים" (course) overview — a clean 3-stat panel derived ENTIRELY from the
-// existing sessions + finance (no new data, no DB). Rendered only for a course. ──
-function CourseOverview({ sessDone, nextSession, received, agreedPrice, currency, finLoaded }: {
-  sessDone: number;
+// Format a number for display — drops a trailing ".0" (9 → "9", 8.5 → "8.5").
+function fmtNum(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+// ── "לימודים" (course) overview — a clean stat panel derived ENTIRELY from the
+// existing sessions + finance. Actuals (hours/days done) are NEVER stored; only
+// the planned_hours / planned_days targets live in the DB and are editable here
+// inline (no modal, no new screen). Rendered only for a course. ──
+function CourseOverview({
+  projectId, doneHours, doneDays, plannedHours, plannedDays,
+  nextSession, received, agreedPrice, currency, finLoaded, onSaved,
+}: {
+  projectId: string;
+  doneHours: number;
+  doneDays: number;
+  plannedHours: number | null;
+  plannedDays: number | null;
   nextSession: { date: string | null; start_time?: string | null } | null;
   received: number; agreedPrice: number; currency: string; finLoaded: boolean;
+  onSaved: () => void | Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [hoursInput, setHoursInput] = useState("");
+  const [daysInput, setDaysInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function openEditor() {
+    setHoursInput(plannedHours == null ? "" : String(plannedHours));
+    setDaysInput(plannedDays == null ? "" : String(plannedDays));
+    setErr(null);
+    setEditing(true);
+  }
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plannedHours: hoursInput.trim() === "" ? null : Number(hoursInput),
+          plannedDays:  daysInput.trim()  === "" ? null : Number(daysInput),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((d as { error?: string }).error || "שמירה נכשלה");
+      await onSaved();
+      setEditing(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "שמירה נכשלה");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const nextLabel = nextSession?.date
     ? `${nextSession.date.split("-").reverse().join(".")}${nextSession.start_time ? ` · ${nextSession.start_time}` : ""}`
     : "לא נקבע";
@@ -3387,20 +3455,73 @@ function CourseOverview({ sessDone, nextSession, received, agreedPrice, currency
     : <SensitiveValue>{agreedPrice > 0
         ? `${currency}${received.toLocaleString()} מתוך ${currency}${agreedPrice.toLocaleString()}`
         : `${currency}${received.toLocaleString()}`}</SensitiveValue>;
+
+  const hoursValue = plannedHours == null ? "לא הוגדר יעד" : `${fmtNum(doneHours)} / ${fmtNum(plannedHours)} שעות`;
+  const hoursSub   = plannedHours == null ? `בוצעו ${fmtNum(doneHours)} שעות` : undefined;
+  const daysValue  = plannedDays  == null ? "לא הוגדר יעד" : `${doneDays} / ${plannedDays} ימים`;
+  const daysSub    = plannedDays  == null ? `בוצעו ${doneDays} ימים` : undefined;
+
   const cards: { label: string; value: React.ReactNode; color: string; sub?: string }[] = [
-    { label: "שיעורים שהתקיימו", value: String(sessDone), color: "#A855F7" },
-    { label: "השיעור הבא", value: nextLabel, color: BLUE },
-    { label: "שולם", value: paidValue, color: GREEN, sub: finLoaded && agreedPrice <= 0 ? "טרם הוגדר מחיר מסלול" : undefined },
+    { label: "שעות לימוד", value: hoursValue, color: PURPLE, sub: hoursSub },
+    { label: "ימי לימוד",  value: daysValue,  color: AMBER,  sub: daysSub },
+    { label: "השיעור הבא", value: nextLabel,  color: BLUE },
+    { label: "שולם",       value: paidValue,  color: GREEN, sub: finLoaded && agreedPrice <= 0 ? "טרם הוגדר מחיר מסלול" : undefined },
   ];
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", background: "rgba(0,0,0,0.35)",
+    border: `1px solid ${BORDER2}`, borderRadius: 10, padding: "9px 12px",
+    color: "#F4F4F4", fontSize: 15, fontWeight: 700, fontFamily: "inherit",
+  };
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-      {cards.map((c, i) => (
-        <div key={i} style={{ background: CARD_BG2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "18px 18px" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 10 }}>{c.label}</div>
-          <div style={{ fontSize: 18, fontWeight: 900, color: c.color, lineHeight: 1.25 }}>{c.value}</div>
-          {c.sub && <div style={{ fontSize: 11, color: TEXT2, marginTop: 6 }}>{c.sub}</div>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Target editor — inline, no modal. */}
+      {editing ? (
+        <div style={{ background: CARD_BG2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: TEXT2, marginBottom: 12 }}>עריכת יעד מסלול</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 6 }}>סה"כ שעות במסלול</span>
+              <input type="number" min={0} step="any" inputMode="decimal" value={hoursInput}
+                onChange={e => setHoursInput(e.target.value)} placeholder="לדוגמה: 60" style={inputStyle} />
+            </label>
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", fontSize: 11, fontWeight: 700, color: MUTED, marginBottom: 6 }}>סה"כ ימי לימוד</span>
+              <input type="number" min={0} step={1} inputMode="numeric" value={daysInput}
+                onChange={e => setDaysInput(e.target.value)} placeholder="לדוגמה: 20" style={inputStyle} />
+            </label>
+          </div>
+          {err && <div style={{ fontSize: 12, color: "#F87171", marginTop: 10 }}>{err}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button onClick={save} disabled={saving} style={{
+              background: GREEN, border: "none", borderRadius: 10, padding: "9px 18px",
+              color: "#04120B", fontSize: 13, fontWeight: 800, cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1,
+            }}>{saving ? "שומר…" : "שמור"}</button>
+            <button onClick={() => setEditing(false)} disabled={saving} style={{
+              background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 10, padding: "9px 18px",
+              color: TEXT2, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>ביטול</button>
+          </div>
         </div>
-      ))}
+      ) : (
+        <div style={{ display: "flex", justifyContent: "flex-start" }}>
+          <button onClick={openEditor} style={{
+            background: "transparent", border: `1px solid ${BORDER2}`, borderRadius: 10, padding: "7px 14px",
+            color: TEXT2, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+          }}>✏️ עריכת יעד מסלול</button>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        {cards.map((c, i) => (
+          <div key={i} style={{ background: CARD_BG2, border: `1px solid ${BORDER2}`, borderRadius: 16, padding: "18px 18px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 10 }}>{c.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: c.color, lineHeight: 1.25 }}>{c.value}</div>
+            {c.sub && <div style={{ fontSize: 11, color: TEXT2, marginTop: 6 }}>{c.sub}</div>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

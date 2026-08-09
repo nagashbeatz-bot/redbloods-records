@@ -200,9 +200,36 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     }
 
     // Full update (from modal / drawer)
-    const { name, artist, status, startDate, deadline, notes, projectType, parentProject, isHidden } = body;
+    const { name, artist, status, startDate, deadline, notes, projectType, parentProject, isHidden, plannedHours, plannedDays } = body;
     if (name !== undefined && !name?.trim()) {
       return NextResponse.json({ error: "שם הפרויקט לא יכול להיות ריק" }, { status: 400 });
+    }
+
+    // "לימודים" course targets — normalize "" → null, validate finite & non-negative
+    // (DB CHECK enforces >= 0 too). hours: numeric; days: integer.
+    let plannedHoursCol: number | null | undefined;
+    if (plannedHours !== undefined) {
+      if (plannedHours === null || plannedHours === "") {
+        plannedHoursCol = null;
+      } else {
+        const n = Number(plannedHours);
+        if (!Number.isFinite(n) || n < 0) {
+          return NextResponse.json({ error: "שעות מסלול לא תקינות" }, { status: 400 });
+        }
+        plannedHoursCol = n;
+      }
+    }
+    let plannedDaysCol: number | null | undefined;
+    if (plannedDays !== undefined) {
+      if (plannedDays === null || plannedDays === "") {
+        plannedDaysCol = null;
+      } else {
+        const n = Number(plannedDays);
+        if (!Number.isInteger(n) || n < 0) {
+          return NextResponse.json({ error: "ימי מסלול לא תקינים" }, { status: 400 });
+        }
+        plannedDaysCol = n;
+      }
     }
 
     // Capture old artist before update (only if artist field is changing).
@@ -234,6 +261,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       ...(parentProject  !== undefined && { parent_project: parentProject }),
       ...(isHidden       !== undefined && { is_hidden:      Boolean(isHidden) }),
       ...(freezeFolder   !== null      && { dropbox_folder: freezeFolder }),
+      ...(plannedHoursCol !== undefined && { planned_hours: plannedHoursCol }),
+      ...(plannedDaysCol  !== undefined && { planned_days:  plannedDaysCol }),
     });
 
     // Sync artist changes to clients table (fire-and-forget)

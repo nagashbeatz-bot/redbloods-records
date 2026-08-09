@@ -370,6 +370,11 @@ export interface Project {
   // all writers use it instead of recomputing from the name → renaming a project
   // never moves/creates a Dropbox folder. Null on projects not yet frozen.
   dropboxFolder?: string | null;
+  // "לימודים" (course) targets only — the total the study track was sold against.
+  // null = not yet set. Actuals (hours/days done) are NEVER stored; they are
+  // derived at read time from the project's "התקיים" sessions.
+  plannedHours?: number | null; // projects.planned_hours (numeric, nullable, >= 0)
+  plannedDays?: number | null;  // projects.planned_days  (integer, nullable, >= 0)
 }
 
 /** Free-text work-materials metadata shown to Steven/Bill (stored in projects.work_materials jsonb). */
