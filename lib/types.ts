@@ -15,7 +15,7 @@ export const ALL_STATUSES: ProjectStatus[] = [
   "לא התחיל",
 ];
 
-export type ProjectType = "שיר" | "EP" | "אלבום" | "קליפ" | "רידים" | "אחר" | "";
+export type ProjectType = "שיר" | "EP" | "אלבום" | "קליפ" | "רידים" | "לימודים" | "אחר" | "";
 
 export const PROJECT_TYPES: Exclude<ProjectType, "">[] = [
   "שיר",
@@ -23,6 +23,7 @@ export const PROJECT_TYPES: Exclude<ProjectType, "">[] = [
   "אלבום",
   "קליפ",
   "רידים",
+  "לימודים",
   "אחר",
 ];
 
