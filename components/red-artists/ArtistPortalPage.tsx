@@ -296,6 +296,9 @@ export type ShalevSummary = {
   shows: { upcoming: PortalShow[]; done: PortalShow[] };
   balance: { paidTotal: number; expectedTotal: number; currency: string; payments: PortalPayment[]; hasData: boolean };
   weekly: WeeklyItem[];
+  // The artist's soonest still-upcoming session (date >= today), independent of
+  // the availability week — drives the "הסשן הקרוב" home card. null when none.
+  nextSession: WeeklyItem | null;
   updates: PortalUpdate[];
 };
 type LoadState = "loading" | "ready" | "error";
@@ -616,7 +619,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
     fetch(summaryUrl)
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((d) => {
-        if (d?.ok) { setSummary({ shows: d.shows, balance: d.balance, weekly: d.weekly ?? [], updates: d.updates ?? [] }); setSummaryState("ready"); }
+        if (d?.ok) { setSummary({ shows: d.shows, balance: d.balance, weekly: d.weekly ?? [], nextSession: d.nextSession ?? null, updates: d.updates ?? [] }); setSummaryState("ready"); }
         else setSummaryState("error");
       })
       .catch(() => setSummaryState("error"));
@@ -4227,16 +4230,11 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
           <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, letterSpacing: "-0.01em" }}>מה מחכה לך עכשיו</span>
         </div>
         <div className="rap-acts">
-          {/* הסשן הקרוב — the artist's next real, still-UPCOMING session (weekly,
-              excluding shows). `weekly` now spans the whole Sun–Sat week (incl.
-              days already past within it, so the day-cubes can show them too) —
-              so this must explicitly exclude past dates, or an already-passed
-              session earlier in the week would outrank the real next one.
-              Type only ("סשן"/"פגישה"/...) — no project name. */}
-          {(() => {
-            const sess = (summary?.weekly ?? []).find(w => w.type !== "הופעה" && (w.date ?? "") >= ilTodayYMD());
-            return <NextSessionCard session={sess ?? null} loading={summaryState === "loading"} />;
-          })()}
+          {/* הסשן הקרוב — the artist's next real, still-UPCOMING session, served
+              directly as summary.nextSession (soonest session with date >= today,
+              across ALL upcoming dates — NOT limited to the availability week that
+              `weekly` covers). Type only ("סשן"/"פגישה"/...) — no project name. */}
+          <NextSessionCard session={summary?.nextSession ?? null} loading={summaryState === "loading"} />
           {/* הפרויקט הבא לעבודה — OWNER-chosen (manifest), NEVER derived from nextRelease. */}
           <NextWorkCard
             sketch={nextWork ? sketches.find(s => s.id === nextWork.sketchId) ?? null : null}

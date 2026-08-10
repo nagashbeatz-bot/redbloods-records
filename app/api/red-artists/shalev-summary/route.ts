@@ -218,11 +218,43 @@ export async function GET() {
       .sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : 0))
       .slice(0, 12);
 
+    // nextSession = the soonest still-upcoming session (date >= today), across
+    // ALL future dates — NOT limited to the availability week that `weekly`
+    // covers. Same project scoping / non-cancelled / non-show filter as `weekly`,
+    // separate query. Drives the "הסשן הקרוב" home card.
+    let nextSession: {
+      id: string; type: string; title: string; date: string | null;
+      startTime: string | null; endTime: string | null; location: string | null;
+    } | null = null;
+    if (shalevIds.length > 0) {
+      const { data: upcomingSess } = await supabase
+        .from("sessions")
+        .select("id, project_id, title, date, start_time, end_time, session_type, location, status")
+        .in("project_id", shalevIds)
+        .gte("date", today)
+        .order("date", { ascending: true })
+        .order("start_time", { ascending: true });
+      const first = ((upcomingSess ?? []) as SessionRow[])
+        .find((s) => s.status !== "בוטל" && (s.session_type ?? "") !== "הופעה" && !!s.date);
+      if (first) {
+        nextSession = {
+          id: first.id,
+          type: first.session_type || "סשן",
+          title: sessTitle(first),
+          date: first.date,
+          startTime: first.start_time ?? null,
+          endTime: first.end_time ?? null,
+          location: first.location || null,
+        };
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       shows: { upcoming, done },
       balance, // null for the shalev role (financials stripped server-side)
       weekly,
+      nextSession,
       updates,
     });
   } catch (err) {

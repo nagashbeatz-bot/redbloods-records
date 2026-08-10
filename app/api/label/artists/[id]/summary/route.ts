@@ -187,7 +187,38 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
       ? { paidTotal: 0, expectedTotal: 0, currency: balance.currency, payments: [], hasData: false }
       : balance;
 
-    return NextResponse.json({ ok: true, shows: { upcoming, done }, balance: safeBalance, weekly, updates });
+    // nextSession = the soonest still-upcoming session (date >= today), across
+    // ALL future dates — NOT limited to the availability week that `weekly`
+    // covers. Same project scoping / non-cancelled / non-show filter as `weekly`,
+    // separate query. Drives the "הסשן הקרוב" home card.
+    let nextSession: {
+      id: string; type: string; title: string; date: string | null;
+      startTime: string | null; endTime: string | null; location: string | null;
+    } | null = null;
+    if (artistProjectIds.length > 0) {
+      const { data: upcomingSess } = await supabase
+        .from("sessions")
+        .select("id, project_id, title, date, start_time, end_time, session_type, location, status")
+        .in("project_id", artistProjectIds)
+        .gte("date", today)
+        .order("date", { ascending: true })
+        .order("start_time", { ascending: true });
+      const first = ((upcomingSess ?? []) as SessionRow[])
+        .find((s) => s.status !== "בוטל" && (s.session_type ?? "") !== "הופעה" && !!s.date);
+      if (first) {
+        nextSession = {
+          id: first.id,
+          type: first.session_type || "סשן",
+          title: sessTitle(first),
+          date: first.date,
+          startTime: first.start_time ?? null,
+          endTime: first.end_time ?? null,
+          location: first.location || null,
+        };
+      }
+    }
+
+    return NextResponse.json({ ok: true, shows: { upcoming, done }, balance: safeBalance, weekly, nextSession, updates });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "server error";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
