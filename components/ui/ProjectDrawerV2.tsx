@@ -1543,6 +1543,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           projectId={projectId}
           projectName={project.name}
           artist={project.artist}
+          allowHistorical={isCourse}
           onClose={() => setScheduleAction(null)}
           onSessionCreated={() => {
             fetch(`/api/sessions?projectId=${projectId}`)

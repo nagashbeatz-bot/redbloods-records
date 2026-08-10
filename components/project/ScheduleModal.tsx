@@ -57,6 +57,11 @@ interface Props {
   initialDate?: string;
   /** Pre-fill the manual start time ("HH:MM"), only applied on a valid working day. */
   initialTime?: string;
+  /** Enables the "שיעור היסטורי / רטרו" toggle (course projects only). When the
+   *  user turns it on, a past-dated session is saved directly as "התקיים" with
+   *  NO calendar event / check-slot / push. Off by default — every other caller
+   *  keeps the exact existing behavior. */
+  allowHistorical?: boolean;
 }
 
 /** Parse "HH:MM" → {h,m}, or null. */
@@ -82,7 +87,7 @@ function isoToIsrael(iso: string): { date: string; time: string } {
   return { date, time };
 }
 
-export default function ScheduleModal({ action, projectId, projectName, artist, onClose, onSessionCreated, editSession, initialDate, initialTime }: Props) {
+export default function ScheduleModal({ action, projectId, projectName, artist, onClose, onSessionCreated, editSession, initialDate, initialTime, allowHistorical = false }: Props) {
   const isEdit = !!editSession;
   // Edit mode prefill: duration from the session's start/end, and a manual time.
   const editDurMin = editSession?.start_time && editSession?.end_time
@@ -191,6 +196,12 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   const [manualHM,   setManualHM]   = useState<{ h: number; m: number } | null>(
     isEdit ? editStartHM : (initialDateOk && initialTime ? parseHM(initialTime) : null)
   );
+
+  // "שיעור היסטורי / רטרו" mode — only reachable when allowHistorical is passed.
+  // When on: past dates allowed, no working-day/availability checks, no calendar,
+  // saved directly as "התקיים". Off by default → normal flow is byte-identical.
+  const [historical,  setHistorical]  = useState(false);
+  const [historyNote, setHistoryNote] = useState("");
 
   // Track whether the user has already triggered a slot search at least once
   const [hasSearched, setHasSearched] = useState(false);
@@ -370,6 +381,43 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setPhase({ error: d.error ?? "שגיאה בשמירת הסשן" }); return; }
       onSessionCreated?.();
+      setPhase({ created: { label } });
+    } catch { setPhase({ error: "שגיאת רשת" }); }
+  }
+
+  // ── Historical (retro) lesson — save a PAST session directly ────────────────
+  // Records a lesson that already happened. Deliberately does NOT touch Google
+  // Calendar (no /api/calendar/create-event, no addToCalendar, no calendarEventId),
+  // no check-slot, no invite. Saved as status "התקיים" so it counts immediately in
+  // the course's done hours/days and appears in the lessons list. Push/notification
+  // are already a no-op for a course project (project.artist ≠ "שליו טסמה").
+  async function createHistorical() {
+    if (!manualHM || !manualEndHM) return;
+    setPhase("creating");
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const startTime = `${pad(manualHM.h)}:${pad(manualHM.m)}`;
+    const endTime   = `${pad(manualEndHM.h)}:${pad(manualEndHM.m)}`;
+    const label     = `${startTime}–${endTime}`;
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: projectId || null,
+          title:     projectId ? null : projectName,
+          date:      manualDate,
+          startTime,
+          endTime,
+          status:      "התקיים",
+          sessionType: "סשן",
+          notes:       historyNote.trim(),
+          // NO addToCalendar / calendarEventId → no Google Calendar event.
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setPhase({ error: d.error ?? "שגיאה בשמירת השיעור" }); return; }
+      onSessionCreated?.();
+      document.dispatchEvent(new CustomEvent("rb-session-created"));
       setPhase({ created: { label } });
     } catch { setPhase({ error: "שגיאת רשת" }); }
   }
@@ -555,6 +603,28 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
           />
         )}
 
+        {/* ── שיעור רגיל / היסטורי toggle (course projects only) ────── */}
+        {!showFinance && !isCreated && !isConfirm && allowHistorical && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ display: "inline-flex", background: "#111", border: "1px solid #303030", borderRadius: 10, padding: 3, gap: 3 }}>
+              {[{ k: false, label: "שיעור רגיל" }, { k: true, label: "שיעור היסטורי" }].map((o) => (
+                <button
+                  key={String(o.k)}
+                  onClick={() => { setHistorical(o.k); setManualHM(null); setPhase("idle"); }}
+                  style={{
+                    padding: "6px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "inherit",
+                    fontSize: 12, fontWeight: historical === o.k ? 700 : 500,
+                    background: historical === o.k ? "rgba(168,85,247,0.18)" : "transparent",
+                    color: historical === o.k ? "#C084FC" : "#777", transition: "all 0.13s",
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Duration pills ────────────────────────────────────────── */}
         {!showFinance && !isCreated && (
           <div style={{ marginBottom: 20 }}>
@@ -573,8 +643,8 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
           </div>
         )}
 
-        {/* ── Event title preview ───────────────────────────────────── */}
-        {!showFinance && !isCreated && !isConfirm && (
+        {/* ── Event title preview ── hidden in historical mode (no calendar event) ── */}
+        {!showFinance && !isCreated && !isConfirm && !historical && (
           <div style={{ marginBottom: 22 }}>
             <Label>שם האירוע ביומן</Label>
             <div style={{
@@ -596,6 +666,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         {/* ── RECOMMENDED / MANUAL tabs ─────────────────────────────── */}
         {!showFinance && (phase === "idle" || isSlots || phase === "no_slots" || phase === "searching") && (
           <>
+            {!historical && (
             <div style={{ display: "flex", gap: 0, marginBottom: 18, borderBottom: "1px solid #222" }}>
               {(["recommended", "manual"] as Tab[]).map((t) => (
                 <button
@@ -618,9 +689,10 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                 </button>
               ))}
             </div>
+            )}
 
-            {/* ── Recommended tab ─────────────────────────────────── */}
-            {tab === "recommended" && (
+            {/* ── Recommended tab ── hidden in historical mode ── */}
+            {!historical && tab === "recommended" && (
               <>
                 {/* Quick-range buttons — always visible in recommended tab */}
                 <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
@@ -717,9 +789,12 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
               </>
             )}
 
-            {/* ── Manual tab ──────────────────────────────────────── */}
-            {tab === "manual" && (
+            {/* ── Manual tab (also the ONLY picker shown in historical mode) ── */}
+            {(historical || tab === "manual") && (
               <ManualPicker
+                historical={historical}
+                note={historyNote}
+                onNoteChange={setHistoryNote}
                 manualDate={manualDate}
                 todayStr={todayStr}
                 manualDayOk={manualDayOk}
@@ -732,6 +807,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                 onHMChange={(hm) => { setManualHM(hm); setPhase("idle"); }}
                 onConfirm={() => {
                   if (!manualStart || !manualEnd) return;
+                  if (historical) { createHistorical(); return; }
                   const label = confirmLabel(manualStart, manualEnd);
                   checkAndConfirm(manualStart.toISOString(), manualEnd.toISOString(), label);
                 }}
@@ -744,7 +820,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         {!showFinance && phase === "checking" && <Spinner label="בודק זמינות..." />}
 
         {/* ── Creating ────────────────────────────────────────────── */}
-        {!showFinance && phase === "creating" && <Spinner label={isEdit ? "שומר שינויים..." : "יוצר אירוע ביומן..."} />}
+        {!showFinance && phase === "creating" && <Spinner label={historical ? "מוסיף שיעור היסטורי..." : isEdit ? "שומר שינויים..." : "יוצר אירוע ביומן..."} />}
 
         {/* ── Confirm ─────────────────────────────────────────────── */}
         {!showFinance && isConfirm && confirmData && (
@@ -775,6 +851,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             artist={artist}
             projectName={projectName}
             editMode={isEdit}
+            historical={historical}
             onClose={onClose}
           />
         )}
@@ -854,10 +931,12 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ManualPicker({
+  historical = false, note, onNoteChange,
   manualDate, todayStr, manualDayOk, manualHM, timeOptions,
   manualEndHM, manualHoursOk, manualReady,
   onDateChange, onHMChange, onConfirm,
 }: {
+  historical?: boolean; note: string; onNoteChange: (v: string) => void;
   manualDate: string; todayStr: string; manualDayOk: boolean;
   manualHM: { h: number; m: number } | null;
   timeOptions: { h: number; m: number }[];
@@ -873,7 +952,8 @@ function ManualPicker({
   const [overridden, setOverridden] = useState(false);
   useEffect(() => { setOverridden(false); }, [manualDate]);
 
-  const dayAllowed = manualDayOk || overridden;
+  // Historical mode never checks working days — the lesson already happened.
+  const dayAllowed = historical || manualDayOk || overridden;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -883,16 +963,16 @@ function ManualPicker({
         <input
           type="date"
           value={manualDate}
-          min={todayStr}
+          min={historical ? undefined : todayStr}
           onChange={(e) => onDateChange(e.target.value)}
           style={{
             width: "100%", padding: "9px 12px", borderRadius: 10,
-            border: `1px solid ${manualDayOk ? "#303030" : "rgba(239,68,68,0.4)"}`,
+            border: `1px solid ${(historical || manualDayOk) ? "#303030" : "rgba(239,68,68,0.4)"}`,
             background: "#111", color: "#E8E8E8", fontSize: 13,
             fontFamily: "inherit", outline: "none", boxSizing: "border-box",
           }}
         />
-        {!manualDayOk && !overridden && (
+        {!historical && !manualDayOk && !overridden && (
           <div style={{ marginTop: 8 }}>
             <Warning>התאריך מחוץ לימי הפעילות שהוגדרו. להמשיך בכל זאת?</Warning>
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -905,7 +985,7 @@ function ManualPicker({
             </div>
           </div>
         )}
-        {!manualDayOk && overridden && (
+        {!historical && !manualDayOk && overridden && (
           <div style={{ fontSize: 11, color: "#A855F7", marginTop: 6, fontWeight: 600 }}>
             ✓ נקבע מחוץ לימי הפעילות שהוגדרו
           </div>
@@ -949,9 +1029,27 @@ function ManualPicker({
         </div>
       )}
 
+      {/* Optional note — historical mode only */}
+      {historical && dayAllowed && (
+        <div>
+          <Label>הערה (אופציונלי)</Label>
+          <textarea
+            value={note}
+            onChange={(e) => onNoteChange(e.target.value)}
+            placeholder="לדוגמה: שיעור זום"
+            rows={2}
+            style={{
+              width: "100%", padding: "9px 12px", borderRadius: 10, border: "1px solid #303030",
+              background: "#111", color: "#E8E8E8", fontSize: 13, fontFamily: "inherit",
+              outline: "none", boxSizing: "border-box", resize: "vertical",
+            }}
+          />
+        </div>
+      )}
+
       {/* Proceed */}
       {manualReady && manualHM && (
-        <Btn primary onClick={onConfirm}>בדוק זמינות ↓</Btn>
+        <Btn primary onClick={onConfirm}>{historical ? "הוסף שיעור היסטורי" : "בדוק זמינות ↓"}</Btn>
       )}
     </div>
   );
@@ -1105,11 +1203,11 @@ function ConfirmPanel({
 }
 
 function CreatedPanel({
-  data, action, artist, projectName, onClose, editMode = false,
+  data, action, artist, projectName, onClose, editMode = false, historical = false,
 }: {
   data: { label: string; htmlLink?: string; inviteSent?: boolean; paymentAmount?: number; paymentCurrency?: string };
   action: ActionDef; artist: string; projectName: string;
-  onClose: () => void; editMode?: boolean;
+  onClose: () => void; editMode?: boolean; historical?: boolean;
 }) {
   return (
     <div>
@@ -1118,7 +1216,7 @@ function CreatedPanel({
         borderRadius: 14, padding: "16px", marginBottom: 14,
       }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#10B981", marginBottom: 10 }}>
-          {editMode ? "✓ הסשן עודכן" : "✓ האירוע נוצר ביומן"}
+          {historical ? "✓ השיעור נוסף" : editMode ? "✓ הסשן עודכן" : "✓ האירוע נוצר ביומן"}
         </div>
         <Row label="פעולה"  value={action.calPrefix} />
         <Row label="אמן"    value={artist} />
