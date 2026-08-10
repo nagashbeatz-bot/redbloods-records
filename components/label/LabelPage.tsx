@@ -296,7 +296,6 @@ export default function LabelPage() {
           ) : (
             <>
               {d.roster.map((artist) => {
-                const activeRels = (d.byArtist.get(artist.id) ?? []).filter((r) => ACTIVE_STAGES_SET.has(r.release.releaseStage));
                 const sc = ARTIST_STATUS_COLOR[artist.status];
                 const isActive = artist.status === "פעיל";
                 return (
@@ -317,7 +316,6 @@ export default function LabelPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
                       <span style={{ fontSize: 16, fontWeight: 900, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{artist.name}</span>
                       <span style={{ fontSize: 11.5, fontWeight: 800, color: sc, display: "flex", alignItems: "center", gap: 5 }}>● {artist.status}</span>
-                      <span style={{ fontSize: 11, color: MUTED }}>{activeRels.length} בצינור</span>
                     </div>
                   </Link>
                 );
