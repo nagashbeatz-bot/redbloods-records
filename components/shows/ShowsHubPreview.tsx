@@ -1706,9 +1706,16 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
       const checks  = [incomeReceived, djRelevant ? djPaid : null, artRelevant ? artistPaid : null].filter(v => v !== null) as boolean[];
       const allPaid = checks.length > 0 && checks.every(Boolean);
       const anyPaid = checks.some(Boolean);
-      const payment_status = allPaid ? "שולם" : anyPaid ? "מקדמה" : (show.payment_status === "בוטל" ? "בוטל" : "צפוי");
 
-      const body: Record<string, unknown> = { payment_status };
+      const body: Record<string, unknown> = {};
+      // Decouple performed-from-paid: the show's payment_status is (re)written ONLY
+      // when the income actually came in ("הכסף מההופעה התקבל" checked). Otherwise
+      // marking "בוצע" leaves payment_status untouched — the income stays "צפוי"
+      // (expected) and is never counted as received just because the show happened.
+      // (closeShow below still drives the per-party transaction statuses.)
+      if (incomeReceived) {
+        body.payment_status = allPaid ? "שולם" : anyPaid ? "מקדמה" : (show.payment_status === "בוטל" ? "בוטל" : "צפוי");
+      }
       if (trigger === "done") body.status = "בוצע";
       if (djRelevant && djName.trim() && djName.trim() !== (show.dj_name ?? "")) body.dj_name = djName.trim();
       // Per-party closure → the server updates the 3 linked transactions individually.
