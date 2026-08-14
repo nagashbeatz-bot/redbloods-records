@@ -2,7 +2,7 @@ import "server-only";
 import { supabase } from "./supabase";
 
 export type ClientType   = "אמן" | "לקוח" | "איש צוות" | "אחר";
-export type ClientStatus = "פעיל" | "לא פעיל" | "בעייתי" | "VIP" | "חדש";
+export type ClientStatus = "פעיל" | "לא פעיל" | "בעייתי" | "VIP" | "חדש" | "אמן לייבל";
 
 export interface Client {
   id:         string;

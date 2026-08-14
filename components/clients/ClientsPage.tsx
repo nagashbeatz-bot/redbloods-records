@@ -25,7 +25,7 @@ function OpenClientFromURL({ onOpen }: { onOpen: (id: string) => void }) {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CLIENT_TYPES: ClientType[]   = ["אמן", "לקוח", "איש צוות", "אחר"];
-const CLIENT_STATUSES: ClientStatus[] = ["פעיל", "לא פעיל", "בעייתי", "VIP", "חדש"];
+const CLIENT_STATUSES: ClientStatus[] = ["פעיל", "לא פעיל", "בעייתי", "VIP", "חדש", "אמן לייבל"];
 
 const TYPE_COLORS: Record<ClientType, { bg: string; color: string }> = {
   "אמן":       { bg: "rgba(168,85,247,0.12)",  color: "#C084FC" },
@@ -40,6 +40,7 @@ const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string }> = {
   "בעייתי":  { bg: "rgba(239,68,68,0.12)",  color: "#F87171" },
   "VIP":     { bg: "rgba(245,158,11,0.12)", color: "#FBBF24" },
   "חדש":     { bg: "rgba(59,130,246,0.12)", color: "#60A5FA" },
+  "אמן לייבל": { bg: "rgba(168,85,247,0.12)", color: "#C084FC" },
 };
 
 // ─── Empty form ───────────────────────────────────────────────────────────────
@@ -220,13 +221,14 @@ export default function ClientsPage() {
 
   // ── Filter ────────────────────────────────────────────────────────────────
 
-  // Status priority: VIP → פעיל → בעייתי → חדש → לא פעיל
+  // Status priority: VIP → אמן לייבל → פעיל → בעייתי → חדש → לא פעיל
   const CLIENT_STATUS_PRIORITY: Record<ClientStatus, number> = {
-    "VIP":     0,
-    "פעיל":    1,
-    "בעייתי":  2,
-    "חדש":     3,
-    "לא פעיל": 4,
+    "VIP":       0,
+    "אמן לייבל": 1,
+    "פעיל":      1,
+    "בעייתי":    2,
+    "חדש":       3,
+    "לא פעיל":   4,
   };
 
   const filtered = clients

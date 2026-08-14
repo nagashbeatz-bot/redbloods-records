@@ -58,6 +58,7 @@ const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string }> = {
   "בעייתי":  { bg: "rgba(239,68,68,0.12)",   color: "#F87171" },
   "VIP":     { bg: "rgba(245,158,11,0.12)",  color: "#FBBF24" },
   "חדש":     { bg: "rgba(59,130,246,0.12)",  color: "#60A5FA" },
+  "אמן לייבל": { bg: "rgba(168,85,247,0.12)", color: "#C084FC" },
 };
 const PROJECT_STATUS_COLOR: Record<string, string> = {
   "בעבודה": "#3B82F6", "מחכה למיקס": "#F59E0B", "במיקס": "#A855F7",
