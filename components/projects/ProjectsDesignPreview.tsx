@@ -12,6 +12,7 @@ import ActionMenu from "@/components/project/ActionMenu";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
 
@@ -371,7 +372,7 @@ export default function ProjectsDesignPreview() {
   const [showNewProject,  setShowNewProject]  = useState(false);
   const [clientNames,     setClientNames]     = useState<string[]>([]);
 
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; financeException?: boolean }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }>>({});
   const [kpiPopover, setKpiPopover] = useState<{ rect: DOMRect; items: KpiPopoverItem[] } | null>(null);
   const kpiHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -379,16 +380,18 @@ export default function ProjectsDesignPreview() {
     fetch("/api/transactions?all=1")
       .then(r => r.json())
       .then(d => {
-        const map: Record<string, { paid: number; agreed: number; financeException?: boolean }> = {};
+        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }> = {};
         (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; financeException?: boolean }) => {
-          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0 };
+          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           map[s.project_id].agreed = s.agreedPrice ?? 0;
           map[s.project_id].financeException = s.financeException ?? false;
         });
         (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
-          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0 };
+          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           if (t.type === "income" && ["התקבל", "שולם"].includes(t.payment_status))
             map[t.project_id].paid += t.amount;
+          if (t.type === "income" && isCancelledPayment(t.payment_status))
+            map[t.project_id].cancelled += t.amount;
         });
         setFinanceSummary(map);
       })
@@ -431,7 +434,7 @@ export default function ProjectsDesignPreview() {
     const knownIds = new Set(active.map(p => p.id));
     const totalExpected = Object.entries(financeSummary)
       .filter(([id, f]) => knownIds.has(id) && !f.financeException)
-      .reduce((s, [, f]) => s + Math.max(0, f.agreed - f.paid), 0);
+      .reduce((s, [, f]) => s + Math.max(0, collectibleBalance(f.agreed, f.paid, f.cancelled)), 0);
     const now = new Date();
     return {
       total:          active.length,
@@ -454,7 +457,7 @@ export default function ProjectsDesignPreview() {
         id: p.id, name: p.name, artist: p.artist ?? "",
         agreed: financeSummary[p.id]?.agreed ?? 0,
         paid:   financeSummary[p.id]?.paid   ?? 0,
-        remaining: Math.max(0, (financeSummary[p.id]?.agreed ?? 0) - (financeSummary[p.id]?.paid ?? 0)),
+        remaining: Math.max(0, collectibleBalance(financeSummary[p.id]?.agreed ?? 0, financeSummary[p.id]?.paid ?? 0, financeSummary[p.id]?.cancelled ?? 0)),
         deadline: p.deadline ? new Date(p.deadline).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }) : null,
       }))
       .filter(p => p.remaining > 0)
