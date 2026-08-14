@@ -2233,7 +2233,7 @@ function VictorProjectDrawer({
             <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}20`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{t("vreview.editNotes")}</button>
           )}
         </div>
-        {editing ? (
+        {(isOwner && editing) ? (
           <div style={{ marginTop: 8 }}>
             <textarea value={reviewDraftNotes} onChange={e => setReviewDraftNotes(e.target.value)} rows={3} placeholder={t("vreview.placeholder")}
               style={{ width: "100%", padding: "8px 10px", borderRadius: 9, fontSize: isMobile ? 16 : 12.5, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT, outline: "none", fontFamily: "inherit", resize: "vertical", textAlign: "start", unicodeBidi: "plaintext", boxSizing: "border-box" }} />
