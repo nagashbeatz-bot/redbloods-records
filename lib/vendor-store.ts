@@ -102,10 +102,35 @@ export function sanitizeWorkForVictor(w: VendorWork): VendorWork {
     dropboxFolder:    null,
     dropboxShareLink: null,
     notes:            "", // owner-internal notes — never shown to Victor
+    versionReviews:   reviewsForVictor(w.versionReviews),
     filesSent:        (w.filesSent     ?? []).map(fileForVictor),
     filesReceived:    (w.filesReceived ?? []).map(fileForVictor),
     briefFiles:       (w.briefFiles    ?? []).map(fileForVictor),
   };
+}
+
+// Victor sees a version's notes ONLY once the owner has SENT them. Drafts (the
+// owner's private working copy) are stripped here so they never reach Victor's
+// client — not just hidden in the UI, absent from the wire. A review is visible
+// when it was sent (→ show the `sentNotes` snapshot) or when it is a legacy
+// review predating the draft/send split (no `sentAt`, no `draft` → show `notes`).
+// The internal draft/send bookkeeping fields are dropped either way.
+function reviewsForVictor(
+  reviews: VendorWork["versionReviews"] | undefined,
+): VendorWork["versionReviews"] {
+  const out: VendorWork["versionReviews"] = {};
+  for (const [key, r] of Object.entries(reviews ?? {})) {
+    const visible = r.sentAt ? (r.sentNotes ?? "") : (r.draft ? "" : (r.notes ?? ""));
+    const notes = visible.trim();
+    if (!notes) continue; // unsent draft → Victor sees nothing for this version
+    out[key] = {
+      status:     r.status,
+      notes,
+      reviewedAt: r.sentAt ?? r.reviewedAt,
+      reviewedBy: r.reviewedBy,
+    };
+  }
+  return out;
 }
 
 // Path-free file object for Victor: drop dropboxPath/url/dropboxShareUrl (all

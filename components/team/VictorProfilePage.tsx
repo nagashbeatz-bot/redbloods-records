@@ -72,6 +72,13 @@ function fmtDate(d: string | null) {
     return new Date(d).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" });
   } catch { return d; }
 }
+// Date + time for the owner-facing "נשלח לויקטור · …" status line.
+function fmtDateTime(d: string | null | undefined) {
+  if (!d) return "";
+  try {
+    return new Date(d).toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
+}
 function prevMonth(ym: string) {
   const [y, m] = ym.split("-").map(Number);
   const d = new Date(y, m - 2, 1);
@@ -1963,6 +1970,8 @@ function VictorProjectDrawer({
   const [reviewDraftNotes, setReviewDraftNotes] = useState("");
   const [reviewDraftStatus, setReviewDraftStatus] = useState<VersionReviewStatus>("waiting");
   const [savingReview, setSavingReview] = useState(false);
+  const [sendingReviewKey, setSendingReviewKey] = useState<string | null>(null); // version key mid-send
+  const [reviewErr, setReviewErr] = useState<{ key: string; msg: string } | null>(null); // send error, keyed to its box
   const npIdx = playlist.findIndex(p => fileId(p.file) === npKey);
   const npItem = npIdx >= 0 ? playlist[npIdx] : null;
 
@@ -2096,70 +2105,167 @@ function VictorProjectDrawer({
   // ── Version review handlers (owner-only write; Victor PATCH is 403 via route whitelist) ──
   function openReviewEditor(key: string) {
     const r = effectiveReviews[key];
+    setReviewErr(null);
     setReviewDraftNotes(r?.notes ?? "");
     setReviewDraftStatus(r?.status ?? "waiting");
     setEditingReviewKey(key);
   }
-  async function saveReview(key: string) {
-    setSavingReview(true);
-    const next: VersionReview = { status: reviewDraftStatus, notes: reviewDraftNotes.trim(), reviewedAt: new Date().toISOString(), reviewedBy: "owner" };
+
+  // Build the draft review for `key` from the current textarea. A DRAFT save
+  // never notifies Victor: it just persists the owner's working copy. The
+  // send-baseline (`sentNotes`/`sentAt`) is preserved so the "unsent changes"
+  // state can compare against the last thing Victor actually received. A review
+  // that was already sent keeps its baseline; a legacy review (already visible
+  // to Victor pre-feature — has notes, no sentAt, no draft) freezes its current
+  // visible notes as the baseline so editing it doesn't hide it from Victor
+  // until re-sent; a brand-new review is marked `draft` (hidden until sent).
+  function buildDraftReview(key: string, notesTrimmed: string): VersionReview {
+    const existing = effectiveReviews[key];
+    let sentAt = existing?.sentAt;
+    let sentNotes = existing?.sentNotes;
+    if (!sentAt && existing && existing.draft !== true && (existing.notes ?? "").trim()) {
+      sentAt = existing.reviewedAt || new Date().toISOString();
+      sentNotes = (existing.notes ?? "").trim();
+    }
+    const alreadySent = !!sentAt;
+    return {
+      status: reviewDraftStatus,
+      notes: notesTrimmed,
+      reviewedAt: new Date().toISOString(),
+      reviewedBy: "owner",
+      ...(alreadySent ? { sentAt, sentNotes } : { draft: true }),
+    };
+  }
+
+  async function persistReviewMap(nextMap: Record<string, VersionReview>): Promise<boolean> {
     const prev = effectiveReviews;
-    const nextMap = { ...effectiveReviews, [key]: next };
     setEffectiveReviews(nextMap);
-    setEditingReviewKey(null);
+    try { await patchWork({ versionReviews: nextMap }); return true; }
+    catch { setEffectiveReviews(prev); return false; } // revert on failure
+  }
+
+  // "שמור" — persist the draft only. No push, no notification to Victor.
+  async function saveReview(key: string) {
+    setSavingReview(true); setReviewErr(null);
+    const next = buildDraftReview(key, reviewDraftNotes.trim());
+    const ok = await persistReviewMap({ ...effectiveReviews, [key]: next });
+    if (ok) setEditingReviewKey(null);
+    setSavingReview(false);
+  }
+
+  // "שלח לויקטור" — the ONLY action that notifies Victor. Persist the current
+  // draft first (so the server sends exactly what's on screen), then POST the
+  // owner-only route which fires the single push and stamps sentAt/sentNotes.
+  async function sendReviewToVictor(key: string) {
+    if (sendingReviewKey) return;
+    const editingThis = editingReviewKey === key;
+    const notesTrimmed = (editingThis ? reviewDraftNotes : (effectiveReviews[key]?.notes ?? "")).trim();
+    if (!notesTrimmed) { setReviewErr({ key, msg: t("vreview.sendFail") }); return; }
+    setSendingReviewKey(key); setReviewErr(null);
     try {
-      await patchWork({ versionReviews: nextMap });
+      if (editingThis) {
+        const next = buildDraftReview(key, notesTrimmed);
+        const ok = await persistReviewMap({ ...effectiveReviews, [key]: next });
+        if (!ok) { setReviewErr({ key, msg: t("vreview.sendFail") }); return; }
+      }
+      const res = await fetch("/api/vendor/victor/notify-version-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workId: work.id, versionKey: key }),
+      });
+      const d = await res.json().catch(() => null);
+      if (res.ok && d?.ok && d.review) {
+        setEffectiveReviews(prev => ({ ...prev, [key]: d.review as VersionReview }));
+        setEditingReviewKey(null);
+      } else {
+        setReviewErr({ key, msg: (d?.error as string) || t("vreview.sendFail") });
+      }
     } catch {
-      setEffectiveReviews(prev); // revert on failure
+      setReviewErr({ key, msg: t("vreview.sendFail") });
     } finally {
-      setSavingReview(false);
+      setSendingReviewKey(null);
     }
   }
 
-  // Feedback block shown inside each Version card (Latest + Older). Owner writes
-  // notes; Victor reads them. NO status is shown in the UI (any legacy status in
-  // data is ignored). Hidden until there are notes or the owner is editing.
+  // Per-version notes block shown inside each Version card (Latest + Older). The
+  // owner writes a DRAFT (saved with "שמור", never notifies Victor) and, when
+  // ready, presses "שלח לויקטור" — the ONLY action that pushes a notification and
+  // makes the notes visible to Victor. Status shows "נשלח לויקטור · date" once
+  // sent, or "שינויים שלא נשלחו" when the draft was edited after a prior send.
+  // Victor sees ONLY the sent notes (drafts are stripped server-side).
   function renderReview(key: string) {
     const r = effectiveReviews[key];
     const editing = editingReviewKey === key;
     const hasNotes = !!(r?.notes && r.notes.trim());
 
-    // No feedback yet → owner sees a small "Add feedback" CTA; Victor sees nothing.
+    // No notes yet → owner sees a small "Add notes" CTA; Victor sees nothing.
     if (!editing && !hasNotes) {
       if (!isOwner) return null;
       return (
         <button onClick={() => openReviewEditor(key)}
           style={{ marginTop: 4, alignSelf: "flex-start", fontSize: 10.5, fontWeight: 700, padding: "5px 12px", borderRadius: 8, background: `${PURPLE}12`, border: `1px dashed ${PURPLE}44`, color: PURPLE, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <IconNote size={12} /> {t("vreview.add")}
+          <IconNote size={12} /> {t("vreview.addNotes")}
         </button>
       );
     }
 
-    // Recessed, purple-bordered "box" so the feedback reads as its own unit —
+    // ── Send-state (owner-facing) ──────────────────────────────────────────────
+    // A legacy review (has notes, no sentAt, not a fresh draft) predates this
+    // feature and was already visible to Victor → treat it as already sent.
+    const notesTrim = (r?.notes ?? "").trim();
+    const legacySent = !!r && !r.sentAt && r.draft !== true && notesTrim.length > 0;
+    const isSent   = !!r?.sentAt || legacySent;
+    const baseline = (r?.sentAt ? (r.sentNotes ?? "") : (legacySent ? notesTrim : "")).trim();
+    const sentWhen = r?.sentAt ?? (legacySent ? r?.reviewedAt : undefined);
+    const hasUnsent = isSent && notesTrim !== baseline;
+    const pending   = notesTrim.length > 0 && (!isSent || hasUnsent); // something to send
+    const sending   = sendingReviewKey === key;
+
+    // Recessed, purple-bordered "box" so the notes read as their own unit —
     // consistent across every version, standing out against both the tinted
     // Latest card and the darker Older cards.
     return (
       <div style={{ marginTop: 8, padding: "11px 13px", borderRadius: 11, background: "rgba(0,0,0,0.22)", border: `1px solid ${PURPLE}3D`, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 800, color: TEXT2, display: "inline-flex", alignItems: "center", gap: 5 }}><IconNote size={12} /> {t("vreview.title")}</span>
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: TEXT2, display: "inline-flex", alignItems: "center", gap: 5 }}><IconNote size={12} /> {t("vreview.notesTitle")}</span>
           <span style={{ flex: 1 }} />
           {isOwner && !editing && (
-            <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}20`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{t("vreview.edit")}</button>
+            <button onClick={() => openReviewEditor(key)} style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: `${PURPLE}20`, border: `1px solid ${PURPLE}55`, color: PURPLE, cursor: "pointer", fontFamily: "inherit" }}>{t("vreview.editNotes")}</button>
           )}
         </div>
         {editing ? (
           <div style={{ marginTop: 8 }}>
             <textarea value={reviewDraftNotes} onChange={e => setReviewDraftNotes(e.target.value)} rows={3} placeholder={t("vreview.placeholder")}
               style={{ width: "100%", padding: "8px 10px", borderRadius: 9, fontSize: isMobile ? 16 : 12.5, background: CARD2, border: `1px solid ${BDR2}`, color: TEXT, outline: "none", fontFamily: "inherit", resize: "vertical", textAlign: "start", unicodeBidi: "plaintext", boxSizing: "border-box" }} />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-              <button onClick={() => setEditingReviewKey(null)} disabled={savingReview} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
-              <button onClick={() => saveReview(key)} disabled={savingReview} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: savingReview ? MUTED : PURPLE, border: "none", color: "#fff", cursor: savingReview ? "default" : "pointer", fontFamily: "inherit" }}>{savingReview ? t("drawer.saving") : t("vreview.save")}</button>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <button onClick={() => setEditingReviewKey(null)} disabled={savingReview || sending} style={{ fontSize: 11, fontWeight: 700, padding: "5px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}`, color: TEXT2, cursor: (savingReview || sending) ? "default" : "pointer", fontFamily: "inherit" }}>{t("drawer.cancel")}</button>
+              <button onClick={() => saveReview(key)} disabled={savingReview || sending} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: (savingReview || sending) ? MUTED : "rgba(255,255,255,0.08)", border: `1px solid ${BDR2}`, color: TEXT, cursor: (savingReview || sending) ? "default" : "pointer", fontFamily: "inherit" }}>{savingReview ? t("drawer.saving") : t("vreview.saveDraft")}</button>
+              <button onClick={() => sendReviewToVictor(key)} disabled={savingReview || sending || !reviewDraftNotes.trim()} style={{ fontSize: 11, fontWeight: 800, padding: "5px 16px", borderRadius: 8, background: (sending || !reviewDraftNotes.trim()) ? MUTED : PURPLE, border: "none", color: "#fff", cursor: (savingReview || sending || !reviewDraftNotes.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>{sending ? t("vreview.sending") : t("vreview.send")}</button>
             </div>
           </div>
         ) : (
-          hasNotes && (
-            <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r!.notes}</div>
-          )
+          <>
+            {hasNotes && (
+              <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r!.notes}</div>
+            )}
+            {/* Send status + action — OWNER only (Victor never sees this). */}
+            {isOwner && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+                {hasUnsent ? (
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: AMBER, display: "inline-flex", alignItems: "center", gap: 4 }}><IconAlert size={11} /> {t("vreview.unsent")}</span>
+                ) : isSent ? (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: GREEN, display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheck size={11} /> {t("vreview.sent")}{sentWhen ? ` · ${fmtDateTime(sentWhen)}` : ""}</span>
+                ) : null}
+                <span style={{ flex: 1 }} />
+                {pending && (
+                  <button onClick={() => sendReviewToVictor(key)} disabled={sending} style={{ fontSize: 10.5, fontWeight: 800, padding: "4px 12px", borderRadius: 8, background: sending ? MUTED : PURPLE, border: "none", color: "#fff", cursor: sending ? "default" : "pointer", fontFamily: "inherit" }}>{sending ? t("vreview.sending") : t("vreview.send")}</button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+        {isOwner && reviewErr?.key === key && (
+          <div style={{ fontSize: 10.5, color: RED, marginTop: 7, unicodeBidi: "plaintext" } as React.CSSProperties}>{reviewErr.msg}</div>
         )}
       </div>
     );

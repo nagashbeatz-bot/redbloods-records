@@ -50,6 +50,10 @@ export function isVictorAllowedPath(pathname: string): boolean {
   // under the victor API prefix (requireOwner enforces it in-route too).
   if (pathname.startsWith("/api/vendor/victor/notify-work")) return false;
 
+  // The manual "send version notes to Victor" push is owner-only too (same
+  // reasoning; requireOwner enforces it in-route as the second layer).
+  if (pathname.startsWith("/api/vendor/victor/notify-version-notes")) return false;
+
   const apiAllow = [
     "/api/me",
     "/api/vendor/victor",          // GET stats/work, /projects, /work/[id] (method-guarded per route)

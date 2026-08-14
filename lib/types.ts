@@ -484,6 +484,15 @@ export interface VersionReview {
   notes: string;
   reviewedAt: string;   // ISO
   reviewedBy: string;   // label only, e.g. "owner"
+  // ── Draft → send-to-Victor tracking (jsonb-only; NO DB migration) ──────────
+  // The owner edits `notes` freely (a private DRAFT). Victor sees a version's
+  // notes ONLY after the owner presses "שלח לויקטור", which snapshots the text
+  // into `sentNotes` and stamps `sentAt`, and fires the single push. `draft`
+  // marks a never-sent working copy so it is hidden from Victor until sent
+  // (legacy reviews predating this — no `sentAt`, no `draft` — stay visible).
+  sentNotes?: string;   // snapshot last sent to Victor (what Victor sees)
+  sentAt?: string;      // ISO — when it was last sent to Victor
+  draft?: boolean;      // true = never-sent working draft (hidden from Victor)
 }
 
 export interface VendorWork {
