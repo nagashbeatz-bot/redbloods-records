@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
+import LinkifiedText from "@/components/ui/LinkifiedText";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
 import {
   IconMusic, IconPlay, IconPause, IconSkipBack, IconSkipForward, IconVolume,
@@ -1454,6 +1455,13 @@ function VictorProjectDrawer({
   // Brief files (owner only — the route is requireOwner; Victor gets 403).
   async function uploadBriefFile(file: File | null) {
     if (!file || briefUploading) return;
+    // Client-side guard — matches the server's 100MB brief limit so oversize
+    // files are rejected instantly instead of after a full upload attempt.
+    if (file.size > 100 * 1024 * 1024) {
+      setBriefErr(t("brief.tooLarge"));
+      if (briefFileInputRef.current) briefFileInputRef.current.value = "";
+      return;
+    }
     setBriefUploading(true); setBriefErr(null);
     try {
       // Brief files land in the work's own Dropbox folder (…/00_Brief). That base
@@ -2392,7 +2400,7 @@ function VictorProjectDrawer({
                     </>
                   ) : (
                     effectiveBrief.trim() ? (
-                      <div style={{ fontSize: isMobile ? 14.5 : 15, lineHeight: 1.65, color: "#DCDCE2", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 360, overflowY: "auto", textAlign: "start", unicodeBidi: "plaintext" }}>{effectiveBrief}</div>
+                      <div style={{ fontSize: isMobile ? 14.5 : 15, lineHeight: 1.65, color: "#DCDCE2", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 360, overflowY: "auto", textAlign: "start", unicodeBidi: "plaintext" }}><LinkifiedText text={effectiveBrief} /></div>
                     ) : (
                       <div style={{ fontSize: 12.5, color: MUTED, textAlign: "center", padding: "28px 0", lineHeight: 1.7 }}>{isOwner ? t("drawer.briefEmptyOwner") : t("drawer.briefEmptyViewer")}</div>
                     )
