@@ -3409,16 +3409,24 @@ export default function VictorProfilePage() {
   // History = view-only, past months only (exclude current and any future month).
   const historyMonths    = [...salaryMonths].reverse().filter(s => s.workMonth < month);
 
-  // ── Salary edit modal (internal — never touches Finance) ──
+  // ── Salary edit modal (internal — settings-only status/amount override, never
+  // touches Finance). Reused for the current month AND for any past payment in
+  // the history list (edits that existing month's record — never creates one). ──
   const [salaryModalOpen,   setSalaryModalOpen]   = useState(false);
+  const [salaryEditMonth,   setSalaryEditMonth]   = useState<string>(month);
   const [salaryDraftAmount, setSalaryDraftAmount] = useState("");
-  const [salaryDraftStatus, setSalaryDraftStatus] = useState<"צפוי" | "שולם">("צפוי");
+  const [salaryDraftStatus, setSalaryDraftStatus] = useState<"צפוי" | "שולם" | "לא שולם">("צפוי");
   const [salarySaving,      setSalarySaving]      = useState(false);
 
-  function openSalaryModal() {
-    const amt = currentSalaryRec ? currentSalaryRec.amount : (salary || 0);
+  // rec omitted → edit the current month; rec given → edit that history payment.
+  function openSalaryModal(rec?: VictorSalaryMonth) {
+    const target    = rec ?? currentSalaryRec ?? null;
+    const editMonth = rec ? rec.workMonth : month;
+    const amt       = target ? target.amount : (salary || 0);
+    const st        = target?.status;
+    setSalaryEditMonth(editMonth);
     setSalaryDraftAmount(String(amt));
-    setSalaryDraftStatus(currentSalaryRec?.status === "שולם" ? "שולם" : "צפוי");
+    setSalaryDraftStatus(st === "שולם" ? "שולם" : st === "לא שולם" ? "לא שולם" : "צפוי");
     setSalaryModalOpen(true);
   }
 
@@ -3429,12 +3437,12 @@ export default function VictorProfilePage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workMonth: month,
+          workMonth: salaryEditMonth,
           amount: Number(salaryDraftAmount) || 0,
           status: salaryDraftStatus,
         }),
       });
-      await fetchSalary(Number(month.split("-")[0]));
+      await fetchSalary(Number(salaryEditMonth.split("-")[0]));
       setSalaryModalOpen(false);
     } finally {
       setSalarySaving(false);
@@ -3944,7 +3952,7 @@ export default function VictorProfilePage() {
 
             {/* Current month salary — click anywhere to edit (internal, no Finance) */}
             <div
-              onClick={openSalaryModal}
+              onClick={() => openSalaryModal()}
               title={t("salary.editTitle")}
               style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 18, padding: "18px 22px", cursor: "pointer" }}
             >
@@ -4023,7 +4031,17 @@ export default function VictorProfilePage() {
                         </div>
                         <div style={{ textAlign: "left" }}>
                           <div style={{ fontSize: 13, fontWeight: 800, color: GREEN, marginBottom: 3 }}>{fmt(s.amount, s.currency)}</div>
-                          <SalaryChip status={s.status} />
+                          {isOwner ? (
+                            <button
+                              onClick={() => openSalaryModal(s)}
+                              title="לחץ לעריכת סטטוס התשלום"
+                              style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", fontFamily: "inherit" }}
+                            >
+                              <SalaryChip status={s.status} />
+                            </button>
+                          ) : (
+                            <SalaryChip status={s.status} />
+                          )}
                         </div>
                       </div>
                     );
@@ -4211,7 +4229,7 @@ export default function VictorProfilePage() {
           direction: "rtl", boxSizing: "border-box",
         }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, marginBottom: 4 }}>{t("salaryModal.title")}</div>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{victorMonthYear(month, lang)}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>{victorMonthYear(salaryEditMonth, lang)}</div>
 
           {/* Amount */}
           <div style={{ marginBottom: 18 }}>
@@ -4234,7 +4252,7 @@ export default function VictorProfilePage() {
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, marginBottom: 6 }}>{t("salaryModal.payStatus")}</div>
             <div style={{ display: "flex", gap: 8 }}>
-              {(["צפוי", "שולם"] as const).map(opt => {
+              {(["צפוי", "שולם", "לא שולם"] as const).map(opt => {
                 const sc = SALARY_STATUS_COLORS[opt];
                 const isActive = salaryDraftStatus === opt;
                 return (
