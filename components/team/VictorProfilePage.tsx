@@ -3529,12 +3529,14 @@ export default function VictorProfilePage() {
             background: CARD, border: `1px solid ${BDR2}`, borderRadius: 14,
             padding: "9px 18px", order: isMobile ? 3 : 0,
           }}>
-            <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, color: TEXT2, lineHeight: 1, display: "flex", alignItems: "center" }}><IconChevronLeft size={18} /></button>
+            {/* RTL month nav: prev sits on the right and must point right (‹ back in
+                time = rightward), next sits on the left and points left. */}
+            <button onClick={() => setMonth(m => prevMonth(m))} style={{ ...btnStyle, color: TEXT2, lineHeight: 1, display: "flex", alignItems: "center" }}><IconChevronRight size={18} /></button>
             <div style={{ minWidth: 150, textAlign: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>{victorMonthYear(month, lang)}</div>
               {loading && <div style={{ fontSize: 9, color: MUTED }}>{t("common.loading")}</div>}
             </div>
-            <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, color: TEXT2, lineHeight: 1, display: "flex", alignItems: "center" }}><IconChevronRight size={18} /></button>
+            <button onClick={() => setMonth(m => nextMonth(m))} style={{ ...btnStyle, color: TEXT2, lineHeight: 1, display: "flex", alignItems: "center" }}><IconChevronLeft size={18} /></button>
           </div>
         </div>
 
