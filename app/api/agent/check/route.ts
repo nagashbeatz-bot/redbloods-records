@@ -27,6 +27,7 @@ import {
   checkStaleSessions,
 } from "@/lib/agent/rules";
 import { createAlertIfNotCoolingDown } from "@/lib/agent/alerts-store";
+import { checkUpcomingHolidays, createHolidayAlertIfAbsent } from "@/lib/agent/holiday-check";
 import { sendAlertsAsNotifications } from "@/lib/agent/notifications";
 import { getGoalsProgress } from "@/lib/agent/goals";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
@@ -224,12 +225,20 @@ export async function GET(req: NextRequest) {
       ...checkStaleSessions(activeProjects, sessions),
     ];
 
+    // ── Upcoming-holiday alerts (Google Calendar → date; Agent Alerts only) ──
+    // Persisted separately below via createHolidayAlertIfAbsent (one row per
+    // entity_key, ever) — NOT through createAlertIfNotCoolingDown, so no 72h
+    // duplicate rows and no other rule's cooldown is affected. Their entity_keys
+    // DO join the auto-resolve active set so an in-window holiday is never
+    // wrongly resolved; once out of window they auto-resolve like any other.
+    const holidayInputs = await checkUpcomingHolidays();
+
     // ── Auto-resolve: close alerts whose entity is no longer problematic ────
     // Only affects alerts that have an entity_key — bulk/aggregate alerts (null key) are untouched.
     let autoResolved = 0;
     try {
       const activeEntityKeys = new Set(
-        allInputs.filter((i) => i.entityKey).map((i) => i.entityKey!)
+        [...allInputs, ...holidayInputs].filter((i) => i.entityKey).map((i) => i.entityKey!)
       );
       if (activeEntityKeys.size > 0) {
         const { data: trackedAlerts } = await supabase
@@ -260,6 +269,14 @@ export async function GET(req: NextRequest) {
     for (const input of allInputs) {
       const alert = await createAlertIfNotCoolingDown(input);
       if (alert) newAlerts.push(alert);
+    }
+
+    // Holiday alerts: insert-if-absent (one row per entity_key). Deliberately NOT
+    // added to `newAlerts` → never passed to sendAlertsAsNotifications (no push;
+    // severity "info" wouldn't push anyway — this is belt-and-suspenders).
+    let newHolidayAlerts = 0;
+    for (const input of holidayInputs) {
+      if (await createHolidayAlertIfAbsent(input)) newHolidayAlerts++;
     }
 
     // ── Send push notifications for important/urgent new alerts ──────────────
@@ -297,6 +314,8 @@ export async function GET(req: NextRequest) {
       ok: true,
       checkedRules:       allInputs.length,
       newAlerts:          newAlerts.length,
+      holidaysInWindow:   holidayInputs.length,
+      newHolidayAlerts,
       autoResolved,
       notificationsSent,
       reportsTriggered,
