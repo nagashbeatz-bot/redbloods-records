@@ -9,6 +9,7 @@ import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl, isDeliveryFile } fr
 import UploadButton from "@/components/ui/UploadButton";
 import SensitiveValue from "@/components/ui/SensitiveValue";
 import { usePrivacyMode } from "@/lib/use-privacy";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
@@ -787,11 +788,14 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const received    = transactions
     .filter(t => t.type === "income" && ["התקבל","שולם"].includes(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
+  const cancelledIncome = transactions
+    .filter(t => t.type === "income" && isCancelledPayment(t.payment_status))
+    .reduce((s, t) => s + t.amount, 0);
   const totalExp    = transactions
     .filter(t => t.type === "expense" && t.payment_status === "שולם")
     .reduce((s, t) => s + t.amount, 0);
   // Finance-exception projects (no charge / favor) carry no receivable balance.
-  const balance     = financeException ? 0 : agreedPrice - received;
+  const balance     = financeException ? 0 : collectibleBalance(agreedPrice, received, cancelledIncome);
 
   // Reminder to set a due date for an open balance that has no expected payment yet.
   const hasExpectedIncome = transactions.some(t => t.type === "income" && t.payment_status === "צפוי");

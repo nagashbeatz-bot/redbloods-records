@@ -4,7 +4,7 @@
  * The caller decides whether to persist them (with cooldown).
  */
 import type { AlertInput, BusinessGoals, GoalsProgress, VictorMonthStats } from "@/lib/types";
-import { isCancelledPayment } from "@/lib/payment-status";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -209,12 +209,17 @@ export function checkBalanceMissingDueDate(
 ): AlertInput[] {
   // Paid income per project — same income predicate + statuses as the UI balance.
   const paidByProject = new Map<string, number>();
+  // Cancelled income ("בוטל") per project — written off, subtracted from the balance.
+  const cancelledByProject = new Map<string, number>();
   // Projects that already have an expected ("צפוי") income carrying a date.
   const hasDatedExpected = new Set<string>();
   for (const t of transactions) {
     if (!t.projectId || !INCOME_TYPES.has(t.type)) continue;
     if (FULLY_PAID_STATUSES.has(t.paymentStatus)) {
       paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
+    }
+    if (isCancelledPayment(t.paymentStatus)) {
+      cancelledByProject.set(t.projectId, (cancelledByProject.get(t.projectId) ?? 0) + t.amount);
     }
     if (t.paymentStatus === "צפוי" && t.date) {
       hasDatedExpected.add(t.projectId);
@@ -229,7 +234,8 @@ export function checkBalanceMissingDueDate(
     const agreed = setting?.agreedPrice ?? 0;
     if (!agreed || agreed <= 0) continue;                     // (1) agreedPrice > 0
     const paidIncome = paidByProject.get(p.id) ?? 0;
-    const balance = agreed - paidIncome;
+    const cancelledIncome = cancelledByProject.get(p.id) ?? 0;
+    const balance = collectibleBalance(agreed, paidIncome, cancelledIncome);
     if (balance <= 0) continue;                               // (2)(3)(6) open balance
     if (hasDatedExpected.has(p.id)) continue;                 // (4) no dated expected income
 

@@ -8,6 +8,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { daysUntilDeadline } from "@/lib/utils";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import type { Project, AgentAlert } from "@/lib/types";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
@@ -572,7 +573,7 @@ export default function DashboardDesignPreview() {
 
   // Per-project finance summary (agreed price + actually-paid) — same source as
   // the Projects page "הכנסה צפויה". Drives the "תשלומים צפויים" card + popover.
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; financeException?: boolean }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }>>({});
   const [financeLoaded,  setFinanceLoaded]  = useState(false);
 
   // ── Underlying lists behind the counts — used only for KPI hover previews ──
@@ -653,16 +654,18 @@ export default function DashboardDesignPreview() {
       .then(d => {
         // Same logic as the Projects page: agreed from settings, paid from
         // actually-received income (שולם / התקבל). NOT based on "צפוי" rows.
-        const map: Record<string, { paid: number; agreed: number; financeException?: boolean }> = {};
+        const map: Record<string, { paid: number; agreed: number; cancelled: number; financeException?: boolean }> = {};
         (d.settings ?? []).forEach((s: { project_id: string; agreedPrice?: number; financeException?: boolean }) => {
-          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0 };
+          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           map[s.project_id].agreed = s.agreedPrice ?? 0;
           map[s.project_id].financeException = s.financeException ?? false;
         });
         (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
-          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0 };
+          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
           if (t.type === "income" && ["התקבל", "שולם"].includes(t.payment_status))
             map[t.project_id].paid += t.amount;
+          if (t.type === "income" && isCancelledPayment(t.payment_status))
+            map[t.project_id].cancelled += t.amount;
         });
         setFinanceSummary(map);
         setFinanceLoaded(true);
@@ -835,9 +838,10 @@ export default function DashboardDesignPreview() {
       // Exclude finance-exception projects (no charge / favor) from expected income.
       .filter(p => !financeSummary[p.id]?.financeException)
       .map(p => {
-        const agreed = financeSummary[p.id]?.agreed ?? 0;
-        const paid   = financeSummary[p.id]?.paid   ?? 0;
-        return { id: p.id, name: p.name, artist: p.artist ?? "", agreed, remaining: Math.max(0, agreed - paid) };
+        const agreed    = financeSummary[p.id]?.agreed    ?? 0;
+        const paid      = financeSummary[p.id]?.paid      ?? 0;
+        const cancelled = financeSummary[p.id]?.cancelled ?? 0;
+        return { id: p.id, name: p.name, artist: p.artist ?? "", agreed, remaining: Math.max(0, collectibleBalance(agreed, paid, cancelled)) };
       })
       .filter(p => p.remaining > 0)
       .sort((a, b) => b.remaining - a.remaining);

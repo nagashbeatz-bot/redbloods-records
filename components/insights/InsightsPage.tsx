@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import type { Project, AgentAlert, AlertStatus } from "@/lib/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -301,7 +302,7 @@ function AgentAlertCard({
 // ── Detail Modal ──────────────────────────────────────────────────────────────
 function InsightDetailModal({
   modalKey, onClose,
-  projects, finSettings, paidByProject, sessionsByProject, limits,
+  projects, finSettings, paidByProject, cancelledByProject, sessionsByProject, limits,
   overdue, dueToday, dueThisWeek, noDeadline,
   projectsWithOpenBalance, projectsInMixUnpaid,
   projectsOverLimit, projectsAtLimit, projectsOneBeforeLimit,
@@ -312,6 +313,7 @@ function InsightDetailModal({
   projects: Project[];
   finSettings: FinanceSetting[];
   paidByProject: Record<string, number>;
+  cancelledByProject: Record<string, number>;
   sessionsByProject: Record<string, number>;
   limits: Record<string, number>;
   overdue: Project[]; dueToday: Project[]; dueThisWeek: Project[];
@@ -355,9 +357,10 @@ function InsightDetailModal({
   // ── Finance project row ────────────────────────────────────────────────────
   function FinRow({ p }: { p: Project }) {
     const setting = finSettings.find((s) => s.project_id === p.id);
-    const agreed  = setting?.agreedPrice ?? 0;
-    const paid    = paidByProject[p.id] ?? 0;
-    const balance = agreed - paid;
+    const agreed    = setting?.agreedPrice ?? 0;
+    const paid      = paidByProject[p.id] ?? 0;
+    const cancelled = cancelledByProject[p.id] ?? 0;
+    const balance   = collectibleBalance(agreed, paid, cancelled);
     return (
       <div style={{ background: "#1A1A1A", border: "1px solid #2A2A2A", borderRadius: 12, padding: "12px 14px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -729,6 +732,11 @@ export default function InsightsPage() {
   transactions.filter((t) => t.type === "income" && PAID_STATUSES_SET.has(t.payment_status)).forEach((t) => {
     paidByProject[t.project_id] = (paidByProject[t.project_id] ?? 0) + t.amount;
   });
+  // Cancelled income ("בוטל") per project — written off, subtracted from the balance.
+  const cancelledByProject: Record<string, number> = {};
+  transactions.filter((t) => t.type === "income" && isCancelledPayment(t.payment_status)).forEach((t) => {
+    cancelledByProject[t.project_id] = (cancelledByProject[t.project_id] ?? 0) + t.amount;
+  });
 
   const periodIncome    = transactions.filter((t) => t.type === "income"  && inRange(t.date, range));
   const periodExpenses  = transactions.filter((t) => t.type === "expense" && inRange(t.date, range));
@@ -744,9 +752,10 @@ export default function InsightsPage() {
     // Skip projects flagged as a finance exception (no charge / favor) — they
     // must not be counted as debt/balance anywhere downstream.
     if (setting?.financeException) return false;
-    const agreed  = setting?.agreedPrice ?? 0;
-    const paid    = paidByProject[p.id] ?? 0;
-    return agreed > 0 && paid < agreed;
+    const agreed    = setting?.agreedPrice ?? 0;
+    const paid      = paidByProject[p.id] ?? 0;
+    const cancelled = cancelledByProject[p.id] ?? 0;
+    return agreed > 0 && collectibleBalance(agreed, paid, cancelled) > 0;
   });
   const projectsInMixUnpaid = projects.filter((p) =>
     ["מחכה למיקס","במיקס"].includes(p.status) && projectsWithOpenBalance.some((op) => op.id === p.id)
@@ -786,9 +795,10 @@ export default function InsightsPage() {
   const artistBalances: Record<string, number> = {};
   projectsWithOpenBalance.forEach((p) => {
     const setting = finSettings.find((s) => s.project_id === p.id);
-    const agreed  = setting?.agreedPrice ?? 0;
-    const paid    = paidByProject[p.id] ?? 0;
-    const balance = agreed - paid;
+    const agreed    = setting?.agreedPrice ?? 0;
+    const paid      = paidByProject[p.id] ?? 0;
+    const cancelled = cancelledByProject[p.id] ?? 0;
+    const balance   = collectibleBalance(agreed, paid, cancelled);
     p.artist.split(/[,،;]/).map((a) => a.trim()).filter(Boolean).forEach((a) => {
       artistBalances[a] = (artistBalances[a] ?? 0) + balance;
     });
@@ -862,7 +872,7 @@ export default function InsightsPage() {
 
   // ── Shared modal props ─────────────────────────────────────────────────────
   const modalProps = {
-    projects, finSettings, paidByProject, sessionsByProject, limits,
+    projects, finSettings, paidByProject, cancelledByProject, sessionsByProject, limits,
     overdue, dueToday, dueThisWeek, noDeadline,
     projectsWithOpenBalance, projectsInMixUnpaid,
     projectsOverLimit, projectsAtLimit, projectsOneBeforeLimit,

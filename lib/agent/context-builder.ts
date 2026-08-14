@@ -11,7 +11,7 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { getAlerts } from "./alerts-store";
 import type { AlertSeverity } from "@/lib/types";
-import { isCancelledPayment } from "@/lib/payment-status";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -638,7 +638,10 @@ async function buildProjectDetailContext(
         const received = (txns ?? [])
           .filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status))
           .reduce((s, t) => s + (t.amount ?? 0), 0);
-        const balance = agreed - received;
+        const cancelled = (txns ?? [])
+          .filter((t) => t.type !== "הוצאה" && isCancelledPayment(t.payment_status))
+          .reduce((s, t) => s + (t.amount ?? 0), 0);
+        const balance = collectibleBalance(agreed, received, cancelled);
         lines.push(`מחיר מוסכם: ${fmt(agreed)}${curr} | שולם: ${fmt(received)}${curr} | יתרה: ${fmt(balance)}${curr}`);
       }
     } else {

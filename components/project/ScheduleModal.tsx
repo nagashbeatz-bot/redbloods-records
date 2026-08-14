@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { ActionDef, FreeSlot } from "@/lib/action-types";
 import { buildEventTitle } from "@/lib/action-types";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import {
   validStartTimes, fmtHM, fmtDayDate, confirmLabel,
   WORK_START_H, WORK_END_H, isWorkingDay,
@@ -152,7 +153,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
   const [showFinance,    setShowFinance]    = useState(false);
   const [financeLoading, setFinanceLoading] = useState(false);
   const [financeInfo, setFinanceInfo] = useState<{
-    agreedPrice: number; totalPaid: number; currency: string;
+    agreedPrice: number; totalPaid: number; cancelledIncome: number; currency: string;
   } | null>(null);
   const [paymentDraft, setPaymentDraft] = useState({
     amount: "", method: "מזומן", notes: "צפוי להתקבל במזומן בסשן",
@@ -174,14 +175,20 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             (t.payment_status === "שולם" || t.payment_status === "התקבל")
           )
           .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
+        const cancelledIncome = (d.transactions ?? [])
+          .filter((t: { type: string; payment_status: string }) =>
+            t.type === "income" && isCancelledPayment(t.payment_status)
+          )
+          .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
         const info = {
           agreedPrice: d.agreedPrice ?? 0,
           totalPaid,
+          cancelledIncome,
           currency: d.currency ?? "₪",
         };
         setFinanceInfo(info);
         // Pre-fill amount with open balance if not already set
-        const balance = info.agreedPrice - totalPaid;
+        const balance = collectibleBalance(info.agreedPrice, totalPaid, cancelledIncome);
         if (balance > 0 && !paymentDraft.amount) {
           setPaymentDraft((prev) => ({ ...prev, amount: String(balance) }));
         }
@@ -1450,7 +1457,7 @@ function FinancePanel({
   loading, info, draft, pending, onDraftChange, onConfirm, onCancel, onBack,
 }: {
   loading: boolean;
-  info: { agreedPrice: number; totalPaid: number; currency: string } | null;
+  info: { agreedPrice: number; totalPaid: number; cancelledIncome: number; currency: string } | null;
   draft: { amount: string; method: string; notes: string };
   pending: { amount: number; method: string; notes: string; currency: string } | null;
   onDraftChange: (patch: Partial<typeof draft>) => void;
@@ -1458,7 +1465,7 @@ function FinancePanel({
   onCancel: () => void;
   onBack: () => void;
 }) {
-  const balance  = info ? info.agreedPrice - info.totalPaid : 0;
+  const balance  = info ? collectibleBalance(info.agreedPrice, info.totalPaid, info.cancelledIncome) : 0;
   const hasPrice = info && info.agreedPrice > 0;
   const currency = info?.currency ?? "₪";
 

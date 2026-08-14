@@ -1,4 +1,5 @@
 import type { Project } from "./types";
+import { collectibleBalance } from "./payment-status";
 
 export type IssuePriority = "high" | "medium";
 
@@ -30,6 +31,7 @@ export interface FinanceSummary {
   currency:       string;
   totalPaid:      number;   // income where status = שולם / התקבל
   totalExpected:  number;   // income where status = צפוי / חלקי
+  cancelledIncome: number;  // income where status = בוטל (written off — not collectible)
   totalExpenses:  number;   // all expense transactions
   overduePayment: boolean;  // any "צפוי" income with date < today
 }
@@ -147,7 +149,7 @@ export function checkFinanceHealth(
     const fin = map.get(p.id);
     if (!fin || fin.agreedPrice <= 0) continue; // no agreed price → nothing to check
 
-    const balance = fin.agreedPrice - fin.totalPaid;
+    const balance = collectibleBalance(fin.agreedPrice, fin.totalPaid, fin.cancelledIncome);
     const profit  = fin.totalPaid - fin.totalExpenses;
     const inMix   = MIX_STATUSES.has(p.status);
     const active  = ACTIVE_STATUSES.has(p.status);

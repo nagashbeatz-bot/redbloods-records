@@ -7,6 +7,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import ProposalsSection, { type Proposal, type NewProject } from "@/components/clients/ProposalsSection";
 import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +30,7 @@ interface DeliveryRecord {
 }
 interface ProjectFinance {
   projectId: string; name: string; status: string;
-  agreedPrice: number; currency: string; totalPaid: number; totalExpected: number; totalExpenses: number;
+  agreedPrice: number; currency: string; totalPaid: number; totalExpected: number; cancelledIncome: number; totalExpenses: number;
 }
 interface Meeting {
   id: string; client_id: string; client_name: string;
@@ -148,13 +149,14 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
 
       const finMap = new Map<string, ProjectFinance>();
       for (const p of clientProjects) {
-        finMap.set(p.id, { projectId: p.id, name: p.name, status: p.status, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, totalExpenses: 0 });
+        finMap.set(p.id, { projectId: p.id, name: p.name, status: p.status, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, cancelledIncome: 0, totalExpenses: 0 });
       }
       for (const t of allTx) {
         if (!projectIds.has(t.project_id)) continue;
         const fin = finMap.get(t.project_id)!;
         if (t.type === "income") {
           if (["שולם","התקבל"].includes(t.payment_status)) fin.totalPaid += t.amount;
+          else if (isCancelledPayment(t.payment_status)) fin.cancelledIncome += t.amount;
           else if (["צפוי","חלקי"].includes(t.payment_status)) fin.totalExpected += t.amount;
         } else { fin.totalExpenses += t.amount; }
       }
@@ -457,7 +459,7 @@ function ModalContent({
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: formMode === "newProject" ? 12 : 0 }}>
                   {projects.map((p) => {
                     const fin = finances.find((f) => f.projectId === p.id);
-                    const balance = fin ? fin.agreedPrice - fin.totalPaid : 0;
+                    const balance = fin ? collectibleBalance(fin.agreedPrice, fin.totalPaid, fin.cancelledIncome) : 0;
                     const sColor  = PROJECT_STATUS_COLOR[p.status] ?? "#6B7280";
                     return (
                       <ProjectRow

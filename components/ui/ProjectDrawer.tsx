@@ -8,6 +8,7 @@ import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components
 import { PROJECT_TYPES } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
@@ -287,6 +288,7 @@ function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }
 
   const totalPaid     = transactions.filter((t) => t.type === "income" && PAID_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExpected = transactions.filter((t) => t.type === "income" && EXPECT_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const cancelledIncome = transactions.filter((t) => t.type === "income" && isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
   const overduePayment = transactions.some((t) => t.type === "income" && EXPECT_S.has(t.payment_status) && t.date && t.date < today);
 
@@ -296,6 +298,7 @@ function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }
     currency,
     totalPaid,
     totalExpected,
+    cancelledIncome,
     totalExpenses,
     overduePayment,
   };
@@ -1623,9 +1626,10 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   const clipExpenseList  = expenseList.filter((t) => t.expense_scope === "קליפ");
   const nonClipExpenses  = expenseList.filter((t) => t.expense_scope !== "קליפ");
   const totalPaid        = incomeList.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const cancelledIncome  = incomeList.filter((t) => isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExp         = expenseList.reduce((s, t) => s + t.amount, 0);
   const totalClipExp     = clipExpenseList.reduce((s, t) => s + t.amount, 0);
-  const balance          = agreedPrice - totalPaid;
+  const balance          = collectibleBalance(agreedPrice, totalPaid, cancelledIncome);
   const profit           = totalPaid - totalExp;
 
   // ── Files ─────────────────────────────────────────────────────────────────

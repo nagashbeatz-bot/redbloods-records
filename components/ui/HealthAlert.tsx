@@ -5,6 +5,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { checkHealth, checkFinanceHealth, ProjectIssue, FinanceSummary } from "@/lib/health";
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
+import { isCancelledPayment } from "@/lib/payment-status";
 
 // ── Mobile summary: group issues into up to 3 category lines ─────────────────
 function buildSummaryLines(issues: ProjectIssue[]): string[] {
@@ -246,7 +247,7 @@ export default function HealthAlert() {
         const map = new Map<string, FinanceSummary>();
         const ensure = (pid: string) => {
           if (!map.has(pid)) {
-            map.set(pid, { projectId: pid, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, totalExpenses: 0, overduePayment: false });
+            map.set(pid, { projectId: pid, agreedPrice: 0, currency: "₪", totalPaid: 0, totalExpected: 0, cancelledIncome: 0, totalExpenses: 0, overduePayment: false });
           }
           return map.get(pid)!;
         };
@@ -256,6 +257,8 @@ export default function HealthAlert() {
           if (t.type === "income") {
             if (t.payment_status === "שולם" || t.payment_status === "התקבל") {
               s.totalPaid += t.amount;
+            } else if (isCancelledPayment(t.payment_status)) {
+              s.cancelledIncome += t.amount;
             } else if (t.payment_status === "צפוי" || t.payment_status === "חלקי") {
               s.totalExpected += t.amount;
               if (t.date && t.date < today) s.overduePayment = true;

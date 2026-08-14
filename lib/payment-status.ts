@@ -17,3 +17,23 @@ export const CANCELLED_PAYMENT_STATUS = "בוטל";
 export function isCancelledPayment(status: string | null | undefined): boolean {
   return (status ?? "") === CANCELLED_PAYMENT_STATUS;
 }
+
+/**
+ * Canonical outstanding-balance formula — the single source of truth for
+ * "how much is still owed against the agreed price". It removes BOTH money
+ * already received AND income that was explicitly cancelled ("בוטל"), which is
+ * written off and never collectible:
+ *
+ *     collectible = agreedPrice − receivedIncome − cancelledIncome
+ *
+ * where receivedIncome = only "שולם"/"התקבל", and cancelledIncome = only income
+ * transactions with payment_status "בוטל" ("צפוי"/"לא שולם" are NOT cancelled).
+ *
+ * Returned SIGNED so callers can still detect overpayment (negative = paid over
+ * the agreed price). Callers that display "outstanding to collect" clamp with
+ * Math.max(0, …) exactly as they did before — the only change here is the extra
+ * − cancelledIncome term. Never duplicate this subtraction inline; call this.
+ */
+export function collectibleBalance(agreedPrice: number, receivedIncome: number, cancelledIncome: number): number {
+  return agreedPrice - receivedIncome - cancelledIncome;
+}

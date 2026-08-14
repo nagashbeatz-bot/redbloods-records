@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
+import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { useProjects } from "@/components/ProjectsProvider";
 import { SkeletonCard } from "@/components/ui/Skeleton";
@@ -344,13 +345,13 @@ function MobileProjectCard({
 }: {
   p: import("@/lib/types").Project;
   openProject: (id: string) => void;
-  financeSummary: Record<string, { paid: number; agreed: number; currency: string }>;
+  financeSummary: Record<string, { paid: number; agreed: number; cancelled: number; currency: string }>;
 }) {
   const days = daysUntilDeadline(p.deadline);
   const overdue = p.isOverdue && p.status !== "הושלם";
   const dueSoon = days !== null && days >= 0 && days <= 7 && p.status !== "הושלם";
   const fin = financeSummary[p.id];
-  const balance = fin ? fin.agreed - fin.paid : 0;
+  const balance = fin ? collectibleBalance(fin.agreed, fin.paid, fin.cancelled) : 0;
   const sc = STATUS_COLORS[p.status] ?? { bg: "rgba(75,85,99,0.15)", color: "#6B7280" };
 
   const player = usePlayerSafe();
@@ -647,7 +648,7 @@ function CollectionDetailModal({
   projects,
   onClose,
 }: {
-  financeSummary: Record<string, { paid: number; agreed: number; currency: string }>;
+  financeSummary: Record<string, { paid: number; agreed: number; cancelled: number; currency: string }>;
   projects: import("@/lib/types").Project[];
   onClose: () => void;
 }) {
@@ -658,7 +659,7 @@ function CollectionDetailModal({
   const allRows = Object.entries(financeSummary)
     .map(([projectId, fin]) => {
       const project = projects.find((p) => p.id === projectId);
-      const remaining = Math.max(0, fin.agreed - fin.paid);
+      const remaining = Math.max(0, collectibleBalance(fin.agreed, fin.paid, fin.cancelled));
       return { projectId, project, fin, remaining, isKnown: knownIds.has(projectId) };
     })
     .filter((r) => r.fin.agreed > 0 || r.fin.paid > 0);
@@ -812,7 +813,7 @@ export default function ProjectsTable() {
   const [confirmDeleteId,   setConfirmDeleteId]   = useState<string | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState("");
   const [clientNames, setClientNames] = useState<string[]>([]);
-  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; currency: string }>>({});
+  const [financeSummary, setFinanceSummary] = useState<Record<string, { paid: number; agreed: number; cancelled: number; currency: string }>>({});
   const [showCollectionDetail, setShowCollectionDetail] = useState(false);
 
   // ── Hidden-projects mode ────────────────────────────────────────────────────
@@ -871,13 +872,14 @@ export default function ProjectsTable() {
     fetch("/api/transactions?all=1")
       .then((r) => r.json())
       .then((d) => {
-        const map: Record<string, { paid: number; agreed: number; currency: string }> = {};
+        const map: Record<string, { paid: number; agreed: number; cancelled: number; currency: string }> = {};
         (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
-          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, currency: "₪" };
+          if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0, currency: "₪" };
           if (t.type === "income" && ["התקבל", "שולם"].includes(t.payment_status)) map[t.project_id].paid += t.amount;
+          if (t.type === "income" && isCancelledPayment(t.payment_status)) map[t.project_id].cancelled += t.amount;
         });
         (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; currency: string }) => {
-          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, currency: "₪" };
+          if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0, currency: "₪" };
           map[s.project_id].agreed = s.agreedPrice ?? 0;
           map[s.project_id].currency = s.currency ?? "₪";
         });
@@ -1135,7 +1137,7 @@ export default function ProjectsTable() {
                     const knownIds = new Set(projects.map((p) => p.id));
                     const total = Object.entries(financeSummary)
                       .filter(([id]) => knownIds.has(id))
-                      .reduce((s, [, f]) => s + Math.max(0, f.agreed - f.paid), 0);
+                      .reduce((s, [, f]) => s + Math.max(0, collectibleBalance(f.agreed, f.paid, f.cancelled)), 0);
                     return total > 0 ? `₪${total.toLocaleString()}` : "—";
                   })(),
                   color: "#F59E0B",
@@ -1539,7 +1541,7 @@ export default function ProjectsTable() {
                     {(() => {
                       const fin = financeSummary[p.id];
                       if (!fin) return <span style={{ fontSize: 11, color: "#2A2A2A" }}>—</span>;
-                      const bal = fin.agreed - fin.paid;
+                      const bal = collectibleBalance(fin.agreed, fin.paid, fin.cancelled);
                       if (bal <= 0) return <span style={{ fontSize: 11, color: "#34D399" }}>שולם ✓</span>;
                       return (
                         <span style={{ fontSize: 11, fontWeight: 600, color: "#F59E0B", whiteSpace: "nowrap" }}>
