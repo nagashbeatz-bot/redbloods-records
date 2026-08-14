@@ -34,13 +34,16 @@ const TYPE_COLORS: Record<ClientType, { bg: string; color: string }> = {
   "אחר":       { bg: "rgba(107,114,128,0.12)", color: "#9CA3AF" },
 };
 
-const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string }> = {
+const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string; border?: string; glow?: string }> = {
   "פעיל":    { bg: "rgba(16,185,129,0.12)", color: "#34D399" },
   "לא פעיל": { bg: "rgba(107,114,128,0.12)", color: "#6B7280" },
   "בעייתי":  { bg: "rgba(239,68,68,0.12)",  color: "#F87171" },
   "VIP":     { bg: "rgba(245,158,11,0.12)", color: "#FBBF24" },
   "חדש":     { bg: "rgba(59,130,246,0.12)", color: "#60A5FA" },
-  "אמן לייבל": { bg: "rgba(168,85,247,0.12)", color: "#C084FC" },
+  // Redbloods brand red — a touch stronger than the rest so a label artist
+  // reads at a glance: brighter text, deeper red fill, a firmer red border and
+  // a very subtle red glow.
+  "אמן לייבל": { bg: "rgba(220,38,38,0.20)", color: "#FF6B6B", border: "rgba(239,68,68,0.60)", glow: "0 0 9px rgba(239,68,68,0.30)" },
 };
 
 // ─── Empty form ───────────────────────────────────────────────────────────────
@@ -221,14 +224,14 @@ export default function ClientsPage() {
 
   // ── Filter ────────────────────────────────────────────────────────────────
 
-  // Status priority: VIP → אמן לייבל → פעיל → בעייתי → חדש → לא פעיל
+  // Status priority: אמן לייבל → VIP → פעיל → then the rest in their existing order
   const CLIENT_STATUS_PRIORITY: Record<ClientStatus, number> = {
-    "VIP":       0,
-    "אמן לייבל": 1,
-    "פעיל":      1,
-    "בעייתי":    2,
-    "חדש":       3,
-    "לא פעיל":   4,
+    "אמן לייבל": 0,
+    "VIP":       1,
+    "פעיל":      2,
+    "בעייתי":    3,
+    "חדש":       4,
+    "לא פעיל":   5,
   };
 
   const filtered = clients
@@ -242,8 +245,8 @@ export default function ClientsPage() {
       );
     })
     .sort((a, b) => {
-      const pa = CLIENT_STATUS_PRIORITY[a.status] ?? 5;
-      const pb = CLIENT_STATUS_PRIORITY[b.status] ?? 5;
+      const pa = CLIENT_STATUS_PRIORITY[a.status] ?? 6;
+      const pb = CLIENT_STATUS_PRIORITY[b.status] ?? 6;
       if (pa !== pb) return pa - pb;
       return a.name.localeCompare(b.name, "he");
     });
@@ -449,7 +452,7 @@ function ClientRow({
         )}
 
         {!isCompact && <Badge bg={typeColor.bg} color={typeColor.color}>{client.type}</Badge>}
-        <Badge bg={statusColor.bg} color={statusColor.color}>{client.status}</Badge>
+        <Badge bg={statusColor.bg} color={statusColor.color} border={statusColor.border} glow={statusColor.glow}>{client.status}</Badge>
 
         <div onClick={(e) => e.stopPropagation()}>
           <Actions deleting={deleting} onEdit={onEdit} onDelete={onDelete} />
@@ -469,7 +472,7 @@ function ClientRow({
           {client.email && (
             <div style={{ fontSize: 12, color: "#888", direction: "ltr", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client.email}</div>
           )}
-          <Badge bg={statusColor.bg} color={statusColor.color} small style={{ marginTop: 6 }}>{client.status}</Badge>
+          <Badge bg={statusColor.bg} color={statusColor.color} border={statusColor.border} glow={statusColor.glow} small style={{ marginTop: 6 }}>{client.status}</Badge>
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           <Actions deleting={deleting} onEdit={onEdit} onDelete={onDelete} />
@@ -482,10 +485,10 @@ function ClientRow({
 // ─── Badge ────────────────────────────────────────────────────────────────────
 
 function Badge({
-  children, bg, color, small, style,
+  children, bg, color, small, style, border, glow,
 }: {
   children: React.ReactNode; bg: string; color: string;
-  small?: boolean; style?: React.CSSProperties;
+  small?: boolean; style?: React.CSSProperties; border?: string; glow?: string;
 }) {
   return (
     <span style={{
@@ -494,7 +497,8 @@ function Badge({
       padding: small ? "2px 8px" : "3px 10px",
       borderRadius: 100,
       background: bg, color,
-      border: `1px solid ${color}35`,
+      border: `1px solid ${border ?? `${color}35`}`,
+      ...(glow ? { boxShadow: glow } : {}),
       fontSize: small ? 11 : 12, fontWeight: 600,
       whiteSpace: "nowrap",
       ...style,

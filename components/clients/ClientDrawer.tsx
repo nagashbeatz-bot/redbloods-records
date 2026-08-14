@@ -52,13 +52,14 @@ const TYPE_COLORS: Record<ClientType, { bg: string; color: string }> = {
   "איש צוות": { bg: "rgba(16,185,129,0.15)",  color: "#34D399" },
   "אחר":       { bg: "rgba(107,114,128,0.15)", color: "#9CA3AF" },
 };
-const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string }> = {
+const STATUS_COLORS: Record<ClientStatus, { bg: string; color: string; border?: string; glow?: string }> = {
   "פעיל":    { bg: "rgba(16,185,129,0.12)",  color: "#34D399" },
   "לא פעיל": { bg: "rgba(107,114,128,0.12)", color: "#6B7280" },
   "בעייתי":  { bg: "rgba(239,68,68,0.12)",   color: "#F87171" },
   "VIP":     { bg: "rgba(245,158,11,0.12)",  color: "#FBBF24" },
   "חדש":     { bg: "rgba(59,130,246,0.12)",  color: "#60A5FA" },
-  "אמן לייבל": { bg: "rgba(168,85,247,0.12)", color: "#C084FC" },
+  // Redbloods brand red — matches the ClientsPage badge (see note there).
+  "אמן לייבל": { bg: "rgba(220,38,38,0.20)", color: "#FF6B6B", border: "rgba(239,68,68,0.60)", glow: "0 0 9px rgba(239,68,68,0.30)" },
 };
 const PROJECT_STATUS_COLOR: Record<string, string> = {
   "בעבודה": "#3B82F6", "מחכה למיקס": "#F59E0B", "במיקס": "#A855F7",
@@ -346,7 +347,7 @@ function ModalContent({
             <div style={{ fontSize: 26, fontWeight: 800, color: "#F5F5F5", marginBottom: 10, lineHeight: 1.15, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis" }}>{client.name}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Chip bg={typeColor.bg} color={typeColor.color}>{client.type}</Chip>
-              <Chip bg={statusColor.bg} color={statusColor.color}>{client.status}</Chip>
+              <Chip bg={statusColor.bg} color={statusColor.color} border={statusColor.border} glow={statusColor.glow}>{client.status}</Chip>
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -1079,9 +1080,9 @@ function EmptyState({ icon, text }: { icon: string; text: string }) {
   );
 }
 
-function Chip({ children, bg, color }: { children: React.ReactNode; bg: string; color: string }) {
+function Chip({ children, bg, color, border, glow }: { children: React.ReactNode; bg: string; color: string; border?: string; glow?: string }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 10px", borderRadius: 20, background: bg, color, border: `1px solid ${color}30`, fontSize: 11, fontWeight: 600 }}>
+    <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 10px", borderRadius: 20, background: bg, color, border: `1px solid ${border ?? `${color}30`}`, ...(glow ? { boxShadow: glow } : {}), fontSize: 11, fontWeight: 600 }}>
       {children}
     </span>
   );
