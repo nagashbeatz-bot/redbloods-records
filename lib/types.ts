@@ -333,6 +333,24 @@ export interface AlbumFinanceData {
   expenses: AlbumExpense[];
 }
 
+/** "מידע קודם" — manual, HISTORICAL per-song data imported from Monday for a
+ *  specific album/EP. Display + edit only: stored in settings (album_prev_info_<id>),
+ *  never turned into transactions, and never read by canonical Finance / Dashboard /
+ *  Insights / Agent. costWithoutMix/mixMaster/paid are entered; the total and
+ *  balance are derived at render time (never stored). */
+export interface AlbumPrevInfoRow {
+  id: string;
+  name: string;
+  costWithoutMix: number;
+  mixMaster: number;
+  paid: number;
+}
+export interface AlbumPrevInfo {
+  rows: AlbumPrevInfoRow[];
+  note: string;
+  updatedAt?: string;
+}
+
 export interface AlbumTrack {
   id:            string;
   project_id:    string;

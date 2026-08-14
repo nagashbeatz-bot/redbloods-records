@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import type { Project } from "@/lib/types";
 import QuickTxModal from "@/components/finance/QuickTxModal";
+import AlbumPrevInfoBlock from "./AlbumPrevInfoBlock";
+
+// Scoped ONLY to Maor Ahron's EP for now (not a global feature — see task scope).
+// The "מידע קודם" block appears only for this project id.
+const PREV_INFO_PROJECT_IDS = new Set<string>([
+  "e13f7032-9257-4897-a5f7-08c64db66f33", // מאור ראנקינג אהרון (EP)
+]);
 
 interface Transaction {
   id: string;
@@ -238,6 +245,12 @@ export default function AlbumFinanceTab({ project, accentColor }: Props) {
         direction: "rtl",
       }}
     >
+      {/* "מידע קודם" — manual historical Monday data. Scoped to this EP only;
+          fully isolated from the canonical finance below (no transactions). */}
+      {PREV_INFO_PROJECT_IDS.has(project.id) && (
+        <AlbumPrevInfoBlock projectId={project.id} projectName={project.name} accentColor={accentColor} />
+      )}
+
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, marginBottom: 20 }}>
         {[
