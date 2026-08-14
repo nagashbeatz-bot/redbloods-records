@@ -68,6 +68,7 @@ export function checkHealth(projects: Project[]): ProjectIssue[] {
       p.isOverdue &&
       p.status !== "הושלם" &&
       p.status !== "בהשהייה" &&
+      p.status !== "בוטל" &&
       p.deadline
     ) {
       issues.push({
@@ -140,8 +141,8 @@ export function checkFinanceHealth(
   const map = new Map(summaries.map((s) => [s.projectId, s]));
 
   for (const p of projects) {
-    // Skip completed / paused projects
-    if (p.status === "הושלם" || p.status === "בהשהייה") continue;
+    // Skip completed / paused / cancelled projects
+    if (p.status === "הושלם" || p.status === "בהשהייה" || p.status === "בוטל") continue;
 
     const fin = map.get(p.id);
     if (!fin || fin.agreedPrice <= 0) continue; // no agreed price → nothing to check

@@ -4,7 +4,8 @@ export type ProjectStatus =
   | "במיקס"
   | "הושלם"
   | "בהשהייה"
-  | "לא התחיל";
+  | "לא התחיל"
+  | "בוטל";
 
 export const ALL_STATUSES: ProjectStatus[] = [
   "בעבודה",
@@ -13,6 +14,7 @@ export const ALL_STATUSES: ProjectStatus[] = [
   "הושלם",
   "בהשהייה",
   "לא התחיל",
+  "בוטל",
 ];
 
 export type ProjectType = "שיר" | "EP" | "אלבום" | "קליפ" | "רידים" | "לימודים" | "אחר" | "";

@@ -48,6 +48,8 @@ const FILTER_OPTIONS: FilterStatus[] = [
 // Tier 0 = overdue  |  1 = due ≤7 days  |  2–7 = by status  |  8 = unknown
 
 function urgencyTier(p: Project, days: number | null): number {
+  // Cancelled is terminal — never "urgent/overdue"; it sinks to the bottom tier.
+  if (p.status === "בוטל") return 8;
   if (p.isOverdue && p.status !== "הושלם") return 0;
   if (days !== null && days >= 0 && days <= 7 && p.status !== "הושלם") return 1;
   const STATUS_TIER: Partial<Record<ProjectStatus, number>> = {
@@ -57,6 +59,7 @@ function urgencyTier(p: Project, days: number | null): number {
     "בהשהייה":     5,
     "לא התחיל":    6,
     "הושלם":       7,
+    "בוטל":        8,
   };
   return STATUS_TIER[p.status] ?? 8;
 }

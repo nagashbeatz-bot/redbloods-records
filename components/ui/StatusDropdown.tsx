@@ -46,6 +46,10 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
   const [showMixSetup, setShowMixSetup] = useState(false);
   // Mix revert modal
   const [mixRevertTarget, setMixRevertTarget] = useState<ProjectStatus | null>(null);
+  // Cancel-project prompt: shown when moving to "בוטל" and the project still has a
+  // future income balance (income txns with status "צפוי"/"לא שולם") to decide on.
+  const [cancelPrompt, setCancelPrompt] = useState<{ balance: number; currency: string; txIds: string[] } | null>(null);
+  const [cancelBusy,   setCancelBusy]   = useState(false);
   const triggerRef                  = useRef<HTMLButtonElement>(null);
   const errorTimer                  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -126,11 +130,64 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
     }
   }, [projectId, updateProjectField]);
 
+  // Moving to "בוטל": if the project still has a future income balance (income
+  // transactions with status "צפוי"/"לא שולם"), ask what to do with it before
+  // saving. No balance → just cancel. Money already received ("שולם"/"התקבל") is
+  // never touched. The status itself is only written after the choice.
+  const beginCancel = useCallback(async () => {
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch(`/api/transactions?projectId=${projectId}`);
+      const d   = await res.json().catch(() => ({}));
+      const txns: Array<{ id: string; type?: string; payment_status?: string; amount?: number; currency?: string }> =
+        Array.isArray(d?.transactions) ? d.transactions : [];
+      const future = txns.filter(
+        (t) => (t.type === "income" || t.type === "הכנסה") &&
+               (t.payment_status === "צפוי" || t.payment_status === "לא שולם"),
+      );
+      const balance = future.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      if (balance > 0) {
+        setCancelPrompt({ balance, currency: future[0]?.currency ?? "₪", txIds: future.map((t) => t.id) });
+        setSaving(false);
+        return;
+      }
+    } catch { /* fetch failed — fall through and just set the status (no money change) */ }
+    setSaving(false);
+    await doUpdate("בוטל");
+  }, [projectId, doUpdate]);
+
+  // "בטל את היתרה" — move the future income txns to "בוטל" (never delete), then
+  // set the project status. Received money stays untouched.
+  const confirmCancelBalance = useCallback(async () => {
+    if (!cancelPrompt) return;
+    setCancelBusy(true);
+    try {
+      await Promise.all(cancelPrompt.txIds.map((id) =>
+        fetch(`/api/transactions/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentStatus: "בוטל" }),
+        }),
+      ));
+    } catch { /* non-fatal — still set status */ }
+    setCancelBusy(false);
+    setCancelPrompt(null);
+    await doUpdate("בוטל");
+  }, [cancelPrompt, doUpdate]);
+
+  // "השאר את היתרה" — cancel the project but leave transactions as they are.
+  const keepBalance = useCallback(async () => {
+    setCancelPrompt(null);
+    await doUpdate("בוטל");
+  }, [doUpdate]);
+
   const handleSelect = async (e: React.MouseEvent, next: ProjectStatus) => {
     e.stopPropagation();
     e.preventDefault();
     setOpen(false);
     if (next === status || saving) return;
+
+    if (next === "בוטל") { await beginCancel(); return; }
 
     await doUpdate(next);
   };
@@ -494,6 +551,87 @@ export default function StatusDropdown({ projectId, status, small }: StatusDropd
                 </button>
               </>
             )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Cancel-project prompt — future income balance decision */}
+      {cancelPrompt && typeof document !== "undefined" && createPortal(
+        <div
+          onClick={() => { if (!cancelBusy) setCancelPrompt(null); }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: "rgba(0,0,0,0.65)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#161616", border: "1px solid #3A1A1A",
+              borderRadius: 16, padding: "24px 24px 20px",
+              width: 360, direction: "rtl",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.9)",
+            }}
+          >
+            <div style={{ fontSize: 26, marginBottom: 8, textAlign: "center" }}>🚫</div>
+            <p style={{ color: "#EF4444", fontWeight: 700, fontSize: 15, margin: "0 0 6px", textAlign: "center" }}>
+              ביטול פרויקט
+            </p>
+            <p style={{ color: "#888", fontSize: 12.5, margin: "0 0 20px", textAlign: "center", lineHeight: 1.65 }}>
+              לפרויקט הזה יש יתרה עתידית של{" "}
+              <strong style={{ color: "#F87171" }}>
+                {cancelPrompt.balance.toLocaleString("he-IL")}{cancelPrompt.currency}
+              </strong>
+              . מה לעשות איתה?
+            </p>
+
+            {/* Cancel the balance — move future income txns to "בוטל" */}
+            <button
+              onClick={confirmCancelBalance}
+              disabled={cancelBusy}
+              style={{
+                display: "block", width: "100%", padding: "10px 0",
+                borderRadius: 10, border: "1px solid rgba(239,68,68,0.45)",
+                background: "rgba(239,68,68,0.12)", color: "#F87171",
+                cursor: cancelBusy ? "default" : "pointer", fontSize: 13, fontWeight: 700,
+                fontFamily: "inherit", marginBottom: 8, textAlign: "center",
+                opacity: cancelBusy ? 0.6 : 1,
+              }}
+            >
+              {cancelBusy ? "מבטל…" : "בטל את היתרה"}
+            </button>
+
+            {/* Keep the balance — cancel project, leave transactions as-is */}
+            <button
+              onClick={keepBalance}
+              disabled={cancelBusy}
+              style={{
+                display: "block", width: "100%", padding: "9px 0",
+                borderRadius: 10, border: "1px solid #2A2A2A",
+                background: "rgba(255,255,255,0.03)", color: "#C0C0C0",
+                cursor: cancelBusy ? "default" : "pointer", fontSize: 12.5, fontWeight: 600,
+                fontFamily: "inherit", marginBottom: 8, textAlign: "center",
+              }}
+            >
+              השאר את היתרה
+            </button>
+
+            {/* Back — change nothing */}
+            <button
+              onClick={() => setCancelPrompt(null)}
+              disabled={cancelBusy}
+              style={{
+                display: "block", width: "100%", padding: "8px 0",
+                borderRadius: 10, border: "1px solid #2A2A2A",
+                background: "transparent", color: "#555",
+                cursor: cancelBusy ? "default" : "pointer", fontSize: 12, fontFamily: "inherit",
+                textAlign: "center",
+              }}
+            >
+              חזרה
+            </button>
           </div>
         </div>,
         document.body

@@ -11,6 +11,7 @@ import "server-only";
 import { supabase } from "@/lib/supabase";
 import { getAlerts } from "./alerts-store";
 import type { AlertSeverity } from "@/lib/types";
+import { isCancelledPayment } from "@/lib/payment-status";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -178,7 +179,7 @@ async function buildFinanceContext(month: string): Promise<string> {
         .from("transactions")
         .select("project_id, amount, currency, type, payment_status, date, description")
         .lt("date", monthStart)
-        .not("payment_status", "in", '("שולם","התקבל")')
+        .not("payment_status", "in", '("שולם","התקבל","בוטל")')
         .neq("type", "הוצאה")
         .order("date", { ascending: true })
         .limit(30),
@@ -202,13 +203,13 @@ async function buildFinanceContext(month: string): Promise<string> {
       .filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
     const revenuePending = allTxns
-      .filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status))
+      .filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
     const expensesPaid = mt
       .filter((t) => t.type === "הוצאה" && PAID_STATUSES.has(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
     const expensesPending = mt
-      .filter((t) => t.type === "הוצאה" && !PAID_STATUSES.has(t.payment_status))
+      .filter((t) => t.type === "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
       .reduce((s, t) => s + (t.amount ?? 0), 0);
 
     lines.push(`הכנסות שהתקבלו: ${fmt(revenueReceived)}₪`);
@@ -219,7 +220,7 @@ async function buildFinanceContext(month: string): Promise<string> {
 
     // Top pending income items (up to 10, by amount desc)
     const pendingIncome = allTxns
-      .filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status))
+      .filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status))
       .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
       .slice(0, 10);
 
@@ -328,7 +329,7 @@ async function buildProjectsEnrichment(today: string): Promise<string> {
       .from("transactions")
       .select("project_id, amount")
       .neq("type", "הוצאה")
-      .not("payment_status", "in", '("שולם","התקבל")')
+      .not("payment_status", "in", '("שולם","התקבל","בוטל")')
       .not("project_id", "is", null)
       .limit(200);
     const pendingByProject = new Map<string, number>();
@@ -461,7 +462,7 @@ async function buildClientDetailContext(clientId: string): Promise<string> {
         .select("amount, currency, payment_status, date, type")
         .in("project_id", projIds)
         .neq("type", "הוצאה")
-        .not("payment_status", "in", '("שולם","התקבל")');
+        .not("payment_status", "in", '("שולם","התקבל","בוטל")');
 
       const pending = (txns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
       if (pending > 0) lines.push(`יתרה פתוחה: ${fmt(pending)}₪`);
@@ -573,7 +574,7 @@ async function buildCalendarPageContext(today: string, month: string): Promise<s
         .select("project_id, amount")
         .in("project_id", monthProjIds)
         .neq("type", "הוצאה")
-        .not("payment_status", "in", '("שולם","התקבל")');
+        .not("payment_status", "in", '("שולם","התקבל","בוטל")');
       const pendingProjIds = new Set((pendingTxns ?? []).map((t) => t.project_id));
       const sessWithOpenMoney = (sessWithPayment ?? []).filter((s) => pendingProjIds.has(s.project_id));
       if (sessWithOpenMoney.length > 0) {
@@ -646,7 +647,7 @@ async function buildProjectDetailContext(
 
     // Pending transactions
     const pendingTxns = (txns ?? []).filter(
-      (t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status)
+      (t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status)
     );
     if (pendingTxns.length > 0) {
       lines.push(`תשלומים ממתינים (${pendingTxns.length}):`);
@@ -794,7 +795,7 @@ async function buildProjectDetailContext(
     const clipExp = (txns ?? []).filter((t) => t.type === "expense" && (t as Record<string, unknown>).expense_scope === "קליפ");
     if (clipExp.length > 0) {
       const clipPaid    = clipExp.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
-      const clipPending = clipExp.filter((t) => !PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
+      const clipPending = clipExp.filter((t) => !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
       lines.push(`\nהוצאות קליפ (${clipExp.length} פריטים):`);
       lines.push(`  שולם: ${fmt(clipPaid)}₪ | צפוי / לא שולם: ${fmt(clipPending)}₪ | סה"כ: ${fmt(clipPaid + clipPending)}₪`);
       const topClip = [...clipExp].sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0)).slice(0, 5);

@@ -4,6 +4,7 @@
  */
 
 import type { ReportData, GeneratedReport, ReportProject, ReportCalendarEvent, ReportSession, ReportTransaction, ReportActivityItem } from "./types";
+import { isCancelledPayment } from "@/lib/payment-status";
 
 // ─── Hebrew date utils ────────────────────────────────────────────────────────
 
@@ -494,7 +495,7 @@ function openItemsCard(data: ReportData): string {
   ].map((t) => t.id));
   const PAID = new Set(["שולם","שולמה","התקבל","שולם חלקית"]);
   const unpaidExpectedToday = data.txExpectedToday.filter(
-    (t) => !createdTodayIds.has(t.id) && !PAID.has(t.paymentStatus)
+    (t) => !createdTodayIds.has(t.id) && !PAID.has(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
   );
 
   // Open deadlines today

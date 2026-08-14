@@ -127,12 +127,13 @@ export async function fetchWeeklyData(): Promise<WeeklyData> {
   const revenueThisWeek  = (txns ?? []).filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
   const expensesThisWeek = (txns ?? []).filter((t) => t.type === "הוצאה").reduce((s, t) => s + (t.amount ?? 0), 0);
 
-  // Pending total (all time)
+  // Pending total (all time) — excludes cancelled ("בוטל"): it is neither
+  // received nor expected income.
   const { data: pendingTxns } = await supabase
     .from("transactions")
     .select("amount")
     .neq("type", "הוצאה")
-    .not("payment_status", "in", '("שולם","התקבל")');
+    .not("payment_status", "in", '("שולם","התקבל","בוטל")');
   const pendingTotal = (pendingTxns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
 
   // Victor

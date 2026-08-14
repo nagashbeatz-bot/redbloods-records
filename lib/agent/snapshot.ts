@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { listProjects } from "@/lib/projects-store";
 import { getAlerts } from "./alerts-store";
 import { getGoalsProgress } from "./goals";
+import { isCancelledPayment } from "@/lib/payment-status";
 
 // "חלקי" is intentionally NOT here — partial is treated as not-yet-received.
 const PAID_STATUSES = new Set(["שולם", "התקבל"]);
@@ -42,7 +43,7 @@ export async function buildSnapshot() {
     .order("created_at", { ascending: false });
 
   const revenueThisMonth  = (txns ?? []).filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status) && t.date?.startsWith(month)).reduce((s, t) => s + (t.amount ?? 0), 0);
-  const pendingRevenue    = (txns ?? []).filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
+  const pendingRevenue    = (txns ?? []).filter((t) => t.type !== "הוצאה" && !PAID_STATUSES.has(t.payment_status) && !isCancelledPayment(t.payment_status)).reduce((s, t) => s + (t.amount ?? 0), 0);
   const expensesThisMonth = (txns ?? []).filter((t) => t.type === "הוצאה" && t.date?.startsWith(month)).reduce((s, t) => s + (t.amount ?? 0), 0);
 
   // Sessions (this month)

@@ -6,6 +6,7 @@ import "server-only";
 import { listProjects } from "@/lib/projects-store";
 import { supabase } from "@/lib/supabase";
 import { daysUntilDeadline } from "@/lib/utils";
+import { isCancelledPayment } from "@/lib/payment-status";
 import type {
   ReportData,
   ReportProject,
@@ -217,13 +218,13 @@ export async function fetchReportData(): Promise<ReportData> {
     (t) => !isExpenseType(t.type) && PAID_STATUSES.has(t.paymentStatus)
   );
   const txPendingAddedToday    = txCreatedToday.filter(
-    (t) => !isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus)
+    (t) => !isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
   );
   const txExpensesPaidToday    = txCreatedToday.filter(
     (t) => isExpenseType(t.type) && PAID_STATUSES.has(t.paymentStatus)
   );
   const txExpensesPendingToday = txCreatedToday.filter(
-    (t) => isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus)
+    (t) => isExpenseType(t.type) && !PAID_STATUSES.has(t.paymentStatus) && !isCancelledPayment(t.paymentStatus)
   );
 
   // ── Transactions expected today (by payment date) ─────────────────────────

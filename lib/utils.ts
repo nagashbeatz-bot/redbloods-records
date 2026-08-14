@@ -8,6 +8,7 @@ export function getStatusColor(status: ProjectStatus): string {
     case "הושלם": return "#10B981";
     case "בהשהייה": return "#6B7280";
     case "לא התחיל": return "#374151";
+    case "בוטל": return "#EF4444";
     default: return "#6B7280";
   }
 }
@@ -20,6 +21,7 @@ export function getStatusBg(status: ProjectStatus): string {
     case "הושלם": return "rgba(16,185,129,0.15)";
     case "בהשהייה": return "rgba(107,114,128,0.15)";
     case "לא התחיל": return "rgba(55,65,81,0.3)";
+    case "בוטל": return "rgba(239,68,68,0.12)";
     default: return "rgba(107,114,128,0.15)";
   }
 }

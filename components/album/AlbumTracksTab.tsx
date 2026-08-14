@@ -25,6 +25,7 @@ const STATUS_COLOR: Record<AlbumTrackStatus, { color: string; bg: string; border
   "הושלם":      { color: "#34D399", bg: "rgba(16,185,129,0.15)",  border: "rgba(16,185,129,0.3)"  },
   "בהשהייה":    { color: "#9CA3AF", bg: "rgba(107,114,128,0.15)", border: "rgba(107,114,128,0.3)" },
   "לא התחיל":   { color: "#6B7280", bg: "rgba(75,85,99,0.15)",    border: "rgba(75,85,99,0.3)"    },
+  "בוטל":       { color: "#EF4444", bg: "rgba(239,68,68,0.12)",   border: "rgba(239,68,68,0.3)"   },
 };
 
 const MIX_MASTER_COLOR: Record<MixMasterStatus, string> = {

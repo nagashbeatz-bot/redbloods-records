@@ -4,6 +4,7 @@
  * The caller decides whether to persist them (with cooldown).
  */
 import type { AlertInput, BusinessGoals, GoalsProgress, VictorMonthStats } from "@/lib/types";
+import { isCancelledPayment } from "@/lib/payment-status";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ export function checkOverdueProjects(
   projects: Array<{ id: string; name: string; artist: string; status: string; deadline: string | null }>
 ): AlertInput[] {
   const today = new Date().toISOString().split("T")[0];
-  const DONE_STATUSES = new Set(["הושלם", "בהשהייה"]);
+  const DONE_STATUSES = new Set(["הושלם", "בהשהייה", "בוטל"]);
   const overdue = projects.filter(
     (p) => p.deadline && p.deadline < today && !DONE_STATUSES.has(p.status)
   );
@@ -65,7 +66,7 @@ export function checkDueSoonProjects(
 ): AlertInput[] {
   const now = new Date();
   const today = now.toISOString().split("T")[0];
-  const DONE_STATUSES = new Set(["הושלם", "בהשהייה"]);
+  const DONE_STATUSES = new Set(["הושלם", "בהשהייה", "בוטל"]);
   const soon = projects.filter((p) => {
     if (!p.deadline || p.deadline <= today || DONE_STATUSES.has(p.status)) return false;
     const diff = daysBetween(now, new Date(p.deadline));
@@ -156,7 +157,8 @@ export function checkOverduePayments(
   }
 
   const overdue = transactions.filter((t) => {
-    if (t.type === "הוצאה" || !t.date || t.date >= today || PAID_STATUSES.has(t.paymentStatus)) return false;
+    // Cancelled ("בוטל") income is never overdue — it counts as no income at all.
+    if (t.type === "הוצאה" || !t.date || t.date >= today || PAID_STATUSES.has(t.paymentStatus) || isCancelledPayment(t.paymentStatus)) return false;
     if (t.projectId) {
       // Skip projects flagged as a finance exception (no charge / favor).
       if (financeMap.get(t.projectId)?.financeException) return false;
@@ -221,6 +223,7 @@ export function checkBalanceMissingDueDate(
 
   const alerts: AlertInput[] = [];
   for (const p of projects) {
+    if (p.status === "בוטל") continue;                        // cancelled project → no open-balance alert
     const setting = financeMap.get(p.id);
     if (setting?.financeException) continue;                  // (5) finance exception
     const agreed = setting?.agreedPrice ?? 0;
@@ -250,7 +253,7 @@ export function checkProjectsNoPricing(
   projects: Array<{ id: string; name: string; artist: string; status: string }>,
   financeSettings: Map<string, { agreedPrice?: number | null }>
 ): AlertInput[] {
-  const DONE_STATUSES = new Set(["הושלם", "בהשהייה"]);
+  const DONE_STATUSES = new Set(["הושלם", "בהשהייה", "בוטל"]);
   const noPrice = projects.filter(
     (p) => !DONE_STATUSES.has(p.status) && !financeSettings.get(p.id)?.agreedPrice
   );
