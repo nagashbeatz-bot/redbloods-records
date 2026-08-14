@@ -110,7 +110,11 @@ export default function AlbumCenterModal({ project, onClose }: Props) {
         display: "flex", alignItems: "center", justifyContent: "center",
         backdropFilter: "blur(12px)", background: "rgba(0,0,0,0.92)",
       }}
-      onClick={onClose}
+      // A sub-modal (add-payment / add-track) is portaled but still bubbles its
+      // backdrop click up React's tree to here — so guard the album's own
+      // backdrop-close while one is open (same rule as the Escape handler above),
+      // otherwise clicking beside the sub-modal would also close the album.
+      onClick={() => { if (!showAddTx && !showAddTrack) onClose(); }}
     >
       <div
         style={{
