@@ -342,7 +342,7 @@ function OpenProjectFromURL({ openProject }: { openProject: (id: string) => void
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ProjectsDesignPreview() {
   const { projects, loading, createProject } = useProjects();
-  const { openProject, drawerProjectId } = useGlobalProjectDrawer();
+  const { openProject, drawerProjectId, albumProjectId } = useGlobalProjectDrawer();
   const player = usePlayerSafe();
 
   // Deep-link guard: while a ?open=ID page-load is resolving into an open drawer,
@@ -352,12 +352,16 @@ export default function ProjectsDesignPreview() {
   // still being cleared) can never re-trigger the "opening" overlay.
   const [deepLinkDone, setDeepLinkDone] = useState(false);
   useEffect(() => {
-    if (drawerProjectId) { setDeepLinkDone(true); return; }
+    // The deep link is resolved once EITHER a drawer OR an album is open. Albums
+    // open via albumProjectId (drawerProjectId stays null for them), so without
+    // this check an album deep link could leave the "פותח פרויקט..." overlay
+    // covering the open album on a re-render (e.g. after adding a payment).
+    if (drawerProjectId || albumProjectId) { setDeepLinkDone(true); return; }
     const hasOpen = typeof window !== "undefined" && !!new URLSearchParams(window.location.search).get("open");
     if (!hasOpen) return;
     const t = setTimeout(() => setDeepLinkDone(true), 1500);
     return () => clearTimeout(t);
-  }, [drawerProjectId]);
+  }, [drawerProjectId, albumProjectId]);
 
   const [search,          setSearch]          = useState("");
   const [statusFilter,    setStatusFilter]    = useState<"הכל הפעיל" | "הושלמו" | ProjectStatus>("הכל הפעיל");
@@ -501,7 +505,10 @@ export default function ProjectsDesignPreview() {
 
   // A ?open=ID deep link is still resolving into an open drawer — cover the list.
   const openParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("open") : null;
-  const awaitingDeepLink = !!openParam && drawerProjectId !== openParam && !deepLinkDone;
+  // Album/EP deep links resolve into albumProjectId (never drawerProjectId), so
+  // the overlay must treat an open album as "resolved" too — otherwise it can get
+  // stuck covering the open album with "פותח פרויקט...".
+  const awaitingDeepLink = !!openParam && drawerProjectId !== openParam && albumProjectId !== openParam && !deepLinkDone;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

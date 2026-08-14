@@ -14,6 +14,10 @@ interface GlobalDrawerCtx {
   openProject: (id: string) => void;
   closeProject: () => void;
   drawerProjectId: string | null;
+  // Album/EP projects open in AlbumCenterModal (NOT the drawer), so drawerProjectId
+  // stays null for them. Exposed so the /projects deep-link overlay can tell an
+  // album is open and stop covering it.
+  albumProjectId: string | null;
 }
 
 const Ctx = createContext<GlobalDrawerCtx | null>(null);
@@ -22,6 +26,7 @@ const NOOP: GlobalDrawerCtx = {
   openProject: () => {},
   closeProject: () => {},
   drawerProjectId: null,
+  albumProjectId: null,
 };
 
 export function useGlobalProjectDrawer(): GlobalDrawerCtx {
@@ -125,7 +130,7 @@ export default function GlobalProjectDrawerProvider({ children }: { children: Re
   }, [drawerProjectId, albumProject]);
 
   return (
-    <Ctx.Provider value={{ openProject, closeProject, drawerProjectId }}>
+    <Ctx.Provider value={{ openProject, closeProject, drawerProjectId, albumProjectId: albumProject?.id ?? null }}>
       {children}
       {drawerProjectId && !useV2 && (
         <ProjectDrawer
