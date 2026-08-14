@@ -27,7 +27,7 @@ import {
   checkStaleSessions,
 } from "@/lib/agent/rules";
 import { createAlertIfNotCoolingDown } from "@/lib/agent/alerts-store";
-import { checkUpcomingHolidays, createHolidayAlertIfAbsent } from "@/lib/agent/holiday-check";
+import { runHolidayAlertCycle } from "@/lib/agent/holiday-check";
 import { sendAlertsAsNotifications } from "@/lib/agent/notifications";
 import { getGoalsProgress } from "@/lib/agent/goals";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
@@ -42,15 +42,31 @@ const PAID_STATUSES = new Set(["שולם", "התקבל", "שולם חלקית"])
 const DONE_PROJECT_STATUSES = new Set(["הושלם", "בהשהייה"]);
 
 export async function GET(req: NextRequest) {
-  // ── Kill-switch — FIRST, before the secret check, DB, alerts, or push ──────
-  // An externally-triggered runner: when the agent is disabled it must return
-  // immediately without scanning, creating/updating agent_alerts, pushing, or
-  // triggering any report.
-  if (!MAI_AI_ENABLED) return NextResponse.json({ ok: true, disabled: true });
-
-  // ── Auth ──────────────────────────────────────────────────────────────────
+  // ── Auth token (evaluated up-front; the 401 for the main pipeline stays below
+  // so the kill-switch's return-even-when-unauthed behavior is unchanged). ──
   const secret = req.nextUrl.searchParams.get("secret");
-  if (!secret || secret !== process.env.CRON_SECRET) {
+  const authed = !!secret && secret === process.env.CRON_SECRET;
+
+  // ── Upcoming-holiday alerts — run REGARDLESS of MAI_AI_ENABLED (holiday alerts
+  // are independent of the Mai AI kill-switch), but only for an authed cron call.
+  // Self-contained: reads Google Calendar, persists (insert-if-absent), and
+  // auto-resolves ONLY upcoming_holiday alerts. It runs no other rule and touches
+  // no other agent_alerts row, so it cannot re-activate anything the kill-switch
+  // disables — and its auto-resolve is NOT behind the early return, so a holiday
+  // still closes on time while Mai AI is off. ──
+  let holiday = { holidaysInWindow: 0, newHolidayAlerts: 0, holidaysResolved: 0 };
+  if (authed) {
+    try { holiday = await runHolidayAlertCycle(); }
+    catch (e) { console.error("[agent/check] holiday cycle error:", e); }
+  }
+
+  // ── Kill-switch — MEANING UNCHANGED: when Mai AI is disabled, stop here without
+  // running any other rule, report, or push, and return even for unauthed callers
+  // exactly as before. Holiday alerts above are the sole, deliberate exception. ──
+  if (!MAI_AI_ENABLED) return NextResponse.json({ ok: true, disabled: true, ...holiday });
+
+  // ── Auth gate for the rest of the pipeline (unchanged) ──────────────────────
+  if (!authed) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -225,27 +241,23 @@ export async function GET(req: NextRequest) {
       ...checkStaleSessions(activeProjects, sessions),
     ];
 
-    // ── Upcoming-holiday alerts (Google Calendar → date; Agent Alerts only) ──
-    // Persisted separately below via createHolidayAlertIfAbsent (one row per
-    // entity_key, ever) — NOT through createAlertIfNotCoolingDown, so no 72h
-    // duplicate rows and no other rule's cooldown is affected. Their entity_keys
-    // DO join the auto-resolve active set so an in-window holiday is never
-    // wrongly resolved; once out of window they auto-resolve like any other.
-    const holidayInputs = await checkUpcomingHolidays();
-
     // ── Auto-resolve: close alerts whose entity is no longer problematic ────
     // Only affects alerts that have an entity_key — bulk/aggregate alerts (null key) are untouched.
+    // upcoming_holiday alerts are EXCLUDED here: they are fully owned by the
+    // holiday cycle above (which runs regardless of the kill-switch), so this
+    // rules-pipeline resolver must never touch them.
     let autoResolved = 0;
     try {
       const activeEntityKeys = new Set(
-        [...allInputs, ...holidayInputs].filter((i) => i.entityKey).map((i) => i.entityKey!)
+        allInputs.filter((i) => i.entityKey).map((i) => i.entityKey!)
       );
       if (activeEntityKeys.size > 0) {
         const { data: trackedAlerts } = await supabase
           .from("agent_alerts")
           .select("id, entity_key")
           .eq("status", "new")
-          .not("entity_key", "is", null);
+          .not("entity_key", "is", null)
+          .not("entity_key", "like", "upcoming_holiday:%");
 
         const toResolve = (trackedAlerts ?? [])
           .filter((a) => a.entity_key && !activeEntityKeys.has(a.entity_key))
@@ -269,14 +281,6 @@ export async function GET(req: NextRequest) {
     for (const input of allInputs) {
       const alert = await createAlertIfNotCoolingDown(input);
       if (alert) newAlerts.push(alert);
-    }
-
-    // Holiday alerts: insert-if-absent (one row per entity_key). Deliberately NOT
-    // added to `newAlerts` → never passed to sendAlertsAsNotifications (no push;
-    // severity "info" wouldn't push anyway — this is belt-and-suspenders).
-    let newHolidayAlerts = 0;
-    for (const input of holidayInputs) {
-      if (await createHolidayAlertIfAbsent(input)) newHolidayAlerts++;
     }
 
     // ── Send push notifications for important/urgent new alerts ──────────────
@@ -314,8 +318,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       checkedRules:       allInputs.length,
       newAlerts:          newAlerts.length,
-      holidaysInWindow:   holidayInputs.length,
-      newHolidayAlerts,
+      ...holiday,
       autoResolved,
       notificationsSent,
       reportsTriggered,

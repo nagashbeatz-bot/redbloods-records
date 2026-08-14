@@ -141,3 +141,60 @@ export async function createHolidayAlertIfAbsent(input: AlertInput): Promise<boo
     return false;
   }
 }
+
+/**
+ * Auto-resolve stale holiday alerts — mark "handled" any still-open ("new")
+ * upcoming_holiday alert whose entity_key is NOT among the currently-in-window
+ * holidays (i.e. the holiday has passed / left the 35-day window). Scoped
+ * STRICTLY to type "upcoming_holiday": it never reads or touches any other
+ * agent_alerts row. Runs independently of the MAI_AI_ENABLED kill-switch, so a
+ * holiday alert still closes on time even while Mai AI is off. Returns the count.
+ */
+export async function resolveStaleHolidayAlerts(activeEntityKeys: Set<string>): Promise<number> {
+  try {
+    const { data: open, error } = await supabase
+      .from("agent_alerts")
+      .select("id, entity_key")
+      .eq("status", "new")
+      .eq("type", "upcoming_holiday");
+    if (error) {
+      console.error("[holiday-check] resolveStaleHolidayAlerts read failed:", error.message);
+      return 0;
+    }
+    const toResolve = (open ?? [])
+      .filter((a) => a.entity_key && !activeEntityKeys.has(a.entity_key as string))
+      .map((a) => a.id);
+    if (toResolve.length === 0) return 0;
+    const { error: updErr } = await supabase
+      .from("agent_alerts")
+      .update({ status: "handled", updated_at: new Date().toISOString() })
+      .in("id", toResolve);
+    if (updErr) {
+      console.error("[holiday-check] resolveStaleHolidayAlerts update failed:", updErr.message);
+      return 0;
+    }
+    return toResolve.length;
+  } catch (e) {
+    console.error("[holiday-check] resolveStaleHolidayAlerts crashed:", e);
+    return 0;
+  }
+}
+
+/**
+ * Full self-contained holiday cycle: detect in-window holidays (from Google
+ * Calendar), persist them (insert-if-absent → one row per entity_key), and
+ * auto-resolve holiday alerts that left the window. Touches ONLY holiday alerts;
+ * runs no other agent rule. Safe to call regardless of MAI_AI_ENABLED.
+ */
+export async function runHolidayAlertCycle(): Promise<{
+  holidaysInWindow: number; newHolidayAlerts: number; holidaysResolved: number;
+}> {
+  const inputs = await checkUpcomingHolidays();
+  const activeKeys = new Set(inputs.map((i) => i.entityKey).filter((k): k is string => !!k));
+  let newHolidayAlerts = 0;
+  for (const input of inputs) {
+    if (await createHolidayAlertIfAbsent(input)) newHolidayAlerts++;
+  }
+  const holidaysResolved = await resolveStaleHolidayAlerts(activeKeys);
+  return { holidaysInWindow: inputs.length, newHolidayAlerts, holidaysResolved };
+}
