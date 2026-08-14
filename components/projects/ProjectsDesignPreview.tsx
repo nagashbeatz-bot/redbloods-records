@@ -26,6 +26,14 @@ const SUB     = "#A0A0A0";
 const MUTED   = "#505050";
 const CARD_SHADOW = "0 2px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)";
 
+// Table column templates — defined ONCE and shared by the header and every row so
+// they can never drift. Desktop = full 9 columns. Tablet/iPad drops the two least
+// important columns ("תאריך התחלה" + "הערות") and widens the artist column so the
+// artist name is fully readable instead of a truncated chip. The cells for those
+// two columns are conditionally omitted on tablet (see the !isTablet guards).
+const TABLE_GRID_DESKTOP = "36px 2.2fr 1.2fr 130px 80px 110px 110px 1fr 80px";
+const TABLE_GRID_TABLET  = "34px 1.9fr 1.8fr 112px 68px 92px 68px";
+
 const TYPE_COLORS: Record<string, string> = {
   "שיר":  "#3B82F6",
   "EP":   "#A855F7",
@@ -355,6 +363,7 @@ export default function ProjectsDesignPreview() {
   const [statusFilter,    setStatusFilter]    = useState<"הכל הפעיל" | "הושלמו" | ProjectStatus>("הכל הפעיל");
   const [typeFilter,      setTypeFilter]      = useState<ProjectType | "">("");
   const [isMobile,        setIsMobile]        = useState(false);
+  const [isTablet,        setIsTablet]        = useState(false);
   const [showNewProject,  setShowNewProject]  = useState(false);
   const [clientNames,     setClientNames]     = useState<string[]>([]);
 
@@ -383,7 +392,13 @@ export default function ProjectsDesignPreview() {
   }, []);
 
   useLayoutEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => {
+      const w = window.innerWidth;
+      setIsMobile(w < 768);
+      // Tablet / iPad landscape (~768–1200): the app sidebar eats width, so the
+      // full 9-column desktop grid gets cramped and the artist chip truncates.
+      setIsTablet(w >= 768 && w < 1200);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -645,8 +660,8 @@ export default function ProjectsDesignPreview() {
           <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 14, overflow: "hidden" }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: "36px 2.2fr 1.2fr 130px 80px 110px 110px 1fr 80px",
-              padding: "10px 16px", gap: 10,
+              gridTemplateColumns: isTablet ? TABLE_GRID_TABLET : TABLE_GRID_DESKTOP,
+              padding: "10px 16px", gap: isTablet ? 8 : 10,
               borderBottom: `1px solid ${BORDER}`,
               fontSize: 10, fontWeight: 800, color: MUTED,
               letterSpacing: "0.07em", textTransform: "uppercase",
@@ -656,9 +671,9 @@ export default function ProjectsDesignPreview() {
               <div>אמן</div>
               <div>סטטוס</div>
               <div>סוג</div>
-              <div>תאריך התחלה</div>
+              {!isTablet && <div>תאריך התחלה</div>}
               <div>יעד / איחור</div>
-              <div>הערות</div>
+              {!isTablet && <div>הערות</div>}
               <div style={{ textAlign: "center" }}>פעולות</div>
             </div>
 
@@ -669,6 +684,7 @@ export default function ProjectsDesignPreview() {
                 key={p.id}
                 project={p}
                 isLast={i === pageRows.length - 1}
+                isTablet={isTablet}
                 onOpen={openProject}
                 player={player}
               />
@@ -769,9 +785,9 @@ function pagerBtn(disabled: boolean): React.CSSProperties {
 
 // ── Desktop row ───────────────────────────────────────────────────────────────
 function ProjectRow({
-  project: p, isLast, onOpen, player,
+  project: p, isLast, isTablet, onOpen, player,
 }: {
-  project: Project; isLast: boolean; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe>;
+  project: Project; isLast: boolean; isTablet: boolean; onOpen: (id: string) => void; player: ReturnType<typeof usePlayerSafe>;
 }) {
   const [hovered, setHovered] = useState(false);
   const dlColor    = deadlineBadgeColor(p);
@@ -788,8 +804,8 @@ function ProjectRow({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: "grid",
-        gridTemplateColumns: "36px 2.2fr 1.2fr 130px 80px 110px 110px 1fr 80px",
-        padding: "13px 16px", gap: 10,
+        gridTemplateColumns: isTablet ? TABLE_GRID_TABLET : TABLE_GRID_DESKTOP,
+        padding: "13px 16px", gap: isTablet ? 8 : 10,
         borderBottom: isLast ? "none" : `1px solid ${BORDER}`,
         background: hovered ? "rgba(255,255,255,0.022)" : "transparent",
         transition: "background 0.1s",
@@ -843,10 +859,12 @@ function ProjectRow({
       {/* Type */}
       <div><TypeBadge type={p.projectType} /></div>
 
-      {/* Start date (first 21 days only) */}
-      <div style={{ fontSize: 12.5, color: startLabel === "—" ? MUTED : "#C8C8C8", fontWeight: 500, whiteSpace: "nowrap" }}>
-        {startLabel}
-      </div>
+      {/* Start date (first 21 days only) — hidden on tablet to widen the artist column */}
+      {!isTablet && (
+        <div style={{ fontSize: 12.5, color: startLabel === "—" ? MUTED : "#C8C8C8", fontWeight: 500, whiteSpace: "nowrap" }}>
+          {startLabel}
+        </div>
+      )}
 
       {/* Deadline */}
       <div>
@@ -858,10 +876,12 @@ function ProjectRow({
         )}
       </div>
 
-      {/* Notes */}
-      <div style={{ fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {p.notes || "—"}
-      </div>
+      {/* Notes — hidden on tablet to widen the artist column */}
+      {!isTablet && (
+        <div style={{ fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {p.notes || "—"}
+        </div>
+      )}
 
       {/* Actions */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
