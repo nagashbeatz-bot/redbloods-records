@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { requireOwner } from "@/lib/require-auth";
 import { CLIP_SCOPE } from "@/lib/clip-finance";
-import { findLinkedClipProduction, syncClipBudget } from "@/lib/clip-production";
+import { findLinkedClipProduction, getManagedClipProductionId, syncClipBudget } from "@/lib/clip-production";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -33,7 +33,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   try {
     const { id } = await ctx.params;
 
-    const [settings, txRes, production] = await Promise.all([
+    const [settings, txRes, production, managedId] = await Promise.all([
       readFinanceSettings(id),
       supabase
         .from("transactions")
@@ -43,15 +43,21 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
         .eq("type", "income")
         .order("date", { ascending: true }),
       findLinkedClipProduction(id),
+      getManagedClipProductionId(id),
     ]);
 
     if (txRes.error) return NextResponse.json({ error: txRes.error.message }, { status: 500 });
+
+    // A linked production may be LEGACY — created in Red Films before this flow
+    // existed. It still answers "don't create a second one" and "open it", but
+    // its budget is not ours to sync, and the UI must not claim otherwise.
+    const budgetManaged = !!production && production.id === managedId;
 
     return NextResponse.json({
       clipAgreedPrice: (settings.clipAgreedPrice as number | undefined) ?? 0,
       currency:        (settings.currency        as string | undefined) ?? "₪",
       payments:        txRes.data ?? [],
-      production,
+      production:      production ? { ...production, budget_managed_by_project: budgetManaged } : null,
     });
   } catch (e) {
     console.error("[GET /api/projects/[id]/clip]", e);

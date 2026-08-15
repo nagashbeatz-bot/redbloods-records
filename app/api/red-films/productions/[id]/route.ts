@@ -4,7 +4,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { isProjectManagedClipBudget, PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
+import { PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
+import { isManagedClipProduction } from "@/lib/clip-production";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,7 +18,10 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
       .eq("id", id)
       .single();
     if (error || !data) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
-    return NextResponse.json({ production: data });
+    // Computed, not stored: whether this production's budget is owned by the
+    // project that created it via "שלח קליפ". Always false for legacy rows.
+    const budgetManaged = await isManagedClipProduction(data as { id: string; project_id?: string | null });
+    return NextResponse.json({ production: { ...data, budget_managed_by_project: budgetManaged } });
   } catch (e) {
     console.error("[GET /api/red-films/productions/[id]]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
@@ -59,20 +63,23 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }
     }
 
-    // ── Single source of truth for a linked clip's budget ────────────────────
-    // When this production is a project's clip, general_budget mirrors that
-    // project's clipAgreedPrice. Nothing coming through THIS endpoint may
-    // overwrite it — not the "העלה תקציב" action, not the budget edit form, not
-    // a direct API call. The project's own route writes the column directly
-    // (lib/clip-production.ts), so the sync itself is unaffected.
+    // ── Single source of truth for a MANAGED clip's budget ───────────────────
+    // Only for a production created by "שלח קליפ" (recorded in the project's
+    // finance settings): general_budget mirrors that project's clipAgreedPrice,
+    // and nothing through THIS endpoint may overwrite it — not "העלה תקציב", not
+    // the budget form, not a direct API call. The project's own route writes the
+    // column directly (lib/clip-production.ts), so the sync still works.
+    //
+    // A legacy production is never managed, so it passes through untouched and
+    // keeps behaving exactly as it did before the clip feature existed.
     let budgetLocked = false;
     if ("general_budget" in patch) {
       const { data: current } = await supabase
         .from("red_films_productions")
-        .select("project_id, production_type, status")
+        .select("id, project_id")
         .eq("id", id)
         .maybeSingle();
-      if (current && isProjectManagedClipBudget(current)) {
+      if (current && await isManagedClipProduction(current as { id: string; project_id?: string | null })) {
         delete patch.general_budget;
         budgetLocked = true;
       }
@@ -149,7 +156,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (!data) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
 
     // budgetLocked tells the caller its general_budget was ignored on purpose.
-    return NextResponse.json({ production: data, ...(budgetLocked ? { budgetLocked: true } : {}) });
+    // The flag is re-attached so the UI keeps the lock after a save.
+    const stillManaged = await isManagedClipProduction(data as { id: string; project_id?: string | null });
+    return NextResponse.json({
+      production: { ...data, budget_managed_by_project: stillManaged },
+      ...(budgetLocked ? { budgetLocked: true } : {}),
+    });
   } catch (e) {
     console.error("[PATCH /api/red-films/productions/[id]]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

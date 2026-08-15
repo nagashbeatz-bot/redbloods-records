@@ -20,6 +20,12 @@ export interface Production {
   production_type: string;
   status: string;
   project_id: string | null;
+  /**
+   * Server-computed, NOT a DB column. True only for a production created by the
+   * project's "שלח קליפ" flow — its budget is owned by that project's clip price.
+   * Absent/false on every legacy production, which keeps its own budget.
+   */
+  budget_managed_by_project?: boolean;
   client_id: string | null;
   artist_name: string;
   client_name: string;

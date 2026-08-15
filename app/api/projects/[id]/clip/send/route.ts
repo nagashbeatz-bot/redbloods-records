@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { requireOwner } from "@/lib/require-auth";
 import { CLIP_SCOPE } from "@/lib/clip-finance";
-import { findLinkedClipProduction } from "@/lib/clip-production";
+import { findLinkedClipProduction, setManagedClipProductionId } from "@/lib/clip-production";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -85,7 +85,16 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
       .single();
 
     if (error) throw error;
-    return NextResponse.json({ production: data, created: true }, { status: 201 });
+
+    // Record provenance: THIS production was born from the clip flow, so the
+    // project owns its budget from here on. Legacy productions are never
+    // recorded — that is exactly what keeps them outside the new rules.
+    await setManagedClipProductionId(id, data.id as string);
+
+    return NextResponse.json(
+      { production: { ...data, budget_managed_by_project: true }, created: true },
+      { status: 201 },
+    );
   } catch (e) {
     console.error("[POST /api/projects/[id]/clip/send]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

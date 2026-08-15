@@ -63,23 +63,21 @@ export function isSongIncome(tx: ClipTxLike): boolean {
 
 /**
  * True when a Red Films production's budget is OWNED BY THE LINKED PROJECT —
- * i.e. general_budget mirrors that project's clipAgreedPrice and nothing inside
- * Red Films may overwrite it. Budget items and expenses still move freely; they
+ * general_budget mirrors that project's clipAgreedPrice and nothing inside Red
+ * Films may overwrite it. Budget items and expenses still move freely; they
  * describe how the budget is spent, not what was agreed with the artist.
  *
- * The condition matches findLinkedClipProduction() exactly (linked + clip +
- * not cancelled). That equivalence matters: a production the project no longer
- * syncs (unlinked, non-clip, or cancelled) must stay editable inside Red Films,
- * otherwise its budget would have no owner at all.
+ * This reads a flag the SERVER computes (see lib/clip-production.ts) — it is NOT
+ * derived from the row's own columns. A production carrying a project_id is not
+ * enough: legacy Red Films productions have had project_id for a long time and
+ * must keep managing their own budget exactly as before. Only a production
+ * created by "שלח קליפ", and recorded as such in the project's finance settings,
+ * is managed. There is deliberately no rule that could reclassify an old row.
  */
 export function isProjectManagedClipBudget(prod: {
-  project_id?: string | null;
-  production_type?: string | null;
-  status?: string | null;
+  budget_managed_by_project?: boolean | null;
 }): boolean {
-  return !!prod.project_id
-    && (prod.production_type ?? "") === CLIP_SCOPE
-    && (prod.status ?? "") !== "בוטל";
+  return prod.budget_managed_by_project === true;
 }
 
 /** Shown wherever a project-managed budget is locked for editing. */

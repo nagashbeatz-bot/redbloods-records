@@ -4283,6 +4283,8 @@ interface ClipProduction {
   title:          string;
   status:         string;
   general_budget: number | null;
+  /** True only when this production came from "שלח קליפ" — legacy ones are not synced. */
+  budget_managed_by_project?: boolean;
 }
 
 function ClipContent({ project, currency, onFinanceChanged }: {
@@ -4515,6 +4517,9 @@ function ClipContent({ project, currency, onFinanceChanged }: {
         <div style={{ fontSize: 12, color: TEXT2, background: `${CLIP_ACCENT}12`, border: `1px solid ${CLIP_ACCENT}30`, borderRadius: 10, padding: "9px 12px" }}>
           כבר קיימת הפקת קליפ לפרויקט הזה — <span style={{ color: TEXT, fontWeight: 700 }}>{production.title}</span>
           {" · "}תקציב ב-Red Films: <span style={{ color: TEXT, fontWeight: 700 }}>{money(Number(production.general_budget) || 0)}</span>
+          {!production.budget_managed_by_project && (
+            <span style={{ color: MUTED }}>{" · "}הפקה קיימת מ-Red Films — התקציב שלה מנוהל שם</span>
+          )}
         </div>
       )}
 
@@ -4599,7 +4604,9 @@ function ClipContent({ project, currency, onFinanceChanged }: {
                     </div>
                     {production && (
                       <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.5 }}>
-                        עדכון המחיר יעדכן גם את התקציב בהפקה ב-Red Films
+                        {production.budget_managed_by_project
+                          ? "עדכון המחיר יעדכן גם את התקציב בהפקה ב-Red Films"
+                          : "ההפקה המקושרת נוצרה ב-Red Films ולא דרך שליחת קליפ — התקציב שלה מנוהל שם ולא יושפע"}
                       </div>
                     )}
                   </div>
