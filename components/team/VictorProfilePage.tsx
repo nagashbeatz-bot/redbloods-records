@@ -2246,7 +2246,7 @@ function VictorProjectDrawer({
         ) : (
           <>
             {hasNotes && (
-              <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}>{r!.notes}</div>
+              <div style={{ fontSize: 13, color: "#CFCFD6", marginTop: 7, lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere", textAlign: "start", unicodeBidi: "plaintext" }}><LinkifiedText text={r!.notes} /></div>
             )}
             {/* Send status + action — OWNER only (Victor never sees this). */}
             {isOwner && (
