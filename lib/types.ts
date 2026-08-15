@@ -674,6 +674,14 @@ export interface SoundEngineerWork {
   paymentDate: string | null;    // YYYY-MM-DD when marked paid (sound_engineer_work.payment_date); null = not paid / legacy
   createdAt: string;
   updatedAt: string;
+  /**
+   * Last time a FILE was actually uploaded for this work — ISO timestamp, null
+   * when nothing was ever uploaded. Read-only aggregate over
+   * max(mix_versions.created_at, final_files.created_at); no column of its own.
+   * Populated ONLY by listSoundEngineerWork (the list endpoints) — the
+   * single-record fetchers leave it null, they have no consumer for it.
+   */
+  lastUploadAt: string | null;
 }
 
 /** Input to create an alert (before DB insertion) */

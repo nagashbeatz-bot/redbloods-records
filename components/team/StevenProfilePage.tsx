@@ -208,6 +208,9 @@ interface Work {
   amountPaid: number; currency: string; dbBacked: boolean;
   notes: string; filesLink: string | null;   // real fields from sound_engineer_work
   paymentDate: string | null;                 // YYYY-MM-DD when marked paid (null = unpaid/legacy)
+  // Last real upload for this work (ISO) — max(mix_versions, final_files) from the
+  // server; null = nothing ever uploaded. Ordering hint only, never displayed.
+  lastUploadAt: string | null;
 }
 
 // ── DB ↔ UI mapping (the page UI has fewer enum values than the DB) ───────────────
@@ -261,6 +264,7 @@ function mapRecord(r: SoundEngineerWork): Work {
     notes:      r.notes || "",
     filesLink:  r.filesLink ?? null,
     paymentDate: r.paymentDate ?? null,
+    lastUploadAt: r.lastUploadAt ?? null,
   };
 }
 
@@ -997,11 +1001,31 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
       (!jobsTypeFilter || w.workType === jobsTypeFilter)
     );
   }
-  // Active tab: filter only, keep the existing manual/DB order untouched.
-  // History tab: filter, then sort by "תאריך סיום" (when it was actually paid —
-  // paymentDate — falling back to deadline for older rows), newest first.
+  // Active tab display order (view-only — nothing is persisted, sort_order in the
+  // DB is never rewritten by this):
+  //   1. status "פעיל" first, everything else after it.
+  //   2. inside "פעיל" — newest lastUploadAt first; a job with no upload at all
+  //      drops to the end of that group. This DELIBERATELY overrides the manual
+  //      drag order within the active group (owner's call).
+  //   3. ties + the whole non-active group keep the incoming manual/DB order —
+  //      Array.sort is stable, so returning 0 leaves them exactly as they were.
+  // History tab: unchanged — filter, then sort by "תאריך סיום" (when it was
+  // actually paid — paymentDate — falling back to deadline for older rows), newest first.
+  const activeRank = (w: Work) => (w.status === "פעיל" ? 0 : 1);
+  function byActiveThenUpload(a: Work, b: Work): number {
+    const rank = activeRank(a) - activeRank(b);
+    if (rank !== 0) return rank;
+    if (activeRank(a) !== 0) return 0;             // non-active group: order untouched
+    const at = a.lastUploadAt ? Date.parse(a.lastUploadAt) : NaN;
+    const bt = b.lastUploadAt ? Date.parse(b.lastUploadAt) : NaN;
+    const aOk = Number.isFinite(at), bOk = Number.isFinite(bt);
+    if (!aOk && !bOk) return 0;                    // both never uploaded → keep order
+    if (!aOk) return 1;                            // no upload sinks to the group's end
+    if (!bOk) return -1;
+    return bt - at;                                // newest upload first
+  }
   const visibleWorks = jobsTab === "active"
-    ? applyJobsFilters(activeWorksAll)
+    ? applyJobsFilters(activeWorksAll).slice().sort(byActiveThenUpload)
     : applyJobsFilters(historyWorksAll)
         .slice()
         .sort((a, b) => (b.paymentDate ?? b.deadline ?? "").localeCompare(a.paymentDate ?? a.deadline ?? ""));

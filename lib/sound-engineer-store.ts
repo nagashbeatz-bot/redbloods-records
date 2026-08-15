@@ -45,7 +45,8 @@ export function stevenDisplayName(w: Pick<SoundEngineerWork, "workTitle" | "proj
 
 function mapRow(
   row: Record<string, unknown>,
-  projectMap: Map<string, { name: string; artist: string }>
+  projectMap: Map<string, { name: string; artist: string }>,
+  lastUploadMap?: Map<string, string>
 ): SoundEngineerWork {
   const projectId = (row.project_id as string | null) ?? null;
   const workTitle = (row.work_title as string | null) ?? null;
@@ -76,7 +77,56 @@ function mapRow(
     paymentDate:          (row.payment_date         as string | null) ?? null,
     createdAt:            (row.created_at           as string) ?? "",
     updatedAt:            (row.updated_at           as string) ?? "",
+    lastUploadAt:         lastUploadMap?.get(row.id as string) ?? null,
   };
+}
+
+/**
+ * Last real UPLOAD per work — max(mix_versions.created_at, final_files.created_at).
+ * Read-only aggregate: two selects, no writes, no new column, no migration.
+ *
+ * Both tables are counted because both are genuine "the engineer uploaded a
+ * file" events, even though they are deliberately separate stores (mix versions
+ * vs. the Final Files delivery flow). mix_versions.created_at is already the
+ * canonical "a new mix landed" signal elsewhere in the app — see
+ * hasNewerVersion() in lib/steven-mix-reminder-pure.ts. updated_at is NOT used
+ * on either side: it moves on status/label edits, which are not uploads.
+ *
+ * Rows are ordered created_at DESC so that if the client-library row cap ever
+ * kicked in it would drop the OLDEST rows — the ones that can never be a max.
+ */
+async function buildLastUploadMap(workIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (workIds.length === 0) return map;
+
+  const keep = (workId: string | null, createdAt: string | null) => {
+    if (!workId || !createdAt) return;
+    const cur = map.get(workId);
+    if (!cur || Date.parse(createdAt) > Date.parse(cur)) map.set(workId, createdAt);
+  };
+
+  const [versions, finals] = await Promise.all([
+    supabase
+      .from("mix_versions")
+      .select("sound_engineer_work_id, created_at")
+      .in("sound_engineer_work_id", workIds)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("final_files")
+      .select("work_id, created_at")
+      .in("work_id", workIds)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  // A failure here must never break the works list — it only means the extra
+  // ordering hint is missing, so those works sort as "no uploads".
+  (versions.data ?? []).forEach((r) =>
+    keep((r as { sound_engineer_work_id: string | null }).sound_engineer_work_id, (r as { created_at: string | null }).created_at)
+  );
+  (finals.data ?? []).forEach((r) =>
+    keep((r as { work_id: string | null }).work_id, (r as { created_at: string | null }).created_at)
+  );
+  return map;
 }
 
 async function buildProjectMap(): Promise<Map<string, { name: string; artist: string }>> {
@@ -193,7 +243,11 @@ export async function listSoundEngineerWork(
 
   const [{ data, error }, projectMap] = await Promise.all([q, buildProjectMap()]);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => mapRow(r as Record<string, unknown>, projectMap));
+  const rows = (data ?? []) as Record<string, unknown>[];
+  // lastUploadAt is a read-only display/ordering hint (see buildLastUploadMap);
+  // the DB order above is unchanged — the client decides what to do with it.
+  const lastUploadMap = await buildLastUploadMap(rows.map((r) => r.id as string));
+  return rows.map((r) => mapRow(r, projectMap, lastUploadMap));
 }
 
 /**
