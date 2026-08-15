@@ -8,6 +8,7 @@ import ProposalsSection, { type Proposal, type NewProject } from "@/components/c
 import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isSongIncome } from "@/lib/clip-finance";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ interface Project {
 interface Transaction {
   project_id: string; type: "income" | "expense"; amount: number;
   payment_status: string; date: string | null; currency: string;
+  expense_scope?: string;
 }
 interface Session {
   id: string; project_id: string | null; title?: string | null; date: string | null;
@@ -154,11 +156,12 @@ export default function ClientDrawer({ client, onClose, onEdit }: ClientDrawerPr
       for (const t of allTx) {
         if (!projectIds.has(t.project_id)) continue;
         const fin = finMap.get(t.project_id)!;
-        if (t.type === "income") {
+        // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
+        if (isSongIncome(t)) {
           if (["שולם","התקבל"].includes(t.payment_status)) fin.totalPaid += t.amount;
           else if (isCancelledPayment(t.payment_status)) fin.cancelledIncome += t.amount;
           else if (["צפוי","חלקי"].includes(t.payment_status)) fin.totalExpected += t.amount;
-        } else { fin.totalExpenses += t.amount; }
+        } else if (t.type === "expense") { fin.totalExpenses += t.amount; }
       }
       for (const s of allSettings) {
         if (!finMap.has(s.project_id)) continue;

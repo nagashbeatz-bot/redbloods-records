@@ -6,6 +6,7 @@ import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { checkHealth, checkFinanceHealth, ProjectIssue, FinanceSummary } from "@/lib/health";
 import { PROJECT_TYPES, NO_AFFILIATION, UpdatableField } from "@/lib/types";
 import { isCancelledPayment } from "@/lib/payment-status";
+import { isSongIncome } from "@/lib/clip-finance";
 
 // ── Mobile summary: group issues into up to 3 category lines ─────────────────
 function buildSummaryLines(issues: ProjectIssue[]): string[] {
@@ -238,7 +239,7 @@ export default function HealthAlert() {
       .then((d) => {
         const transactions: Array<{
           project_id: string; type: string; amount: number;
-          payment_status: string; date: string | null;
+          payment_status: string; date: string | null; expense_scope?: string;
         }> = d.transactions ?? [];
         const settings: Array<{
           project_id: string; agreedPrice: number; currency: string;
@@ -254,7 +255,9 @@ export default function HealthAlert() {
 
         for (const t of transactions) {
           const s = ensure(t.project_id);
-          if (t.type === "income") {
+          // Clip income belongs to the clip deal, not to the project's agreed
+          // price — counting it here would fake a fully-paid / overpaid song.
+          if (isSongIncome(t)) {
             if (t.payment_status === "שולם" || t.payment_status === "התקבל") {
               s.totalPaid += t.amount;
             } else if (isCancelledPayment(t.payment_status)) {

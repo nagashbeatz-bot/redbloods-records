@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePrivacyMode } from "@/lib/use-privacy";
+import { isClipScoped } from "@/lib/clip-finance";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const BRAND  = "#DC2626";
@@ -12,6 +13,7 @@ const AMBER  = "#F5A623"; // gold (expected / pending / goal / warnings)
 const RED    = "#EF4444";
 const BLUE   = "#3B82F6";
 const PURPLE = "#A855F7";
+const CLIP_COL = "#8B5CF6"; // clip-deal שיוך badge
 const CARD   = "#131620"; // card surface — slightly lighter than the page
 const CARD2  = "#0E1017"; // deeper surface (table/section headers)
 const BDR    = "rgba(132,148,176,0.12)"; // cool blue-gray hairline
@@ -53,6 +55,11 @@ interface Transaction {
 /** A transaction that originated from the Shows module (categorized as הופעה). */
 function isShowTx(tx: Transaction): boolean {
   return tx.expense_scope === "הופעה" || tx.category === "הופעה";
+}
+
+/** Clip-deal money (income or expense) — tagged expense_scope="קליפ". */
+function isClipTx(tx: Transaction): boolean {
+  return isClipScoped(tx);
 }
 
 interface FinanceSetting {
@@ -1046,6 +1053,7 @@ export default function FinancePage() {
     // get their name via the override; everything else is "כללי".
     const aff = affiliation ?? (
       isShowTx(tx)      ? { label: "הופעה", icon: "🎤", col: BRAND }
+      : isClipTx(tx)    ? { label: proj?.name ? `קליפ · ${proj.name}` : "קליפ", icon: "🎬", col: CLIP_COL }
       : isProjectTx(tx) ? { label: proj?.name || "פרויקט", icon: "📁", col: BLUE }
       : { label: "כללי", icon: "🏢", col: PURPLE }
     );
@@ -1717,6 +1725,9 @@ export default function FinancePage() {
                 const undated  = !tx.date;
                 const baseBg   = undated ? "#1D1810" : i % 2 === 0 ? CARD : "rgba(255,255,255,0.025)";
                 const src = isShowTx(tx) ? { label: "הופעה", icon: "🎤", col: BRAND }
+                  // Clip money is shown as its own שיוך so it is never mistaken
+                  // for the project's song deal.
+                  : isClipTx(tx) ? { label: proj?.name ? `קליפ · ${proj.name}` : "קליפ", icon: "🎬", col: CLIP_COL }
                   : (!!tx.project_id || (tx.scope ?? "project") === "project") ? { label: proj?.name || "פרויקט", icon: "📁", col: BLUE }
                   : { label: "כללי", icon: "🏢", col: PURPLE };
 

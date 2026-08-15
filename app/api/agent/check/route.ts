@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
     // Transactions
     const { data: rawTxns } = await supabase
       .from("transactions")
-      .select("id, project_id, amount, currency, date, type, payment_status")
+      .select("id, project_id, amount, currency, date, type, payment_status, expense_scope")
       .order("created_at", { ascending: false });
     const txns = (rawTxns ?? []).map((t) => ({
       id:            t.id,
@@ -123,6 +123,8 @@ export async function GET(req: NextRequest) {
       date:          t.date,
       type:          t.type,
       paymentStatus: t.payment_status,
+      // Needed so clip income is not measured against the song's agreed price.
+      expenseScope:  t.expense_scope as string | null,
     }));
 
     // Finance settings (agreed prices)

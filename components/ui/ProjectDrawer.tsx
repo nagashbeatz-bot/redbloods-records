@@ -9,6 +9,7 @@ import { PROJECT_TYPES } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isSongIncome } from "@/lib/clip-finance";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import InlineCellEdit from "@/components/ui/InlineCellEdit";
 import ArtistCellEdit from "@/components/ui/ArtistCellEdit";
@@ -273,7 +274,7 @@ interface Props {
 // Mai Operational Layer — read-only, pure, no mutations, no fetch.
 // Uses checkHealth + checkFinanceHealth from lib/health.ts.
 
-interface TxLike { type: string; payment_status: string; amount: number; date: string | null; }
+interface TxLike { type: string; payment_status: string; amount: number; date: string | null; expense_scope?: string }
 
 function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }: {
   project: { id: string; name: string; artist: string; status: string; deadline: string | null; isOverdue: boolean; parentProject: string; projectType?: string };
@@ -286,11 +287,12 @@ function ProjectNextActionBlock({ project, transactions, agreedPrice, currency }
   const PAID_S    = new Set(["שולם", "התקבל"]);
   const EXPECT_S  = new Set(["צפוי", "חלקי"]);
 
-  const totalPaid     = transactions.filter((t) => t.type === "income" && PAID_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const totalExpected = transactions.filter((t) => t.type === "income" && EXPECT_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const cancelledIncome = transactions.filter((t) => t.type === "income" && isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  // Song-deal income only — clip income is its own deal (lib/clip-finance.ts).
+  const totalPaid     = transactions.filter((t) => isSongIncome(t) && PAID_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalExpected = transactions.filter((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const cancelledIncome = transactions.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExpenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-  const overduePayment = transactions.some((t) => t.type === "income" && EXPECT_S.has(t.payment_status) && t.date && t.date < today);
+  const overduePayment = transactions.some((t) => isSongIncome(t) && EXPECT_S.has(t.payment_status) && t.date && t.date < today);
 
   const summary: FinanceSummary = {
     projectId:    project.id,
@@ -1622,11 +1624,14 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
   // ── Finance computed ──────────────────────────────────────────────────────
   const incomeList       = transactions.filter((t) => t.type === "income");
+  // Song-deal income only — clip income belongs to the clip deal and must not
+  // count against this project's agreedPrice (lib/clip-finance.ts).
+  const songIncomeList   = incomeList.filter(isSongIncome);
   const expenseList      = transactions.filter((t) => t.type === "expense");
   const clipExpenseList  = expenseList.filter((t) => t.expense_scope === "קליפ");
   const nonClipExpenses  = expenseList.filter((t) => t.expense_scope !== "קליפ");
-  const totalPaid        = incomeList.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
-  const cancelledIncome  = incomeList.filter((t) => isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const totalPaid        = songIncomeList.filter((t) => PAID_STATUSES.has(t.payment_status)).reduce((s, t) => s + t.amount, 0);
+  const cancelledIncome  = songIncomeList.filter((t) => isCancelledPayment(t.payment_status)).reduce((s, t) => s + t.amount, 0);
   const totalExp         = expenseList.reduce((s, t) => s + t.amount, 0);
   const totalClipExp     = clipExpenseList.reduce((s, t) => s + t.amount, 0);
   const balance          = collectibleBalance(agreedPrice, totalPaid, cancelledIncome);

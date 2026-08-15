@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import { getAlerts } from "./alerts-store";
 import type { AlertSeverity } from "@/lib/types";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { CLIP_SCOPE, summarizeClipFinance } from "@/lib/clip-finance";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -631,18 +632,34 @@ async function buildProjectDetailContext(
 
     // Finance
     const finance = finRow?.value as Record<string, unknown> | null;
+    // Clip money is a separate deal — excluded from the song's price/balance and
+    // reported on its own line below (lib/clip-finance.ts).
+    const isClipRow = (t: { expense_scope?: string | null }) => (t.expense_scope ?? "") === CLIP_SCOPE;
     if (finance) {
       const agreed  = (finance.agreedPrice as number | null) ?? null;
       const curr    = (finance.currency   as string) ?? "₪";
       if (agreed) {
         const received = (txns ?? [])
-          .filter((t) => t.type !== "הוצאה" && PAID_STATUSES.has(t.payment_status))
+          .filter((t) => t.type !== "הוצאה" && !isClipRow(t) && PAID_STATUSES.has(t.payment_status))
           .reduce((s, t) => s + (t.amount ?? 0), 0);
         const cancelled = (txns ?? [])
-          .filter((t) => t.type !== "הוצאה" && isCancelledPayment(t.payment_status))
+          .filter((t) => t.type !== "הוצאה" && !isClipRow(t) && isCancelledPayment(t.payment_status))
           .reduce((s, t) => s + (t.amount ?? 0), 0);
         const balance = collectibleBalance(agreed, received, cancelled);
         lines.push(`מחיר מוסכם: ${fmt(agreed)}${curr} | שולם: ${fmt(received)}${curr} | יתרה: ${fmt(balance)}${curr}`);
+      }
+      // Clip deal — its own price, its own payments.
+      const clipAgreed = (finance.clipAgreedPrice as number | null) ?? 0;
+      const clipIncome = (txns ?? []).filter((t) => t.type !== "הוצאה" && isClipRow(t));
+      if (clipAgreed > 0 || clipIncome.length > 0) {
+        const clipSum = summarizeClipFinance(
+          clipIncome.map((t) => ({ type: "income", amount: t.amount ?? 0, payment_status: t.payment_status, expense_scope: CLIP_SCOPE })),
+          clipAgreed,
+        );
+        lines.push(
+          `עסקת קליפ — מחיר שסוכם: ${fmt(clipSum.agreed)}${curr} | התקבל: ${fmt(clipSum.paid)}${curr} | ` +
+          `צפוי: ${fmt(clipSum.expected)}${curr} | יתרה: ${fmt(clipSum.remaining)}${curr} | סטטוס: ${clipSum.status}`
+        );
       }
     } else {
       lines.push("מחיר: לא הוגדר");

@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { ActionDef, FreeSlot } from "@/lib/action-types";
 import { buildEventTitle } from "@/lib/action-types";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isSongIncome } from "@/lib/clip-finance";
 import {
   validStartTimes, fmtHM, fmtDayDate, confirmLabel,
   WORK_START_H, WORK_END_H, isWorkingDay,
@@ -169,15 +170,16 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
     fetch(`/api/transactions?projectId=${projectId}`)
       .then((r) => r.json())
       .then((d) => {
+        // Song-deal income only — clip income is a separate deal (lib/clip-finance.ts).
         const totalPaid = (d.transactions ?? [])
-          .filter((t: { type: string; payment_status: string }) =>
-            t.type === "income" &&
+          .filter((t: { type: string; payment_status: string; expense_scope?: string }) =>
+            isSongIncome(t) &&
             (t.payment_status === "שולם" || t.payment_status === "התקבל")
           )
           .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
         const cancelledIncome = (d.transactions ?? [])
-          .filter((t: { type: string; payment_status: string }) =>
-            t.type === "income" && isCancelledPayment(t.payment_status)
+          .filter((t: { type: string; payment_status: string; expense_scope?: string }) =>
+            isSongIncome(t) && isCancelledPayment(t.payment_status)
           )
           .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
         const info = {

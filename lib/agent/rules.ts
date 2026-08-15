@@ -5,6 +5,7 @@
  */
 import type { AlertInput, BusinessGoals, GoalsProgress, VictorMonthStats } from "@/lib/types";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { CLIP_SCOPE } from "@/lib/clip-finance";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -143,15 +144,18 @@ export function checkSessionsNeedingUpdate(
 const FULLY_PAID_STATUSES = new Set(["שולם", "התקבל"]);
 
 export function checkOverduePayments(
-  transactions: Array<{ id: string; projectId: string | null; projectName: string; amount: number; currency: string; date: string | null; type: string; paymentStatus: string }>,
+  transactions: Array<{ id: string; projectId: string | null; projectName: string; amount: number; currency: string; date: string | null; type: string; paymentStatus: string; expenseScope?: string | null }>,
   financeMap: Map<string, { agreedPrice?: number | null; financeException?: boolean }>
 ): AlertInput[] {
   const today = new Date().toISOString().split("T")[0];
 
-  // Compute total paid income per project (same statuses as ProjectDrawer)
+  // Compute total paid income per project (same statuses as ProjectDrawer).
+  // Clip income (expense_scope="קליפ") is a separate deal — it is not measured
+  // against the project's agreed price, so it never enters this total.
+  const isClip = (t: { expenseScope?: string | null }) => (t.expenseScope ?? "") === CLIP_SCOPE;
   const paidByProject = new Map<string, number>();
   for (const t of transactions) {
-    if (t.projectId && t.type !== "הוצאה" && FULLY_PAID_STATUSES.has(t.paymentStatus)) {
+    if (t.projectId && t.type !== "הוצאה" && !isClip(t) && FULLY_PAID_STATUSES.has(t.paymentStatus)) {
       paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
     }
   }
@@ -162,10 +166,13 @@ export function checkOverduePayments(
     if (t.projectId) {
       // Skip projects flagged as a finance exception (no charge / favor).
       if (financeMap.get(t.projectId)?.financeException) return false;
-      // Skip if project is already fully paid or overpaid
-      const agreedPrice = financeMap.get(t.projectId)?.agreedPrice ?? null;
-      const paidIncome  = paidByProject.get(t.projectId) ?? 0;
-      if (agreedPrice != null && paidIncome >= agreedPrice) return false;
+      // Skip if project is already fully paid or overpaid. A clip payment is
+      // owed regardless of the song's price, so it skips this comparison.
+      if (!isClip(t)) {
+        const agreedPrice = financeMap.get(t.projectId)?.agreedPrice ?? null;
+        const paidIncome  = paidByProject.get(t.projectId) ?? 0;
+        if (agreedPrice != null && paidIncome >= agreedPrice) return false;
+      }
     }
     return true;
   });
@@ -204,7 +211,7 @@ const INCOME_TYPES = new Set(["income", "הכנסה"]);
 
 export function checkBalanceMissingDueDate(
   projects: Array<{ id: string; name: string; artist: string; status: string }>,
-  transactions: Array<{ projectId: string | null; amount: number; type: string; paymentStatus: string; date: string | null }>,
+  transactions: Array<{ projectId: string | null; amount: number; type: string; paymentStatus: string; date: string | null; expenseScope?: string | null }>,
   financeMap: Map<string, { agreedPrice?: number | null; financeException?: boolean }>
 ): AlertInput[] {
   // Paid income per project — same income predicate + statuses as the UI balance.
@@ -215,6 +222,9 @@ export function checkBalanceMissingDueDate(
   const hasDatedExpected = new Set<string>();
   for (const t of transactions) {
     if (!t.projectId || !INCOME_TYPES.has(t.type)) continue;
+    // Clip income belongs to the clip deal — it neither pays down the song's
+    // balance nor counts as a scheduled payment for it.
+    if ((t.expenseScope ?? "") === CLIP_SCOPE) continue;
     if (FULLY_PAID_STATUSES.has(t.paymentStatus)) {
       paidByProject.set(t.projectId, (paidByProject.get(t.projectId) ?? 0) + t.amount);
     }

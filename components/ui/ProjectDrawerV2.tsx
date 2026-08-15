@@ -10,6 +10,10 @@ import UploadButton from "@/components/ui/UploadButton";
 import SensitiveValue from "@/components/ui/SensitiveValue";
 import { usePrivacyMode } from "@/lib/use-privacy";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import {
+  CLIP_PAYMENT_STATUSES, isClipIncome, isSongIncome,
+  summarizeClipFinance, clipStatusColor,
+} from "@/lib/clip-finance";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { deadlineLabel, daysUntilDeadline, getStatusColor } from "@/lib/utils";
@@ -38,6 +42,8 @@ interface Transaction {
   payment_method?: string;
   category?:       string;
   notes?:          string;
+  // "קליפ" marks this row as part of the CLIP deal, not the song deal.
+  expense_scope?:  string;
 }
 
 interface Session {
@@ -785,11 +791,13 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const dlColor     = days !== null && days < 0 ? RED_WARN
                     : days !== null && days <= 7 ? AMBER
                     : TEXT2;
+  // SONG-deal income only — clip income (expense_scope="קליפ") is a separate deal
+  // and must never count against this project's agreedPrice. See lib/clip-finance.ts.
   const received    = transactions
-    .filter(t => t.type === "income" && ["התקבל","שולם"].includes(t.payment_status))
+    .filter(t => isSongIncome(t) && ["התקבל","שולם"].includes(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
   const cancelledIncome = transactions
-    .filter(t => t.type === "income" && isCancelledPayment(t.payment_status))
+    .filter(t => isSongIncome(t) && isCancelledPayment(t.payment_status))
     .reduce((s, t) => s + t.amount, 0);
   const totalExp    = transactions
     .filter(t => t.type === "expense" && t.payment_status === "שולם")
@@ -798,7 +806,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
   const balance     = financeException ? 0 : collectibleBalance(agreedPrice, received, cancelledIncome);
 
   // Reminder to set a due date for an open balance that has no expected payment yet.
-  const hasExpectedIncome = transactions.some(t => t.type === "income" && t.payment_status === "צפוי");
+  const hasExpectedIncome = transactions.some(t => isSongIncome(t) && t.payment_status === "צפוי");
   const showBalanceReminder =
     finLoaded &&
     !financeException &&
@@ -1449,6 +1457,24 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
               )}
               <SessionsContent sessions={sessions} sessDone={sessDone} onStatusChange={updateSessionStatus} onEditSession={setEditingSession} />
             </>
+          ) : activeTab === "קליפ" ? (
+            privacyHidden ? (
+              <PrivacyHiddenCard text="מצב לקוח פעיל — נתוני הקליפ מוסתרים" minHeight={320} />
+            ) : (
+            <ClipContent
+              project={project}
+              currency={currency}
+              onFinanceChanged={() => {
+                fetch(`/api/transactions?projectId=${projectId}`)
+                  .then(r => r.json())
+                  .then(d => {
+                    setTransactions(d.transactions ?? []);
+                    setAgreedPrice(d.agreedPrice ?? 0);
+                  })
+                  .catch(() => {});
+              }}
+            />
+            )
           ) : activeTab === "קבצים" ? (
             <FilesContent project={project} onFileDeleted={refresh} />
           ) : (
@@ -3072,8 +3098,15 @@ function FinanceContent({
                   }}>
                     {/* top row: description + amount */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                        {tx.description || "הכנסה"}
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, display: "flex", alignItems: "center", gap: 7 }}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{tx.description || "הכנסה"}</span>
+                        {/* Clip money is a separate deal — flag it so the song's KPIs read right */}
+                        {isClipIncome(tx) && (
+                          <span style={{
+                            flexShrink: 0, fontSize: 9.5, fontWeight: 800, borderRadius: 5, padding: "2px 6px",
+                            background: `${CLIP_ACCENT}1E`, color: CLIP_ACCENT, border: `1px solid ${CLIP_ACCENT}3A`,
+                          }}>קליפ</span>
+                        )}
                       </div>
                       <div style={{ fontSize: 16, fontWeight: 900, color: GREEN, whiteSpace: "nowrap", flexShrink: 0 }}>
                         +{currency}{tx.amount.toLocaleString()}
@@ -4219,6 +4252,527 @@ function FilesContent({ project, onFileDeleted }: { project: Project; onFileDele
             )}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Clip tab ──────────────────────────────────────────────────────────────────
+// The FINANCIAL side of a clip deal with the artist. Red Films stays the place
+// where the production itself (crew, gear, shoot days, detailed budget) is run —
+// this tab only owns: agreed price, payments, and the link to Red Films.
+//
+// Every payment here is a real transaction (expense_scope="קליפ"), so the numbers
+// below and the Finance page read the exact same rows — no second ledger.
+
+const CLIP_ACCENT = "#8B5CF6";
+const CLIP_PAYMENT_TYPES = ["מקדמה", "תשלום חלקי", "תשלום סופי", "תוספת / חריגה", "אחר"];
+
+interface ClipPayment {
+  id:             string;
+  amount:         number;
+  date:           string | null;
+  category:       string | null;
+  payment_status: string;
+  description:    string | null;
+  notes:          string | null;
+}
+
+interface ClipProduction {
+  id:             string;
+  title:          string;
+  status:         string;
+  general_budget: number | null;
+}
+
+function ClipContent({ project, currency, onFinanceChanged }: {
+  project:          Project;
+  currency:         string;
+  onFinanceChanged: () => void;
+}) {
+  const router = useRouter();
+  const [loading,    setLoading]    = useState(true);
+  const [price,      setPrice]      = useState(0);
+  const [payments,   setPayments]   = useState<ClipPayment[]>([]);
+  const [production, setProduction] = useState<ClipProduction | null>(null);
+  const [err,        setErr]        = useState("");
+
+  const [openingDeal,  setOpeningDeal]  = useState(false);
+  const [openPriceIn,  setOpenPriceIn]  = useState("");
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceInput,   setPriceInput]   = useState("");
+  const [savingPrice,  setSavingPrice]  = useState(false);
+  const [rowBusy,      setRowBusy]      = useState<string | null>(null);
+  const [confirmDel,   setConfirmDel]   = useState<string | null>(null);
+  const [addingRow,    setAddingRow]    = useState(false);
+  const [sendModal,    setSendModal]    = useState(false);
+  const [sending,      setSending]      = useState(false);
+
+  const load = () => {
+    setErr("");
+    fetch(`/api/projects/${project.id}/clip`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setErr(d.error); return; }
+        setPrice(d.clipAgreedPrice ?? 0);
+        setPayments(d.payments ?? []);
+        setProduction(d.production ?? null);
+      })
+      .catch(() => setErr("טעינת נתוני הקליפ נכשלה"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
+
+  // Summary comes from the transactions themselves — never from a stored total.
+  const sum = summarizeClipFinance(
+    payments.map(p => ({ type: "income", amount: p.amount, payment_status: p.payment_status, expense_scope: "קליפ" })),
+    price,
+  );
+  const hasDeal = price > 0 || payments.length > 0;
+
+  async function openDeal() {
+    const val = Number(openPriceIn);
+    if (!Number.isFinite(val) || val <= 0) { setErr("יש להזין מחיר תקין"); return; }
+    setOpeningDeal(true); setErr("");
+    try {
+      const r1 = await fetch(`/api/projects/${project.id}/clip`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clipAgreedPrice: val }),
+      });
+      if (!r1.ok) throw new Error("שמירת המחיר נכשלה");
+      // Default deal shape: 2 payments (מקדמה + יתרה). Editable and not capped at 2.
+      const r2 = await fetch(`/api/projects/${project.id}/clip/payments`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seed: true, clipAgreedPrice: val }),
+      });
+      if (!r2.ok) throw new Error("יצירת התשלומים נכשלה");
+      load();
+      onFinanceChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setOpeningDeal(false);
+    }
+  }
+
+  async function savePrice() {
+    const val = Number(priceInput);
+    if (!Number.isFinite(val) || val < 0) { setErr("מחיר לא תקין"); return; }
+    setSavingPrice(true); setErr("");
+    try {
+      const res = await fetch(`/api/projects/${project.id}/clip`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clipAgreedPrice: val }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "שמירה נכשלה");
+      setPrice(val);
+      setEditingPrice(false);
+      // The production's budget follows the price — reflect it without a reload.
+      if (d.budgetSynced && production) {
+        setProduction({ ...production, general_budget: d.budgetSynced.general_budget });
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setSavingPrice(false);
+    }
+  }
+
+  // Payment edits go through the normal transaction endpoint — same status logic
+  // as everywhere else in Finance.
+  async function patchPayment(id: string, patch: Record<string, unknown>, optimistic: Partial<ClipPayment>) {
+    setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...optimistic } : p)));
+    setRowBusy(id);
+    try {
+      const res = await fetch(`/api/transactions/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error("update failed");
+      onFinanceChanged();
+    } catch {
+      load();   // revert to server truth
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  async function addPayment() {
+    setAddingRow(true); setErr("");
+    try {
+      const res = await fetch(`/api/projects/${project.id}/clip/payments`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: Math.max(sum.remaining, 1),
+          date: null,
+          category: "תשלום חלקי",
+          paymentStatus: "צפוי",
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "הוספה נכשלה");
+      load();
+      onFinanceChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setAddingRow(false);
+    }
+  }
+
+  async function deletePayment(id: string) {
+    setRowBusy(id); setConfirmDel(null);
+    try {
+      await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      setPayments(prev => prev.filter(p => p.id !== id));
+      onFinanceChanged();
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  async function sendToRedFilms() {
+    setSending(true); setErr("");
+    try {
+      const res = await fetch(`/api/projects/${project.id}/clip/send`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "השליחה נכשלה");
+      setProduction(d.production);
+      setSendModal(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "שגיאה");
+      setSendModal(false);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // ── styles ──
+  const card: React.CSSProperties = {
+    background: CARD_BG, border: `1px solid ${BORDER}`, borderRadius: 16,
+    padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14,
+  };
+  const cellInput: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", padding: "7px 9px", borderRadius: 8,
+    background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`,
+    color: TEXT, fontSize: 12.5, fontFamily: "inherit", outline: "none",
+  };
+  const GRID = "26px 1.05fr 0.95fr 1fr 0.95fr 1.15fr 30px";
+  const money = (n: number) => `${currency}${n.toLocaleString("he-IL")}`;
+
+  if (loading) {
+    return <div style={{ fontSize: 13, color: MUTED, padding: "24px 2px" }}>טוען נתוני קליפ…</div>;
+  }
+
+  return (
+    <div dir="rtl" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* ── Header + actions ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 900, color: TEXT, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: CLIP_ACCENT }}>🎬</span> קליפ — {project.name}
+          </div>
+          <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>סיכום כספי של הקליפ — נפרד מהעסקה של השיר</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {hasDeal && (
+            <button onClick={addPayment} disabled={addingRow} style={{
+              padding: "9px 15px", borderRadius: 10, border: "none", cursor: addingRow ? "default" : "pointer",
+              background: `linear-gradient(135deg, ${BRAND}, #B91C1C)`, color: "#fff",
+              fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", opacity: addingRow ? 0.7 : 1,
+            }}>{addingRow ? "…" : "+ תשלום לקליפ"}</button>
+          )}
+          {production ? (
+            <button onClick={() => router.push(`/red-films/${production.id}`)} style={{
+              padding: "9px 15px", borderRadius: 10, cursor: "pointer",
+              background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER2}`, color: TEXT,
+              fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+            }}>פתח ב-Red Films ↗</button>
+          ) : (
+            <button onClick={() => setSendModal(true)} style={{
+              padding: "9px 15px", borderRadius: 10, cursor: "pointer",
+              background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER2}`, color: TEXT,
+              fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+            }}>שלח קליפ ➤</button>
+          )}
+        </div>
+      </div>
+
+      {err && (
+        <div style={{ fontSize: 12, color: RED_WARN, background: `${RED_WARN}12`, border: `1px solid ${RED_WARN}30`, borderRadius: 10, padding: "9px 12px" }}>
+          {err}
+        </div>
+      )}
+
+      {production && (
+        <div style={{ fontSize: 12, color: TEXT2, background: `${CLIP_ACCENT}12`, border: `1px solid ${CLIP_ACCENT}30`, borderRadius: 10, padding: "9px 12px" }}>
+          כבר קיימת הפקת קליפ לפרויקט הזה — <span style={{ color: TEXT, fontWeight: 700 }}>{production.title}</span>
+          {" · "}תקציב ב-Red Films: <span style={{ color: TEXT, fontWeight: 700 }}>{money(Number(production.general_budget) || 0)}</span>
+        </div>
+      )}
+
+      {!hasDeal ? (
+        /* ── Empty state: open a clip deal ── */
+        <div style={{ ...card, alignItems: "flex-start" }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>פתיחת עסקת קליפ</div>
+          <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.7 }}>
+            הזן את המחיר שסוכם עם האמן עבור הקליפ. ייווצרו שני תשלומים כברירת מחדל
+            (מקדמה + יתרה), וניתן לשנות סכומים, תאריכים וסטטוסים או להוסיף תשלומים נוספים.
+            <br />
+            העסקה הזו נפרדת לחלוטין מהמחיר של השיר.
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="text" inputMode="numeric" dir="ltr" placeholder="0"
+              value={openPriceIn}
+              onChange={e => setOpenPriceIn(e.target.value.replace(/[^0-9.]/g, ""))}
+              onKeyDown={e => { if (e.key === "Enter") openDeal(); }}
+              style={{ ...cellInput, width: 150, fontSize: 16, fontWeight: 800 }}
+            />
+            <button onClick={openDeal} disabled={openingDeal} style={{
+              padding: "9px 18px", borderRadius: 10, border: "none",
+              cursor: openingDeal ? "default" : "pointer",
+              background: `linear-gradient(135deg, ${BRAND}, #B91C1C)`, color: "#fff",
+              fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", opacity: openingDeal ? 0.7 : 1,
+            }}>{openingDeal ? "יוצר…" : "פתח עסקת קליפ"}</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* ── KPI row ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+            {[
+              { key: "agreed",   label: "מחיר שסוכם",  value: money(sum.agreed),    color: TEXT,   sub: "כולל מע״מ" },
+              { key: "paid",     label: "התקבל בפועל", value: money(sum.paid),      color: GREEN,  sub: sum.agreed > 0 ? `${Math.round(sum.paid / sum.agreed * 100)}%` : "—" },
+              { key: "expected", label: "צפוי",         value: money(sum.expected),  color: AMBER,  sub: sum.agreed > 0 ? `${Math.round(sum.expected / sum.agreed * 100)}%` : "—" },
+              { key: "left",     label: sum.credit > 0 ? "יתרת זכות" : "יתרה לתשלום",
+                value: money(sum.credit > 0 ? sum.credit : sum.remaining),
+                color: sum.credit > 0 ? BLUE : sum.remaining > 0 ? RED_WARN : GREEN,
+                sub: sum.credit > 0 ? "שולם ביתר" : sum.remaining > 0 ? "טרם שולם" : "שולם במלואו ✓" },
+              { key: "status",   label: "סטטוס כללי",  value: sum.status, color: clipStatusColor(sum.status),
+                sub: `${sum.paidCount} מתוך ${sum.count} תשלומים`, isBadge: true },
+            ].map(k => (
+              <div key={k.key} style={{
+                background: `${k.color}0D`, borderRadius: 14,
+                border: `1px solid ${k.color}28`, padding: "14px 15px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 9 }}>
+                  <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.62)", fontWeight: 700, letterSpacing: "0.1em" }}>
+                    {k.label}
+                  </div>
+                  {k.key === "agreed" && !editingPrice && (
+                    <button
+                      onClick={() => { setPriceInput(price > 0 ? String(price) : ""); setEditingPrice(true); setErr(""); }}
+                      title="ערוך מחיר שסוכם לקליפ"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 11, padding: 0, fontFamily: "inherit" }}
+                    >✏️</button>
+                  )}
+                </div>
+
+                {k.key === "agreed" && editingPrice ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <input
+                      autoFocus type="text" inputMode="numeric" dir="ltr"
+                      value={priceInput}
+                      onChange={e => setPriceInput(e.target.value.replace(/[^0-9.]/g, ""))}
+                      onKeyDown={e => { if (e.key === "Enter") savePrice(); if (e.key === "Escape") setEditingPrice(false); }}
+                      style={{ ...cellInput, fontSize: 16, fontWeight: 900 }}
+                    />
+                    <div style={{ display: "flex", gap: 5 }}>
+                      <button onClick={savePrice} disabled={savingPrice} style={{
+                        flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11.5, fontWeight: 800,
+                        background: GREEN, border: "none", color: "#fff", fontFamily: "inherit",
+                        cursor: savingPrice ? "default" : "pointer", opacity: savingPrice ? 0.7 : 1,
+                      }}>{savingPrice ? "…" : "שמור"}</button>
+                      <button onClick={() => setEditingPrice(false)} style={{
+                        flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11.5, fontWeight: 800,
+                        background: "none", border: `1px solid ${BORDER2}`, color: TEXT2,
+                        cursor: "pointer", fontFamily: "inherit",
+                      }}>בטל</button>
+                    </div>
+                    {production && (
+                      <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.5 }}>
+                        עדכון המחיר יעדכן גם את התקציב בהפקה ב-Red Films
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{
+                      fontSize: k.isBadge ? 16 : 21, fontWeight: 900, color: k.color,
+                      lineHeight: 1.15, marginBottom: 6,
+                    }}>
+                      <SensitiveValue>{k.value}</SensitiveValue>
+                    </div>
+                    <div style={{ fontSize: 11, color: TEXT2, fontWeight: 600 }}>{k.sub}</div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* ── Payments table ── */}
+          <div style={card}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+              תשלומים לקליפ <span style={{ color: MUTED, fontWeight: 700 }}>({payments.length})</span>
+            </div>
+
+            {payments.length === 0 ? (
+              <div style={{ fontSize: 12, color: MUTED }}>אין עדיין תשלומים — הוסף תשלום לקליפ</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {/* header */}
+                <div style={{
+                  display: "grid", gridTemplateColumns: GRID, gap: 8, padding: "0 2px 6px",
+                  fontSize: 10.5, fontWeight: 800, color: LABEL, letterSpacing: "0.05em",
+                  borderBottom: `1px solid ${BORDER}`,
+                }}>
+                  <div>#</div><div>סוג תשלום</div><div>סכום</div><div>תאריך</div>
+                  <div>סטטוס</div><div>הערות</div><div />
+                </div>
+
+                {payments.map((p, i) => (
+                  <div key={p.id} style={{
+                    display: "grid", gridTemplateColumns: GRID, gap: 8, alignItems: "center",
+                    padding: "6px 2px", opacity: rowBusy === p.id ? 0.55 : 1,
+                    borderBottom: `1px solid rgba(255,255,255,0.045)`,
+                  }}>
+                    <div style={{ fontSize: 11.5, color: MUTED, fontWeight: 700 }}>{i + 1}</div>
+
+                    <select
+                      className="v2-select" style={cellInput} value={p.category ?? "אחר"}
+                      onChange={e => patchPayment(p.id, { category: e.target.value }, { category: e.target.value })}
+                    >
+                      {CLIP_PAYMENT_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {p.category && !CLIP_PAYMENT_TYPES.includes(p.category) && (
+                        <option value={p.category}>{p.category}</option>
+                      )}
+                    </select>
+
+                    <input
+                      type="text" inputMode="numeric" dir="ltr" defaultValue={String(p.amount)}
+                      style={{ ...cellInput, fontWeight: 800 }}
+                      onBlur={e => {
+                        const v = Number(e.target.value.replace(/[^0-9.]/g, ""));
+                        if (!Number.isFinite(v) || v < 0 || v === p.amount) { e.target.value = String(p.amount); return; }
+                        patchPayment(p.id, { amount: v }, { amount: v });
+                      }}
+                      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    />
+
+                    <DatePickerInput
+                      value={p.date ?? ""}
+                      onChange={(v: string) => patchPayment(p.id, { date: v || null }, { date: v || null })}
+                      style={cellInput}
+                    />
+
+                    <select
+                      className="v2-select"
+                      style={{
+                        ...cellInput, fontWeight: 800,
+                        color: ["שולם", "התקבל"].includes(p.payment_status) ? GREEN
+                             : p.payment_status === "בוטל" ? MUTED : AMBER,
+                      }}
+                      value={p.payment_status}
+                      onChange={e => patchPayment(p.id, { paymentStatus: e.target.value }, { payment_status: e.target.value })}
+                    >
+                      {CLIP_PAYMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+
+                    <input
+                      type="text" defaultValue={p.notes ?? ""} placeholder="—"
+                      style={cellInput}
+                      onBlur={e => {
+                        if (e.target.value === (p.notes ?? "")) return;
+                        patchPayment(p.id, { notes: e.target.value }, { notes: e.target.value });
+                      }}
+                      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    />
+
+                    {confirmDel === p.id ? (
+                      <button onClick={() => deletePayment(p.id)} title="אישור מחיקה" style={{
+                        background: RED_WARN, border: "none", borderRadius: 7, color: "#fff",
+                        fontSize: 11, fontWeight: 800, cursor: "pointer", padding: "5px 0", fontFamily: "inherit",
+                      }}>✓</button>
+                    ) : (
+                      <button
+                        onClick={() => { setConfirmDel(p.id); setTimeout(() => setConfirmDel(c => (c === p.id ? null : c)), 4000); }}
+                        title="הסר תשלום"
+                        style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}
+                      >🗑</button>
+                    )}
+                  </div>
+                ))}
+
+                {/* totals */}
+                <div style={{
+                  display: "grid", gridTemplateColumns: GRID, gap: 8, alignItems: "center",
+                  padding: "10px 2px 0", fontSize: 12.5, fontWeight: 800,
+                }}>
+                  <div />
+                  <div style={{ color: TEXT2 }}>סה״כ</div>
+                  <div style={{ color: TEXT }}>{money(payments.reduce((s, p) => s + p.amount, 0))}</div>
+                  <div />
+                  <div style={{ color: GREEN }}>{money(sum.paid)}</div>
+                  <div style={{ color: AMBER }}>{money(sum.expected)}</div>
+                  <div />
+                </div>
+              </div>
+            )}
+
+            <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.7, borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+              ⓘ התשלומים האלה הם תנועות אמיתיות במערכת — הם מופיעים גם בעמוד <span style={{ color: TEXT2, fontWeight: 700 }}>כספים</span> עם
+              שיוך <span style={{ color: CLIP_ACCENT, fontWeight: 700 }}>קליפ</span>, ואינם נספרים בעסקת השיר של הפרויקט.
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Send-to-Red-Films confirmation ── */}
+      {sendModal && createPortal(
+        <div
+          onClick={() => !sending && setSendModal(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 10050, background: "rgba(0,0,0,0.72)",
+            backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+          }}
+        >
+          <div dir="rtl" onClick={e => e.stopPropagation()} style={{
+            background: "#131318", border: `1px solid ${BORDER2}`, borderRadius: 18,
+            padding: "24px 26px", width: "min(430px, 94vw)", display: "flex", flexDirection: "column", gap: 14,
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 900, color: TEXT }}>לשלוח את הקליפ ל-Red Films?</div>
+            <div style={{ fontSize: 12.5, color: TEXT2, lineHeight: 1.8 }}>
+              הפעולה תיצור הפקת קליפ חדשה ב-Red Films ותקשר אותה לפרויקט הזה.
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+                <div>שם ההפקה: <span style={{ color: TEXT, fontWeight: 700 }}>{project.name}</span></div>
+                <div>אמן: <span style={{ color: TEXT, fontWeight: 700 }}>{project.artist || "—"}</span></div>
+                <div>תקציב: <span style={{ color: TEXT, fontWeight: 700 }}>{money(price)}</span> (המחיר שסוכם לקליפ)</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={sendToRedFilms} disabled={sending} style={{
+                flex: 1, padding: "11px 0", borderRadius: 11, border: "none",
+                background: `linear-gradient(135deg, ${BRAND}, #B91C1C)`, color: "#fff",
+                fontSize: 13, fontWeight: 800, fontFamily: "inherit",
+                cursor: sending ? "default" : "pointer", opacity: sending ? 0.7 : 1,
+              }}>{sending ? "שולח…" : "אישור ושליחה"}</button>
+              <button onClick={() => setSendModal(false)} disabled={sending} style={{
+                flex: 1, padding: "11px 0", borderRadius: 11,
+                background: "none", border: `1px solid ${BORDER2}`, color: TEXT2,
+                fontSize: 13, fontWeight: 800, fontFamily: "inherit", cursor: "pointer",
+              }}>ביטול</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

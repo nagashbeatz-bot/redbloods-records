@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useProjects } from "@/components/ProjectsProvider";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isSongIncome } from "@/lib/clip-finance";
 import type { Project, AgentAlert, AlertStatus } from "@/lib/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ interface Session {
 interface Transaction {
   id: string; project_id: string; type: "income" | "expense";
   date: string | null; amount: number; currency: string; payment_status: string;
+  expense_scope?: string;
 }
 interface FinanceSetting { project_id: string; agreedPrice: number; currency: string; financeException?: boolean; }
 interface Client { id: string; name: string; email: string; phone: string; type: string; status: string; }
@@ -728,13 +730,15 @@ export default function InsightsPage() {
   // ── Finance ─────────────────────────────────────────────────────────────────
   // Must match ProjectDrawer's PAID_STATUSES: both "שולם" and "התקבל" count as received.
   const PAID_STATUSES_SET = new Set(["שולם", "התקבל"]);
+  // Song-deal income only — clip income (expense_scope="קליפ") is a separate deal
+  // and must not count against a project's agreed price (lib/clip-finance.ts).
   const paidByProject: Record<string, number> = {};
-  transactions.filter((t) => t.type === "income" && PAID_STATUSES_SET.has(t.payment_status)).forEach((t) => {
+  transactions.filter((t) => isSongIncome(t) && PAID_STATUSES_SET.has(t.payment_status)).forEach((t) => {
     paidByProject[t.project_id] = (paidByProject[t.project_id] ?? 0) + t.amount;
   });
   // Cancelled income ("בוטל") per project — written off, subtracted from the balance.
   const cancelledByProject: Record<string, number> = {};
-  transactions.filter((t) => t.type === "income" && isCancelledPayment(t.payment_status)).forEach((t) => {
+  transactions.filter((t) => isSongIncome(t) && isCancelledPayment(t.payment_status)).forEach((t) => {
     cancelledByProject[t.project_id] = (cancelledByProject[t.project_id] ?? 0) + t.amount;
   });
 

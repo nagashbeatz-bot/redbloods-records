@@ -13,6 +13,7 @@ import StatusDropdown from "@/components/ui/StatusDropdown";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isSongIncome } from "@/lib/clip-finance";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES } from "@/lib/types";
 
@@ -386,11 +387,13 @@ export default function ProjectsDesignPreview() {
           map[s.project_id].agreed = s.agreedPrice ?? 0;
           map[s.project_id].financeException = s.financeException ?? false;
         });
-        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
+        // Song-deal income only — clip income is a separate deal (lib/clip-finance.ts).
+        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string }) => {
           if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0 };
-          if (t.type === "income" && ["התקבל", "שולם"].includes(t.payment_status))
+          if (!isSongIncome(t)) return;
+          if (["התקבל", "שולם"].includes(t.payment_status))
             map[t.project_id].paid += t.amount;
-          if (t.type === "income" && isCancelledPayment(t.payment_status))
+          if (isCancelledPayment(t.payment_status))
             map[t.project_id].cancelled += t.amount;
         });
         setFinanceSummary(map);

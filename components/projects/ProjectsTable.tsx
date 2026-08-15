@@ -7,6 +7,7 @@ import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
+import { isSongIncome } from "@/lib/clip-finance";
 import StatusDropdown from "@/components/ui/StatusDropdown";
 import { useProjects } from "@/components/ProjectsProvider";
 import { SkeletonCard } from "@/components/ui/Skeleton";
@@ -873,10 +874,13 @@ export default function ProjectsTable() {
       .then((r) => r.json())
       .then((d) => {
         const map: Record<string, { paid: number; agreed: number; cancelled: number; currency: string }> = {};
-        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number }) => {
+        // Song-deal income only — clip income (expense_scope="קליפ") is a separate
+        // deal and never counts against the project's agreed price.
+        (d.transactions ?? []).forEach((t: { project_id: string; type: string; payment_status: string; amount: number; expense_scope?: string }) => {
           if (!map[t.project_id]) map[t.project_id] = { paid: 0, agreed: 0, cancelled: 0, currency: "₪" };
-          if (t.type === "income" && ["התקבל", "שולם"].includes(t.payment_status)) map[t.project_id].paid += t.amount;
-          if (t.type === "income" && isCancelledPayment(t.payment_status)) map[t.project_id].cancelled += t.amount;
+          if (!isSongIncome(t)) return;
+          if (["התקבל", "שולם"].includes(t.payment_status)) map[t.project_id].paid += t.amount;
+          if (isCancelledPayment(t.payment_status)) map[t.project_id].cancelled += t.amount;
         });
         (d.settings ?? []).forEach((s: { project_id: string; agreedPrice: number; currency: string }) => {
           if (!map[s.project_id]) map[s.project_id] = { paid: 0, agreed: 0, cancelled: 0, currency: "₪" };

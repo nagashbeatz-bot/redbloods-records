@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
       currency:         (row.value as { currency?: string })?.currency          ?? "₪",
       financialNotes:   (row.value as { financialNotes?: string })?.financialNotes ?? "",
       financeException: (row.value as { financeException?: boolean })?.financeException ?? false,
+      // Clip-deal price — separate from agreedPrice (the song deal). See lib/clip-finance.ts.
+      clipAgreedPrice:  (row.value as { clipAgreedPrice?: number })?.clipAgreedPrice ?? 0,
     }));
 
     return NextResponse.json({ transactions: txRes.data, settings });
@@ -49,11 +51,15 @@ export async function GET(req: NextRequest) {
   const financeException   = (val.financeException   as boolean | undefined) ?? false;
   const financeExceptionReason = (val.financeExceptionReason as string | undefined) ?? "";
   const financeExceptionDate   = (val.financeExceptionDate   as string | undefined) ?? "";
+  // Clip-deal price — the price agreed with the artist for the CLIP, kept apart
+  // from agreedPrice (the song deal) so clip money never inflates the song.
+  const clipAgreedPrice        = (val.clipAgreedPrice        as number  | undefined) ?? 0;
 
   return NextResponse.json({
     transactions: txRes.data,
     agreedPrice, currency, financialNotes,
     financeException, financeExceptionReason, financeExceptionDate,
+    clipAgreedPrice,
   });
 }
 
