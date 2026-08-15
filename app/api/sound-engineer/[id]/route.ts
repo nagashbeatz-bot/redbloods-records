@@ -4,6 +4,7 @@ import {
   deleteSoundEngineerWork,
   forceSyncTransaction,
 } from "@/lib/sound-engineer-store";
+import { requireOwner } from "@/lib/require-auth";
 import type { SoundEngineerStatus, SoundEngineerWorkType } from "@/lib/types";
 
 /**
@@ -31,6 +32,14 @@ export async function PATCH(
       paymentDate:      string | null;
       skipFinanceSync:  boolean;
     }>;
+
+    // internalDeadline (the manual deadline edit) is OWNER-ONLY — re-checked here
+    // so a direct API call from any non-owner is rejected, not just hidden in the
+    // UI. Scoped to this one field: no other field's authorization changes.
+    if ("internalDeadline" in body) {
+      const denied = await requireOwner();
+      if (denied) return denied;
+    }
 
     const work = await updateSoundEngineerWork(id, body);
     return NextResponse.json({ ok: true, work });

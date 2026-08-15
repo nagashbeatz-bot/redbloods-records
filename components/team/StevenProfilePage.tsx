@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import LinkifiedText from "@/components/ui/LinkifiedText";
+import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
@@ -205,6 +206,9 @@ function fmtRelative(iso: string, lang: Lang): string {
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
   startDate: string; deadline: string; price: number; pay: PayStatus;
+  // Raw internal_deadline (YYYY-MM-DD, null = none) behind the display-formatted
+  // `deadline` above — the value the owner's date picker reads and writes.
+  deadlineISO: string | null;
   amountPaid: number; currency: string; dbBacked: boolean;
   notes: string; filesLink: string | null;   // real fields from sound_engineer_work
   paymentDate: string | null;                 // YYYY-MM-DD when marked paid (null = unpaid/legacy)
@@ -256,6 +260,7 @@ function mapRecord(r: SoundEngineerWork): Work {
     status:     dbStatusToUi(r.status),
     startDate:  fmtDbDate(r.sentDate),
     deadline:   fmtDbDate(r.internalDeadline),
+    deadlineISO: r.internalDeadline ?? null,
     price:      r.agreedPrice,
     pay:        payFromAmounts(r.agreedPrice, r.amountPaid),
     amountPaid: r.amountPaid,
@@ -313,6 +318,7 @@ const TR = {
     langHe: "השפה הוחלפה לעברית", langEn: "השפה הוחלפה לאנגלית",
     deleteWork: "מחק עבודה", confirmTitle: "למחוק את העבודה של Steven?", confirmBody: "הפעולה תסיר את העבודה מעמוד Steven. היא לא תמחק פרויקט, קבצים או כספים.",
     confirmYes: "מחק", confirmNo: "ביטול", tDeleted: "העבודה נמחקה", priceSaved: "המחיר נשמר", priceInvalid: "מחיר לא תקין",
+    deadlinePick: "בחר תאריך", deadlineSaved: "הדדליין נשמר",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "חומרי עבודה", wmTitle: "חומרי עבודה", wmSubtitle: "מה ששלחנו ל-Steven כדי לעבוד", wmReadOnly: "תצוגת Steven — קריאה בלבד",
     wmOpenWork: "פתח עבודה", wmSendToSteven: "שלח ל-Steven", wmSending: "שולח…", wmSentToSteven: "נשלח ל-Steven", wmSendFail: "שליחה ל-Steven נכשלה", wmSendAgain: "כבר נשלח ל-Steven. לשלוח שוב?", wmOpenFolder: "📦 פתח תיקייה ב-Dropbox", wmFolderPending: "התיקייה תיווצר אחרי ההעלאה הראשונה", wmFolderFail: "לא ניתן לפתוח את תיקיית Dropbox",
@@ -374,6 +380,7 @@ const TR = {
     langHe: "Language switched to Hebrew", langEn: "Language switched to English",
     deleteWork: "Delete job", confirmTitle: "Delete Steven's job?", confirmBody: "This removes the job from Steven's page. It will not delete the project, files or finances.",
     confirmYes: "Delete", confirmNo: "Cancel", tDeleted: "Job deleted", priceSaved: "Price saved", priceInvalid: "Invalid price",
+    deadlinePick: "Pick a date", deadlineSaved: "Deadline saved",
     // Work Materials (what Redbloods sends to the engineer)
     wmButton: "Work Materials", wmTitle: "Work Materials", wmSubtitle: "What we sent you to work with", wmReadOnly: "Read only",
     wmOpenWork: "Open Work", wmSendToSteven: "Send to Steven", wmSending: "Sending…", wmSentToSteven: "Sent to Steven", wmSendFail: "Failed to send to Steven", wmSendAgain: "Already sent to Steven. Send again?", wmOpenFolder: "📦 Open Dropbox Folder", wmFolderPending: "The folder is created after the first upload", wmFolderFail: "Couldn't open the Dropbox folder",
@@ -867,9 +874,13 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const materialsWork = works.find(w => w.id === openMaterialsId) ?? null;
 
   // Edit a work: optimistic local update + PATCH to the existing API for DB-backed rows.
-  // Persisted fields: work_type, status, agreed_price. (pay/dates stay display-only here.)
+  // Persisted fields: work_type, status, agreed_price, internal_deadline (owner-only).
   async function updateWork(id: string, patch: Partial<Work>): Promise<boolean> {
     if (isSteven) return false; // steven can't edit works (status/pay/price owner-only)
+    // Manual deadline edit is OWNER-ONLY — a positive gate (never "not steven"),
+    // so an unknown/null role can't write it either. The PATCH route re-checks
+    // owner server-side, so this is the UI half of the guard, not the whole one.
+    if (patch.deadlineISO !== undefined && !isOwner) return false;
     const target = works.find(w => w.id === id);
     setWorks(prev => prev.map(w => {
       if (w.id !== id) return w;
@@ -883,6 +894,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         if (patch.pay === "לא שולם") next.paymentDate = null;
       }
       if (patch.price !== undefined) next.pay = payFromAmounts(next.price, next.amountPaid);
+      // The picker writes the raw ISO date; keep the display string (DD.MM.YY)
+      // derived from it so the card + jobs table update immediately.
+      if (patch.deadlineISO !== undefined) next.deadline = fmtDbDate(patch.deadlineISO);
       return next;
     }));
     if (!target || !target.dbBacked) return true; // manual "new work" rows are local-only
@@ -894,6 +908,8 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
     if (patch.price    !== undefined) body.agreedPrice = patch.price;
     if (patch.pay      !== undefined) body.amountPaid  = patch.pay === "שולם" ? target.price : 0;
     if (patch.notes    !== undefined) body.notes       = patch.notes;
+    // Deadline — updates internal_deadline on the SAME row (never creates one).
+    if (patch.deadlineISO !== undefined) body.internalDeadline = patch.deadlineISO;
     // Payment date: explicit value from the modal, or cleared when unmarking paid.
     if (patch.paymentDate !== undefined) body.paymentDate = patch.paymentDate;
     else if (patch.pay === "לא שולם")    body.paymentDate = null;
@@ -2661,7 +2677,17 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                     {!isSteven && field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
                     {!isSteven && field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
                     {field(t.startDate, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.startDate}</span>)}
-                    {field(t.deadline, <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
+                    {/* deadline — OWNER-ONLY manual edit via the shared calendar
+                        picker (saves YYYY-MM-DD, same contract as everywhere else).
+                        Steven / victor / any non-owner read it as plain text. */}
+                    {field(t.deadline, isOwner
+                      ? <DatePickerInput
+                          value={work.deadlineISO ?? ""}
+                          placeholder={t.deadlinePick}
+                          onChange={v => { onChange({ deadlineISO: v || null }); notify(t.deadlineSaved); }}
+                          style={{ width: "100%", fontSize: 12, fontWeight: 700, color: TEXT, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, borderRadius: 8, padding: "4px 8px", boxSizing: "border-box" }}
+                        />
+                      : <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{work.deadline}</span>)}
                   </div>
                   {/* Delete job — owner only. */}
                   {!isSteven && <div style={{ paddingTop: 12, marginTop: 10, borderTop: `1px solid ${BDR}` }}>
