@@ -982,7 +982,12 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // Open = not completed and not cancelled (same "open" rule as the Victor page /
   // the /team dashboard). Previously "עבודות פתוחות" showed the TOTAL job count.
   const open    = works.filter(w => w.status !== "הושלם" && w.status !== "בוטל").length;
-  const debt    = works.reduce((s, w) => s + Math.max(0, w.price - w.amountPaid), 0);
+  // Debt = money Steven has EARNED but not yet received: only jobs whose status is
+  // "הושלם" and that still carry a balance. A job that is still "פעיל" is not a debt
+  // yet (even when partly/fully prepaid — e.g. MY STORY, פעיל + שולם), and a "בוטל"
+  // job is never owed. Partial payments count only for the remaining balance.
+  const debt    = works.reduce(
+    (s, w) => s + (w.status === "הושלם" ? Math.max(0, w.price - w.amountPaid) : 0), 0);
   const paidSum = works.reduce((s, w) => s + w.amountPaid, 0);
 
   // History = BOTH status "הושלם" AND pay "שולם" together. Anything short of
