@@ -10,6 +10,7 @@ import RedFilmsStatusBadge, {
   EDIT_STATUSES,
   CLIENT_SOURCES,
 } from "./RedFilmsStatusBadge";
+import { isProjectManagedClipBudget, PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -250,8 +251,12 @@ export default function RedFilmProductionDrawer({ production: initialProd, proje
   }
 
   async function saveBudget() {
+    // A project-managed budget is never sent from here — the linked project's
+    // clip price owns it. The other budget fields stay editable.
     const result = await patch({
-      general_budget:    Number(draftBudget.general_budget)   || 0,
+      ...(isProjectManagedClipBudget(draftBudget)
+        ? {}
+        : { general_budget: Number(draftBudget.general_budget) || 0 }),
       client_price:      Number(draftBudget.client_price)     || 0,
       advance_required:  Number(draftBudget.advance_required) || 0,
       advance_received:  Number(draftBudget.advance_received) || 0,
@@ -623,9 +628,21 @@ export default function RedFilmProductionDrawer({ production: initialProd, proje
             {editing === "budget" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <SRow label="תקציב כללי ₪">
-                    <input type="number" style={INPUT_S} value={draftBudget.general_budget}
-                      onChange={e => setDraftBudget(d => ({ ...d, general_budget: +e.target.value }))} />
+                  {/* Locked while a linked project's clip price owns the budget. */}
+                  <SRow label={isProjectManagedClipBudget(draftBudget) ? "תקציב כללי ₪ 🔒" : "תקציב כללי ₪"}>
+                    {isProjectManagedClipBudget(draftBudget) ? (
+                      <div>
+                        <input type="number" style={{ ...INPUT_S, opacity: 0.6, cursor: "not-allowed" }}
+                          value={draftBudget.general_budget} readOnly disabled
+                          title={PROJECT_MANAGED_BUDGET_NOTE} />
+                        <div style={{ fontSize: 10.5, color: "#8A8A92", marginTop: 4 }}>
+                          {PROJECT_MANAGED_BUDGET_NOTE}
+                        </div>
+                      </div>
+                    ) : (
+                      <input type="number" style={INPUT_S} value={draftBudget.general_budget}
+                        onChange={e => setDraftBudget(d => ({ ...d, general_budget: +e.target.value }))} />
+                    )}
                   </SRow>
                   <SRow label="מחיר ללקוח ₪">
                     <input type="number" style={INPUT_S} value={draftBudget.client_price}

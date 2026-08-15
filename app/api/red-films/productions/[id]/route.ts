@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isProjectManagedClipBudget, PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -58,7 +59,34 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }
     }
 
+    // ── Single source of truth for a linked clip's budget ────────────────────
+    // When this production is a project's clip, general_budget mirrors that
+    // project's clipAgreedPrice. Nothing coming through THIS endpoint may
+    // overwrite it — not the "העלה תקציב" action, not the budget edit form, not
+    // a direct API call. The project's own route writes the column directly
+    // (lib/clip-production.ts), so the sync itself is unaffected.
+    let budgetLocked = false;
+    if ("general_budget" in patch) {
+      const { data: current } = await supabase
+        .from("red_films_productions")
+        .select("project_id, production_type, status")
+        .eq("id", id)
+        .maybeSingle();
+      if (current && isProjectManagedClipBudget(current)) {
+        delete patch.general_budget;
+        budgetLocked = true;
+      }
+    }
+
     if (Object.keys(patch).length === 1) {
+      // Nothing left to update. If the only requested change was the locked
+      // budget, say so explicitly instead of the generic "no fields" error.
+      if (budgetLocked) {
+        return NextResponse.json(
+          { error: `${PROJECT_MANAGED_BUDGET_NOTE} — יש לעדכן את מחיר הקליפ בפרויקט`, budgetLocked: true },
+          { status: 409 },
+        );
+      }
       // Only updated_at — nothing to update
       return NextResponse.json({ error: "אין שדות לעדכון" }, { status: 400 });
     }
@@ -120,7 +148,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (error) throw error;
     if (!data) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
 
-    return NextResponse.json({ production: data });
+    // budgetLocked tells the caller its general_budget was ignored on purpose.
+    return NextResponse.json({ production: data, ...(budgetLocked ? { budgetLocked: true } : {}) });
   } catch (e) {
     console.error("[PATCH /api/red-films/productions/[id]]", e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

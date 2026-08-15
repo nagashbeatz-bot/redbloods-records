@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import BudgetItemDetailModal, { type BudgetPayment } from "./BudgetItemDetailModal";
+import { PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,12 @@ interface Props {
   productionId: string;
   generalBudget: number;
   onBudgetUpdate: (newBudget: number) => void;
+  /**
+   * True when the budget is owned by a linked project's clip price. Budget items
+   * and expenses stay fully editable — only raising general_budget from them is
+   * blocked, so the agreed price with the artist can't be silently rewritten.
+   */
+  budgetLocked?: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -53,13 +60,14 @@ function fmtMoney(n: number) {
 
 function BudgetGauge({
   generalBudget, plannedTotal, paidTotal,
-  onEditBudget, onRaiseBudget,
+  onEditBudget, onRaiseBudget, budgetLocked = false,
 }: {
   generalBudget: number;
   plannedTotal: number;
   paidTotal: number;
   onEditBudget: () => void;
   onRaiseBudget: () => void;
+  budgetLocked?: boolean;
 }) {
   if (generalBudget === 0) {
     return (
@@ -165,18 +173,31 @@ function BudgetGauge({
           <div style={{ fontSize: 12, color: "#F87171" }}>
             ⚠ חריגה מהתקציב: ההוצאות המתוכננות גבוהות ב-{fmtMoney(plannedTotal - generalBudget)} מהתקציב הכללי
           </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
+            {/* Locked: the budget mirrors the linked project's clip price, so
+                raising it from the planned items would rewrite the agreed price. */}
             <button
-              onClick={onRaiseBudget}
+              onClick={budgetLocked ? undefined : onRaiseBudget}
+              disabled={budgetLocked}
+              title={budgetLocked ? `${PROJECT_MANAGED_BUDGET_NOTE} — יש לעדכן את מחיר הקליפ בפרויקט` : undefined}
               style={{
-                fontSize: 11, fontWeight: 700, color: "#FFF",
-                background: "#EF4444", border: "none", borderRadius: 6,
-                cursor: "pointer", fontFamily: "inherit", padding: "4px 12px",
+                fontSize: 11, fontWeight: 700,
+                color: budgetLocked ? "#777" : "#FFF",
+                background: budgetLocked ? "#2A2A2A" : "#EF4444",
+                border: budgetLocked ? "1px solid #3A3A3A" : "none", borderRadius: 6,
+                cursor: budgetLocked ? "not-allowed" : "pointer",
+                fontFamily: "inherit", padding: "4px 12px",
               }}
             >
-              העלה תקציב
+              {budgetLocked ? "🔒 העלה תקציב" : "העלה תקציב"}
             </button>
           </div>
+          {budgetLocked && (
+            <div style={{ fontSize: 11, color: "#8A8A92", width: "100%" }}>
+              {PROJECT_MANAGED_BUDGET_NOTE}. פריטי התקציב וההוצאות משפיעים על ניצול התקציב והרווח בלבד —
+              לשינוי התקציב עדכן את מחיר הקליפ בפרויקט.
+            </div>
+          )}
         </div>
       )}
 
@@ -459,7 +480,7 @@ function RaiseBudgetModal({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function RedFilmsBudgetItems({ productionId, generalBudget, onBudgetUpdate }: Props) {
+export default function RedFilmsBudgetItems({ productionId, generalBudget, onBudgetUpdate, budgetLocked = false }: Props) {
   const [items, setItems]             = useState<BudgetItem[]>([]);
   const [payments, setPayments]       = useState<BudgetPayment[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -574,6 +595,9 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
   }
 
   async function handleRaiseBudget() {
+    // Belt and braces: the button is disabled and the server strips the field,
+    // but never let this path fire for a project-managed budget.
+    if (budgetLocked) { setRaiseModal(false); return; }
     setRaiseSaving(true);
     try {
       const res = await fetch(`/api/red-films/productions/${productionId}`, {
@@ -592,6 +616,7 @@ export default function RedFilmsBudgetItems({ productionId, generalBudget, onBud
     <div ref={containerRef}>
       {/* Budget gauge */}
       <BudgetGauge
+        budgetLocked={budgetLocked}
         generalBudget={generalBudget}
         plannedTotal={plannedTotal}
         paidTotal={paidTotal}

@@ -61,6 +61,30 @@ export function isSongIncome(tx: ClipTxLike): boolean {
   return isIncomeType(tx.type) && !isClipScoped(tx);
 }
 
+/**
+ * True when a Red Films production's budget is OWNED BY THE LINKED PROJECT —
+ * i.e. general_budget mirrors that project's clipAgreedPrice and nothing inside
+ * Red Films may overwrite it. Budget items and expenses still move freely; they
+ * describe how the budget is spent, not what was agreed with the artist.
+ *
+ * The condition matches findLinkedClipProduction() exactly (linked + clip +
+ * not cancelled). That equivalence matters: a production the project no longer
+ * syncs (unlinked, non-clip, or cancelled) must stay editable inside Red Films,
+ * otherwise its budget would have no owner at all.
+ */
+export function isProjectManagedClipBudget(prod: {
+  project_id?: string | null;
+  production_type?: string | null;
+  status?: string | null;
+}): boolean {
+  return !!prod.project_id
+    && (prod.production_type ?? "") === CLIP_SCOPE
+    && (prod.status ?? "") !== "בוטל";
+}
+
+/** Shown wherever a project-managed budget is locked for editing. */
+export const PROJECT_MANAGED_BUDGET_NOTE = "התקציב מנוהל מתוך הפרויקט המקושר";
+
 export type ClipDealStatus = "אין עסקה" | "ממתין" | "חלקי" | "שולם" | "יתרת זכות";
 
 export interface ClipFinanceSummary {

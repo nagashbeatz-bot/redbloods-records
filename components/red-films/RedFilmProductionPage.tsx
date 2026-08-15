@@ -20,6 +20,7 @@ import RedFilmsStatusBadge, {
   CLIENT_SOURCES,
 } from "./RedFilmsStatusBadge";
 import { useProductionLayout } from "@/lib/production-layout";
+import { isProjectManagedClipBudget, PROJECT_MANAGED_BUDGET_NOTE } from "@/lib/clip-finance";
 import type { Production } from "./RedFilmProductionDrawer";
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -328,8 +329,12 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
   }
   async function saveBudget() {
     if (!draftBudget) return;
+    // A project-managed budget is never sent from here — the linked project's
+    // clip price owns it. The other budget fields stay editable.
     const r = await patch({
-      general_budget: Number(draftBudget.general_budget) || 0,
+      ...(isProjectManagedClipBudget(draftBudget)
+        ? {}
+        : { general_budget: Number(draftBudget.general_budget) || 0 }),
       client_price: Number(draftBudget.client_price) || 0,
       advance_required: Number(draftBudget.advance_required) || 0,
       advance_received: Number(draftBudget.advance_received) || 0,
@@ -609,14 +614,25 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
                 ["client_price","מחיר ללקוח ₪"],
                 ["advance_required","מקדמה נדרשת ₪"],
                 ["advance_received","מקדמה התקבלה ₪"],
-              ] as const).map(([field, label]) => (
-                <div key={field}>
-                  <SLabel>{label}</SLabel>
-                  <input type="number" style={INPUT_S}
-                    value={(draftBudget as unknown as Record<string,number>)[field] ?? 0}
-                    onChange={e => setDraftBudget(d => d ? { ...d, [field]: +e.target.value } : d)} />
-                </div>
-              ))}
+              ] as const).map(([field, label]) => {
+                // general_budget is read-only while the linked project owns it.
+                const locked = field === "general_budget" && isProjectManagedClipBudget(draftBudget);
+                return (
+                  <div key={field}>
+                    <SLabel>{locked ? `${label} 🔒` : label}</SLabel>
+                    <input type="number" style={locked ? { ...INPUT_S, opacity: 0.6, cursor: "not-allowed" } : INPUT_S}
+                      readOnly={locked} disabled={locked}
+                      title={locked ? PROJECT_MANAGED_BUDGET_NOTE : undefined}
+                      value={(draftBudget as unknown as Record<string,number>)[field] ?? 0}
+                      onChange={e => setDraftBudget(d => d ? { ...d, [field]: +e.target.value } : d)} />
+                    {locked && (
+                      <div style={{ fontSize: 10.5, color: "#8A8A92", marginTop: 4, lineHeight: 1.5 }}>
+                        {PROJECT_MANAGED_BUDGET_NOTE}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <div style={{ gridColumn: "span 4" }}>
                 <SLabel>סטטוס גבייה</SLabel>
                 <select style={{ ...SELECT_S, maxWidth: 240 }} value={draftBudget.collection_status}
@@ -652,6 +668,7 @@ export default function RedFilmProductionPage({ id }: { id: string }) {
         <SCard key="budgetItems">
           <SectionHeader title="תקציב מפורט" />
           <RedFilmsBudgetItems productionId={id} generalBudget={prod.general_budget}
+            budgetLocked={isProjectManagedClipBudget(prod)}
             onBudgetUpdate={newBudget => setProd(p => p ? { ...p, general_budget: newBudget } : p)} />
         </SCard>
       );
