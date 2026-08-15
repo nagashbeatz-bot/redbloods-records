@@ -98,6 +98,11 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         const { isConfirmedShowStatus } = await import("@/lib/shows-finance-sync");
         if (show.status === "בוטל") {
           await closeQuoteFollowupTask(id, "בוטל");
+          // Show cancelled → its still-OPEN linked tasks are no longer relevant.
+          // Linked strictly by tasks.show_id (never by title text, never by
+          // related_type); only "פתוח" is moved, nothing is ever deleted.
+          const { cancelOpenShowTasks } = await import("@/lib/show-cancel-tasks");
+          await cancelOpenShowTasks(id);
         } else if (isConfirmedShowStatus(show.status)) {
           await closeQuoteFollowupTask(id, "בוצע");
         }
