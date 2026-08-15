@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import type { ProjectStatus, ProjectType, Project } from "@/lib/types";
-import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation } from "@/lib/types";
+import { ALL_STATUSES, PROJECT_TYPES, NO_AFFILIATION, isNoAffiliation, matchesTypeFilter } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
@@ -946,11 +946,12 @@ export default function ProjectsTable() {
         };
         const prefix = parentPrefix[typeFilter];
         if (prefix) {
-          const matchesType = p.projectType === typeFilter;
+          const matchesType = matchesTypeFilter(p.projectType, typeFilter);
           const matchesParent = p.parentProject?.startsWith(prefix) ?? false;
           if (!matchesType && !matchesParent) return false;
         } else {
-          if (p.projectType !== typeFilter) return false;
+          // Shared rule: "שיר" and "קליפ" also match a "שיר + קליפ" project.
+          if (!matchesTypeFilter(p.projectType, typeFilter)) return false;
         }
       }
       if (parentFilter === NO_AFFILIATION && !isNoAffiliation(p.parentProject)) return false;

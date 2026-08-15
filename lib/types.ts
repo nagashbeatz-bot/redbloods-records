@@ -51,6 +51,23 @@ export function hasClipType(t: string | null | undefined): boolean {
   return t === "קליפ" || t === SONG_WITH_CLIP_TYPE;
 }
 
+/**
+ * Does a project match a project-type filter chip? The single rule, shared by
+ * every list that filters by type.
+ *
+ * A combined project is genuinely both, so it answers to both parent chips:
+ *   "שיר"        → שיר + שיר + קליפ
+ *   "קליפ"       → קליפ + שיר + קליפ
+ *   "שיר + קליפ" → only the combined projects
+ * Every other chip stays an exact match.
+ */
+export function matchesTypeFilter(projectType: string | null | undefined, filter: string): boolean {
+  if (!filter) return true;                       // "כל הסוגים"
+  if (filter === "שיר")  return isSongType(projectType);
+  if (filter === "קליפ") return hasClipType(projectType);
+  return projectType === filter;
+}
+
 /** Canonical "no affiliation" value stored in DB and shown in UI */
 export const NO_AFFILIATION = "ללא שיוך";
 

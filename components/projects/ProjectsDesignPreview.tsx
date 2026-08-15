@@ -15,7 +15,7 @@ import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
-import { ALL_STATUSES, PROJECT_TYPES, SONG_WITH_CLIP_TYPE } from "@/lib/types";
+import { ALL_STATUSES, PROJECT_TYPES, SONG_WITH_CLIP_TYPE, matchesTypeFilter } from "@/lib/types";
 
 // ── Design tokens — identical to DashboardDesignPreview ──────────────────────
 const BRAND   = "#DC2626";
@@ -437,7 +437,7 @@ export default function ProjectsDesignPreview() {
     return projects
       .filter(p => !p.isHidden)
       .filter(p => statusFilter === "הכל הפעיל" ? p.status !== "הושלם" : statusFilter === "הושלמו" ? p.status === "הושלם" : p.status === statusFilter)
-      .filter(p => !typeFilter || p.projectType === typeFilter)
+      .filter(p => matchesTypeFilter(p.projectType, typeFilter))
       .filter(p => !q || p.name.toLowerCase().includes(q) || p.artist.toLowerCase().includes(q));
   }, [projects, search, statusFilter, typeFilter]);
 
