@@ -9,6 +9,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import type { LabelArtist, LabelRelease, ProjectReleaseDetails, LabelShowLine, ArtistShowsSummary, LabelClipLine, ArtistClipsSummary, LabelMediaRecord, ArtistMediaSummary, ArtistRecoupSummary } from "@/lib/types";
+import { isSongType } from "@/lib/types";
 import { MediaModal, MediaCancelModal, type MediaRec } from "./MediaModals";
 import {
   BRAND, CARD, CARD2, BORDER, BORDER2, TEXT, SUB, MUTED, DIM, GREEN,
@@ -30,7 +31,8 @@ function MarkExistingModal({ artists, onClose, onSaved }: { artists: LabelArtist
 
   useEffect(() => {
     fetch("/api/projects").then((r) => r.json()).then((rows: SlimProject[]) => {
-      setProjects(Array.isArray(rows) ? rows.filter((p) => p.businessType !== "לייבל" && p.projectType === "שיר") : []);
+      // "שיר + קליפ" counts as a song here — a clip deal must not hide it.
+      setProjects(Array.isArray(rows) ? rows.filter((p) => p.businessType !== "לייבל" && isSongType(p.projectType)) : []);
     }).catch(() => setProjects([]));
   }, []);
 

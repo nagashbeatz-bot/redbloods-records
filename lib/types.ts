@@ -17,17 +17,39 @@ export const ALL_STATUSES: ProjectStatus[] = [
   "בוטל",
 ];
 
-export type ProjectType = "שיר" | "EP" | "אלבום" | "קליפ" | "רידים" | "לימודים" | "אחר" | "";
+export type ProjectType =
+  | "שיר" | "קליפ" | "שיר + קליפ" | "EP" | "אלבום" | "רידים" | "לימודים" | "אחר" | "";
 
 export const PROJECT_TYPES: Exclude<ProjectType, "">[] = [
   "שיר",
+  "קליפ",
+  "שיר + קליפ",
   "EP",
   "אלבום",
-  "קליפ",
   "רידים",
   "לימודים",
   "אחר",
 ];
+
+/** The combined type — a song project that also carries a clip deal. */
+export const SONG_WITH_CLIP_TYPE = "שיר + קליפ";
+
+/**
+ * True for a project that IS a song — plain "שיר" or the combined "שיר + קליפ".
+ *
+ * Use this instead of `projectType === "שיר"` anywhere the question is "is there
+ * a song here", so adding a clip deal to a song never drops it out of song
+ * pipelines (releases, the label view, campaign ordering). Places that ask about
+ * the clip side keep asking about the clip side.
+ */
+export function isSongType(t: string | null | undefined): boolean {
+  return t === "שיר" || t === SONG_WITH_CLIP_TYPE;
+}
+
+/** True for a project that carries a clip — "קליפ" or the combined type. */
+export function hasClipType(t: string | null | undefined): boolean {
+  return t === "קליפ" || t === SONG_WITH_CLIP_TYPE;
+}
 
 /** Canonical "no affiliation" value stored in DB and shown in UI */
 export const NO_AFFILIATION = "ללא שיוך";

@@ -16,6 +16,7 @@ const TYPE_COLORS: Record<string, string> = {
   "EP":   "#A855F7",
   "אלבום":"#EC4899",
   "קליפ": "#F59E0B",
+  "שיר + קליפ": "#DC2626",   // combined project — Redbloods red
   "רידים":"#10B981",
   "לימודים":"#6366F1",
   "אחר":  "#6B7280",

@@ -1464,6 +1464,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
             <ClipContent
               project={project}
               currency={currency}
+              onProjectChanged={refresh}
               onFinanceChanged={() => {
                 fetch(`/api/transactions?projectId=${projectId}`)
                   .then(r => r.json())
@@ -4287,10 +4288,12 @@ interface ClipProduction {
   budget_managed_by_project?: boolean;
 }
 
-function ClipContent({ project, currency, onFinanceChanged }: {
+function ClipContent({ project, currency, onFinanceChanged, onProjectChanged }: {
   project:          Project;
   currency:         string;
   onFinanceChanged: () => void;
+  /** Opening a deal can retype the project to "שיר + קליפ" — reload the list. */
+  onProjectChanged: () => void;
 }) {
   const router = useRouter();
   const [loading,    setLoading]    = useState(true);
@@ -4355,6 +4358,8 @@ function ClipContent({ project, currency, onFinanceChanged }: {
       if (!r2.ok) throw new Error("יצירת התשלומים נכשלה");
       load();
       onFinanceChanged();
+      // A plain "שיר" becomes "שיר + קליפ" server-side — pull the new type in.
+      onProjectChanged();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "שגיאה");
     } finally {

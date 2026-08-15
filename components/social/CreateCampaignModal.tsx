@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { SocialCampaign, SocialPlatform, Project } from "@/lib/types";
-import { SOCIAL_PLATFORMS, SOCIAL_PLATFORM_LABELS } from "@/lib/types";
+import { SOCIAL_PLATFORMS, SOCIAL_PLATFORM_LABELS, isSongType } from "@/lib/types";
 
 interface Props {
   onCreate: (input: Partial<SocialCampaign>) => Promise<unknown>;
@@ -25,8 +25,9 @@ export default function CreateCampaignModal({ onCreate, onClose }: Props) {
       .then((d) => {
         const all: Project[] = d.projects ?? d ?? [];
         // שירים ראשון, שאר אחרי
-        const sorted = [...all.filter((p) => p.projectType === "שיר" && !p.isHidden),
-                        ...all.filter((p) => p.projectType !== "שיר" && !p.isHidden)];
+        // Songs first — "שיר + קליפ" is a song, so it stays in the first group.
+        const sorted = [...all.filter((p) => isSongType(p.projectType) && !p.isHidden),
+                        ...all.filter((p) => !isSongType(p.projectType) && !p.isHidden)];
         setProjects(sorted);
       })
       .catch(() => {});

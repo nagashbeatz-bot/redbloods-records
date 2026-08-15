@@ -33,7 +33,8 @@ function buildSummaryLines(issues: ProjectIssue[]): string[] {
 
 const TYPE_COLORS: Record<string, string> = {
   "שיר": "#3B82F6", "EP": "#A855F7", "אלבום": "#EC4899",
-  "קליפ": "#F59E0B", "רידים": "#10B981", "לימודים": "#6366F1", "אחר": "#6B7280",
+  "קליפ": "#F59E0B", "שיר + קליפ": "#DC2626", "רידים": "#10B981",
+  "לימודים": "#6366F1", "אחר": "#6B7280",
 };
 
 function tomorrow(): string {

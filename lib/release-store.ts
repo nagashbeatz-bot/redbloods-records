@@ -9,7 +9,7 @@ import type {
   ProjectType,
   ProjectBusinessType,
 } from "./types";
-import { RELEASE_STAGES } from "./types";
+import { RELEASE_STAGES, isSongType } from "./types";
 
 // ── DB row shape (public.project_release_details) ────────────────────────────
 interface DbRelease {
@@ -171,7 +171,8 @@ export async function convertProjectToLabelRelease(
 ): Promise<ReleaseWriteResult> {
   const proj = await fetchProject(projectId);
   if (proj === null) return { status: "not_found" };
-  if (proj.project_type !== "שיר") return { status: "not_song" };
+  // "שיר + קליפ" is still a song — having a clip deal must not block a release.
+  if (!isSongType(proj.project_type)) return { status: "not_song" };
 
   const artistName = await fetchArtistName(labelArtistId);
   if (artistName === null) return { status: "artist_not_found" };

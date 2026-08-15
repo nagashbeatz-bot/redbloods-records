@@ -9,6 +9,7 @@ import { useProjects } from "@/components/ProjectsProvider";
 import { checkProposalFollowUps, type ProposalFinding } from "@/lib/mai/operational-rules";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
+import { PROJECT_TYPES } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1151,10 +1152,10 @@ function IconBtn({ onClick, title, children, style }: { onClick: () => void; tit
 
 // ─── NewProjectForm ───────────────────────────────────────────────────────────
 
-// Kept as a local list (not the canonical PROJECT_TYPES) on purpose: reusing it
-// would REORDER these options (canonical order differs) — a behaviour change we
-// avoid here. "לימודים" is added in its canonical spot (before "אחר").
-const PROJECT_TYPES_LIST = ["שיר", "קליפ", "EP", "אלבום", "רידים", "לימודים", "אחר"] as const;
+// Now the canonical list — PROJECT_TYPES was reordered to this exact order when
+// "שיר + קליפ" was added, so the local copy that existed to avoid a reorder has
+// no reason to exist any more.
+const PROJECT_TYPES_LIST = PROJECT_TYPES;
 const PROJECT_INIT_STATUSES = ["לא התחיל", "בעבודה"] as const;
 
 function NewProjectForm({ client, onClose, onCreated }: {

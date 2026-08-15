@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { requireOwner } from "@/lib/require-auth";
 import { touchProject } from "@/lib/projects-store";
 import { CLIP_SCOPE, CLIP_PAYMENT_STATUSES } from "@/lib/clip-finance";
+import { SONG_WITH_CLIP_TYPE } from "@/lib/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
     const { data: project } = await supabase
       .from("projects")
-      .select("id, name, artist")
+      .select("id, name, artist, project_type")
       .eq("id", id)
       .maybeSingle();
     if (!project) return NextResponse.json({ error: "פרויקט לא נמצא" }, { status: 404 });
@@ -106,6 +107,16 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         .eq("expense_scope", CLIP_SCOPE);
       if ((existing ?? []).length > 0) {
         return NextResponse.json({ payments: existing, created: false });
+      }
+
+      // Opening a clip deal on a plain song makes the project a combined one.
+      // ONLY from "שיר" — a project already typed "קליפ", "שיר + קליפ", EP,
+      // אלבום, רידים, לימודים or אחר is left exactly as the owner set it.
+      if ((project.project_type as string) === "שיר") {
+        await supabase
+          .from("projects")
+          .update({ project_type: SONG_WITH_CLIP_TYPE, updated_at: new Date().toISOString() })
+          .eq("id", id);
       }
 
       const today = new Date().toISOString().slice(0, 10);

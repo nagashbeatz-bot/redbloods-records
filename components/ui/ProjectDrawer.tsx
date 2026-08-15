@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useProjects } from "@/components/ProjectsProvider";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
-import { PROJECT_TYPES } from "@/lib/types";
+import { PROJECT_TYPES, hasClipType } from "@/lib/types";
 import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { checkHealth, checkFinanceHealth, type FinanceSummary } from "@/lib/health";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
@@ -696,7 +696,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
   useEffect(() => {
     if (!clipItemsLoaded) return;
     const hasClipContent =
-      project?.projectType === "קליפ" ||
+      hasClipType(project?.projectType) ||
       clipItems.length > 0 ||
       filmingSessions.length > 0;
     if (hasClipContent) setOpenSections((prev) => new Set([...prev, "clip"]));
