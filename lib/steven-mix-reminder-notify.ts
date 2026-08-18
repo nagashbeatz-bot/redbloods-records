@@ -5,6 +5,8 @@ import { listMixVersions } from "@/lib/mix-versions-store";
 import { getSoundEngineerWork, stevenDisplayName } from "@/lib/sound-engineer-store";
 import {
   REMINDER_INTERVAL_MS,
+  MAX_REMINDERS,
+  isCompletedStatus,
   cycleStateKey,
   cycleClaimKey,
   buildReminderPush,
@@ -16,14 +18,16 @@ import {
   type ClaimValue,
   type ClaimResult,
   type ReminderCycleDeps,
+  type WorkReminderState,
 } from "@/lib/steven-mix-reminder-pure";
 
-export { cycleStateKey, cycleClaimKey, REMINDER_INTERVAL_MS };
+export { cycleStateKey, cycleClaimKey, REMINDER_INTERVAL_MS, MAX_REMINDERS };
 
 /**
  * Steven mix-notes reminder — every 5h after the owner clicks "Send notes"
- * (lib/steven-notes-notify.ts, unchanged) until Steven uploads a new mix
- * version for that SAME work. Server-side cron only (see instrumentation.ts).
+ * (lib/steven-notes-notify.ts, unchanged), for at most MAX_REMINDERS (3)
+ * reminders, and only while the work still exists, is not completed ("אושר")
+ * and has no newer mix version. Server-side cron only (see instrumentation.ts).
  * Never triggered by page load/refresh/client code, never runs outside
  * production. State lives entirely in the existing `settings` key/value
  * table — no schema change:
@@ -59,6 +63,15 @@ async function listActiveCycles(): Promise<CycleState[]> {
   return (data ?? []).map((r) => r.value as CycleState);
 }
 
+/** Both work-level stop conditions in one read. A missing row is the deleted
+ *  case — reported as exists:false rather than guessed at, so the caller stops
+ *  the cycle instead of sending a push about a work nobody can open. */
+async function getWorkStateReal(workId: string): Promise<WorkReminderState> {
+  const work = await getSoundEngineerWork(workId);
+  if (!work) return { exists: false, completed: false };
+  return { exists: true, completed: isCompletedStatus(work.status) };
+}
+
 async function getLatestVersionCreatedAtReal(workId: string): Promise<string | null> {
   const versions = await listMixVersions(workId); // already ordered created_at DESC
   return versions[0]?.createdAt ?? null;
@@ -83,8 +96,15 @@ async function updateCycleProgressReal(workId: string, patch: { remindersSent: n
 
 async function sendReminderReal(workId: string): Promise<{ status: string }[]> {
   const work = await getSoundEngineerWork(workId);
-  const name = work ? stevenDisplayName(work) : "העבודה";
-  const push = buildReminderPush(name);
+  // Race guard: the work was deleted between this tick's stop-condition check
+  // and now. Send NOTHING — never a push naming a placeholder. [] classifies as
+  // "no_subscription", so the cycle does not advance, and the next tick sees
+  // exists:false and stops it for good.
+  if (!work) {
+    console.warn(`[steven-mix-reminder] work ${workId} vanished mid-send — no push`);
+    return [];
+  }
+  const push = buildReminderPush(stevenDisplayName(work));
   const results = await sendPushToRoles(["steven"], {
     ...push,
     url: `/team/steven?work=${workId}`,
@@ -137,6 +157,7 @@ async function markDoneReal(key: string, value: Record<string, unknown>): Promis
 }
 
 const realDeps: ReminderCycleDeps = {
+  getWorkState: getWorkStateReal,
   getLatestVersionCreatedAt: getLatestVersionCreatedAtReal,
   claim: claimReal,
   markDone: markDoneReal,

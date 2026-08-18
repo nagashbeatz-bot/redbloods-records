@@ -7,12 +7,22 @@
  * A cycle starts when the owner clicks "Send notes" (lib/steven-notes-notify.ts,
  * unchanged — that immediate push is untouched). From then on, every 5 hours
  * (first reminder at cycleStartAt+5h, each next one at lastReminderAt+5h) a
- * reminder fires UNLESS a mix_versions row for the same work has a created_at
- * strictly after cycleStartAt — that stops the cycle immediately (checked
- * fresh on every tick, no separate hook needed in the upload path). A later
- * "Send notes" click always starts a brand-new cycle (fresh cycleStartAt,
- * remindersSent reset to 0), which naturally supersedes/replaces the old one —
- * see startOrResetReminderCycle in lib/steven-mix-reminder-notify.ts.
+ * reminder fires — but ONLY while every stop condition is still false. All four
+ * are re-checked fresh on EVERY tick, before the due-time gate, so a cycle that
+ * must die never waits for its next 5h window (and needs no hook in the upload
+ * or delete path):
+ *   1. remindersSent >= MAX_REMINDERS (3) — the cycle has said its piece.
+ *   2. The sound_engineer_work no longer exists (deleted).
+ *   3. Its status is COMPLETED_STATUS ("אושר", shown in the UI as "הושלם") —
+ *      completion outranks everything: pending notes and a missing new version
+ *      stop mattering the moment the work is approved.
+ *   4. A mix_versions row for the same work has created_at strictly after
+ *      cycleStartAt (the original condition, unchanged).
+ * Every stop path deletes only this cycle's own settings row via stopCycle —
+ * no other data is touched. A later "Send notes" click always starts a
+ * brand-new cycle (fresh cycleStartAt, remindersSent reset to 0), which
+ * naturally supersedes/replaces the old one — see startOrResetReminderCycle in
+ * lib/steven-mix-reminder-notify.ts.
  *
  * `decideClaimAction`/`ClaimValue` are pure and feature-agnostic — imported
  * directly from lib/shalev-availability-reminder-pure.ts rather than
@@ -26,6 +36,20 @@ export { MAX_ATTEMPTS, STUCK_PROCESSING_TIMEOUT_MS, classifyPushResult, decideCl
 export type { ClaimValue, ClaimResult, ClaimDecision };
 
 export const REMINDER_INTERVAL_MS = 5 * 60 * 60 * 1000;
+
+/** Hard cap on reminders per cycle: #1, #2 and #3 may go out, #4 never does.
+ *  Distinct from MAX_ATTEMPTS, which only bounds RETRIES of one failed send. */
+export const MAX_REMINDERS = 3;
+
+/** The value sound_engineer_work.status actually holds when a work is done.
+ *  The DB enum is לא נשלח | נשלח | בתהליך | חזר | אושר | בוטל (lib/types.ts
+ *  SoundEngineerStatus) — it never stores "הושלם"; that is purely the UI label
+ *  dbStatusToUi() renders for "אושר" (components/team/StevenProfilePage.tsx). */
+export const COMPLETED_STATUS = "אושר";
+
+export function isCompletedStatus(status: string | null | undefined): boolean {
+  return status === COMPLETED_STATUS;
+}
 
 /** One settings row per work with an active cycle — key = cycleStateKey(workId). */
 export interface CycleState {
@@ -57,6 +81,14 @@ export function hasNewerVersion(cycleStartAt: string, latestVersionCreatedAt: st
   return Date.parse(latestVersionCreatedAt) > Date.parse(cycleStartAt);
 }
 
+/** True once the cycle has already sent its full quota. Pure and DB-free, so an
+ *  over-quota cycle — including one left mid-flight in production by an earlier
+ *  build that had no cap — is stopped on the very next tick without a push,
+ *  without a query and without any manual settings cleanup. */
+export function hasReachedReminderCap(cycle: Pick<CycleState, "remindersSent">): boolean {
+  return cycle.remindersSent >= MAX_REMINDERS;
+}
+
 /** True once 5 real hours have elapsed since the last relevant instant — the
  *  cycle's own start for the FIRST reminder, or the previous reminder's ACTUAL
  *  send time for every one after that (not a rigid cycleStartAt+N*5h grid) —
@@ -69,10 +101,13 @@ export function isReminderDue(now: Date, cycle: CycleState): boolean {
   return now.getTime() >= Date.parse(base) + REMINDER_INTERVAL_MS;
 }
 
+/** Steven-facing text — ENGLISH, like every other push he receives (compare
+ *  lib/steven-notes-notify.ts's "New mix notes from Redbloods"). workName is the
+ *  work's own display name and is interpolated verbatim; it is data, not copy. */
 export function buildReminderPush(workName: string): { title: string; body: string } {
   return {
-    title: "תזכורת להערות",
-    body: `ממתינות לך הערות על ${workName}. יש להעלות גרסה מעודכנת.`,
+    title: "Mix notes reminder",
+    body: `You still have pending notes for ${workName}. Please upload an updated version.`,
   };
 }
 
@@ -82,12 +117,24 @@ export function buildReminderPush(workName: string): { title: string; body: stri
 
 export type ReminderOutcome =
   | { kind: "resolved_stopped" }
+  | { kind: "cap_reached_stopped" }
+  | { kind: "work_missing_stopped" }
+  | { kind: "work_completed_stopped" }
   | { kind: "not_due" }
   | { kind: "skipped_duplicate" }
   | { kind: "sent" }
   | { kind: "no_subscription" | "send_failed"; final: boolean };
 
+/** The only two things about the work itself that can stop a cycle. Read in one
+ *  shot so the orchestrator needs no sound_engineer_work coupling of its own. */
+export interface WorkReminderState {
+  exists: boolean;
+  /** status === COMPLETED_STATUS. Meaningless (and always false) when !exists. */
+  completed: boolean;
+}
+
 export interface ReminderCycleDeps {
+  getWorkState: (workId: string) => Promise<WorkReminderState>;
   getLatestVersionCreatedAt: (workId: string) => Promise<string | null>;
   claim: (key: string, now: Date) => Promise<ClaimResult>;
   markDone: (key: string, value: Record<string, unknown>) => Promise<void>;
@@ -105,9 +152,39 @@ export async function processReminderCycle(
   cycle: CycleState,
   deps: ReminderCycleDeps,
 ): Promise<ReminderOutcome> {
-  // Stop condition checked FIRST, every tick, independent of timing — so a
-  // version uploaded seconds after cycleStartAt stops the cycle on the very
-  // next tick regardless of whether a reminder was ever due yet.
+  // ── Stop conditions — ALL checked FIRST, every tick, BEFORE the due-time
+  //    gate, so a cycle that must die never lingers until its next 5h window.
+  //    Each one only calls stopCycle (deletes this cycle's own settings row);
+  //    nothing else is ever written or removed. ──────────────────────────────
+
+  // 1. Quota spent. Pure — no query — so an over-quota cycle costs one tick and
+  //    zero pushes to retire, which is exactly how cycles already sitting at
+  //    remindersSent >= MAX_REMINDERS in production clean themselves up.
+  if (hasReachedReminderCap(cycle)) {
+    await deps.stopCycle(cycle.workId);
+    deps.log(`work ${cycle.workId}: ${cycle.remindersSent}/${MAX_REMINDERS} reminders already sent — cycle stopped`);
+    return { kind: "cap_reached_stopped" };
+  }
+
+  // 2. The work itself. Deleted → stop silently; the send path must never fall
+  //    back to a placeholder name for a work that is gone.
+  const work = await deps.getWorkState(cycle.workId);
+  if (!work.exists) {
+    await deps.stopCycle(cycle.workId);
+    deps.log(`work ${cycle.workId}: no longer exists — cycle stopped`);
+    return { kind: "work_missing_stopped" };
+  }
+  // 3. Completed outranks every reason to remind: it does not matter that notes
+  //    are still pending, nor that no newer version was ever uploaded.
+  if (work.completed) {
+    await deps.stopCycle(cycle.workId);
+    deps.log(`work ${cycle.workId}: status is "${COMPLETED_STATUS}" (UI "הושלם") — cycle stopped`);
+    return { kind: "work_completed_stopped" };
+  }
+
+  // 4. The original condition, unchanged — a version uploaded seconds after
+  //    cycleStartAt stops the cycle on the very next tick regardless of whether
+  //    a reminder was ever due yet.
   const latest = await deps.getLatestVersionCreatedAt(cycle.workId);
   if (hasNewerVersion(cycle.cycleStartAt, latest)) {
     await deps.stopCycle(cycle.workId);
