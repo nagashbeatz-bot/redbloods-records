@@ -6,7 +6,7 @@ import { getSoundEngineerWork, stevenDisplayName } from "@/lib/sound-engineer-st
 import {
   REMINDER_INTERVAL_MS,
   MAX_REMINDERS,
-  isCompletedStatus,
+  isClosedStatus,
   cycleStateKey,
   cycleClaimKey,
   buildReminderPush,
@@ -26,8 +26,9 @@ export { cycleStateKey, cycleClaimKey, REMINDER_INTERVAL_MS, MAX_REMINDERS };
 /**
  * Steven mix-notes reminder — every 5h after the owner clicks "Send notes"
  * (lib/steven-notes-notify.ts, unchanged), for at most MAX_REMINDERS (3)
- * reminders, and only while the work still exists, is not completed ("אושר")
- * and has no newer mix version. Server-side cron only (see instrumentation.ts).
+ * reminders, and only while the work still exists, is neither approved ("אושר")
+ * nor cancelled ("בוטל"), and has no newer mix version. Server-side cron only
+ * (see instrumentation.ts).
  * Never triggered by page load/refresh/client code, never runs outside
  * production. State lives entirely in the existing `settings` key/value
  * table — no schema change:
@@ -83,8 +84,8 @@ async function getWorkStateReal(workId: string): Promise<WorkReminderState> {
   // a live cycle nor push a reminder for a work whose status we couldn't read.
   // runStevenMixReminderTick catches per cycle, leaving it intact for next time.
   if (error) throw new Error(`failed to read work ${workId}: ${error.message}`);
-  if (!data) return { exists: false, completed: false };
-  return { exists: true, completed: isCompletedStatus(data.status as string | null) };
+  if (!data) return { exists: false, closed: false };
+  return { exists: true, closed: isClosedStatus(data.status as string | null) };
 }
 
 async function getLatestVersionCreatedAtReal(workId: string): Promise<string | null> {

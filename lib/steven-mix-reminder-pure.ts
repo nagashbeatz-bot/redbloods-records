@@ -13,9 +13,10 @@
  * or delete path):
  *   1. remindersSent >= MAX_REMINDERS (3) — the cycle has said its piece.
  *   2. The sound_engineer_work no longer exists (deleted).
- *   3. Its status is COMPLETED_STATUS ("אושר", shown in the UI as "הושלם") —
- *      completion outranks everything: pending notes and a missing new version
- *      stop mattering the moment the work is approved.
+ *   3. Its status is closed — COMPLETED_STATUS ("אושר", shown in the UI as
+ *      "הושלם") or CANCELLED_STATUS ("בוטל"). Closing outranks everything:
+ *      pending notes and a missing new version stop mattering the moment the
+ *      work is approved or cancelled.
  *   4. A mix_versions row for the same work has created_at strictly after
  *      cycleStartAt (the original condition, unchanged).
  * Every stop path deletes only this cycle's own settings row via stopCycle —
@@ -41,14 +42,20 @@ export const REMINDER_INTERVAL_MS = 5 * 60 * 60 * 1000;
  *  Distinct from MAX_ATTEMPTS, which only bounds RETRIES of one failed send. */
 export const MAX_REMINDERS = 3;
 
-/** The value sound_engineer_work.status actually holds when a work is done.
- *  The DB enum is לא נשלח | נשלח | בתהליך | חזר | אושר | בוטל (lib/types.ts
- *  SoundEngineerStatus) — it never stores "הושלם"; that is purely the UI label
- *  dbStatusToUi() renders for "אושר" (components/team/StevenProfilePage.tsx). */
-export const COMPLETED_STATUS = "אושר";
+/** The two values sound_engineer_work.status holds once a work is closed. Both
+ *  are existing members of the DB enum לא נשלח | נשלח | בתהליך | חזר | אושר |
+ *  בוטל (lib/types.ts SoundEngineerStatus) — nothing new is introduced here.
+ *  Neither "הושלם" nor "בוטל" is stored as such by the UI: dbStatusToUi()
+ *  renders "אושר" as "הושלם", and "בוטל" keeps its name
+ *  (components/team/StevenProfilePage.tsx). */
+export const COMPLETED_STATUS = "אושר";  // UI: "הושלם"
+export const CANCELLED_STATUS = "בוטל";  // UI: "בוטל"
 
-export function isCompletedStatus(status: string | null | undefined): boolean {
-  return status === COMPLETED_STATUS;
+/** "There is nothing left to ask Steven for." True for an approved work and for
+ *  a cancelled one alike — in both cases a reminder to upload a new version is
+ *  pointless. The other four statuses all render as "פעיל" and keep reminding. */
+export function isClosedStatus(status: string | null | undefined): boolean {
+  return status === COMPLETED_STATUS || status === CANCELLED_STATUS;
 }
 
 /** One settings row per work with an active cycle — key = cycleStateKey(workId). */
@@ -119,7 +126,7 @@ export type ReminderOutcome =
   | { kind: "resolved_stopped" }
   | { kind: "cap_reached_stopped" }
   | { kind: "work_missing_stopped" }
-  | { kind: "work_completed_stopped" }
+  | { kind: "work_closed_stopped" }
   | { kind: "not_due" }
   | { kind: "skipped_duplicate" }
   | { kind: "sent" }
@@ -129,8 +136,8 @@ export type ReminderOutcome =
  *  shot so the orchestrator needs no sound_engineer_work coupling of its own. */
 export interface WorkReminderState {
   exists: boolean;
-  /** status === COMPLETED_STATUS. Meaningless (and always false) when !exists. */
-  completed: boolean;
+  /** isClosedStatus(status) — approved or cancelled. Always false when !exists. */
+  closed: boolean;
 }
 
 export interface ReminderCycleDeps {
@@ -174,12 +181,13 @@ export async function processReminderCycle(
     deps.log(`work ${cycle.workId}: no longer exists — cycle stopped`);
     return { kind: "work_missing_stopped" };
   }
-  // 3. Completed outranks every reason to remind: it does not matter that notes
-  //    are still pending, nor that no newer version was ever uploaded.
-  if (work.completed) {
+  // 3. Closed — approved or cancelled — outranks every reason to remind: it does
+  //    not matter that notes are still pending, nor that no newer version was
+  //    ever uploaded. Either way there is nothing left to ask Steven for.
+  if (work.closed) {
     await deps.stopCycle(cycle.workId);
-    deps.log(`work ${cycle.workId}: status is "${COMPLETED_STATUS}" (UI "הושלם") — cycle stopped`);
-    return { kind: "work_completed_stopped" };
+    deps.log(`work ${cycle.workId}: status is "${COMPLETED_STATUS}" or "${CANCELLED_STATUS}" — cycle stopped`);
+    return { kind: "work_closed_stopped" };
   }
 
   // 4. The original condition, unchanged — a version uploaded seconds after

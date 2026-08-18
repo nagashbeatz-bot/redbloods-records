@@ -17,7 +17,8 @@ import {
   MAX_ATTEMPTS,
   REMINDER_INTERVAL_MS,
   COMPLETED_STATUS,
-  isCompletedStatus,
+  CANCELLED_STATUS,
+  isClosedStatus,
   hasReachedReminderCap,
   hasNewerVersion,
   isReminderDue,
@@ -67,7 +68,7 @@ function makeWorld(init: {
       remindersSent: init.remindersSent ?? 0,
       lastReminderAt: init.lastReminderAt ?? null,
     } as CycleState | null,
-    work: init.work ?? { exists: true, completed: false },
+    work: init.work ?? { exists: true, closed: false },
     latestVersionCreatedAt: init.latestVersionCreatedAt ?? null,
     sendResult: init.sendResult ?? [{ status: "fulfilled" }],
     pushes: [] as string[],   // one entry per push actually sent
@@ -197,7 +198,7 @@ async function main() {
 
   console.log("\n—— 7. Deleted work ——");
   {
-    const { world, tick } = makeWorld({ work: { exists: false, completed: false } });
+    const { world, tick } = makeWorld({ work: { exists: false, closed: false } });
     const out = await tick(at(5 * HOUR)); // due — would have sent before
     check("missing work stops the cycle", out.kind === "work_missing_stopped");
     check("  → NO push", world.pushes.length === 0);
@@ -208,57 +209,105 @@ async function main() {
     // Deleted between two ticks, mid-cycle.
     const { world, tick } = makeWorld({});
     await tick(at(5 * HOUR));
-    world.work = { exists: false, completed: false };
+    world.work = { exists: false, closed: false };
     const out = await tick(at(10 * HOUR));
     check("work deleted mid-cycle stops it on the next tick", out.kind === "work_missing_stopped");
     check("  → no further push", world.pushes.length === 1);
   }
 
-  console.log("\n—— 8/9/10. Completed work — the DB value is \"אושר\", the UI label is \"הושלם\" ——");
+  console.log("\n—— 8/9/10. Closed work — approved (\"אושר\" / UI \"הושלם\") or cancelled (\"בוטל\") ——");
   {
     check(`COMPLETED_STATUS is the DB value "${COMPLETED_STATUS}"`, COMPLETED_STATUS === "אושר");
-    check('isCompletedStatus("אושר") → true', isCompletedStatus("אושר"));
-    check('isCompletedStatus("הושלם") → false (UI label, never stored)', !isCompletedStatus("הושלם"));
-    for (const s of ["לא נשלח", "נשלח", "בתהליך", "חזר", "בוטל"]) {
-      check(`isCompletedStatus("${s}") → false`, !isCompletedStatus(s));
+    check(`CANCELLED_STATUS is the DB value "${CANCELLED_STATUS}"`, CANCELLED_STATUS === "בוטל");
+    check('isClosedStatus("אושר") → true (UI "הושלם")', isClosedStatus("אושר"));
+    check('isClosedStatus("בוטל") → true (UI "בוטל")', isClosedStatus("בוטל"));
+    check('isClosedStatus("הושלם") → false (UI label, never stored)', !isClosedStatus("הושלם"));
+    // QA 4: the four ACTIVE statuses — every value dbStatusToUi() renders "פעיל".
+    for (const s of ["לא נשלח", "נשלח", "בתהליך", "חזר"]) {
+      check(`isClosedStatus("${s}") → false (renders as "פעיל")`, !isClosedStatus(s));
     }
-    check("isCompletedStatus(null) → false", !isCompletedStatus(null));
+    check("isClosedStatus(null) → false", !isClosedStatus(null));
+    // Nothing outside the existing 6-value DB enum is treated as closed.
+    check('isClosedStatus("") → false', !isClosedStatus(""));
   }
   {
     // 8. Active work flips to completed mid-cycle.
     const { world, tick } = makeWorld({});
     await tick(at(5 * HOUR));
     check("reminder #1 went out while active", world.pushes.length === 1);
-    world.work = { exists: true, completed: true };
+    world.work = { exists: true, closed: true };
     const out = await tick(at(10 * HOUR));
-    check("completion stops the cycle on the NEXT tick", out.kind === "work_completed_stopped");
+    check("completion stops the cycle on the NEXT tick", out.kind === "work_closed_stopped");
     check("  → no reminder #2", world.pushes.length === 1);
     check("  → stopCycle called once", world.stops === 1);
   }
   {
     // 9. Already completed before the first reminder was ever due.
-    const { world, tick } = makeWorld({ work: { exists: true, completed: true } });
-    check("a not-yet-due tick already stops it", (await tick(at(1 * HOUR))).kind === "work_completed_stopped");
+    const { world, tick } = makeWorld({ work: { exists: true, closed: true } });
+    check("a not-yet-due tick already stops it", (await tick(at(1 * HOUR))).kind === "work_closed_stopped");
     check("  → NO push, ever", world.pushes.length === 0);
     check("  → stopped", world.cycle === null);
   }
   {
     // 10. Completed + pending notes + NO newer version — completion outranks both.
-    const { world, tick } = makeWorld({ work: { exists: true, completed: true }, latestVersionCreatedAt: null });
+    const { world, tick } = makeWorld({ work: { exists: true, closed: true }, latestVersionCreatedAt: null });
     const out = await tick(at(5 * HOUR)); // past due, no version uploaded
-    check("completed wins over 'notes pending, no new version'", out.kind === "work_completed_stopped");
+    check("completed wins over 'notes pending, no new version'", out.kind === "work_closed_stopped");
     check("  → no push", world.pushes.length === 0);
+  }
+
+  console.log("\n—— 10b. Cancelled work (בוטל) stops the cycle exactly like approved ——");
+  {
+    // QA 1: a live cycle on a cancelled work retires on the very next tick.
+    const { world, tick } = makeWorld({ work: { exists: true, closed: true } });
+    const out = await tick(at(1 * HOUR)); // not even due yet
+    check("cancelled work stops the cycle on the next tick", out.kind === "work_closed_stopped");
+    check("  → 0 pushes", world.pushes.length === 0);
+    check("  → stopCycle called once, nothing else touched", world.stops === 1);
+    check("  → the cycle row is gone", world.cycle === null);
+  }
+  {
+    // QA 2: already past due — the reminder would have gone out before.
+    const { world, tick } = makeWorld({ work: { exists: true, closed: true } });
+    const out = await tick(at(5 * HOUR));
+    check("cancelled + reminder already due → still no push", out.kind === "work_closed_stopped");
+    check("  → 0 pushes", world.pushes.length === 0);
+  }
+  {
+    // QA 3: notes pending and NO newer mix version — the exact state that used
+    // to guarantee a reminder.
+    const { world, tick } = makeWorld({ work: { exists: true, closed: true }, latestVersionCreatedAt: null });
+    const out = await tick(at(5 * HOUR));
+    check("cancelled beats 'notes pending, no new version'", out.kind === "work_closed_stopped");
+    check("  → 0 pushes", world.pushes.length === 0);
+  }
+  {
+    // Cancelled mid-cycle, after reminder #1 already went out.
+    const { world, tick } = makeWorld({});
+    await tick(at(5 * HOUR));
+    check("reminder #1 went out while the work was active", world.pushes.length === 1);
+    world.work = { exists: true, closed: true };
+    const out = await tick(at(10 * HOUR));
+    check("cancelling mid-cycle stops it on the next tick", out.kind === "work_closed_stopped");
+    check("  → no reminder #2", world.pushes.length === 1);
   }
 
   console.log("\n—— 11. An ordinary active work is untouched by all of this ——");
   {
-    const { world, tick } = makeWorld({ work: { exists: true, completed: false } });
+    const { world, tick } = makeWorld({ work: { exists: true, closed: false } });
     check("still not due at +4h", (await tick(at(4 * HOUR))).kind === "not_due");
     check("still sends at +5h", (await tick(at(5 * HOUR))).kind === "sent");
     check("  → push went out", world.pushes.length === 1);
     check("interval is still 5h", REMINDER_INTERVAL_MS === 5 * HOUR);
     check("isReminderDue: first reminder counts from cycleStartAt",
       isReminderDue(at(5 * HOUR), { workId: WORK, cycleStartAt: T0, remindersSent: 0, lastReminderAt: null }));
+    // QA 4, end-to-end: every status that renders as "פעיל" still gets its
+    // reminder — the widened stop condition caught none of them.
+    for (const st of ["לא נשלח", "נשלח", "בתהליך", "חזר"]) {
+      const w = makeWorld({ work: { exists: true, closed: isClosedStatus(st) } });
+      const out = await w.tick(at(5 * HOUR));
+      check(`status "${st}" → reminder still sends`, out.kind === "sent" && w.world.pushes.length === 1);
+    }
     check("isReminderDue: later reminders count from lastReminderAt, not a fixed grid",
       !isReminderDue(at(10 * HOUR), { workId: WORK, cycleStartAt: T0, remindersSent: 1, lastReminderAt: at(6 * HOUR).toISOString() }) &&
       isReminderDue(at(11 * HOUR), { workId: WORK, cycleStartAt: T0, remindersSent: 1, lastReminderAt: at(6 * HOUR).toISOString() }));
