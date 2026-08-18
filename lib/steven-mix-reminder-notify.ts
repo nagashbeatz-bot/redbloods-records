@@ -65,11 +65,26 @@ async function listActiveCycles(): Promise<CycleState[]> {
 
 /** Both work-level stop conditions in one read. A missing row is the deleted
  *  case — reported as exists:false rather than guessed at, so the caller stops
- *  the cycle instead of sending a push about a work nobody can open. */
+ *  the cycle instead of sending a push about a work nobody can open.
+ *
+ *  Deliberately NOT getSoundEngineerWork(): that also builds the whole project
+ *  map to resolve a display name, and this runs once per active cycle on every
+ *  one-minute tick. Only `status` is needed here — the name is looked up later,
+ *  once, and only on a tick that actually sends. A NULL status behaves exactly
+ *  as the store's own `?? "לא נשלח"` default would: not completed. */
 async function getWorkStateReal(workId: string): Promise<WorkReminderState> {
-  const work = await getSoundEngineerWork(workId);
-  if (!work) return { exists: false, completed: false };
-  return { exists: true, completed: isCompletedStatus(work.status) };
+  const { data, error } = await supabase
+    .from("sound_engineer_work")
+    .select("status")
+    .eq("id", workId)
+    .maybeSingle();
+  // Fail CLOSED on a read error, exactly as getSoundEngineerWork does: throwing
+  // aborts this tick before any send, so a transient failure can neither retire
+  // a live cycle nor push a reminder for a work whose status we couldn't read.
+  // runStevenMixReminderTick catches per cycle, leaving it intact for next time.
+  if (error) throw new Error(`failed to read work ${workId}: ${error.message}`);
+  if (!data) return { exists: false, completed: false };
+  return { exists: true, completed: isCompletedStatus(data.status as string | null) };
 }
 
 async function getLatestVersionCreatedAtReal(workId: string): Promise<string | null> {
