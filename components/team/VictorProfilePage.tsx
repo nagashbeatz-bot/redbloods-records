@@ -1972,6 +1972,9 @@ function VictorProjectDrawer({
   const [savingReview, setSavingReview] = useState(false);
   const [sendingReviewKey, setSendingReviewKey] = useState<string | null>(null); // version key mid-send
   const [reviewErr, setReviewErr] = useState<{ key: string; msg: string } | null>(null); // send error, keyed to its box
+  // Send CONFIRMATION, keyed to its box like reviewErr. Set only from the POST
+  // response, so it can never appear on load, refresh or a draft save.
+  const [reviewOk, setReviewOk] = useState<{ key: string; msg: string } | null>(null);
   const npIdx = playlist.findIndex(p => fileId(p.file) === npKey);
   const npItem = npIdx >= 0 ? playlist[npIdx] : null;
 
@@ -2106,6 +2109,7 @@ function VictorProjectDrawer({
   function openReviewEditor(key: string) {
     const r = effectiveReviews[key];
     setReviewErr(null);
+    setReviewOk(null);
     setReviewDraftNotes(r?.notes ?? "");
     setReviewDraftStatus(r?.status ?? "waiting");
     setEditingReviewKey(key);
@@ -2161,12 +2165,17 @@ function VictorProjectDrawer({
     const editingThis = editingReviewKey === key;
     const notesTrimmed = (editingThis ? reviewDraftNotes : (effectiveReviews[key]?.notes ?? "")).trim();
     if (!notesTrimmed) { setReviewErr({ key, msg: t("vreview.sendFail") }); return; }
-    setSendingReviewKey(key); setReviewErr(null);
+    setSendingReviewKey(key); setReviewErr(null); setReviewOk(null);
+    // Tracks whether the notes made it into the DB, so a push failure can say
+    // "saved but not notified" instead of implying the notes were lost too.
+    let notesStored = !editingThis;   // not editing → what's on screen is already stored
     try {
       if (editingThis) {
         const next = buildDraftReview(key, notesTrimmed);
         const ok = await persistReviewMap({ ...effectiveReviews, [key]: next });
-        if (!ok) { setReviewErr({ key, msg: t("vreview.sendFail") }); return; }
+        // Nothing was stored — do NOT claim the notes were saved.
+        if (!ok) { setReviewErr({ key, msg: t("vreview.saveFailed") }); return; }
+        notesStored = true;
       }
       const res = await fetch("/api/vendor/victor/notify-version-notes", {
         method: "POST",
@@ -2175,13 +2184,21 @@ function VictorProjectDrawer({
       });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok && d.review) {
+        // The route sends the push FIRST and only stamps sentAt once it was
+        // accepted, so ok:true means both halves genuinely happened.
         setEffectiveReviews(prev => ({ ...prev, [key]: d.review as VersionReview }));
         setEditingReviewKey(null);
+        setReviewOk({ key, msg: t("vreview.sentOk") });
       } else {
-        setReviewErr({ key, msg: (d?.error as string) || t("vreview.sendFail") });
+        // Push failed. The server left sentAt untouched, so the notes are a
+        // saved draft Victor has NOT been told about — say exactly that, and
+        // keep the server's specific reason.
+        const reason = (d?.error as string) || t("vreview.sendFail");
+        setReviewErr({ key, msg: notesStored ? `${t("vreview.pushFailed")} — ${reason}` : reason });
       }
     } catch {
-      setReviewErr({ key, msg: t("vreview.sendFail") });
+      const reason = t("vreview.sendFail");
+      setReviewErr({ key, msg: notesStored ? `${t("vreview.pushFailed")} — ${reason}` : reason });
     } finally {
       setSendingReviewKey(null);
     }
@@ -2266,6 +2283,11 @@ function VictorProjectDrawer({
         )}
         {isOwner && reviewErr?.key === key && (
           <div style={{ fontSize: 10.5, color: RED, marginTop: 7, unicodeBidi: "plaintext" } as React.CSSProperties}>{reviewErr.msg}</div>
+        )}
+        {isOwner && reviewOk?.key === key && (
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: GREEN, marginTop: 7, display: "inline-flex", alignItems: "center", gap: 5, unicodeBidi: "plaintext" } as React.CSSProperties}>
+            <IconCheck size={11} /> {reviewOk.msg}
+          </div>
         )}
       </div>
     );
