@@ -2,10 +2,15 @@ import "server-only";
 import { supabase } from "./supabase";
 
 /**
- * "Free beats" (ביטים פנויים) — OWNER-only pool of instrumentals available to work
- * on. Global (NOT per-artist): the bytes live under a single Dropbox folder
- * (/nagashbeatz/beats) and the rows live in public.beats. Completely standalone —
- * no FK to projects/artists, never surfaced to the shalev portal (owner-only API).
+ * "Free beats" (ביטים פנויים) — the canonical Redbloods beat repository. The bytes
+ * live under a single Dropbox folder (/nagashbeatz/beats) and the rows live in
+ * public.beats: one file, one row, never duplicated per artist.
+ *
+ * WHICH ARTIST SEES A BEAT is a separate fact in beat_artist_assignments
+ * (beat_id → artist_slug, slugs from lib/red-artists/portal-registry.ts). The
+ * owner's central page reads the repository unfiltered; an artist portal reads
+ * only what is assigned to that artist. Removing an assignment hides the beat
+ * from that artist and leaves the row and the Dropbox file untouched.
  *
  * The DISPLAY name is `name`; `file_name`/`dropbox_path` hold the real, unique
  * on-disk identity (a token is injected per upload so two beats can share a
@@ -88,15 +93,42 @@ function mapRow(db: DbRow): Beat {
 /** Postgres unique_violation — surfaced by the case-insensitive dropbox_path index. */
 export const UNIQUE_VIOLATION = "23505";
 
-/** All available beats, newest first. */
-export async function listBeats(): Promise<Beat[]> {
-  const { data, error } = await supabase
-    .from("beats")
-    .select("*")
+/**
+ * Available beats, newest first.
+ *
+ * `beats` stays the canonical repository — ONE row and ONE Dropbox file per beat,
+ * whoever it is shown to. Which artist SEES a beat is a separate fact, stored in
+ * beat_artist_assignments; passing an artistSlug filters to that artist's assigned
+ * beats via an inner join, and passing nothing returns the central repository.
+ * A beat is never copied and its dropbox_path never differs per artist.
+ */
+export async function listBeats(artistSlug?: string): Promise<Beat[]> {
+  const q = artistSlug
+    // !inner → rows with no assignment for this slug are dropped entirely.
+    ? supabase
+        .from("beats")
+        .select("*, beat_artist_assignments!inner(artist_slug)")
+        .eq("beat_artist_assignments.artist_slug", artistSlug)
+    : supabase.from("beats").select("*");
+
+  const { data, error } = await q
     .eq("status", "available")
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data as DbRow[]).map(mapRow);
+}
+
+/** Is this beat assigned to this artist? Gates per-beat access (stream/download)
+ *  so an artist can never reach a beat that was never assigned to them. */
+export async function isBeatAssignedTo(beatId: string, artistSlug: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("beat_artist_assignments")
+    .select("id")
+    .eq("beat_id", beatId)
+    .eq("artist_slug", artistSlug)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
 }
 
 /** All beat id+name pairs (for the server-side duplicate-name check). Cheap. */

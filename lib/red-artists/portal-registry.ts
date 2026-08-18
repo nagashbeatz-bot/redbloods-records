@@ -15,10 +15,22 @@ export const PORTAL_ARTISTS: Record<string, { slug: string }> = {
 
 export const SHALEV_NAME = "שליו טסמה";
 export const SHALEV_SLUG = "shalev-tasama";
+// The other registered portal names, so callers stop re-declaring them locally.
+export const AVI_NAME = "אבי מולה";
+export const CLEANTONE_NAME = "DJ CLEANTONE";
 
 /** True iff this exact label_artists.name has a registered portal. */
 export function isPortalArtistName(name: string | null | undefined): boolean {
   return !!name && Object.prototype.hasOwnProperty.call(PORTAL_ARTISTS, name);
+}
+
+/** Every registered portal slug — the only values a beat assignment may carry. */
+export const PORTAL_SLUGS: string[] = Object.values(PORTAL_ARTISTS).map((a) => a.slug);
+
+/** True iff `slug` is a registered portal slug. Guards the ?artist= parameter so
+ *  no caller can invent a scope that isn't a real artist. */
+export function isPortalSlug(slug: string | null | undefined): boolean {
+  return !!slug && PORTAL_SLUGS.includes(slug);
 }
 
 /** The artist's isolated Dropbox slug, or null if they have no portal. */

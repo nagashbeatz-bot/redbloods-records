@@ -11,6 +11,7 @@ import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
 import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
+import { slugForPortalArtistName } from "@/lib/red-artists/portal-registry";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -528,8 +529,15 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // hidden tab client-side either (the real security boundary is still
   // server-side: isCleantoneAllowedPath in proxy.ts blocks the underlying APIs
   // regardless of what tab state the client thinks it's on).
+  // Gated on WHICH ARTIST'S PORTAL this is, NOT on the viewer's role — same fix
+  // CLEANTONE already carries. Keying this on `isAvi` (role) meant the owner
+  // previewing Avi's portal got all 7 tabs and saw beats that were never his.
+  // NOTE: only tab VISIBILITY moves to the portal; every permission flag below
+  // (isShalev / isAvi / isOwner) stays role-based, so the owner keeps owner
+  // rights while previewing.
+  const isAviPortal = isAvi || artistName === AVI_PORTAL_NAME;
   const visibleTabs: readonly Tab[] =
-    isAvi ? (["בית", "ההופעות שלי", "המוזיקה שלי"] as const)
+    isAviPortal ? (["בית", "ההופעות שלי", "המוזיקה שלי", "ביטים פנויים"] as const)
     : isCleantonePortal ? (["בית", "ההופעות שלי"] as const)
     : TABS;
 
@@ -911,7 +919,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         ) : tab === "מאזן" ? (
           <PortalHero title="מאזן" subtitle="הכנסות, תשלומים, הוצאות והיסטוריית תנועות" />
         ) : tab === "ביטים פנויים" ? (
-          <PortalHero title="ביטים פנויים" badge="♫" subtitle={isShalev ? "ביטים זמינים להאזנה" : "ניהול ביטים זמינים לעבודה"} />
+          <PortalHero title="ביטים פנויים" badge="♫" subtitle={isOwner ? "ניהול ביטים זמינים לעבודה" : "ביטים זמינים להאזנה"} />
         ) : tab === "קבצי הופעות ויח״צ" ? (
           <PortalHero title="קבצי הופעות ויח״צ" subtitle="כל חומרי ההופעות והיח״צ שלך במקום אחד" />
         ) : (
@@ -932,7 +940,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
             )
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} onAvailabilitySent={reloadMandatoryGate} />
             : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} readOnly={isShalev} />
-            : tab === "ביטים פנויים" ? <BeatsPage readOnly={isShalev} />
+            : tab === "ביטים פנויים" ? <BeatsPage readOnly={!isOwner} artistSlug={slugForPortalArtistName(artistName) ?? undefined} />
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
             : <ComingSoon tab={tab} />}
         </div>
@@ -1059,7 +1067,9 @@ function KeyFields({ note, type, onNote, onType, disabled }: {
   );
 }
 
-function BeatsPage({ readOnly = false }: { readOnly?: boolean }) {
+/** `artistSlug` scopes the list to one artist's assigned beats; omitted (the
+ *  owner's central page) it returns the whole repository. */
+export function BeatsPage({ readOnly = false, artistSlug }: { readOnly?: boolean; artistSlug?: string }) {
   const isMobile = useIsMobile();
   const player = usePlayerSafe();
   const [beats, setBeats] = useState<BeatItem[]>([]);
@@ -1082,12 +1092,14 @@ function BeatsPage({ readOnly = false }: { readOnly?: boolean }) {
   const load = useCallback(async () => {
     setListState("loading");
     try {
-      const r = await fetch("/api/beats", { cache: "no-store" });
+      const r = await fetch(artistSlug ? `/api/beats?artist=${encodeURIComponent(artistSlug)}` : "/api/beats", { cache: "no-store" });
       const d = await r.json();
       if (r.ok && d?.ok && Array.isArray(d.beats)) { setBeats(d.beats); setListState("ready"); }
       else setListState("error");
     } catch { setListState("error"); }
-  }, []);
+    // Re-fetches when the scope changes — the owner navigating between the
+    // central page and an artist portal must never keep the previous list.
+  }, [artistSlug]);
   useEffect(() => { void load(); }, [load]);
 
   // Play a beat through the GLOBAL player (no new audio element / no new player).

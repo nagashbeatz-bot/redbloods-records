@@ -1,21 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner, requireShalevAccess } from "@/lib/require-auth";
+import { requireOwner, getAuthRole } from "@/lib/require-auth";
 import { listBeats } from "@/lib/beats-store";
+import { beatScopeForRole } from "@/lib/beat-scope";
 import { uploadBeatSingle } from "@/lib/beat-upload";
 import { notifyBeatUploaded } from "@/lib/beat-notify";
 
-// "Free beats" pool. READING (GET list + stream) is open to the owner AND the
-// shalev artist portal (listen-only). WRITING (POST/PATCH/DELETE) stays owner-only.
-// Guards are re-checked per method here on top of the proxy gate.
+// The canonical beat repository. READING is open to the owner (whole repository)
+// and to an artist portal (ONLY that artist's assigned beats). WRITING
+// (POST/PATCH/DELETE) stays owner-only. Guards are re-checked per method here on
+// top of the proxy gate.
 
 export const maxDuration = 300;
 
-// GET /api/beats → { beats } (available beats, newest first). Each beat exposes a
+// GET /api/beats            → the central repository (owner only)
+// GET /api/beats?artist=... → one artist's assigned beats
+//
+// The scope is decided from the CALLER'S ROLE, never taken on trust: an artist
+// role is pinned to its own slug and the ?artist= parameter is ignored for them,
+// so no artist can read another artist's beats or the whole repository. Only the
+// owner may pass ?artist= (they preview artist portals). Each beat exposes a
 // same-origin stream URL for the global player (never a raw Dropbox path).
-export async function GET() {
-  const denied = await requireShalevAccess(); if (denied) return denied; // owner or shalev
+export async function GET(req: NextRequest) {
+  const role = await getAuthRole();
+  const scope = beatScopeForRole(role, req.nextUrl.searchParams.get("artist"));
+  if (scope.kind === "denied") {
+    return NextResponse.json({ error: scope.reason }, { status: scope.status });
+  }
   try {
-    const beats = await listBeats();
+    const beats = await listBeats(scope.artistSlug);
     return NextResponse.json({
       ok: true,
       beats: beats.map((b) => ({

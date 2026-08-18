@@ -139,5 +139,12 @@ export function isAviAllowedPath(pathname: string): boolean {
     // his id / owner and never touches artist data — no other mutation opens up.
     `${base}/push-subscribe`,
   ];
-  return allowed.includes(pathname);
+  if (allowed.includes(pathname)) return true;
+  // His "ביטים פנויים" tab: the LIST only. The route derives the scope from his
+  // role (lib/beat-scope.ts), so he gets exactly the beats assigned to him —
+  // today, none. Playback is /api/beats/<id>/stream, allowed by prefix and
+  // guarded per beat by an assignment check, so an unassigned beat 404s.
+  // POST/PATCH/DELETE on /api/beats stay requireOwner, so nothing here mutates.
+  if (pathname === "/api/beats" || pathname.startsWith("/api/beats/")) return true;
+  return false;
 }
