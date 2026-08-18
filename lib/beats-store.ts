@@ -118,6 +118,41 @@ export async function listBeats(artistSlug?: string): Promise<Beat[]> {
   return (data as DbRow[]).map(mapRow);
 }
 
+/** The artist slugs a beat is currently assigned to. */
+export async function listBeatAssignments(beatId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("beat_artist_assignments")
+    .select("artist_slug")
+    .eq("beat_id", beatId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => (r as { artist_slug: string }).artist_slug);
+}
+
+/**
+ * Show a beat to an artist. Idempotent: the UNIQUE (beat_id, artist_slug) index
+ * means a double click can never create a second row. Copies nothing — the beat
+ * row and its Dropbox file are untouched.
+ */
+export async function assignBeatToArtist(beatId: string, artistSlug: string): Promise<void> {
+  const { error } = await supabase
+    .from("beat_artist_assignments")
+    .upsert({ beat_id: beatId, artist_slug: artistSlug }, { onConflict: "beat_id,artist_slug", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Stop showing a beat to an artist. Deletes ONLY the assignment row — the beat
+ * stays in the repository and the Dropbox file is never touched.
+ */
+export async function unassignBeatFromArtist(beatId: string, artistSlug: string): Promise<void> {
+  const { error } = await supabase
+    .from("beat_artist_assignments")
+    .delete()
+    .eq("beat_id", beatId)
+    .eq("artist_slug", artistSlug);
+  if (error) throw new Error(error.message);
+}
+
 /** Is this beat assigned to this artist? Gates per-beat access (stream/download)
  *  so an artist can never reach a beat that was never assigned to them. */
 export async function isBeatAssignedTo(beatId: string, artistSlug: string): Promise<boolean> {

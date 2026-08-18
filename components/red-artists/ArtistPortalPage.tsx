@@ -1370,6 +1370,98 @@ function BeatUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploa
 
 // Manage an existing beat (OWNER-only). menu → "עדכן ביט" (replace file + name/genre,
 // same id) / "הסר ביט" (confirm → delete file+row). All server ops are requireOwner.
+/**
+ * "שיוך לאמנים" inside the manage-beat modal. Owner-only surface: it writes to
+ * /api/beats/[id]/assignments, which is requireOwner and is excluded from every
+ * artist's proxy allowlist.
+ *
+ * Assigning never copies the beat and never touches Dropbox — it adds ONE
+ * beat_artist_assignments row; unassigning deletes only that row. A beat may be
+ * assigned to several artists at once, so each artist is an independent toggle.
+ * The server returns the full slug list after every write, so the modal shows
+ * server truth rather than an optimistic guess.
+ */
+const ASSIGNABLE_ARTISTS: { slug: string; label: string }[] = [
+  { slug: "shalev-tasama", label: "שליו טסמה" },
+  { slug: "avi-molla",     label: "אבי מולה" },
+];
+
+function BeatArtistAssignments({ beatId }: { beatId: string }) {
+  const [slugs, setSlugs]   = useState<string[] | null>(null);   // null = still loading
+  const [busy, setBusy]     = useState<string | null>(null);      // slug mid-write
+  const [err, setErr]       = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/beats/${beatId}/assignments`, { cache: "no-store" });
+        const d = await r.json();
+        if (!alive) return;
+        if (r.ok && d?.ok && Array.isArray(d.artistSlugs)) setSlugs(d.artistSlugs);
+        else { setSlugs([]); setErr("טעינת השיוכים נכשלה"); }
+      } catch { if (alive) { setSlugs([]); setErr("טעינת השיוכים נכשלה"); } }
+    })();
+    return () => { alive = false; };
+  }, [beatId]);
+
+  async function toggle(slug: string, assigned: boolean) {
+    if (busy) return;
+    setBusy(slug); setErr(null);
+    try {
+      const r = assigned
+        ? await fetch(`/api/beats/${beatId}/assignments?slug=${encodeURIComponent(slug)}`, { method: "DELETE" })
+        : await fetch(`/api/beats/${beatId}/assignments`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artistSlug: slug }),
+          });
+      const d = await r.json().catch(() => null);
+      // Adopt the server's list — never a locally-guessed one.
+      if (r.ok && d?.ok && Array.isArray(d.artistSlugs)) setSlugs(d.artistSlugs);
+      else setErr((d?.error as string) || (assigned ? "ביטול השיוך נכשל" : "השיוך נכשל"));
+    } catch {
+      setErr(assigned ? "ביטול השיוך נכשל" : "השיוך נכשל");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: TEXT2 }}>שיוך לאמנים</div>
+      {ASSIGNABLE_ARTISTS.map(({ slug, label }) => {
+        const loading  = slugs === null;
+        const assigned = !!slugs?.includes(slug);
+        const working  = busy === slug;
+        return (
+          <div key={slug} style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+            padding: "10px 13px", borderRadius: 11,
+            background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`,
+          }}>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: TEXT }}>{label}</span>
+            <button
+              onClick={() => toggle(slug, assigned)}
+              disabled={loading || !!busy}
+              style={{
+                minWidth: 92, padding: "5px 12px", borderRadius: 8, fontFamily: "inherit",
+                fontSize: 11.5, fontWeight: 800, cursor: (loading || busy) ? "default" : "pointer",
+                background: assigned ? "rgba(34,197,94,0.10)" : "rgba(255,255,255,0.05)",
+                border: `1px solid ${assigned ? "rgba(34,197,94,0.42)" : BDR2}`,
+                color: assigned ? "#22C55E" : TEXT2,
+                opacity: (loading || (busy && !working)) ? 0.55 : 1,
+              }}
+            >
+              {loading ? "…" : working ? "…" : assigned ? "✓ משויך" : "+ שייך"}
+            </button>
+          </div>
+        );
+      })}
+      {err && <div style={{ fontSize: 11.5, color: "#F87171" }}>{err}</div>}
+    </div>
+  );
+}
+
 function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
   beat: BeatItem;
   onClose: () => void;
@@ -1474,6 +1566,9 @@ function BeatManageModal({ beat, onClose, onUpdated, onDeleted }: {
                 display: "flex", alignItems: "center", gap: 10, textAlign: "start", padding: "13px 16px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
                 background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 14.5, fontWeight: 700,
               }}><IcEdit size={18} color="#FF6B6B" /> עדכן ביט</button>
+
+              <BeatArtistAssignments beatId={beat.id} />
+
               <button onClick={() => setMode("confirm")} style={{
                 display: "flex", alignItems: "center", gap: 10, textAlign: "start", padding: "13px 16px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
                 background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.35)", color: "#F87171", fontSize: 14.5, fontWeight: 700,

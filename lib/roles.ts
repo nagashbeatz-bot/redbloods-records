@@ -77,6 +77,15 @@ export function isStevenAllowedPath(pathname: string): boolean {
   return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
+/** /api/beats/<id>/assignments — owner-only beat→artist management. Never part of
+ *  any artist's surface, whatever else their beats allowlist permits. */
+function isBeatAssignmentsPath(pathname: string): boolean {
+  // Strip any query/hash first: the proxy always passes a bare pathname, but this
+  // must not become a hole if a caller ever passes a full URL path.
+  const path = pathname.split("?")[0].split("#")[0];
+  return path.startsWith("/api/beats/") && path.endsWith("/assignments");
+}
+
 /** Shalev's allowed surface — ONLY his artist portal (served at /red-artists) and
  *  the Shalev-scoped /api/red-artists/* endpoints (each hardcoded server-side to
  *  his own folders/name). He never reaches /label/artists/[id] (the dual-purpose
@@ -91,6 +100,9 @@ export function isShalevAllowedPath(pathname: string): boolean {
     "/api/red-artists",            // sketches CRUD/reorder/duration, shalev-summary, performance-files, upload, press-kit-link, profile-image, stream, balance (all Shalev-scoped per route)
     "/api/beats",                  // free-beats pool: GET list + GET [id]/stream only (read/listen); POST/PATCH/DELETE stay requireOwner per route
   ];
+  // Assignments (who a beat is shown to) are owner-only management, never an
+  // artist surface — blocked here as well as by requireOwner on the route.
+  if (isBeatAssignmentsPath(pathname)) return false;
   return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
@@ -145,6 +157,7 @@ export function isAviAllowedPath(pathname: string): boolean {
   // today, none. Playback is /api/beats/<id>/stream, allowed by prefix and
   // guarded per beat by an assignment check, so an unassigned beat 404s.
   // POST/PATCH/DELETE on /api/beats stay requireOwner, so nothing here mutates.
+  if (isBeatAssignmentsPath(pathname)) return false;   // owner-only management
   if (pathname === "/api/beats" || pathname.startsWith("/api/beats/")) return true;
   return false;
 }
