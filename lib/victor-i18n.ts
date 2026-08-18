@@ -213,9 +213,8 @@ const HE: Dict = {
   "vreview.sent": "נשלח לויקטור",
   "vreview.unsent": "שינויים שלא נשלחו",
   "vreview.sendFail": "השליחה לויקטור נכשלה",
-  // Owner-only send result. "נשלחה" = the push service accepted it for at least
-  // one of Victor's registered devices — never a claim that he opened it.
-  "vreview.sentOk": "ההערות נשלחו לוויקטור והתראת Push נשלחה",
+  // Owner-only failure text. Separates "the notes were stored" from "Victor was
+  // notified", so a saved draft he never heard about can't look delivered.
   "vreview.pushFailed": "ההערות נשמרו, אך התראת ה-Push לא נשלחה",
   "vreview.saveFailed": "שמירת ההערות נכשלה — לא נשלחה התראה",
   "vstatus.waiting": "ממתין לביקורת",
@@ -508,7 +507,6 @@ const EN: Dict = {
   "vreview.sent": "Sent to Victor",
   "vreview.unsent": "Unsent changes",
   "vreview.sendFail": "Failed to send to Victor",
-  "vreview.sentOk": "Notes sent to Victor and a push notification was sent",
   "vreview.pushFailed": "Notes were saved, but the push notification was not sent",
   "vreview.saveFailed": "Saving the notes failed — no notification was sent",
   "vstatus.waiting": "Waiting for review",
@@ -787,7 +785,6 @@ const RU: Dict = {
   "vreview.sent": "Отправлено Виктору",
   "vreview.unsent": "Неотправленные изменения",
   "vreview.sendFail": "Не удалось отправить Виктору",
-  "vreview.sentOk": "Заметки отправлены Виктору, push-уведомление отправлено",
   "vreview.pushFailed": "Заметки сохранены, но push-уведомление не отправлено",
   "vreview.saveFailed": "Не удалось сохранить заметки — уведомление не отправлено",
   "vstatus.waiting": "Ожидает обзора",

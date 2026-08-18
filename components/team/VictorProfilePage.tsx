@@ -1972,9 +1972,6 @@ function VictorProjectDrawer({
   const [savingReview, setSavingReview] = useState(false);
   const [sendingReviewKey, setSendingReviewKey] = useState<string | null>(null); // version key mid-send
   const [reviewErr, setReviewErr] = useState<{ key: string; msg: string } | null>(null); // send error, keyed to its box
-  // Send CONFIRMATION, keyed to its box like reviewErr. Set only from the POST
-  // response, so it can never appear on load, refresh or a draft save.
-  const [reviewOk, setReviewOk] = useState<{ key: string; msg: string } | null>(null);
   const npIdx = playlist.findIndex(p => fileId(p.file) === npKey);
   const npItem = npIdx >= 0 ? playlist[npIdx] : null;
 
@@ -2109,7 +2106,6 @@ function VictorProjectDrawer({
   function openReviewEditor(key: string) {
     const r = effectiveReviews[key];
     setReviewErr(null);
-    setReviewOk(null);
     setReviewDraftNotes(r?.notes ?? "");
     setReviewDraftStatus(r?.status ?? "waiting");
     setEditingReviewKey(key);
@@ -2165,7 +2161,7 @@ function VictorProjectDrawer({
     const editingThis = editingReviewKey === key;
     const notesTrimmed = (editingThis ? reviewDraftNotes : (effectiveReviews[key]?.notes ?? "")).trim();
     if (!notesTrimmed) { setReviewErr({ key, msg: t("vreview.sendFail") }); return; }
-    setSendingReviewKey(key); setReviewErr(null); setReviewOk(null);
+    setSendingReviewKey(key); setReviewErr(null);
     // Tracks whether the notes made it into the DB, so a push failure can say
     // "saved but not notified" instead of implying the notes were lost too.
     let notesStored = !editingThis;   // not editing → what's on screen is already stored
@@ -2184,11 +2180,11 @@ function VictorProjectDrawer({
       });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok && d.review) {
-        // The route sends the push FIRST and only stamps sentAt once it was
-        // accepted, so ok:true means both halves genuinely happened.
+        // Confirmation reaches the owner as a real push from the server — no
+        // in-UI banner. The status line flipping to "נשלח לויקטור · date" is the
+        // on-screen record.
         setEffectiveReviews(prev => ({ ...prev, [key]: d.review as VersionReview }));
         setEditingReviewKey(null);
-        setReviewOk({ key, msg: t("vreview.sentOk") });
       } else {
         // Push failed. The server left sentAt untouched, so the notes are a
         // saved draft Victor has NOT been told about — say exactly that, and
@@ -2283,11 +2279,6 @@ function VictorProjectDrawer({
         )}
         {isOwner && reviewErr?.key === key && (
           <div style={{ fontSize: 10.5, color: RED, marginTop: 7, unicodeBidi: "plaintext" } as React.CSSProperties}>{reviewErr.msg}</div>
-        )}
-        {isOwner && reviewOk?.key === key && (
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: GREEN, marginTop: 7, display: "inline-flex", alignItems: "center", gap: 5, unicodeBidi: "plaintext" } as React.CSSProperties}>
-            <IconCheck size={11} /> {reviewOk.msg}
-          </div>
         )}
       </div>
     );

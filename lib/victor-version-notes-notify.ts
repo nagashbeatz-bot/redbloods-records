@@ -1,6 +1,6 @@
 import "server-only";
 
-import { sendPushToRoles } from "@/lib/push";
+import { sendPushToRoles, sendPushToAll } from "@/lib/push";
 
 /**
  * Manual "send version notes to Victor" notifier — fired ONLY by the owner-only
@@ -41,10 +41,22 @@ function versionPhrase(versionKey: string): string {
   return ""; // "all"/untagged → no version phrase
 }
 
+/** Hebrew phrase for the owner's own confirmation ("V2" → "גרסה 2"). */
+function versionPhraseHe(versionKey: string): string {
+  const m = /^V(\d+)$/i.exec(versionKey);
+  if (m) return `גרסה ${Number(m[1])}`;
+  if (versionKey.toUpperCase() === "FINAL") return "גרסה סופית";
+  if (versionKey.toUpperCase() === "FIX")   return "תיקון";
+  return "";
+}
+
 export async function notifyVictorVersionNotes(
   workId: string,
   title: string,
   versionKey: string,
+  /** Owner-facing name for the owner's own confirmation. Never sent to Victor,
+   *  so unlike `title` it may carry the project name. Defaults to `title`. */
+  ownerLabel?: string,
 ): Promise<NotifyVersionNotesResult> {
   if (!pushAllowed()) return { ok: false, reason: "push-disabled" };
 
@@ -67,6 +79,30 @@ export async function notifyVictorVersionNotes(
   if (victorResults.length === 0) return { ok: false, reason: "no-victor-subscription" };
   const victorSent = fulfilledCount(victorResults);
   if (victorSent === 0) return { ok: false, reason: "victor-send-failed" };
+
+  // ── Owner acknowledgement ────────────────────────────────────────────────
+  // A SECOND, separate send — never a combined sendPushToRoles(["victor","owner"]),
+  // which would put one shared payload on both audiences: Victor would get the
+  // Hebrew owner text and, worse, the project name this file deliberately keeps
+  // out of his notifications. It also has to stay separate so the Victor result
+  // above remains the only thing the route uses to decide whether the notes count
+  // as sent. Mirrors the owner-ack pattern in lib/red-artists/sketches-notify.ts.
+  //
+  // Sent ONLY after Victor's push actually went out, so it can never tell the
+  // owner "notes sent to Victor" when they were not. Best-effort: a failure here
+  // is swallowed and never changes the result — the notes WERE delivered.
+  try {
+    const hePhrase = versionPhraseHe(versionKey);
+    const label = (ownerLabel ?? title).trim() || title;
+    await sendPushToAll({
+      title: "הערות נשלחו לוויקטור",
+      body:  hePhrase ? `${hePhrase} — ${label}` : label,
+      url,
+      tag: `victor-version-notes-ack-${workId}-${versionKey}`,
+    });
+  } catch (e) {
+    console.error("[victor-version-notes] owner ack failed", e instanceof Error ? e.message : e);
+  }
 
   return { ok: true, victorSent };
 }

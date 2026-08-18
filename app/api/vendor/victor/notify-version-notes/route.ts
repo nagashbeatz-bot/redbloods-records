@@ -19,6 +19,11 @@ import type { VersionReview } from "@/lib/types";
  * שלא נשלחו" status. If Victor has no device the DB is left untouched and the
  * caller surfaces the reason. Sends push only: no status / work_state / deadline
  * change, and never touches the brief ("קרא אותי קודם").
+ *
+ * Two pushes leave here, to two different audiences: Victor's (English, no
+ * project identity) and the owner's own confirmation (Hebrew, with the project
+ * name). The owner's is sent only after Victor's succeeded — see
+ * lib/victor-version-notes-notify.ts.
  */
 export async function POST(req: NextRequest) {
   const denied = await requireOwner(); if (denied) return denied;
@@ -55,7 +60,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Victor FIRST — if he has no active device, send nothing and touch nothing.
-    const result = await notifyVictorVersionNotes(workId, title, versionKey);
+    // The 4th arg is OWNER-facing only (the owner's own confirmation push), so it
+    // may use projectName; Victor still gets `title` and no project identity.
+    const ownerLabel = (work.projectName ?? "").trim() || title;
+    const result = await notifyVictorVersionNotes(workId, title, versionKey, ownerLabel);
     if (!result.ok) {
       const MSG: Record<typeof result.reason, string> = {
         "no-victor-subscription": "ויקטור עדיין לא הפעיל התראות במכשיר שלו",
