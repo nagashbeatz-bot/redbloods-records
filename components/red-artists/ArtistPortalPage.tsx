@@ -827,13 +827,9 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
           /* Balance amount field — no native number spinner (clean, uniform). */
           .rap-num::-webkit-outer-spin-button, .rap-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
           .rap-num { -moz-appearance: textfield; appearance: textfield; }
-          /* Dark native <select> across the WHOLE portal (incl. modals portaled to
-             <body> — that's why this is a global class rule, not a scoped one).
-             color-scheme:dark makes the native popup dark; the option rules keep it
-             readable on browsers that honour option colors. Never a white dropdown. */
-          select.rap-select { color-scheme: dark; }
-          select.rap-select option { background-color: #171314; color: #F2F2F2; }
-          select.rap-select option:checked { background-color: rgba(220,38,38,0.32); color: #ffffff; }
+          /* .rap-select lives in app/globals.css — the portal and the owner's
+             /beats page render the same controls, and a component-local block
+             only applies while THIS component is mounted. */
         `}</style>
 
         {/* ── Owner-only "back to label management" — shown ONLY in owner-preview

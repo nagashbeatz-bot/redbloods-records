@@ -349,3 +349,15 @@ select:focus {
 .no-spin::-webkit-outer-spin-button,
 .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .no-spin { -moz-appearance: textfield; appearance: textfield; }
+
+/* ── Dark native <select> dropdowns. Verbatim the rules that used to live in a
+   <style> block inside ArtistPortalPage: they only existed while that component
+   was mounted, so the SAME <select className="rap-select"> rendered from the
+   owner's /beats page had the class but none of the CSS — and the native popup
+   came up white. They are global here because the modals are portaled to <body>
+   and because two different pages now render the same controls.
+   color-scheme:dark makes the native popup dark; the option rules keep it
+   readable on browsers that honour option colors. Never a white dropdown. ── */
+select.rap-select { color-scheme: dark; }
+select.rap-select option { background-color: #171314; color: #F2F2F2; }
+select.rap-select option:checked { background-color: rgba(220,38,38,0.32); color: #ffffff; }
