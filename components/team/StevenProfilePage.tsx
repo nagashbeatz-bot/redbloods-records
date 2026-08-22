@@ -1562,6 +1562,10 @@ type VersionPlayerHandle = {
 const VersionPlayer = forwardRef<VersionPlayerHandle, {
   url: string; title: string; roleLabel: string; roleColor: string; compact?: boolean;
   shouldPlay: number; comments: MixComment[]; onDownload?: () => void; t: T;
+  /** Overrides ONLY the card's leading rule. On a riddim it carries the mix
+   *  line's accent so the open player matches its line everywhere else in the
+   *  page; left undefined the rule stays the file's role colour, as before. */
+  accentColor?: string;
   // Optional A/B-compare hooks (Work Materials). onPlayStart fires when this player
   // begins playing; onTime reports currentTime on every tick. Both no-ops elsewhere.
   onPlayStart?: () => void; onTime?: (sec: number) => void;
@@ -1571,7 +1575,7 @@ const VersionPlayer = forwardRef<VersionPlayerHandle, {
   // dragged; activeCommentId (from the list) glows the matching marker here.
   onCommentHover?: (id: string) => void; onCommentLeave?: () => void; activeCommentId?: string | null;
 }>(
-function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime, onCommentMove, onCommentHover, onCommentLeave, activeCommentId }, ref) {
+function VersionPlayer({ url, title, roleLabel, roleColor, accentColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime, onCommentMove, onCommentHover, onCommentLeave, activeCommentId }, ref) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -1625,7 +1629,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, compact = false, shou
   const bigBtn = narrow ? 40 : (compact ? 46 : 58);
 
   return (
-    <div style={{ padding: narrow ? "10px 12px 11px" : (compact ? "12px 15px 14px" : "16px 18px 18px"), background: CARD2, border: `1px solid ${BDR}`, borderInlineStart: `3px solid ${roleColor}`, borderRadius: 14 }}>
+    <div style={{ padding: narrow ? "10px 12px 11px" : (compact ? "12px 15px 14px" : "16px 18px 18px"), background: CARD2, border: `1px solid ${BDR}`, borderInlineStart: `3px solid ${accentColor ?? roleColor}`, borderRadius: 14 }}>
       <audio
         ref={audioRef} src={url} preload="metadata"
         onLoadedMetadata={e => { setDur(e.currentTarget.duration || 0); setLoading(false); }}
@@ -2843,6 +2847,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                             title={fileDisplayName(work.project, selectedGroup.label, f.role, selectedTargetName)}
                             roleLabel={roleLabel(f.role, lang)}
                             roleColor={ROLE_COLOR[f.role]}
+                            // Riddim only, and only the card's leading rule: it follows the
+                            // open mix line. undefined elsewhere -> the rule keeps the role
+                            // colour exactly as before, on every non-riddim work and on an
+                            // unassigned (pre-feature) version.
+                            accentColor={isRiddim && selectedGroup.targetId ? selectedAccent.fg : undefined}
                             compact={f.id !== playerPrimaryId}
                             shouldPlay={playReq?.id === f.id ? playReq.nonce : 0}
                             comments={(comments ?? []).filter(c => c.role === f.role)}
