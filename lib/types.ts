@@ -305,6 +305,13 @@ export interface MixVersion {
   fileSize:            number | null;
   fileType:            string | null;
   status:              string;          // בבדיקה | מוכן | מאושר | נדחה
+  /**
+   * Riddim only — which mix_targets line this version belongs to (FK
+   * mix_versions.mix_target_id). null = legacy / unassigned / a non-riddim work,
+   * and is the value every pre-feature row keeps. NEVER derived from the file
+   * name: the DB link is the single source of truth.
+   */
+  mixTargetId:         string | null;
   uploadedBy:          string | null;
   durationSeconds:     number | null;
   uploadedAt:          string;
@@ -323,6 +330,33 @@ export interface MixComment {
   status:           "open" | "resolved"; // פתוחה / טופלה — DB default "open"
   createdAt:        string;
   updatedAt:        string;
+}
+
+/**
+ * One line of a Riddim work's manual roster (public.mix_targets). A riddim is a
+ * single sound_engineer_work that carries SEVERAL independent mix lines — the
+ * instrumental plus one per artist — each with its own Mix 1/2/3 numbering and
+ * its own comment threads.
+ *
+ * Deliberately self-contained: the artist is a free-text `displayName` typed by
+ * the owner, with NO link to label_artists / clients / portals and no sync of
+ * any kind. Renaming a line touches this row only — every mix_versions row keeps
+ * pointing at `id`, so history and comments never move.
+ *
+ * "instrumental" is a fixed kind, never a fake artist row: it carries an empty
+ * displayName and is labelled from the page's own translations, so it reads
+ * correctly in both Hebrew and Steven's English-locked view.
+ */
+export type MixTargetKind = "instrumental" | "artist";
+
+export interface MixTarget {
+  id:          string;
+  workId:      string;
+  targetKind:  MixTargetKind;
+  displayName: string;        // "" for the instrumental (label comes from i18n)
+  sortOrder:   number;        // instrumental = 0, artists follow
+  removedAt:   string | null; // soft-remove — history is NEVER deleted
+  createdAt:   string;
 }
 
 /** A YouTube reference attached to a Victor work ("רפרנסים"). */
@@ -695,6 +729,14 @@ export interface SoundEngineerWork {
   id: string;
   projectId: string | null;      // null for a standalone (project-less) work
   projectName: string;           // linked project's name, else the standalone workTitle
+  /**
+   * The linked project's canonical `projects.project_type`, joined at read time —
+   * NEVER a column of sound_engineer_work. "" for a standalone work and for a
+   * project whose type was never set. Steven's page maps it to a display label
+   * (PROJECT_TYPE_LABEL) and uses it to decide Riddim mode; the canonical Hebrew
+   * value is never rewritten.
+   */
+  projectType: string;
   workTitle: string | null;      // free-text title for a standalone work (project_id = null)
   artist: string;                // joined from projects (empty for standalone)
   engineerName: string;          // "Bill" | "Steven" | custom

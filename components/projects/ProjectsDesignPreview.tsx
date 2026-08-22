@@ -922,6 +922,7 @@ function ProjectRow({
             projectId={p.id}
             projectName={p.name}
             artist={p.artist ?? ""}
+            projectType={p.projectType}
           />
         </div>
       </div>
@@ -1008,7 +1009,7 @@ function MobileCard({ project: p, onOpen, player }: { project: Project; onOpen: 
       {/* Actions row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
         <div onClick={e => e.stopPropagation()}>
-          <ActionMenu projectId={p.id} projectName={p.name} artist={p.artist ?? ""} />
+          <ActionMenu projectId={p.id} projectName={p.name} artist={p.artist ?? ""} projectType={p.projectType} />
         </div>
         <div onClick={e => e.stopPropagation()}>
           <UploadButton projectId={p.id} projectName={p.name} artist={p.artist ?? ""} existingFiles={p.files} status={p.status} size="sm" />

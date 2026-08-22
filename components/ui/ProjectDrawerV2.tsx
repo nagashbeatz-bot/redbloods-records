@@ -220,9 +220,17 @@ interface SendModalProps {
   /** Fired on a successful send, right before onClose. Lets a caller react
    *  (e.g. navigate) based on where/to-whom the send went. */
   onSuccess?:    (info: { dest: SendDestination; selection: string }) => void;
+  /** The project's canonical projects.project_type. Steven only takes
+   *  שיר / רידים / אלבום / EP, so his card is disabled for anything else. */
+  projectType?:  string;
 }
 
-export function SendModal({ projectId, projectName, artistName, onClose, onActionSent, initialDest, onSuccess }: SendModalProps) {
+/** The only project types that may be sent to Steven — mirrors
+ *  STEVEN_ALLOWED_PROJECT_TYPES in lib/steven-scope.ts, which is the real
+ *  enforcement; this is UX so the owner is never offered a rejected send. */
+const STEVEN_SENDABLE_TYPES = ["שיר", "רידים", "אלבום", "EP"];
+
+export function SendModal({ projectId, projectName, artistName, onClose, onActionSent, initialDest, onSuccess, projectType }: SendModalProps) {
   const [step,       setStep]      = useState<1 | 2>(initialDest ? 2 : 1);
   const [dest,       setDest]      = useState<SendDestination | null>(initialDest ?? null);
   const [selection,  setSelection] = useState<string | null>(null);
@@ -386,17 +394,21 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
   }
 
   // ── card grid for choices ──────────────────────────────────────────────────
-  function ChoiceCard({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+  function ChoiceCard({ label, selected, onClick, disabled = false, title }: { label: string; selected: boolean; onClick: () => void; disabled?: boolean; title?: string }) {
     return (
       <button
-        onClick={onClick}
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
+        title={title}
         style={{
+          opacity: disabled ? 0.4 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
           padding: "16px 12px", borderRadius: 14,
           border: selected ? `2px solid ${PURPLE}` : `1.5px solid ${BORDER2}`,
           background: selected ? `${PURPLE}18` : CARD_BG2,
           color: selected ? "#C4B5FD" : TEXT2,
           fontWeight: selected ? 800 : 600,
-          fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+          fontSize: 14, fontFamily: "inherit",
           textAlign: "center", transition: "none",
           boxShadow: selected ? `0 0 0 3px ${PURPLE}22` : "none",
         }}
@@ -535,10 +547,22 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
         {step === 2 && dest === "מיקס / מאסטר" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {["Bill", "Steven"].map(name => (
-                <ChoiceCard key={name} label={name} selected={selection === name} onClick={() => setSelection(name)} />
-              ))}
+              {["Bill", "Steven"].map(name => {
+                // Steven only — Bill and any other engineer are never restricted.
+                const blocked = name === "Steven" && !STEVEN_SENDABLE_TYPES.includes(projectType ?? "");
+                return (
+                  <ChoiceCard key={name} label={name} selected={selection === name}
+                    disabled={blocked}
+                    title={blocked ? `ל-Steven נשלחים רק פרויקטים מסוג ${STEVEN_SENDABLE_TYPES.join(" / ")}` : undefined}
+                    onClick={() => setSelection(name)} />
+                );
+              })}
             </div>
+            {!STEVEN_SENDABLE_TYPES.includes(projectType ?? "") && (
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
+                ל-Steven נשלחים רק פרויקטים מסוג {STEVEN_SENDABLE_TYPES.join(" / ")}.
+              </div>
+            )}
             {selection && (
               <div style={{ marginTop: 4 }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em" }}>
@@ -1621,6 +1645,7 @@ export default function ProjectDrawerV2({ projectId, onClose }: Props) {
           projectId={projectId}
           projectName={project.name}
           artistName={project.artist}
+          projectType={project.projectType}
           onClose={() => setShowSendModal(false)}
           onSuccess={({ dest, selection }) => {
             // After a successful send, go to the recipient's page. Only navigate —

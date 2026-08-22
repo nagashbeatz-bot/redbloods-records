@@ -13,10 +13,13 @@ interface Props {
   projectId:   string;
   projectName: string;
   artist:      string;
+  /** Canonical projects.project_type — passed through to SendModal so Steven's
+   *  card is disabled for a type he does not take. */
+  projectType?: string;
   onSessionCreated?: () => void;
 }
 
-export default function ActionMenu({ projectId, projectName, artist, onSessionCreated }: Props) {
+export default function ActionMenu({ projectId, projectName, artist, projectType, onSessionCreated }: Props) {
   const [open,          setOpen]          = useState(false);
   const [active,        setActive]        = useState<ActionDef | null>(null);
   const [showSend,      setShowSend]      = useState(false);
@@ -222,6 +225,7 @@ export default function ActionMenu({ projectId, projectName, artist, onSessionCr
           projectId={projectId}
           projectName={projectName}
           artistName={artist}
+          projectType={projectType}
           initialDest="מיקס / מאסטר"
           onSuccess={({ selection }) => { if (selection === "Steven") router.push("/team/steven"); }}
           onClose={() => setShowSend(false)}

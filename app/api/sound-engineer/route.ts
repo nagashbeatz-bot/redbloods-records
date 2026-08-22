@@ -6,6 +6,8 @@ import {
   createSoundEngineerWork,
   listEngineerNames,
 } from "@/lib/sound-engineer-store";
+import { STEVEN_ENGINEER, STEVEN_ALLOWED_PROJECT_TYPES } from "@/lib/steven-scope";
+import { supabase } from "@/lib/supabase";
 import type { SoundEngineerStatus, SoundEngineerWorkType } from "@/lib/types";
 
 /**
@@ -77,6 +79,25 @@ export async function POST(req: NextRequest) {
     const workTitle = (body.workTitle ?? body.title ?? "").trim();
     if (!projectId && !workTitle) {
       return NextResponse.json({ ok: false, error: "יש לבחור פרויקט קיים או להזין שם עבודה" }, { status: 400 });
+    }
+
+    // ── Steven only takes four project types ──────────────────────────────
+    // All three conditions must hold before we reject, so this can never touch
+    // Bill, a custom "אחר" engineer, or a standalone work (no project = no type):
+    //   engineer is Steven  AND  the work is project-linked  AND  the type is
+    //   outside STEVEN_ALLOWED_PROJECT_TYPES.
+    // CREATION only — existing works of any type keep working and are never
+    // hidden or migrated (hence no DB CHECK constraint).
+    if (engineerName === STEVEN_ENGINEER && projectId) {
+      const { data: proj } = await supabase
+        .from("projects").select("project_type").eq("id", projectId).maybeSingle();
+      const projectType = (proj?.project_type as string | null) ?? "";
+      if (!STEVEN_ALLOWED_PROJECT_TYPES.includes(projectType)) {
+        return NextResponse.json({
+          ok: false,
+          error: `ניתן לשלוח ל-Steven רק פרויקטים מסוג ${STEVEN_ALLOWED_PROJECT_TYPES.join(" / ")}`,
+        }, { status: 400 });
+      }
     }
 
     const work = await createSoundEngineerWork(projectId, {

@@ -1400,6 +1400,7 @@ export default function ProjectsTable() {
                     projectId={p.id}
                     projectName={p.name}
                     artist={p.artist}
+                    projectType={p.projectType}
                   />
                   {latestAudio && player ? (
                     <button

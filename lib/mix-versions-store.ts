@@ -23,6 +23,7 @@ function mapRow(r: Record<string, unknown>): MixVersion {
     fileSize:            r.file_size != null ? Number(r.file_size) : null,
     fileType:            (r.file_type as string | null) ?? null,
     status:              (r.status as string) ?? "בבדיקה",
+    mixTargetId:         (r.mix_target_id as string | null) ?? null,
     uploadedBy:          (r.uploaded_by as string | null) ?? null,
     durationSeconds:     r.duration_seconds != null ? Number(r.duration_seconds) : null,
     uploadedAt:          (r.uploaded_at as string) ?? "",
@@ -61,6 +62,8 @@ export async function createMixVersion(row: {
   fileType?:           string | null;
   uploadedBy?:         string | null;
   durationSeconds?:    number | null;
+  /** Riddim only — the mix_targets line this version belongs to. null elsewhere. */
+  mixTargetId?:        string | null;
 }): Promise<MixVersion> {
   const { data, error } = await supabase
     .from("mix_versions")
@@ -75,6 +78,7 @@ export async function createMixVersion(row: {
       file_type:              row.fileType ?? null,
       uploaded_by:            row.uploadedBy ?? null,
       duration_seconds:       row.durationSeconds ?? null,
+      mix_target_id:          row.mixTargetId ?? null,
     })
     .select()
     .single();

@@ -45,7 +45,7 @@ export function stevenDisplayName(w: Pick<SoundEngineerWork, "workTitle" | "proj
 
 function mapRow(
   row: Record<string, unknown>,
-  projectMap: Map<string, { name: string; artist: string }>,
+  projectMap: Map<string, { name: string; artist: string; projectType: string }>,
   lastUploadMap?: Map<string, string>
 ): SoundEngineerWork {
   const projectId = (row.project_id as string | null) ?? null;
@@ -61,6 +61,8 @@ function mapRow(
     projectName:          projectId ? (proj?.name ?? "פרויקט לא ידוע") : (workTitle ?? "עבודה עצמאית"),
     workTitle,
     artist:               proj?.artist ?? "",
+    // Canonical projects.project_type, joined — "" for a standalone work.
+    projectType:          proj?.projectType ?? "",
     engineerName:         row.engineer_name         as string,
     workType:             (row.work_type            as SoundEngineerWorkType) ?? "מיקס",
     status:               (row.status               as SoundEngineerStatus)   ?? "לא נשלח",
@@ -129,10 +131,19 @@ async function buildLastUploadMap(workIds: string[]): Promise<Map<string, string
   return map;
 }
 
-async function buildProjectMap(): Promise<Map<string, { name: string; artist: string }>> {
-  const { data } = await supabase.from("projects").select("id, name, artist");
-  const map = new Map<string, { name: string; artist: string }>();
-  (data ?? []).forEach((p) => map.set(p.id, { name: p.name, artist: p.artist }));
+/**
+ * project_id → { name, artist, projectType }. `project_type` is joined here and
+ * ONLY here: Steven's page needs it for the "Project Type" column and for the
+ * Riddim-mode decision, and this is the single place every work list resolves
+ * project data, so both the owner route and the scoped Steven route get it from
+ * one query. It is never copied onto sound_engineer_work.
+ */
+async function buildProjectMap(): Promise<Map<string, { name: string; artist: string; projectType: string }>> {
+  const { data } = await supabase.from("projects").select("id, name, artist, project_type");
+  const map = new Map<string, { name: string; artist: string; projectType: string }>();
+  (data ?? []).forEach((p) =>
+    map.set(p.id, { name: p.name, artist: p.artist, projectType: (p.project_type as string | null) ?? "" })
+  );
   return map;
 }
 
@@ -302,15 +313,18 @@ export async function createSoundEngineerWork(
   // Must link to a project OR carry a standalone title (never both empty).
   if (!projectId && !workTitle) throw new Error("projectId או workTitle נדרש");
 
-  // Artist only exists for project-linked works.
-  let artist = "";
+  // Project-linked works carry the project's artist, name and canonical type;
+  // a standalone work has none of them.
+  let artist = "", projectName = "", projectType = "";
   if (projectId) {
     const { data: proj } = await supabase
       .from("projects")
-      .select("artist")
+      .select("artist, name, project_type")
       .eq("id", projectId)
       .single();
-    artist = (proj?.artist as string) ?? "";
+    artist      = (proj?.artist as string) ?? "";
+    projectName = (proj?.name as string) ?? "";
+    projectType = (proj?.project_type as string | null) ?? "";
   }
 
   const agreedPrice = fields.agreedPrice ?? 0;
@@ -371,7 +385,9 @@ export async function createSoundEngineerWork(
     }
   }
 
-  const projectMap = projectId ? new Map([[projectId, { name: "", artist }]]) : new Map<string, { name: string; artist: string }>();
+  const projectMap = projectId
+    ? new Map([[projectId, { name: projectName, artist, projectType }]])
+    : new Map<string, { name: string; artist: string; projectType: string }>();
   return mapRow(row, projectMap);
 }
 

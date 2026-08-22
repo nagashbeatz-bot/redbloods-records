@@ -37,12 +37,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const label = ((form.get("label") as string | null) ?? "").trim();
     const addToExisting = form.get("addToExisting") != null;
     const roleParam     = form.get("role") as string | null;
+    // Riddim only — which mix line the file belongs to. Validated (existence,
+    // ownership, not-removed) inside resolveVersionTarget, the one choke point
+    // all four upload routes share.
+    const mixTargetId   = (form.get("mixTargetId") as string | null) ?? null;
     const durationRaw    = form.get("durationSeconds") as string | null;
     const durationParsed = durationRaw != null ? Number(durationRaw) : NaN;
     const durationSeconds = Number.isFinite(durationParsed) && durationParsed > 0 ? Math.round(durationParsed) : null;
 
     const result = await uploadMixVersionFile(workId, {
-      file: file as File, label, addToExisting, roleParam, durationSeconds,
+      file: file as File, label, addToExisting, roleParam, durationSeconds, mixTargetId,
     });
     if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: result.status });
     return NextResponse.json({ ok: true, version: result.version });

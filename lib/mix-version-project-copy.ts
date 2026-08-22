@@ -27,8 +27,13 @@ export async function duplicateFullMixToProject(args: {
   fileType: string;
   mixVersionId: string;
   token: string;
+  /** Riddim only — the mix line's name ("Instrumental" / an artist name), used as
+   *  buildVersionName's existing `typeOverride` so the copy reads "… - Tasama V1"
+   *  and the owner can tell whose mix it is. Left undefined on every normal
+   *  project, where the status-derived "מאסטר"/"סקיצה" naming is unchanged. */
+  versionTypeOverride?: string;
 }): Promise<void> {
-  const { projectId, sourceDropboxPath, fileType, mixVersionId, token } = args;
+  const { projectId, sourceDropboxPath, fileType, mixVersionId, token, versionTypeOverride } = args;
   try {
     const project = await getProject(projectId);
     if (!project) {
@@ -44,7 +49,9 @@ export async function duplicateFullMixToProject(args: {
       return;
     }
 
-    const newName = buildVersionName(project.artist, project.name, existingFiles, fileType, project.status);
+    const newName = buildVersionName(
+      project.artist, project.name, existingFiles, fileType, project.status, versionTypeOverride
+    );
     const folder = projectBaseFolder(project.artist, project.name, projectId, project.dropboxFolder);
     const destPath = `${folder}/${newName}`;
 

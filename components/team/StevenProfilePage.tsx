@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import DatePickerInput from "@/components/ui/DatePickerInput";
-import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
+import type { SoundEngineerWork, MixVersion, MixComment, MixTarget } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -47,6 +47,30 @@ const PAY_OPTIONS: PayStatus[]     = ["שולם", "לא שולם"];   // selecta
 const STATUS_EN: Record<WorkStatus, string> = { "פעיל": "Active", "הושלם": "Completed", "בוטל": "Canceled" };
 const PAY_EN:    Record<PayStatus, string>  = { "שולם": "Paid", "חלקי": "Partial", "לא שולם": "Unpaid" };
 const WT_EN:     Record<WorkType, string>   = { "מיקס מאסטרינג": "Mix & Mastering", "מאסטרינג": "Mastering" };
+/**
+ * The ONLY project types Steven works with, and how each canonical
+ * projects.project_type is shown on this page. The DB value is never rewritten —
+ * "שיר" stays "שיר"; Steven simply reads it as "סינגל" / "Single".
+ *
+ * Anything outside these four (a legacy work, a project whose type was never
+ * set, or a standalone work with no project at all) renders as an em dash and no
+ * badge — never an invented label, and never a Hebrew word in Steven's
+ * English-locked view.
+ */
+const PROJECT_TYPE_LABEL: Record<string, { he: string; en: string }> = {
+  "שיר":   { he: "סינגל", en: "Single" },
+  "רידים": { he: "רידים", en: "Riddim" },
+  "אלבום": { he: "אלבום", en: "Album"  },
+  "EP":    { he: "EP",    en: "EP"     },
+};
+/** The canonical project type that turns a work into a riddim (mirrors lib/steven-scope). */
+const RIDDIM_PROJECT_TYPE = "רידים";
+/** Display label for a project type, or null when it has none on this page. */
+const ptLabel = (pt: string, lang: Lang): string | null => {
+  const e = PROJECT_TYPE_LABEL[pt];
+  return e ? (lang === "en" ? e.en : e.he) : null;
+};
+
 const statusLabel = (s: WorkStatus, lang: Lang) => (lang === "en" ? STATUS_EN[s] : s);
 const payLabel    = (p: PayStatus, lang: Lang)  => (lang === "en" ? PAY_EN[p] : p);
 const wtLabel     = (w: WorkType, lang: Lang)   => (lang === "en" ? WT_EN[w] : w);
@@ -126,7 +150,7 @@ function fileDisplayName(project: string, label: string, role: FileRole): string
 }
 
 type RoledVersion = MixVersion & { role: FileRole };
-type VersionGroup = { key: string; label: string; files: RoledVersion[]; primary: RoledVersion; latestAt: string };
+type VersionGroup = { key: string; label: string; files: RoledVersion[]; primary: RoledVersion; latestAt: string; targetId: string | null };
 
 // Strip a trailing role qualifier so "Mix 1 (acapella)" groups with "Mix 1".
 function baseVersionKey(label: string): string {
@@ -137,13 +161,20 @@ function baseVersionKey(label: string): string {
 
 // Group flat mix_versions rows into logical versions (code-only, no DB). Existing
 // data has unique labels → each becomes a group of one (a single "mix" player).
+//
+// The key is scoped by mix_target_id, NOT by the label alone. On a riddim two
+// different lines legitimately both have a "Mix 1", and without the target in the
+// key they would collapse into one group — one shared primary, one shared comment
+// thread, both lines' files stacked together. Off a riddim every row's target is
+// null, so every key reduces to the label and grouping is exactly as before.
 function groupVersions(versions: MixVersion[]): VersionGroup[] {
   const map = new Map<string, VersionGroup>();
   for (const v of versions) {
     const rv: RoledVersion = { ...v, role: roleOfFile(v.fileName || v.label) };
-    const key = baseVersionKey(v.label) || v.id;
+    const targetId = v.mixTargetId ?? null;
+    const key = `${targetId ?? "unassigned"}|${baseVersionKey(v.label) || v.id}`;
     let g = map.get(key);
-    if (!g) { g = { key, label: baseVersionKey(v.label) || v.label, files: [], primary: rv, latestAt: rv.createdAt }; map.set(key, g); }
+    if (!g) { g = { key, label: baseVersionKey(v.label) || v.label, files: [], primary: rv, latestAt: rv.createdAt, targetId }; map.set(key, g); }
     g.files.push(rv);
     if (rv.createdAt > g.latestAt) g.latestAt = rv.createdAt;
   }
@@ -205,6 +236,10 @@ function fmtRelative(iso: string, lang: Lang): string {
 
 interface Work {
   id: string; project: string; workType: WorkType; status: WorkStatus;
+  // Linked project id + its canonical projects.project_type, joined server-side.
+  // projectType is "" for a standalone work; it drives the "Project Type" badge
+  // and is the ONLY thing that turns riddim mode on.
+  projectId: string | null; projectType: string;
   startDate: string; deadline: string; price: number; pay: PayStatus;
   // Raw internal_deadline (YYYY-MM-DD, null = none) behind the display-formatted
   // `deadline` above — the value the owner's date picker reads and writes.
@@ -251,9 +286,15 @@ function fmtDbDate(d: string | null): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
   return m ? `${m[3]}.${m[2]}.${m[1].slice(2)}` : d;
 }
+/** True when this work runs in riddim mode — decided only by the linked project's
+ *  canonical type, never by the work title or any file name. */
+const isRiddimWork = (w: Work): boolean => w.projectType === RIDDIM_PROJECT_TYPE;
+
 function mapRecord(r: SoundEngineerWork): Work {
   return {
     id:         r.id,
+    projectId:  r.projectId ?? null,
+    projectType: r.projectType ?? "",
     // Prefer the Steven/Bill-facing work title; fall back to the project name.
     project:    r.workTitle || r.projectName || "—",
     workType:   dbWorkTypeToUi(r.workType),
@@ -282,6 +323,18 @@ const TR = {
     kpiOpen: "עבודות פתוחות", kpiActive: "עבודות פעילות", kpiDone: "עבודות הושלמו", kpiDebt: "חוב ל-Steven", kpiPaidMonth: "שולם",
     payHistory: "היסטוריית תשלומים", recentFiles: "קבצים אחרונים", viewAll: "הצג הכל →", paid: "שולם", payDateTitle: "תאריך תשלום", payDateField: "תאריך תשלום",
     noPayments: "אין עדיין תשלומים ל-Steven", noRecentFiles: "אין עדיין קבצים אחרונים",
+    // ── Riddim mode (project_type = "רידים") ──────────────────────────────
+    projectTypeCol: "סוג פרויקט",
+    riddimArtists: "אמני הרידים", riddimArtistsSub: "כל אמן מקבל קו גרסאות משלו",
+    addArtist: "+ הוסף אמן", createRoster: "צור רשימת אמנים",
+    rosterEmpty: "עדיין לא הוגדרו אמנים לרידים הזה",
+    rosterEmptySteven: "ה-Owner עדיין לא הגדיר את רשימת האמנים",
+    artistNamePh: "שם האמן", instrumental: "אינסטרומנטל",
+    notUploadedYet: "לא הועלה עדיין", unassigned: "לא משויך", removedTag: "הוסר",
+    targetLabel: "שייך ל", chooseTarget: "יש לבחור אמן / אינסטרומנטל",
+    removeArtistTitle: "להסיר את האמן מהרשימה?",
+    removeArtistBody: "הגרסאות וההערות שלו יישמרו ויוצגו תחת \"הוסר\". אפשר להוסיף אותו חזרה בכל רגע.",
+    removeArtistYes: "הסר מהרשימה", rosterFail: "הפעולה נכשלה", renameArtist: "שנה שם",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולות", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
     tabActiveJobs: "עבודות פעילות", tabJobsHistory: "היסטוריית עבודות", jobsSearchPh: "חיפוש לפי שם פרויקט…", filterAllTypes: "כל סוגי העבודה", noJobsHistory: "אין עדיין עבודות בהיסטוריה", noJobsFiltered: "לא נמצאו עבודות תואמות",
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
@@ -344,6 +397,18 @@ const TR = {
     kpiOpen: "Open Jobs", kpiActive: "Active Jobs", kpiDone: "Completed Jobs", kpiDebt: "Debt to Steven", kpiPaidMonth: "Paid",
     payHistory: "Payment History", recentFiles: "Recent Files", viewAll: "View All →", paid: "Paid", payDateTitle: "Payment date", payDateField: "Payment date",
     noPayments: "No Steven payments yet", noRecentFiles: "No recent files yet",
+    // ── Riddim mode ───────────────────────────────────────────────────────
+    projectTypeCol: "Project Type",
+    riddimArtists: "Riddim Artists", riddimArtistsSub: "Each artist gets its own mix line",
+    addArtist: "+ Add Artist", createRoster: "Create Artists List",
+    rosterEmpty: "No artists have been set up for this riddim yet",
+    rosterEmptySteven: "The owner hasn't set up the artists list yet",
+    artistNamePh: "Artist name", instrumental: "Instrumental",
+    notUploadedYet: "Not uploaded yet", unassigned: "Unassigned", removedTag: "Removed",
+    targetLabel: "Target", chooseTarget: "Please choose an artist / instrumental",
+    removeArtistTitle: "Remove this artist from the list?",
+    removeArtistBody: "Their mixes and comments are kept and stay visible under \"Removed\". You can add them back at any time.",
+    removeArtistYes: "Remove", rosterFail: "Action failed", renameArtist: "Rename",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Work", noJobs: "No Steven jobs yet",
     tabActiveJobs: "Active Jobs", tabJobsHistory: "Jobs History", jobsSearchPh: "Search by project name…", filterAllTypes: "All work types", noJobsHistory: "No jobs in history yet", noJobsFiltered: "No matching jobs found",
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
@@ -649,6 +714,19 @@ const NoteIcon       = ({ size = 15 }: { size?: number }) => <LineIcon size={siz
 const ScaleIcon      = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M12 3v18M6 21h12M12 5l-7 2 3 6a3 3 0 01-6 0l3-6M12 5l7 2-3 6a3 3 0 006 0l-3-6" />;
 const UploadIcon     = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 15V3M7 8l5-5 5 5" />;
 const ArrowUpRight   = ({ size = 15 }: { size?: number }) => <LineIcon size={size} paths="M7 17L17 7M8 7h9v9" />;
+
+/** Project-type badge for the jobs table. Renders an em dash (no pill) for a
+ *  standalone work or any type outside Steven's four — never an invented label. */
+function ProjectTypeBadge({ projectType, lang }: { projectType: string; lang: Lang }) {
+  const label = ptLabel(projectType, lang);
+  if (!label) return <span style={{ fontSize: 12, color: MUTED }}>—</span>;
+  const isRiddim = projectType === RIDDIM_PROJECT_TYPE;
+  const c = isRiddim ? "#10B981" : BLUE;
+  return (
+    <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 8, whiteSpace: "nowrap",
+                   background: `${c}1A`, border: `1px solid ${c}40`, color: c }}>{label}</span>
+  );
+}
 
 function KpiCard({ label, value, icon, color = TEXT }: { label: string; value: string | number; icon: string; color?: string }) {
   const narrow = useIsNarrow(760); // tighter cards on mobile — less empty space
@@ -1193,7 +1271,10 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.project}</div>
-                        <div style={{ fontSize: 12, color: TEXT2, marginTop: 2 }}>{wtLabel(w.workType, lang)}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4, flexWrap: "wrap" }}>
+                          <ProjectTypeBadge projectType={w.projectType} lang={lang} />
+                          <span style={{ fontSize: 12, color: TEXT2 }}>{wtLabel(w.workType, lang)}</span>
+                        </div>
                       </div>
                       <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
                         {isSteven ? (
@@ -1228,7 +1309,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                 <thead>
                   <tr style={{ background: CARD2 }}>
                     <th aria-hidden style={{ width: 26 }} />
-                    {[t.project, t.workType, t.status, t.deadline, t.price, t.payment].map(h => (
+                    {[t.project, t.projectTypeCol, t.workType, t.status, t.deadline, t.price, t.payment].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: textStart, fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                     {/* Actions column — subtle spotlight so the row-action area reads as one group */}
@@ -1239,9 +1320,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                   {loading ? (
                     Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i} style={{ borderTop: `1px solid ${BDR}` }}>
-                        <td colSpan={8} style={{ padding: "0 14px" }}>
+                        <td colSpan={9} style={{ padding: "0 14px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 20, height: 45 }}>
-                            <Shimmer w={140} h={13} /><Shimmer w={88} h={12} /><Shimmer w={64} h={22} r={999} />
+                            <Shimmer w={140} h={13} /><Shimmer w={60} h={22} r={999} /><Shimmer w={88} h={12} /><Shimmer w={64} h={22} r={999} />
                             <Shimmer w={62} h={12} /><Shimmer w={62} h={12} /><Shimmer w={50} h={12} />
                             <Shimmer w={64} h={22} r={999} /><div style={{ flex: 1 }} /><Shimmer w={70} h={24} r={10} />
                           </div>
@@ -1249,9 +1330,9 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                       </tr>
                     ))
                   ) : works.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
+                    <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{t.noJobs}</td></tr>
                   ) : visibleWorks.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{jobsTab === "history" ? t.noJobsHistory : t.noJobsFiltered}</td></tr>
+                    <tr><td colSpan={9} style={{ padding: "44px 14px", textAlign: "center", fontSize: 13, color: MUTED }}>{jobsTab === "history" ? t.noJobsHistory : t.noJobsFiltered}</td></tr>
                   ) : visibleWorks.map((w, i) => (
                     <tr key={w.id}
                       onClick={() => setOpenId(w.id)}
@@ -1277,6 +1358,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                           style={{ cursor: "grab", color: dragId === w.id ? BRAND : MUTED, fontSize: 15, lineHeight: 1, userSelect: "none", display: "inline-block", padding: "8px 2px" }}>⠿</span>}
                       </td>
                       <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: TEXT, whiteSpace: "nowrap" }}>{w.project}</td>
+                      <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}><ProjectTypeBadge projectType={w.projectType} lang={lang} /></td>
                       <td style={{ padding: "11px 14px", fontSize: 12, color: TEXT2, whiteSpace: "nowrap" }}>{wtLabel(w.workType, lang)}</td>
                       <td onClick={e => e.stopPropagation()} style={{ padding: "11px 14px" }}>
                         {isSteven ? (
@@ -1664,7 +1746,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   // Per-file role picker shown after files are chosen (before upload).
   // mode: "final" = Upload Final Files (→ final_files store) · "newVersion" = create a
   // brand-new mix version (auto-named Mix N) · "existing" = add a file to selectedGroup.
-  const [rolePicker, setRolePicker] = useState<{ mode: "final" | "newVersion" | "existing"; items: { file: File; role: FileRole; status?: RpStatus; pct?: number; error?: string }[]; label?: string; phase?: "select" | "summary" } | null>(null);
+  // `targetId` is the riddim mix line the whole batch belongs to — one target per
+  // upload run, exactly like `label` already works. Undefined off a riddim.
+  const [rolePicker, setRolePicker] = useState<{ mode: "final" | "newVersion" | "existing"; items: { file: File; role: FileRole; status?: RpStatus; pct?: number; error?: string }[]; label?: string; phase?: "select" | "summary"; targetId?: string | null } | null>(null);
   const moreFilesInputRef = useRef<HTMLInputElement | null>(null); // "Add more files" (append to the open batch)
   const [delVersion, setDelVersion] = useState<MixVersion | null>(null);
   const [sel, setSel]             = useState<string | null>(null);                        // selected version id
@@ -1672,6 +1756,95 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const newMixInputRef = useRef<HTMLInputElement | null>(null);     // "Upload new version" (mode "newVersion")
   const newVersionInputRef = useRef<HTMLInputElement | null>(null); // "Upload Final Files" (mode "final")
   const addFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ── Riddim mode ──────────────────────────────────────────────────────────────
+  // A riddim work carries a manual roster of mix lines (mix_targets): the fixed
+  // instrumental plus one per artist the owner typed. Every riddim-only branch
+  // below hangs off `isRiddim`, so a normal mix work renders exactly as before.
+  const isRiddim   = isRiddimWork(work);
+  const targetsUrl = isSteven
+    ? `/api/supplier/steven/work/${work.id}/targets`
+    : `/api/sound-engineer/${work.id}/targets`;
+  const [targets, setTargets]       = useState<MixTarget[] | null>(null); // null = loading / not a riddim
+  const [rosterBusy, setRosterBusy] = useState(false);
+  const [newArtist, setNewArtist]   = useState("");
+  const [removeTarget, setRemoveTarget] = useState<MixTarget | null>(null);
+  const [expandedTarget, setExpandedTarget] = useState<string | null>(null);
+
+  /** A line's display name. The instrumental has no stored name on purpose — its
+   *  label comes from the page's own translations, so it reads correctly in both
+   *  Hebrew and Steven's English-locked view. */
+  const targetName = useCallback(
+    (tg: MixTarget) => (tg.targetKind === "instrumental" ? t.instrumental : tg.displayName),
+    [t]
+  );
+
+  // Read-only load. This never creates the instrumental — the roster only comes
+  // into existence through an explicit owner POST below.
+  const loadTargets = useCallback(async () => {
+    if (!isRiddim) { setTargets(null); return; }
+    try {
+      const res = await fetch(targetsUrl);
+      const d = await res.json().catch(() => ({} as { ok?: boolean; targets?: MixTarget[] }));
+      setTargets(res.ok && d.ok ? (d.targets ?? []) : []);
+    } catch { setTargets([]); }
+  }, [isRiddim, targetsUrl]);
+
+  useEffect(() => { void loadTargets(); }, [loadTargets]);
+
+  /** Owner-only roster write. `name` omitted → initialise the roster (creates the
+   *  instrumental line only). */
+  async function rosterPost(name?: string) {
+    if (isSteven || rosterBusy) return;
+    setRosterBusy(true);
+    try {
+      const res = await fetch(targetsUrl, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(name ? { name } : {}),
+      });
+      const d = await res.json().catch(() => ({} as { ok?: boolean; error?: string }));
+      if (!res.ok || !d.ok) { notify(d.error || t.rosterFail); return; }
+      setNewArtist("");
+      await loadTargets();
+    } catch { notify(t.rosterFail); }
+    finally { setRosterBusy(false); }
+  }
+
+  /** Rename touches display_name only — every mix keeps pointing at this id, so
+   *  no version, file or comment moves. */
+  async function rosterRename(tg: MixTarget) {
+    if (isSteven || rosterBusy) return;
+    const next = window.prompt(t.renameArtist, tg.displayName);
+    if (next === null || !next.trim() || next.trim() === tg.displayName) return;
+    setRosterBusy(true);
+    try {
+      const res = await fetch(`${targetsUrl}/${tg.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: next.trim() }),
+      });
+      const d = await res.json().catch(() => ({} as { ok?: boolean; error?: string }));
+      if (!res.ok || !d.ok) { notify(d.error || t.rosterFail); return; }
+      await loadTargets();
+    } catch { notify(t.rosterFail); }
+    finally { setRosterBusy(false); }
+  }
+
+  /** Soft remove: the line's mixes and comments stay and remain visible under a
+   *  "removed" heading; only the upload picker stops offering it. */
+  async function rosterRemove(tg: MixTarget) {
+    if (isSteven || rosterBusy) return;
+    setRosterBusy(true);
+    try {
+      const res = await fetch(`${targetsUrl}/${tg.id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({} as { ok?: boolean; error?: string }));
+      if (!res.ok || !d.ok) { notify(d.error || t.rosterFail); return; }
+      await loadTargets();
+    } catch { notify(t.rosterFail); }
+    finally { setRosterBusy(false); setRemoveTarget(null); }
+  }
+
+  /** Lines that may receive an upload — removed ones are never offered. */
+  const activeTargets = useMemo(() => (targets ?? []).filter(tg => !tg.removedAt), [targets]);
 
   // ── Timestamp comments for the selected version ──────────────────────────────
   const [comments, setComments]   = useState<MixComment[] | null>(null); // null = loading
@@ -1881,7 +2054,13 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     const seen = new Set<string>();
     const items: ReturnType<typeof makeItem>[] = [];
     for (const f of files) { const k = fileKey(f); if (!seen.has(k)) { seen.add(k); items.push(makeItem(f)); } }
-    setRolePicker({ mode, items, phase: "select" });
+    // On a riddim, "add to this version" is already committed to the selected
+    // version's line; a brand-new version defaults to the first active line
+    // (the instrumental) and the owner/Steven can change it in the modal.
+    const seedTarget = !isRiddim ? null
+      : mode === "existing" ? (selectedGroup?.targetId ?? null)
+      : (activeTargets[0]?.id ?? null);
+    setRolePicker({ mode, items, phase: "select", targetId: seedTarget });
   }
 
   // "Add more files" — append to the OPEN batch (dedup by fileKey), never replace.
@@ -1911,7 +2090,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
 
   // Single-shot upload via XHR so we get a REAL request-body progress %. ≤140MB.
   function uploadSingleVersionXhr(
-    file: File, opts: { label?: string; addToExisting?: boolean; role?: FileRole },
+    file: File, opts: { label?: string; addToExisting?: boolean; role?: FileRole; mixTargetId?: string | null },
     onPct: (p: number) => void,
   ): Promise<MixVersion | null> {
     return new Promise((resolve) => {
@@ -1930,6 +2109,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       if (opts.label) fd.append("label", opts.label);
       if (opts.addToExisting) fd.append("addToExisting", "1");
       if (opts.role) fd.append("role", opts.role);
+      if (opts.mixTargetId) fd.append("mixTargetId", opts.mixTargetId);
       xhr.send(fd);
     });
   }
@@ -1937,7 +2117,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   // Chunked Dropbox upload-session (>140MB, up to 1GB): 8MB chunks stream one at a
   // time; the final chunk (finish) names + commits + inserts the mix_versions row.
   async function uploadChunkedVersion(
-    file: File, opts: { label?: string; addToExisting?: boolean; role?: FileRole },
+    file: File, opts: { label?: string; addToExisting?: boolean; role?: FileRole; mixTargetId?: string | null },
     onPct: (p: number) => void,
   ): Promise<MixVersion | null> {
     const CHUNK = 8 * 1024 * 1024;
@@ -1959,6 +2139,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
             + (opts.label ? `&label=${encodeURIComponent(opts.label)}` : "")
             + (opts.addToExisting ? "&addToExisting=1" : "")
             + (opts.role ? `&role=${encodeURIComponent(opts.role)}` : "")
+            + (opts.mixTargetId ? `&mixTargetId=${encodeURIComponent(opts.mixTargetId)}` : "")
           : `action=append&sessionId=${encodeURIComponent(sessionId)}&offset=${offset}`;
         res = await post(qs, file.slice(offset, end));
         d = await res.json().catch(() => ({}));
@@ -2039,6 +2220,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     const isNewVersion = picker.mode === "newVersion";       // dedicated "new version" button
     let label = (isFinal || isNewVersion) ? undefined : (picker.label ?? selectedGroup?.label);
     if (!isFinal && !isNewVersion && !label) { setUploading(false); return; }
+    // Riddim mix-version uploads must name their line. The server re-checks this
+    // (it is the real boundary); this just fails fast with a clear message.
+    const mixTargetId = isRiddim && !isFinal ? (picker.targetId ?? null) : null;
+    if (isRiddim && !isFinal && !mixTargetId) { notify(t.chooseTarget); setUploading(false); return; }
     // ONE id per upload RUN (not per file, not per work) — a retry run mints its
     // own fresh id, so its own summary push is independent of whatever a prior
     // run already sent. Groups every file below into a single owner summary
@@ -2071,8 +2256,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
         // Mix-version upload — creates a new version (label undefined → backend
         // auto-names "Mix N") or adds to the selected one (label already set).
         const v = it.file.size > VER_CHUNK_LIMIT
-          ? await uploadChunkedVersion(it.file, { label, addToExisting: !!label, role: it.role }, onPct)
-          : await uploadSingleVersionXhr(it.file, { label, addToExisting: !!label, role: it.role }, onPct);
+          ? await uploadChunkedVersion(it.file, { label, addToExisting: !!label, role: it.role, mixTargetId }, onPct)
+          : await uploadSingleVersionXhr(it.file, { label, addToExisting: !!label, role: it.role, mixTargetId }, onPct);
         if (v) {
           if (!label) { label = v.label; if (isNewVersion) setSel(v.id); } // first success = the version (pre-de4ab8f behavior)
           setItem(i, { status: "done", pct: 100 });
@@ -2135,6 +2320,49 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   // its files → its primary). `sel` always holds the group's primary file id.
   const groups = useMemo(() => groupVersions(versions ?? []), [versions]);
   const selectedGroup = groups.find(g => g.files.some(f => f.id === sel)) ?? null;
+
+  /**
+   * Riddim only — the version list split into one section per mix line, in
+   * roster order: instrumental, then the artists, then removed lines, then
+   * "Unassigned" last.
+   *
+   * "Unassigned" holds every version whose mix_target_id is null, i.e. everything
+   * uploaded before this feature existed. Those rows are shown exactly as they
+   * are, with their comments: nothing is backfilled and no assignment is guessed.
+   */
+  type TargetSection = { key: string; name: string; removed: boolean; groups: VersionGroup[] };
+  const targetSections = useMemo<TargetSection[] | null>(() => {
+    if (!isRiddim) return null;
+    const byTarget = new Map<string, VersionGroup[]>();
+    for (const g of groups) {
+      const k = g.targetId ?? "__unassigned";
+      const list = byTarget.get(k); if (list) list.push(g); else byTarget.set(k, [g]);
+    }
+    const roster = [...(targets ?? [])].sort((a, b) => {
+      if (!!a.removedAt !== !!b.removedAt) return a.removedAt ? 1 : -1;   // removed last
+      if (a.targetKind !== b.targetKind) return a.targetKind === "instrumental" ? -1 : 1;
+      return a.sortOrder - b.sortOrder;
+    });
+    const out: TargetSection[] = roster.map(tg => ({
+      key: tg.id, name: targetName(tg), removed: !!tg.removedAt, groups: byTarget.get(tg.id) ?? [],
+    }));
+    // Anything not matched by a roster line (legacy nulls, or a target the roster
+    // no longer returns) lands here — never dropped from the UI.
+    const known = new Set(roster.map(tg => tg.id));
+    const leftovers = [...byTarget.entries()]
+      .filter(([k]) => k === "__unassigned" || !known.has(k))
+      .flatMap(([, v]) => v);
+    if (leftovers.length) out.push({ key: "__unassigned", name: t.unassigned, removed: false, groups: leftovers });
+    return out;
+  }, [isRiddim, groups, targets, targetName, t]);
+
+  // Keep the section holding the current selection open, without fighting a
+  // manual toggle: this only fires when the selection moves outside the open one.
+  useEffect(() => {
+    if (!targetSections || !selectedGroup) return;
+    const owner = targetSections.find(sec => sec.groups.some(g => g.key === selectedGroup.key));
+    if (owner && owner.key !== expandedTarget) setExpandedTarget(owner.key);
+  }, [targetSections, selectedGroup]); // eslint-disable-line react-hooks/exhaustive-deps
   const primary = selectedGroup?.primary ?? null;
 
   // Audio players in the selected version (archives are download-only rows, not players).
@@ -2206,6 +2434,34 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
 
   const innerHead: React.CSSProperties = { fontSize: 13.5, fontWeight: 800, color: TEXT, padding: "12px 16px", borderBottom: `1px solid ${BDR}` };
   const subCard: React.CSSProperties = { background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, overflow: "hidden" };
+  /** One version row in the left list. Identical markup for a normal work's flat
+   *  list and for the rows nested under a riddim's mix line — the grouping above
+   *  changed, the row itself did not. */
+  const versionRow = (g: VersionGroup) => {
+    const isSel = selectedGroup?.key === g.key;
+    const st = g.primary.status;
+    return (
+      <div key={g.key} onClick={() => setSel(g.primary.id)}
+        style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 11, cursor: "pointer", background: isSel ? `${BRAND}14` : "transparent", border: `1px solid ${isSel ? BRAND + "66" : "transparent"}`, transition: "background .12s" }}>
+        <button onClick={e => { e.stopPropagation(); setSel(g.primary.id); setPlayReq(p => ({ id: g.primary.id, nonce: (p?.nonce ?? 0) + 1 })); }} title={t.vPlay}
+          style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div title={g.label} style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: vStatusColor(st), flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{vStatusLabel(st, lang)} · {g.files.length} {lang === "en" ? "files" : "קבצים"}</span>
+          </div>
+        </div>
+        {/* Delete a whole version — owner only. */}
+        {!isSteven && <button onClick={e => { e.stopPropagation(); setDelVersion(g.primary); }} title={t.vDelYes}
+          style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
+          onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>}
+      </div>
+    );
+  };
+
   const detailRow = (label: string, node: React.ReactNode) => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minHeight: 33, padding: "4px 0", borderBottom: `1px solid ${BDR}` }}>
       <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, flexShrink: 0 }}>{label}</span>
@@ -2250,6 +2506,70 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
 
             {/* ═══ LEFT: versions · upload · project files · Dropbox ═══ */}
             <div style={{ ...colWrap, order: narrow ? 2 : 1 }}>
+              {/* ── Riddim roster ─────────────────────────────────────────────
+                  Riddim works only. The owner types the artist names; Steven
+                  sees the list read-only and picks from it when uploading.
+                  Rendering this NEVER creates anything — the instrumental line
+                  is born from the explicit buttons below. */}
+              {isRiddim && (
+                <div style={{ ...subCard, border: "1px solid rgba(16,185,129,0.28)" }}>
+                  <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>🎤 {t.riddimArtists}</span>
+                    {activeTargets.length > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: MUTED }}>{activeTargets.length}</span>}
+                  </div>
+                  <div style={{ padding: "10px 13px 13px", display: "flex", flexDirection: "column", gap: 7 }}>
+                    {targets === null ? (
+                      <RowsSkeleton rows={2} height={28} pad="0" />
+                    ) : targets.length === 0 ? (
+                      <>
+                        <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "6px 0 2px", lineHeight: 1.6 }}>
+                          {isSteven ? t.rosterEmptySteven : t.rosterEmpty}
+                        </div>
+                        {!isSteven && (
+                          <button type="button" disabled={rosterBusy} onClick={() => void rosterPost()}
+                            style={{ padding: "9px 14px", borderRadius: 10, border: `1px solid ${GREEN}55`, background: `${GREEN}1A`, color: GREEN, fontSize: 12.5, fontWeight: 800, cursor: rosterBusy ? "default" : "pointer", fontFamily: "inherit", opacity: rosterBusy ? 0.6 : 1 }}>
+                            {t.createRoster}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {targets.map(tg => (
+                          <div key={tg.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}`, opacity: tg.removedAt ? 0.55 : 1 }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {targetName(tg)}
+                              {tg.removedAt && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 800, color: MUTED }}>· {t.removedTag}</span>}
+                            </span>
+                            {/* The instrumental is a fixed line: no rename, no remove. */}
+                            {!isSteven && tg.targetKind === "artist" && !tg.removedAt && (
+                              <>
+                                <button type="button" onClick={() => void rosterRename(tg)} title={t.renameArtist} disabled={rosterBusy}
+                                  style={{ background: "none", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", flexShrink: 0, padding: 0 }}>✎</button>
+                                <button type="button" onClick={() => setRemoveTarget(tg)} title={t.removeArtistYes} disabled={rosterBusy}
+                                  style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0, padding: 0 }}
+                                  onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>✕</button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                        {!isSteven && (
+                          <div style={{ display: "flex", gap: 7, marginTop: 2 }}>
+                            <input value={newArtist} onChange={e => setNewArtist(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter" && newArtist.trim()) void rosterPost(newArtist.trim()); }}
+                              placeholder={t.artistNamePh}
+                              style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 9, background: "#0D0D12", border: `1px solid ${BDR2}`, color: TEXT, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                            <button type="button" disabled={rosterBusy || !newArtist.trim()} onClick={() => void rosterPost(newArtist.trim())}
+                              style={{ padding: "7px 12px", borderRadius: 9, border: `1px solid ${BDR2}`, background: "transparent", color: newArtist.trim() ? TEXT : MUTED, fontSize: 12, fontWeight: 800, cursor: newArtist.trim() && !rosterBusy ? "pointer" : "default", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                              {t.addArtist}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Versions for project */}
               <div style={subCard}>
                 <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -2264,30 +2584,38 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   <div style={{ padding: "10px 16px 18px", fontSize: 12, color: MUTED, textAlign: "center" }}>{t.vEmpty}</div>
                 ) : (
                   <div style={{ padding: "8px 10px 10px", display: "flex", flexDirection: "column", gap: 5, maxHeight: 240, overflowY: "auto" }}>
-                    {groups.map(g => {
-                      const isSel = selectedGroup?.key === g.key;
-                      const st = g.primary.status;
+                    {/* Riddim: one collapsible section per mix line, each holding
+                        that line's own Mix 1/2/3. The rows inside are the SAME
+                        version rows a normal work renders — only the grouping
+                        above them is new. */}
+                    {targetSections && targetSections.map(sec => {
+                      const open  = expandedTarget === sec.key;
+                      const latest = sec.groups[0]?.label ?? null;
                       return (
-                        <div key={g.key} onClick={() => setSel(g.primary.id)}
-                          style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 11, cursor: "pointer", background: isSel ? `${BRAND}14` : "transparent", border: `1px solid ${isSel ? BRAND + "66" : "transparent"}`, transition: "background .12s" }}>
-                          <button onClick={e => { e.stopPropagation(); setSel(g.primary.id); setPlayReq(p => ({ id: g.primary.id, nonce: (p?.nonce ?? 0) + 1 })); }} title={t.vPlay}
-                            style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
-                          </button>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div title={g.label} style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: vStatusColor(st), flexShrink: 0 }} />
-                              <span style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{vStatusLabel(st, lang)} · {g.files.length} {lang === "en" ? "files" : "קבצים"}</span>
-                            </div>
+                        <div key={sec.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <div
+                            onClick={() => setExpandedTarget(open ? null : sec.key)}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10, cursor: "pointer",
+                                     background: open ? "rgba(255,255,255,0.04)" : "transparent", border: `1px solid ${open ? BDR2 : "transparent"}` }}>
+                            <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, transform: open ? "rotate(90deg)" : "none", transition: "transform .12s" }}>▶</span>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 800, color: sec.removed ? MUTED : TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {sec.name}
+                              {sec.removed && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 6, padding: "1px 5px" }}>{t.removedTag}</span>}
+                            </span>
+                            <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: latest ? TEXT2 : MUTED, whiteSpace: "nowrap" }}>
+                              {latest ?? t.notUploadedYet}
+                            </span>
                           </div>
-                          {/* Delete a whole version — owner only. */}
-                          {!isSteven && <button onClick={e => { e.stopPropagation(); setDelVersion(g.primary); }} title={t.vDelYes}
-                            style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
-                            onMouseEnter={e => (e.currentTarget.style.color = RED)} onMouseLeave={e => (e.currentTarget.style.color = "#7A4A4A")}>🗑</button>}
+                          {open && sec.groups.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingInlineStart: 14 }}>
+                              {sec.groups.map(g => versionRow(g))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+                    {/* Non-riddim: the flat list, unchanged. */}
+                    {!targetSections && groups.map(g => versionRow(g))}
                   </div>
                 )}
               </div>
@@ -2306,15 +2634,28 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
               <div style={{ ...subCard, border: "1px solid rgba(0,98,238,0.32)" }}>
                 <div style={innerHead}><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><UploadIcon /> {t.rpSubNew}</span></div>
                 <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                  <button
-                    type="button"
-                    onClick={() => { if (!uploading) newMixInputRef.current?.click(); }}
-                    disabled={uploading}
-                    style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12, border: "none", cursor: uploading ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff", background: uploading ? MUTED : "linear-gradient(180deg, #0062EE, #0047B8)", boxShadow: uploading ? "none" : "0 6px 18px rgba(0,98,238,0.30)", opacity: uploading ? 0.7 : 1, transition: "all .15s" }}
-                  >
-                    {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadNewVersionBtn}</>}
-                  </button>
-                  <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.55, textAlign: "center" }}>{t.vFileHint}</div>
+                  {(() => {
+                    // A riddim mix must belong to a line, so uploading is blocked
+                    // until the owner has set the roster up. Explicit and visible,
+                    // rather than silently creating a line on Steven's behalf.
+                    const noRoster = isRiddim && activeTargets.length === 0;
+                    const blocked  = uploading || noRoster;
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { if (!blocked) newMixInputRef.current?.click(); }}
+                          disabled={blocked}
+                          style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "14px 16px", borderRadius: 12, border: "none", cursor: blocked ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 900, color: "#fff", background: blocked ? MUTED : "linear-gradient(180deg, #0062EE, #0047B8)", boxShadow: blocked ? "none" : "0 6px 18px rgba(0,98,238,0.30)", opacity: blocked ? 0.7 : 1, transition: "all .15s" }}
+                        >
+                          {uploading ? <><WMSpinner size={13} color="#fff" /> {t.vUploading}</> : <><UploadIcon size={17} /> {t.uploadNewVersionBtn}</>}
+                        </button>
+                        <div style={{ fontSize: 10.5, color: noRoster ? "#FBBF24" : MUTED, lineHeight: 1.55, textAlign: "center" }}>
+                          {noRoster ? (isSteven ? t.rosterEmptySteven : t.rosterEmpty) : t.vFileHint}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -2405,7 +2746,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                     <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, display: "inline-flex", alignItems: "center", gap: 7 }}><MusicIcon size={16} /> {t.versionFiles}</div>
                     <div style={{ fontSize: 11.5, color: MUTED, marginTop: 3 }}>{t.versionFilesSub}</div>
                   </div>
-                  {selectedGroup && (
+                  {/* On a riddim, adding a file to an UNASSIGNED (pre-feature)
+                      version is hidden: it has no mix line, and forcing one here
+                      would silently move the file to a different line than the
+                      version the user is looking at. */}
+                  {selectedGroup && !(isRiddim && selectedGroup.targetId === null) && (
                     <button
                       onClick={() => { if (!uploading) addFileInputRef.current?.click(); }}
                       disabled={uploading}
@@ -2727,6 +3072,23 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
         )}
 
         {/* Delete-version confirmation */}
+        {/* Remove-artist confirm. Deliberately worded as a roster change, not a
+            delete: the line's mixes and comments are kept and stay visible. */}
+        {removeTarget && (
+          <div onClick={() => setRemoveTarget(null)} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${BDR2}`, borderRadius: 16, width: "min(420px, 92vw)", padding: "22px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: TEXT, marginBottom: 10 }}>{t.removeArtistTitle}</div>
+              <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 8 }}>{t.removeArtistBody}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT, marginBottom: 16 }}>{removeTarget.displayName}</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setRemoveTarget(null)} style={{ ...ghostBtn, flex: 1, justifyContent: "center" }}>{t.confirmNo}</button>
+                <button onClick={() => void rosterRemove(removeTarget)} disabled={rosterBusy}
+                  style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: rosterBusy ? "default" : "pointer", fontFamily: "inherit", opacity: rosterBusy ? 0.6 : 1 }}>{t.removeArtistYes}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {delVersion && (
           <div onClick={() => setDelVersion(null)} style={{ position: "fixed", inset: 0, zIndex: 100002, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <div onClick={e => e.stopPropagation()} dir={rtl ? "rtl" : "ltr"} style={{ background: CARD, border: `1px solid ${RED}44`, borderRadius: 16, width: "min(420px, 92vw)", padding: "22px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", fontFamily: "'Heebo', Arial, sans-serif" }}>
@@ -2764,7 +3126,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           const failCount = items.filter(x => x.status === "error").length;
           const uploadableCount = items.filter(x => x.status !== "done" && x.file.size <= VER_MAX_BYTES).length;
           const canRemove = !uploading && phase !== "summary";
-          const canUpload = !uploading && uploadableCount > 0;
+          // On a riddim a mix-version upload cannot start without a mix line —
+          // which also covers the "roster not set up yet" case, since there is
+          // then nothing to choose.
+          const needsTarget = isRiddim && rolePicker.mode !== "final";
+          const canUpload = !uploading && uploadableCount > 0 && (!needsTarget || !!rolePicker.targetId);
           // Modal title/hint follow the mode that opened it — never hardcoded to
           // "Upload Final Files" regardless of which of the three buttons was used.
           const modeTitle = rolePicker.mode === "final" ? t.uploadFinalBtn
@@ -2804,6 +3170,23 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#FCA5A5", background: "rgba(239,68,68,0.1)", border: `1px solid ${RED}55`, borderRadius: 11, padding: "12px 13px" }}>⚠ {t.rpAllFailed}</div>
                   )}
+                </div>
+              )}
+
+              {/* Riddim: ONE target for the whole batch, chosen before upload —
+                  the same one-per-run shape `label` already has. Removed lines are
+                  never offered. Hidden for Final Files, which has no mix line. */}
+              {isRiddim && rolePicker.mode !== "final" && (
+                <div style={{ padding: "12px 18px 0", display: "flex", alignItems: "center", gap: 9 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: MUTED, whiteSpace: "nowrap" }}>{t.targetLabel}:</span>
+                  <select
+                    value={rolePicker.targetId ?? ""}
+                    disabled={uploading || phase === "summary"}
+                    onChange={e => setRolePicker(p => p ? { ...p, targetId: e.target.value || null } : p)}
+                    style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, padding: "7px 9px", borderRadius: 9, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontFamily: "inherit", outline: "none", cursor: uploading ? "default" : "pointer" }}>
+                    {activeTargets.length === 0 && <option value="">{t.rosterEmpty}</option>}
+                    {activeTargets.map(tg => <option key={tg.id} value={tg.id}>{targetName(tg)}</option>)}
+                  </select>
                 </div>
               )}
 
@@ -3457,7 +3840,7 @@ function WorkMaterialsModal({ work, isSteven, isOwner, onClose, onOpenWork, noti
 }
 
 // ── "New Work for Steven" modal ──────────────────────────────────────────────────
-type ProjOpt = { id: string; name: string; artist: string };
+type ProjOpt = { id: string; name: string; artist: string; projectType: string };
 function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; onCreated: () => void; lang: Lang; t: T }) {
   const [mode, setMode]           = useState<"linked" | "standalone">("linked");
   const [projects, setProjects]   = useState<ProjOpt[]>([]);
@@ -3481,11 +3864,22 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
 
   // Existing projects for the "linked" mode picker (owner-only endpoint). Never
   // creates a projects row — a standalone work carries its own free-text title.
+  //
+  // Filtered to the four project types Steven takes, so the owner is never offered
+  // a project the server would then reject. This is UX only — POST
+  // /api/sound-engineer is the real boundary and re-checks the type itself.
   useEffect(() => {
     let alive = true;
     fetch("/api/projects")
       .then(r => (r.ok ? r.json() : []))
-      .then((arr: ProjOpt[]) => { if (alive && Array.isArray(arr)) setProjects(arr.map(p => ({ id: p.id, name: p.name, artist: p.artist }))); })
+      .then((arr: ProjOpt[]) => {
+        if (!alive || !Array.isArray(arr)) return;
+        setProjects(
+          arr
+            .map(p => ({ id: p.id, name: p.name, artist: p.artist, projectType: p.projectType ?? "" }))
+            .filter(p => PROJECT_TYPE_LABEL[p.projectType] !== undefined)
+        );
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -3562,7 +3956,9 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
                 >
                   <option value="">{rtl ? "בחר פרויקט…" : "Select a project…"}</option>
                   {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}{p.artist ? ` — ${p.artist}` : ""}</option>
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.artist ? ` — ${p.artist}` : ""} · {ptLabel(p.projectType, lang)}
+                    </option>
                   ))}
                 </select>
               ))

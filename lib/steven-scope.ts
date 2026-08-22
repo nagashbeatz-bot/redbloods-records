@@ -22,6 +22,36 @@ import { getMixComment } from "@/lib/mix-comments-store";
 export const STEVEN_ENGINEER = "Steven";
 
 /**
+ * The canonical projects.project_type that turns a Steven work into a RIDDIM —
+ * one work holding several independent mix lines (instrumental + one per
+ * artist). Every riddim-mode branch, server and client, tests against this
+ * constant; nothing keys off a work title or any string match.
+ */
+export const RIDDIM_PROJECT_TYPE = "רידים";
+
+/**
+ * The only canonical project types a NEW project-linked Steven work may be
+ * created for. Display labels live on the page (PROJECT_TYPE_LABEL) — this is
+ * the canonical Hebrew, never rewritten.
+ *
+ * Scope is deliberately narrow, and all three conditions must hold before a
+ * create is rejected (see POST /api/sound-engineer):
+ *   1. the engineer is Steven — the route legitimately also serves Bill and
+ *      custom "אחר" names, which this must never restrict;
+ *   2. the work is project-LINKED — a standalone work (project_id null, free
+ *      title) has no project type at all and stays allowed;
+ *   3. the linked project's type is not in this list.
+ * It gates CREATION only. No existing work is ever hidden, blocked or migrated,
+ * and there is deliberately no DB CHECK — that would invalidate valid legacy rows.
+ */
+export const STEVEN_ALLOWED_PROJECT_TYPES: string[] = ["שיר", RIDDIM_PROJECT_TYPE, "אלבום", "EP"];
+
+/** True when this work's linked project type turns on riddim mode. */
+export function isRiddimProjectType(projectType: string | null | undefined): boolean {
+  return projectType === RIDDIM_PROJECT_TYPE;
+}
+
+/**
  * Strip owner-INTERNAL fields from a work before sending to Steven. Payment info
  * (agreedPrice / amountPaid / balance / currency / paymentDate / derived pay status)
  * is now shown to Steven READ-ONLY (there is no work-mutation route for him, so the

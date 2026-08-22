@@ -17,7 +17,12 @@
 import "server-only";
 import { mixVersionsFolder, sanitizeFolder } from "@/lib/project-paths";
 import { createMixVersion } from "@/lib/mix-versions-store";
-import { STEVEN_ENGINEER } from "@/lib/steven-scope";
+import { STEVEN_ENGINEER, isRiddimProjectType } from "@/lib/steven-scope";
+import { listMixTargets, getMixTarget } from "@/lib/mix-targets-store";
+import {
+  labelsInScope, fileNamesInScope, nextMixLabel, isLabelTaken, versionNameParts,
+  type VersionRow,
+} from "@/lib/riddim-numbering-pure";
 import type { MixVersion } from "@/lib/types";
 
 export const AUDIO_ZIP = /\.(wav|mp3|m4a|aiff?|flac|ogg|zip|rar|7z)$/i;
@@ -63,6 +68,14 @@ export type VersionTarget = {
   cleanFileName: string;
   dropboxPath: string;
   fileType: string;
+  /** Riddim only — the mix_targets line this file belongs to; null everywhere else.
+   *  This is the SOURCE OF TRUTH for the assignment: the target name also goes
+   *  into the file name (below) purely to avoid a Dropbox collision, and is never
+   *  parsed back out. */
+  mixTargetId: string | null;
+  /** Riddim only — that line's display name ("Instrumental" for the fixed line),
+   *  used for the file name and for the project-player copy. "" when not a riddim. */
+  mixTargetName: string;
 };
 
 export type TargetResult =
@@ -76,7 +89,7 @@ export type TargetResult =
  */
 export async function resolveVersionTarget(
   workId: string,
-  input: { fileName: string; label: string; addToExisting: boolean; roleParam: string | null }
+  input: { fileName: string; label: string; addToExisting: boolean; roleParam: string | null; mixTargetId?: string | null }
 ): Promise<TargetResult> {
   const { fileName, label, addToExisting, roleParam } = input;
   if (!fileName)              return { ok: false, status: 400, error: "חסר קובץ" };
@@ -93,13 +106,14 @@ export async function resolveVersionTarget(
 
   const projectId = (work.project_id as string | null) ?? null;
   const workTitle = (work.work_title as string | null) ?? null;
-  let artist = "", projectName = "";
+  let artist = "", projectName = "", projectType = "";
   let dropboxFolder: string | null = null; // frozen project base folder (rename-proof)
   if (projectId) {
     const { getProject } = await import("@/lib/projects-store");
     const project = await getProject(projectId);
     artist      = project?.artist ?? "";
     projectName = project?.name ?? "";
+    projectType = project?.projectType ?? "";
     dropboxFolder = project?.dropboxFolder ?? null;
   }
   // Same fallback formula as SoundEngineerWork.projectName (lib/sound-engineer-store.ts).
@@ -108,23 +122,57 @@ export async function resolveVersionTarget(
   const dot = fileName.lastIndexOf(".");
   const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : "";
 
+  // ── Riddim: resolve WHICH mix line this file belongs to ────────────────────
+  // A riddim work holds several independent mix lines, so the target is a
+  // required, explicit input — never guessed from the file name. Everything
+  // below (numbering, the 409, the file name) is then scoped to that line.
+  const isRiddim = isRiddimProjectType(projectType);
+  let mixTargetId: string | null = null;
+  let mixTargetName = "";
+  if (isRiddim) {
+    const roster = await listMixTargets(workId, { activeOnly: true });
+    if (roster.length === 0) {
+      return { ok: false, status: 400, error: "עדיין לא הוגדרה רשימת אמנים לרידים הזה" };
+    }
+    const requested = (input.mixTargetId ?? "").trim();
+    if (!requested) return { ok: false, status: 400, error: "יש לבחור אמן / אינסטרומנטל" };
+
+    const chosen = roster.find(t => t.id === requested);
+    if (!chosen) {
+      // Separate "belongs to another work" (an IDOR attempt) from "was removed
+      // from this roster" (a stale picker), so the caller gets a truthful status.
+      const other = await getMixTarget(requested);
+      if (other && other.workId === workId) {
+        return { ok: false, status: 400, error: "האמן הוסר מרשימת הרידים" };
+      }
+      return { ok: false, status: 403, error: "אין הרשאה לאמן הזה" };
+    }
+    mixTargetId   = chosen.id;
+    mixTargetName = chosen.targetKind === "instrumental" ? "Instrumental" : chosen.displayName;
+  }
+
   const { data: existingRows } = await supabase
-    .from("mix_versions").select("label, file_name").eq("sound_engineer_work_id", workId);
-  const existingLabels = new Set((existingRows ?? []).map(r => (r.label as string)));
-  const existingNames  = new Set((existingRows ?? []).map(r => (r.file_name as string)));
+    .from("mix_versions").select("label, file_name, mix_target_id").eq("sound_engineer_work_id", workId);
+  const rows: VersionRow[] = (existingRows ?? []).map(r => ({
+    label:       (r.label as string) ?? "",
+    fileName:    (r.file_name as string) ?? "",
+    mixTargetId: (r.mix_target_id as string | null) ?? null,
+  }));
+  // Labels per LINE, file names per WORK — see lib/riddim-numbering-pure.ts.
+  const existingLabels = labelsInScope(rows, { isRiddim, mixTargetId });
+  const existingNames  = fileNamesInScope(rows);
 
   let effectiveLabel = label;
   if (!effectiveLabel) {
-    let n = 1;
-    while (existingLabels.has(`Mix ${n}`)) n++;
-    effectiveLabel = `Mix ${n}`;
-  } else if (existingLabels.has(effectiveLabel) && !addToExisting) {
+    effectiveLabel = nextMixLabel(existingLabels);
+  } else if (isLabelTaken(existingLabels, effectiveLabel) && !addToExisting) {
     return { ok: false, status: 409, error: "כבר קיימת גרסה בשם הזה" };
   }
 
   const safeLabel   = sanitizeFolder(effectiveLabel) || "Mix";
   const roleEn      = resolveRoleEn(roleParam, fileName);
-  const projLabel   = [projectName, effectiveLabel].map(s => sanitizeFolder(s)).filter(Boolean).join(" ") || safeLabel;
+  const nameParts   = versionNameParts(projectName, effectiveLabel, { isRiddim, mixTargetName });
+  const projLabel   = nameParts.map(s => sanitizeFolder(s)).filter(Boolean).join(" ") || safeLabel;
   const withRole    = [projLabel, sanitizeFolder(roleEn)].filter(Boolean).join(" ");
   const baseName    = roleEn === "Mix" ? projLabel : withRole; // plain mix → no role word
   let cleanFileName = ext ? `${baseName}.${ext}` : baseName;
@@ -151,6 +199,8 @@ export async function resolveVersionTarget(
       cleanFileName,
       dropboxPath,
       fileType,
+      mixTargetId,
+      mixTargetName,
     },
   };
 }
@@ -181,6 +231,7 @@ export async function finalizeMixVersion(args: {
       fileType:            target.fileType,
       uploadedBy:          target.engineerName,
       durationSeconds,
+      mixTargetId:         target.mixTargetId,
     });
 
     // The row is committed — anything a file/version of Steven's work counts as a
@@ -215,6 +266,10 @@ export async function finalizeMixVersion(args: {
           fileType: target.fileType,
           mixVersionId: version.id,
           token,
+          // Riddim only: name the project-player copy after the mix line, so the
+          // owner can tell whose mix it is. Undefined elsewhere → the existing
+          // status-derived "מאסטר"/"סקיצה" naming is untouched.
+          versionTypeOverride: target.mixTargetName || undefined,
         });
       } catch (copyErr) {
         console.error("[mix-version-upload] project copy failed:", copyErr);
@@ -239,12 +294,12 @@ export async function finalizeMixVersion(args: {
  *  have authorized. Large files use the chunked upload-session route instead. */
 export async function uploadMixVersionFile(
   workId: string,
-  input: { file: File; label: string; addToExisting: boolean; roleParam: string | null; durationSeconds: number | null }
+  input: { file: File; label: string; addToExisting: boolean; roleParam: string | null; durationSeconds: number | null; mixTargetId?: string | null }
 ): Promise<UploadResult> {
   const { file, label, addToExisting, roleParam, durationSeconds } = input;
   if (!file) return { ok: false, status: 400, error: "חסר קובץ" };
 
-  const resolved = await resolveVersionTarget(workId, { fileName: file.name, label, addToExisting, roleParam });
+  const resolved = await resolveVersionTarget(workId, { fileName: file.name, label, addToExisting, roleParam, mixTargetId: input.mixTargetId ?? null });
   if (!resolved.ok) return resolved;
   const { target } = resolved;
 

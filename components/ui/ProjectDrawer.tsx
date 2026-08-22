@@ -3169,7 +3169,7 @@ export default function ProjectDrawer({ projectId, artists, onClose }: Props) {
 
           {/* ── ActionMenu + HideButton ────────────────────────────────────── */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingTop: 2 }}>
-            <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} onSessionCreated={fetchSessions} />
+            <ActionMenu projectId={project.id} projectName={project.name} artist={project.artist} projectType={project.projectType} onSessionCreated={fetchSessions} />
             <HideButton project={project} onDone={() => { refresh(); onClose(); }} />
           </div>
 

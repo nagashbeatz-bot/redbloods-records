@@ -67,6 +67,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const label         = (sp.get("label") ?? "").trim();
       const addToExisting = sp.get("addToExisting") != null;
       const roleParam     = sp.get("role");
+      // Riddim only — see the single-shot route; validated in resolveVersionTarget.
+      const mixTargetId   = sp.get("mixTargetId");
       const durationRaw    = sp.get("durationSeconds");
       const durationParsed = durationRaw != null ? Number(durationRaw) : NaN;
       const durationSeconds = Number.isFinite(durationParsed) && durationParsed > 0 ? Math.round(durationParsed) : null;
@@ -75,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       // Resolve the physical target (folder + clean name + label) — same logic as
       // the single-shot route, so naming/dedupe/label are identical.
-      const resolved = await resolveVersionTarget(workId, { fileName, label, addToExisting, roleParam });
+      const resolved = await resolveVersionTarget(workId, { fileName, label, addToExisting, roleParam, mixTargetId });
       if (!resolved.ok) return NextResponse.json({ ok: false, error: resolved.error }, { status: resolved.status });
       const { target } = resolved;
 
