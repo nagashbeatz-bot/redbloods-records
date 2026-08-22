@@ -357,7 +357,11 @@ const TR = {
     addArtist: "+ הוסף אמן", createRoster: "צור רשימת אמנים",
     rosterEmpty: "עדיין לא הוגדרו אמנים לרידים הזה",
     rosterEmptySteven: "ה-Owner עדיין לא הגדיר את רשימת האמנים",
-    artistNamePh: "שם האמן", instrumental: "אינסטרומנטל",
+    // The instrumental LINE reads "Instrumental" in Hebrew too, on purpose: it sits
+    // beside artist names, which are never translated, and the push already says
+    // "Instrumental — Mix 1" — one spelling everywhere. This is only the riddim
+    // target's label; the FILE ROLE keeps its Hebrew "אינסטרומנטל" (ROLE_LABEL).
+    artistNamePh: "שם האמן", instrumental: "Instrumental",
     notUploadedYet: "לא הועלה עדיין", unassigned: "לא משויך", removedTag: "הוסר",
     targetLabel: "שייך ל", chooseTarget: "יש לבחור אמן / אינסטרומנטל",
     removeArtistTitle: "להסיר את האמן מהרשימה?",
