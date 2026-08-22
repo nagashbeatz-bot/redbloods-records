@@ -1801,7 +1801,6 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [rosterBusy, setRosterBusy] = useState(false);
   const [newArtist, setNewArtist]   = useState("");
   const [removeTarget, setRemoveTarget] = useState<MixTarget | null>(null);
-  const [expandedTarget, setExpandedTarget] = useState<string | null>(null);
 
   /** A line's display name. The instrumental has no stored name on purpose — its
    *  label comes from the page's own translations, so it reads correctly in both
@@ -2407,13 +2406,6 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     return tg ? targetName(tg) : t.unassigned;
   }, [isRiddim, targets, targetName, t]);
 
-  // Keep the section holding the current selection open, without fighting a
-  // manual toggle: this only fires when the selection moves outside the open one.
-  useEffect(() => {
-    if (!targetSections || !selectedGroup) return;
-    const owner = targetSections.find(sec => sec.groups.some(g => g.key === selectedGroup.key));
-    if (owner && owner.key !== expandedTarget) setExpandedTarget(owner.key);
-  }, [targetSections, selectedGroup]); // eslint-disable-line react-hooks/exhaustive-deps
   const primary = selectedGroup?.primary ?? null;
 
   // Audio players in the selected version (archives are download-only rows, not players).
@@ -2578,7 +2570,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   sees the list read-only and picks from it when uploading.
                   Rendering this NEVER creates anything — the instrumental line
                   is born from the explicit buttons below. */}
-              {isRiddim && (
+              {/* Roster management is an OWNER tool — Steven picks lines when he
+                  uploads and navigates them in the version list, but never sees
+                  the editor. The roster itself is still fetched for his upload
+                  picker; only this card is hidden. */}
+              {isRiddim && !isSteven && (
                 <div style={{ ...subCard, border: "1px solid rgba(16,185,129,0.28)" }}>
                   <div style={{ ...innerHead, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>🎤 {t.riddimArtists}</span>
@@ -2657,31 +2653,40 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                         version rows a normal work renders — only the grouping
                         above them is new. */}
                     {targetSections && targetSections.map(sec => {
-                      const open  = expandedTarget === sec.key;
-                      const latest = sec.groups[0]?.label ?? null;
+                      // sec.groups is newest-first, so [0] is this line's latest mix.
+                      const latestGroup = sec.groups[0] ?? null;
+                      const isHere = !!selectedGroup && sec.groups.some(g => g.key === selectedGroup.key);
                       // Same deterministic accent this line gets everywhere else.
                       const ac = targetAccent(sec.key === "__unassigned" ? null : sec.key);
                       return (
                         <div key={sec.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {/* One click on the line opens its LATEST mix straight away — no
+                              accordion to expand first. A line with nothing uploaded is
+                              inert: no navigation, no expand, no write. */}
                           <div
-                            onClick={() => setExpandedTarget(open ? null : sec.key)}
-                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10, cursor: "pointer",
-                                     background: open ? ac.bg : "transparent",
-                                     border: `1px solid ${open ? ac.bd : "transparent"}`,
-                                     // The line's accent as a thin leading rule — present whether or not
-                                     // the section is expanded, so the colour code is always readable.
+                            onClick={() => { if (latestGroup) setSel(latestGroup.primary.id); }}
+                            title={latestGroup ? `${sec.name} — ${latestGroup.label}` : sec.name}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10,
+                                     cursor: latestGroup ? "pointer" : "default",
+                                     opacity: latestGroup ? 1 : 0.65,
+                                     background: isHere ? ac.bg : "transparent",
+                                     border: `1px solid ${isHere ? ac.bd : "transparent"}`,
+                                     // The line's accent as a thin leading rule — always on, so the
+                                     // colour code stays readable whether or not the line is open.
                                      borderInlineStartWidth: 3,
                                      borderInlineStartColor: sec.removed ? BDR2 : ac.fg }}>
-                            <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, transform: open ? "rotate(90deg)" : "none", transition: "transform .12s" }}>▶</span>
                             <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 800, color: sec.removed ? MUTED : ac.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {sec.name}
                               {sec.removed && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 6, padding: "1px 5px" }}>{t.removedTag}</span>}
                             </span>
-                            <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: latest ? TEXT2 : MUTED, whiteSpace: "nowrap" }}>
-                              {latest ?? t.notUploadedYet}
+                            <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: latestGroup ? TEXT2 : MUTED, whiteSpace: "nowrap" }}>
+                              {latestGroup?.label ?? t.notUploadedYet}
                             </span>
                           </div>
-                          {open && sec.groups.length > 0 && (
+                          {/* The line's older mixes, shown only while you are inside it and
+                              only when there is more than one — its version history, not a
+                              navigation step. A single-mix line never nests anything. */}
+                          {isHere && sec.groups.length > 1 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingInlineStart: 14 }}>
                               {sec.groups.map(g => versionRow(g))}
                             </div>
