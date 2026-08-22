@@ -1900,7 +1900,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     if (sendingNotes) return;
     setSendingNotes(true);
     try {
-      const res = await fetch(`/api/sound-engineer/${work.id}/notify-notes`, { method: "POST" });
+      // Send the SELECTED version's id (never its text): on a riddim the server
+      // turns it into "Tasama — Mix 1" for both pushes; everywhere else it is
+      // ignored and the notification reads exactly as it always has.
+      const res = await fetch(`/api/sound-engineer/${work.id}/notify-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mixVersionId: selectedGroup?.primary.id ?? null }),
+      });
       const d = await res.json().catch(() => ({} as { ok?: boolean }));
       if (res.ok && d.ok) notify(t.sendNotesSent);
       else throw new Error();

@@ -32,6 +32,13 @@ export interface NotesNotifyResult { ok: boolean; sent?: boolean; skipped?: bool
  *  is the canonical sound_engineer_work.project_id (null for standalone work). */
 export async function notifyStevenMixNotes(
   work: { id: string; displayName: string; projectId: string | null },
+  /**
+   * Riddim only — which mix line the notes are about, already resolved from the
+   * DB by the caller (never text from the client). Given it, the title names the
+   * line so both audiences know whose mix this is without opening the work.
+   * Left out on every other work, where the wording is unchanged.
+   */
+  line?: { targetName: string; label: string; versionId: string } | null,
 ): Promise<NotesNotifyResult> {
   if (!work.id) return { ok: false };
   // Localhost / dev: no real push.
@@ -40,10 +47,16 @@ export async function notifyStevenMixNotes(
   const name = (work.displayName ?? "").trim();
   // Same text + deep-link for both audiences; the deep-link stays the OWNER's
   // fallback too (used only if there is no projectId).
-  const title = "New mix notes from Redbloods";
+  const title = line
+    ? `${line.targetName} — ${line.label}: New notes added`
+    : "New mix notes from Redbloods";
   const body  = `Notes were added for ${name}. Tap to review the feedback.`;
   const url   = `/team/steven?work=${work.id}&notes=1`;
-  const tag   = `steven-mix-notes-${work.id}`;
+  // On a riddim the tag is scoped to the VERSION, so notes for Tasama and for
+  // Desto sit side by side on the device instead of one silently replacing the
+  // other. Re-sending for the same mix still replaces its own earlier notice,
+  // exactly as the per-work tag does everywhere else.
+  const tag   = line ? `steven-mix-notes-${work.id}-${line.versionId}` : `steven-mix-notes-${work.id}`;
 
   // ── Owner — enriched so the bell opens the ProjectDrawer directly ──
   // projectId only when the work is project-linked (null → left off, url fallback).

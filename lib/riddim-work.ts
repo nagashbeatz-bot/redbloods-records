@@ -49,3 +49,51 @@ export async function assertRiddimWork(workId: string): Promise<RiddimGuard> {
   }
   return { ok: true };
 }
+
+/**
+ * The riddim mix line a specific version belongs to, as display text.
+ *
+ * Resolved purely from the DB — mix_versions.mix_target_id → mix_targets — so a
+ * renamed line is picked up automatically on the next send and a line added
+ * later needs no code change. Never parsed from the file name or the label, and
+ * never taken from the client: the caller passes an ID and this returns the
+ * text, which is what keeps "Send notes" un-spoofable.
+ *
+ * Returns null when the work is not a riddim, the version does not belong to it,
+ * or the version carries no line (a pre-feature "unassigned" row) — in every one
+ * of those cases the caller keeps its existing, unchanged wording.
+ */
+export async function resolveMixLineContext(
+  workId: string,
+  mixVersionId: string | null | undefined,
+): Promise<{ targetName: string; label: string; versionId: string } | null> {
+  if (!mixVersionId) return null;
+  if (!(await isRiddimWork(workId))) return null;
+
+  const { data: version } = await supabase
+    .from("mix_versions")
+    .select("id, label, mix_target_id, sound_engineer_work_id")
+    .eq("id", mixVersionId)
+    .maybeSingle();
+  // Ownership check: a version id from another work must never name this one.
+  if (!version || version.sound_engineer_work_id !== workId) return null;
+
+  const targetId = (version.mix_target_id as string | null) ?? null;
+  if (!targetId) return null;                    // legacy / unassigned — no line
+
+  const { data: target } = await supabase
+    .from("mix_targets")
+    .select("target_kind, display_name")
+    .eq("id", targetId)
+    .maybeSingle();
+  if (!target) return null;
+
+  // The instrumental has no stored name by design; its label is a constant here,
+  // matching the English the push already speaks.
+  const targetName = target.target_kind === "instrumental"
+    ? "Instrumental"
+    : ((target.display_name as string) ?? "").trim();
+  if (!targetName) return null;
+
+  return { targetName, label: (version.label as string) ?? "", versionId: version.id as string };
+}
