@@ -144,9 +144,37 @@ function roleOfFile(name: string): FileRole {
 // VIEWER-facing project name + version label + role. The role word is ALWAYS
 // English (Mix/Acapella/Instrumental/Stems) even in the Hebrew owner view, and a
 // plain mix shows no role word. NEVER the stored Dropbox/original filename.
-function fileDisplayName(project: string, label: string, role: FileRole): string {
+//
+// On a RIDDIM the question a title has to answer is "whose mix is this", so it
+// becomes "{line} — {label}" (e.g. "Tasama — Mix 1") and the project name drops
+// out: the work title is already above it, and repeating it buried the one piece
+// of information that matters. The role word drops out too — the file's own
+// role badge right beside it already says Mix/Acapella/Instrumental/Stems, and
+// they are two different axes that must not read as one string.
+function fileDisplayName(project: string, label: string, role: FileRole, targetName?: string | null): string {
+  if (targetName) return `${targetName} — ${label}`;
   const rl = role === "mix" ? "" : ROLE_LABEL[role].en;
   return [project, label, rl].filter(Boolean).join(" ");
+}
+
+/**
+ * A stable accent colour per mix line, derived from its mix_targets id (FNV-1a →
+ * hue). Deterministic, so the same line keeps the same colour across refreshes,
+ * across sessions and for both the owner and Steven — with nothing stored in the
+ * DB and no palette to run out of: a newly added line just gets its own hue.
+ * Never index-based, which would re-colour every line whenever the roster order
+ * changed. "Unassigned" stays deliberately grey — it is not a line.
+ */
+function targetAccent(targetId: string | null): { fg: string; bg: string; bd: string } {
+  if (!targetId) return { fg: MUTED, bg: "transparent", bd: BDR2 };
+  let h = 2166136261;
+  for (let i = 0; i < targetId.length; i++) { h ^= targetId.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const hue = Math.abs(h) % 360;
+  return {
+    fg: `hsl(${hue} 72% 64%)`,
+    bg: `hsl(${hue} 72% 64% / 0.12)`,
+    bd: `hsl(${hue} 72% 64% / 0.42)`,
+  };
 }
 
 type RoledVersion = MixVersion & { role: FileRole };
@@ -2356,6 +2384,18 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     return out;
   }, [isRiddim, groups, targets, targetName, t]);
 
+  /**
+   * The mix line a version group belongs to, resolved through mix_target_id —
+   * never parsed out of the file name and never inferred from the label. null
+   * off a riddim, so every title below falls back to the existing format.
+   */
+  const groupTargetName = useCallback((g: VersionGroup | null): string | null => {
+    if (!isRiddim || !g) return null;
+    if (g.targetId === null) return t.unassigned;
+    const tg = (targets ?? []).find(x => x.id === g.targetId);
+    return tg ? targetName(tg) : t.unassigned;
+  }, [isRiddim, targets, targetName, t]);
+
   // Keep the section holding the current selection open, without fighting a
   // manual toggle: this only fires when the selection moves outside the open one.
   useEffect(() => {
@@ -2440,11 +2480,17 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const versionRow = (g: VersionGroup) => {
     const isSel = selectedGroup?.key === g.key;
     const st = g.primary.status;
+    // On a riddim the selected row picks up its own line's accent, so which line
+    // you are inside stays obvious. Off a riddim it stays the brand red.
+    const ac = isRiddim && g.targetId ? targetAccent(g.targetId) : null;
+    const selBg = ac ? ac.bg : `${BRAND}14`;
+    const selBd = ac ? ac.bd : `${BRAND}66`;
+    const playFg = ac ? ac.fg : BRAND;
     return (
       <div key={g.key} onClick={() => setSel(g.primary.id)}
-        style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 11, cursor: "pointer", background: isSel ? `${BRAND}14` : "transparent", border: `1px solid ${isSel ? BRAND + "66" : "transparent"}`, transition: "background .12s" }}>
+        style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 11, cursor: "pointer", background: isSel ? selBg : "transparent", border: `1px solid ${isSel ? selBd : "transparent"}`, transition: "background .12s" }}>
         <button onClick={e => { e.stopPropagation(); setSel(g.primary.id); setPlayReq(p => ({ id: g.primary.id, nonce: (p?.nonce ?? 0) + 1 })); }} title={t.vPlay}
-          style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? BRAND : `${BRAND}1A`, border: `1px solid ${BRAND}55`, color: isSel ? "#fff" : BRAND }}>
+          style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", background: isSel ? playFg : (ac ? ac.bg : `${BRAND}1A`), border: `1px solid ${ac ? ac.bd : BRAND + "55"}`, color: isSel ? "#fff" : playFg }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ marginInlineStart: 1 }}><path d="M8 5v14l11-7z"/></svg>
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -2475,7 +2521,13 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     <div style={fieldCol}><span style={fieldLbl}>{label}</span><div style={{ minWidth: 0, display: "flex" }}>{node}</div></div>
   );
 
-  const groupTitle = selectedGroup ? `${work.project} - ${selectedGroup.label}` : work.project;
+  // Riddim: "Tasama — Mix 1" instead of "{work} - Mix 1"; the work title already
+  // sits above this, so the line name is the useful half.
+  const selectedTargetName = groupTargetName(selectedGroup);
+  const selectedAccent = targetAccent(isRiddim ? (selectedGroup?.targetId ?? null) : null);
+  const groupTitle = selectedGroup
+    ? (selectedTargetName ? `${selectedTargetName} — ${selectedGroup.label}` : `${work.project} - ${selectedGroup.label}`)
+    : work.project;
   const totalSize = selectedGroup ? selectedGroup.files.reduce((s, f) => s + (f.fileSize ?? 0), 0) : 0;
   const colWrap: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 14, minWidth: 0 };
 
@@ -2490,7 +2542,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10.5, fontWeight: 800, color: MUTED, letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: narrow ? 2 : 5 }}>{t.jobEyebrow}</div>
-              <div title={groupTitle} style={{ fontSize: narrow ? 19 : 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{groupTitle}</div>
+              <div title={groupTitle} style={{ fontSize: narrow ? 19 : 23, fontWeight: 900, color: TEXT, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedTargetName && selectedGroup ? (
+                  <><span style={{ color: selectedAccent.fg }}>{selectedTargetName}</span>{` — ${selectedGroup.label}`}</>
+                ) : groupTitle}
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: narrow ? 7 : 9, marginTop: narrow ? 6 : 10, flexWrap: "wrap" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 800, color: TEXT2, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${BDR2}` }}><HeadphonesIcon size={12} /> Steven</span>
                 {primary && <span style={{ fontSize: narrow ? 11 : 11.5, color: MUTED }}>{t.headerUpdated}: <span style={{ direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{fmtDateTime(primary.updatedAt)}</span></span>}
@@ -2536,6 +2592,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       <>
                         {targets.map(tg => (
                           <div key={tg.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", borderRadius: 9, background: CARD2, border: `1px solid ${BDR}`, opacity: tg.removedAt ? 0.55 : 1 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: tg.removedAt ? MUTED : targetAccent(tg.id).fg }} />
                             <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {targetName(tg)}
                               {tg.removedAt && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 800, color: MUTED }}>· {t.removedTag}</span>}
@@ -2591,14 +2648,21 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                     {targetSections && targetSections.map(sec => {
                       const open  = expandedTarget === sec.key;
                       const latest = sec.groups[0]?.label ?? null;
+                      // Same deterministic accent this line gets everywhere else.
+                      const ac = targetAccent(sec.key === "__unassigned" ? null : sec.key);
                       return (
                         <div key={sec.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <div
                             onClick={() => setExpandedTarget(open ? null : sec.key)}
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10, cursor: "pointer",
-                                     background: open ? "rgba(255,255,255,0.04)" : "transparent", border: `1px solid ${open ? BDR2 : "transparent"}` }}>
+                                     background: open ? ac.bg : "transparent",
+                                     border: `1px solid ${open ? ac.bd : "transparent"}`,
+                                     // The line's accent as a thin leading rule — present whether or not
+                                     // the section is expanded, so the colour code is always readable.
+                                     borderInlineStartWidth: 3,
+                                     borderInlineStartColor: sec.removed ? BDR2 : ac.fg }}>
                             <span style={{ fontSize: 10, color: MUTED, flexShrink: 0, transform: open ? "rotate(90deg)" : "none", transition: "transform .12s" }}>▶</span>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 800, color: sec.removed ? MUTED : TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 800, color: sec.removed ? MUTED : ac.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {sec.name}
                               {sec.removed && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 800, color: MUTED, border: `1px solid ${BDR2}`, borderRadius: 6, padding: "1px 5px" }}>{t.removedTag}</span>}
                             </span>
@@ -2687,7 +2751,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   {!selectedGroup ? (
                     <div style={{ fontSize: 12, color: MUTED, textAlign: "center", padding: "8px 0" }}>—</div>
                   ) : selectedGroup.files.map(f => {
-                    const dName = fileDisplayName(work.project, selectedGroup.label, f.role);
+                    const dName = fileDisplayName(work.project, selectedGroup.label, f.role, selectedTargetName);
                     return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BDR}` }}>
                       <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${ROLE_COLOR[f.role]}22`, color: ROLE_COLOR[f.role], display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{isAudioName(f.fileName) ? <MusicIcon size={14} /> : <BoxIcon size={14} />}</span>
@@ -2776,7 +2840,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                             key={f.id}
                             ref={el => { playerRefs.current[f.id] = el; }}
                             url={f.url}
-                            title={fileDisplayName(work.project, selectedGroup.label, f.role)}
+                            title={fileDisplayName(work.project, selectedGroup.label, f.role, selectedTargetName)}
                             roleLabel={roleLabel(f.role, lang)}
                             roleColor={ROLE_COLOR[f.role]}
                             compact={f.id !== playerPrimaryId}
