@@ -1222,18 +1222,18 @@ function ConfirmPanel({
       {/* ── Buttons ──────────────────────────────────────────────── */}
       {!hasWarning && (
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <Btn onClick={onBack}>חזור</Btn>
           <Btn primary onClick={onCreate} disabled={!canCreate}>
             {editMode ? "✓ שמור שינויים" : sendToArtist ? "✓ צור ושלח הזמנה לאמן" : "✓ צור אירוע ביומן"}
           </Btn>
-          <Btn onClick={onBack}>חזור</Btn>
           <CancelLink onClick={onCancel} />
         </div>
       )}
 
       {hasWarning && (
         <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
-          <Btn primary onClick={onForce} disabled={!canCreate}>צור בכל זאת</Btn>
           <Btn onClick={onBack}>בחר זמן אחר</Btn>
+          <Btn primary onClick={onForce} disabled={!canCreate}>צור בכל זאת</Btn>
           <CancelLink onClick={onCancel} />
         </div>
       )}
