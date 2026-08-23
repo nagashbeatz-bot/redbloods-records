@@ -865,7 +865,16 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             emailFromClients={emailFromClients}
             autoFill={autoFill}
             publicTitle={publicTitle}
-            onBack={() => { setSelectedStart(null); setPhase("idle"); }}
+            onBack={() => {
+              setSelectedStart(null);
+              // Back to the slot list the user picked from — dropping to "idle"
+              // would throw the list away and force another calendar search.
+              // Duration, tab, quick-range and the title preview are separate
+              // state and stay exactly as they were.
+              if (!historical && tab === "recommended" && cachedSlots.length > 0) setPhase({ slots: cachedSlots });
+              else setPhase("idle");
+            }}
+            onCancel={onClose}
             onCreate={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
             onForce={() => createEvent(confirmData.start, confirmData.end, confirmData.label)}
           />
@@ -1086,7 +1095,7 @@ function ManualPicker({
 function ConfirmPanel({
   data, action, artist, projectName, editMode = false,
   sendToArtist, setSendToArtist, artistEmail, setArtistEmail, emailFromClients, autoFill,
-  publicTitle, onBack, onCreate, onForce,
+  publicTitle, onBack, onCancel, onCreate, onForce,
 }: {
   data: { start: string; end: string; label: string; hardConflict: boolean; bufferWarning: boolean; conflictNames: string[]; forceCreate: boolean };
   action: ActionDef; artist: string; projectName: string; editMode?: boolean;
@@ -1095,7 +1104,7 @@ function ConfirmPanel({
   emailFromClients: boolean;
   autoFill: { matched: number; missing: string[] };
   publicTitle: string;
-  onBack: () => void; onCreate: () => void; onForce: () => void;
+  onBack: () => void; onCancel: () => void; onCreate: () => void; onForce: () => void;
 }) {
   const hasWarning = data.hardConflict || data.bufferWarning;
   // Support one OR several comma/semicolon-separated recipients (multi-artist).
@@ -1212,18 +1221,20 @@ function ConfirmPanel({
 
       {/* ── Buttons ──────────────────────────────────────────────── */}
       {!hasWarning && (
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <Btn primary onClick={onCreate} disabled={!canCreate}>
             {editMode ? "✓ שמור שינויים" : sendToArtist ? "✓ צור ושלח הזמנה לאמן" : "✓ צור אירוע ביומן"}
           </Btn>
           <Btn onClick={onBack}>חזור</Btn>
+          <CancelLink onClick={onCancel} />
         </div>
       )}
 
       {hasWarning && (
-        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <Btn onClick={onBack}>בחר זמן אחר</Btn>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
           <Btn primary onClick={onForce} disabled={!canCreate}>צור בכל זאת</Btn>
+          <Btn onClick={onBack}>בחר זמן אחר</Btn>
+          <CancelLink onClick={onCancel} />
         </div>
       )}
     </div>
@@ -1392,6 +1403,21 @@ function SlotButton({ label, onSelect }: { label: string; onSelect: () => void }
       }}
     >
       {label}
+    </button>
+  );
+}
+
+/** Tertiary "ביטול" — same bare-text treatment as the modal's bottom cancel. */
+function CancelLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: "none", border: "none", color: "#444", fontSize: 12,
+        cursor: "pointer", fontFamily: "inherit", padding: "0 4px",
+      }}
+    >
+      ביטול
     </button>
   );
 }
