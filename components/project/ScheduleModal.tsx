@@ -26,6 +26,21 @@ const QUICK_RANGE_LABELS: Record<QuickRange, string> = {
   today: "היום", tomorrow: "מחר", week: "השבוע",
 };
 
+// ─── Layout constants ─────────────────────────────────────────────────────────
+// The card never grows past the viewport: the availability list absorbs the
+// leftover height and scrolls on its own, so nothing gets clipped off-screen.
+const MODAL_MAX_HEIGHT = "calc(100dvh - 48px)";
+
+const SLOT_SCROLL_STYLE: React.CSSProperties = {
+  flex: "1 1 auto",
+  minHeight: 0,
+  overflowY: "auto",
+  overscrollBehavior: "contain",
+  scrollbarWidth: "thin",
+  scrollbarColor: "#2E2E2E transparent",
+  paddingLeft: 4, // RTL: keep pills clear of the scrollbar gutter
+};
+
 type Phase =
   | "idle"
   | "searching"
@@ -545,16 +560,18 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
       <div
         style={{
           background: "#141414", border: "1px solid #262626", borderRadius: 22,
-          padding: "28px 28px 24px", width: "100%", maxWidth: 420,
+          padding: "22px 28px 20px", width: "100%", maxWidth: 420,
           direction: "rtl", fontFamily: "inherit",
           boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
+          maxHeight: MODAL_MAX_HEIGHT,
+          display: "flex", flexDirection: "column", overflowY: "auto",
         }}
         onClick={(e) => e.stopPropagation()}
       >
 
         {/* ── Header ───────────────────────────────────────────────── */}
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#A855F7", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+        <div style={{ marginBottom: 12, flexShrink: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#A855F7", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
             {isEdit ? "✎ עריכת סשן" : `⚡ ${action.modalTitle}`}
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
@@ -614,7 +631,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
         {/* ── שיעור רגיל / היסטורי toggle (course projects only) ────── */}
         {!showFinance && !isCreated && !isConfirm && allowHistorical && (
-          <div style={{ marginBottom: 18 }}>
+          <div style={{ marginBottom: 12, flexShrink: 0 }}>
             <div style={{ display: "inline-flex", background: "#111", border: "1px solid #303030", borderRadius: 10, padding: 3, gap: 3 }}>
               {[{ k: false, label: "שיעור רגיל" }, { k: true, label: "שיעור היסטורי" }].map((o) => (
                 <button
@@ -636,7 +653,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
         {/* ── Duration pills ────────────────────────────────────────── */}
         {!showFinance && !isCreated && (
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 10, flexShrink: 0 }}>
             <Label>משך זמן</Label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {action.durations.map((d) => (
@@ -654,11 +671,11 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
         {/* ── Event title preview ── hidden in historical mode (no calendar event) ── */}
         {!showFinance && !isCreated && !isConfirm && !historical && (
-          <div style={{ marginBottom: 22 }}>
+          <div style={{ marginBottom: 12, flexShrink: 0 }}>
             <Label>שם האירוע ביומן</Label>
             <div style={{
               background: "#111", border: "1px solid #303030", borderRadius: 11,
-              padding: "10px 14px", display: "flex", alignItems: "center",
+              padding: "9px 14px", display: "flex", alignItems: "center",
               gap: 6, direction: "rtl", overflow: "hidden",
             }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "#C084FC", flexShrink: 0 }}>{action.calPrefix}</span>
@@ -676,7 +693,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
         {!showFinance && (phase === "idle" || isSlots || phase === "no_slots" || phase === "searching") && (
           <>
             {!historical && (
-            <div style={{ display: "flex", gap: 0, marginBottom: 18, borderBottom: "1px solid #222" }}>
+            <div style={{ display: "flex", gap: 0, marginBottom: 10, borderBottom: "1px solid #222", flexShrink: 0 }}>
               {(["recommended", "manual"] as Tab[]).map((t) => (
                 <button
                   key={t}
@@ -686,7 +703,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                     else setPhase("idle");
                   }}
                   style={{
-                    padding: "7px 16px", border: "none", background: "transparent",
+                    padding: "6px 16px", border: "none", background: "transparent",
                     color: tab === t ? "#C084FC" : "#555",
                     fontWeight: tab === t ? 700 : 400,
                     fontSize: 12, cursor: "pointer", fontFamily: "inherit",
@@ -704,7 +721,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
             {!historical && tab === "recommended" && (
               <>
                 {/* Quick-range buttons — always visible in recommended tab */}
-                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <div style={{ display: "flex", gap: 6, marginBottom: 8, flexShrink: 0 }}>
                   {(["today", "tomorrow", "week"] as QuickRange[]).map((r) => {
                     const isActive = quickRange === r;
                     return (
@@ -716,7 +733,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                         }}
                         style={{
                           flex: 1,
-                          padding: "8px 0",
+                          padding: "7px 0",
                           borderRadius: 9,
                           border: `1px solid ${isActive ? "#A855F7" : "rgba(168,85,247,0.25)"}`,
                           background: isActive ? "rgba(168,85,247,0.18)" : "rgba(168,85,247,0.05)",
@@ -748,7 +765,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                 {/* Searching: show cached slots dimmed + spinner overlay, or bare spinner */}
                 {phase === "searching" && (
                   cachedSlots.length > 0 ? (
-                    <div style={{ position: "relative" }}>
+                    <div style={{ ...SLOT_SCROLL_STYLE, position: "relative", overflowY: "hidden" }}>
                       {/* Dim overlay with spinner text */}
                       <div style={{
                         position: "absolute", inset: 0, zIndex: 5,
@@ -763,7 +780,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                         </span>
                       </div>
                       {/* Previous slots, dimmed */}
-                      <div style={{ opacity: 0.35, pointerEvents: "none", transition: "opacity 0.2s" }}>
+                      <div style={{ opacity: 0.35, pointerEvents: "none", transition: "opacity 0.2s", height: "100%", overflow: "hidden" }}>
                         <SlotDayGroups
                           slots={cachedSlots}
                           onSelect={() => {}}
@@ -776,10 +793,12 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
                 )}
 
                 {isSlots && (
-                  <SlotDayGroups
-                    slots={(phase as { slots: FreeSlot[] }).slots}
-                    onSelect={(s) => checkAndConfirm(s.start, s.end, s.label)}
-                  />
+                  <div style={SLOT_SCROLL_STYLE}>
+                    <SlotDayGroups
+                      slots={(phase as { slots: FreeSlot[] }).slots}
+                      onSelect={(s) => checkAndConfirm(s.start, s.end, s.label)}
+                    />
+                  </div>
                 )}
 
                 {phase === "no_slots" && (
@@ -923,7 +942,7 @@ export default function ScheduleModal({ action, projectId, projectName, artist, 
 
         {/* ── Bottom cancel (idle states) ──────────────────────────── */}
         {!showFinance && (phase === "idle" || isSlots || phase === "no_slots" || phase === "searching") && (
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 12, flexShrink: 0 }}>
             <button onClick={onClose} style={{ background: "none", border: "none", color: "#444", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
               ביטול
             </button>
@@ -1262,6 +1281,8 @@ function CreatedPanel({
 
 // ─── Tiny helpers ─────────────────────────────────────────────────────────────
 
+const DASH_RE = /[\u2013\u2014-]/;
+
 // ─── Day-grouped slot list ─────────────────────────────────────────────────────
 
 function SlotDayGroups({
@@ -1288,13 +1309,13 @@ function SlotDayGroups({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 4 }}>
       {groups.map((g) => (
         <div key={g.dateStr}>
           {/* Day header — always include numeric date next to היום/מחר */}
           <div style={{
             display: "flex", alignItems: "baseline", gap: 6,
-            marginBottom: 6,
+            marginBottom: 4,
           }}>
             <span style={{
               fontSize: 10, fontWeight: 700, color: "#A855F7",
@@ -1313,12 +1334,15 @@ function SlotDayGroups({
             })()}
           </div>
           {/* Time pills grid */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {g.slots.map((slot) => {
               // Extract just "HH:MM – HH:MM" from the label
               const timePart = slot.label.split("  ")[1] ?? slot.label;
+              // Pill shows the start time only — the duration is already picked above,
+              // so repeating the end time on every pill just costs width.
+              const startPart = timePart.split(DASH_RE)[0].trim() || timePart;
               return (
-                <TimePill key={slot.start} label={timePart} onSelect={() => onSelect(slot)} />
+                <TimePill key={slot.start} label={startPart} title={timePart} onSelect={() => onSelect(slot)} />
               );
             })}
           </div>
@@ -1328,15 +1352,16 @@ function SlotDayGroups({
   );
 }
 
-function TimePill({ label, onSelect }: { label: string; onSelect: () => void }) {
+function TimePill({ label, title, onSelect }: { label: string; title?: string; onSelect: () => void }) {
   const [hov, setHov] = useState(false);
   return (
     <button
       onClick={onSelect}
+      title={title}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+        padding: "5px 11px", borderRadius: 8, cursor: "pointer",
         border: `1.5px solid ${hov ? "rgba(168,85,247,0.55)" : "#222"}`,
         background: hov ? "rgba(168,85,247,0.12)" : "#1A1A1A",
         color: hov ? "#C084FC" : "#C0C0C0",
@@ -1377,7 +1402,7 @@ function Spinner({ label }: { label: string }) {
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 10, color: "#777", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+    <div style={{ fontSize: 10, color: "#777", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
       {children}
     </div>
   );
