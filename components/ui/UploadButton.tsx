@@ -5,6 +5,9 @@ import { createPortal } from "react-dom";
 import { useProjects } from "@/components/ProjectsProvider";
 import type { FileLink } from "@/lib/types";
 import { AUDIO_EXTS, buildVersionName } from "@/lib/project-file-naming";
+import { AVI_NAME } from "@/lib/red-artists/portal-registry";
+import { primaryArtist } from "@/lib/project-paths";
+import AviSyncModal from "@/components/ui/AviSyncModal";
 
 // Read an audio file's length LOCALLY (object URL — no network, no Dropbox).
 // Resolves whole seconds, or null on failure/timeout so it NEVER blocks upload.
@@ -105,7 +108,18 @@ export default function UploadButton({
   const [shareUrl,   setShareUrl]   = useState<string | null>(null);
   const [popupAnchor, setPopupAnchor] = useState<{ bottom: number; right: number } | null>(null);
   const [copied,     setCopied]     = useState(false);
+  const [aviPath,    setAviPath]    = useState<string | null>(null);
   const { refresh } = useProjects();
+
+  // ── Avi Molla only: offer to mirror the upload into his "המוזיקה שלי" ───────
+  // Gated to a PLAIN project version upload — a Delivery/stems/track/any-file
+  // upload is not a sketch and never prompts. The artist test is exact: the
+  // project's PRIMARY artist must be the registered portal name, so a project
+  // where he is a secondary artist (or any other artist) is untouched. The
+  // server re-verifies all of this before writing anything.
+  const aviEligible =
+    !subfolder && !deliveryTypeLabel && !trackId && !preserveOriginalName && !acceptAnyFile &&
+    primaryArtist(artist ?? "") === AVI_NAME;
 
   const reset = (delay = 2000) =>
     setTimeout(() => { setState("idle"); setErrorMsg(null); setProgress(0); }, delay);
@@ -197,6 +211,10 @@ export default function UploadButton({
           setState("done");
           await refresh();
           if (resultFile && onSuccess) onSuccess(resultFile);
+          // Opened ONLY here — inside the successful-upload handler. Never from
+          // an effect, a mount, or a page load, so a refresh can never re-trigger
+          // it (and therefore never re-send a push).
+          if (aviEligible && resultFile?.dropboxPath) setAviPath(resultFile.dropboxPath);
           // Show share popup for 5 seconds (portal — escapes overflow:hidden)
           if (url) {
             if (buttonRef.current) {
@@ -268,6 +286,16 @@ export default function UploadButton({
     : state === "done"      ? "הועלה בהצלחה ✓"
     : state === "error"     ? (errorMsg ?? "שגיאה")
     : `העלה גרסה ל-${projectName}`;
+
+  // Rendered by both sizes; portals itself to <body>, so placement is cosmetic.
+  const aviModal = aviPath ? (
+    <AviSyncModal
+      projectId={projectId}
+      projectName={projectName}
+      dropboxPath={aviPath}
+      onClose={() => setAviPath(null)}
+    />
+  ) : null;
 
   // ── SM (circle 26px) ────────────────────────────────────────────────────────
   if (size === "sm") {
@@ -404,6 +432,8 @@ export default function UploadButton({
             onClose={() => setShareUrl(null)} />,
           document.body
         )}
+
+        {aviModal}
       </div>
     );
   }
@@ -503,6 +533,8 @@ export default function UploadButton({
           <><span style={{ fontSize: 15, lineHeight: 1 }}>↑</span><span>{label ?? "העלה גרסה"}</span></>
         )}
       </button>
+
+      {aviModal}
     </div>
   );
 }

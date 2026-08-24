@@ -40,6 +40,13 @@ export interface SketchVersion {
   uploadedAt: string;
   sizeBytes?: number;
   durationSeconds?: number;
+  /** Set ONLY on a version that REFERENCES a file already uploaded through
+   *  Projects (/api/dropbox/upload). The bytes live at `filePath` under
+   *  /Projects/... and are NEVER copied into the artist's own tree — one
+   *  physical file, two views. Absent on every normally-uploaded version. */
+  source?: "project";
+  /** The projects.id whose `files` entry this version points at (source="project" only). */
+  sourceProjectId?: string;
 }
 /** Optional companion "beat / instrumental" for a sketch project. A single file
  *  attached to the project — NOT a version (never in `versions`, never counted,
@@ -573,4 +580,216 @@ export async function setSketchDuration(slug: string, id: string, versionNumber:
     if (versionNumber === s.latestVersion) s.durationSeconds = seconds;
     return m;
   });
+}
+
+// ── Project-linked versions ───────────────────────────────────────────────────
+// A version that POINTS AT a file already uploaded through Projects
+// (/api/dropbox/upload) instead of holding its own copy. The bytes stay exactly
+// where the Projects upload put them (/Projects/{artist}/{project}/…) — nothing
+// is re-uploaded and nothing is copied with files/copy_v2, so there is ONE
+// physical file that both views render. Only the manifest is written.
+//
+// By policy this is Avi Molla only; that scoping lives in the route
+// (lib/red-artists/avi-project-link.ts + the AVI_ARTIST_ID check), not here, so
+// this store stays the same generic slug-parameterized module it already was.
+
+export interface ProjectFileRef {
+  /** The EXISTING Dropbox path of the Projects upload. Never copied, never moved. */
+  filePath: string;
+  fileName: string;
+  /** projects.id that owns the `files` entry at `filePath` (verified by the route). */
+  projectId: string;
+  sizeBytes?: number;
+  durationSeconds?: number;
+}
+
+export interface TitleMatch {
+  /** The single active sketch whose title matches exactly, or null (0 or >1 hits). */
+  match: { id: string; title: string; latestVersion: number } | null;
+  /** true when MORE THAN ONE active sketch carries that title — never auto-pick. */
+  ambiguous: boolean;
+  /** Every active sketch (id + title) so the caller can offer an explicit choice. */
+  sketches: { id: string; title: string }[];
+}
+
+/**
+ * Exact title lookup — `normTitle` only (trim + collapse inner whitespace +
+ * lowercase), the SAME comparison createSketch already uses to reject duplicate
+ * titles. Deliberately NOT fuzzy: no prefix / substring / similarity matching,
+ * so a project can never silently attach itself to the wrong sketch.
+ */
+export async function matchSketchByTitle(slug: string, title: string): Promise<TitleMatch> {
+  const active = await listSketches(slug);
+  const want = normTitle(title ?? "");
+  const hits = want ? active.filter((s) => normTitle(s.title) === want) : [];
+  return {
+    match: hits.length === 1
+      ? { id: hits[0].id, title: hits[0].title, latestVersion: hits[0].latestVersion }
+      : null,
+    ambiguous: hits.length > 1,
+    sketches: active.map((s) => ({ id: s.id, title: s.title })),
+  };
+}
+
+/** Build the manifest version entry for an already-uploaded Projects file. */
+function projectVersionEntry(ref: ProjectFileRef, versionNumber: number): SketchVersion {
+  return {
+    versionNumber,
+    fileName: ref.fileName,
+    filePath: ref.filePath,
+    extension: extOf(ref.fileName) || extOf(ref.filePath),
+    uploadedAt: new Date().toISOString(),
+    ...(ref.sizeBytes ? { sizeBytes: ref.sizeBytes } : {}),
+    ...(ref.durationSeconds ? { durationSeconds: ref.durationSeconds } : {}),
+    source: "project" as const,
+    sourceProjectId: ref.projectId,
+  };
+}
+
+/** True when `filePath` IS `target`, or sits under it (whole-folder delete). */
+function pathMatches(filePath: string, target: string): boolean {
+  return filePath === target || filePath.startsWith(`${target}/`);
+}
+
+/** Every sketch (incl. archived) that already references this exact path. */
+function sketchesReferencing(m: Manifest, filePath: string): Sketch[] {
+  return m.sketches.filter((s) => s.versions.some((v) => v.source === "project" && v.filePath === filePath));
+}
+
+/** Recompute latest* from the CURRENT versions array (after an add / remove). */
+function refreshLatest(s: Sketch): void {
+  const latest = s.versions.length
+    ? s.versions.reduce((a, b) => (b.versionNumber > a.versionNumber ? b : a))
+    : null;
+  s.latestVersion = latest?.versionNumber ?? 0;
+  s.latestFilePath = latest?.filePath ?? "";
+  s.latestFileName = latest?.fileName ?? "";
+  s.durationSeconds = latest?.durationSeconds;
+}
+
+/**
+ * Attach an already-uploaded Projects file to an EXISTING sketch as V{n+1}.
+ * No bytes move. Idempotent: linking the same path to the same sketch twice is
+ * a no-op; linking a path another sketch already owns is refused.
+ */
+export async function linkProjectFileAsVersion(slug: string, sketchId: string, ref: ProjectFileRef): Promise<Sketch> {
+  if (!ref.filePath || !ref.fileName) throw new SketchError("BAD_INPUT", "פרטי הקובץ חסרים");
+
+  const { manifest: pre } = await readManifest(slug);
+  if (!pre.sketches.some((s) => s.id === sketchId && !s.archived)) {
+    throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
+  }
+  const owners = sketchesReferencing(pre, ref.filePath);
+  if (owners.some((s) => s.id === sketchId)) {
+    return pre.sketches.find((s) => s.id === sketchId)!; // already linked — no write
+  }
+  if (owners.length) throw new SketchError("DUP_TITLE", "הקובץ הזה כבר מקושר לסקיצה אחרת");
+
+  await mutateManifest(slug, (m) => {
+    // Freeze positions BEFORE touching updatedAt so linking never reorders the library.
+    const frozen = effectiveOrder(m);
+    const s = m.sketches.find((x) => x.id === sketchId && !x.archived);
+    if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
+    // Re-check under lock (another writer may have linked it meanwhile).
+    if (!s.versions.some((v) => v.source === "project" && v.filePath === ref.filePath)) {
+      if (sketchesReferencing(m, ref.filePath).length) {
+        throw new SketchError("DUP_TITLE", "הקובץ הזה כבר מקושר לסקיצה אחרת");
+      }
+      s.versions.push(projectVersionEntry(ref, s.latestVersion + 1));
+      refreshLatest(s);
+      s.updatedAt = new Date().toISOString();
+    }
+    m.order = frozen;
+    return m;
+  });
+
+  return (await readManifest(slug)).manifest.sketches.find((s) => s.id === sketchId)!;
+}
+
+/**
+ * Create a BRAND-NEW sketch whose V1 references an already-uploaded Projects
+ * file. Same duplicate-title rule as createSketch; no bytes are uploaded.
+ */
+export async function createSketchFromProjectFile(slug: string, rawTitle: string, ref: ProjectFileRef): Promise<Sketch> {
+  const title = (rawTitle ?? "").trim().replace(/\s+/g, " ");
+  if (!title) throw new SketchError("BAD_INPUT", "יש להזין שם לסקיצה");
+  if (!ref.filePath || !ref.fileName) throw new SketchError("BAD_INPUT", "פרטי הקובץ חסרים");
+
+  const { manifest: pre } = await readManifest(slug);
+  if (pre.sketches.some((s) => !s.archived && normTitle(s.title) === normTitle(title))) {
+    throw new SketchError("DUP_TITLE", "כבר קיימת סקיצה פעילה עם השם הזה");
+  }
+  if (sketchesReferencing(pre, ref.filePath).length) {
+    throw new SketchError("DUP_TITLE", "הקובץ הזה כבר מקושר לסקיצה אחרת");
+  }
+
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  await mutateManifest(slug, (m) => {
+    if (m.sketches.some((s) => !s.archived && normTitle(s.title) === normTitle(title))) {
+      throw new SketchError("DUP_TITLE", "כבר קיימת סקיצה פעילה עם השם הזה");
+    }
+    if (sketchesReferencing(m, ref.filePath).length) {
+      throw new SketchError("DUP_TITLE", "הקובץ הזה כבר מקושר לסקיצה אחרת");
+    }
+    const version = projectVersionEntry(ref, 1);
+    m.sketches.push({
+      id, title, description: "", notes: "",
+      createdAt: now, updatedAt: now,
+      latestVersion: 1, latestFilePath: version.filePath, latestFileName: version.fileName,
+      durationSeconds: version.durationSeconds,
+      versions: [version], beat: null, archived: false, archivedAt: null,
+    });
+    // New sketch goes to the TOP of the library, preserving the rest of the order.
+    m.order = [id, ...effectiveOrder(m).filter((x) => x !== id)];
+    return m;
+  });
+
+  return (await readManifest(slug)).manifest.sketches.find((s) => s.id === id)!;
+}
+
+export interface UnlinkResult { removed: number; sketchIds: string[] }
+
+/**
+ * Remove every PROJECT-LINKED version pointing at `dropboxPath` (or at a file
+ * under it, when a whole folder is deleted). Called from the Projects delete
+ * flow BEFORE the physical file is removed, so the manifest never keeps a
+ * reference to bytes that no longer exist.
+ *
+ * Strictly path-based: only versions carrying source="project" AND that exact
+ * path are touched — never a match by project / sketch NAME, never a version the
+ * artist uploaded into their own tree. Survivors keep their version numbers
+ * (those appear in file names and in the push text); latest* is recomputed so
+ * the previous version becomes current and stays playable.
+ */
+export async function unlinkProjectFile(slug: string, dropboxPath: string): Promise<UnlinkResult> {
+  if (!dropboxPath) return { removed: 0, sketchIds: [] };
+
+  // Cheap pre-read: when nothing references the path the manifest is never written.
+  const { manifest: pre } = await readManifest(slug);
+  const hit = pre.sketches.some((s) =>
+    s.versions.some((v) => v.source === "project" && pathMatches(v.filePath, dropboxPath)),
+  );
+  if (!hit) return { removed: 0, sketchIds: [] };
+
+  let removed = 0;
+  let sketchIds: string[] = [];
+  await mutateManifest(slug, (m) => {
+    removed = 0; sketchIds = []; // reset — mutateManifest may retry on a rev clash
+    // Freeze positions BEFORE any updatedAt bump so unlinking never reorders.
+    const frozen = effectiveOrder(m);
+    for (const s of m.sketches) {
+      const before = s.versions.length;
+      s.versions = s.versions.filter((v) => !(v.source === "project" && pathMatches(v.filePath, dropboxPath)));
+      if (s.versions.length === before) continue;
+      removed += before - s.versions.length;
+      sketchIds.push(s.id);
+      refreshLatest(s);
+      s.updatedAt = new Date().toISOString();
+    }
+    m.order = frozen;
+    return m;
+  });
+
+  return { removed, sketchIds };
 }

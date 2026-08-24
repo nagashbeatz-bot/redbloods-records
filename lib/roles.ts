@@ -152,6 +152,15 @@ export function isAviAllowedPath(pathname: string): boolean {
     `${base}/push-subscribe`,
   ];
   if (allowed.includes(pathname)) return true;
+  // Playback of ONE of his own sketch versions by id: .../sketches/<uuid>/stream.
+  // Needed for a version that REFERENCES a file uploaded through Projects (its
+  // bytes live under /Projects/…, outside his tree, so the generic ?path= stream
+  // route rejects it). The id route resolves the path from the manifest, so he
+  // still cannot name a file. Deliberately narrow — the sibling /version, /beat,
+  // /notify, /duration and /download stay owner-only.
+  const sketchPrefix = `${base}/sketches/`;
+  const bare = pathname.split("?")[0].split("#")[0];
+  if (bare.startsWith(sketchPrefix) && /^[0-9a-fA-F-]{36}\/stream$/.test(bare.slice(sketchPrefix.length))) return true;
   // His "ביטים פנויים" tab: the LIST only. The route derives the scope from his
   // role (lib/beat-scope.ts), so he gets exactly the beats assigned to him —
   // today, none. Playback is /api/beats/<id>/stream, allowed by prefix and

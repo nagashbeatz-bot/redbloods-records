@@ -336,6 +336,10 @@ export type BalanceLedger = { entries: BalanceEntry[]; totals: BalanceTotals };
 export type SketchVersion = {
   versionNumber: number; fileName: string; filePath: string; extension: string;
   uploadedAt: string; sizeBytes?: number; durationSeconds?: number;
+  // Set only on a version that REFERENCES a file uploaded through Projects: its
+  // bytes live under /Projects/… (one physical file, two views), so playback
+  // goes through the id-based .../sketches/{id}/stream route instead of ?path=.
+  source?: "project"; sourceProjectId?: string;
 };
 export type SketchBeat = { fileName: string; filePath: string; extension: string; uploadedAt: string; sizeBytes?: number };
 export type Sketch = {
@@ -410,12 +414,25 @@ function BeatChip({ url, filename, onError }: { url: string; filename: string; o
 // never plays the previous URL from cache. `base` defaults to Shalev's own
 // existing endpoint (unchanged) — callers pass the resolved apiBase when
 // rendering an owner-previewed artist so playback stays scoped to THAT artist.
+// A version whose bytes were uploaded through Projects and are only REFERENCED
+// here lives outside the artist's own Dropbox tree, so the ?path= endpoints
+// (hard-scoped to /app/red-artists/{slug}/) reject it. Those versions go through
+// the id-based routes instead, where the server resolves the path from the
+// manifest. Shalev / DJ CLEANTONE never have such a version, so their URLs are
+// byte-identical to before.
+function latestIsProjectLinked(s: Sketch): boolean {
+  return s.versions.some((v) => v.versionNumber === s.latestVersion && v.source === "project");
+}
 function sketchStreamUrl(s: Sketch, base: string = "/api/red-artists"): string {
-  return `${base}/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
+  return latestIsProjectLinked(s)
+    ? `${base}/sketches/${s.id}/stream?v=${s.latestVersion}`
+    : `${base}/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
 // Same-origin attachment endpoint (clean filename, no 302/Quick Look on iOS).
 function sketchDownloadUrl(s: Sketch, base: string = "/api/red-artists"): string {
-  return `${base}/download?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
+  return latestIsProjectLinked(s)
+    ? `${base}/sketches/${s.id}/download?v=${s.latestVersion}`
+    : `${base}/download?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
 // "YYYY-MM-DD..." or ISO → "DD.MM.YYYY".
 function fmtSketchDate(iso: string | null | undefined): string {
