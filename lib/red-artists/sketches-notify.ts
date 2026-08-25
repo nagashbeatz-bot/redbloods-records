@@ -30,7 +30,7 @@ import {
  * wasn't. It only claims the SEND succeeded, never that Shalev opened/read it.
  */
 
-const SHALEV = "שליو טסמה";
+const SHALEV = "שליו טסמה";
 const SHALEV_MUSIC_URL = "/red-artists?tab=music"; // existing stable tab deep-link (no per-song deep-link exists — none is built here)
 
 function pushAllowed(): boolean {
