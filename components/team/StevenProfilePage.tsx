@@ -2956,7 +2956,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                 <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
                   {vLoadErr ? (
                     <div style={{ padding: "18px 0", fontSize: 12.5, color: RED, textAlign: "center" }}>{t.vLoadFailed}</div>
-                  ) : (versions === null || (groups.length > 0 && !selectedGroup)) ? (
+                  ) : (versions === null || (!targetOnly && groups.length > 0 && !selectedGroup)) ? (
+                    // The second clause is the mid-load guard: versions arrived, groups
+                    // exist, but the auto-select effect has not set `sel` yet — without it
+                    // the empty state flashes for a frame. On a riddim LINE with no version
+                    // that same shape is a legitimate, permanent state (other lines have
+                    // versions, so groups.length > 0, and selectedGroup stays null), and the
+                    // guard would hold a skeleton on screen forever. `targetOnly` says the
+                    // absence is the answer, not a pending one.
                     <PlayerSkeleton />
                   ) : selectedGroup ? (() => {
                     // Players ONLY for audio files. Archives (stems/zip/rar) live
@@ -3085,6 +3092,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       );
                     })()}
 
+                    {/* The one genuinely-pending state on a line: its notes are in flight. */}
+                    {targetOnly && targetNotes === null && <RowsSkeleton rows={1} height={44} pad="0" />}
+
                     {/* Empty state for a line that has neither notes nor a version. */}
                     {targetOnly && targetNotes !== null && targetNotes.length === 0 && (
                       <div style={{ padding: "14px 0", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.cEmpty}</div>
@@ -3124,7 +3134,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                           style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
                       </div>
                     )}
-                    {cLoadErr ? (
+                    {/* Version comments. Skipped entirely on a line with no version:
+                        `comments` is deliberately left null there (there is no version to
+                        load them for), so reading null as "still loading" would strand a
+                        skeleton. That line's notes are rendered above instead. */}
+                    {!targetOnly && (cLoadErr ? (
                       <div style={{ fontSize: 12, color: RED, padding: "6px 2px" }}>{t.cLoadFail}</div>
                     ) : comments === null ? (
                       <RowsSkeleton rows={2} height={44} pad="0" />
@@ -3233,7 +3247,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                           );
                         })}
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
               )}
