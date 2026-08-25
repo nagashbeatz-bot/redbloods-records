@@ -209,9 +209,18 @@ export default function NotificationsBell() {
   // first — which is exactly what happened when the bell grew past the owner.
   // Foreground-only; the service worker (public/sw.js) updates the badge on
   // push arrival so it also works while the app is closed.
+  //
+  // Armed only once a load has actually succeeded. unreadCount starts at 0, and
+  // syncing that initial 0 would clear a perfectly good badge the worker had
+  // already set — permanently, if the fetch then fails on a bad connection.
+  // Once armed it stays armed, so mark-read and mark-all keep updating (and a
+  // real 0 still clears the badge, as it should).
+  const badgeArmedRef = useRef(false);
   useEffect(() => {
+    if (status === "ready") badgeArmedRef.current = true;
+    if (!badgeArmedRef.current) return;
     syncAppBadge(unreadCount);
-  }, [unreadCount]);
+  }, [status, unreadCount]);
 
   // ── Fetch (read-only). Mount → badge; open → refresh. No polling/realtime. ──
   const refresh = useCallback(async () => {
