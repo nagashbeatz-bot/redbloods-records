@@ -5,9 +5,11 @@
  * home-screen icon (iOS 16.4+ standalone PWAs; Chromium desktop/Android too).
  * Already in TypeScript's bundled DOM lib (Navigator.setAppBadge/clearAppBadge).
  *
- * Owner-only pilot: callers gate on role themselves (this file has no role
- * awareness) — it only wraps feature detection + the set/clear call so
- * there's one place to change if the API's shape ever needs adjusting.
+ * This file has no role awareness on purpose — it only wraps feature detection
+ * plus the set/clear call, so there's one place to change if the API's shape
+ * ever needs adjusting. Who gets a badge is decided by the callers: the header
+ * bell in the foreground (it renders only for roles AppShell allows), and
+ * BADGE_ROLES in public/sw.js while the app is closed.
  */
 
 export function appBadgeSupported(): boolean {

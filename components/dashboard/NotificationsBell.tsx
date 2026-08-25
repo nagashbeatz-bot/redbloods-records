@@ -186,7 +186,6 @@ export default function NotificationsBell() {
   const router = useRouter();
   const { openProject } = useGlobalProjectDrawer();
   const role = useRole();
-  const isOwner = role === "owner"; // App Icon Badge pilot: owner devices only
 
   // Language follows the ROLE, never the persisted Victor language on its own:
   // Victor reads en/ru (his portal is never Hebrew), Steven is English-only (his
@@ -202,16 +201,17 @@ export default function NotificationsBell() {
 
   useEffect(() => setMounted(true), []);
 
-  // ── App Icon Badge sync (pilot, owner only) ─────────────────────────────
+  // ── App Icon Badge sync ───────────────────────────────────────────────
   // Mirrors the SAME unreadCount this bell already tracks — no separate count
-  // logic. AppShell mounts this bell in the global header for role === "owner"
-  // only, so isOwner here is a defensive second gate. Foreground-only;
-  // the service worker (public/sw.js) separately updates the badge on push
-  // arrival so it also works while the app is closed.
+  // logic. Deliberately NOT gated on role: AppShell decides who gets a bell
+  // (canSeeBell), and unreadCount is by construction the session user's own
+  // count, so a second role list here could only drift out of sync with the
+  // first — which is exactly what happened when the bell grew past the owner.
+  // Foreground-only; the service worker (public/sw.js) updates the badge on
+  // push arrival so it also works while the app is closed.
   useEffect(() => {
-    if (!isOwner) return;
     syncAppBadge(unreadCount);
-  }, [isOwner, unreadCount]);
+  }, [unreadCount]);
 
   // ── Fetch (read-only). Mount → badge; open → refresh. No polling/realtime. ──
   const refresh = useCallback(async () => {

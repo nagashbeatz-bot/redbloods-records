@@ -21,7 +21,7 @@ self.addEventListener("push", (event) => {
   );
 });
 
-// ── App Icon Badge (pilot, owner devices only) ──────────────────────────────
+// ── App Icon Badge (owner + the two suppliers who have a bell) ───────────
 // Runs on every push so the home-screen icon badge stays correct even while
 // the app is fully closed — this is the one thing a foreground-only update
 // can't cover. Reads the SAME two existing, read-only endpoints the page
@@ -29,15 +29,18 @@ self.addEventListener("push", (event) => {
 // count) — no new endpoint, no count computed/duplicated here, and this is
 // the same-origin request's own session cookie, so it's already scoped to
 // whichever user is signed in on THIS device. Bails immediately for any
-// non-owner role so Victor/Steven/Shalev devices are never touched. Always
-// best-effort: a failure here must never block the actual notification.
+// role that is NOT on the explicit whitelist below — Shalev / CLEANTONE / Avi
+// have no bell and must not start getting a badge. Always best-effort: a
+// failure here must never block the actual notification.
+const BADGE_ROLES = ["owner", "victor", "steven"];
+
 async function updateAppBadge() {
   if (!("setAppBadge" in self.navigator)) return;
   try {
     const meRes = await fetch("/api/me", { credentials: "same-origin" });
     if (!meRes.ok) return;
     const me = await meRes.json();
-    if (me?.role !== "owner") return;
+    if (!BADGE_ROLES.includes(me?.role)) return;
 
     const notifRes = await fetch("/api/notifications", { credentials: "same-origin" });
     if (!notifRes.ok) return;
