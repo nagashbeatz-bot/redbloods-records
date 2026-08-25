@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
@@ -3312,6 +3312,7 @@ function VictorProjectDrawer({
 
 export default function VictorProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [lang] = useVictorLang();
   const t = useVictorT();
   const isMobile = useIsMobile();
@@ -3437,23 +3438,35 @@ export default function VictorProfilePage() {
     finally { setLoading(false); }
   }, []);
 
-  // ── Deep-link: /team/victor?workId=… (from the "new work" push) ──
-  // Opens that work's drawer exactly once. Searches the FULL work list — not the
-  // current tab/filter — which is safe because getVictorWork() ignores the month
-  // and returns every row. UI only: opens the drawer, sends no push and changes
-  // no data. The param is cleared right after so closing + refreshing (or a plain
-  // reload) never reopens it. Read from window.location instead of
-  // useSearchParams() to avoid a Suspense boundary requirement.
-  const deepLinkedRef = useRef(false);
+  // ── Deep-link: /team/victor?workId=… ──
+  // Two ways in, and both have to work:
+  //   • tapping the real push — a fresh document with the param already in the URL
+  //   • clicking the row in the header bell — Victor is ALREADY on this page, so
+  //     router.push only swaps the query and the segment never remounts
+  // The second one is why this reads useSearchParams() rather than
+  // window.location.search: searchParams gets a new identity on every query
+  // change, so the effect re-runs client-side too. (page.tsx supplies the
+  // Suspense boundary the hook needs on this statically-rendered route.)
+  //
+  // handledWorkId, not a one-shot ref: he has a list of notifications and will
+  // open several. Clearing the param below re-runs this with wid=null, which
+  // resets the marker — so re-opening the SAME notification works as well.
+  //
+  // Searches the FULL work list — not the current tab/filter — which is safe
+  // because getVictorWork() ignores the month and returns every row. UI only:
+  // opens the drawer, sends no push and changes no data. The param is cleared
+  // right after so closing + refreshing (or a plain reload) never reopens it.
+  const handledWorkIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (deepLinkedRef.current || loading) return;
-    const wid = new URLSearchParams(window.location.search).get("workId");
-    if (!wid) return;
-    deepLinkedRef.current = true; // once per mount, even if the id no longer exists
+    if (loading) return;
+    const wid = searchParams.get("workId");
+    if (!wid) { handledWorkIdRef.current = null; return; } // param cleared → ready for the next one
+    if (handledWorkIdRef.current === wid) return;          // already handled this navigation
+    handledWorkIdRef.current = wid;                        // marked even if the id no longer exists
     const match = work.find((w) => w.id === wid);
     if (match) setSelectedWork(match); // not found (deleted / not his) → ignore silently
     router.replace("/team/victor", { scroll: false });
-  }, [loading, work, router]);
+  }, [loading, work, router, searchParams]);
 
   const fetchSalary = useCallback(async (year: number) => {
     setSalaryLoading(true);
