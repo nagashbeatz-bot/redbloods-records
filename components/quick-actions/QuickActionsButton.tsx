@@ -1,7 +1,8 @@
 "use client";
 
-// Red "פעולות מהירות" button shown top-right across pages (passed as AppShell
-// topRight). Client component so onClick can fire — it dispatches the global
+// Red "פעולות מהירות" button in the global header. Rendered by AppShell itself
+// (owner only) so it is identical on every route — pages never pass it in.
+// Client component so onClick can fire — it dispatches the global
 // rb:quick-actions event that AppShell listens for to open QuickActionsModal.
 export default function QuickActionsButton() {
   const open = () => window.dispatchEvent(new CustomEvent("rb:quick-actions"));

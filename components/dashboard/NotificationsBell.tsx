@@ -175,8 +175,8 @@ export default function NotificationsBell() {
 
   // ── App Icon Badge sync (pilot, owner only) ─────────────────────────────
   // Mirrors the SAME unreadCount this bell already tracks — no separate count
-  // logic, and this bell only ever mounts on /dashboard (owner-only route),
-  // so isOwner is a defensive second gate, not the only one. Foreground-only;
+  // logic. AppShell mounts this bell in the global header for role === "owner"
+  // only, so isOwner here is a defensive second gate. Foreground-only;
   // the service worker (public/sw.js) separately updates the badge on push
   // arrival so it also works while the app is closed.
   useEffect(() => {

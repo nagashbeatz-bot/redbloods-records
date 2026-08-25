@@ -16,6 +16,7 @@ import GlobalProjectDrawerProvider from "@/components/GlobalProjectDrawer";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import PushManager from "@/components/PushManager";
 import NotificationsBell from "@/components/dashboard/NotificationsBell";
+import QuickActionsButton from "@/components/quick-actions/QuickActionsButton";
 import QuickActionsModal from "@/components/quick-actions/QuickActionsModal";
 import { useRole } from "@/lib/use-role";
 import { MAI_AI_ENABLED } from "@/lib/feature-flags";
@@ -25,10 +26,10 @@ const SIDEBAR_WIDTH = 248; // px — desktop sidebar
 const PLAYER_H      = 110; // px — desktop mini player (92px card + 18px bottom margin)
 const MOBILE_PLAYER_H = 74; // px — mobile mini player (2-row card)
 
-export default function AppShell({ children, topRight }: { children: React.ReactNode; topRight?: React.ReactNode }) {
+export default function AppShell({ children }: { children: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const role = useRole();
-  const isOwner = role === "owner"; // AI agent + tools are owner-only chrome
+  const isOwner = role === "owner"; // AI agent + tools + global header chrome (bell, quick actions) are owner-only
   const canRadio = role === "owner" || role === "shalev"; // the external LISTEN radio is available to the artist too
   // shalev + victor + cleantone have no fixed bottom nav (their logout sits at
   // the end of their page content) → reserve no space for a bar. The
@@ -46,8 +47,6 @@ export default function AppShell({ children, topRight }: { children: React.React
   const shellRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
-  // Notifications bell is shown only on the dashboard, beside the LISTEN pill.
-  const isDashboard = pathname === "/dashboard";
 
   useLayoutEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -178,11 +177,12 @@ export default function AppShell({ children, topRight }: { children: React.React
                 <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.01em" }}>Redbloods</div>
                 <div style={{ fontSize: 8, fontWeight: 800, color: "#DC2626", letterSpacing: "0.22em", textTransform: "uppercase" }}>Records</div>
               </div>
-              {/* Bell on mobile sits on the topRight side (beside the compact "פעולות" pill),
-                  away from the centered wordmark — avoids header crowding on small screens. */}
+              {/* Bell + "פעולות" pill sit together on the far side, away from the
+                  centered wordmark — avoids header crowding on small screens.
+                  Owner-only, and identical on every route (no per-page override). */}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {isDashboard && <NotificationsBell />}
-                {topRight ?? <div style={{ width: 40 }} />}
+                {isOwner && <NotificationsBell />}
+                {isOwner ? <QuickActionsButton /> : <div style={{ width: 40 }} />}
               </div>
             </div>
 
@@ -195,23 +195,29 @@ export default function AppShell({ children, topRight }: { children: React.React
                     sidebarWidth={SIDEBAR_WIDTH}
                     variant="desktop"
                   />
-                ) : (!isDashboard && <div />)}
-                {isDashboard && <NotificationsBell />}
+                ) : <div />}
+                {isOwner && <NotificationsBell />}
               </div>
-              {topRight ?? (isOwner && MAI_AI_ENABLED ? (
-                <button
-                  onClick={() => setChatOpen(!chatOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
-                  style={{
-                    background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
-                    borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
-                    color: chatOpen ? "#3B82F6" : "#888",
-                  }}
-                >
-                  <span>✦</span>
-                  {chatOpen ? "סגור סוכן" : "סוכן AI"}
-                </button>
-              ) : <div />)}
+              {/* Owner chrome, identical on every route. The AI toggle stays behind
+                  MAI_AI_ENABLED (off today) — when it is flipped back on it sits
+                  beside the quick-actions button rather than replacing it. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {isOwner && MAI_AI_ENABLED && (
+                  <button
+                    onClick={() => setChatOpen(!chatOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-all"
+                    style={{
+                      background: chatOpen ? "rgba(59,130,246,0.15)" : "#1A1A1A",
+                      borderColor: chatOpen ? "rgba(59,130,246,0.4)" : "#2A2A2A",
+                      color: chatOpen ? "#3B82F6" : "#888",
+                    }}
+                  >
+                    <span>✦</span>
+                    {chatOpen ? "סגור סוכן" : "סוכן AI"}
+                  </button>
+                )}
+                {isOwner && <QuickActionsButton />}
+              </div>
             </div>
           </header>
 
