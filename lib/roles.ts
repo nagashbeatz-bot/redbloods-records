@@ -59,6 +59,10 @@ export function isVictorAllowedPath(pathname: string): boolean {
     "/api/vendor/victor",          // GET stats/work, /projects, /work/[id] (method-guarded per route)
     "/api/dropbox/vendor-folder",
     "/api/dropbox/vendor-upload",
+    "/api/notifications",          // his OWN bell only: every handler under this
+                                   // prefix scopes to recipient_user_id = the
+                                   // session user, so this grants Victor read +
+                                   // mark-as-read on his own rows and nothing else
   ];
   return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }

@@ -431,6 +431,37 @@ const HE: Dict = {
   "err.taskDelete": "מחיקת משימת המעקב נכשלה",
   "err.workRemove": "מחיקת הפרויקט מויקטור נכשלה",
   "err.networkRetry": "שגיאת רשת — נסה שוב",
+
+  // ── Header notifications bell ───────────────────────────────────
+  // Shared chrome: the owner reads these in Hebrew, Victor in en/ru. The bell
+  // picks its language from the ROLE (see NotificationsBell), not from the
+  // persisted Victor language — so an owner who switched Victor's page to
+  // English still gets a Hebrew bell.
+  "bell.title": "התראות",
+  "bell.markAll": "סמן הכל כנקרא",
+  "bell.tabAll": "הכל",
+  "bell.tabUnread": "לא נקראו",
+  "bell.emptyAll": "אין התראות עדיין",
+  "bell.emptyUnread": "אין התראות שלא נקראו",
+  "bell.loading": "טוען…",
+  "bell.loadError": "לא הצלחנו לטעון את ההתראות",
+  "bell.retry": "נסה שוב",
+  "bell.footer": "לכל ההתראות ←",
+  "bell.markReadError": "לא הצלחנו לעדכן את ההתראה",
+  "bell.markAllError": "לא הצלחנו לעדכן את ההתראות",
+  "bell.markRead": "סמן כנקרא",
+  "bell.read": "נקרא",
+  "bell.time.now": "עכשיו",
+  "bell.time.min.one": "לפני דקה",
+  "bell.time.min.few": "לפני {n} דקות",
+  "bell.time.min.many": "לפני {n} דקות",
+  "bell.time.hour.one": "לפני שעה",
+  "bell.time.hour.few": "לפני {n} שעות",
+  "bell.time.hour.many": "לפני {n} שעות",
+  "bell.time.yesterday": "אתמול",
+  "bell.time.day.one": "לפני {n} ימים",
+  "bell.time.day.few": "לפני {n} ימים",
+  "bell.time.day.many": "לפני {n} ימים",
 };
 
 const EN: Dict = {
@@ -709,6 +740,33 @@ const EN: Dict = {
   "err.taskDelete": "Failed to delete the tracking task",
   "err.workRemove": "Failed to remove the project from Viktor",
   "err.networkRetry": "Network error — try again",
+
+  // ── Header notifications bell ───────────────────────────────────
+  "bell.title": "Notifications",
+  "bell.markAll": "Mark all as read",
+  "bell.tabAll": "All",
+  "bell.tabUnread": "Unread",
+  "bell.emptyAll": "No notifications yet",
+  "bell.emptyUnread": "No unread notifications",
+  "bell.loading": "Loading…",
+  "bell.loadError": "We couldn't load your notifications",
+  "bell.retry": "Try again",
+  "bell.footer": "All notifications →",
+  "bell.markReadError": "We couldn't update the notification",
+  "bell.markAllError": "We couldn't update the notifications",
+  "bell.markRead": "Mark as read",
+  "bell.read": "Read",
+  "bell.time.now": "Just now",
+  "bell.time.min.one": "A minute ago",
+  "bell.time.min.few": "{n} minutes ago",
+  "bell.time.min.many": "{n} minutes ago",
+  "bell.time.hour.one": "An hour ago",
+  "bell.time.hour.few": "{n} hours ago",
+  "bell.time.hour.many": "{n} hours ago",
+  "bell.time.yesterday": "Yesterday",
+  "bell.time.day.one": "{n} days ago",
+  "bell.time.day.few": "{n} days ago",
+  "bell.time.day.many": "{n} days ago",
 };
 
 const RU: Dict = {
@@ -987,15 +1045,50 @@ const RU: Dict = {
   "err.taskDelete": "Не удалось удалить задачу отслеживания",
   "err.workRemove": "Не удалось удалить проект из Viktor",
   "err.networkRetry": "Ошибка сети — попробуйте снова",
+
+  // ── Header notifications bell ───────────────────────────────────
+  // .one/.few/.many follow the Slavic plural rule (see pluralForm in the bell).
+  "bell.title": "Уведомления",
+  "bell.markAll": "Отметить все как прочитанные",
+  "bell.tabAll": "Все",
+  "bell.tabUnread": "Непрочитанные",
+  "bell.emptyAll": "Уведомлений пока нет",
+  "bell.emptyUnread": "Нет непрочитанных уведомлений",
+  "bell.loading": "Загрузка…",
+  "bell.loadError": "Не удалось загрузить уведомления",
+  "bell.retry": "Попробовать снова",
+  "bell.footer": "Все уведомления →",
+  "bell.markReadError": "Не удалось обновить уведомление",
+  "bell.markAllError": "Не удалось обновить уведомления",
+  "bell.markRead": "Отметить как прочитанное",
+  "bell.read": "Прочитано",
+  "bell.time.now": "Только что",
+  "bell.time.min.one": "{n} минуту назад",
+  "bell.time.min.few": "{n} минуты назад",
+  "bell.time.min.many": "{n} минут назад",
+  "bell.time.hour.one": "{n} час назад",
+  "bell.time.hour.few": "{n} часа назад",
+  "bell.time.hour.many": "{n} часов назад",
+  "bell.time.yesterday": "Вчера",
+  "bell.time.day.one": "{n} день назад",
+  "bell.time.day.few": "{n} дня назад",
+  "bell.time.day.many": "{n} дней назад",
 };
 
 const DICT: Record<VictorLang, Dict> = { he: HE, en: EN, ru: RU };
 
+/** Same dictionaries as useVictorT, but with an EXPLICIT language instead of the
+ *  persisted Victor one. For chrome that is shared with the owner (the header
+ *  notifications bell): the owner must stay Hebrew even when Victor's page
+ *  language is set to English, so that component derives its language from the
+ *  role and looks the strings up here. */
+export function victorT(lang: VictorLang, key: string, vars?: Record<string, string | number>): string {
+  let s = DICT[lang][key] ?? DICT.he[key] ?? key;
+  if (vars) for (const k in vars) s = s.replace(`{${k}}`, String(vars[k]));
+  return s;
+}
+
 export function useVictorT(): (key: string, vars?: Record<string, string | number>) => string {
   const [lang] = useVictorLang();
-  return (key, vars) => {
-    let s = DICT[lang][key] ?? DICT.he[key] ?? key;
-    if (vars) for (const k in vars) s = s.replace(`{${k}}`, String(vars[k]));
-    return s;
-  };
+  return (key, vars) => victorT(lang, key, vars);
 }

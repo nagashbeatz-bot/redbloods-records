@@ -1,9 +1,15 @@
 "use client";
 
-// ── Dashboard notifications bell + dropdown ────────────────────────────────
+// ── Global header notifications bell + dropdown ────────────────────────────
 // Wired to the signed-in user's real push history via GET /api/notifications
 // (read-only; never sends a push and never calls /api/push/check). Privacy +
 // scoping are enforced server-side by RLS — React never filters for security.
+//
+// Rendered by AppShell for the owner AND for Victor. Each of them only ever
+// sees their own rows: every handler under /api/notifications scopes to
+// recipient_user_id = the session user, so this component needs no role logic
+// to keep the two apart. What the role DOES decide here is language — see
+// `lang` below.
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useGlobalProjectDrawer } from "@/components/GlobalProjectDrawer";
 import { useRole } from "@/lib/use-role";
 import { syncAppBadge } from "@/lib/app-badge";
+import { victorT, useVictorLang, type VictorLang } from "@/lib/victor-i18n";
 
 // ── API shape (mirrors GET /api/notifications) ─────────────────────────────
 interface ApiNotification {
@@ -58,20 +65,30 @@ function kindOf(n: ApiNotification): NotifKind {
   return "default";
 }
 
-// ── Relative Hebrew time (no date library — plain JS) ──────────────────────
-function relTime(iso: string): string {
+// ── Relative time (no date library — plain JS), localized per bell language ──
+// he/en only need one/other, so they collapse to .one/.many; ru needs all three
+// Slavic forms, which is what the .one/.few/.many keys carry.
+function pluralForm(lang: VictorLang, n: number): "one" | "few" | "many" {
+  if (lang !== "ru") return n === 1 ? "one" : "many";
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return "one";
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "few";
+  return "many";
+}
+
+function relTime(iso: string, lang: VictorLang): string {
   const then = new Date(iso).getTime();
   if (isNaN(then)) return "";
+  const ago = (unit: "min" | "hour" | "day", n: number) =>
+    victorT(lang, `bell.time.${unit}.${pluralForm(lang, n)}`, { n });
   const min = Math.floor((Date.now() - then) / 60000);
-  if (min < 1)  return "עכשיו";
-  if (min === 1) return "לפני דקה";
-  if (min < 60) return `לפני ${min} דקות`;
+  if (min < 1)  return victorT(lang, "bell.time.now");
+  if (min < 60) return ago("min", min);
   const hr = Math.floor(min / 60);
-  if (hr === 1) return "לפני שעה";
-  if (hr < 24)  return `לפני ${hr} שעות`;
+  if (hr < 24)  return ago("hour", hr);
   const day = Math.floor(hr / 24);
-  if (day === 1) return "אתמול";
-  return `לפני ${day} ימים`;
+  if (day === 1) return victorT(lang, "bell.time.yesterday");
+  return ago("day", day);
 }
 
 // ── URL safety: only internal, absolute paths — never external / scheme ────
@@ -171,6 +188,14 @@ export default function NotificationsBell() {
   const role = useRole();
   const isOwner = role === "owner"; // App Icon Badge pilot: owner devices only
 
+  // Language follows the ROLE, never the persisted Victor language on its own:
+  // Victor reads en/ru (his portal is never Hebrew), everyone else — the owner —
+  // stays Hebrew. Reading useVictorLang() directly would flip the OWNER's bell to
+  // English the moment they switched Victor's page language while viewing it.
+  const [victorLang] = useVictorLang();
+  const lang: VictorLang = role === "victor" ? (victorLang === "ru" ? "ru" : "en") : "he";
+  const t = (key: string, vars?: Record<string, string | number>) => victorT(lang, key, vars);
+
   useEffect(() => setMounted(true), []);
 
   // ── App Icon Badge sync (pilot, owner only) ─────────────────────────────
@@ -223,10 +248,13 @@ export default function NotificationsBell() {
       }, 350);
       return true;
     } catch {
-      setActionError("לא הצלחנו לעדכן את ההתראה");
+      // victorT(lang, ...) rather than t(...): t is a fresh closure every render,
+      // so capturing it in this memo would freeze the language at first paint —
+      // before /api/me has resolved Victor's role.
+      setActionError(victorT(lang, "bell.markReadError"));
       return false;
     }
-  }, []);
+  }, [lang]);
 
   // ── Mark one read on click, then navigate ──
   const onRowClick = async (n: ApiNotification) => {
@@ -262,7 +290,7 @@ export default function NotificationsBell() {
       setItems((prev) => prev.map((x) => (x.readAt ? x : { ...x, readAt })));
       setUnreadCount(0);
     } catch {
-      setActionError("לא הצלחנו לעדכן את ההתראות");
+      setActionError(t("bell.markAllError"));
     } finally {
       setMarkingAll(false);
     }
@@ -302,8 +330,8 @@ export default function NotificationsBell() {
       <button
         ref={btnRef}
         onClick={toggleOpen}
-        title="התראות"
-        aria-label="התראות"
+        title={t("bell.title")}
+        aria-label={t("bell.title")}
         className="rb-bell-btn"
         style={{
           position: "relative",
@@ -358,9 +386,9 @@ export default function NotificationsBell() {
             style={{ position: "fixed", inset: 0, zIndex: 9997, background: "transparent" }}
           />
           <div
-            dir="rtl"
+            dir={lang === "he" ? "rtl" : "ltr"}
             role="dialog"
-            aria-label="התראות"
+            aria-label={t("bell.title")}
             style={{
               position: "fixed",
               top: pos.top, left: pos.left, width: pos.width,
@@ -378,7 +406,7 @@ export default function NotificationsBell() {
             {/* Header: title + "mark all read" + filter tabs */}
             <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11, minHeight: 18 }}>
-                <span style={{ fontSize: 15, fontWeight: 900, color: "#F2F2F2", letterSpacing: "-0.01em" }}>התראות</span>
+                <span style={{ fontSize: 15, fontWeight: 900, color: "#F2F2F2", letterSpacing: "-0.01em" }}>{t("bell.title")}</span>
                 {unreadCount > 0 && (
                   <button
                     type="button"
@@ -394,23 +422,23 @@ export default function NotificationsBell() {
                     onMouseEnter={(e) => { if (!markingAll) e.currentTarget.style.color = "#C0C0C0"; }}
                     onMouseLeave={(e) => { if (!markingAll) e.currentTarget.style.color = "#7C7C7C"; }}
                   >
-                    סמן הכל כנקרא
+                    {t("bell.markAll")}
                   </button>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <FilterPill label="הכל"     active={tab === "all"}    onClick={() => setTab("all")} />
-                <FilterPill label="לא נקראו" active={tab === "unread"} onClick={() => setTab("unread")} count={unreadCount} />
+                <FilterPill label={t("bell.tabAll")}    active={tab === "all"}    onClick={() => setTab("all")} />
+                <FilterPill label={t("bell.tabUnread")} active={tab === "unread"} onClick={() => setTab("unread")} count={unreadCount} />
               </div>
             </div>
 
             {/* List */}
             <div style={{ overflowY: "auto", flex: 1, minHeight: 120 }}>
               {status === "loading" && items.length === 0 ? (
-                <div style={{ padding: "44px 16px", textAlign: "center", color: "#606060", fontSize: 13 }}>טוען…</div>
+                <div style={{ padding: "44px 16px", textAlign: "center", color: "#606060", fontSize: 13 }}>{t("bell.loading")}</div>
               ) : status === "error" && items.length === 0 ? (
                 <div style={{ padding: "34px 16px", textAlign: "center" }}>
-                  <div style={{ color: "#8C8C8C", fontSize: 13, marginBottom: 12 }}>לא הצלחנו לטעון את ההתראות</div>
+                  <div style={{ color: "#8C8C8C", fontSize: 13, marginBottom: 12 }}>{t("bell.loadError")}</div>
                   <button
                     type="button"
                     onClick={refresh}
@@ -420,18 +448,19 @@ export default function NotificationsBell() {
                       fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
                     }}
                   >
-                    נסה שוב
+                    {t("bell.retry")}
                   </button>
                 </div>
               ) : shown.length === 0 ? (
                 <div style={{ padding: "44px 16px", textAlign: "center", color: "#606060", fontSize: 13 }}>
-                  {tab === "unread" ? "אין התראות שלא נקראו" : "אין התראות עדיין"}
+                  {tab === "unread" ? t("bell.emptyUnread") : t("bell.emptyAll")}
                 </div>
               ) : (
                 shown.map((n) => (
                   <NotificationRow
                     key={n.id}
                     n={n}
+                    lang={lang}
                     onClick={() => onRowClick(n)}
                     onMarkRead={() => onMarkReadClick(n)}
                     justRead={justReadIds.has(n.id)}
@@ -463,7 +492,7 @@ export default function NotificationsBell() {
                 fontFamily: "inherit", textAlign: "center",
               }}
             >
-              לכל ההתראות ←
+              {t("bell.footer")}
             </div>
           </div>
         </>,
@@ -508,9 +537,9 @@ function FilterPill({ label, active, onClick, count }: { label: string; active: 
 
 // ── One notification row ───────────────────────────────────────────────────
 function NotificationRow({
-  n, onClick, onMarkRead, justRead,
+  n, lang, onClick, onMarkRead, justRead,
 }: {
-  n: ApiNotification; onClick: () => void; onMarkRead: () => void; justRead: boolean;
+  n: ApiNotification; lang: VictorLang; onClick: () => void; onMarkRead: () => void; justRead: boolean;
 }) {
   const kind = kindOf(n);
   const ts = KIND_STYLE[kind];
@@ -548,7 +577,7 @@ function NotificationRow({
             {n.body}
           </div>
         )}
-        <div style={{ fontSize: 10.5, color: "#585858", marginTop: 5 }}>{relTime(n.createdAt)}</div>
+        <div style={{ fontSize: 10.5, color: "#585858", marginTop: 5 }}>{relTime(n.createdAt, lang)}</div>
       </div>
 
       {/* Icon (left in RTL) */}
@@ -567,8 +596,8 @@ function NotificationRow({
         type="button"
         onClick={(e) => { e.stopPropagation(); onMarkRead(); }}
         disabled={!unread}
-        title={unread ? "סמן כנקרא" : "נקרא"}
-        aria-label={unread ? "סמן כנקרא" : "נקרא"}
+        title={victorT(lang, unread ? "bell.markRead" : "bell.read")}
+        aria-label={victorT(lang, unread ? "bell.markRead" : "bell.read")}
         aria-pressed={!unread}
         style={{
           width: 26, height: 26, borderRadius: "50%", flexShrink: 0,

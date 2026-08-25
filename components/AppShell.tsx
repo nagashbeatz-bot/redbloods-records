@@ -29,7 +29,11 @@ const MOBILE_PLAYER_H = 74; // px — mobile mini player (2-row card)
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const role = useRole();
-  const isOwner = role === "owner"; // AI agent + tools + global header chrome (bell, quick actions) are owner-only
+  const isOwner = role === "owner"; // AI agent + tools + quick actions are owner-only chrome
+  // The bell is the one piece of header chrome Victor gets too. It is safe to
+  // share because every /api/notifications handler scopes to the session user's
+  // own rows — Victor can never see or mark the owner's notifications.
+  const canSeeBell = isOwner || role === "victor";
   const canRadio = role === "owner" || role === "shalev"; // the external LISTEN radio is available to the artist too
   // shalev + victor + cleantone have no fixed bottom nav (their logout sits at
   // the end of their page content) → reserve no space for a bar. The
@@ -117,13 +121,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     /*
+      GlobalProjectDrawerProvider wraps the ENTIRE shell, header included: the
+      notifications bell sits in the header and calls openProject() when a
+      notification is tied to a project. While the provider only wrapped
+      {children}, that call silently hit the NOOP context on every page whose
+      own page.tsx did not add a provider of its own.
+      The drawers it renders portal to document.body, so wrapping more of the
+      tree changes nothing about layout.
+    */
+    <GlobalProjectDrawerProvider>
+    {/*
       Root shell: position fixed + inset 0 fills the exact visual viewport on
       iOS PWA without any JavaScript. The browser always computes fixed insets
       correctly from frame 0 — no timers, no opacity hacks, no polling needed.
 
       flex-col so MobileNav (last child) anchors to the real bottom of the
       viewport by layout flow, not by position:fixed.
-    */
+    */}
     <div
       ref={shellRef}
       className="app-shell-root"
@@ -179,9 +193,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               {/* Bell + "פעולות" pill sit together on the far side, away from the
                   centered wordmark — avoids header crowding on small screens.
-                  Owner-only, and identical on every route (no per-page override). */}
+                  Identical on every route (no per-page override); the pill is
+                  owner-only, the bell is owner + Victor. */}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {isOwner && <NotificationsBell />}
+                {canSeeBell && <NotificationsBell />}
                 {isOwner ? <QuickActionsButton /> : <div style={{ width: 40 }} />}
               </div>
             </div>
@@ -196,7 +211,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     variant="desktop"
                   />
                 ) : <div />}
-                {isOwner && <NotificationsBell />}
+                {canSeeBell && <NotificationsBell />}
               </div>
               {/* Owner chrome, identical on every route. The AI toggle stays behind
                   MAI_AI_ENABLED (off today) — when it is flipped back on it sits
@@ -248,9 +263,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     : undefined,
               }}
             >
-              <GlobalProjectDrawerProvider>
-                {children}
-              </GlobalProjectDrawerProvider>
+              {children}
             </div>
 
             {/* Desktop chat panel */}
@@ -368,6 +381,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <DebugOverlay shellRef={shellRef} navRef={mobileNavRef} />
       </Suspense>
     </div>
+    </GlobalProjectDrawerProvider>
   );
 }
 
