@@ -30,10 +30,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const role = useRole();
   const isOwner = role === "owner"; // AI agent + tools + quick actions are owner-only chrome
-  // The bell is the one piece of header chrome Victor gets too. It is safe to
-  // share because every /api/notifications handler scopes to the session user's
-  // own rows — Victor can never see or mark the owner's notifications.
-  const canSeeBell = isOwner || role === "victor";
+  // The bell is the one piece of header chrome the suppliers get too. It is safe
+  // to share because every /api/notifications handler scopes to the session
+  // user's own rows — neither of them can see or mark anyone else's.
+  const canSeeBell = isOwner || role === "victor" || role === "steven";
   const canRadio = role === "owner" || role === "shalev"; // the external LISTEN radio is available to the artist too
   // shalev + victor + cleantone have no fixed bottom nav (their logout sits at
   // the end of their page content) → reserve no space for a bar. The

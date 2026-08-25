@@ -50,7 +50,7 @@ export async function notifyStevenMixReady(
   await sendPushToRoles(["owner", "steven"], {
     title: "New mix job",
     body,
-    url: "/team/steven",
+    url: `/team/steven?work=${work.id}`, // deep-link → opens this work's modal
     tag: `steven-mix-ready-${work.id}`,
   });
 

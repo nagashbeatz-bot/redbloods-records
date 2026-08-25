@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import LinkifiedText from "@/components/ui/LinkifiedText";
@@ -879,6 +879,7 @@ function StevenPushCard() {
 
 export default function StevenProfilePage({ initialLang = "he", initialRole = null }: { initialLang?: Lang; initialRole?: "owner" | "victor" | "steven" | null }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [works, setWorks]   = useState<Work[]>([]);
   const [loading, setLoading] = useState(true); // initial page load only — never re-armed after create
   const [openId, setOpenId] = useState<string | null>(null);
@@ -943,34 +944,42 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   }, [isSteven]);
   useEffect(() => { void reloadWorks(); }, [reloadWorks]);
 
-  // Deep link from a "New mix notes" push: /team/steven?work={id}&notes=1 opens
-  // that work's modal and (notes=1) scrolls it to the shared comments. Parsed
-  // ONCE on mount into a ref, then the query is stripped so a later refresh never
-  // re-opens. NO push is sent here — this is pure client navigation. A plain
-  // /team/steven visit (no ?work) is untouched.
-  const deepLinkRef = useRef<{ id: string; notes: boolean } | null>(null);
-  const [deepLinkReady, setDeepLinkReady] = useState(false);
+  // Deep link: /team/steven?work={id} opens that work's modal, and &notes=1 also
+  // focuses the shared comments. Two ways in, and both have to work:
+  //   • tapping the real push — a fresh document with the query already in the URL
+  //   • clicking the row in the header bell — Steven is ALREADY on this page (it
+  //     is his only one), so router.push swaps the query and nothing remounts
+  // The second one is why this reads useSearchParams() rather than
+  // window.location.search: searchParams gets a new identity on every query
+  // change, so this re-runs client-side too. (No Suspense boundary needed —
+  // page.tsx is force-dynamic, so the route is never prerendered.)
+  //
+  // handledWorkId, not a one-shot ref: he has a list of notifications and will
+  // open several. The query is stripped right below, which re-runs this with no
+  // ?work and resets the marker — so re-opening the SAME notification works too,
+  // and a later refresh still never re-opens anything.
+  //
+  // The param names stay `work` / `notes`: URLs already written into
+  // notification rows use them. NO push is sent here — pure client navigation.
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ id: string; notes: boolean } | null>(null);
+  const handledWorkIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (typeof window === "undefined") { setDeepLinkReady(true); return; }
-    const sp = new URLSearchParams(window.location.search);
-    const wid = sp.get("work");
-    if (wid) {
-      deepLinkRef.current = { id: wid, notes: sp.get("notes") === "1" };
-      router.replace("/team/steven"); // clean URL → refresh won't reopen
-    }
-    setDeepLinkReady(true);
-  }, [router]);
-  // Apply the pending deep link once the works list has loaded (consume once).
+    const wid = searchParams.get("work");
+    if (!wid) { handledWorkIdRef.current = null; return; } // query cleared → ready for the next one
+    if (handledWorkIdRef.current === wid) return;          // already handled this navigation
+    handledWorkIdRef.current = wid;
+    setPendingDeepLink({ id: wid, notes: searchParams.get("notes") === "1" });
+    router.replace("/team/steven"); // clean URL → refresh won't reopen
+  }, [searchParams, router]);
+  // Apply the pending deep link once the works list has loaded.
   useEffect(() => {
-    if (!deepLinkReady) return;
-    const dl = deepLinkRef.current;
-    if (!dl || !works.length) return;
-    if (works.some(w => w.id === dl.id)) {
-      setOpenId(dl.id);
-      if (dl.notes) setFocusNotesId(dl.id);
+    if (!pendingDeepLink || !works.length) return;
+    if (works.some(w => w.id === pendingDeepLink.id)) {
+      setOpenId(pendingDeepLink.id);
+      if (pendingDeepLink.notes) setFocusNotesId(pendingDeepLink.id);
     }
-    deepLinkRef.current = null;
-  }, [works, deepLinkReady]);
+    setPendingDeepLink(null); // not found (deleted / not his) → dropped silently
+  }, [works, pendingDeepLink]);
 
   // Presence beacon — fire once when Steven lands on his page. The SERVER decides
   // whether to actually push (login dedupe + 30-min visit cooldown), so a refresh

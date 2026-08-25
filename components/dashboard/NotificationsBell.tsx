@@ -189,11 +189,15 @@ export default function NotificationsBell() {
   const isOwner = role === "owner"; // App Icon Badge pilot: owner devices only
 
   // Language follows the ROLE, never the persisted Victor language on its own:
-  // Victor reads en/ru (his portal is never Hebrew), everyone else — the owner —
-  // stays Hebrew. Reading useVictorLang() directly would flip the OWNER's bell to
+  // Victor reads en/ru (his portal is never Hebrew), Steven is English-only (his
+  // page hardcodes it and offers no toggle), everyone else — the owner — stays
+  // Hebrew. Reading useVictorLang() directly would flip the OWNER's bell to
   // English the moment they switched Victor's page language while viewing it.
   const [victorLang] = useVictorLang();
-  const lang: VictorLang = role === "victor" ? (victorLang === "ru" ? "ru" : "en") : "he";
+  const lang: VictorLang =
+    role === "victor" ? (victorLang === "ru" ? "ru" : "en") :
+    role === "steven" ? "en" :
+    "he";
   const t = (key: string, vars?: Record<string, string | number>) => victorT(lang, key, vars);
 
   useEffect(() => setMounted(true), []);

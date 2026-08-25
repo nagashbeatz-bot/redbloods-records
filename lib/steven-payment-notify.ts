@@ -52,7 +52,7 @@ export async function notifyStevenPaymentPaid(work: {
     await sendPushToRoles(["owner", "steven"], {
       title: "Payment sent",
       body,
-      url: "/team/steven",
+      url: `/team/steven?work=${work.id}`, // deep-link → opens this work's modal
       // Shared tag → the browser/iOS collapses any rare duplicate into one.
       tag: `steven-payment-${work.id}`,
     });

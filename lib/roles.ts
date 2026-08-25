@@ -77,6 +77,10 @@ export function isStevenAllowedPath(pathname: string): boolean {
   const apiAllow = [
     "/api/me",
     "/api/supplier/steven",        // list + work/[id]/* + versions/comments/materials/stream (method+ownership guarded per route)
+    "/api/notifications",          // his OWN bell only: every handler under this
+                                   // prefix scopes to recipient_user_id = the
+                                   // session user, so this grants Steven read +
+                                   // mark-as-read on his own rows and nothing else
   ];
   return apiAllow.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
