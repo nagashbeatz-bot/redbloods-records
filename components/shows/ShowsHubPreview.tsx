@@ -449,8 +449,8 @@ function ShowFormModal({
       .finally(() => setCliLoad(false));
   }, []);
 
-  // VIP clients → artist dropdown; type "לקוח" → booker dropdown; type "איש צוות" → DJ dropdown
-  const vipClients    = clients.filter(c => c.status === "VIP");
+  // status "אמן לייבל" → artist dropdown; type "לקוח" → booker dropdown; type "איש צוות" → DJ dropdown
+  const labelArtists  = clients.filter(c => c.status === "אמן לייבל");
   const bookerClients = clients.filter(c => c.type === "לקוח");
   const crewClients   = clients.filter(c => c.type === "איש צוות");
 
@@ -906,13 +906,13 @@ function ShowFormModal({
                 )}
               </div>
 
-              {/* Artist — SAME source of truth as the full form (vipClients / selectArtist) */}
+              {/* Artist — SAME source of truth as the full form (labelArtists / selectArtist) */}
               <div>
                 <label style={labelStyle}>אמן</label>
                 {cliLoad ? (
                   <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
-                ) : vipClients.length === 0 ? (
-                  <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אמנים מסוג VIP</div>
+                ) : labelArtists.length === 0 ? (
+                  <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אמני לייבל</div>
                 ) : (
                   <select
                     value={form.artist_client_id ?? ""}
@@ -920,7 +920,7 @@ function ShowFormModal({
                     style={selectFieldStyle}
                   >
                     <option value="">בחר אמן…</option>
-                    {vipClients.map(c => (
+                    {labelArtists.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
@@ -952,8 +952,8 @@ function ShowFormModal({
               <label style={labelStyle}>אמן</label>
               {cliLoad ? (
                 <div style={{ ...inputStyle, color: MUTED }}>טוען…</div>
-              ) : vipClients.length === 0 ? (
-                <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אמנים מסוג VIP</div>
+              ) : labelArtists.length === 0 ? (
+                <div style={{ ...inputStyle, color: MUTED, fontSize: 12 }}>אין אמני לייבל</div>
               ) : (
                 <select
                   value={form.artist_client_id ?? ""}
@@ -961,7 +961,7 @@ function ShowFormModal({
                   style={selectFieldStyle}
                 >
                   <option value="">בחר אמן…</option>
-                  {vipClients.map(c => (
+                  {labelArtists.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
