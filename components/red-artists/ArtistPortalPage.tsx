@@ -3824,11 +3824,15 @@ function AvailDayModal({ day, onCancel, onSave }: {
 // Adapt a Sketch → the LibRow shape the shared player helpers already understand.
 // Audio URL carries the version so a new V{n} never plays the previous cached URL.
 function sketchAsLibRow(s: Sketch, base?: string, artistName?: string): LibRow {
-  // Avi's portal: the player (main + bottom bar) shows "{title} - סקיצה {latest}".
-  // Every other portal keeps just the title — unchanged.
-  const playerName = isAviPortalName(artistName) ? `${s.title} - סקיצה ${s.latestVersion}` : s.title;
+  // The player shows the sketch's canonical title ONLY — no version number and
+  // no "סקיצה" prefix, in EVERY portal including Avi's. This is a display-only
+  // decision scoped to the player: the version list, the sketch editor, the
+  // Dropbox file names and the manifest all keep their "סקיצה N" numbering
+  // (sketchVersionLabel + the "סקיצות בפרויקט" block still branch on
+  // isAviPortal). `name` only ever reaches player.play({projectName}); player
+  // identity is keyed on `id`, so nothing else reads it.
   return {
-    id: s.id, name: playerName, artist: artistName ?? SHALEV_ARTIST, status: "", projectType: "sketch",
+    id: s.id, name: s.title, artist: artistName ?? SHALEV_ARTIST, status: "", projectType: "sketch",
     hasAudio: !!s.latestFilePath,
     audio: s.latestFilePath ? { name: s.latestFileName, url: sketchStreamUrl(s, base) } : null,
     durationSeconds: s.durationSeconds,
