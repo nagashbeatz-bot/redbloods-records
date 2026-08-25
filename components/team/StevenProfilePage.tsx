@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import DatePickerInput from "@/components/ui/DatePickerInput";
-import type { SoundEngineerWork, MixVersion, MixComment, MixTarget } from "@/lib/types";
+import type { SoundEngineerWork, MixVersion, MixComment, MixTarget, MixTargetNote } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -367,6 +367,9 @@ const TR = {
     removeArtistTitle: "להסיר את האמן מהרשימה?",
     removeArtistBody: "הגרסאות וההערות שלו יישמרו ויוצגו תחת \"הוסר\". אפשר להוסיף אותו חזרה בכל רגע.",
     removeArtistYes: "הסר מהרשימה", rosterFail: "הפעולה נכשלה", renameArtist: "שנה שם",
+    preMixTag: "ראשוני", preMixGroup: "הערות ראשוניות",
+    notesForTarget: "הערות", notesForTargetSub: "הערות ראשוניות — עוד לא הועלתה גרסה",
+    addPreMixNote: "הוסף הערה", noteFail: "שמירת ההערה נכשלה",
     soundJobs: "עבודות סאונד", project: "פרויקט", workType: "סוג עבודה", status: "סטטוס", startDate: "תאריך התחלה", deadline: "דדליין", price: "מחיר", payment: "תשלום", action: "פעולות", openJob: "פתח עבודה", noJobs: "אין עדיין עבודות ל-Steven",
     tabActiveJobs: "עבודות פעילות", tabJobsHistory: "היסטוריית עבודות", jobsSearchPh: "חיפוש לפי שם פרויקט…", filterAllTypes: "כל סוגי העבודה", noJobsHistory: "אין עדיין עבודות בהיסטוריה", noJobsFiltered: "לא נמצאו עבודות תואמות",
     job: "עבודה:", jobEyebrow: "עבודה", workFiles: "קבצי עבודה", dragHere: "גרור לכאן קבצים", orClick: "או לחץ להעלאה ידנית", chooseFiles: "בחר קבצים", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "אין עדיין קבצים בעבודה הזו",
@@ -441,6 +444,9 @@ const TR = {
     removeArtistTitle: "Remove this artist from the list?",
     removeArtistBody: "Their mixes and comments are kept and stay visible under \"Removed\". You can add them back at any time.",
     removeArtistYes: "Remove", rosterFail: "Action failed", renameArtist: "Rename",
+    preMixTag: "Pre-mix", preMixGroup: "Pre-mix notes",
+    notesForTarget: "Notes", notesForTargetSub: "Pre-mix notes — no version uploaded yet",
+    addPreMixNote: "Add note", noteFail: "Failed to save note",
     soundJobs: "Sound Jobs", project: "Project", workType: "Work Type", status: "Status", startDate: "Start Date", deadline: "Deadline", price: "Price", payment: "Payment", action: "Actions", openJob: "Open Work", noJobs: "No Steven jobs yet",
     tabActiveJobs: "Active Jobs", tabJobsHistory: "Jobs History", jobsSearchPh: "Search by project name…", filterAllTypes: "All work types", noJobsHistory: "No jobs in history yet", noJobsFiltered: "No matching jobs found",
     job: "Job:", jobEyebrow: "Job", workFiles: "Work Files", dragHere: "Drag files here", orClick: "or click to upload manually", chooseFiles: "Choose Files", fileHint: "Stems, Mix, Master, Reference, ZIP", noFiles: "No files yet for this job",
@@ -1814,6 +1820,13 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   const [rosterBusy, setRosterBusy] = useState(false);
   const [newArtist, setNewArtist]   = useState("");
   const [removeTarget, setRemoveTarget] = useState<MixTarget | null>(null);
+  // A riddim line can be opened on its own, before it has any version — that is
+  // the only way to brief Steven about an artist he has not mixed yet. `sel`
+  // (a version id) stays the primary selection; this is the second dimension.
+  const [selTargetId, setSelTargetId] = useState<string | null>(null);
+  const [targetNotes, setTargetNotes] = useState<MixTargetNote[] | null>(null);
+  const [preMixOpen, setPreMixOpen]   = useState(false);
+  const [savingNote, setSavingNote]   = useState(false);
 
   /** A line's display name. The instrumental has no stored name on purpose — its
    *  label comes from the page's own translations, so it reads correctly in both
@@ -1918,7 +1931,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       const res = await fetch(`/api/sound-engineer/${work.id}/notify-notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mixVersionId: selectedGroup?.primary.id ?? null }),
+        // A version if one is open, otherwise the line itself — the server turns
+        // either id into the push text. Same button, same flow, either way.
+        body: JSON.stringify(selectedGroup
+          ? { mixVersionId: selectedGroup.primary.id }
+          : { mixTargetId: activeTargetId }),
       });
       const d = await res.json().catch(() => ({} as { ok?: boolean }));
       if (res.ok && d.ok) notify(t.sendNotesSent);
@@ -1987,6 +2004,9 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   }
   function saveNewComment() {
     const text = newText.trim();
+    // No version open on a riddim line → the note belongs to the LINE. Same
+    // composer, same button; only the destination differs.
+    if (targetOnly) { void savePreMixNote(text); return; }
     if (!text || !sel || savingC) return;
     setSavingC(true);
     fetch(commentsUrl(sel), {
@@ -2381,7 +2401,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
    * uploaded before this feature existed. Those rows are shown exactly as they
    * are, with their comments: nothing is backfilled and no assignment is guessed.
    */
-  type TargetSection = { key: string; name: string; removed: boolean; groups: VersionGroup[] };
+  type TargetSection = { key: string; name: string; removed: boolean; groups: VersionGroup[]; targetId: string | null };
   const targetSections = useMemo<TargetSection[] | null>(() => {
     if (!isRiddim) return null;
     const byTarget = new Map<string, VersionGroup[]>();
@@ -2395,7 +2415,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
       return a.sortOrder - b.sortOrder;
     });
     const out: TargetSection[] = roster.map(tg => ({
-      key: tg.id, name: targetName(tg), removed: !!tg.removedAt, groups: byTarget.get(tg.id) ?? [],
+      key: tg.id, targetId: tg.id, name: targetName(tg), removed: !!tg.removedAt, groups: byTarget.get(tg.id) ?? [],
     }));
     // Anything not matched by a roster line (legacy nulls, or a target the roster
     // no longer returns) lands here — never dropped from the UI.
@@ -2403,9 +2423,85 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     const leftovers = [...byTarget.entries()]
       .filter(([k]) => k === "__unassigned" || !known.has(k))
       .flatMap(([, v]) => v);
-    if (leftovers.length) out.push({ key: "__unassigned", name: t.unassigned, removed: false, groups: leftovers });
+    // Legacy rows belong to no line, so there is nothing to brief and no id to
+    // attach a note to — targetId stays null and the row only ever navigates.
+    if (leftovers.length) out.push({ key: "__unassigned", targetId: null, name: t.unassigned, removed: false, groups: leftovers });
     return out;
   }, [isRiddim, groups, targets, targetName, t]);
+
+  /**
+   * Which riddim line the main panel is on. A selected version always wins — its
+   * own line is the truth — so the two selection dimensions can never disagree.
+   * Falls back to a line opened directly, which is how a line with no version
+   * yet becomes workable at all.
+   */
+  const activeTargetId = isRiddim ? (selectedGroup?.targetId ?? selTargetId) : null;
+  /** On a line that has no version: no player, and notes go to the line. */
+  const targetOnly = isRiddim && !selectedGroup && !!activeTargetId;
+
+  const notesUrl = (tid: string) => isSteven
+    ? `/api/supplier/steven/work/${work.id}/targets/${tid}/notes`
+    : `/api/sound-engineer/${work.id}/targets/${tid}/notes`;
+  const noteUrl  = (tid: string, nid: string) => `/api/sound-engineer/${work.id}/targets/${tid}/notes/${nid}`;
+
+  // Pre-mix notes for whichever line is active. Loaded whether or not a version
+  // is open, so they stay reachable after the first upload instead of vanishing
+  // the moment there is a mix to talk about.
+  useEffect(() => {
+    if (!activeTargetId) { setTargetNotes(null); return; }
+    let alive = true;
+    setTargetNotes(null); setPreMixOpen(false);
+    fetch(notesUrl(activeTargetId))
+      .then(r => r.json())
+      .then(d => { if (alive) setTargetNotes(d.ok ? (d.notes ?? []) : []); })
+      .catch(() => { if (alive) setTargetNotes([]); });
+    return () => { alive = false; };
+  }, [activeTargetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Add a pre-mix note to the active line (owner only; the route enforces it). */
+  async function savePreMixNote(text: string) {
+    const body = text.trim();
+    if (!body || !activeTargetId || savingNote) return;
+    setSavingNote(true);
+    try {
+      const res = await fetch(notesUrl(activeTargetId), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noteText: body }),
+      });
+      const d = await res.json().catch(() => ({} as { ok?: boolean; note?: MixTargetNote; error?: string }));
+      if (!res.ok || !d.ok || !d.note) { notify(d.error || t.noteFail); return; }
+      setTargetNotes(prev => [...(prev ?? []), d.note as MixTargetNote]);
+      setAdding(false); setNewText("");
+    } catch { notify(t.noteFail); }
+    finally { setSavingNote(false); }
+  }
+
+  /** Resolve / reopen a pre-mix note — same gesture the version comments have. */
+  async function togglePreMixResolved(n: MixTargetNote) {
+    if (isSteven || !activeTargetId) return;
+    const next = n.status === "resolved" ? "open" : "resolved";
+    setTargetNotes(prev => prev?.map(x => x.id === n.id ? { ...x, status: next } : x) ?? null);
+    try {
+      const res = await fetch(noteUrl(activeTargetId, n.id), {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setTargetNotes(prev => prev?.map(x => x.id === n.id ? { ...x, status: n.status } : x) ?? null);
+      notify(t.noteFail);
+    }
+  }
+
+  async function deletePreMixNote(n: MixTargetNote) {
+    if (isSteven || !activeTargetId) return;
+    const prev = targetNotes;
+    setTargetNotes(cur => cur?.filter(x => x.id !== n.id) ?? null);
+    try {
+      const res = await fetch(noteUrl(activeTargetId, n.id), { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch { setTargetNotes(prev ?? null); notify(t.noteFail); }
+  }
 
   /**
    * The mix line a version group belongs to, resolved through mix_target_id —
@@ -2674,16 +2770,20 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       return (
                         <div key={sec.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           {/* One click on the line opens its LATEST mix straight away — no
-                              accordion to expand first. A line with nothing uploaded is
-                              inert: no navigation, no expand, no write. */}
+                              accordion to expand first. A line with nothing uploaded still
+                              opens: it becomes a workspace where the owner can brief Steven
+                              before there is anything to mix. Reading it writes nothing. */}
                           <div
-                            onClick={() => { if (latestGroup) setSel(latestGroup.primary.id); }}
+                            onClick={() => {
+                              if (latestGroup) { setSel(latestGroup.primary.id); setSelTargetId(sec.targetId); }
+                              else if (sec.targetId) { setSel(null); setSelTargetId(sec.targetId); }
+                            }}
                             title={latestGroup ? `${sec.name} — ${latestGroup.label}` : sec.name}
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10,
-                                     cursor: latestGroup ? "pointer" : "default",
-                                     opacity: latestGroup ? 1 : 0.65,
-                                     background: isHere ? ac.bg : "transparent",
-                                     border: `1px solid ${isHere ? ac.bd : "transparent"}`,
+                                     cursor: (latestGroup || sec.targetId) ? "pointer" : "default",
+                                     opacity: (latestGroup || sec.targetId) ? 1 : 0.65,
+                                     background: (isHere || (!selectedGroup && selTargetId === sec.targetId)) ? ac.bg : "transparent",
+                                     border: `1px solid ${(isHere || (!selectedGroup && selTargetId === sec.targetId)) ? ac.bd : "transparent"}`,
                                      // The line's accent as a thin leading rule — always on, so the
                                      // colour code stays readable whether or not the line is open.
                                      borderInlineStartWidth: 3,
@@ -2908,19 +3008,21 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
 
               {/* Add-a-comment action — owner only. Steven's comments are view-only
                   (phase 1); creation is blocked here AND server-side. */}
-              {selectedGroup && !isSteven && (
+              {(selectedGroup || targetOnly) && !isSteven && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {/* Primary — timed comment at the live player position */}
-                  <button onClick={openAddComment}
+                  {/* Primary — timed comment at the live player position. Hidden on a
+                      line with no version: there is no player to take a timecode from,
+                      so the general note below is the only shape that makes sense. */}
+                  {selectedGroup && <button onClick={openAddComment}
                     style={{ flex: "1 1 220px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: BRAND, border: `1px solid ${BRAND}`, color: "#fff", boxShadow: `0 0 14px ${BRAND}44` }}>
                     💬 {t.cAddAtTime} · <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtTime(liveTs)}</span>
-                  </button>
+                  </button>}
                   {/* Secondary — general note, no timecode */}
                   <button onClick={openAddGeneral}
                     style={{ flex: "1 1 150px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 800, padding: "10px 14px", borderRadius: 11, fontFamily: "inherit", cursor: "pointer", background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, color: TEXT2 }}
                     onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.color = TEXT; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = TEXT2; }}>
-                    🗒 {t.cGeneral}
+                    🗒 {targetOnly ? t.addPreMixNote : t.cGeneral}
                   </button>
                 </div>
               )}
@@ -2929,13 +3031,65 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                   this SAME center column (not a full-width block after the whole
                   3-col grid) so Steven never has to scroll past the sidebar to
                   reach them; the list scrolls internally when it grows long. ═══ */}
-              {selectedGroup && (
+              {(selectedGroup || targetOnly) && (
                 <div ref={notesRef} style={{ ...subCard, marginTop: 2 }}>
                   <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BDR}` }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {t.sharedComments}</div>
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{t.sharedCommentsSub}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>💬 {targetOnly ? t.notesForTarget : t.sharedComments}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{targetOnly ? t.notesForTargetSub : t.sharedCommentsSub}</div>
                   </div>
                   <div style={{ padding: "12px 16px 16px" }}>
+                    {/* ── Pre-mix notes ──────────────────────────────────────────
+                        The notes written for this line BEFORE it had a version.
+                        They live in the same card and read like every other note;
+                        the separate store behind them is not the user's problem.
+                        Once a version exists they collapse behind one line so the
+                        mix's own feedback is what you see first — but they never
+                        disappear, and they show on every version of the line
+                        because they belong to the line, not to Mix 1. */}
+                    {targetNotes !== null && targetNotes.length > 0 && (() => {
+                      const collapsible = !!selectedGroup;      // no version → nothing to collapse behind
+                      const open = !collapsible || preMixOpen;
+                      return (
+                        <div style={{ marginBottom: 12 }}>
+                          {collapsible && (
+                            <div onClick={() => setPreMixOpen(o => !o)}
+                              style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", borderRadius: 9, cursor: "pointer", background: "rgba(255,255,255,0.03)", border: `1px solid ${BDR}` }}>
+                              <span style={{ fontSize: 9.5, color: MUTED, transform: open ? "rotate(90deg)" : "none", transition: "transform .12s" }}>▶</span>
+                              <span style={{ fontSize: 11.5, fontWeight: 800, color: TEXT2 }}>{targetNotes.length} {t.preMixGroup}</span>
+                            </div>
+                          )}
+                          {open && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: collapsible ? 8 : 0 }}>
+                              {targetNotes.map(n => (
+                                <div key={n.id} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", borderRadius: 11, background: CARD, border: `1px solid ${BDR}`, opacity: n.status === "resolved" ? 0.6 : 1 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ fontSize: 10, fontWeight: 800, color: TEXT2, background: "rgba(255,255,255,0.06)", border: `1px solid ${BDR2}`, padding: "3px 9px", borderRadius: 7, flexShrink: 0, whiteSpace: "nowrap" }}>{t.preMixTag}</span>
+                                    <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: MUTED }}>{fmtRelative(n.createdAt, lang)}</span>
+                                    {!isSteven && (
+                                      <>
+                                        <button onClick={() => void togglePreMixResolved(n)} title={n.status === "resolved" ? t.cMarkOpen : t.cMarkDone}
+                                          style={{ background: "none", border: "none", color: n.status === "resolved" ? GREEN : MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0, padding: 0 }}>✓</button>
+                                        <button onClick={() => void deletePreMixNote(n)} title={t.cDelete}
+                                          style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 12, cursor: "pointer", flexShrink: 0, padding: 0 }}>🗑</button>
+                                      </>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.65, whiteSpace: "pre-wrap", wordBreak: "break-word", textDecoration: n.status === "resolved" ? "line-through" : "none" }}>
+                                    <LinkifiedText text={n.noteText} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Empty state for a line that has neither notes nor a version. */}
+                    {targetOnly && targetNotes !== null && targetNotes.length === 0 && (
+                      <div style={{ padding: "14px 0", textAlign: "center", fontSize: 12.5, color: MUTED }}>{t.cEmpty}</div>
+                    )}
+
                     {/* Small, non-clickable counter only — no filter tabs/pills,
                         no separate state. All comments always show together. */}
                     {comments !== null && comments.length > 0 && (

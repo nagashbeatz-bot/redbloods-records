@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/require-auth";
 import { getSoundEngineerWork, stevenDisplayName } from "@/lib/sound-engineer-store";
-import { notifyStevenMixNotes } from "@/lib/steven-notes-notify";
-import { resolveMixLineContext } from "@/lib/riddim-work";
+import { notifyStevenMixNotes, type NotesLine } from "@/lib/steven-notes-notify";
+import { resolveMixLineContext, resolveTargetContext } from "@/lib/riddim-work";
 
 /**
  * POST /api/sound-engineer/[id]/notify-notes
@@ -22,12 +22,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const work = await getSoundEngineerWork(id);
     if (!work) return NextResponse.json({ ok: false, error: "עבודה לא נמצאה" }, { status: 404 });
 
-    // The client may name WHICH version the notes are about, but only by id —
-    // the display text is resolved server-side from mix_versions → mix_targets,
-    // so the same "can't spoof the text" rule the displayName follows holds here
-    // too. Ignored (null) on any non-riddim work and on an unassigned version.
-    const body = await req.json().catch(() => ({})) as { mixVersionId?: string };
-    const line = await resolveMixLineContext(work.id, body.mixVersionId);
+    // The client may name WHAT the notes are about, but only by id — every piece
+    // of display text is resolved server-side, so the same "can't spoof the text"
+    // rule the displayName follows holds here too.
+    //   mixVersionId → notes on an uploaded mix          ("Tasama — Mix 1: …")
+    //   mixTargetId  → notes on a line with no mix yet   ("Metro: …")
+    // Both resolve to null on any non-riddim work, on an unassigned version, or
+    // when the id belongs to some other work — and then the wording, the tag and
+    // the reminder cycle are all exactly what they are today.
+    const body = await req.json().catch(() => ({})) as { mixVersionId?: string; mixTargetId?: string };
+
+    let line: NotesLine | null = null;
+    const versionCtx = await resolveMixLineContext(work.id, body.mixVersionId);
+    if (versionCtx) {
+      line = { kind: "version", ...versionCtx };
+    } else if (body.mixTargetId) {
+      const targetCtx = await resolveTargetContext(work.id, body.mixTargetId);
+      if (targetCtx) line = { kind: "target", ...targetCtx };
+    }
 
     // work.projectId is already loaded (canonical sound_engineer_work.project_id);
     // no extra query. null for standalone work → owner stays on the url fallback.

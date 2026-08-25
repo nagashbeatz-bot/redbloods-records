@@ -28,17 +28,27 @@ function pushAllowed(): boolean {
 
 export interface NotesNotifyResult { ok: boolean; sent?: boolean; skipped?: boolean }
 
+/** What a riddim send is about — see the `line` parameter below. */
+export type NotesLine =
+  | { kind: "version"; targetName: string; label: string; versionId: string }
+  | { kind: "target";  targetName: string; targetId: string };
+
 /** displayName is resolved SERVER-SIDE (never trusted from the client). projectId
  *  is the canonical sound_engineer_work.project_id (null for standalone work). */
 export async function notifyStevenMixNotes(
   work: { id: string; displayName: string; projectId: string | null },
   /**
-   * Riddim only — which mix line the notes are about, already resolved from the
-   * DB by the caller (never text from the client). Given it, the title names the
-   * line so both audiences know whose mix this is without opening the work.
-   * Left out on every other work, where the wording is unchanged.
+   * Riddim only — what the notes are about, already resolved from the DB by the
+   * caller (never text from the client). One discriminator drives all three
+   * things that differ, so they cannot drift apart:
+   *
+   *   kind "version"  notes on an uploaded mix   → "Tasama — Mix 1: New notes…"
+   *   kind "target"   notes on a line with no mix yet → "Metro: New notes added"
+   *
+   * Left out entirely on every non-riddim work, where the wording, the tag and
+   * the reminder cycle are all unchanged.
    */
-  line?: { targetName: string; label: string; versionId: string } | null,
+  line?: NotesLine | null,
 ): Promise<NotesNotifyResult> {
   if (!work.id) return { ok: false };
   // Localhost / dev: no real push.
@@ -47,16 +57,20 @@ export async function notifyStevenMixNotes(
   const name = (work.displayName ?? "").trim();
   // Same text + deep-link for both audiences; the deep-link stays the OWNER's
   // fallback too (used only if there is no projectId).
-  const title = line
-    ? `${line.targetName} — ${line.label}: New notes added`
-    : "New mix notes from Redbloods";
+  const title = !line ? "New mix notes from Redbloods"
+    : line.kind === "version" ? `${line.targetName} — ${line.label}: New notes added`
+    : `${line.targetName}: New notes added`;
   const body  = `Notes were added for ${name}. Tap to review the feedback.`;
   const url   = `/team/steven?work=${work.id}&notes=1`;
-  // On a riddim the tag is scoped to the VERSION, so notes for Tasama and for
-  // Desto sit side by side on the device instead of one silently replacing the
-  // other. Re-sending for the same mix still replaces its own earlier notice,
-  // exactly as the per-work tag does everywhere else.
-  const tag   = line ? `steven-mix-notes-${work.id}-${line.versionId}` : `steven-mix-notes-${work.id}`;
+  // On a riddim the tag is scoped to the thing the notes are about, so notes for
+  // Tasama, for Desto and for a line with no mix yet sit side by side on the
+  // device instead of one silently replacing another. Re-sending for the same
+  // thing still replaces its own earlier notice, exactly as the per-work tag
+  // does everywhere else. The "target-" segment keeps the two namespaces from
+  // ever colliding.
+  const tag = !line ? `steven-mix-notes-${work.id}`
+    : line.kind === "version" ? `steven-mix-notes-${work.id}-${line.versionId}`
+    : `steven-mix-notes-${work.id}-target-${line.targetId}`;
 
   // ── Owner — enriched so the bell opens the ProjectDrawer directly ──
   // projectId only when the work is project-linked (null → left off, url fallback).
@@ -74,7 +88,16 @@ export async function notifyStevenMixNotes(
   // ── Start (or restart) the "remind Steven every 5h until he uploads a new
   // version" cycle for this work — see lib/steven-mix-reminder-notify.ts.
   // Never breaks this function's own (already-sent) immediate push either way.
-  try {
+  //
+  // Skipped for a PRE-MIX target note, and only for that. The cycle is a single
+  // work-scoped settings row, so starting it here would reset whatever cycle a
+  // real mix's notes had going: its 3-reminder budget would restart and its
+  // "has a newer version landed since?" baseline would jump forward, so an
+  // upload that already happened would stop counting. Sending Metro its stems
+  // must not silence or restart Tasama's reminder. Both pushes above are
+  // already out; this only decides whether a reminder cycle is touched at all.
+  const startsReminderCycle = !line || line.kind === "version";
+  if (startsReminderCycle) try {
     const { startOrResetReminderCycle } = await import("@/lib/steven-mix-reminder-notify");
     await startOrResetReminderCycle(work.id);
   } catch (err) {

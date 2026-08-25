@@ -359,6 +359,31 @@ export interface MixTarget {
   createdAt:   string;
 }
 
+/**
+ * A PRE-MIX note on a riddim mix line (public.mix_target_notes) — what the owner
+ * writes to Steven for an artist line that has no version yet: "here are the
+ * stems", "use this acapella", a link to download from.
+ *
+ * Deliberately NOT a mix_comment: a comment needs a mix_version_id, and the
+ * whole point is that no version exists yet — inventing a placeholder Mix 1 to
+ * hang it on would be a lie in the data. It carries no timecode and no file role
+ * for the same reason, which is exactly the shape the comments list already
+ * renders as a plain general note, so the two live in ONE area on screen.
+ *
+ * Once a version does land, these stay attached to the line and new feedback
+ * goes to the version. They are the notes written BEFORE the first mix, and
+ * nothing moves them afterwards.
+ */
+export interface MixTargetNote {
+  id:          string;
+  mixTargetId: string;
+  noteText:    string;
+  author:      string | null;
+  status:      "open" | "resolved";
+  createdAt:   string;
+  updatedAt:   string;
+}
+
 /** A YouTube reference attached to a Victor work ("רפרנסים"). */
 export interface VictorReference {
   id: string;

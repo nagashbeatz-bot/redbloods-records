@@ -97,3 +97,58 @@ export async function resolveMixLineContext(
 
   return { targetName, label: (version.label as string) ?? "", versionId: version.id as string };
 }
+
+/**
+ * The riddim mix line itself, as display text — for notes sent BEFORE any
+ * version exists. Same rules as resolveMixLineContext: the caller passes an ID,
+ * this returns the name from the DB, so "Send notes" stays un-spoofable and a
+ * renamed or newly added line needs no code change.
+ *
+ * Returns null when the work is not a riddim, the target belongs to another
+ * work, or it no longer exists — in each case the caller keeps its existing
+ * wording rather than naming something it could not verify.
+ */
+export async function resolveTargetContext(
+  workId: string,
+  mixTargetId: string | null | undefined,
+): Promise<{ targetName: string; targetId: string } | null> {
+  if (!mixTargetId) return null;
+  if (!(await isRiddimWork(workId))) return null;
+
+  const { data: target } = await supabase
+    .from("mix_targets")
+    .select("id, work_id, target_kind, display_name")
+    .eq("id", mixTargetId)
+    .maybeSingle();
+  // A target id from another work must never name this one.
+  if (!target || target.work_id !== workId) return null;
+
+  const targetName = target.target_kind === "instrumental"
+    ? "Instrumental"
+    : ((target.display_name as string) ?? "").trim();
+  if (!targetName) return null;
+
+  return { targetName, targetId: target.id as string };
+}
+
+export type TargetGuard =
+  | { ok: true; targetName: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Guard for the target-notes routes: the work must be a riddim AND the target
+ * must belong to THAT work. The targetId in the URL is never trusted — it is
+ * re-read from the DB and matched against the already-authorised work, so a
+ * target from another engineer's work resolves to 404 rather than to data.
+ */
+export async function assertTargetOnRiddimWork(
+  workId: string,
+  targetId: string,
+): Promise<TargetGuard> {
+  const riddim = await assertRiddimWork(workId);
+  if (!riddim.ok) return riddim;
+
+  const ctx = await resolveTargetContext(workId, targetId);
+  if (!ctx) return { ok: false, status: 404, error: "אמן לא נמצא" };
+  return { ok: true, targetName: ctx.targetName };
+}
