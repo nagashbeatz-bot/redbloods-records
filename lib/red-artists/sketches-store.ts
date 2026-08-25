@@ -589,9 +589,10 @@ export async function setSketchDuration(slug: string, id: string, versionNumber:
 // is re-uploaded and nothing is copied with files/copy_v2, so there is ONE
 // physical file that both views render. Only the manifest is written.
 //
-// By policy this is Avi Molla only; that scoping lives in the route
-// (lib/red-artists/avi-project-link.ts + the AVI_ARTIST_ID check), not here, so
-// this store stays the same generic slug-parameterized module it already was.
+// By policy this is Avi Molla + Shalev Tasama only; that scoping lives in the
+// route (lib/red-artists/project-link.ts + the LINK_ENABLED_NAMES check and the
+// project↔portal match), not here, so this store stays the same generic
+// slug-parameterized module it already was.
 
 export interface ProjectFileRef {
   /** The EXISTING Dropbox path of the Projects upload. Never copied, never moved. */

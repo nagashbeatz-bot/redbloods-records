@@ -38,3 +38,27 @@ export function slugForPortalArtistName(name: string | null | undefined): string
   if (!name) return null;
   return PORTAL_ARTISTS[name]?.slug ?? null;
 }
+
+/**
+ * The ONLY artists for whom the "Projects upload → link into their המוזיקה שלי
+ * by reference" feature is enabled. Deliberately an explicit two-name list, not
+ * a capability derived from PORTAL_ARTISTS — DJ CLEANTONE (and any future
+ * portal artist) must stay OUT until someone adds them here on purpose.
+ */
+export const LINK_ENABLED_NAMES: readonly string[] = [AVI_NAME, SHALEV_NAME];
+
+/** True iff this exact label_artists.name may use the Projects→sketch link flow. */
+export function isLinkEnabledArtistName(name: string | null | undefined): boolean {
+  return !!name && LINK_ENABLED_NAMES.includes(name);
+}
+
+/** Short Hebrew first name for UI copy ("אבי" / "שליו"). Falls back to the full
+ *  registered name, so an unmapped artist never renders an empty label. */
+const SHORT_NAMES: Record<string, string> = {
+  [AVI_NAME]: "אבי",
+  [SHALEV_NAME]: "שליו",
+};
+export function shortArtistName(name: string | null | undefined): string {
+  if (!name) return "";
+  return SHORT_NAMES[name] ?? name;
+}

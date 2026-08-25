@@ -14,26 +14,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "projectId נדרש" }, { status: 400 });
     }
 
-    // ── 0. Un-link Avi's library FIRST ────────────────────────────────────────
-    // A file uploaded here can be REFERENCED by a version in Avi's "המוזיקה שלי"
-    // manifest (one physical file, two views — see lib/red-artists/avi-project-link.ts).
-    // Removing that reference must happen BEFORE the bytes go, so his library can
-    // never point at a deleted file. Strictly path-based, so only the version(s)
-    // for THIS exact file are dropped; survivors keep their numbers and the
-    // previous version becomes current again.
+    // ── 0. Un-link the artist's library FIRST ────────────────────────────────
+    // A file uploaded here can be REFERENCED by a version in a portal artist's
+    // "המוזיקה שלי" manifest (one physical file, two views — see
+    // lib/red-artists/project-link.ts). Removing that reference must happen
+    // BEFORE the bytes go, so no library can ever point at a deleted file.
+    // Strictly path-based, so only the version(s) for THIS exact file are
+    // dropped; survivors keep their numbers and the previous version becomes
+    // current again.
     //
-    // A no-op for every non-Avi project. If it FAILS we abort the whole delete —
-    // destroying bytes his manifest still references is the one outcome we refuse.
+    // The target artist is resolved FROM THE PROJECT (its primary artist), so a
+    // delete can only ever touch that project's own artist — never the other
+    // one's library. A no-op for every project outside the two link-enabled
+    // artists. If it FAILS we abort the whole delete — destroying bytes a
+    // manifest still references is the one outcome we refuse.
     try {
-      const { unlinkProjectPathFromAvi } = await import("@/lib/red-artists/avi-project-link");
-      const { removed, sketchIds } = await unlinkProjectPathFromAvi(projectId, dropboxPath);
+      const { unlinkProjectPathFromArtist } = await import("@/lib/red-artists/project-link");
+      const { removed, sketchIds, artistName } = await unlinkProjectPathFromArtist(projectId, dropboxPath);
       if (removed > 0) {
-        console.log(`[dropbox/delete] unlinked ${removed} Avi sketch version(s) [${sketchIds.join(", ")}] for ${dropboxPath}`);
+        console.log(`[dropbox/delete] unlinked ${removed} sketch version(s) for ${artistName} [${sketchIds.join(", ")}] at ${dropboxPath}`);
       }
     } catch (e) {
-      console.error("[dropbox/delete] Avi un-link failed — aborting delete:", e instanceof Error ? e.message : e);
+      console.error("[dropbox/delete] artist un-link failed — aborting delete:", e instanceof Error ? e.message : e);
       return NextResponse.json(
-        { error: "לא ניתן לעדכן את הספרייה של אבי — המחיקה בוטלה, נסה שוב" },
+        { error: "לא ניתן לעדכן את ספריית האמן — המחיקה בוטלה, נסה שוב" },
         { status: 500 }
       );
     }

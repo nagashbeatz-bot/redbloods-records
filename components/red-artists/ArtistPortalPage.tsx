@@ -11,7 +11,7 @@ import type { Project } from "@/lib/types";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
 import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
-import { slugForPortalArtistName } from "@/lib/red-artists/portal-registry";
+import { slugForPortalArtistName, isLinkEnabledArtistName, shortArtistName } from "@/lib/red-artists/portal-registry";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -5655,8 +5655,11 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
   };
 
   // OWNER-only manual push. Fires ONLY on this click (never on load/refresh); the
-  // server derives the "סקיצה N" number from the manifest. Sends the SAME push to
-  // Avi + owner. The busy guard makes one click = one send.
+  // server derives the version number AND the wording from the manifest. Sends to
+  // the artist + owner (two role-scoped sends server-side). The busy guard makes
+  // one click = one send.
+  const notifyName = shortArtistName(artistName);            // "אבי" / "שליו"
+  const canNotify = isOwnerViewer && isLinkEnabledArtistName(artistName);
   const sendNotify = async () => {
     if (notifySending) return;
     setNotifySending(true); setNotifyErr(null);
@@ -5664,7 +5667,8 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
       const res = await fetch(`${apiBase}/sketches/${sketch.id}/notify`, { method: "POST" });
       const d = await res.json().catch(() => ({}));
       if (!res.ok || !d?.ok) { setNotifyErr(typeof d?.error === "string" ? d.error : "שליחת ההתראה נכשלה"); return; }
-      onToast(d.aviSent ? "ההתראה נשלחה לאבי" : "נשלח — אך לאבי אין מכשיר עם התראות פעילות");
+      const sent = d.artistSent ?? d.aviSent;
+      onToast(sent ? `ההתראה נשלחה ל${notifyName}` : `נשלח — אך ל${notifyName} אין מכשיר עם התראות פעילות`);
     } catch { setNotifyErr("שגיאת רשת, נסה שוב"); }
     finally { setNotifySending(false); }
   };
@@ -5747,6 +5751,26 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
   const sectionBox: React.CSSProperties = { background: "rgba(255,255,255,0.02)", border: `1px solid ${BDR}`, borderRadius: 14, padding: isMobile ? 13 : 16, marginBottom: isMobile ? 12 : 16 };
   const secTitle: React.CSSProperties = { fontSize: 13, fontWeight: 800, color: TEXT, marginBottom: isMobile ? 9 : 12 };
 
+  // The manual-push control, shared by both link-enabled portals so the two
+  // never drift apart. Rendered ONLY for the owner (the route is requireOwner
+  // too, and the artist is blocked from /label/* by the proxy) and only for an
+  // artist the notify route actually accepts. Placement differs: inside Avi's
+  // existing "סקיצות בפרויקט" box (unchanged for him), or in its own box for
+  // every other link-enabled portal.
+  const notifyControl = (
+    <>
+      <div style={{ marginTop: 12 }}><SkErr msg={notifyErr} /></div>
+      <button type="button" onClick={sendNotify} disabled={notifySending} title={`שליחת התראה ל${notifyName} על הסקיצה העדכנית`}
+        style={{
+          width: "100%", boxSizing: "border-box", marginTop: notifyErr ? 0 : 12, padding: "12px 0", borderRadius: 11,
+          border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 13.5, fontWeight: 800, fontFamily: "inherit",
+          cursor: notifySending ? "default" : "pointer", opacity: notifySending ? 0.7 : 1,
+          background: notifySending ? "rgba(220,38,38,0.10)" : "rgba(220,38,38,0.16)",
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}>{notifySending ? "שולח…" : `🔔 שלח התראה ל${notifyName}`}</button>
+    </>
+  );
+
   return (
     <SketchModalShell title="עריכת סקיצה" onClose={onClose} busy={busy}>
       {/* details */}
@@ -5814,19 +5838,21 @@ function SketchEditModal({ sketch, player, onClose, onReload, onToast }: {
             })}
           </div>
           {/* OWNER-only manual push (Avi never renders it; the route is requireOwner). */}
-          {isOwnerViewer && (
-            <>
-              <div style={{ marginTop: 12 }}><SkErr msg={notifyErr} /></div>
-              <button type="button" onClick={sendNotify} disabled={notifySending} title="שליחת התראה לאבי על הסקיצה העדכנית"
-                style={{
-                  width: "100%", boxSizing: "border-box", marginTop: notifyErr ? 0 : 12, padding: "12px 0", borderRadius: 11,
-                  border: `1px solid ${BRAND}55`, color: "#fff", fontSize: 13.5, fontWeight: 800, fontFamily: "inherit",
-                  cursor: notifySending ? "default" : "pointer", opacity: notifySending ? 0.7 : 1,
-                  background: notifySending ? "rgba(220,38,38,0.10)" : "rgba(220,38,38,0.16)",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-                }}>{notifySending ? "שולח…" : "🔔 שלח התראה לאבי"}</button>
-            </>
-          )}
+          {canNotify && notifyControl}
+        </div>
+      )}
+
+      {/* Every OTHER link-enabled portal (today: Shalev) gets the same owner-only
+          push control in its own box — deliberately NOT inside the isAviPortal
+          block above, whose version list / beat / "סקיצה N" wording stay Avi's
+          alone. Nothing else about this portal's UI changes. */}
+      {!isAviPortal && canNotify && (
+        <div style={sectionBox}>
+          <div style={secTitle}>התראה לאמן</div>
+          <div style={{ fontSize: 12.5, color: TEXT2, lineHeight: 1.6 }}>
+            שליחת התראה ל{notifyName} על הגרסה העדכנית של „{sketch.title}”.
+          </div>
+          {notifyControl}
         </div>
       )}
 
