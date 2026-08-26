@@ -1132,8 +1132,51 @@ export function BeatsPage({ readOnly = false, artistSlug }: { readOnly?: boolean
   // (with the name). RTL order: שם הביט · ז׳אנר · סולם · נוצר בתאריך.
   const cols = "minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)";
 
+  // Desktop: the list used to stop at a flat 500px, which showed ~8 beats and
+  // left the rest of a tall screen empty. Measure the room actually left under
+  // the table header inside the shell's scroll area instead of guessing a
+  // constant — that way the mini player's reserved strip, a short laptop and an
+  // iPad each get a correct cap, and the card never grows past the fold (which
+  // would hand the whole page a scrollbar). Mobile keeps its own fixed 400px.
+  const listRef = useRef<HTMLDivElement>(null);
+  const [listMax, setListMax] = useState(500);
+  useEffect(() => {
+    if (isMobile) return;
+    const measure = () => {
+      const el = listRef.current;
+      if (!el) return;
+      const scroller = el.closest(".app-shell-content") as HTMLElement | null;
+      let avail: number;
+      if (scroller) {
+        // Offset inside the scroller's CONTENT, so a scrolled page measures the same.
+        const padBottom = parseFloat(getComputedStyle(scroller).paddingBottom) || 0;
+        const within = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        avail = scroller.clientHeight - padBottom - within;
+      } else {
+        avail = window.innerHeight - el.getBoundingClientRect().top;
+      }
+      // Give back whatever the wrappers reserve below the card (page padding,
+      // borders, margins) so filling the viewport never adds a page scrollbar —
+      // read rather than hard-coded, because the artist portals wrap this same
+      // list in their own padding. Never go under the old 500px, so nothing that
+      // fits today can start fitting less.
+      let below = 0;
+      for (let n = el.parentElement; n && n !== scroller; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        below += (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0) + (parseFloat(cs.marginBottom) || 0);
+      }
+      setListMax(Math.max(500, Math.round(avail - below - 2)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const scroller = listRef.current?.closest(".app-shell-content");
+    const ro = scroller && typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (scroller && ro) ro.observe(scroller);
+    return () => { window.removeEventListener("resize", measure); ro?.disconnect(); };
+  }, [isMobile, listState]);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 20 : 16 }}>
 
       {/* ── top action bar — "העלה ביט" (OWNER only; shalev is listen-only) ── */}
       {!readOnly && (
@@ -1153,20 +1196,20 @@ export function BeatsPage({ readOnly = false, artistSlug }: { readOnly?: boolean
 
       {/* ── list ── */}
       <div style={panel}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 18px" : "18px 24px", borderBottom: `1px solid ${BDR}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: isMobile ? "16px 18px" : "12px 24px", borderBottom: `1px solid ${BDR}` }}>
           <span style={{ fontSize: 16, color: "#FF6B6B", lineHeight: 1 }}>♫</span>
           <span style={{ fontSize: isMobile ? 15.5 : 17.5, fontWeight: 800, color: TEXT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{readOnly ? "ביטים זמינים להאזנה" : "ביטים זמינים לעבודה"}</span>
         </div>
 
         {!isMobile && beats.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "12px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "9px 24px", borderBottom: `1px solid ${BDR}`, background: "rgba(255,255,255,0.02)" }}>
             {[{ label: "שם הביט", align: "start" as const }, { label: "ז׳אנר", align: "center" as const }, { label: "סולם", align: "center" as const }, { label: "נוצר בתאריך", align: "center" as const }].map((h, i) => (
               <div key={i} style={{ fontSize: 13.5, fontWeight: 800, color: "#CBCBD4", letterSpacing: "0.06em", textTransform: "uppercase", textAlign: h.align }}>{h.label}</div>
             ))}
           </div>
         )}
 
-        <div style={{ maxHeight: isMobile ? 400 : 500, overflowY: "auto", padding: "2px 0 28px", scrollPaddingBottom: 28 }}>
+        <div ref={listRef} style={{ maxHeight: isMobile ? 400 : listMax, overflowY: "auto", padding: isMobile ? "2px 0 28px" : "2px 0 10px", scrollPaddingBottom: isMobile ? 28 : 10 }}>
           {listState === "loading" ? (
             <div style={{ padding: "44px 0", textAlign: "center", fontSize: 13.5, color: MUTED }}>טוען…</div>
           ) : listState === "error" ? (
@@ -1200,11 +1243,11 @@ export function BeatsPage({ readOnly = false, artistSlug }: { readOnly?: boolean
               ) : (
                 <div key={b.id} onClick={readOnly ? undefined : () => setManage(b)}
                   onMouseEnter={readOnly ? undefined : e => rowHover(e, true)} onMouseLeave={readOnly ? undefined : e => rowHover(e, false)}
-                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "10px 24px", border: "1px solid transparent", transition: "all .14s", cursor: readOnly ? "default" : "pointer" }}>
+                  style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "6px 24px", border: "1px solid transparent", transition: "all .14s", cursor: readOnly ? "default" : "pointer" }}>
                   {/* שם הביט — Play + name together (RTL: Play rightmost) */}
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                     <span onClick={e => e.stopPropagation()} style={{ display: "flex", flexShrink: 0 }}>
-                      <PlayButton size={38} playing={ps.playing} onClick={ps.onClick} />
+                      <PlayButton size={34} playing={ps.playing} onClick={ps.onClick} />
                     </span>
                     <div style={{ minWidth: 0, fontSize: 16.5, fontWeight: 800, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
                   </div>
