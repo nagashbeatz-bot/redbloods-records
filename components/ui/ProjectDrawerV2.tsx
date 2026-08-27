@@ -230,6 +230,11 @@ interface SendModalProps {
  *  enforcement; this is UX so the owner is never offered a rejected send. */
 const STEVEN_SENDABLE_TYPES = ["שיר", "רידים", "אלבום", "EP"];
 
+/** The engineer whose successful send moves the project to "במיקס". The name is
+ *  the literal this file (and ActionMenu) already compares `selection` against;
+ *  lib/steven-scope's STEVEN_ENGINEER is server-only and cannot be imported here. */
+const STEVEN = "Steven";
+
 export function SendModal({ projectId, projectName, artistName, onClose, onActionSent, initialDest, onSuccess, projectType }: SendModalProps) {
   const [step,       setStep]      = useState<1 | 2>(initialDest ? 2 : 1);
   const [dest,       setDest]      = useState<SendDestination | null>(initialDest ?? null);
@@ -241,6 +246,9 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
   const [victorTitle, setVictorTitle] = useState<string>("");
   // Sound-engineer-facing work title (Steven/Bill); does NOT change the project.
   const [engineerTitle, setEngineerTitle] = useState<string>("");
+  // The canonical project-field writer (PATCH /api/projects/[id], optimistic with
+  // rollback) — the same one StatusDropdown and MixSetupModal use to set a status.
+  const { updateProjectField } = useProjects();
 
   function goBack() { setStep(1); setDest(null); setSelection(null); setError(null); setDeadline(""); setVictorTitle(""); setEngineerTitle(""); }
 
@@ -330,6 +338,12 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
         }
       }
 
+      // Did the engineer's work record actually get created? Creation stays
+      // non-fatal exactly as before — this only REMEMBERS the outcome, because a
+      // POST that was rejected (e.g. Steven does not take this project type) is
+      // not a send, and must not be allowed to move the project's status.
+      let engineerWorkCreated = false;
+
       // For Mix/Master sends to a sound engineer: create the sound_engineer_work
       // record FIRST so we can link it to the action (parallels the Victor flow).
       if (dest === "מיקס / מאסטר" && selection) {
@@ -364,9 +378,11 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
           // vendor_project_work(id) ONLY, so a sound_engineer_work id would
           // violate project_actions_linked_work_id_fkey. The action is saved
           // without a link (linkedWorkId stays null for the sound-engineer case).
-          await workPost.json().catch(() => ({}));
+          const workData = await workPost.json().catch(() => ({})) as { ok?: boolean };
+          engineerWorkCreated = workPost.ok && workData.ok === true;
         } catch {
           // Work creation failure is non-fatal — continue to save the action
+          // (engineerWorkCreated stays false, so no status follows it).
         }
       }
 
@@ -383,6 +399,23 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
       }
       const resData = await res.json().catch(() => ({}));
       if (onActionSent && resData.action) onActionSent(resData.action as ProjectAction);
+
+      // A send that reached Steven means the project IS at the mix, so the status
+      // follows the fact. This is the ONLY place it is written, and it is reached
+      // only once BOTH halves of the send are known to have worked: the
+      // sound_engineer_work was really created (engineerWorkCreated) AND the
+      // project_action POST returned ok — a non-ok response threw above. Opening
+      // the modal, picking Steven, or any failure on the way here leaves the
+      // status exactly as it was. Bill's send is deliberately not included.
+      if (dest === "מיקס / מאסטר" && selection === STEVEN && engineerWorkCreated) {
+        try {
+          await updateProjectField(projectId, "status", "במיקס");
+        } catch {
+          // The send itself succeeded, so it is still a success — the status
+          // write rolls itself back (ProjectsProvider) and the project keeps the
+          // status it had. Better a stale status than a false "send failed".
+        }
+      }
 
       if (onSuccess && dest && selection) onSuccess({ dest, selection });
       onClose();
