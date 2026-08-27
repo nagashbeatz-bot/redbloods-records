@@ -150,6 +150,13 @@ function ProjectPlayBtn({ p, player, size = 28 }: {
   );
 }
 
+// The statuses that CLOSE a project — it is done with, one way or the other, and
+// no longer part of the current workload. Read from ProjectStatus, never invented:
+// "בהשהייה" is deliberately NOT here (a paused project is still open work), and
+// nothing else in the app changes because of this list — it only decides which
+// projects the "סה״כ פרויקטים" KPI counts.
+const FINAL_STATUSES: ProjectStatus[] = ["הושלם", "בוטל"];
+
 // ── KPI card — matches dashboard KPI language ────────────────────────────────
 function KpiCard({ label, value, sub, color, icon, onMouseEnter, onMouseLeave }: {
   label: string; value: string; sub?: string; color: string; icon: string;
@@ -178,7 +185,11 @@ function KpiCard({ label, value, sub, color, icon, onMouseEnter, onMouseLeave }:
         </span>
         <span style={{ fontSize: 16, opacity: 0.55 }}>{icon}</span>
       </div>
-      <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.02em" }}>{/[₪$]/.test(value) ? <SensitiveValue>{value}</SensitiveValue> : value}</div>
+      {/* 32px is the card's own size and stays that for every count and for "—".
+          Six cards in a row leave ~162px on a 1280px laptop, where a six-figure
+          ₪ figure is the one value wide enough to spill out of its card, so a
+          long value steps down instead of clipping. Nothing else changes size. */}
+      <div style={{ fontSize: value.length > 9 ? 22 : value.length > 7 ? 26 : 32, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>{/[₪$]/.test(value) ? <SensitiveValue>{value}</SensitiveValue> : value}</div>
       {sub && <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{sub}</div>}
     </div>
   );
@@ -450,8 +461,16 @@ export default function ProjectsDesignPreview() {
       .reduce((s, [, f]) => s + Math.max(0, collectibleBalance(f.agreed, f.paid, f.cancelled)), 0);
     const now = new Date();
     return {
-      total:          active.length,
-      inProgress:     active.filter(p => ["בעבודה", "במיקס", "מחכה למיקס"].includes(p.status)).length,
+      // "סה״כ פרויקטים" counts what is still ON THE TABLE — every visible project
+      // whose status is not a closed one (FINAL_STATUSES). It used to count the
+      // finished and cancelled ones too, which made it a row count, not a workload.
+      total:          active.filter(p => !FINAL_STATUSES.includes(p.status)).length,
+      // "בעבודה" — the work in hand. "מחכה למיקס" is still the owner's work (the
+      // mix has not started), so it is counted here and NOT under "במיקס". This is
+      // a KPI count only: the status itself and the list order are untouched.
+      inProgress:     active.filter(p => ["בעבודה", "מחכה למיקס"].includes(p.status)).length,
+      // "במיקס" — strictly the projects sitting with the engineer right now.
+      inMix:          active.filter(p => p.status === "במיקס").length,
       completedMonth: active.filter(p => {
         if (p.status !== "הושלם" || !p.endDate) return false;
         const d = new Date(p.endDate);
@@ -561,19 +580,26 @@ export default function ProjectsDesignPreview() {
           </div>
         )}
 
-        {/* KPI cards */}
-        {!isMobile && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
-            <KpiCard label="סה״כ פרויקטים" value={String(kpi.total)}          color="#818CF8" icon="📁" sub="בכל הפרויקטים" />
-            <KpiCard label="בתהליך"         value={String(kpi.inProgress)}     color="#60A5FA" icon="🎵" sub="פרויקטים פעילים" />
-            <KpiCard label="הושלמו החודש"   value={String(kpi.completedMonth)} color="#10B981" icon="✅" sub="הצלחה בהצלחה" />
-            <KpiCard label="באיחור"          value={String(kpi.overdue)}        color={kpi.overdue > 0 ? "#EF4444" : MUTED} icon="⚠️" sub="דורש טיפול" />
-            <KpiCard label="הכנסה צפויה"    value={kpi.expected > 0 ? `₪${kpi.expected.toLocaleString()}` : "—"} color="#F59E0B" icon="💰" sub="לגבייה"
-              onMouseEnter={(e) => handleKpiEnter(expectedBreakdown, e)}
-              onMouseLeave={handleKpiLeave}
-            />
-          </div>
-        )}
+        {/* KPI cards — six equal cards, right-to-left in DOM order:
+            סה״כ פרויקטים · בעבודה · במיקס · באיחור · הושלמו החודש · הכנסה צפויה.
+            One row on desktop; the same cards wrap to 3 columns on tablet and 2 on
+            mobile, so every card keeps the identical width, height and spacing
+            instead of being squeezed. */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${isMobile ? 2 : isTablet ? 3 : 6}, minmax(0, 1fr))`,
+          gap: 12, marginBottom: 20,
+        }}>
+          <KpiCard label="סה״כ פרויקטים" value={String(kpi.total)}          color="#818CF8" icon="📁" sub="פעילים כרגע" />
+          <KpiCard label="בעבודה"         value={String(kpi.inProgress)}     color="#60A5FA" icon="🎵" sub="כולל מחכה למיקס" />
+          <KpiCard label="במיקס"          value={String(kpi.inMix)}          color="#A855F7" icon="🎚️" sub="אצל הסאונד" />
+          <KpiCard label="באיחור"          value={String(kpi.overdue)}        color={kpi.overdue > 0 ? "#EF4444" : MUTED} icon="⚠️" sub="דורש טיפול" />
+          <KpiCard label="הושלמו החודש"   value={String(kpi.completedMonth)} color="#10B981" icon="✅" sub="הצלחה בהצלחה" />
+          <KpiCard label="הכנסה צפויה"    value={kpi.expected > 0 ? `₪${kpi.expected.toLocaleString()}` : "—"} color="#F59E0B" icon="💰" sub="לגבייה"
+            onMouseEnter={(e) => handleKpiEnter(expectedBreakdown, e)}
+            onMouseLeave={handleKpiLeave}
+          />
+        </div>
 
         {/* New project button — desktop only (mobile has it in header) */}
         {!isMobile && (
