@@ -16,6 +16,7 @@ import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { ALL_STATUSES, PROJECT_TYPES, SONG_WITH_CLIP_TYPE, matchesTypeFilter } from "@/lib/types";
+import { sortProjectsForList } from "@/lib/projects-sort";
 
 // ── Design tokens — identical to DashboardDesignPreview ──────────────────────
 const BRAND   = "#DC2626";
@@ -485,25 +486,9 @@ export default function ProjectsDesignPreview() {
     if (kpiHoverTimer.current) clearTimeout(kpiHoverTimer.current);
   }
 
-  // startDate → sortable ms; missing/invalid sorts LAST within its group.
-  const startTs = (p: Project): number => {
-    if (!p.startDate) return Infinity;
-    const t = new Date(p.startDate).getTime();
-    return isNaN(t) ? Infinity : t;
-  };
-  const sorted = useMemo(() => [...filtered].sort((a, b) => {
-    // Tier 1 — critical deadline logic PRESERVED: overdue projects first.
-    if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
-    // Tier 2 — within the same urgency level: "במיקס" first (closest to done).
-    const aMix = a.status === "במיקס";
-    const bMix = b.status === "במיקס";
-    if (aMix !== bMix) return aMix ? -1 : 1;
-    // Tier 3 — oldest startDate first; projects without a valid startDate go last.
-    const sA = startTs(a), sB = startTs(b);
-    if (sA !== sB) return sA - sB;
-    // Tiebreak — name.
-    return a.name.localeCompare(b.name, "he");
-  }), [filtered]);
+  // Order: mix statuses first, then label artists inside each status, then the
+  // newest file/version first inside each group. See lib/projects-sort.ts.
+  const sorted = useMemo(() => sortProjectsForList(filtered), [filtered]);
 
   const [page, setPage] = useState(1);
   const PER_PAGE   = 10;

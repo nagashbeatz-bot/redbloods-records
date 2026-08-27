@@ -493,6 +493,14 @@ export interface Project {
   // derived at read time from the project's "התקיים" sessions.
   plannedHours?: number | null; // projects.planned_hours (numeric, nullable, >= 0)
   plannedDays?: number | null;  // projects.planned_days  (integer, nullable, >= 0)
+  // ── Sort-only hints, attached by GET /api/projects (lib/projects-sort-meta.ts).
+  // Never stored, never edited, never shown — they only decide list ORDER.
+  /** ISO time of the last FILE/VERSION upload in the project (mix versions, final
+   *  files, project-file share-token stamps). null = no dated file/version.
+   *  Deliberately NOT `updatedAt`, which also moves on status/deadline/note edits. */
+  lastAssetAt?: string | null;
+  /** True when any artist on the project is on the label_artists roster. */
+  isLabelArtist?: boolean;
 }
 
 /** Free-text work-materials metadata shown to Steven/Bill (stored in projects.work_materials jsonb). */

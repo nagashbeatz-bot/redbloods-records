@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listProjects, createProject } from "@/lib/projects-store";
+import { attachProjectSortMeta } from "@/lib/projects-sort-meta";
 import { upsertArtistsFromProject } from "@/lib/clients-store";
 import { requireOwner } from "@/lib/require-auth";
 
@@ -12,7 +13,9 @@ export async function GET(req: NextRequest) {
     const hidden = req.nextUrl.searchParams.get("hidden");
     const all    = req.nextUrl.searchParams.get("all");
     const filter = all === "1" ? null : hidden === "1" ? true : undefined;
-    const projects = await listProjects(filter);
+    // Read-only ordering hints for the Projects list (lastAssetAt / isLabelArtist).
+    // Additive: the project rows themselves are untouched.
+    const projects = await attachProjectSortMeta(await listProjects(filter));
     return NextResponse.json(projects);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
