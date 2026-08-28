@@ -38,11 +38,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // land in-app; it grants them no beat-management rights (those stay requireOwner).
   const canSeeBell = isOwner || role === "victor" || role === "steven" || role === "shalev" || role === "avi";
   const canRadio = role === "owner" || role === "shalev"; // the external LISTEN radio is available to the artist too
-  // shalev + victor + cleantone have no fixed bottom nav (their logout sits at
-  // the end of their page content) → reserve no space for a bar. The
+  // shalev + victor + cleantone + avi have no fixed bottom nav (their logout sits
+  // at the end of their page content) → reserve no space for a bar. The
   // paddingBottom below then collapses to env(safe-area-inset-bottom) alone,
   // which is exactly the small iPhone inset we still want under the last card.
-  const navH = role === "shalev" || role === "victor" || role === "cleantone" ? 0 : 56;
+  // Avi was missing here while MobileNav already gave him no bar at all (it
+  // returns null on an empty tab list), so 56px was reserved for a bar that does
+  // not exist: the mini player floated 56px up with page content showing through
+  // the gap beneath it. navH feeds BOTH the player's `bottom` and the content
+  // paddingBottom, so listing him fixes the float and the dead gap together.
+  const navH = role === "shalev" || role === "victor" || role === "cleantone" || role === "avi" ? 0 : 56;
   const { projects } = useProjects();
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);

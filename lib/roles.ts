@@ -177,15 +177,20 @@ export function isAviAllowedPath(pathname: string): boolean {
     `${base}/ping`,
   ];
   if (allowed.includes(pathname)) return true;
-  // Playback of ONE of his own sketch versions by id: .../sketches/<uuid>/stream.
+  // Playback AND download of ONE of his own sketch versions by id:
+  // .../sketches/<uuid>/stream and .../sketches/<uuid>/download.
   // Needed for a version that REFERENCES a file uploaded through Projects (its
-  // bytes live under /Projects/…, outside his tree, so the generic ?path= stream
-  // route rejects it). The id route resolves the path from the manifest, so he
-  // still cannot name a file. Deliberately narrow — the sibling /version, /beat,
-  // /notify, /duration and /download stay owner-only.
+  // bytes live under /Projects/…, outside his tree, so the generic ?path= route
+  // rejects it). Both id routes resolve the path from HIS OWN manifest — the
+  // client never supplies one — and resolvePortalReadAccess pins him to his own
+  // artist id, so another artist's sketch id simply is not in the manifest he is
+  // scoped to (404). Download is here so he can save his own song out of the
+  // player; the generic `${base}/download?path=` stays owner-only precisely
+  // because it takes a client-supplied path. The sibling /version, /beat,
+  // /notify and /duration also stay owner-only.
   const sketchPrefix = `${base}/sketches/`;
   const bare = pathname.split("?")[0].split("#")[0];
-  if (bare.startsWith(sketchPrefix) && /^[0-9a-fA-F-]{36}\/stream$/.test(bare.slice(sketchPrefix.length))) return true;
+  if (bare.startsWith(sketchPrefix) && /^[0-9a-fA-F-]{36}\/(stream|download)$/.test(bare.slice(sketchPrefix.length))) return true;
   // His "ביטים פנויים" tab: the LIST only. The route derives the scope from his
   // role (lib/beat-scope.ts), so he gets exactly the beats assigned to him — the
   // ?artist= parameter is ignored for every non-owner role, so he can never widen

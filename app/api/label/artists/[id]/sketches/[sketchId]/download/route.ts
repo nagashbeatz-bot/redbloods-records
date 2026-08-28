@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveOwnerPortalAccess } from "@/lib/red-artists/portal-access";
+import { resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
 import { listSketches } from "@/lib/red-artists/sketches-store";
 import { resolveSketchVersionPath } from "@/lib/red-artists/sketch-file-access";
 import { dropboxAttachment, safeDownloadName, extOf } from "@/lib/audio-download";
@@ -14,12 +14,21 @@ export const maxDuration = 60;
  * The id-based sibling of the generic `?path=` download route, needed because a
  * project-linked version's bytes sit under /Projects/… .
  *
- * OWNER-ONLY, exactly like the generic /download it mirrors — Avi's download
- * surface is unchanged (he still only has beat/download).
+ * Reachable by the owner (any artist) OR a restricted portal artist reading his
+ * OWN page — the same audience as the sibling /stream route, so an artist who may
+ * PLAY his song may also save it out of the player. Shalev's equivalent
+ * (/api/red-artists/sketches/[id]/download) already worked this way.
+ *
+ * Scoping is what makes that safe, and none of it is new: resolvePortalReadAccess
+ * pins a non-owner to his own artist id, the sketch is then looked up in THAT
+ * artist's manifest (another artist's sketch id is simply absent → 404), and the
+ * path comes out of the manifest rather than the client. The generic
+ * `${base}/download?path=` stays owner-only precisely because it does take a
+ * client-supplied path.
  */
 export async function GET(req: NextRequest, context: { params: Promise<{ id: string; sketchId: string }> }) {
   const { id, sketchId } = await context.params;
-  const access = await resolveOwnerPortalAccess(id);
+  const access = await resolvePortalReadAccess(id);
   if (!access.ok) return access.response;
 
   const sketch = (await listSketches(access.config.slug)).find((s) => s.id === sketchId);

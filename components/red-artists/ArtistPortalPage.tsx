@@ -426,8 +426,20 @@ function sketchStreamUrl(s: Sketch, base: string = "/api/red-artists"): string {
     : `${base}/stream?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
 // Same-origin attachment endpoint (clean filename, no 302/Quick Look on iOS).
+//
+// The id-based route resolves the version's path from the artist's OWN manifest,
+// so it serves a normal upload AND a project-linked version. A portal-scoped base
+// (/api/label/artists/[id], i.e. Avi) therefore ALWAYS uses it: the `?path=`
+// variant takes a client-supplied path and stays owner-only, so without this his
+// normal uploads would keep 403-ing even though he may play them.
+//
+// Shalev's own flat base keeps the original split untouched. Both routes are open
+// to him, but they derive the download filename differently — `?path=` from the
+// path, the id route from the manifest's fileName — so moving him would quietly
+// rename the files he already downloads.
 function sketchDownloadUrl(s: Sketch, base: string = "/api/red-artists"): string {
-  return latestIsProjectLinked(s)
+  const portalScoped = base.startsWith("/api/label/artists/");
+  return portalScoped || latestIsProjectLinked(s)
     ? `${base}/sketches/${s.id}/download?v=${s.latestVersion}`
     : `${base}/download?path=${encodeURIComponent(s.latestFilePath)}&v=${s.latestVersion}`;
 }
