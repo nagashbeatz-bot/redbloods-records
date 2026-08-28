@@ -1446,6 +1446,9 @@ function BeatArtistAssignments({ beatId }: { beatId: string }) {
   const [slugs, setSlugs]   = useState<string[] | null>(null);   // null = still loading
   const [busy, setBusy]     = useState<string | null>(null);      // slug mid-write
   const [err, setErr]       = useState<string | null>(null);
+  // Honest report of what the server did with the artist's notification. The
+  // server never claims a send it could not confirm, so neither does this line.
+  const [note, setNote]     = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -1463,7 +1466,7 @@ function BeatArtistAssignments({ beatId }: { beatId: string }) {
 
   async function toggle(slug: string, assigned: boolean) {
     if (busy) return;
-    setBusy(slug); setErr(null);
+    setBusy(slug); setErr(null); setNote(null);
     try {
       const r = assigned
         ? await fetch(`/api/beats/${beatId}/assignments?slug=${encodeURIComponent(slug)}`, { method: "DELETE" })
@@ -1473,7 +1476,21 @@ function BeatArtistAssignments({ beatId }: { beatId: string }) {
           });
       const d = await r.json().catch(() => null);
       // Adopt the server's list — never a locally-guessed one.
-      if (r.ok && d?.ok && Array.isArray(d.artistSlugs)) setSlugs(d.artistSlugs);
+      if (r.ok && d?.ok && Array.isArray(d.artistSlugs)) {
+        setSlugs(d.artistSlugs);
+        // `notification` is present only on a brand-new assignment; the server
+        // reports what actually happened rather than assuming it worked.
+        const n = d.notification as { status?: string; artistName?: string } | null | undefined;
+        if (n?.status) {
+          const who = n.artistName ?? "האמן";
+          setNote(
+            n.status === "sent"          ? { text: `נשלחה התראה ל${who}`, ok: true }
+            : n.status === "no_subscription" ? { text: `${who} לא הפעיל התראות — לא נשלחה התראה`, ok: false }
+            : n.status === "send_failed"     ? { text: `שליחת ההתראה ל${who} נכשלה`, ok: false }
+            :                                  { text: "התראות מושבתות בסביבה הזו", ok: false },
+          );
+        }
+      }
       else setErr((d?.error as string) || (assigned ? "ביטול השיוך נכשל" : "השיוך נכשל"));
     } catch {
       setErr(assigned ? "ביטול השיוך נכשל" : "השיוך נכשל");
@@ -1514,6 +1531,7 @@ function BeatArtistAssignments({ beatId }: { beatId: string }) {
         );
       })}
       {err && <div style={{ fontSize: 11.5, color: "#F87171" }}>{err}</div>}
+      {note && <div style={{ fontSize: 11.5, color: note.ok ? "#22C55E" : "#FBBF24" }}>{note.ok ? "✓ " : "⚠ "}{note.text}</div>}
     </div>
   );
 }

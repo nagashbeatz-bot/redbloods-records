@@ -107,6 +107,12 @@ export function isShalevAllowedPath(pathname: string): boolean {
     "/api/me",
     "/api/red-artists",            // sketches CRUD/reorder/duration, shalev-summary, performance-files, upload, press-kit-link, profile-image, stream, balance (all Shalev-scoped per route)
     "/api/beats",                  // free-beats pool: GET list + GET [id]/stream only (read/listen); POST/PATCH/DELETE stay requireOwner per route
+    "/api/notifications",          // his OWN bell only: every handler under this
+                                   // prefix scopes to recipient_user_id = the
+                                   // session user (RLS on the user-scoped client),
+                                   // so this grants Shalev read + mark-as-read on
+                                   // his own rows and nothing else. Needed so the
+                                   // "ביט חדש מחכה לך" notice has a bell to land in.
   ];
   // Assignments (who a beat is shown to) are owner-only management, never an
   // artist surface — blocked here as well as by requireOwner on the route.
@@ -140,6 +146,12 @@ export function isCleantoneAllowedPath(pathname: string): boolean {
 export function isAviAllowedPath(pathname: string): boolean {
   if (pathname === "/api/me") return true;
   if (pathname === `/label/artists/${AVI_ARTIST_ID}`) return true;
+  // His OWN bell only: every handler under this prefix scopes to
+  // recipient_user_id = the session user (RLS on the user-scoped client), so this
+  // grants Avi read + mark-as-read on his own rows and nothing else — the same
+  // grant Victor and Steven already have. Needed so the "ביט חדש מחכה לך" notice
+  // has a bell to land in, not just a device push.
+  if (pathname === "/api/notifications" || pathname.startsWith("/api/notifications/")) return true;
   const base = `/api/label/artists/${AVI_ARTIST_ID}`;
   const allowed = [
     `${base}/summary`,
@@ -170,8 +182,9 @@ export function isAviAllowedPath(pathname: string): boolean {
   const bare = pathname.split("?")[0].split("#")[0];
   if (bare.startsWith(sketchPrefix) && /^[0-9a-fA-F-]{36}\/stream$/.test(bare.slice(sketchPrefix.length))) return true;
   // His "ביטים פנויים" tab: the LIST only. The route derives the scope from his
-  // role (lib/beat-scope.ts), so he gets exactly the beats assigned to him —
-  // today, none. Playback is /api/beats/<id>/stream, allowed by prefix and
+  // role (lib/beat-scope.ts), so he gets exactly the beats assigned to him — the
+  // ?artist= parameter is ignored for every non-owner role, so he can never widen
+  // it. Playback is /api/beats/<id>/stream, allowed by prefix and
   // guarded per beat by an assignment check, so an unassigned beat 404s.
   // POST/PATCH/DELETE on /api/beats stay requireOwner, so nothing here mutates.
   if (isBeatAssignmentsPath(pathname)) return false;   // owner-only management

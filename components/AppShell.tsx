@@ -30,10 +30,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const role = useRole();
   const isOwner = role === "owner"; // AI agent + tools + quick actions are owner-only chrome
-  // The bell is the one piece of header chrome the suppliers get too. It is safe
-  // to share because every /api/notifications handler scopes to the session
-  // user's own rows — neither of them can see or mark anyone else's.
-  const canSeeBell = isOwner || role === "victor" || role === "steven";
+  // The bell is the one piece of header chrome the suppliers and the two portal
+  // artists get too. It is safe to share because every /api/notifications handler
+  // uses the user-scoped client, so RLS (recipient_user_id = auth.uid()) limits
+  // each of them to their OWN rows — none of them can see or mark anyone else's.
+  // Shalev + Avi were added so their "ביט חדש מחכה לך" notice has somewhere to
+  // land in-app; it grants them no beat-management rights (those stay requireOwner).
+  const canSeeBell = isOwner || role === "victor" || role === "steven" || role === "shalev" || role === "avi";
   const canRadio = role === "owner" || role === "shalev"; // the external LISTEN radio is available to the artist too
   // shalev + victor + cleantone have no fixed bottom nav (their logout sits at
   // the end of their page content) → reserve no space for a bar. The
