@@ -170,6 +170,11 @@ export function isAviAllowedPath(pathname: string): boolean {
     // (push_subscriptions row bound to his user id). The route itself gates to
     // his id / owner and never touches artist data — no other mutation opens up.
     `${base}/push-subscribe`,
+    // Entry beacon (POST, no body) — the artist-scoped mirror of Shalev's
+    // /api/red-artists/ping. It reads and returns NOTHING about him; all it does
+    // is let the server decide whether to push the owner "אבי נכנס לאפליקציה".
+    // Carries no artist data either way, so it opens no new surface.
+    `${base}/ping`,
   ];
   if (allowed.includes(pathname)) return true;
   // Playback of ONE of his own sketch versions by id: .../sketches/<uuid>/stream.

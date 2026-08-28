@@ -527,16 +527,24 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // reopened after being fully closed), never on a reload or in-app navigation
   // within the same tab. sessionStorage is the client-side session boundary:
   // it survives reloads but is empty again in a new tab; the server still
-  // applies its own short race-guard (see notifyShalevEntry). Owner previewing
-  // this portal never fires this (isShalev gates it).
+  // applies its own short race-guard (see notifyShalevEntry / notifyAviEntry).
+  //
+  // Gated on the VIEWER'S OWN ROLE, so the owner previewing either portal never
+  // fires it — his role is "owner", and the routes re-check that server-side
+  // anyway. Each artist gets his OWN sessionStorage key and his OWN endpoint, so
+  // one artist's session can neither trigger nor suppress the other's.
   useEffect(() => {
-    if (!isShalev) return;
+    const beacon =
+      isShalev ? { key: "rb_shalev_entry_pinged", url: "/api/red-artists/ping" }
+      : isAvi && artistId ? { key: "rb_avi_entry_pinged", url: `/api/label/artists/${artistId}/ping` }
+      : null;
+    if (!beacon) return;
     try {
-      if (sessionStorage.getItem("rb_shalev_entry_pinged")) return;
-      sessionStorage.setItem("rb_shalev_entry_pinged", "1");
+      if (sessionStorage.getItem(beacon.key)) return;
+      sessionStorage.setItem(beacon.key, "1");
     } catch { /* sessionStorage unavailable — fall through, server race-guard still applies */ }
-    fetch("/api/red-artists/ping", { method: "POST" }).catch(() => {});
-  }, [isShalev]);
+    fetch(beacon.url, { method: "POST" }).catch(() => {});
+  }, [isShalev, isAvi, artistId]);
 
   // DJ CLEANTONE gets exactly 2 of the 7 tabs — enforced here (not just in the
   // tab bar below) so a crafted `?tab=balance` deep link can never select a
