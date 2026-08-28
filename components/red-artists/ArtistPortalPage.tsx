@@ -12,6 +12,7 @@ import DatePickerInput from "@/components/ui/DatePickerInput";
 import { ilTodayYMD, currentWeekStart, weekDaysFor, addDaysYMD } from "@/lib/red-artists/week";
 import { countValidDays, hasValidSubmissionForCycle, belongsToActiveCycle, cycleStartInstant, activeCycle, isMandatoryAvailabilityWindowOpen } from "@/lib/shalev-availability-reminder-pure";
 import { slugForPortalArtistName, isLinkEnabledArtistName, shortArtistName } from "@/lib/red-artists/portal-registry";
+import { fetchAndSaveOrShare } from "@/lib/audio-share";
 
 // Resolved per-render identity for whichever artist's portal is being shown:
 //   apiBase    — Shalev's own session always uses his existing flat routes
@@ -366,28 +367,24 @@ function sketchBeatDownloadUrl(s: Sketch, base: string = "/api/red-artists"): st
   return `${base}/beat/download?sketchId=${encodeURIComponent(s.id)}`;
 }
 // Small "ביט" download chip — a purple accent so it reads as a companion, clearly
-// apart from the red sketch. Reachable by Avi (view-only) right in the row, and
-// stops row-click so it never opens the (owner-only) editor. Rendered only when a
-// beat exists, so there's never an empty slot.
+// apart from the red sketch. Reachable by the artist (view-only) right in the row,
+// and stops row-click so it never opens the (owner-only) editor. Rendered only when
+// a beat actually exists, so there's never an empty slot — which is also what makes
+// it portal-agnostic: any portal whose sketch carries a beat gets the chip, and a
+// portal with no beat gets no new control at all.
+//
 // iOS Safari IGNORES <a download> and NAVIGATES to the URL, so an attachment
-// response opens as a full-screen MP3 preview page (leaving the portal). Fetching
-// the bytes into a blob and clicking a temporary object-URL <a download> instead
-// keeps the user on the page and downloads with the real Hebrew filename on both
-// desktop and iOS. Same-origin fetch carries the session cookie (auth unchanged);
-// never touches the player.
+// response would open as a full-screen MP3 preview page (leaving the portal). This
+// delegates to the SAME helper the global player uses, so the beat behaves exactly
+// like a track: on iOS the native Share Sheet opens with the real file (Files /
+// WhatsApp / AirDrop), on desktop it stays a plain blob download. Same-origin fetch
+// carries the session cookie (auth unchanged); never touches the player itself.
+//
+// `filename` is the sketch's stored beat name and is only the FALLBACK — the helper
+// prefers the route's Content-Disposition, which is the same RFC 5987 name the file
+// downloads under today, so the move does not rename anything.
 async function downloadFileNoNav(url: string, filename: string): Promise<void> {
-  const res = await fetch(url, { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`download failed (${res.status})`);
-  const blob = await res.blob();
-  const objUrl = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = objUrl;
-  a.download = filename;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(objUrl), 15000);
+  await fetchAndSaveOrShare(url, filename);
 }
 
 function BeatChip({ url, filename, onError }: { url: string; filename: string; onError?: (m: string) => void }) {
@@ -4185,12 +4182,12 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-                  {(showVersion || showDate || (isAviPortal && s.beat)) && (
+                  {(showVersion || showDate || !!s.beat) && (
                     <div style={{ fontSize: 11.5, color: TEXT2, marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {showVersion && <span style={{ direction: isAviPortal ? "rtl" : "ltr" }}>{sketchVersionLabel(s.latestVersion, isAviPortal)}</span>}
                       {showVersion && showDate && <span>·</span>}
                       {showDate && <span>{fmtSketchDate(s.updatedAt)}</span>}
-                      {isAviPortal && s.beat && <BeatChip url={sketchBeatDownloadUrl(s, apiBase)} filename={s.beat.fileName} onError={setToast} />}
+                      {s.beat && <BeatChip url={sketchBeatDownloadUrl(s, apiBase)} filename={s.beat.fileName} onError={setToast} />}
                     </div>
                   )}
                 </div>
@@ -4211,7 +4208,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                     <SketchRowPlay size={PLAY_W} player={player} sketch={s} onError={setToast} />
                   </div>
                   <div style={{ fontSize: 15.5, fontWeight: 700, color: "#FFFFFF", lineHeight: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-                  {isAviPortal && s.beat && <BeatChip url={sketchBeatDownloadUrl(s, apiBase)} filename={s.beat.fileName} onError={setToast} />}
+                  {s.beat && <BeatChip url={sketchBeatDownloadUrl(s, apiBase)} filename={s.beat.fileName} onError={setToast} />}
                 </div>
                 {showVersion && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: isAviPortal ? "rtl" : "ltr" }}>{sketchVersionLabel(s.latestVersion, isAviPortal)}</div>}
                 {showDate && <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>}

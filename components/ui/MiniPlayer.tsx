@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
 import { useProjects } from "@/components/ProjectsProvider";
 import UploadButton from "@/components/ui/UploadButton";
+import { canShareFiles, fetchAndSaveOrShare } from "@/lib/audio-share";
 
 const BRAND = "#DC2626";
 
@@ -45,15 +46,6 @@ function Spinner({ size = 14 }: { size?: number }) {
   );
 }
 
-// Extract a clean filename from a Content-Disposition header (RFC 5987 first).
-function parseFilename(cd: string | null): string | null {
-  if (!cd) return null;
-  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
-  if (star) { try { return decodeURIComponent(star[1].trim()); } catch { return star[1].trim(); } }
-  const plain = /filename="?([^";]+)"?/i.exec(cd);
-  return plain ? plain[1].trim() : null;
-}
-
 function ShareIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
@@ -62,36 +54,18 @@ function ShareIcon({ size = 14, color = "currentColor" }: { size?: number; color
   );
 }
 
-const MIME_BY_EXT: Record<string, string> = {
-  mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", ogg: "audio/ogg",
-  flac: "audio/flac", aiff: "audio/aiff", aif: "audio/aiff", aac: "audio/aac",
-};
-function guessMime(name: string): string {
-  const ext = name.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() ?? "";
-  return MIME_BY_EXT[ext] ?? "application/octet-stream";
-}
-// Touch-primary device (phone/tablet) — feature detection, not UA sniffing. Used to
-// decide whether to open the native Share Sheet instead of a browser download.
-function isTouchPrimary(): boolean {
-  if (typeof window === "undefined") return false;
-  try { return !!window.matchMedia?.("(pointer: coarse)")?.matches; } catch { return false; }
-}
-function blobDownload(blob: Blob, name: string) {
-  const objUrl = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = objUrl; a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
-}
-
 /**
  * Download control. When the track carries a secure SAME-ORIGIN attachment endpoint
- * (`downloadUrl`), it fetches the bytes → Blob → clean filename (from
- * Content-Disposition). On a TOUCH device that supports the File Share API it opens
- * the native Share Sheet with a real File (iOS → "Save to Files" / WhatsApp /
- * AirDrop, no Quick Look, no navigation); on desktop/Android it does a normal Blob
- * download. Legacy tracks with no downloadUrl keep the plain anchor. Never uses
- * window.open / opens a new tab / navigates the app.
+ * (`downloadUrl`), it hands the URL to the shared `fetchAndSaveOrShare` helper:
+ * bytes → Blob → clean filename (from Content-Disposition) → the native Share Sheet
+ * on a TOUCH device that supports the File Share API (iOS → "Save to Files" /
+ * WhatsApp / AirDrop, no Quick Look, no navigation), or a normal Blob download on
+ * desktop/Android. Legacy tracks with no downloadUrl keep the plain anchor. Never
+ * uses window.open / opens a new tab / navigates the app.
+ *
+ * That helper lives in lib/audio-share.ts — the exact same code this component used
+ * inline before, now shared with the sketch "ביט" download so the two can never
+ * drift. Behaviour here is unchanged.
  */
 function DownloadControl({ track, size, iconSize, radius }: {
   track: AudioTrack; size: number; iconSize: number; radius: number;
@@ -100,8 +74,7 @@ function DownloadControl({ track, size, iconSize, radius }: {
   const [err, setErr] = useState(false);
   // Heuristic for the icon/label only; the real path is decided at click time via
   // navigator.canShare({ files }) with the actual file.
-  const shareMode = isTouchPrimary() && typeof navigator !== "undefined"
-    && typeof navigator.share === "function" && typeof navigator.canShare === "function";
+  const shareMode = canShareFiles();
 
   const box: React.CSSProperties = {
     width: size, height: size, borderRadius: radius, flexShrink: 0, textDecoration: "none",
@@ -123,26 +96,7 @@ function DownloadControl({ track, size, iconSize, radius }: {
     if (busy) return;
     setBusy(true); setErr(false);
     try {
-      const res = await fetch(track.downloadUrl!, { cache: "no-store" });
-      if (!res.ok) throw new Error(String(res.status));
-      const blob = await res.blob();
-      const name = parseFilename(res.headers.get("Content-Disposition")) || downloadName(track);
-
-      // Touch + File Share API → native Share Sheet with a real file (no Quick Look).
-      if (shareMode) {
-        const file = new File([blob], name, { type: blob.type || guessMime(name) });
-        if (navigator.canShare?.({ files: [file] })) {
-          try {
-            await navigator.share({ files: [file], title: name });
-            return; // user shared / saved, or is handling it
-          } catch (e) {
-            if ((e as Error)?.name === "AbortError") return; // cancelled the sheet → NOT an error
-            throw e;
-          }
-        }
-      }
-      // Desktop / Android / no File Share → normal download.
-      blobDownload(blob, name);
+      await fetchAndSaveOrShare(track.downloadUrl!, downloadName(track));
     } catch {
       setErr(true);
       setTimeout(() => setErr(false), 3500);
