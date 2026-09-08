@@ -962,7 +962,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? (
             isCleantonePortal
-              ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} />
+              ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} isCleantone={isCleantone} />
               : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} isAvi={isAvi} apiBase={apiBase} />
           )
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} />
@@ -2928,7 +2928,7 @@ function ShowsPage({ summary, loadState, isOwner }: { summary: ShalevSummary | n
 // balance/beats/weekly-calendar/availability wiring that doesn't apply to him
 // and would only add risk of a Shalev/Avi regression). See [[project_redbloods_records]].
 
-function CleantoneHome({ summary, loadState, onOpenShows }: { summary: CleantoneSummary | null; loadState: LoadState; onOpenShows: () => void }) {
+function CleantoneHome({ summary, loadState, onOpenShows, isCleantone }: { summary: CleantoneSummary | null; loadState: LoadState; onOpenShows: () => void; isCleantone?: boolean }) {
   const isMobile = useIsMobile();
   // Local mirror so "אשר הופעה" works from Home too (same table = same real
   // action, not a read-only preview with a dead-looking empty confirm column).
@@ -2963,10 +2963,11 @@ function CleantoneHome({ summary, loadState, onOpenShows }: { summary: Cleantone
         }}>לכל ההופעות שלי ←</button>
       )}
 
-      {/* Mobile-only footer — same component as Avi's home. Desktop keeps the
-          Sidebar's own "יציאה" (cleantone already has a sidebar), so this is
-          gated to mobile where he has no bottom nav and no other logout. */}
-      {isMobile && <PortalNotifyActions pushEndpoint="/api/red-artists/cleantone/push-subscribe" />}
+      {/* Mobile-only footer — same component as Avi's home. Gated to his OWN
+          session (never owner-preview, mirroring Avi's `isAvi &&` guard) and to
+          mobile: desktop keeps the Sidebar's "יציאה", and on mobile he has no
+          bottom nav and no other logout. */}
+      {isMobile && isCleantone && <PortalNotifyActions pushEndpoint="/api/red-artists/cleantone/push-subscribe" />}
     </div>
   );
 }
