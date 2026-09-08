@@ -9,6 +9,10 @@ import { CLEANTONE_CLIENT_ID } from "@/lib/red-artists/cleantone";
  * Scoped to shows where dj_client_id = CLEANTONE_CLIENT_ID (never dj_name —
  * that field is display-only). Unlike shalev-summary, money IS returned here:
  * dj_fee is literally DJ CLEANTONE's own fee, not another artist's finances.
+ * payment_status is the canonical shows column (owner-managed, no new write
+ * surface for the DJ) — surfaced READ-ONLY so he can see whether a show is
+ * settled. Only "שולם" counts as paid; every other value ("לא שולם", "צפוי",
+ * "מקדמה", legacy "חלקי") reads as not-yet-paid in his portal.
  * Cancelled shows (בוטל) are excluded — nothing for him to act on there.
  * shows.notes is intentionally NEVER returned — it's an internal free-text
  * field (payment/approval/coordination history), not DJ-facing content; the
@@ -32,6 +36,7 @@ export async function GET() {
       location: s.location,
       djFee: s.dj_fee,
       status: s.status,
+      paymentStatus: s.payment_status,
       confirmationStatus: s.dj_confirmation_status,
     });
 

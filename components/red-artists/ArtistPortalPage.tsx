@@ -315,6 +315,9 @@ type LoadState = "loading" | "ready" | "error";
 export type CleantoneShow = {
   id: string; name: string; artist: string; date: string | null; startTime: string | null;
   location: string; djFee: number; status: string;
+  // Canonical shows.payment_status (owner-managed). Only "שולם" = paid; any
+  // other value renders as "לא שולם" in his portal. Read-only for the DJ.
+  paymentStatus: string;
   confirmationStatus: "ממתין לאישור" | "אושר" | null;
 };
 export type CleantoneSummary = { shows: { upcoming: CleantoneShow[]; done: CleantoneShow[] }; updates: PortalUpdate[] };
@@ -2535,13 +2538,13 @@ function BalanceDeleteModal({ artistId, entry, onClose, onDeleted }: {
 // financials live ONLY in the מאזן tab. Read-only view: Shalev never creates,
 // edits or deletes a show here (Red Artists is view-only — see
 // [[redbloods-red-artists-boundary]]).
-// artist/djFee/confirmationStatus are OPTIONAL and only ever populated (via
-// toCleantoneShowRow below) for DJ CLEANTONE's portal — every existing caller
-// (Shalev/Avi/owner-preview, via toShowRow) never sets them, so this is a
-// pure additive extension with zero effect on their rendering.
+// artist/djFee/paymentStatus/confirmationStatus are OPTIONAL and only ever
+// populated (via toCleantoneShowRow below) for DJ CLEANTONE's portal — every
+// existing caller (Shalev/Avi/owner-preview, via toShowRow) never sets them, so
+// this is a pure additive extension with zero effect on their rendering.
 type Show = {
   id: string; name: string; date: string; time: string; location: string; status: string;
-  artist?: string; djFee?: number; confirmationStatus?: "ממתין לאישור" | "אושר" | null;
+  artist?: string; djFee?: number; paymentStatus?: string; confirmationStatus?: "ממתין לאישור" | "אושר" | null;
 };
 // Real show statuses (no purple): אושרה=approved green, נסגר=booked blue, בוצע=done grey.
 const SHOW_STATUS_COLOR: Record<string, string> = {
@@ -2556,6 +2559,22 @@ function ShowStatusPill({ status }: { status: string }) {
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "5px 13px", whiteSpace: "nowrap" }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 7px ${col}` }} />
       {status}
+    </span>
+  );
+}
+
+// DJ CLEANTONE's payment-status pill (read-only). Binary by design: the canonical
+// shows.payment_status "שולם" → paid (green); every other value ("לא שולם",
+// "צפוי", "מקדמה", legacy "חלקי") → "לא שולם" (red). The DJ only needs to know
+// "settled or not" — owner keeps full control of the real value in the Shows UI.
+const PAYMENT_RED = "#F87171";
+function PaymentStatusPill({ status }: { status?: string }) {
+  const paid = status === "שולם";
+  const col = paid ? GREEN : PAYMENT_RED;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: col, background: `${col}18`, border: `1px solid ${col}44`, borderRadius: 999, padding: "5px 13px", whiteSpace: "nowrap" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 7px ${col}` }} />
+      {paid ? "שולם" : "לא שולם"}
     </span>
   );
 }
@@ -2753,8 +2772,8 @@ function DjConfirmCell({ showId, confirmationStatus, onConfirmed }: {
 // for the default variant. `showSendButton` renders the owner-only "שלח"
 // action — only ever passed for the upcoming section (never for done/
 // cancelled shows). `variant="cleantone"` is the ONLY thing that adds the
-// artist/fee/confirmation columns — omitted (default "default"), Shalev/Avi/
-// owner-preview get the exact same cols/heads/markup as before this existed.
+// artist/fee/payment/confirmation columns — omitted (default "default"),
+// Shalev/Avi/owner-preview get the exact same cols/heads/markup as before.
 function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות להצגה כרגע", showSendButton = false, highlightShowId = null, variant = "default", onConfirmed }: {
   title: string; shows: Show[]; isMobile: boolean; emptyText?: string; showSendButton?: boolean; highlightShowId?: string | null;
   variant?: "default" | "cleantone";
@@ -2764,12 +2783,12 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
   // Cleantone variant has NO status column (show.status is never surfaced to
   // him at all — only dj_confirmation_status, in its own column).
   const cols = isCleantoneVariant
-    ? "minmax(0, 1.3fr) minmax(0, 1fr) 100px 90px minmax(0, 1.1fr) 90px 130px"
+    ? "minmax(0, 1.2fr) minmax(0, 0.85fr) 96px 84px minmax(0, 1fr) 84px 112px 120px"
     : showSendButton
       ? "minmax(0, 1.4fr) 110px 90px minmax(0, 1.2fr) 110px 90px"
       : "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
   const heads = isCleantoneVariant
-    ? ["שם הופעה", "שם האמן", "תאריך", "שעת הופעה", "מיקום", "שכר", "אישור הופעה"]
+    ? ["שם הופעה", "שם האמן", "תאריך", "שעת הופעה", "מיקום", "שכר", "סטטוס תשלום", "אישור הופעה"]
     : showSendButton
       ? ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס", ""]
       : ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
@@ -2797,6 +2816,7 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               {isCleantoneVariant && <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginTop: 3 }}>{fmtMoney(s.djFee ?? 0)}</div>}
               <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 {!isCleantoneVariant && <ShowStatusPill status={s.status} />}
+                {isCleantoneVariant && <PaymentStatusPill status={s.paymentStatus} />}
                 {showSendButton && <NotifyShalevButton showId={s.id} />}
                 {isCleantoneVariant && onConfirmed && <DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} />}
               </div>
@@ -2821,6 +2841,7 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               <div style={{ fontSize: 14, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.time}</div>
               <div style={{ fontSize: 14.5, color: TEXT2, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.location}</div>
               {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{fmtMoney(s.djFee ?? 0)}</div>}
+              {isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><PaymentStatusPill status={s.paymentStatus} /></div>}
               {!isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>}
               {showSendButton && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
               {isCleantoneVariant && onConfirmed && <div style={{ display: "flex", justifyContent: "center" }}><DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} /></div>}
@@ -2844,7 +2865,7 @@ function toShowRow(s: PortalShow): Show {
 function toCleantoneShowRow(s: CleantoneShow): Show {
   return {
     id: s.id, name: s.name, date: fmtShowDate(s.date), time: s.startTime || "—", location: s.location || "—", status: s.status,
-    artist: s.artist || "—", djFee: s.djFee, confirmationStatus: s.confirmationStatus,
+    artist: s.artist || "—", djFee: s.djFee, paymentStatus: s.paymentStatus, confirmationStatus: s.confirmationStatus,
   };
 }
 
