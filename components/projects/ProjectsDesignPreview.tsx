@@ -10,6 +10,7 @@ import UploadButton from "@/components/ui/UploadButton";
 import SensitiveValue from "@/components/ui/SensitiveValue";
 import ActionMenu from "@/components/project/ActionMenu";
 import StatusDropdown from "@/components/ui/StatusDropdown";
+import ProjectTypeDropdown from "@/components/ui/ProjectTypeDropdown";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import { daysUntilDeadline, getStatusColor, getStatusBg } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
@@ -889,8 +890,10 @@ function ProjectRow({
       {/* Status */}
       <div><StatusDropdown projectId={p.id} status={p.status} small /></div>
 
-      {/* Type */}
-      <div><TypeBadge type={p.projectType} /></div>
+      {/* Type — inline editable, same UX as the status dropdown */}
+      <div onClick={e => e.stopPropagation()}>
+        <ProjectTypeDropdown projectId={p.id} projectType={p.projectType} small />
+      </div>
 
       {/* Start date (first 21 days only) — hidden on tablet to widen the artist column */}
       {!isTablet && (
