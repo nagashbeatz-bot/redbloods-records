@@ -542,7 +542,8 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // reopened after being fully closed), never on a reload or in-app navigation
   // within the same tab. sessionStorage is the client-side session boundary:
   // it survives reloads but is empty again in a new tab; the server still
-  // applies its own short race-guard (see notifyShalevEntry / notifyAviEntry).
+  // applies its own short race-guard (see notifyShalevEntry / notifyAviEntry /
+  // notifyCleantoneEntry).
   //
   // Gated on the VIEWER'S OWN ROLE, so the owner previewing either portal never
   // fires it — his role is "owner", and the routes re-check that server-side
@@ -552,6 +553,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
     const beacon =
       isShalev ? { key: "rb_shalev_entry_pinged", url: "/api/red-artists/ping" }
       : isAvi && artistId ? { key: "rb_avi_entry_pinged", url: `/api/label/artists/${artistId}/ping` }
+      : isCleantone ? { key: "rb_cleantone_entry_pinged", url: "/api/red-artists/cleantone/ping" }
       : null;
     if (!beacon) return;
     try {
@@ -559,7 +561,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
       sessionStorage.setItem(beacon.key, "1");
     } catch { /* sessionStorage unavailable — fall through, server race-guard still applies */ }
     fetch(beacon.url, { method: "POST" }).catch(() => {});
-  }, [isShalev, isAvi, artistId]);
+  }, [isShalev, isAvi, isCleantone, artistId]);
 
   // DJ CLEANTONE gets exactly 2 of the 7 tabs — enforced here (not just in the
   // tab bar below) so a crafted `?tab=balance` deep link can never select a
@@ -962,13 +964,13 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
         <div style={{ marginTop: 20 }}>
           {tab === "בית" ? (
             isCleantonePortal
-              ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} isCleantone={isCleantone} />
+              ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} isCleantone={isCleantone} isOwner={isOwner} />
               : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} isAvi={isAvi} apiBase={apiBase} />
           )
             : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} />
             : tab === "ההופעות שלי" ? (
               isCleantonePortal
-                ? <CleantoneShowsPage summary={cleantoneSummary} loadState={cleantoneState} onReload={reloadCleantoneSummary} />
+                ? <CleantoneShowsPage summary={cleantoneSummary} loadState={cleantoneState} onReload={reloadCleantoneSummary} isOwner={isOwner} />
                 : <ShowsPage summary={summary} loadState={summaryState} isOwner={isOwner} />
             )
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} onAvailabilitySent={reloadMandatoryGate} />
@@ -2579,20 +2581,23 @@ function PaymentStatusPill({ status }: { status?: string }) {
   );
 }
 
-// Owner-only manual "שלח" button — POSTs /api/shows/[id]/notify-artist. Pure
+// Owner-only manual "שלח" button — POSTs a per-show notify endpoint. Pure
 // client-triggered action (never fires on mount/refresh). The server is the
 // real idempotency gate (fingerprint-keyed settings claim); this local state
 // is UX only — "already_sent" from the server is treated as success (the
 // notification for this exact show version genuinely already went out).
-function NotifyShalevButton({ showId }: { showId: string }) {
+// `endpoint` selects the recipient flow: Shalev (/notify-artist, default) or
+// DJ CLEANTONE (/notify-dj) — same button, same server-side idempotency shape.
+function NotifyShalevButton({ showId, endpoint }: { showId: string; endpoint?: string }) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const url = endpoint ?? `/api/shows/${showId}/notify-artist`;
 
   const send = async () => {
     if (state === "sending" || state === "sent") return;
     setState("sending"); setErrMsg(null);
     try {
-      const res = await fetch(`/api/shows/${showId}/notify-artist`, { method: "POST" });
+      const res = await fetch(url, { method: "POST" });
       const d = await res.json().catch(() => ({}));
       if (d?.ok || d?.reason === "already_sent") { setState("sent"); return; }
       setState("error"); setErrMsg(typeof d?.error === "string" ? d.error : "השליחה נכשלה");
@@ -2782,13 +2787,18 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
   const isCleantoneVariant = variant === "cleantone";
   // Cleantone variant has NO status column (show.status is never surfaced to
   // him at all — only dj_confirmation_status, in its own column).
+  // Cleantone variant gets an extra owner-only "שלח" column (last), so the DJ's
+  // own view stays at 8 columns and only the owner preview widens to 9.
+  const cleantoneSend = isCleantoneVariant && showSendButton;
   const cols = isCleantoneVariant
-    ? "minmax(0, 1.2fr) minmax(0, 0.85fr) 96px 84px minmax(0, 1fr) 84px 112px 120px"
+    ? (cleantoneSend
+        ? "minmax(0, 1.1fr) minmax(0, 0.75fr) 90px 78px minmax(0, 0.9fr) 78px 104px 112px 88px"
+        : "minmax(0, 1.2fr) minmax(0, 0.85fr) 96px 84px minmax(0, 1fr) 84px 112px 120px")
     : showSendButton
       ? "minmax(0, 1.4fr) 110px 90px minmax(0, 1.2fr) 110px 90px"
       : "minmax(0, 1.5fr) 120px 100px minmax(0, 1.4fr) 120px";
   const heads = isCleantoneVariant
-    ? ["שם הופעה", "שם האמן", "תאריך", "שעת הופעה", "מיקום", "שכר", "סטטוס תשלום", "אישור הופעה"]
+    ? [...["שם הופעה", "שם האמן", "תאריך", "שעת הופעה", "מיקום", "שכר", "סטטוס תשלום", "אישור הופעה"], ...(cleantoneSend ? ["שלח"] : [])]
     : showSendButton
       ? ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס", ""]
       : ["שם הופעה", "תאריך", "שעת הופעה", "מיקום", "סטטוס"];
@@ -2817,8 +2827,9 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 {!isCleantoneVariant && <ShowStatusPill status={s.status} />}
                 {isCleantoneVariant && <PaymentStatusPill status={s.paymentStatus} />}
-                {showSendButton && <NotifyShalevButton showId={s.id} />}
+                {showSendButton && !isCleantoneVariant && <NotifyShalevButton showId={s.id} />}
                 {isCleantoneVariant && onConfirmed && <DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} />}
+                {cleantoneSend && <NotifyShalevButton showId={s.id} endpoint={`/api/shows/${s.id}/notify-dj`} />}
               </div>
             </div>
           ))}
@@ -2843,8 +2854,9 @@ function ShowsSection({ title, shows, isMobile, emptyText = "אין הופעות
               {isCleantoneVariant && <div style={{ fontSize: 14.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>{fmtMoney(s.djFee ?? 0)}</div>}
               {isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><PaymentStatusPill status={s.paymentStatus} /></div>}
               {!isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><ShowStatusPill status={s.status} /></div>}
-              {showSendButton && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
+              {showSendButton && !isCleantoneVariant && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} /></div>}
               {isCleantoneVariant && onConfirmed && <div style={{ display: "flex", justifyContent: "center" }}><DjConfirmCell showId={s.id} confirmationStatus={s.confirmationStatus} onConfirmed={onConfirmed} /></div>}
+              {cleantoneSend && <div style={{ display: "flex", justifyContent: "center" }}><NotifyShalevButton showId={s.id} endpoint={`/api/shows/${s.id}/notify-dj`} /></div>}
             </div>
           ))}
         </>
@@ -2928,7 +2940,7 @@ function ShowsPage({ summary, loadState, isOwner }: { summary: ShalevSummary | n
 // balance/beats/weekly-calendar/availability wiring that doesn't apply to him
 // and would only add risk of a Shalev/Avi regression). See [[project_redbloods_records]].
 
-function CleantoneHome({ summary, loadState, onOpenShows, isCleantone }: { summary: CleantoneSummary | null; loadState: LoadState; onOpenShows: () => void; isCleantone?: boolean }) {
+function CleantoneHome({ summary, loadState, onOpenShows, isCleantone, isOwner }: { summary: CleantoneSummary | null; loadState: LoadState; onOpenShows: () => void; isCleantone?: boolean; isOwner?: boolean }) {
   const isMobile = useIsMobile();
   // Local mirror so "אשר הופעה" works from Home too (same table = same real
   // action, not a read-only preview with a dead-looking empty confirm column).
@@ -2945,7 +2957,7 @@ function CleantoneHome({ summary, loadState, onOpenShows, isCleantone }: { summa
       ) : loadState === "error" ? (
         <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון כרגע</div>
       ) : (
-        <ShowsSection title="הופעות קרובות" shows={upcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" variant="cleantone" onConfirmed={handleConfirmed} />
+        <ShowsSection title="הופעות קרובות" shows={upcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" variant="cleantone" onConfirmed={handleConfirmed} showSendButton={!!isOwner} />
       )}
 
       <SchedSection title="עדכונים מהלייבל">
@@ -2972,7 +2984,7 @@ function CleantoneHome({ summary, loadState, onOpenShows, isCleantone }: { summa
   );
 }
 
-function CleantoneShowsPage({ summary, loadState, onReload }: { summary: CleantoneSummary | null; loadState: LoadState; onReload: () => void }) {
+function CleantoneShowsPage({ summary, loadState, onReload, isOwner }: { summary: CleantoneSummary | null; loadState: LoadState; onReload: () => void; isOwner?: boolean }) {
   const isMobile = useIsMobile();
   // Local mirror of the two lists so a confirm click can patch just that one
   // row immediately from the server's response, without waiting on a second
@@ -3000,7 +3012,7 @@ function CleantoneShowsPage({ summary, loadState, onReload }: { summary: Cleanto
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
-      <ShowsSection title="הופעות קרובות" shows={localUpcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" variant="cleantone" onConfirmed={handleConfirmed} />
+      <ShowsSection title="הופעות קרובות" shows={localUpcoming} isMobile={isMobile} emptyText="אין הופעות קרובות כרגע" variant="cleantone" onConfirmed={handleConfirmed} showSendButton={!!isOwner} />
       <ShowsSection title="הופעות שבוצעו" shows={localDone} isMobile={isMobile} emptyText="אין עדיין הופעות שבוצעו" variant="cleantone" onConfirmed={handleConfirmed} />
     </div>
   );
