@@ -2962,6 +2962,11 @@ function CleantoneHome({ summary, loadState, onOpenShows }: { summary: Cleantone
           color: "#FF8A8A", background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.45)", cursor: "pointer",
         }}>לכל ההופעות שלי ←</button>
       )}
+
+      {/* Mobile-only footer — same component as Avi's home. Desktop keeps the
+          Sidebar's own "יציאה" (cleantone already has a sidebar), so this is
+          gated to mobile where he has no bottom nav and no other logout. */}
+      {isMobile && <PortalNotifyActions pushEndpoint="/api/red-artists/cleantone/push-subscribe" />}
     </div>
   );
 }
@@ -4555,20 +4560,22 @@ function HomeDashboard({ onOpenMusic, onOpenShows, sketches, loadState, summary,
       {/* Avi's own home footer — "enable notifications" (recycles the exact
           Shalev push mechanism via lib/push-client) + logout. Rendered ONLY for
           role "avi" (never owner-preview / Shalev). */}
-      {isAvi && apiBase && <AviPortalActions pushEndpoint={`${apiBase}/push-subscribe`} />}
+      {isAvi && apiBase && <PortalNotifyActions pushEndpoint={`${apiBase}/push-subscribe`} />}
     </div>
   );
 }
 
-// ── Avi home footer — inline "enable notifications" + logout ──────────────────────
-// Recycles the SAME push flow as Shalev's PushManager (Notification permission →
-// SW register → pushManager.subscribe → save), but as an inline button targeting
-// Avi's own role-gated endpoint. On mount it ONLY reads permission/subscription
-// and sets UI — it NEVER sends a push (send stays server-side; subscribeAndSave
-// just upserts the device row, so a refresh is always safe). Logout reuses the
-// existing signOutAndRedirect. Push is not delivered to Avi until the send-side
-// targets the "avi" audience — a separate, intentional follow-up.
-function AviPortalActions({ pushEndpoint }: { pushEndpoint: string }) {
+// ── Portal home footer — inline "enable notifications" + logout ───────────────────
+// Shared by Avi (his home tab) and DJ CLEANTONE (his home tab, mobile only —
+// desktop keeps the Sidebar logout). Recycles the SAME push flow as Shalev's
+// PushManager (Notification permission → SW register → pushManager.subscribe →
+// save), but as an inline button targeting the caller's own role-gated endpoint.
+// On mount it ONLY reads permission/subscription and sets UI — it NEVER sends a
+// push (send stays server-side; subscribeAndSave just upserts the device row, so
+// a refresh is always safe). Logout reuses the existing signOutAndRedirect. Push
+// is not delivered until the send-side targets that audience — a separate,
+// intentional follow-up per portal.
+function PortalNotifyActions({ pushEndpoint }: { pushEndpoint: string }) {
   const isMobile = useIsMobile();
   type PushUi = "checking" | "prompt" | "working" | "active" | "denied" | "unsupported" | "server";
   const [push, setPush] = useState<PushUi>("checking");
