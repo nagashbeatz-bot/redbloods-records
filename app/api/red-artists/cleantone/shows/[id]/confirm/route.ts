@@ -3,6 +3,7 @@ import { requireCleantoneAccess } from "@/lib/require-auth";
 import { getShow } from "@/lib/shows-store";
 import { supabase } from "@/lib/supabase";
 import { CLEANTONE_CLIENT_ID } from "@/lib/red-artists/cleantone";
+import { notifyDjShowConfirmed } from "@/lib/dj-confirm-notify";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -35,6 +36,12 @@ export async function POST(_req: Request, ctx: Ctx) {
   if (error) return NextResponse.json({ ok: false, error: "שגיאת שרת" }, { status: 500 });
 
   if (updated) {
+    // Real 'ממתין לאישור' → 'אושר' transition only (never the alreadyConfirmed
+    // path below) → notify the owner. Best-effort: a push failure must NOT fail
+    // the confirm, so it's caught inside the helper and the result is ignored.
+    const fresh = await getShow(id).catch(() => null);
+    if (fresh) await notifyDjShowConfirmed(fresh);
+
     return NextResponse.json({
       ok: true,
       confirmation: { status: updated.dj_confirmation_status, confirmedAt: updated.dj_confirmed_at },
