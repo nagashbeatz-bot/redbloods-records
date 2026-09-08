@@ -9,6 +9,7 @@ import { deadlineLabel, daysUntilDeadline } from "@/lib/utils";
 import { isCancelledPayment, collectibleBalance } from "@/lib/payment-status";
 import { isSongIncome } from "@/lib/clip-finance";
 import StatusDropdown from "@/components/ui/StatusDropdown";
+import ProjectTypeDropdown from "@/components/ui/ProjectTypeDropdown";
 import { useProjects } from "@/components/ProjectsProvider";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { usePlayerSafe, getLatestAudioFile, getFreshPlayUrl } from "@/components/PlayerProvider";
@@ -93,27 +94,6 @@ const TYPE_COLORS: Record<string, string> = {
   "לימודים":"#6366F1",
   "אחר":  "#6B7280",
 };
-
-function ProjectTypeBadge({ type }: { type: ProjectType }) {
-  if (!type) return null;
-  const color = TYPE_COLORS[type] ?? "#6B7280";
-  return (
-    <span
-      style={{
-        fontSize: 10,
-        fontWeight: 600,
-        color,
-        background: `${color}18`,
-        border: `1px solid ${color}35`,
-        borderRadius: 6,
-        padding: "1px 6px",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {type}
-    </span>
-  );
-}
 
 // ── New-project modal ─────────────────────────────────────────────────────────
 function NewProjectModal({
@@ -1502,17 +1482,7 @@ export default function ProjectsTable() {
                 {/* ── Type — hidden on mobile and ultra-compact ── */}
                 {!isMobile && !isUltraCompact && (
                   <div style={cell} onClick={(e) => e.stopPropagation()}>
-                    <InlineCellEdit
-                      value={p.projectType}
-                      onSave={(v) => updateProjectField(p.id, "projectType", v)}
-                      type="select"
-                      options={[
-                        { value: "", label: "ללא" },
-                        ...PROJECT_TYPES.map((t) => ({ value: t, label: t })),
-                      ]}
-                    >
-                      <ProjectTypeBadge type={p.projectType} />
-                    </InlineCellEdit>
+                    <ProjectTypeDropdown projectId={p.id} projectType={p.projectType} small />
                   </div>
                 )}
 
