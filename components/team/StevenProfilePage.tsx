@@ -33,7 +33,10 @@ const DROPBOX_APP_ROOT = "/Apps/redbloods-records";
 
 // ── Types + options (UI-only; no DB). State stays Hebrew-canonical; English is
 //    a display-only translation via mappers below. ────────────────────────────────
-type WorkStatus = "פעיל" | "הושלם" | "בוטל";
+// "לא התחיל" is a Steven-page-only display status: it maps to the EXISTING DB
+// value "לא נשלח" (no new DB enum value, no schema change) and is never added to
+// the global SOUND_ENGINEER_STATUSES. See dbStatusToUi / uiStatusToDb.
+type WorkStatus = "לא התחיל" | "פעיל" | "הושלם" | "בוטל";
 // "חלקי" is DISPLAY-ONLY (derived when 0 < amountPaid < agreedPrice); it is NOT
 // a selectable option (no payment_status column — a real 3-state needs SQL).
 type PayStatus  = "שולם" | "חלקי" | "לא שולם";
@@ -41,10 +44,13 @@ type WorkType   = "מיקס מאסטרינג" | "מאסטרינג";
 type Lang       = "he" | "en";
 
 const WORK_TYPES: WorkType[]       = ["מיקס מאסטרינג", "מאסטרינג"];
-const STATUS_OPTIONS: WorkStatus[] = ["פעיל", "הושלם", "בוטל"];
+const STATUS_OPTIONS: WorkStatus[] = ["לא התחיל", "פעיל", "הושלם", "בוטל"];
+// What the OWNER can pick from the inline dropdowns (jobs table / mobile card /
+// work drawer). "בוטל" stays creation-only (NewWorkModal), exactly as before.
+const OWNER_STATUS_OPTIONS: WorkStatus[] = ["לא התחיל", "פעיל", "הושלם"];
 const PAY_OPTIONS: PayStatus[]     = ["שולם", "לא שולם"];   // selectable (חלקי is display-only)
 
-const STATUS_EN: Record<WorkStatus, string> = { "פעיל": "Active", "הושלם": "Completed", "בוטל": "Canceled" };
+const STATUS_EN: Record<WorkStatus, string> = { "לא התחיל": "Not started", "פעיל": "Active", "הושלם": "Completed", "בוטל": "Canceled" };
 const PAY_EN:    Record<PayStatus, string>  = { "שולם": "Paid", "חלקי": "Partial", "לא שולם": "Unpaid" };
 const WT_EN:     Record<WorkType, string>   = { "מיקס מאסטרינג": "Mix & Mastering", "מאסטרינג": "Mastering" };
 /**
@@ -278,6 +284,9 @@ interface Work {
   // Last real upload for this work (ISO) — max(mix_versions, final_files) from the
   // server; null = nothing ever uploaded. Ordering hint only, never displayed.
   lastUploadAt: string | null;
+  // True once ≥1 mix version exists (final_files excluded). Drives whether a
+  // "לא נשלח" DB status reads as "לא התחיל" (no mixes) or "פעיל" (has mixes).
+  hasMixVersion: boolean;
 }
 
 // ── DB ↔ UI mapping (the page UI has fewer enum values than the DB) ───────────────
@@ -285,14 +294,18 @@ interface Work {
 //   UI WorkStatus:            פעיל | הושלם | בוטל
 //   DB SoundEngineerWorkType: מיקס | מאסטר | מיקס + מאסטר | תיקונים
 //   UI WorkType:              מיקס מאסטרינג | מאסטרינג
-function dbStatusToUi(s: string): WorkStatus {
+//   UI "לא התחיל" ⇄ DB "לא נשלח", but ONLY while the work has no mix version yet.
+//   A legacy "לא נשלח" row that already has mixes still reads as "פעיל".
+function dbStatusToUi(s: string, hasMixVersion: boolean): WorkStatus {
   if (s === "אושר") return "הושלם";
   if (s === "בוטל") return "בוטל";
-  return "פעיל"; // לא נשלח / נשלח / בתהליך / חזר
+  if (s === "לא נשלח" && !hasMixVersion) return "לא התחיל";
+  return "פעיל"; // נשלח / בתהליך / חזר, or "לא נשלח" that already has mixes
 }
 function uiStatusToDb(s: WorkStatus): string {
   if (s === "הושלם") return "אושר";
   if (s === "בוטל") return "בוטל";
+  if (s === "לא התחיל") return "לא נשלח";
   return "בתהליך"; // פעיל
 }
 function dbWorkTypeToUi(w: string): WorkType {
@@ -326,7 +339,7 @@ function mapRecord(r: SoundEngineerWork): Work {
     // Prefer the Steven/Bill-facing work title; fall back to the project name.
     project:    r.workTitle || r.projectName || "—",
     workType:   dbWorkTypeToUi(r.workType),
-    status:     dbStatusToUi(r.status),
+    status:     dbStatusToUi(r.status, r.hasMixVersion ?? false),
     startDate:  fmtDbDate(r.sentDate),
     deadline:   fmtDbDate(r.internalDeadline),
     deadlineISO: r.internalDeadline ?? null,
@@ -339,6 +352,7 @@ function mapRecord(r: SoundEngineerWork): Work {
     filesLink:  r.filesLink ?? null,
     paymentDate: r.paymentDate ?? null,
     lastUploadAt: r.lastUploadAt ?? null,
+    hasMixVersion: r.hasMixVersion ?? false,
   };
 }
 
@@ -506,8 +520,9 @@ const TR = {
 type T = (typeof TR)["he"];
 
 // ── Chips ───────────────────────────────────────────────────────────────────────
-// הושלם = green (done); פעיל = blue (in-progress, NOT green); בוטל = red.
-const STATUS_COLOR: Record<WorkStatus, string> = { "פעיל": BLUE, "הושלם": GREEN, "בוטל": RED };
+// הושלם = green (done); פעיל = blue (in-progress, NOT green); בוטל = red;
+// לא התחיל = muted slate (nothing has happened yet).
+const STATUS_COLOR: Record<WorkStatus, string> = { "לא התחיל": "#64748B", "פעיל": BLUE, "הושלם": GREEN, "בוטל": RED };
 const PAY_COLOR:    Record<PayStatus, string>  = { "שולם": GREEN, "חלקי": "#F59E0B", "לא שולם": RED };
 function StatusChip({ status, lang }: { status: WorkStatus; lang: Lang }) {
   const c = STATUS_COLOR[status];
@@ -1149,15 +1164,15 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   }
   // Active tab display order (view-only — nothing is persisted, sort_order in the
   // DB is never rewritten by this):
-  //   1. status "פעיל" first, everything else after it.
+  //   1. status "פעיל" first; then everything else; then "לא התחיל" dead last.
   //   2. inside "פעיל" — newest lastUploadAt first; a job with no upload at all
   //      drops to the end of that group. This DELIBERATELY overrides the manual
   //      drag order within the active group (owner's call).
-  //   3. ties + the whole non-active group keep the incoming manual/DB order —
-  //      Array.sort is stable, so returning 0 leaves them exactly as they were.
+  //   3. ties + the non-active groups (incl. "לא התחיל") keep the incoming
+  //      manual/DB order — Array.sort is stable, so returning 0 leaves them as-is.
   // History tab: unchanged — filter, then sort by "תאריך סיום" (when it was
   // actually paid — paymentDate — falling back to deadline for older rows), newest first.
-  const activeRank = (w: Work) => (w.status === "פעיל" ? 0 : 1);
+  const activeRank = (w: Work) => (w.status === "לא התחיל" ? 2 : w.status === "פעיל" ? 0 : 1);
   function byActiveThenUpload(a: Work, b: Work): number {
     const rank = activeRank(a) - activeRank(b);
     if (rank !== 0) return rank;
@@ -1327,7 +1342,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                         {isSteven ? (
                           <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, whiteSpace: "nowrap", background: `${STATUS_COLOR[w.status]}1A`, border: `1px solid ${STATUS_COLOR[w.status]}40`, color: STATUS_COLOR[w.status] }}>{statusLabel(w.status, lang)}</span>
                         ) : (
-                          <InlineSelect value={w.status} display={statusLabel(w.status, lang)} color={STATUS_COLOR[w.status]} options={[{ value: "פעיל" as WorkStatus, label: statusLabel("פעיל", lang), color: STATUS_COLOR["פעיל"] }, { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] }]} onChange={v => updateWork(w.id, { status: v })} />
+                          <InlineSelect value={w.status} display={statusLabel(w.status, lang)} color={STATUS_COLOR[w.status]} options={OWNER_STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))} onChange={v => updateWork(w.id, { status: v })} />
                         )}
                       </div>
                     </div>
@@ -1416,10 +1431,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
                             value={w.status}
                             display={statusLabel(w.status, lang)}
                             color={STATUS_COLOR[w.status]}
-                            options={[
-                              { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
-                              { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
-                            ]}
+                            options={OWNER_STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))}
                             onChange={v => updateWork(w.id, { status: v })}
                           />
                         )}
@@ -1492,7 +1504,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setOpenMaterialsId(id); }} notify={notify} lang={lang} t={t} />}
+      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setOpenMaterialsId(id); }} onWorkStale={() => { void reloadWorks(); }} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} isOwner={isOwner} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
@@ -1776,7 +1788,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, accentColor, compact 
 });
 
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
-function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDelete, onClose, onOpenMaterials, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDelete, onClose, onOpenMaterials, onWorkStale, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; onWorkStale?: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
   // Endpoint base by role: steven → sanitized supplier surface; owner → internal.
@@ -2304,6 +2316,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     const setItem = (i: number, patch: Partial<{ status: RpStatus; pct: number; error: string }>) =>
       setRolePicker(p => p ? { ...p, items: p.items.map((x, idx) => idx === i ? { ...x, ...patch } : x) } : p);
 
+    // Did at least one MIX VERSION land in this run? Used only to refresh the
+    // parent works list (status may have auto-advanced "לא התחיל" → "פעיל" and
+    // the list needs to re-sort). final_files never affect the work status.
+    let anyVersionOk = false;
+
     for (let i = 0; i < picker.items.length; i++) {
       const it = picker.items[i];
       if (it.status === "done") continue;                   // retry skips succeeded files
@@ -2330,6 +2347,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
           ? await uploadChunkedVersion(it.file, { label, addToExisting: !!label, role: it.role, mixTargetId }, onPct)
           : await uploadSingleVersionXhr(it.file, { label, addToExisting: !!label, role: it.role, mixTargetId }, onPct);
         if (v) {
+          anyVersionOk = true;
           if (!label) { label = v.label; if (isNewVersion) setSel(v.id); } // first success = the version (pre-de4ab8f behavior)
           setItem(i, { status: "done", pct: 100 });
           setVersions(prev => [v, ...(prev ?? [])]);
@@ -2349,6 +2367,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     // Move to the summary state — the modal NEVER auto-closes.
     setRolePicker(p => p ? { ...p, label: isFinal ? undefined : label, phase: "summary" } : p);
     setUploading(false);
+    // A mix version landed → the work's status may have auto-advanced on the
+    // server ("לא התחיל" → "פעיל"). Refresh the parent list so the badge + the
+    // active-tab ordering update immediately, with no manual reload.
+    if (anyVersionOk) onWorkStale?.();
   }
 
   function setVersionStatus(v: MixVersion, status: string) {
@@ -3280,10 +3302,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       : <InlineSelect<WorkType> value={work.workType} display={wtLabel(work.workType, lang)} color={TEXT2} options={WORK_TYPES.map(o => ({ value: o, label: wtLabel(o, lang), color: TEXT2 }))} onChange={v => onChange({ workType: v })} />)}
                     {field(t.status, isSteven
                       ? <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 11px", borderRadius: 8, background: `${STATUS_COLOR[work.status]}1A`, border: `1px solid ${STATUS_COLOR[work.status]}40`, color: STATUS_COLOR[work.status] }}>{statusLabel(work.status, lang)}</span>
-                      : <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={[
-                          { value: "פעיל"  as WorkStatus, label: statusLabel("פעיל",  lang), color: STATUS_COLOR["פעיל"]  },
-                          { value: "הושלם" as WorkStatus, label: statusLabel("הושלם", lang), color: STATUS_COLOR["הושלם"] },
-                        ]} onChange={v => onChange({ status: v })} />)}
+                      : <InlineSelect<WorkStatus> value={work.status} display={statusLabel(work.status, lang)} color={STATUS_COLOR[work.status]} options={OWNER_STATUS_OPTIONS.map(o => ({ value: o, label: statusLabel(o, lang), color: STATUS_COLOR[o] }))} onChange={v => onChange({ status: v })} />)}
                     {/* payment + agreed price — owner only; hidden from Steven. */}
                     {!isSteven && field(t.payment, <PayChip pay={work.pay} lang={lang} />)}
                     {!isSteven && field(t.agreedPrice, <PriceInput value={work.price} currency={work.currency} onCommit={n => { onChange({ price: n }); notify(t.priceSaved); }} onInvalid={() => notify(t.priceInvalid)} />)}
@@ -4113,7 +4132,8 @@ function NewWorkModal({ onClose, onCreated, lang, t }: { onClose: () => void; on
   const [projectId, setProjectId] = useState("");
   const [workTitle, setWorkTitle] = useState("");
   const [workType, setWorkType] = useState<WorkType>("מיקס מאסטרינג");
-  const [status, setStatus]     = useState<WorkStatus>("פעיל");
+  // New Steven work starts "לא התחיל" (persisted as the existing DB "לא נשלח").
+  const [status, setStatus]     = useState<WorkStatus>("לא התחיל");
   const [startDate, setStartDate] = useState(() => isoDay(0));
   const [deadline, setDeadline] = useState(() => isoDay(3));
   const [price, setPrice]       = useState("200");

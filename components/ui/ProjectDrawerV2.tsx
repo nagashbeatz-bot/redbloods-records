@@ -363,7 +363,10 @@ export function SendModal({ projectId, projectName, artistName, onClose, onActio
               workTitle:        engineerTitle.trim() || undefined,
               engineerName:     selection,        // "Steven" | "Bill"
               workType:         "מיקס + מאסטר",   // no mix/master selector in send → default combined
-              status:           "נשלח",           // supported equivalent of "just sent"
+              // Steven's page shows a new work as "לא התחיל" until his first mix
+              // version lands; "לא נשלח" is the DB value it maps from. Bill keeps
+              // the previous "נשלח" ("just sent") — his listing has no such state.
+              status:           selection === "Steven" ? "לא נשלח" : "נשלח",
               agreedPrice:      200,
               currency:         "$",              // USD
               amountPaid:       0,

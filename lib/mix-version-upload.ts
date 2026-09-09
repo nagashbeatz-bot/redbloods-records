@@ -252,6 +252,35 @@ export async function finalizeMixVersion(args: {
       }
     }
 
+    // ── "לא התחיל" → "פעיל" on the FIRST real mix version ─────────────────────
+    // A brand-new Steven work is created with DB status "לא נשלח" and shown as
+    // "לא התחיל". The moment a mix version actually lands (this row is committed
+    // — a failed upload never reaches here), advance it to "בתהליך" (UI "פעיל").
+    // The guard is purely status === "לא נשלח": once it has advanced, or once the
+    // owner has moved it anywhere else, this is a no-op — a retry or a later
+    // upload can't rewrite it, and a manual owner choice is never overridden.
+    // final_files are deliberately NOT a trigger (this path is mix versions
+    // only). Raw status write → no Finance / push / deadline / payment side
+    // effects. Best-effort: a failure here must never fail the upload.
+    if (target.engineerName === STEVEN_ENGINEER) {
+      try {
+        const { supabase } = await import("@/lib/supabase");
+        const { data: cur } = await supabase
+          .from("sound_engineer_work")
+          .select("status")
+          .eq("id", workId)
+          .maybeSingle();
+        if (cur?.status === "לא נשלח") {
+          await supabase
+            .from("sound_engineer_work")
+            .update({ status: "בתהליך", updated_at: new Date().toISOString() })
+            .eq("id", workId);
+        }
+      } catch (statusErr) {
+        console.error("[mix-version-upload] status auto-advance failed:", statusErr);
+      }
+    }
+
     // Auto-duplicate a FULL MIX (never acapella/instrumental/stems/final-files)
     // into the ORIGINAL project's player, once the mix_versions row is safely
     // committed. Project is resolved via target.projectId (the existing

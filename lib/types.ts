@@ -796,6 +796,15 @@ export interface SoundEngineerWork {
    * single-record fetchers leave it null, they have no consumer for it.
    */
   lastUploadAt: string | null;
+  /**
+   * True when at least one mix_versions row exists for this work — a mix-version
+   * upload specifically (final_files do NOT count). Read-only aggregate, no
+   * column of its own. Populated ONLY by listSoundEngineerWork; the single-record
+   * fetchers leave it false. Steven's page uses it to tell a genuinely
+   * not-started work ("לא התחיל") apart from one whose DB status is still the
+   * legacy "לא נשלח" but that already has mixes.
+   */
+  hasMixVersion: boolean;
 }
 
 /** Input to create an alert (before DB insertion) */

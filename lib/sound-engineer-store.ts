@@ -43,10 +43,16 @@ export function stevenDisplayName(w: Pick<SoundEngineerWork, "workTitle" | "proj
   return (w.workTitle ?? "").trim() || (w.projectName ?? "").trim();
 }
 
+/** Read-only upload hints for a batch of works — see buildUploadHints. */
+type UploadHints = {
+  lastUploadAt: Map<string, string>;
+  hasMixVersion: Set<string>;
+};
+
 function mapRow(
   row: Record<string, unknown>,
   projectMap: Map<string, { name: string; artist: string; projectType: string }>,
-  lastUploadMap?: Map<string, string>
+  hints?: UploadHints
 ): SoundEngineerWork {
   const projectId = (row.project_id as string | null) ?? null;
   const workTitle = (row.work_title as string | null) ?? null;
@@ -79,7 +85,8 @@ function mapRow(
     paymentDate:          (row.payment_date         as string | null) ?? null,
     createdAt:            (row.created_at           as string) ?? "",
     updatedAt:            (row.updated_at           as string) ?? "",
-    lastUploadAt:         lastUploadMap?.get(row.id as string) ?? null,
+    lastUploadAt:         hints?.lastUploadAt.get(row.id as string) ?? null,
+    hasMixVersion:        hints?.hasMixVersion.has(row.id as string) ?? false,
   };
 }
 
@@ -96,10 +103,14 @@ function mapRow(
  *
  * Rows are ordered created_at DESC so that if the client-library row cap ever
  * kicked in it would drop the OLDEST rows — the ones that can never be a max.
+ *
+ * Also returns `hasMixVersion` — the set of workIds with ≥1 mix_versions row
+ * (final_files deliberately excluded). Same two selects, no extra query.
  */
-async function buildLastUploadMap(workIds: string[]): Promise<Map<string, string>> {
+async function buildUploadHints(workIds: string[]): Promise<UploadHints> {
   const map = new Map<string, string>();
-  if (workIds.length === 0) return map;
+  const hasMixVersion = new Set<string>();
+  if (workIds.length === 0) return { lastUploadAt: map, hasMixVersion };
 
   const keep = (workId: string | null, createdAt: string | null) => {
     if (!workId || !createdAt) return;
@@ -122,13 +133,15 @@ async function buildLastUploadMap(workIds: string[]): Promise<Map<string, string
 
   // A failure here must never break the works list — it only means the extra
   // ordering hint is missing, so those works sort as "no uploads".
-  (versions.data ?? []).forEach((r) =>
-    keep((r as { sound_engineer_work_id: string | null }).sound_engineer_work_id, (r as { created_at: string | null }).created_at)
-  );
+  (versions.data ?? []).forEach((r) => {
+    const wid = (r as { sound_engineer_work_id: string | null }).sound_engineer_work_id;
+    if (wid) hasMixVersion.add(wid);
+    keep(wid, (r as { created_at: string | null }).created_at);
+  });
   (finals.data ?? []).forEach((r) =>
     keep((r as { work_id: string | null }).work_id, (r as { created_at: string | null }).created_at)
   );
-  return map;
+  return { lastUploadAt: map, hasMixVersion };
 }
 
 /**
@@ -255,10 +268,10 @@ export async function listSoundEngineerWork(
   const [{ data, error }, projectMap] = await Promise.all([q, buildProjectMap()]);
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as Record<string, unknown>[];
-  // lastUploadAt is a read-only display/ordering hint (see buildLastUploadMap);
-  // the DB order above is unchanged — the client decides what to do with it.
-  const lastUploadMap = await buildLastUploadMap(rows.map((r) => r.id as string));
-  return rows.map((r) => mapRow(r, projectMap, lastUploadMap));
+  // lastUploadAt / hasMixVersion are read-only display/ordering hints (see
+  // buildUploadHints); the DB order above is unchanged — the client decides.
+  const hints = await buildUploadHints(rows.map((r) => r.id as string));
+  return rows.map((r) => mapRow(r, projectMap, hints));
 }
 
 /**
