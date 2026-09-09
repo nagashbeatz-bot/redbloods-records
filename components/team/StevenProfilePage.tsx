@@ -1147,11 +1147,17 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const paidSum = works.reduce((s, w) => s + w.amountPaid, 0);
 
   // History = BOTH status "הושלם" AND pay "שולם" together. Anything short of
-  // that (incl. cancelled jobs) stays under Active — matches the KPI cards too.
+  // that (incl. cancelled jobs) stays under Active.
   const isHistoryWork = (w: Work) => w.status === "הושלם" && w.pay === "שולם";
   const activeWorksAll  = works.filter(w => !isHistoryWork(w));
   const historyWorksAll = works.filter(isHistoryWork);
-  const active = activeWorksAll.length;
+  // Row count of the Active TAB (everything not in history). Drives the tab
+  // label "(N)" only — unchanged.
+  const activeTabCount = activeWorksAll.length;
+  // "עבודות פעילות" KPI: strictly status "פעיל" — a job that is "לא התחיל"
+  // (sent, no first mix yet), "הושלם" or "בוטל" is NOT counted here, so this can
+  // legitimately be lower than the Active-tab row count above.
+  const activeInProgress = works.filter(w => w.status === "פעיל").length;
   const done   = historyWorksAll.length;
 
   // Search (project name) + work-type filter, applied to whichever tab is open.
@@ -1274,7 +1280,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
           ) : (
             <>
               <KpiCard label={t.kpiOpen}      value={open}         icon="📁" />
-              <KpiCard label={t.kpiActive}    value={active}       icon="🎚" color={BLUE} />
+              <KpiCard label={t.kpiActive}    value={activeInProgress} icon="🎚" color={BLUE} />
               <KpiCard label={t.kpiDone}      value={done}         icon="✔" color={GREEN} />
               {/* Financial KPIs — read-only figures; shown to Steven too. */}
               <KpiCard label={t.kpiDebt}      value={fmt(debt)}    icon="👛" color={BRAND} />
@@ -1293,7 +1299,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
             <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 10 }}>
               {/* Active / History tabs — history is strictly "הושלם"+"שולם" together */}
               <div style={{ display: "flex", gap: 6, background: CARD2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4, width: "fit-content" }}>
-                {([["active", t.tabActiveJobs, active], ["history", t.tabJobsHistory, done]] as const).map(([k, label, count]) => {
+                {([["active", t.tabActiveJobs, activeTabCount], ["history", t.tabJobsHistory, done]] as const).map(([k, label, count]) => {
                   const tabIsActive = jobsTab === k;
                   return (
                     <button key={k} type="button" onClick={() => setJobsTab(k)}
