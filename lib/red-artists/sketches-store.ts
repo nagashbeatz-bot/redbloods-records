@@ -98,6 +98,10 @@ interface Manifest {
   nextRelease?: NextReleaseRef | null;
   /** The chosen "next project to work on" (points at one active sketch). Optional. */
   nextWork?: NextWorkRef | null;
+  /** OWNER-ONLY private star rating per sketch: { sketchId: 1..5 }. Pure manifest
+   * metadata — NEVER merged into a Sketch, never returned to the artist, never
+   * touches updatedAt / order. Absent key = unrated. */
+  ratings?: Record<string, number>;
 }
 
 /** Typed error whose `code` the routes map to an HTTP status + a Hebrew message. */
@@ -238,7 +242,21 @@ async function readManifest(slug: string): Promise<{ manifest: Manifest; rev: st
       nextWork = { sketchId: w.sketchId, deadline: typeof w.deadline === "string" ? w.deadline : null, updatedAt: typeof w.updatedAt === "string" ? w.updatedAt : new Date().toISOString() };
     }
   }
-  return { manifest: { schemaVersion: 1, sketches, order, nextRelease, nextWork }, rev: dl.rev };
+  // Preserve the OWNER-ONLY ratings map (defensively) — MUST be parsed here, or
+  // any subsequent mutateManifest (edit / reorder / new version / next-work…)
+  // would round-trip a manifest without it and silently drop every rating.
+  const rawRatings = (parsed as { ratings?: unknown })?.ratings;
+  let ratings: Record<string, number> | undefined;
+  if (rawRatings && typeof rawRatings === "object" && !Array.isArray(rawRatings)) {
+    const clean: Record<string, number> = {};
+    for (const [k, v] of Object.entries(rawRatings as Record<string, unknown>)) {
+      if (typeof k === "string" && k && typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5) {
+        clean[k] = v;
+      }
+    }
+    if (Object.keys(clean).length > 0) ratings = clean;
+  }
+  return { manifest: { schemaVersion: 1, sketches, order, nextRelease, nextWork, ratings }, rev: dl.rev };
 }
 
 /** Newest-updated first — the legacy/default ordering. */
@@ -568,6 +586,34 @@ export async function setNextWorkConfig(slug: string, sketchId: string, deadline
     return m;
   });
   return resolved!;
+}
+
+// ── OWNER-ONLY private ratings (manifest metadata; never exposed to the artist) ──
+/** The whole { sketchId: 1..5 } map. Callers (owner-scoped routes only) decide
+ *  whether to return it — this store never leaks it into `listSketches`. */
+export async function getSketchRatings(slug: string): Promise<Record<string, number>> {
+  const { manifest } = await readManifest(slug);
+  return { ...(manifest.ratings ?? {}) };
+}
+
+/** Set (1..5) or clear (null) the private rating for ONE active sketch. Returns
+ *  the updated map. Deliberately does NOT touch updatedAt / order / versions —
+ *  a rating is not a change to the sketch itself. */
+export async function setSketchRating(slug: string, sketchId: string, rating: number | null): Promise<Record<string, number>> {
+  if (typeof sketchId !== "string" || !sketchId) throw new SketchError("BAD_INPUT", "מזהה לא תקין");
+  if (rating !== null && !(Number.isInteger(rating) && rating >= 1 && rating <= 5)) {
+    throw new SketchError("BAD_INPUT", "דירוג חייב להיות מספר שלם בין 1 ל-5");
+  }
+  const next = await mutateManifest(slug, (m) => {
+    const s = m.sketches.find((x) => x.id === sketchId && !x.archived);
+    if (!s) throw new SketchError("NOT_FOUND", "הסקיצה לא נמצאה");
+    const map = { ...(m.ratings ?? {}) };
+    if (rating === null) delete map[sketchId];
+    else map[sketchId] = rating;
+    m.ratings = Object.keys(map).length > 0 ? map : undefined;
+    return m;
+  });
+  return { ...(next.ratings ?? {}) };
 }
 
 export async function setSketchDuration(slug: string, id: string, versionNumber: number, seconds: number): Promise<void> {

@@ -611,6 +611,10 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   // (NOT /api/projects). Used by both the home card and the "המוזיקה שלי" tab.
   const [sketches, setSketches] = useState<Sketch[]>([]);
   const [libState, setLibState] = useState<"loading" | "ready" | "error">("loading");
+  // OWNER-ONLY private star ratings ({ sketchId: 1..5 }). Only ever populated when
+  // the OWNER views SHALEV'S portal (see `showRatings`); the artist's own GET
+  // never carries them, so for shalev/avi this stays {}.
+  const [ratings, setRatings] = useState<Record<string, number>>({});
   // One resolved API base for every Red-Artists-portal endpoint in this
   // component: Shalev's own session (at /red-artists) uses his existing flat
   // routes (unchanged production behavior); the owner previewing ANY OTHER
@@ -634,7 +638,12 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
     try {
       const r = await fetch(`${apiBase}/sketches`, { cache: "no-store" });
       const d = await r.json();
-      if (r.ok && d?.ok && Array.isArray(d.sketches)) { setSketches(d.sketches); setLibState("ready"); }
+      if (r.ok && d?.ok && Array.isArray(d.sketches)) {
+        setSketches(d.sketches);
+        // Owner response carries `ratings`; the artist's never does → {}.
+        setRatings(d.ratings && typeof d.ratings === "object" && !Array.isArray(d.ratings) ? d.ratings as Record<string, number> : {});
+        setLibState("ready");
+      }
       else setLibState("error");
     } catch { setLibState("error"); }
   }, [apiBase, isCleantonePortal]);
@@ -655,6 +664,42 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
       return true;
     } catch { return false; }
   }, [apiBase]);
+
+  // ── OWNER-ONLY private star ratings ─────────────────────────────────────────
+  // Shown ONLY when the OWNER (explicit role check) is viewing SHALEV'S portal
+  // (`artistId` set + the Shalev name). NEVER an indirect `!isShalev && !isAvi`.
+  // For shalev / avi / unknown this is false → no column, no fetch use, nothing.
+  const showRatings = isOwner && !!artistId && artistName === SHALEV_ARTIST;
+  // Optimistic write; on failure revert to the previous value and return false so
+  // the caller can toast (never leave the UI looking saved).
+  const rateSketch = useCallback(async (sketchId: string, rating: number | null): Promise<boolean> => {
+    const prev = ratings[sketchId];
+    setRatings(r => {
+      const next = { ...r };
+      if (rating === null) delete next[sketchId]; else next[sketchId] = rating;
+      return next;
+    });
+    try {
+      const res = await fetch(`${apiBase}/sketches/${sketchId}/rating`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const d = await res.json().catch(() => ({}));
+      if (d?.ok && d.ratings && typeof d.ratings === "object" && !Array.isArray(d.ratings)) {
+        setRatings(d.ratings as Record<string, number>);
+      }
+      return true;
+    } catch {
+      setRatings(r => {
+        const next = { ...r };
+        if (prev == null) delete next[sketchId]; else next[sketchId] = prev;
+        return next;
+      });
+      return false;
+    }
+  }, [apiBase, ratings]);
 
   // Real shows + balance for this artist — server-scoped endpoint (owner-only,
   // READ-ONLY, filtered server-side to the resolved artist's own name; no
@@ -967,7 +1012,7 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
               ? <CleantoneHome summary={cleantoneSummary} loadState={cleantoneState} onOpenShows={() => setTab("ההופעות שלי")} isCleantone={isCleantone} isOwner={isOwner} />
               : <HomeDashboard onOpenMusic={() => setTab("המוזיקה שלי")} onOpenShows={() => setTab("ההופעות שלי")} sketches={sketches} loadState={libState} summary={summary} summaryState={summaryState} nextRelease={nextRelease} nextWork={nextWork} onReloadNextWork={reloadNextWork} isShalev={isShalev} isOwner={isOwner} isAvi={isAvi} apiBase={apiBase} />
           )
-            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} />
+            : tab === "המוזיקה שלי" ? <MyMusicPage sketches={sketches} loadState={libState} onReload={reloadSketches} onReorder={reorderSketchesRemote} isShalev={isShalev} isAvi={isAvi} ratings={ratings} onRate={rateSketch} showRatings={showRatings} />
             : tab === "ההופעות שלי" ? (
               isCleantonePortal
                 ? <CleantoneShowsPage summary={cleantoneSummary} loadState={cleantoneState} onReload={reloadCleantoneSummary} isOwner={isOwner} />
@@ -3969,9 +4014,58 @@ function playSketchLatest(player: ReturnType<typeof usePlayerSafe>, s: Sketch, o
   void playLibRow(player, sketchAsLibRow(s, base, artistName), onError);
 }
 
-function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi }: {
+// ── OWNER-ONLY private star rating (1–5) ─────────────────────────────────────────
+// Rendered ONLY for the owner viewing Shalev's portal (see `showRatings`). Never
+// for shalev / avi / unknown — not even an empty column. Filled = gold, empty =
+// faint outline. `dir="ltr"` so star 1 is always leftmost (matches the design),
+// independent of the RTL page. Click sets 1–5; clicking the current value clears
+// it. Hover previews on a fine pointer only (no sticky preview on touch).
+const RATING_GOLD = "#FBBF24";
+function StarIcon({ filled, size }: { filled: boolean; size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24"
+      fill={filled ? RATING_GOLD : "none"}
+      stroke={filled ? RATING_GOLD : "rgba(255,255,255,0.24)"}
+      strokeWidth={1.6} strokeLinejoin="round" style={{ display: "block" }}>
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+function StarRating({ value, onRate, size = 15, disabled = false }: {
+  value: number; onRate: (n: number | null) => void; size?: number; disabled?: boolean;
+}) {
+  const [hover, setHover] = useState(0);
+  const fine = typeof window !== "undefined" && window.matchMedia?.("(pointer: fine)")?.matches;
+  const shown = fine && hover ? hover : value;
+  return (
+    <div dir="ltr" onClick={e => e.stopPropagation()} onMouseLeave={() => setHover(0)}
+      style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} type="button" disabled={disabled}
+          aria-label={`דרג ${n} מתוך 5`} aria-pressed={value === n}
+          title={disabled ? undefined : `${n} כוכבים`}
+          onClick={e => { e.stopPropagation(); if (!disabled) onRate(value === n ? null : n); }}
+          onMouseEnter={() => { if (fine) setHover(n); }}
+          style={{
+            background: "none", border: "none", padding: 2, lineHeight: 0, fontFamily: "inherit",
+            cursor: disabled ? "default" : "pointer", flexShrink: 0,
+          }}>
+          <StarIcon filled={n <= shown} size={size} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi, ratings, onRate, showRatings }: {
   sketches: Sketch[]; loadState: "loading" | "ready" | "error";
   onReload: () => Promise<void>; onReorder: (orderedIds: string[]) => Promise<boolean>; isShalev?: boolean; isAvi?: boolean;
+  /** OWNER-ONLY private ratings ({ sketchId: 1..5 }); undefined / ignored otherwise. */
+  ratings?: Record<string, number>;
+  /** OWNER-ONLY. Persist a rating (null = clear). Resolves false on failure. */
+  onRate?: (sketchId: string, rating: number | null) => Promise<boolean>;
+  /** Gate for the rating column — true ONLY for the owner on Shalev's portal. */
+  showRatings?: boolean;
 }) {
   // Avi (restricted artist) is view/listen-only here — every write affordance
   // (upload, edit-on-click, reorder) is hidden. The server also blocks his
@@ -3980,6 +4074,7 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
   const showHandle = !isShalev && canManage;  // shalev: no drag handle (reorder is owner-only)
   const showDate = !isShalev;    // shalev: no date under the sketch name
   const showVersion = !isShalev; // shalev: no version (V1/V2) badge
+  const rateOn = !!showRatings && !!onRate; // owner-on-Shalev's-portal only
   const { apiBase, artistName } = usePortalContext();
   const isAviPortal = isAviPortalName(artistName); // beat + "סקיצה N" naming — Avi's portal only
   const isMobile = useIsMobile();
@@ -4097,21 +4192,32 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
   const UNIT_GAP = 10; // tight, uniform gap between grip · play · name
   // Header spacer = the exact leading width of the name unit (no grip for shalev).
   const LEAD_W = (showHandle ? GRIP_W + UNIT_GAP : 0) + PLAY_W + UNIT_GAP;
-  // שם הפרויקט (unit) · [גרסה] · [עודכן] · משך. Shalev drops both גרסה and עודכן.
+  // שם הפרויקט (unit) · [גרסה] · [עודכן] · [דירוג] · משך. Shalev drops גרסה+עודכן;
+  // דירוג is owner-only (rateOn) and never rendered for anyone else.
   const cols = [
     "minmax(0, 1.9fr)",
     ...(showVersion ? ["84px"] : []),
     ...(showDate ? ["120px"] : []),
+    ...(rateOn ? ["104px"] : []),
     "72px",
   ].join(" ");
   const heads: { label: string; align: "start" | "center" }[] = [
     { label: "שם הפרויקט", align: "start" },
     ...(showVersion ? [{ label: "גרסה", align: "center" as const }] : []),
     ...(showDate ? [{ label: "עודכן", align: "center" as const }] : []),
+    ...(rateOn ? [{ label: "דירוג", align: "center" as const }] : []),
     { label: "משך", align: "center" },
   ];
 
   const openEdit = (s: Sketch) => setEditing(s);
+
+  // OWNER-ONLY. Persist a star rating; parent does the optimistic update + revert,
+  // here we only surface a short failure toast so the UI never looks "saved".
+  const handleRate = async (sketchId: string, rating: number | null) => {
+    if (!onRate) return;
+    const ok = await onRate(sketchId, rating);
+    if (!ok) setToast("לא ניתן לשמור את הדירוג, נסה שוב");
+  };
 
   // Drag handle — the ONLY drag affordance (so page scroll and row-tap stay
   // intact on touch). Never opens the edit modal; `touchAction:none` lets it own
@@ -4249,6 +4355,11 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                       {s.beat && <BeatChip url={sketchBeatDownloadUrl(s, apiBase)} filename={s.beat.fileName} onError={setToast} />}
                     </div>
                   )}
+                  {rateOn && (
+                    <div style={{ marginTop: 5 }}>
+                      <StarRating value={ratings?.[s.id] ?? 0} size={17} onRate={n => void handleRate(s.id, n)} />
+                    </div>
+                  )}
                 </div>
                 <span style={{ fontSize: 12, color: "#CFCFD6", direction: "ltr", fontFamily: "ui-monospace, Menlo, monospace", flexShrink: 0 }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</span>
               </div>
@@ -4271,6 +4382,11 @@ function MyMusicPage({ sketches, loadState, onReload, onReorder, isShalev, isAvi
                 </div>
                 {showVersion && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#FF6B6B", direction: isAviPortal ? "rtl" : "ltr" }}>{sketchVersionLabel(s.latestVersion, isAviPortal)}</div>}
                 {showDate && <div style={{ textAlign: "center", fontSize: 12.5, color: "#CFCFD6" }}>{fmtSketchDate(s.updatedAt)}</div>}
+                {rateOn && (
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <StarRating value={ratings?.[s.id] ?? 0} size={15} onRate={n => void handleRate(s.id, n)} />
+                  </div>
+                )}
                 <div style={{ fontSize: 12.5, color: "#CFCFD6", direction: "ltr", textAlign: "center", fontFamily: "ui-monospace, Menlo, monospace" }}>{s.durationSeconds != null ? mmss(s.durationSeconds) : "—"}</div>
               </div>
             ))

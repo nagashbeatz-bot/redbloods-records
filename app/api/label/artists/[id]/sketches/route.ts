@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveOwnerPortalAccess, resolvePortalReadAccess } from "@/lib/red-artists/portal-access";
-import { listSketches, createSketch, validateAudio } from "@/lib/red-artists/sketches-store";
+import { listSketches, createSketch, validateAudio, getSketchRatings } from "@/lib/red-artists/sketches-store";
 import { errResponse } from "@/lib/red-artists/sketches-http";
 
 export const maxDuration = 300;
@@ -14,7 +14,10 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
   if (!access.ok) return access.response;
   try {
     const sketches = await listSketches(access.config.slug);
-    return NextResponse.json({ ok: true, sketches });
+    // OWNER-ONLY private ratings. Never included for role "avi" (or anyone else)
+    // — the artist's own portal response must not carry them at all.
+    const ratings = access.role === "owner" ? await getSketchRatings(access.config.slug) : undefined;
+    return NextResponse.json({ ok: true, sketches, ratings });
   } catch (err) {
     return errResponse(err);
   }
