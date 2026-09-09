@@ -138,17 +138,25 @@ export async function POST(req: NextRequest) {
       }
 
       const currentFiles = (row.files_sent as typeof newFile[]) ?? [];
-      try {
-        await updateVictorWork(workId, { filesSent: [...currentFiles, newFile] });
-      } catch (dbErr) {
+      // Idempotent append — same rule as the single-shot route: a retried upload
+      // of the SAME file commits to the SAME Dropbox path, so never let it add a
+      // second files_sent entry. When the path is already listed the commit just
+      // resolved to the existing identical file (nothing new to roll back) — skip
+      // the DB write and return success.
+      const alreadyListed = currentFiles.some((f) => f?.dropboxPath === finalPath);
+      if (!alreadyListed) {
         try {
-          await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ path: finalPath }),
-          });
-        } catch { /* best-effort */ }
-        throw dbErr;
+          await updateVictorWork(workId, { filesSent: [...currentFiles, newFile] });
+        } catch (dbErr) {
+          try {
+            await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ path: finalPath }),
+            });
+          } catch { /* best-effort */ }
+          throw dbErr;
+        }
       }
 
       // ── Owner push (batched) — parity with the single-shot route: only when

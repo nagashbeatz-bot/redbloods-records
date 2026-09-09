@@ -1324,6 +1324,7 @@ function VictorProjectDrawer({
   const uploadCancelledRef = useRef(false);                 // set on cancel → the batch catch reports "cancelled", never re-adds files
   const pendingFilesRef = useRef<File[] | null>(null);      // last selection (for "try again")
   const mountedRef = useRef(true);                          // guards terminal setState after unmount
+  const uploadRunningRef = useRef(false);                   // synchronous re-entry guard: a duplicate trigger (double onChange / fast retry) can't start a parallel run. Server-side idempotency is the real guard; this only avoids a redundant request.
   const autoCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadActive = uploadState === "preparing" || uploadState === "uploading"; // savingDbx = the commit ("finishing") phase
   const [openingDbx, setOpeningDbx] = useState(false);
@@ -1719,6 +1720,12 @@ function VictorProjectDrawer({
   }
 
   async function runUpload(files: File[]) {
+    // Re-entry guard (synchronous — unlike the state-derived `uploadActive`): a
+    // second file-input change or a fast retry can't start a parallel run for the
+    // same selection. Cleared in the finally below. NOT the primary defense — the
+    // upload routes dedupe by Dropbox path server-side — just avoids a wasted request.
+    if (uploadRunningRef.current) return;
+    uploadRunningRef.current = true;
     // Dispatch by size: >140MB uses the chunked upload-session (Dropbox single-shot
     // maxes ~150MB); otherwise the existing single-shot path.
     const CHUNK_LIMIT = 140 * 1024 * 1024;
@@ -1798,6 +1805,7 @@ function VictorProjectDrawer({
         console.error("upload failed", err);
       }
     } finally {
+      uploadRunningRef.current = false;
       setUploading(false);
       setSavingDbx(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

@@ -123,7 +123,15 @@ export async function POST(req: NextRequest) {
     }
 
     const currentFiles = (row?.files_sent as typeof newFile[]) ?? [];
-    await updateVictorWork(workId, { filesSent: [...currentFiles, newFile] });
+    // Idempotent append: a retried / double-submitted upload of the SAME file
+    // commits to the SAME Dropbox path (Dropbox collapses identical content onto
+    // the existing path instead of autorenaming). If that path is already listed,
+    // keep the existing entry untouched and DON'T add a second one; otherwise
+    // append as before. Prevents a duplicate files_sent entry for one real file.
+    const alreadyListed = currentFiles.some((f) => f?.dropboxPath === finalPath);
+    if (!alreadyListed) {
+      await updateVictorWork(workId, { filesSent: [...currentFiles, newFile] });
+    }
 
     // ── Owner push (batched, 3-min window) — ONLY when Victor uploaded, and only
     //    after the file is saved. Best-effort: never block/fail the upload. ──
