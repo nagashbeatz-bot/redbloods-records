@@ -52,6 +52,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const player = usePlayerSafe();
   const playerVisible = !!(player?.track);
   const [isMobile, setIsMobile] = useState(false);
+  // The Victor work sheet is a full-screen mobile overlay (z-1001). While it is
+  // open it dispatches "rb:victor-sheet" so the ONE mobile MiniPlayer below can
+  // be lifted above it — Victor reuses the same instance, no second player.
+  const [victorSheetOpen, setVictorSheetOpen] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [quickActions, setQuickActions] = useState<{ open: boolean; projectId: string | null; clientName: string | null; date: string | null; time: string | null }>({ open: false, projectId: null, clientName: null, date: null, time: null });
@@ -108,6 +112,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("rb:project-selected", handler);
     return () => window.removeEventListener("rb:project-selected", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => setVictorSheetOpen(!!(e as CustomEvent<boolean>).detail);
+    window.addEventListener("rb:victor-sheet", handler);
+    return () => window.removeEventListener("rb:victor-sheet", handler);
   }, []);
 
   // Open the global quick-actions modal (e.g. from the "פעולות מהירות" button, or
@@ -365,6 +375,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           transform: playerVisible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.25s",
           pointerEvents: playerVisible ? "auto" : "none",
+          // Lift above the Victor work sheet (z-1001) so that overlay reuses THIS
+          // MiniPlayer instead of rendering its own. Its inner sub-modals are all
+          // ≥ z-2000, so they still sit above the player.
+          zIndex: victorSheetOpen ? 1002 : undefined,
         }}
       >
         <MiniPlayer mobile />

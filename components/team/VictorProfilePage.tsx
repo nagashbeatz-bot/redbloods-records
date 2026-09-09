@@ -7,6 +7,7 @@ import { signOutAndRedirect } from "@/lib/supabase-browser";
 import type { VictorMonthStats, VendorWork, VictorSalaryMonth, FileLink, VictorReference, VersionReview, VersionReviewStatus, BriefSegment, BriefSegmentType } from "@/lib/types";
 import { inMonth } from "@/lib/victor-segments";
 import LinkifiedText from "@/components/ui/LinkifiedText";
+import { usePlayerSafe, type AudioTrack } from "@/components/PlayerProvider";
 import { useVictorLang, useVictorT, statusLabel, setVictorLang, allowedVictorLangs, rememberVictorRole, getCachedVictorRole, victorMonthYear, type VictorLang } from "@/lib/victor-i18n";
 import {
   IconMusic, IconPlay, IconPause, IconSkipBack, IconSkipForward, IconVolume,
@@ -494,6 +495,12 @@ function fmtBytes(n: number): string {
 // app's global PlayerProvider.
 let currentVictorAudio: HTMLAudioElement | null = null;
 
+// MOBILE ONLY: set by VictorProjectDrawer to the app's main-player pause. The
+// inline brief / received-file players call it before they start so the app
+// player (which IS the Versions playback engine on mobile) yields — keeping a
+// single audio source of truth. null on desktop / when no drawer is mounted.
+let pauseMainForInline: (() => void) | null = null;
+
 function AudioPlayer({
   file,
   workId,
@@ -568,6 +575,7 @@ function AudioPlayer({
     const a = audioRef.current;
     if (!a) return;
     if (a.paused) {
+      pauseMainForInline?.(); // mobile: yield the app player (Versions engine)
       // Only one Victor audio at a time — pause whoever was playing.
       if (currentVictorAudio && currentVictorAudio !== a) currentVictorAudio.pause();
       currentVictorAudio = a;
@@ -858,6 +866,7 @@ function BriefSegmentPlayer({
     e.stopPropagation();
     const a = audioRef.current; if (!a) return;
     if (a.paused) {
+      pauseMainForInline?.(); // mobile: yield the app player (Versions engine)
       if (currentVictorAudio && currentVictorAudio !== a) currentVictorAudio.pause();
       currentVictorAudio = a;
       a.play().catch(() => {});
@@ -1296,7 +1305,47 @@ function VictorProjectDrawer({
   const router = useRouter();
   const t = useVictorT();
   const [lang] = useVictorLang();
-  const isMobile = useIsMobile();
+  // This drawer only ever mounts after a user tap (never server-rendered), so we
+  // read the viewport SYNCHRONOUSLY on the first render — no "desktop for one
+  // frame" window where the legacy footer could mount on a phone, and no
+  // hydration mismatch (there is no SSR'd markup for it to disagree with).
+  // useIsMobile() (init false + useEffect) is fine for pure layout ternaries but
+  // NOT for a mount/no-mount decision, which is what the footer needs.
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  // ── MOBILE: reuse the app's ONE main player (PlayerProvider singleton + the
+  //    single <MiniPlayer mobile /> that AppShell already renders) for Versions
+  //    playback. This drawer renders NO player UI of its own on mobile — it only
+  //    pushes the track to PlayerProvider and tells AppShell to lift its global
+  //    MiniPlayer above this full-screen sheet. Desktop is untouched and keeps
+  //    the drawer-local player below. `useMainPlayer` gates every branch. ──
+  const mainPlayer = usePlayerSafe();
+  const useMainPlayer = isMobile && !!mainPlayer;
+  const mainPlayerRef = useRef(mainPlayer);
+  mainPlayerRef.current = mainPlayer;
+  useEffect(() => {
+    if (!useMainPlayer) { pauseMainForInline = null; return; }
+    pauseMainForInline = () => mainPlayerRef.current?.pause();
+    // Ask AppShell to re-stack its global mobile MiniPlayer above this sheet.
+    window.dispatchEvent(new CustomEvent("rb:victor-sheet", { detail: true }));
+    return () => {
+      pauseMainForInline = null;
+      window.dispatchEvent(new CustomEvent("rb:victor-sheet", { detail: false }));
+    };
+  }, [useMainPlayer]);
+  // Closing the drawer must not leave a Victor track playing in the global
+  // player (matches the pre-existing "close stops playback" behavior).
+  useEffect(() => () => {
+    const mt = mainPlayerRef.current?.track;
+    if (mt && mt.projectId.startsWith("victor:")) mainPlayerRef.current?.stop();
+  }, []);
   const [updating, setUpdating] = useState(false);
   const [notes, setNotes] = useState(work.notes ?? "");
   const [notesDirty, setNotesDirty] = useState(false);
@@ -2017,7 +2066,41 @@ function VictorProjectDrawer({
     a.currentTime = frac * a.duration; setPCur(a.currentTime);
   }
 
-  // Wire the single <audio> element's media events → UI state.
+  // ── MOBILE adapter: a Victor version file → the app player's AudioTrack ──
+  // A tiny mapping, NOT a new playback engine. The app player's singleton
+  // <audio> stays the one source of truth.
+  function victorTrackId(file: FileLink) { return `victor:${work.id}:${fileId(file)}`; }
+  function toAudioTrack(file: FileLink): AudioTrack {
+    const p = playlist.find(x => fileId(x.file) === fileId(file));
+    const roleTxt = t(`role.${p?.role ?? detectRole(file)}`);
+    return {
+      projectId: victorTrackId(file),
+      projectName: file.name,
+      artist: [p?.versionLabel || "", roleTxt].filter(Boolean).join(" · "),
+      fileName: file.name,
+      url: playbackSrc(file, work.id),
+    };
+  }
+  function isMainTrack(file: FileLink) {
+    return !!mainPlayer && !!mainPlayer.track && mainPlayer.track.projectId === victorTrackId(file);
+  }
+  // Play/toggle a Victor file through the app player. Switching files just swaps
+  // the singleton's src — it never opens a second player.
+  function playViaMain(file: FileLink) {
+    if (!mainPlayer) return;
+    if (isMainTrack(file)) {
+      if (mainPlayer.playing) mainPlayer.pause(); else mainPlayer.resume();
+      return;
+    }
+    const track = toAudioTrack(file);
+    if (!track.url) return;
+    currentVictorAudio?.pause(); // stop any inline brief/received audio
+    mainPlayer.play(track);
+  }
+
+  // Wire the DESKTOP <audio> element's media events → UI state. Re-runs on the
+  // isMobile flip because the element is only mounted on desktop now (a live
+  // resize across the breakpoint remounts it).
   useEffect(() => {
     const a = playerAudioRef.current; if (!a) return;
     const onTime = () => setPCur(a.currentTime || 0);
@@ -2039,7 +2122,7 @@ function VictorProjectDrawer({
       a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnded);
     };
-  }, []);
+  }, [isMobile]);
   // Stop + tear down on unmount (drawer close / project change).
   useEffect(() => () => {
     const a = playerAudioRef.current;
@@ -2060,14 +2143,15 @@ function VictorProjectDrawer({
     const { file, sentIdx, role } = item;
     const rc = ROLE_COLOR[role];
     const audio = isAudioFile(file.name);
-    const nowPlaying = npKey === fileId(file);
+    const nowPlaying = isMobile ? isMainTrack(file) : npKey === fileId(file);
+    const rowPlaying = nowPlaying && (isMobile ? !!mainPlayer?.playing : pPlaying);
     const hasUrl = !!(file.fileRef || file.dropboxShareUrl || file.url);
     return (
       <div key={sentIdx} style={{ display: "flex", alignItems: "center", gap: big ? 12 : 9, padding: big ? "10px 12px" : "8px 10px", borderRadius: 10, background: nowPlaying ? `${PURPLE}1A` : "rgba(255,255,255,0.02)", border: `1px solid ${nowPlaying ? PURPLE + "66" : BDR}`, minWidth: 0 }}>
         {audio ? (
-          <button onClick={() => (nowPlaying ? togglePlayer() : playTrackByFile(file))} title={nowPlaying && pPlaying ? t("player.pause") : t("player.play")}
-            style={{ width: big ? 36 : 30, height: big ? 36 : 30, borderRadius: "50%", flexShrink: 0, background: nowPlaying && pPlaying ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: big ? 13 : 11, fontFamily: "inherit" }}>
-            {nowPlaying && pPlaying ? <IconPause size={big ? 14 : 12} /> : <IconPlay size={big ? 14 : 12} />}
+          <button onClick={() => { if (isMobile) { playViaMain(file); return; } nowPlaying ? togglePlayer() : playTrackByFile(file); }} title={rowPlaying ? t("player.pause") : t("player.play")}
+            style={{ width: big ? 36 : 30, height: big ? 36 : 30, borderRadius: "50%", flexShrink: 0, background: rowPlaying ? PURPLE : `${PURPLE}22`, border: `1px solid ${PURPLE}55`, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: big ? 13 : 11, fontFamily: "inherit" }}>
+            {rowPlaying ? <IconPause size={big ? 14 : 12} /> : <IconPlay size={big ? 14 : 12} />}
           </button>
         ) : (
           <span style={{ flexShrink: 0, width: big ? 36 : 30, color: TEXT2, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2485,7 +2569,7 @@ function VictorProjectDrawer({
         </div>
 
         {/* ── Scrollable body ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px calc(40px + env(safe-area-inset-bottom))" : "18px 20px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? `16px 14px calc(${useMainPlayer && mainPlayer?.track ? 104 : 40}px + env(safe-area-inset-bottom))` : "18px 20px" }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(250px, 0.8fr) minmax(520px, 1.85fr) minmax(360px, 1fr)", gap: 20, alignItems: "start" }}>
 
             {/* ════ RIGHT column: brief + references (was MAIN). order maps it to
@@ -3127,11 +3211,17 @@ function VictorProjectDrawer({
           </div>{/* grid */}
         </div>{/* scrollable body */}
 
-        {/* Always-mounted audio + drawer-local fixed player (isolated from the
-            app's global PlayerProvider — its own <audio>, own currentVictorAudio). */}
+        {/* ── PLAYER ──────────────────────────────────────────────────────────
+            MOBILE: nothing here. No <audio>, no footer. Playback runs through
+            the app's PlayerProvider singleton and the ONE <MiniPlayer mobile />
+            AppShell already renders (lifted above this sheet by the
+            "rb:victor-sheet" event). The legacy purple footer is NOT mounted.
+            DESKTOP: unchanged — the drawer-local <audio> + purple footer. */}
+        {isMobile ? null : (
+        <>
         <audio ref={playerAudioRef} preload="metadata" style={{ display: "none" }} />
         {/* Fixed player — ALWAYS visible; shows an empty state until a track is picked. */}
-        <div style={{ flexShrink: 0, minHeight: isMobile ? undefined : 80, display: "flex", alignItems: "center", borderTop: `1px solid ${PURPLE}33`, background: "linear-gradient(0deg, #0A0A12 0%, #12121C 100%)", padding: isMobile ? "10px 12px calc(12px + env(safe-area-inset-bottom))" : "14px 26px", boxShadow: "0 -6px 24px rgba(0,0,0,0.4)" }}>
+        <div style={{ flexShrink: 0, minHeight: 80, display: "flex", alignItems: "center", borderTop: `1px solid ${PURPLE}33`, background: "linear-gradient(0deg, #0A0A12 0%, #12121C 100%)", padding: "14px 26px", boxShadow: "0 -6px 24px rgba(0,0,0,0.4)" }}>
           {npItem ? (
             <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 18, minWidth: 0, width: "100%" }}>
               {/* cover + now-playing info */}
@@ -3204,6 +3294,8 @@ function VictorProjectDrawer({
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {/* In-app YouTube player — iframe mounts only while open, so closing it
