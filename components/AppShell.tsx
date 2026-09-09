@@ -371,7 +371,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className="fixed left-0 right-0 z-50 md:hidden"
         style={{
-          bottom: `calc(${navH}px + env(safe-area-inset-bottom))`,
+          // navH clears the fixed bottom nav. The Victor work sheet
+          // (position:fixed inset:0) COVERS that nav, so while it is open there is
+          // nothing to clear — drop the navH term and dock flush to the viewport
+          // bottom (same as the roles that have no bottom nav). Nothing else
+          // about the wrapper changes: still position:fixed, still viewport-
+          // relative, no transform/height change.
+          bottom: victorSheetOpen
+            ? "env(safe-area-inset-bottom)"
+            : `calc(${navH}px + env(safe-area-inset-bottom))`,
           transform: playerVisible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.25s",
           pointerEvents: playerVisible ? "auto" : "none",
