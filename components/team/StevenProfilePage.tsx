@@ -2793,6 +2793,11 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       // sec.groups is newest-first, so [0] is this line's latest mix.
                       const latestGroup = sec.groups[0] ?? null;
                       const isHere = !!selectedGroup && sec.groups.some(g => g.key === selectedGroup.key);
+                      // Whether this line is the one currently open in the main panel —
+                      // either through a selected version of its own, or (empty line)
+                      // through a direct target selection. Drives both the highlight
+                      // and the collapse-on-second-click below.
+                      const isOpen = isHere || (!selectedGroup && sec.targetId != null && selTargetId === sec.targetId);
                       // Same deterministic accent this line gets everywhere else.
                       const ac = targetAccent(sec.key === "__unassigned" ? null : sec.key);
                       return (
@@ -2800,9 +2805,12 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                           {/* One click on the line opens its LATEST mix straight away — no
                               accordion to expand first. A line with nothing uploaded still
                               opens: it becomes a workspace where the owner can brief Steven
-                              before there is anything to mix. Reading it writes nothing. */}
+                              before there is anything to mix. Reading it writes nothing.
+                              A second click on the same open line collapses it back to
+                              nothing selected — a real accordion toggle. */}
                           <div
                             onClick={() => {
+                              if (isOpen) { setSel(null); setSelTargetId(null); return; }
                               if (latestGroup) { setSel(latestGroup.primary.id); setSelTargetId(sec.targetId); }
                               else if (sec.targetId) { setSel(null); setSelTargetId(sec.targetId); }
                             }}
@@ -2810,8 +2818,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", borderRadius: 10,
                                      cursor: (latestGroup || sec.targetId) ? "pointer" : "default",
                                      opacity: (latestGroup || sec.targetId) ? 1 : 0.65,
-                                     background: (isHere || (!selectedGroup && selTargetId === sec.targetId)) ? ac.bg : "transparent",
-                                     border: `1px solid ${(isHere || (!selectedGroup && selTargetId === sec.targetId)) ? ac.bd : "transparent"}`,
+                                     background: isOpen ? ac.bg : "transparent",
+                                     border: `1px solid ${isOpen ? ac.bd : "transparent"}`,
                                      // The line's accent as a thin leading rule — always on, so the
                                      // colour code stays readable whether or not the line is open.
                                      borderInlineStartWidth: 3,
