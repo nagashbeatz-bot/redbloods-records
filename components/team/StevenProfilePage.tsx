@@ -946,11 +946,18 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // Mid-desktop: keep the two-column jobs/payments grid only while the real
   // content container is wide enough to host it. Below ~1024px the 2.4fr/1fr
   // split would squeeze the jobs table under its own 660px min and start
-  // clipping the Action column, so we stack to one column (jobs first, full
-  // width; payment history below) — still the desktop table, not mobile cards.
+  // clipping the Action column, so we stack to one column (jobs first, then
+  // payment history) — still the desktop table, not mobile cards.
   // Measured on the container itself, so the 248px sidebar is already out.
   const [mainRef, mainW] = useContainerWidth<HTMLDivElement>();
   const stackMain = mainW != null && mainW < 1024;
+  // Once stacked, don't let the cards fill the whole container — that makes them
+  // look BIGGER than in the wide layout. Hold them at ~the jobs card's wide-layout
+  // width just before the breakpoint (2.4fr of a ~1024–1120px container ≈ 710–780)
+  // and centre them, so a narrow window reads as "the wide desktop, centred"
+  // rather than stretched. Never applied at mobile (<=760) — that stays full-width.
+  const stackCap: React.CSSProperties | null =
+    stackMain && !narrow ? { width: "100%", maxWidth: 780, marginInline: "auto" } : null;
 
   function notify(msg: string) {
     setToast(msg);
@@ -1304,7 +1311,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
             Wide desktop keeps the original 2.4fr / 1fr split unchanged. */}
         <div style={{ display: "grid", gridTemplateColumns: (narrow || stackMain) ? "minmax(0, 1fr)" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
-          <div style={sectionCard}>
+          <div style={{ ...sectionCard, ...stackCap }}>
             <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 10 }}>
               {/* Active / History tabs — history is strictly "הושלם"+"שולם" together */}
               <div style={{ display: "flex", gap: 6, background: CARD2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4, width: "fit-content" }}>
@@ -1494,7 +1501,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
           </div>
 
           {/* Side cards — Payment History (read-only; shown to Steven too). */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, ...stackCap }}>
             <div style={sectionCard}>
               <div style={cardHead}>{t.payHistory}</div>
               {loading ? (
