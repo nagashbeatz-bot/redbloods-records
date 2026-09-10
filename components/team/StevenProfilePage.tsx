@@ -943,6 +943,14 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // Mobile layout: below 760px the desktop two-column body (jobs table + side
   // card) can't fit, so we stack to a single column and tighten the chrome.
   const narrow = useIsNarrow(760);
+  // Mid-desktop: keep the two-column jobs/payments grid only while the real
+  // content container is wide enough to host it. Below ~1024px the 2.4fr/1fr
+  // split would squeeze the jobs table under its own 660px min and start
+  // clipping the Action column, so we stack to one column (jobs first, full
+  // width; payment history below) — still the desktop table, not mobile cards.
+  // Measured on the container itself, so the 248px sidebar is already out.
+  const [mainRef, mainW] = useContainerWidth<HTMLDivElement>();
+  const stackMain = mainW != null && mainW < 1024;
 
   function notify(msg: string) {
     setToast(msg);
@@ -1201,7 +1209,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} style={{ minHeight: "100%", background: BG, color: TEXT, fontFamily: "'Heebo', Arial, sans-serif", padding: narrow ? "16px 16px calc(104px + env(safe-area-inset-bottom))" : "32px 28px 80px", boxSizing: "border-box" }}>
-      <div style={{ maxWidth: 1600, margin: "0 auto" }}>
+      <div ref={mainRef} style={{ maxWidth: 1600, margin: "0 auto" }}>
 
         {/* Back to the /team list — owner only; Steven has just this one page. */}
         {!isSteven && <div style={{ marginBottom: 14 }}>
@@ -1290,10 +1298,11 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
 
         {/* ── Main grid ── (jobs table + Payment History side card, both roles) */}
-        {/* Mobile: single column so the jobs table isn't crushed by the 300px
-            side card. minmax(0,1fr) lets the table's own overflow-x:auto wrapper
-            shrink and scroll internally instead of overflowing the page. */}
-        <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* Mobile / mid-desktop: single column so the jobs table isn't crushed by
+            the 300px side card. minmax(0,1fr) lets the table's own overflow-x:auto
+            wrapper shrink and scroll internally instead of overflowing the page.
+            Wide desktop keeps the original 2.4fr / 1fr split unchanged. */}
+        <div style={{ display: "grid", gridTemplateColumns: (narrow || stackMain) ? "minmax(0, 1fr)" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
 
           <div style={sectionCard}>
             <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1529,6 +1538,27 @@ function useIsNarrow(max = 760): boolean {
     return () => window.removeEventListener("resize", check);
   }, [max]);
   return narrow;
+}
+
+// ── Container-width hook — measures an element's OWN width via ResizeObserver ─────
+// Used for the mid-desktop breakpoint of the jobs/payments grid: window.innerWidth
+// would ignore the 248px app sidebar and mislead by ~265px, so we watch the real
+// content container instead. Returns null until the first measurement (SSR + first
+// client paint), which callers treat as "assume wide".
+function useContainerWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number | null] {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) setWidth(e.contentRect.width);
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
 }
 
 // ── Empty "ready work area" (versions / player) — structured, not tiny text ──────
