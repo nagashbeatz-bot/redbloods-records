@@ -943,21 +943,22 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // Mobile layout: below 760px the desktop two-column body (jobs table + side
   // card) can't fit, so we stack to a single column and tighten the chrome.
   const narrow = useIsNarrow(760);
-  // Mid-desktop: keep the two-column jobs/payments grid only while the real
-  // content container is wide enough to host it. Below ~1024px the 2.4fr/1fr
-  // split would squeeze the jobs table under its own 660px min and start
-  // clipping the Action column, so we stack to one column (jobs first, then
-  // payment history) — still the desktop table, not mobile cards.
-  // Measured on the container itself, so the 248px sidebar is already out.
+  // Mid-desktop: keep the jobs table + payment history SIDE BY SIDE as long as a
+  // usable two-column composition physically fits. The floor is the jobs table's
+  // own minWidth (660) + the grid gap (16) + a still-readable payment column
+  // (280) = 956px of container. Measured on the container itself, so the 248px
+  // sidebar is already out of the number.
+  //   container >= 1200 : the original fluid 2.4fr / 1fr — wide screens, untouched.
+  //   956 .. 1200       : freeze the two columns at a compact size and centre the
+  //                       whole block, so a smaller window reads as the wide
+  //                       desktop shrunk & centred (not stretched, not stacked).
+  //   < 956             : two usable columns can't coexist -> stack to one column.
+  // (<=760 viewport is still handled by `narrow` — the mobile card layout.)
   const [mainRef, mainW] = useContainerWidth<HTMLDivElement>();
-  const stackMain = mainW != null && mainW < 1024;
-  // Once stacked, don't let the cards fill the whole container — that makes them
-  // look BIGGER than in the wide layout. Hold them at ~the jobs card's wide-layout
-  // width just before the breakpoint (2.4fr of a ~1024–1120px container ≈ 710–780)
-  // and centre them, so a narrow window reads as "the wide desktop, centred"
-  // rather than stretched. Never applied at mobile (<=760) — that stays full-width.
-  const stackCap: React.CSSProperties | null =
-    stackMain && !narrow ? { width: "100%", maxWidth: 780, marginInline: "auto" } : null;
+  const TWO_COL_MIN = 956;
+  const WIDE_MIN    = 1200;
+  const compactTwoCol = mainW != null && mainW >= TWO_COL_MIN && mainW < WIDE_MIN;
+  const stackMain     = mainW != null && mainW < TWO_COL_MIN;
 
   function notify(msg: string) {
     setToast(msg);
@@ -1305,13 +1306,24 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
 
         {/* ── Main grid ── (jobs table + Payment History side card, both roles) */}
-        {/* Mobile / mid-desktop: single column so the jobs table isn't crushed by
-            the 300px side card. minmax(0,1fr) lets the table's own overflow-x:auto
-            wrapper shrink and scroll internally instead of overflowing the page.
-            Wide desktop keeps the original 2.4fr / 1fr split unchanged. */}
-        <div style={{ display: "grid", gridTemplateColumns: (narrow || stackMain) ? "minmax(0, 1fr)" : "minmax(0, 2.4fr) minmax(300px, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* Three tiers (see the container-width block up top):
+              wide (>=1200)   : original fluid 2.4fr / 1fr, fills the container.
+              compact (956..1200): two columns frozen compact (table keeps its 660
+                                   min, payment a fixed 280) and the whole block
+                                   centred via maxWidth + marginInline:auto.
+              stack (<956) / mobile (<=760): one column, table then payment. */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns:
+            (narrow || stackMain) ? "minmax(0, 1fr)"
+            : compactTwoCol       ? "minmax(660px, 1fr) 280px"
+            :                       "minmax(0, 2.4fr) minmax(300px, 1fr)",
+          gap: 16,
+          alignItems: "start",
+          ...(compactTwoCol ? { maxWidth: 1040, marginInline: "auto" } : null),
+        }}>
 
-          <div style={{ ...sectionCard, ...stackCap }}>
+          <div style={sectionCard}>
             <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${BDR}`, display: "flex", flexDirection: "column", gap: 10 }}>
               {/* Active / History tabs — history is strictly "הושלם"+"שולם" together */}
               <div style={{ display: "flex", gap: 6, background: CARD2, border: `1px solid ${BDR2}`, borderRadius: 10, padding: 4, width: "fit-content" }}>
@@ -1501,7 +1513,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
           </div>
 
           {/* Side cards — Payment History (read-only; shown to Steven too). */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16, ...stackCap }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={sectionCard}>
               <div style={cardHead}>{t.payHistory}</div>
               {loading ? (
