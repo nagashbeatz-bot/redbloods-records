@@ -4095,7 +4095,14 @@ export default function VictorProfilePage() {
           </div>
 
           {/* ── Col 2: Capacity + Files ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* minWidth:0 — this grid item had no overflow/minWidth protection, so
+              its default min-width:auto let its own content's min-content width
+              force the shared mobile "1fr" grid track (Col1/Col2/Col3 all sit in
+              ONE column, auto-placed into separate rows) wider than the
+              viewport — bleeding left in RTL and dragging Col1/Col3 with it,
+              even though Col1 already has overflow:"hidden" (which only
+              protects ITS OWN box, not the track they all share). */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
 
             {/* Capacity Card */}
             <div style={{ background: CARD, border: `1px solid ${BDR}`, borderRadius: 18, padding: "18px 22px" }}>
@@ -4208,7 +4215,7 @@ export default function VictorProfilePage() {
 
           {/* ── Col 3: Salary (owner only — hidden from Victor in Phase 2A) ── */}
           {isOwner && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
 
             {/* Current month salary — click anywhere to edit (internal, no Finance) */}
             <div
