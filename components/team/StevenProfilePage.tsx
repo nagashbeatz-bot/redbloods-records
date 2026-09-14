@@ -1891,6 +1891,14 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
   // the only way to brief Steven about an artist he has not mixed yet. `sel`
   // (a version id) stays the primary selection; this is the second dimension.
   const [selTargetId, setSelTargetId] = useState<string | null>(null);
+  // Accordion collapse is VISUAL ONLY — a separate dimension from sel/selTargetId
+  // above. Collapsing the line that is currently selected must never clear the
+  // selection (that would unmount the player and stop any playing audio); it
+  // only records which line's own "older mixes" sublist + open styling should
+  // be hidden. Holds at most one key at a time (an accordion), cleared the
+  // moment that same line is explicitly re-opened — see the roster click
+  // handler and `isOpen` below.
+  const [manuallyCollapsedKey, setManuallyCollapsedKey] = useState<string | null>(null);
   const [targetNotes, setTargetNotes] = useState<MixTargetNote[] | null>(null);
   const [preMixOpen, setPreMixOpen]   = useState(false);
   const [savingNote, setSavingNote]   = useState(false);
@@ -2844,9 +2852,13 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                       const isHere = !!selectedGroup && sec.groups.some(g => g.key === selectedGroup.key);
                       // Whether this line is the one currently open in the main panel —
                       // either through a selected version of its own, or (empty line)
-                      // through a direct target selection. Drives both the highlight
-                      // and the collapse-on-second-click below.
-                      const isOpen = isHere || (!selectedGroup && sec.targetId != null && selTargetId === sec.targetId);
+                      // through a direct target selection — AND not manually collapsed.
+                      // Drives both the highlight and the collapse-on-second-click below.
+                      // manuallyCollapsedKey is VISUAL ONLY: it never touches sel/
+                      // selTargetId, so collapsing the line whose mix is playing never
+                      // unmounts the player in the main panel (see its declaration above).
+                      const isSelectedHere = isHere || (!selectedGroup && sec.targetId != null && selTargetId === sec.targetId);
+                      const isOpen = isSelectedHere && manuallyCollapsedKey !== sec.key;
                       // Same deterministic accent this line gets everywhere else.
                       const ac = targetAccent(sec.key === "__unassigned" ? null : sec.key);
                       return (
@@ -2855,11 +2867,25 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                               accordion to expand first. A line with nothing uploaded still
                               opens: it becomes a workspace where the owner can brief Steven
                               before there is anything to mix. Reading it writes nothing.
-                              A second click on the same open line collapses it back to
-                              nothing selected — a real accordion toggle. */}
+                              A second click on the same open line collapses it back —
+                              a real accordion toggle, but VISUAL ONLY: it does not clear
+                              sel/selTargetId, so a version playing in the main panel keeps
+                              playing uninterrupted while its line is collapsed. Re-opening
+                              this same line while it is collapsed (isSelectedHere but not
+                              isOpen) only clears the collapse flag — it never re-touches
+                              sel, so an OLDER (non-latest) version that was selected before
+                              the collapse is not bumped back to the latest on reopen. Only
+                              clicking a genuinely different, not-yet-selected line jumps to
+                              its latest mix, exactly as before — and, since that always
+                              means "open it now", also clears a stale collapse flag this
+                              line might still be carrying from an earlier visit (e.g. it was
+                              collapsed, then a different line was selected instead; clicking
+                              back on this one must reopen it, not stay visually collapsed). */}
                           <div
                             onClick={() => {
-                              if (isOpen) { setSel(null); setSelTargetId(null); return; }
+                              if (isOpen) { setManuallyCollapsedKey(sec.key); return; }
+                              if (isSelectedHere) { setManuallyCollapsedKey(null); return; }
+                              if (manuallyCollapsedKey === sec.key) setManuallyCollapsedKey(null);
                               if (latestGroup) { setSel(latestGroup.primary.id); setSelTargetId(sec.targetId); }
                               else if (sec.targetId) { setSel(null); setSelTargetId(sec.targetId); }
                             }}
@@ -2883,8 +2909,10 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
                           </div>
                           {/* The line's older mixes, shown only while you are inside it and
                               only when there is more than one — its version history, not a
-                              navigation step. A single-mix line never nests anything. */}
-                          {isHere && sec.groups.length > 1 && (
+                              navigation step. A single-mix line never nests anything.
+                              Gated on isOpen (not isHere) so a manual collapse hides this
+                              sublist too, even though the selected version keeps playing. */}
+                          {isOpen && sec.groups.length > 1 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingInlineStart: 14 }}>
                               {sec.groups.map(g => versionRow(g))}
                             </div>
