@@ -47,6 +47,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // not exist: the mini player floated 56px up with page content showing through
   // the gap beneath it. navH feeds BOTH the player's `bottom` and the content
   // paddingBottom, so listing him fixes the float and the dead gap together.
+  //
+  // This role list is now ONLY the pre-measurement / no-nav-rendered fallback —
+  // see measuredNavH below, which is the real source of truth once available.
+  // Kept (not removed) so first paint and any role with genuinely no <nav>
+  // still get the exact same numbers as before.
   const navH = role === "shalev" || role === "victor" || role === "cleantone" || role === "avi" ? 0 : 56;
   const { projects } = useProjects();
   const player = usePlayerSafe();
@@ -70,6 +75,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  // ── Single source of truth for "how much space does the real bottom nav
+  //    take" — replaces the old approach of guessing 56px in three unrelated
+  //    places (this file's navH, and two now-unused globals.css classes).
+  //    getBoundingClientRect().height on the ACTUAL <nav> already includes its
+  //    own paddingBottom:env(safe-area-inset-bottom) (MobileNav.tsx), so once a
+  //    measurement exists it is the WHOLE clearance value — no separate safe-area
+  //    term is added on top of it (that would double-count the inset).
+  //    null = "not measured yet" OR "this role renders no <nav> at all" — both
+  //    cases fall back to the exact old formula (navH guess + explicit safe-area)
+  //    via navClearance below, so behavior is unchanged until/unless a real nav
+  //    exists to measure. useLayoutEffect (not useEffect) mirrors the isMobile
+  //    check above — no visible flash before first paint.
+  const [measuredNavH, setMeasuredNavH] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = mobileNavRef.current;
+    if (!el) { setMeasuredNavH(null); return; }
+    const measure = () => setMeasuredNavH(Math.round(el.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // Re-run when the role changes: that's the only thing that mounts/unmounts
+    // the underlying <nav> (MobileNav returns null for a role with no tabs).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+  const navClearance = measuredNavH != null
+    ? `${measuredNavH}px`
+    : `calc(${navH}px + env(safe-area-inset-bottom))`;
 
   // Scroll to top on route change.
   // contentRef.scrollTo covers desktop (inner scroll container).
@@ -274,8 +308,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 */
                 paddingBottom: isMobile
                   ? playerVisible
-                    ? `calc(${navH}px + ${MOBILE_PLAYER_H + 16}px + env(safe-area-inset-bottom))`
-                    : `calc(${navH}px + env(safe-area-inset-bottom))`
+                    ? `calc(${navClearance} + ${MOBILE_PLAYER_H + 16}px)`
+                    : navClearance
                   : playerVisible
                     ? PLAYER_H + 8
                     : undefined,
@@ -311,10 +345,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/*
-        Mobile bottom nav — in layout flow (NOT position:fixed).
-        Because the root shell is position:fixed inset:0, this flex child
-        always sits at the real bottom of the viewport on first render,
-        with no JavaScript, no timers, and no viewport hacks.
+        Mobile bottom nav. On DESKTOP this is an in-flow flex child (the root
+        shell is position:fixed inset:0, so it lands at the real bottom with no
+        JS). On MOBILE, globals.css's @media(max-width:767px) block forces
+        .app-shell-nav to position:fixed;bottom:0 instead — the shell itself
+        becomes position:relative there (body scrolls, for the iOS touch-hitbox
+        fix below), so the flex-flow trick no longer applies on mobile. Both
+        this element's height (its own safe-area padding included) and the
+        mobile mini player's `bottom` are measured from the real <nav> DOM node
+        — see measuredNavH/navClearance above — not guessed.
         Hidden on desktop via md:hidden inside MobileNav.
       */}
       <MobileNav onOpenChat={() => setChatOpen(true)} navRef={mobileNavRef} />
@@ -371,15 +410,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className="fixed left-0 right-0 z-50 md:hidden"
         style={{
-          // navH clears the fixed bottom nav. The Victor work sheet
+          // navClearance clears the fixed bottom nav (its OWN measured height,
+          // safe-area included — see measuredNavH above). The Victor work sheet
           // (position:fixed inset:0) COVERS that nav, so while it is open there is
-          // nothing to clear — drop the navH term and dock flush to the viewport
-          // bottom (same as the roles that have no bottom nav). Nothing else
-          // about the wrapper changes: still position:fixed, still viewport-
-          // relative, no transform/height change.
+          // nothing to clear — drop the navClearance term and dock flush to the
+          // viewport bottom (same as the roles that have no bottom nav). Nothing
+          // else about the wrapper changes: still position:fixed, still
+          // viewport-relative, no transform/height change.
           bottom: victorSheetOpen
             ? "env(safe-area-inset-bottom)"
-            : `calc(${navH}px + env(safe-area-inset-bottom))`,
+            : navClearance,
           transform: playerVisible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.25s",
           pointerEvents: playerVisible ? "auto" : "none",

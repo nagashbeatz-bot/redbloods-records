@@ -130,12 +130,17 @@ function MoreSheet({ onClose, onOpenChat, pathname, insightsBadge }: {
   );
 }
 
-// ── MobileNav — in-flow bottom bar (NOT position:fixed) ───────────────────────
+// ── MobileNav — in-flow on desktop, position:fixed on mobile ──────────────────
 //
-// Placed as the last flex child of AppShell (which is position:fixed inset:0).
-// Being in the layout flow means it always sits at the real viewport bottom
-// without depending on iOS fixed-positioning or env(safe-area-inset-bottom)
-// being computed correctly on the first frame.
+// Placed as the last flex child of AppShell (which is position:fixed inset:0
+// on desktop). On desktop that flex-flow placement is what pins it to the
+// bottom with no JS. On MOBILE, globals.css's .app-shell-nav rule inside
+// @media(max-width:767px) overrides this to position:fixed;bottom:0 — because
+// the shell itself switches to position:relative on mobile (body scrolls,
+// for the iOS touch-hitbox fix), the flex-flow trick no longer applies there.
+// AppShell measures this element's real rendered height (via `navRef`) as the
+// single source of truth for both its own safe-area clearance and the mobile
+// mini player's position — see measuredNavH/navClearance in AppShell.tsx.
 
 export default function MobileNav({
   onOpenChat,

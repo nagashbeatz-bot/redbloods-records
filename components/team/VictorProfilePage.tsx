@@ -3947,7 +3947,7 @@ export default function VictorProfilePage() {
             ) : isMobile ? (
               <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
                 {displayWork.map(w => (
-                  <div key={w.id} style={{ background: CARD2, border: `1px solid ${BDR}`, borderRadius: 12, padding: "12px 14px" }}>
+                  <div key={w.id} style={{ background: CARD2, border: `1px solid ${BDR}`, borderRadius: 14, padding: "12px 14px" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -3979,9 +3979,14 @@ export default function VictorProfilePage() {
                       type="button"
                       onClick={() => setSelectedWork(w)}
                       style={{
-                        ...btnStyle, width: "100%", maxWidth: "100%", marginTop: 12,
-                        fontSize: 14, fontWeight: 700, color: "#EDE9FE",
-                        padding: "12px 0", borderRadius: 10, boxSizing: "border-box",
+                        // Density brought in line with Steven's mobile action row
+                        // (components/team/StevenProfilePage.tsx): compact padding/
+                        // font-size/marginTop instead of the old oversized single
+                        // full-width button. Still full-width (Victor has one
+                        // action, not two) — only the box's own size shrank.
+                        ...btnStyle, width: "100%", maxWidth: "100%", marginTop: 8,
+                        fontSize: 12, fontWeight: 700, color: "#EDE9FE",
+                        padding: "8px 10px", borderRadius: 10, boxSizing: "border-box",
                         border: `1px solid ${PURPLE}66`, background: `${PURPLE}22`,
                         cursor: "pointer", appearance: "none", WebkitAppearance: "none",
                         WebkitTapHighlightColor: "transparent", transition: "background .14s",
