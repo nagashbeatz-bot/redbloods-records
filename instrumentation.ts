@@ -193,6 +193,22 @@ export async function register() {
     }
   }, { timezone: TZ });
 
+  // ── Steven deadline digest — once daily at 09:00 America/New_York (Steven is
+  // in Maryland, NOT Israel — deliberately a different zone than every other
+  // job in this file). Same every-minute-tick pattern as the jobs above; the
+  // window check (09:00–09:15) and the daily dedup are both inside
+  // runStevenDeadlineDigestTick / isDigestWindowOpen (DST-safe via Intl, never
+  // a fixed UTC offset). On confirmed delivery to Steven, it also sends a
+  // Hebrew confirmation push to the owner — see lib/steven-deadline-digest-notify.ts.
+  cron.schedule("* * * * *", async () => {
+    try {
+      const { runStevenDeadlineDigestTick } = await import("@/lib/steven-deadline-digest-notify");
+      await runStevenDeadlineDigestTick(new Date());
+    } catch (err) {
+      console.error("[steven-deadline-digest] cron tick failed:", err);
+    }
+  }, { timezone: "America/New_York" });
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }
