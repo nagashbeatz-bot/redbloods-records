@@ -29,6 +29,44 @@ interface Snap {
   iosStandalone: boolean;
   sab: number;          // safe-area-inset-bottom in px
   ts: string;
+  scrollW: number;      // document.documentElement.scrollWidth
+  innerW: number;       // window.innerWidth
+}
+
+interface HOffender {
+  tag: string;
+  cls: string;
+  width: number;
+  left: number;
+  right: number;
+}
+
+/** Finds the elements actually wider than the viewport (or bleeding past its
+ *  left/right edge) — NOT every ancestor of an overflowing child (a parent's
+ *  own box does not grow just because a child overflows it), so this points
+ *  straight at the real offender. Read-only: only queries getBoundingClientRect,
+ *  never touches the DOM/layout. Only runs while the debug overlay is enabled. */
+function findHorizontalOffenders(innerW: number, limit = 6): HOffender[] {
+  const all = document.querySelectorAll<HTMLElement>("body *");
+  const offenders: HOffender[] = [];
+  all.forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1) return;
+    if (r.right > innerW + 1 || r.left < -1) {
+      const cls = typeof el.className === "string" ? el.className : "";
+      offenders.push({
+        tag: el.tagName.toLowerCase(),
+        cls: cls.split(" ").filter(Boolean).slice(0, 2).join("."),
+        width: Math.round(r.width),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+      });
+    }
+  });
+  // Widest first — the true source is usually the largest offender; its
+  // overflowing descendants (if any) tend to be narrower and listed after it.
+  offenders.sort((a, b) => b.width - a.width);
+  return offenders.slice(0, limit);
 }
 
 function snap(
@@ -70,6 +108,8 @@ function snap(
     iosStandalone: !!(navigator as any).standalone,
     sab,
     ts,
+    scrollW: document.documentElement.scrollWidth,
+    innerW: window.innerWidth,
   };
 }
 
@@ -102,6 +142,7 @@ function Panel({ title, s, color }: { title: string; s: Snap; color: string }) {
       <Row label="gap (visual-nav)" value={s.visualGap} warn={s.visualGap > 0} />
       <Row label="sab" value={`${s.sab}px`} />
       <Row label="standalone" value={`${s.standalone} / ios:${s.iosStandalone}`} />
+      <Row label="scrollW / innerW" value={`${s.scrollW} / ${s.innerW}`} warn={s.scrollW > s.innerW} />
     </div>
   );
 }
@@ -124,6 +165,7 @@ export default function DebugOverlay({
 
   const [initial, setInitial] = useState<Snap | null>(null);
   const [live, setLive] = useState<Snap | null>(null);
+  const [offenders, setOffenders] = useState<HOffender[]>([]);
   const [minimized, setMinimized] = useState(false);
   const initialized = useRef(false);
 
@@ -152,6 +194,7 @@ export default function DebugOverlay({
       setInitial(s);
       initialized.current = true;
     }
+    setOffenders(s.scrollW > s.innerW ? findHorizontalOffenders(s.innerW) : []);
   }, [enabled, shellRef, navRef]);
 
   useEffect(() => {
@@ -200,7 +243,8 @@ export default function DebugOverlay({
         border: `1px solid ${hasInitialDrift ? "#f87171" : "#2A2A2A"}`,
         borderRadius: 10,
         padding: minimized ? "6px 10px" : "10px 12px",
-        width: minimized ? "auto" : 196,
+        width: minimized ? "auto" : 240,
+        maxWidth: "calc(100vw - 16px)",
         backdropFilter: "blur(6px)",
       }}
     >
@@ -219,6 +263,23 @@ export default function DebugOverlay({
         <>
           {/* Live */}
           <Panel title="LIVE" s={live} color="#60A5FA" />
+
+          {/* Horizontal overflow — which element is actually wider than the
+              viewport / bleeding past its left or right edge. Only computed
+              when scrollW > innerW (see take()). */}
+          {offenders.length > 0 && (
+            <>
+              <div style={{ height: 1, background: "#222", margin: "4px 0" }} />
+              <div style={{ fontSize: 9, fontWeight: 700, color: "#f87171", letterSpacing: "0.06em", marginBottom: 3 }}>
+                ⚠ H-OVERFLOW — widest first
+              </div>
+              {offenders.map((o, i) => (
+                <div key={i} style={{ fontSize: 9, color: "#F0F0F0", marginBottom: 2, fontFamily: "monospace", wordBreak: "break-all" }}>
+                  &lt;{o.tag}{o.cls ? `.${o.cls}` : ""}&gt; w={o.width} L={o.left} R={o.right}
+                </div>
+              ))}
+            </>
+          )}
 
           {/* Initial — only show if different from live */}
           {initial && (
