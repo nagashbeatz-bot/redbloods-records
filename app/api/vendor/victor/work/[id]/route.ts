@@ -58,6 +58,32 @@ export async function PATCH(
     // Apply all regular field updates
     await updateVictorWork(id, body);
 
+    // ── "Project completed" push — Victor + owner confirmation ────────────────
+    // Fires ONLY on a REAL transition of THIS work's own status, established
+    // from existingWork (fetched above, before this write) vs. the new value
+    // actually being written now — never just "the body contains הושלם" (a
+    // repeat PATCH of an already-הושלם row has existingWork.status === "הושלם"
+    // already, so this never re-fires). This is entirely about
+    // vendor_project_work.status; it does not read/write projects.status or
+    // touch the separate, pre-existing owner-driven project-status sync that
+    // the client performs itself via a second PATCH to /api/projects/[id].
+    if ("status" in body && existingWork && existingWork.status !== "הושלם" && body.status === "הושלם") {
+      try {
+        const updatedWork = await getVictorWorkById(id);
+        if (updatedWork) {
+          const { notifyVictorWorkCompleted } = await import("@/lib/victor-completed-notify");
+          const displayName = (updatedWork.title && updatedWork.title.trim()) ? updatedWork.title : updatedWork.projectName;
+          await notifyVictorWorkCompleted({
+            id: updatedWork.id,
+            displayName,
+            fromUpdatedAt: existingWork.updatedAt,
+          });
+        }
+      } catch (e) {
+        console.error("[vendor/victor/work] completed-notify failed (non-fatal):", e);
+      }
+    }
+
     // Mode C — no internalDeadline in body → no task sync needed
     const internalDeadline: string | null =
       "internalDeadline" in body ? (body.internalDeadline as string | null) : null;
