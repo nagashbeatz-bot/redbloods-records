@@ -3715,7 +3715,20 @@ export default function VictorProfilePage() {
     <>
     <div style={{
       minHeight: "100%", background: BG, color: TEXT,
-      fontFamily: "'Heebo', Arial, sans-serif", direction: "rtl",
+      fontFamily: "'Heebo', Arial, sans-serif",
+      // Follows the selected UI language, same as every other dir-aware
+      // element in this file (formDir above, and the two dir={...} modals) and
+      // the same pattern StevenProfilePage's own page wrapper already uses.
+      // This was hardcoded to "rtl" regardless of lang — when Victor's UI
+      // language is English, every justify-content:"space-between" row on this
+      // page (KPI cards, project cards, salary/payment history rows) had its
+      // second child pinned to the RTL "end" (left) instead of the LTR "end"
+      // (right), which reads as "badge/amount pushed toward the edge" and, on
+      // a narrow phone with little margin to spare, as content clipped at the
+      // screen edge. Desktop showed the same wrong-side placement but had
+      // enough width that nothing actually touched an edge, so it went
+      // unnoticed there.
+      direction: lang === "he" ? "rtl" : "ltr",
       // Mobile bottom padding: the owner still has a fixed bottom nav to clear,
       // so his 120px stays. Victor has no bar any more (his Sign out sits at the
       // end of the content), so 120px was a leftover reservation showing up as a
