@@ -557,6 +557,41 @@ function NotificationRow({
   const kind = kindOf(n);
   const ts = KIND_STYLE[kind];
   const unread = !n.readAt;
+  const isRtl = lang === "he";
+
+  // ── Hover tooltip: full title/body, shown only when the one-line preview
+  // actually clips something. Position + clamped truncation are recomputed
+  // fresh on every mouseenter (never reused from a stale hover), and cleared
+  // synchronously on mouseleave — no timers, so it can never linger. ──
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<{ left: number; maxWidth: number; maxHeight: number; top?: number; bottom?: number } | null>(null);
+
+  const handleEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+    const titleClamped = !!titleRef.current && titleRef.current.scrollWidth > titleRef.current.clientWidth;
+    const bodyClamped = !!bodyRef.current && bodyRef.current.scrollWidth > bodyRef.current.clientWidth;
+    if (!titleClamped && !bodyClamped) { setTip(null); return; }
+
+    const r = e.currentTarget.getBoundingClientRect();
+    const maxWidth = Math.min(280, window.innerWidth - 24);
+    let left = isRtl ? r.right - maxWidth : r.left;
+    left = Math.max(12, Math.min(left, window.innerWidth - maxWidth - 12));
+
+    const spaceBelow = window.innerHeight - r.bottom - 12;
+    const spaceAbove = r.top - 12;
+    if (spaceBelow >= 60 || spaceBelow >= spaceAbove) {
+      setTip({ left, maxWidth, maxHeight: Math.max(60, spaceBelow), top: r.bottom + 6 });
+    } else {
+      setTip({ left, maxWidth, maxHeight: Math.max(60, spaceAbove), bottom: window.innerHeight - r.top + 6 });
+    }
+  };
+
+  const handleLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.currentTarget.style.background = unread ? "rgba(255,255,255,0.015)" : "transparent";
+    setTip(null);
+  };
+
   return (
     <div
       className="rb-bell-row"
@@ -571,8 +606,8 @@ function NotificationRow({
         opacity: justRead ? 0.4 : 1, // short fade cue when marked read — never affects layout
         transition: "background 0.13s, opacity 0.32s ease",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = unread ? "rgba(255,255,255,0.015)" : "transparent"; }}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
     >
       {/* Text (right-aligned in RTL) */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -580,18 +615,54 @@ function NotificationRow({
           {unread && (
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#DC2626", flexShrink: 0, boxShadow: "0 0 5px rgba(220,38,38,0.7)" }} />
           )}
-          <span style={{
+          <span ref={titleRef} style={{
             fontSize: 13.5, fontWeight: unread ? 800 : 700, color: unread ? "#F2F2F2" : "#C8C8C8",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{n.title}</span>
         </div>
         {n.body && (
-          <div style={{ fontSize: 12, color: "#8C8C8C", marginTop: 3, lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div ref={bodyRef} style={{ fontSize: 12, color: "#8C8C8C", marginTop: 3, lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {n.body}
           </div>
         )}
         <div style={{ fontSize: 10.5, color: "#585858", marginTop: 5 }}>{relTime(n.createdAt, lang)}</div>
       </div>
+
+      {/* Full-content hover tooltip — non-interactive (pointerEvents:none) so
+          the cursor can never "enter" it; that keeps mouseleave on the row
+          itself the only thing that ever hides it, with no dead zone. */}
+      {tip && createPortal(
+        <div
+          role="tooltip"
+          dir={isRtl ? "rtl" : "ltr"}
+          style={{
+            position: "fixed",
+            left: tip.left,
+            ...(tip.top != null ? { top: tip.top } : { bottom: tip.bottom }),
+            maxWidth: tip.maxWidth,
+            maxHeight: tip.maxHeight,
+            overflow: "hidden",
+            zIndex: 10000,
+            pointerEvents: "none",
+            background: "#202020",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: 10,
+            padding: "10px 12px",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
+            fontFamily: "'Heebo', Arial, sans-serif",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#F2F2F2", marginBottom: n.body ? 4 : 0, wordBreak: "break-word" }}>
+            {n.title}
+          </div>
+          {n.body && (
+            <div style={{ fontSize: 12, color: "#B7B7B7", lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+              {n.body}
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
 
       {/* Icon (left in RTL) */}
       <div style={{
