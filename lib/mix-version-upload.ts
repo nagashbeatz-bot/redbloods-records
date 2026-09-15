@@ -23,7 +23,7 @@ import {
   labelsInScope, fileNamesInScope, nextMixLabel, isLabelTaken, versionNameParts,
   type VersionRow,
 } from "@/lib/riddim-numbering-pure";
-import type { MixVersion } from "@/lib/types";
+import type { MixVersion, MixTargetKind } from "@/lib/types";
 
 export const AUDIO_ZIP = /\.(wav|mp3|m4a|aiff?|flac|ogg|zip|rar|7z)$/i;
 
@@ -76,6 +76,11 @@ export type VersionTarget = {
   /** Riddim only — that line's display name ("Instrumental" for the fixed line),
    *  used for the file name and for the project-player copy. "" when not a riddim. */
   mixTargetName: string;
+  /** Riddim only — the line's kind, so a caller (e.g. the Steven-upload notice)
+   *  can tell "Instrumental" the fixed line apart from an artist who happens to
+   *  be named that, without re-deriving it from mixTargetName. null when not a
+   *  riddim. */
+  mixTargetKind: MixTargetKind | null;
 };
 
 export type TargetResult =
@@ -129,6 +134,7 @@ export async function resolveVersionTarget(
   const isRiddim = isRiddimProjectType(projectType);
   let mixTargetId: string | null = null;
   let mixTargetName = "";
+  let mixTargetKind: MixTargetKind | null = null;
   if (isRiddim) {
     const roster = await listMixTargets(workId, { activeOnly: true });
     if (roster.length === 0) {
@@ -149,6 +155,7 @@ export async function resolveVersionTarget(
     }
     mixTargetId   = chosen.id;
     mixTargetName = chosen.targetKind === "instrumental" ? "Instrumental" : chosen.displayName;
+    mixTargetKind = chosen.targetKind;
   }
 
   const { data: existingRows } = await supabase
@@ -201,6 +208,7 @@ export async function resolveVersionTarget(
       fileType,
       mixTargetId,
       mixTargetName,
+      mixTargetKind,
     },
   };
 }
@@ -246,6 +254,9 @@ export async function finalizeMixVersion(args: {
           name:  version.fileName,
           role:  target.role,
           label: version.label,
+          mixTargetId:   target.mixTargetId,
+          mixTargetName: target.mixTargetName || null,
+          mixTargetKind: target.mixTargetKind,
         });
       } catch (notifyErr) {
         console.error("[mix-version-upload] notify failed:", notifyErr);

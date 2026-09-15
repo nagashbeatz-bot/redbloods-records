@@ -905,6 +905,10 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   const [loading, setLoading] = useState(true); // initial page load only — never re-armed after create
   const [openId, setOpenId] = useState<string | null>(null);
   const [focusNotesId, setFocusNotesId] = useState<string | null>(null); // deep-link → scroll modal to shared comments (one-shot)
+  // deep-link → auto-select a riddim mix target inside the opened work (one-shot).
+  // Keyed by workId (like focusNotesId) so it can never leak onto a different
+  // work opened afterward by a normal click.
+  const [pendingFocusTarget, setPendingFocusTarget] = useState<{ workId: string; targetId: string } | null>(null);
   const [openMaterialsId, setOpenMaterialsId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [payModal, setPayModal] = useState<{ workId: string; project: string } | null>(null); // "שולם" → date modal
@@ -996,16 +1000,16 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
   // ?work and resets the marker — so re-opening the SAME notification works too,
   // and a later refresh still never re-opens anything.
   //
-  // The param names stay `work` / `notes`: URLs already written into
+  // The param names stay `work` / `notes` / `target`: URLs already written into
   // notification rows use them. NO push is sent here — pure client navigation.
-  const [pendingDeepLink, setPendingDeepLink] = useState<{ id: string; notes: boolean } | null>(null);
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ id: string; notes: boolean; targetId: string | null } | null>(null);
   const handledWorkIdRef = useRef<string | null>(null);
   useEffect(() => {
     const wid = searchParams.get("work");
     if (!wid) { handledWorkIdRef.current = null; return; } // query cleared → ready for the next one
     if (handledWorkIdRef.current === wid) return;          // already handled this navigation
     handledWorkIdRef.current = wid;
-    setPendingDeepLink({ id: wid, notes: searchParams.get("notes") === "1" });
+    setPendingDeepLink({ id: wid, notes: searchParams.get("notes") === "1", targetId: searchParams.get("target") });
     router.replace("/team/steven"); // clean URL → refresh won't reopen
   }, [searchParams, router]);
   // Apply the pending deep link once the works list has loaded.
@@ -1013,6 +1017,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
     if (!pendingDeepLink || !works.length) return;
     if (works.some(w => w.id === pendingDeepLink.id)) {
       setOpenId(pendingDeepLink.id);
+      if (pendingDeepLink.targetId) setPendingFocusTarget({ workId: pendingDeepLink.id, targetId: pendingDeepLink.targetId });
       if (pendingDeepLink.notes) setFocusNotesId(pendingDeepLink.id);
     }
     setPendingDeepLink(null); // not found (deleted / not his) → dropped silently
@@ -1538,7 +1543,7 @@ export default function StevenProfilePage({ initialLang = "he", initialRole = nu
         </div>
       </div>
 
-      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setOpenMaterialsId(id); }} onWorkStale={() => { void reloadWorks(); }} notify={notify} lang={lang} t={t} />}
+      {openWork && <WorkModal work={openWork} isSteven={isSteven} isOwner={isOwner} focusNotes={focusNotesId === openWork.id} focusTargetId={pendingFocusTarget?.workId === openWork.id ? pendingFocusTarget.targetId : null} onChange={patch => updateWork(openWork.id, patch)} onDelete={() => deleteWork(openWork.id)} onClose={() => { setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); }} onOpenMaterials={() => { const id = openWork.id; setOpenId(null); setFocusNotesId(null); setPendingFocusTarget(null); setOpenMaterialsId(id); }} onWorkStale={() => { void reloadWorks(); }} notify={notify} lang={lang} t={t} />}
       {materialsWork && <WorkMaterialsModal work={materialsWork} isSteven={isSteven} isOwner={isOwner} onClose={() => setOpenMaterialsId(null)} onOpenWork={() => { const id = materialsWork.id; setOpenMaterialsId(null); setOpenId(id); }} notify={notify} lang={lang} t={t} />}
       {payModal && <PaymentDateModal project={payModal.project} initialDate={isoDay(0)} lang={lang} t={t} onClose={() => setPayModal(null)} onSave={async date => { const wid = payModal.workId; setPayModal(null); const ok = await updateWork(wid, { pay: "שולם", paymentDate: date }); if (ok) await syncPaymentExpense(wid); }} />}
       {newOpen && <NewWorkModal onClose={() => setNewOpen(false)} onCreated={() => { void reloadWorks(); notify(t.tJobAdded); }} lang={lang} t={t} />}
@@ -1843,7 +1848,7 @@ function VersionPlayer({ url, title, roleLabel, roleColor, accentColor, compact 
 });
 
 // ── "Open Job" modal — clean workboard: instructions / versions / player ─────────
-function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDelete, onClose, onOpenMaterials, onWorkStale, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; onWorkStale?: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
+function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId = null, onChange, onDelete, onClose, onOpenMaterials, onWorkStale, notify, lang, t }: { work: Work; isSteven: boolean; isOwner: boolean; focusNotes?: boolean; focusTargetId?: string | null; onChange: (patch: Partial<Work>) => void; onDelete: () => void; onClose: () => void; onOpenMaterials: () => void; onWorkStale?: () => void; notify: (m: string) => void; lang: Lang; t: T }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rtl = lang === "he";
   // Endpoint base by role: steven → sanitized supplier surface; owner → internal.
@@ -2513,6 +2518,25 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, onChange, onDe
     if (leftovers.length) out.push({ key: "__unassigned", targetId: null, name: t.unassigned, removed: false, groups: leftovers });
     return out;
   }, [isRiddim, groups, targets, targetName, t]);
+
+  // Deep-link (?target= on the Steven-upload notification) → auto-select that
+  // riddim line once its data has loaded, mirroring the manual line-click
+  // handler below (latestGroup → setSel+setSelTargetId, else setSelTargetId
+  // only) so the result is identical to a real click. One-shot per modal open
+  // — a target that's gone (removed / stale link) or a non-riddim work is a
+  // silent no-op, never a crash or a retry loop.
+  const focusTargetAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!focusTargetId || focusTargetAppliedRef.current) return;
+    if (!isRiddim) { focusTargetAppliedRef.current = true; return; }
+    if (targets === null || versions === null) return; // still loading — wait
+    focusTargetAppliedRef.current = true;
+    const sec = (targetSections ?? []).find(s => s.targetId === focusTargetId);
+    if (!sec) return; // removed / not found → safe no-op
+    const latestGroup = sec.groups[0] ?? null;
+    if (latestGroup) { setSel(latestGroup.primary.id); setSelTargetId(sec.targetId); }
+    else if (sec.targetId) { setSel(null); setSelTargetId(sec.targetId); }
+  }, [focusTargetId, isRiddim, targets, versions, targetSections]);
 
   /**
    * Which riddim line the main panel is on. A selected version always wins — its

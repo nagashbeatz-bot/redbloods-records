@@ -45,8 +45,30 @@ function pushAllowed(): boolean {
 
 // ── Uploads ────────────────────────────────────────────────────────────────────
 
-interface StevenFile { name: string; role?: string | null; label?: string | null }
-interface UploadBatch { workId: string; workName: string; files: StevenFile[]; count: number; dueAt: string }
+type StevenMixTargetKind = "artist" | "instrumental";
+
+interface StevenFile {
+  name: string; role?: string | null; label?: string | null;
+  /** Riddim only — null on every non-riddim work. Used ONLY to detect whether
+   *  a batch stays on one mix line; the notification text/link never guesses
+   *  a target from the file name or upload order. */
+  mixTargetId?: string | null;
+  mixTargetName?: string | null;
+  mixTargetKind?: StevenMixTargetKind | null;
+}
+interface UploadBatch {
+  workId: string; workName: string; files: StevenFile[]; count: number; dueAt: string;
+  /** Riddim-target consistency across the WHOLE batch — tracked independently
+   *  of the capped `files` sample above so a long batch can never lose track
+   *  of an earlier, different target that fell off the sample. Once
+   *  targetsDiffer flips true it stays true for the rest of the batch, and
+   *  mixTargetId/Name/Kind are then meaningless (left at their last value,
+   *  ignored by the reader). */
+  mixTargetId?: string | null;
+  mixTargetName?: string | null;
+  mixTargetKind?: StevenMixTargetKind | null;
+  targetsDiffer?: boolean;
+}
 
 /**
  * Called AFTER a successful Steven upload. Adds the file to the work's pending
@@ -59,17 +81,54 @@ export async function queueStevenUploadNotice(workId: string, workName: string, 
     const { data } = await supabase.from("settings").select("value").eq("key", k).maybeSingle();
     const prev = (data?.value ?? null) as UploadBatch | null;
     const files = [...(prev?.files ?? []), file].slice(-12); // sample cap; count stays exact
+
+    // Same-target tracking sees EVERY queued file (not just the capped sample):
+    // the first file this batch has seen sets the target, and any later file
+    // whose mixTargetId differs permanently flips targetsDiffer — never undone
+    // for the rest of the batch, so a mixed batch can never be misattributed.
+    const thisTargetId = file.mixTargetId ?? null;
+    let targetsDiffer  = prev?.targetsDiffer ?? false;
+    let mixTargetId    = prev?.mixTargetId;
+    let mixTargetName  = prev?.mixTargetName ?? null;
+    let mixTargetKind  = prev?.mixTargetKind ?? null;
+    if (!targetsDiffer) {
+      if (mixTargetId === undefined) {
+        mixTargetId   = thisTargetId;
+        mixTargetName = file.mixTargetName ?? null;
+        mixTargetKind = file.mixTargetKind ?? null;
+      } else if (mixTargetId !== thisTargetId) {
+        targetsDiffer = true;
+        mixTargetId   = null;
+        mixTargetName = null;
+        mixTargetKind = null;
+      }
+    }
+
     const value: UploadBatch = {
       workId,
       workName: workName || prev?.workName || "a work",
       files,
       count: (prev?.count ?? 0) + 1,
       dueAt: new Date(Date.now() + UPLOAD_WINDOW_MS).toISOString(),
+      mixTargetId,
+      mixTargetName,
+      mixTargetKind,
+      targetsDiffer,
     };
     await supabase.from("settings").upsert({ key: k, value }, { onConflict: "key" });
   } catch (e) {
     console.error("[steven-notify] upload queue failed:", e);
   }
+}
+
+/** Pure: "{Artist} — {Riddim} — Mix N" for an artist line, or
+ *  "{Riddim} — Instrumental — Mix N" for the fixed line — never both an
+ *  artist name and "Instrumental" together. `label` (e.g. "Mix 5") is
+ *  omitted when not yet known. */
+function riddimHead(workName: string, targetName: string, kind: StevenMixTargetKind, label?: string | null): string {
+  const parts = kind === "instrumental" ? [workName, "Instrumental"] : [targetName, workName];
+  if (label) parts.push(label);
+  return parts.join(" — ");
 }
 
 /**
@@ -96,24 +155,42 @@ export async function flushDueStevenUploadNotices(): Promise<void> {
     const workName = v.workName || "a work";
     const files    = v.files ?? [];
 
+    // A single, consistent riddim target for the WHOLE batch (never derived
+    // from just the last/first sampled file — see queueStevenUploadNotice).
+    const riddim = (!v.targetsDiffer && v.mixTargetId && v.mixTargetKind)
+      ? { id: v.mixTargetId, name: v.mixTargetName ?? "", kind: v.mixTargetKind }
+      : null;
+
     let title: string, body: string;
     if (count === 1) {
       const f = files[0];
       title = "Steven uploaded a file";
-      body  = `${f?.name ?? "A file"} uploaded to ${workName}`
+      body  = riddim
+        ? `1 file uploaded to ${riddimHead(workName, riddim.name, riddim.kind, f?.label)}`
+        : `${f?.name ?? "A file"} uploaded to ${workName}`
             + (f?.label ? ` · ${f.label}` : "")
             + (f?.role ? ` (${f.role})` : "");
     } else {
-      const roles = Array.from(new Set(files.map(f => f.role).filter(Boolean)));
-      const label = files[0]?.label;
       title = "Steven uploaded files";
-      body  = `${count} files uploaded to ${workName}`
-            + (label ? ` · ${label}` : "")
-            + (roles.length ? ` · ${roles.join(", ")}` : "");
+      body  = riddim
+        ? `${count} files uploaded to ${riddimHead(workName, riddim.name, riddim.kind, files[0]?.label)}`
+        : (() => {
+            const roles = Array.from(new Set(files.map(f => f.role).filter(Boolean)));
+            const label = files[0]?.label;
+            return `${count} files uploaded to ${workName}`
+                 + (label ? ` · ${label}` : "")
+                 + (roles.length ? ` · ${roles.join(", ")}` : "");
+          })();
     }
 
+    // Deep-link: always the work; add the target only when the whole batch
+    // agrees on one (a mixed batch still opens the work, just not a target).
+    const url = v.workId
+      ? `/team/steven?work=${encodeURIComponent(v.workId)}${riddim ? `&target=${encodeURIComponent(riddim.id)}` : ""}`
+      : "/team/steven";
+
     try {
-      await sendPushToAll({ title, body, url: "/team/steven", tag: `steven-upload-${v.workId ?? "x"}` });
+      await sendPushToAll({ title, body, url, tag: `steven-upload-${v.workId ?? "x"}` });
     } catch (e) {
       console.error("[steven-notify] upload send failed:", e);
       continue; // leave the row so a later tick retries
