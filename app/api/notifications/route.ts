@@ -12,29 +12,46 @@ import { createSupabaseServer } from "@/lib/supabase-server";
  *
  * ?unread=true filters the LIST to read_at IS NULL. unreadCount always reflects
  * ALL of the user's unread rows — independent of that filter and of the 50 cap.
+ *
+ * ?limit=N / ?before=<ISO createdAt> — additive, optional cursor pagination
+ * (Owner's "הצג עוד" in NotificationsBell.tsx). Omitting both keeps the exact
+ * original behaviour: newest 50, no cursor. `before` is a strict `created_at <`
+ * cutoff (not offset-based), so a notification arriving between page loads can
+ * never shift/duplicate an already-fetched page. hasMore is computed by asking
+ * for one extra row past `limit` and checking whether it came back — no extra
+ * query.
  */
 export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const unreadOnly = new URL(req.url).searchParams.get("unread") === "true";
+  const params = new URL(req.url).searchParams;
+  const unreadOnly = params.get("unread") === "true";
+  const limitParam = Number(params.get("limit"));
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 50) : 50;
+  const before = params.get("before");
 
   try {
-    // ── List: newest first, capped at 50, optionally unread-only ──
+    // ── List: newest first, capped at `limit` (default 50 — unchanged for any
+    // caller that doesn't pass the new params), optionally unread-only /
+    // before a cursor. Fetch one extra row to derive hasMore without a 2nd query. ──
     let listQuery = supabase
       .from("notifications")
       .select("id, title, body, url, tag, project_id, entity_type, entity_id, actor_name, recipient_role, created_at, read_at")
       .eq("recipient_user_id", user.id)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(limit + 1);
     if (unreadOnly) listQuery = listQuery.is("read_at", null);
+    if (before) listQuery = listQuery.lt("created_at", before);
 
-    const { data: rows, error: listErr } = await listQuery;
+    const { data: fetched, error: listErr } = await listQuery;
     if (listErr) {
       console.error("[notifications] GET list error:", listErr.message);
       return NextResponse.json({ error: "failed" }, { status: 500 });
     }
+    const hasMore = (fetched ?? []).length > limit;
+    const rows = hasMore ? (fetched ?? []).slice(0, limit) : (fetched ?? []);
 
     // ── unreadCount: ALL of the user's unread, independent of filter/limit ──
     const { count, error: countErr } = await supabase
@@ -62,7 +79,7 @@ export async function GET(req: NextRequest) {
       readAt:        r.read_at,
     }));
 
-    return NextResponse.json({ notifications, unreadCount: count ?? 0 });
+    return NextResponse.json({ notifications, unreadCount: count ?? 0, hasMore });
   } catch (e) {
     console.error("[notifications] GET failed:", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "failed" }, { status: 500 });

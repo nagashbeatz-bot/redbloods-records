@@ -103,24 +103,29 @@ function isSafeInternalUrl(u: string | null): u is string {
 // ── Shared in-flight dedup ─────────────────────────────────────────────────
 // AppShell renders the bell in BOTH the mobile and desktop headers (one hidden
 // by CSS). Two instances mount → this collapses their concurrent mount fetch
-// into a single network request. No caching beyond the in-flight window.
-let _inflight: Promise<{ notifications: ApiNotification[]; unreadCount: number }> | null = null;
-async function loadNotifications(): Promise<{ notifications: ApiNotification[]; unreadCount: number }> {
-  if (_inflight) return _inflight;
-  _inflight = (async () => {
+// into a single network request. Keyed by URL: both instances are always the
+// same signed-in user, so they always request the identical URL for a given
+// role — a stale cross-URL reuse can't happen. No caching beyond the window.
+interface LoadResult { notifications: ApiNotification[]; unreadCount: number; hasMore: boolean; }
+let _inflight: { url: string; promise: Promise<LoadResult> } | null = null;
+async function loadNotifications(url: string): Promise<LoadResult> {
+  if (_inflight && _inflight.url === url) return _inflight.promise;
+  const promise = (async () => {
     try {
-      const res = await fetch("/api/notifications", { headers: { "cache-control": "no-store" } });
+      const res = await fetch(url, { headers: { "cache-control": "no-store" } });
       if (!res.ok) throw new Error(`status ${res.status}`);
       const data = await res.json();
       return {
         notifications: Array.isArray(data.notifications) ? (data.notifications as ApiNotification[]) : [],
         unreadCount: typeof data.unreadCount === "number" ? data.unreadCount : 0,
+        hasMore: typeof data.hasMore === "boolean" ? data.hasMore : false,
       };
     } finally {
       _inflight = null;
     }
   })();
-  return _inflight;
+  _inflight = { url, promise };
+  return promise;
 }
 
 // ── Icons (inline SVG, currentColor) ───────────────────────────────────────
@@ -181,6 +186,10 @@ export default function NotificationsBell() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [markingAll, setMarkingAll]   = useState(false);
   const [justReadIds, setJustReadIds] = useState<Set<string>>(new Set()); // brief fade cue only
+  // "הצג עוד" pagination — Owner only (see role gate below); everyone else
+  // keeps the original single-fetch-of-50 behaviour untouched.
+  const [hasMore, setHasMore]         = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const router = useRouter();
@@ -223,18 +232,23 @@ export default function NotificationsBell() {
   }, [status, unreadCount]);
 
   // ── Fetch (read-only). Mount → badge; open → refresh. No polling/realtime. ──
+  // Owner asks for the first 10 (paginated via "הצג עוד" below); every other
+  // role keeps requesting exactly what it always has — no limit param, so the
+  // API's default-50/no-cursor behaviour is byte-for-byte unchanged for them.
   const refresh = useCallback(async () => {
     setStatus((s) => (items.length === 0 ? "loading" : s));
     try {
-      const data = await loadNotifications();
+      const url = role === "owner" ? "/api/notifications?limit=10" : "/api/notifications";
+      const data = await loadNotifications(url);
       setItems(data.notifications);
       setUnreadCount(data.unreadCount);
+      setHasMore(role === "owner" ? data.hasMore : false);
       setStatus("ready");
     } catch {
       setStatus("error");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [role]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -243,6 +257,31 @@ export default function NotificationsBell() {
     setOpen(next);
     if (next) { setActionError(null); refresh(); } // controlled refresh on open only
   };
+
+  // ── "הצג עוד" — Owner only. Fetches the next 10 older than the oldest item
+  // currently loaded (cursor = its createdAt), appends with an id-based dedup
+  // safety net, and never touches read state. ──
+  const loadMore = useCallback(async () => {
+    if (role !== "owner" || loadingMore || !hasMore || items.length === 0) return;
+    setLoadingMore(true);
+    setActionError(null);
+    try {
+      const cursor = items[items.length - 1].createdAt;
+      const res = await fetch(`/api/notifications?limit=10&before=${encodeURIComponent(cursor)}`, { headers: { "cache-control": "no-store" } });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const fresh: ApiNotification[] = Array.isArray(data.notifications) ? data.notifications : [];
+      setItems((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...fresh.filter((f) => !seen.has(f.id))];
+      });
+      setHasMore(typeof data.hasMore === "boolean" ? data.hasMore : false);
+    } catch {
+      setActionError(victorT(lang, "bell.loadMoreError"));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [role, loadingMore, hasMore, items, lang]);
 
   // ── Shared "mark one as read" — used by both the row click (which also
   // navigates) and the standalone ✓ button (which never navigates). Same
@@ -493,20 +532,52 @@ export default function NotificationsBell() {
               </div>
             )}
 
-            {/* Footer (visual only — no full notifications page yet) */}
-            <div
-              className="rb-bell-footer"
-              style={{
-                flexShrink: 0,
-                width: "100%",
-                padding: "12px 16px",
-                borderTop: "1px solid rgba(255,255,255,0.06)",
-                color: "#9A9A9A", fontSize: 12.5, fontWeight: 600,
-                fontFamily: "inherit", textAlign: "center",
-              }}
-            >
-              {t("bell.footer")}
-            </div>
+            {/* Footer — Owner: "הצג עוד" while more pages remain, gone once
+                exhausted. Everyone else: the original static, inert footer,
+                byte-for-byte unchanged. */}
+            {role === "owner" ? (
+              hasMore && (
+                <div
+                  className="rb-bell-footer"
+                  style={{
+                    flexShrink: 0,
+                    width: "100%",
+                    padding: "12px 16px",
+                    borderTop: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    style={{
+                      width: "100%", background: "none", border: "none", padding: 0,
+                      color: loadingMore ? "#555" : "#9A9A9A", fontSize: 12.5, fontWeight: 600,
+                      fontFamily: "inherit", cursor: loadingMore ? "default" : "pointer", textAlign: "center",
+                      transition: "color 0.15s",
+                    }}
+                    onMouseEnter={(e) => { if (!loadingMore) e.currentTarget.style.color = "#C0C0C0"; }}
+                    onMouseLeave={(e) => { if (!loadingMore) e.currentTarget.style.color = "#9A9A9A"; }}
+                  >
+                    {loadingMore ? t("bell.loadingMore") : t("bell.loadMore")}
+                  </button>
+                </div>
+              )
+            ) : (
+              <div
+                className="rb-bell-footer"
+                style={{
+                  flexShrink: 0,
+                  width: "100%",
+                  padding: "12px 16px",
+                  borderTop: "1px solid rgba(255,255,255,0.06)",
+                  color: "#9A9A9A", fontSize: 12.5, fontWeight: 600,
+                  fontFamily: "inherit", textAlign: "center",
+                }}
+              >
+                {t("bell.footer")}
+              </div>
+            )}
           </div>
         </>,
         document.body

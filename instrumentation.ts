@@ -209,6 +209,26 @@ export async function register() {
     }
   }, { timezone: "America/New_York" });
 
+  // ── Owner weekly notification-bell reset — Friday 06:00–06:15 Asia/Jerusalem.
+  // Deletes ONLY the Owner's rows in `notifications` (read + unread), so the
+  // bell starts each week as a clean "what happened this week" feed. Never
+  // touches agent_alerts, push_subscriptions, or any other recipient's rows —
+  // see lib/owner-notifications-cleanup.ts for the exact scope. A DELETE is
+  // naturally idempotent, so (unlike the push-sending jobs above) no atomic
+  // claim/dedup guard is needed — a repeat tick in the same window just
+  // deletes 0 rows the second time.
+  cron.schedule("* * * * *", async () => {
+    try {
+      const { isOwnerWeeklyCleanupWindowOpen, cleanupOwnerNotifications } = await import("@/lib/owner-notifications-cleanup");
+      if (isOwnerWeeklyCleanupWindowOpen(new Date())) {
+        const { deleted } = await cleanupOwnerNotifications();
+        if (deleted > 0) console.log(`[owner-notifications-cleanup] deleted ${deleted} row(s)`);
+      }
+    } catch (err) {
+      console.error("[owner-notifications-cleanup] cron tick failed:", err);
+    }
+  }, { timezone: TZ });
+
   markSchedulerStarted();
   console.log("[reports] Scheduler הופעל ✓");
 }

@@ -15,7 +15,11 @@ export type UserRole = "owner" | "victor" | "steven" | "shalev" | "cleantone" | 
  *  his OWN artist page only (no IDOR to other artists). */
 export const AVI_ARTIST_ID = "b3499c72-069d-46c9-9c31-52b1db27c51f";
 
-function emailList(value: string | undefined): string[] {
+/** Exported so callers that need the raw OWNER_EMAILS allowlist (e.g. the
+ *  owner-notifications weekly cleanup, which resolves emails → auth user ids
+ *  outside of any request session) reuse this exact parsing instead of a
+ *  second copy that could drift from roleForEmail's own definition of owner. */
+export function emailList(value: string | undefined): string[] {
   return (value ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
