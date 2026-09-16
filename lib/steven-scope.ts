@@ -13,7 +13,7 @@
  * re-derived from the DB row here.
  */
 import "server-only";
-import type { SoundEngineerWork, MixVersion } from "@/lib/types";
+import type { SoundEngineerWork, MixVersion, MixComment } from "@/lib/types";
 import { getSoundEngineerWork } from "@/lib/sound-engineer-store";
 import { getMixVersion } from "@/lib/mix-versions-store";
 import { getMixComment } from "@/lib/mix-comments-store";
@@ -74,6 +74,19 @@ export function sanitizeVersionForSteven(v: MixVersion): MixVersion {
     ...v,
     dropboxPath: "",
     url: `/api/supplier/steven/stream?versionId=${encodeURIComponent(v.id)}`,
+  };
+}
+
+/** Rewrite each attachment's stream URL to the Steven-scoped route — Steven
+ *  never receives the owner-form URL (or a Dropbox path; that never left the
+ *  server to begin with). Mirrors sanitizeVersionForSteven. */
+export function sanitizeCommentForSteven(c: MixComment): MixComment {
+  return {
+    ...c,
+    attachments: c.attachments.map((a) => ({
+      ...a,
+      url: `/api/supplier/steven/comments/${c.id}/attachments/${a.id}/stream`,
+    })),
   };
 }
 

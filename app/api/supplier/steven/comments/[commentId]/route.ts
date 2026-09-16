@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStevenAccess, getAuthRole } from "@/lib/require-auth";
 import { updateMixComment, updateMixCommentStatus, deleteMixComment } from "@/lib/mix-comments-store";
-import { assertStevenOwnsComment } from "@/lib/steven-scope";
+import { assertStevenOwnsComment, sanitizeCommentForSteven } from "@/lib/steven-scope";
 
 const FORBID = () => NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
         return NextResponse.json({ ok: false, error: "ערך סטטוס לא תקין" }, { status: 400 });
       }
       const comment = await updateMixCommentStatus(commentId, status);
-      return NextResponse.json({ ok: true, comment });
+      return NextResponse.json({ ok: true, comment: sanitizeCommentForSteven(comment) });
     }
 
     // Non-steven caller (owner) on this route — unchanged full edit ability.

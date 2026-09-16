@@ -7,7 +7,7 @@ import { useRole } from "@/lib/use-role";
 import { usePlayerSafe } from "@/components/PlayerProvider";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import DatePickerInput from "@/components/ui/DatePickerInput";
-import type { SoundEngineerWork, MixVersion, MixComment, MixTarget, MixTargetNote } from "@/lib/types";
+import type { SoundEngineerWork, MixVersion, MixComment, MixCommentAttachment, MixTarget, MixTargetNote } from "@/lib/types";
 
 // ── Design tokens (same system as Victor; Steven accent = red/bordeaux) ─────────
 const BRAND  = "#DC2626";
@@ -2045,6 +2045,70 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
   const [rolePick, setRolePick]   = useState(false);                 // fallback picker when no active player
   const [hoverCommentId, setHoverCommentId] = useState<string | null>(null); // cross-highlight marker ⇄ shared list
   const [statusUpdating, setStatusUpdating] = useState<Set<string>>(new Set()); // comment ids mid-PATCH — blocks a double-click re-send
+
+  // ── Comment image attachments (owner-only upload/delete; Steven view-only) ──
+  // Pending = chosen locally, not yet uploaded. Flow on save: create the
+  // comment first, THEN upload each pending image against its real id, THEN
+  // merge the results in — never a multipart "create+images" round trip.
+  const [pendingImages, setPendingImages] = useState<{ id: string; file: File; previewUrl: string }[]>([]);
+  const [composerDrag, setComposerDrag] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ attachments: MixCommentAttachment[]; index: number } | null>(null);
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
+  const ALLOWED_IMAGE_TYPES = useMemo(() => new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]), []);
+  const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB — mirrors the server-side limit; server is the real gate.
+
+  function addPendingFiles(files: FileList | File[]) {
+    const arr = Array.from(files);
+    const accepted: typeof pendingImages = [];
+    let rejected = false;
+    for (const file of arr) {
+      if (!ALLOWED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE) { rejected = true; continue; }
+      accepted.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file, previewUrl: URL.createObjectURL(file) });
+    }
+    if (accepted.length) setPendingImages(prev => [...prev, ...accepted]);
+    setAttachError(rejected ? (rtl ? "חלק מהתמונות נדחו — jpeg/png/webp/gif בלבד, עד 10MB" : "Some images were rejected — jpeg/png/webp/gif only, up to 10MB") : null);
+  }
+  function removePendingImage(id: string) {
+    setPendingImages(prev => {
+      const target = prev.find(p => p.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter(p => p.id !== id);
+    });
+  }
+  function closeComposer() {
+    setPendingImages(prev => { prev.forEach(p => URL.revokeObjectURL(p.previewUrl)); return []; });
+    setAttachError(null);
+    setAdding(false);
+  }
+  function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items; if (!items) return;
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) { const f = item.getAsFile(); if (f) files.push(f); }
+    }
+    if (files.length) { e.preventDefault(); addPendingFiles(files); }
+  }
+  function onComposerDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+    e.preventDefault(); setComposerDrag(false);
+    if (e.dataTransfer.files?.length) addPendingFiles(e.dataTransfer.files);
+  }
+  /** Owner-only. Optimistic remove + revert on failure — same pattern as the
+   *  other comment mutations in this file. */
+  function removeAttachment(c: MixComment, attachmentId: string) {
+    if (deletingAttachmentId) return;
+    setDeletingAttachmentId(attachmentId);
+    const prev = comments;
+    setComments(cur => cur?.map(x => (x.id === c.id ? { ...x, attachments: x.attachments.filter(a => a.id !== attachmentId) } : x)) ?? null);
+    fetch(`${commentUrl(c.id)}/attachments/${attachmentId}`, { method: "DELETE" })
+      .then(r => r.json())
+      .then(d => { if (!d.ok) { setComments(prev); notify(rtl ? "מחיקת התמונה נכשלה" : "Failed to delete image"); } })
+      .catch(() => { setComments(prev); notify(rtl ? "מחיקת התמונה נכשלה" : "Failed to delete image"); })
+      .finally(() => setDeletingAttachmentId(null));
+  }
+
   const playerRefs = useRef<Record<string, VersionPlayerHandle | null>>({}); // per-file player handles (by file id)
   const lastActiveIdRef = useRef<string | null>(null);               // file id of the last-played stacked player
   // General notes (null timecode) sort after timed ones.
@@ -2057,6 +2121,8 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     if (!sel) { setComments(null); return; }
     let alive = true;
     setComments(null); setCLoadErr(false); setAdding(false); setEditingId(null); setRolePick(false);
+    setPendingImages(prev => { prev.forEach(p => URL.revokeObjectURL(p.previewUrl)); return []; });
+    setAttachError(null);
     lastActiveIdRef.current = null;
     fetch(commentsUrl(sel))
       .then(r => r.json())
@@ -2086,26 +2152,57 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     const target = active ?? (audioFiles.length === 1 ? audioFiles[0] : null);
     setAddRole(target ? target.role : null); setAddTs(null); setNewText(""); setRolePick(false); setAdding(true);
   }
-  function saveNewComment() {
+  /**
+   * Create the comment, THEN upload each pending image against its real id,
+   * THEN merge the uploaded attachments in — never a single combined request.
+   * A partial failure (comment saved, one image failed) keeps the text and
+   * whichever images DID upload; it never loses the note over one bad image.
+   */
+  async function saveNewComment() {
     const text = newText.trim();
     // No version open on a riddim line → the note belongs to the LINE. Same
     // composer, same button; only the destination differs.
     if (targetOnly) { void savePreMixNote(text); return; }
     if (!text || !sel || savingC) return;
     setSavingC(true);
-    fetch(commentsUrl(sel), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ timestampSeconds: addTs, commentText: text, role: addRole }),
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ok && d.comment) {
-          setComments(prev => [...(prev ?? []), d.comment as MixComment].sort(byTs));
-          setAdding(false); setNewText("");
-        } else notify(d.error || (rtl ? "שמירת ההערה נכשלה" : "Failed to save comment"));
-      })
-      .catch(() => notify(rtl ? "שמירת ההערה נכשלה" : "Failed to save comment"))
-      .finally(() => setSavingC(false));
+    try {
+      const res = await fetch(commentsUrl(sel), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timestampSeconds: addTs, commentText: text, role: addRole }),
+      });
+      const d = await res.json().catch(() => ({} as { ok?: boolean; comment?: MixComment; error?: string }));
+      if (!d.ok || !d.comment) { notify(d.error || (rtl ? "שמירת ההערה נכשלה" : "Failed to save comment")); return; }
+      let comment = d.comment;
+
+      const imagesToUpload = pendingImages;
+      if (imagesToUpload.length > 0) {
+        setUploadingAttachments(true);
+        const uploaded: MixCommentAttachment[] = [];
+        for (const p of imagesToUpload) {
+          try {
+            const fd = new FormData();
+            fd.append("file", p.file);
+            const ures = await fetch(`${commentUrl(comment.id)}/attachments`, { method: "POST", body: fd });
+            const ud = await ures.json().catch(() => ({} as { ok?: boolean; attachment?: MixCommentAttachment; error?: string }));
+            if (ud.ok && ud.attachment) uploaded.push(ud.attachment);
+            else notify(ud.error || (rtl ? `העלאת תמונה נכשלה: ${p.file.name}` : `Image upload failed: ${p.file.name}`));
+          } catch {
+            notify(rtl ? `העלאת תמונה נכשלה: ${p.file.name}` : `Image upload failed: ${p.file.name}`);
+          }
+        }
+        comment = { ...comment, attachments: uploaded };
+        setUploadingAttachments(false);
+      }
+
+      setComments(prev => [...(prev ?? []), comment].sort(byTs));
+      setPendingImages(prev => { prev.forEach(p => URL.revokeObjectURL(p.previewUrl)); return []; });
+      setAttachError(null);
+      setAdding(false); setNewText("");
+    } catch {
+      notify(rtl ? "שמירת ההערה נכשלה" : "Failed to save comment");
+    } finally {
+      setSavingC(false);
+    }
   }
   function saveEditComment(c: MixComment) {
     const text = editText.trim();
@@ -3262,17 +3359,49 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                       </div>
                     )}
                     {adding && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{addTs === null ? t.cGeneralTitle : `${t.cAtTime} ${fmtTime(addTs)}`}</span>
-                        {addRole && <span style={{ fontSize: 9.5, fontWeight: 800, color: ROLE_COLOR[addRole], background: `${ROLE_COLOR[addRole]}1A`, border: `1px solid ${ROLE_COLOR[addRole]}40`, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{roleLabel(addRole, lang)}</span>}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: BRAND, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{addTs === null ? t.cGeneralTitle : `${t.cAtTime} ${fmtTime(addTs)}`}</span>
+                          {addRole && <span style={{ fontSize: 9.5, fontWeight: 800, color: ROLE_COLOR[addRole], background: `${ROLE_COLOR[addRole]}1A`, border: `1px solid ${ROLE_COLOR[addRole]}40`, padding: "2px 7px", borderRadius: 6, whiteSpace: "nowrap" }}>{roleLabel(addRole, lang)}</span>}
+                        </div>
+                        {/* Drag & drop + paste both target the textarea itself — no
+                            separate drop zone, so it never competes for space. */}
                         <textarea autoFocus value={newText} onChange={e => setNewText(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveNewComment(); } else if (e.key === "Escape") setAdding(false); }}
+                          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void saveNewComment(); } else if (e.key === "Escape") closeComposer(); }}
+                          onPaste={onComposerPaste}
+                          onDragOver={e => { e.preventDefault(); setComposerDrag(true); }}
+                          onDragLeave={() => setComposerDrag(false)}
+                          onDrop={onComposerDrop}
                           placeholder={t.cPlaceholder} rows={3}
-                          style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, background: "#0D0D12", color: TEXT, border: `1px solid ${BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.5, whiteSpace: "pre-wrap" }} />
-                        <button onClick={saveNewComment} disabled={!newText.trim() || savingC}
-                          style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC ? 1 : 0.5, fontFamily: "inherit" }}>{t.save}</button>
-                        <button onClick={() => setAdding(false)}
-                          style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
+                          style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", borderRadius: 8, background: composerDrag ? `${BRAND}0D` : "#0D0D12", color: TEXT, border: `1px dashed ${composerDrag ? BRAND : BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.5, whiteSpace: "pre-wrap" }} />
+                        {pendingImages.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {pendingImages.map(p => (
+                              <div key={p.id} style={{ position: "relative" }}>
+                                <img src={p.previewUrl} alt={p.file.name} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, display: "block" }} />
+                                <button onClick={() => removePendingImage(p.id)} title={t.cDelete} type="button"
+                                  style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0 }}>✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {attachError && <div style={{ fontSize: 10.5, color: RED }}>{attachError}</div>}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <input ref={attachInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple
+                            style={{ display: "none" }}
+                            onChange={e => { if (e.target.files?.length) addPendingFiles(e.target.files); e.target.value = ""; }} />
+                          <button onClick={() => attachInputRef.current?.click()} type="button"
+                            style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>
+                            🖼 {rtl ? "הוסף תמונה" : "Add image"}
+                          </button>
+                          <span style={{ flex: 1 }} />
+                          <button onClick={() => void saveNewComment()} disabled={!newText.trim() || savingC || uploadingAttachments}
+                            style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC && !uploadingAttachments ? 1 : 0.5, fontFamily: "inherit" }}>
+                            {uploadingAttachments ? (rtl ? "מעלה תמונות…" : "Uploading…") : t.save}
+                          </button>
+                          <button onClick={closeComposer}
+                            style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
+                        </div>
                       </div>
                     )}
                     {/* Version comments. Skipped entirely on a line with no version:
@@ -3347,6 +3476,23 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                               ) : (
                                 <div onClick={isGeneral ? undefined : () => playerForComment(c)?.seek(c.timestampSeconds!)}
                                   style={{ fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.5 }}><LinkifiedText text={c.commentText} /></div>
+                              )}
+                              {/* Attached screenshots — same for Owner and Steven; only the
+                                  ✕ (delete) is owner-only. Click opens the lightbox. */}
+                              {c.attachments.length > 0 && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                  {c.attachments.map((a, ai) => (
+                                    <div key={a.id} style={{ position: "relative" }}>
+                                      <img src={a.url} alt={a.fileName} loading="lazy"
+                                        onClick={() => setLightbox({ attachments: c.attachments, index: ai })}
+                                        style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, cursor: "pointer", display: "block" }} />
+                                      {!isSteven && (
+                                        <button onClick={e => { e.stopPropagation(); removeAttachment(c, a.id); }} disabled={deletingAttachmentId === a.id} title={t.cDelete}
+                                          style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0, opacity: deletingAttachmentId === a.id ? 0.5 : 1 }}>✕</button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                               {/* Row 3 — relative time · status toggle · edit/delete */}
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -3519,6 +3665,30 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                 <button onClick={confirmDeleteComment} style={{ flex: 1, padding: "10px 18px", borderRadius: 10, background: RED, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🗑 {t.cDelete}</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Comment-attachment lightbox — Owner and Steven both get this (view
+            only), no library, arrows appear only with more than one image. */}
+        {lightbox && (
+          <div onClick={() => setLightbox(null)} style={{ position: "fixed", inset: 0, zIndex: 100003, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <button onClick={() => setLightbox(null)} title={t.cancel}
+              style={{ position: "absolute", top: 16, insetInlineEnd: 16, width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.1)", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 16, cursor: "pointer" }}>✕</button>
+            {lightbox.attachments.length > 1 && (
+              <>
+                <button onClick={e => { e.stopPropagation(); setLightbox(lb => lb ? { ...lb, index: (lb.index - 1 + lb.attachments.length) % lb.attachments.length } : lb); }}
+                  style={{ position: "absolute", insetInlineStart: 16, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.1)", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 18, cursor: "pointer" }}>‹</button>
+                <button onClick={e => { e.stopPropagation(); setLightbox(lb => lb ? { ...lb, index: (lb.index + 1) % lb.attachments.length } : lb); }}
+                  style={{ position: "absolute", insetInlineEnd: 16, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.1)", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 18, cursor: "pointer" }}>›</button>
+              </>
+            )}
+            <img onClick={e => e.stopPropagation()} src={lightbox.attachments[lightbox.index].url} alt={lightbox.attachments[lightbox.index].fileName}
+              style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 10, boxShadow: "0 24px 80px rgba(0,0,0,0.9)" }} />
+            {lightbox.attachments.length > 1 && (
+              <div style={{ position: "absolute", bottom: 20, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+                {lightbox.index + 1} / {lightbox.attachments.length}
+              </div>
+            )}
           </div>
         )}
 

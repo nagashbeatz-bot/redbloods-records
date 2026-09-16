@@ -67,6 +67,23 @@ export function mixVersionsFolder(opts: {
 }
 
 /**
+ * Comment-attachment images — a subfolder of the version's own Mix Versions
+ * folder, scoped per version and per comment so images never collide across
+ * comments. Same rename-proof base as mixVersionsFolder (never work_title).
+ */
+export function commentAttachmentsFolder(opts: {
+  projectId: string | null;
+  artist?: string;
+  projectName?: string;
+  workId: string;
+  dropboxFolder?: string | null;
+  mixVersionId: string;
+  commentId: string;
+}): string {
+  return `${mixVersionsFolder(opts)}/Comments/${opts.mixVersionId}/${opts.commentId}`;
+}
+
+/**
  * "Final Files" folder — the destination for the "Upload Final Files" flow
  * (masters / stems / instrumental / acapella / delivery). Same work/project
  * hierarchy as mixVersionsFolder, only a different leaf subfolder — so it lives

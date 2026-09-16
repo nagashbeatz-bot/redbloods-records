@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStevenAccess, getAuthRole } from "@/lib/require-auth";
 import { listMixComments, createMixComment } from "@/lib/mix-comments-store";
-import { assertStevenOwnsVersion } from "@/lib/steven-scope";
+import { assertStevenOwnsVersion, sanitizeCommentForSteven } from "@/lib/steven-scope";
 
 const FORBID = () => NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
@@ -11,7 +11,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ver
   try {
     const { versionId } = await params;
     if (!(await assertStevenOwnsVersion(versionId))) return FORBID();
-    const comments = await listMixComments(versionId);
+    const comments = (await listMixComments(versionId)).map(sanitizeCommentForSteven);
     return NextResponse.json({ ok: true, comments });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";

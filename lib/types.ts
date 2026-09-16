@@ -319,6 +319,22 @@ export interface MixVersion {
   updatedAt:           string;
 }
 
+/**
+ * An image attached to a specific mix comment (0..N per comment). `url` is an
+ * opaque, ownership-checked stream route — NEVER a raw Dropbox path (that field
+ * never leaves the server; see lib/mix-comment-attachments-store.ts).
+ */
+export interface MixCommentAttachment {
+  id:         string;
+  commentId:  string;
+  fileName:   string;
+  fileSize:   number;
+  mimeType:   string;
+  uploadedBy: string | null;
+  createdAt:  string;
+  url:        string;
+}
+
 /** A time-stamped comment on a mix version (Phase 2 stage 4). */
 export interface MixComment {
   id:               string;
@@ -330,6 +346,7 @@ export interface MixComment {
   status:           "open" | "resolved"; // פתוחה / טופלה — DB default "open"
   createdAt:        string;
   updatedAt:        string;
+  attachments:      MixCommentAttachment[]; // 0..N screenshots attached to this comment
 }
 
 /**
