@@ -2046,11 +2046,12 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
   const [hoverCommentId, setHoverCommentId] = useState<string | null>(null); // cross-highlight marker ⇄ shared list
   const [statusUpdating, setStatusUpdating] = useState<Set<string>>(new Set()); // comment ids mid-PATCH — blocks a double-click re-send
 
-  // ── Comment image attachments (owner-only upload/delete; Steven view-only) ──
+  // ── Comment attachments — images + short audio (owner-only upload/delete;
+  // Steven view/play-only) ─────────────────────────────────────────────────
   // Pending = chosen locally, not yet uploaded. Flow on save: create the
-  // comment first, THEN upload each pending image against its real id, THEN
-  // merge the results in — never a multipart "create+images" round trip.
-  const [pendingImages, setPendingImages] = useState<{ id: string; file: File; previewUrl: string }[]>([]);
+  // comment first, THEN upload each pending file against its real id, THEN
+  // merge the results in — never a multipart "create+attachments" round trip.
+  const [pendingAttachments, setPendingAttachments] = useState<{ id: string; file: File; kind: "image" | "audio"; previewUrl: string }[]>([]);
   const [composerDrag, setComposerDrag] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
@@ -2058,31 +2059,51 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
   const [lightbox, setLightbox] = useState<{ attachments: MixCommentAttachment[]; index: number } | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const ALLOWED_IMAGE_TYPES = useMemo(() => new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]), []);
-  const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB — mirrors the server-side limit; server is the real gate.
+  // M4A in particular is reported inconsistently across browsers/OSes — mirrors
+  // the server-side allowlist in the attachments upload route exactly.
+  const ALLOWED_AUDIO_TYPES = useMemo(() => new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave", "audio/mp4", "audio/x-m4a"]), []);
+  const AUDIO_EXTS = useMemo(() => new Set(["mp3", "wav", "m4a"]), []);
+  const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB — mirrors the server-side limit; server is the real gate.
+  const ATTACHMENT_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,audio/mpeg,audio/wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a";
 
+  /** Client-side only (UX) — the server re-derives kind from its own allowlist
+   *  and never trusts this. Empty file.type (common for M4A) falls back to
+   *  extension, same rule as the server. */
+  function attachmentKind(file: File): "image" | "audio" | null {
+    if (ALLOWED_IMAGE_TYPES.has(file.type)) return "image";
+    if (ALLOWED_AUDIO_TYPES.has(file.type)) return "audio";
+    if (!file.type) {
+      const ext = file.name.toLowerCase().split(".").pop() ?? "";
+      if (AUDIO_EXTS.has(ext)) return "audio";
+    }
+    return null;
+  }
   function addPendingFiles(files: FileList | File[]) {
     const arr = Array.from(files);
-    const accepted: typeof pendingImages = [];
+    const accepted: typeof pendingAttachments = [];
     let rejected = false;
     for (const file of arr) {
-      if (!ALLOWED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE) { rejected = true; continue; }
-      accepted.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file, previewUrl: URL.createObjectURL(file) });
+      const kind = attachmentKind(file);
+      if (!kind || file.size > MAX_ATTACHMENT_SIZE) { rejected = true; continue; }
+      accepted.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file, kind, previewUrl: kind === "image" ? URL.createObjectURL(file) : "" });
     }
-    if (accepted.length) setPendingImages(prev => [...prev, ...accepted]);
-    setAttachError(rejected ? (rtl ? "חלק מהתמונות נדחו — jpeg/png/webp/gif בלבד, עד 10MB" : "Some images were rejected — jpeg/png/webp/gif only, up to 10MB") : null);
+    if (accepted.length) setPendingAttachments(prev => [...prev, ...accepted]);
+    setAttachError(rejected ? (rtl ? "חלק מהקבצים נדחו — jpeg/png/webp/gif או mp3/wav/m4a בלבד, עד 10MB" : "Some files were rejected — jpeg/png/webp/gif or mp3/wav/m4a only, up to 10MB") : null);
   }
-  function removePendingImage(id: string) {
-    setPendingImages(prev => {
+  function removePendingAttachment(id: string) {
+    setPendingAttachments(prev => {
       const target = prev.find(p => p.id === id);
-      if (target) URL.revokeObjectURL(target.previewUrl);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
       return prev.filter(p => p.id !== id);
     });
   }
   function closeComposer() {
-    setPendingImages(prev => { prev.forEach(p => URL.revokeObjectURL(p.previewUrl)); return []; });
+    setPendingAttachments(prev => { prev.forEach(p => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl); }); return []; });
     setAttachError(null);
     setAdding(false);
   }
+  // Paste stays image-only (a pasted screenshot) — audio isn't a clipboard
+  // "paste" thing; it goes through drag&drop or the file picker below.
   function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const items = e.clipboardData?.items; if (!items) return;
     const files: File[] = [];
@@ -2121,7 +2142,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
     if (!sel) { setComments(null); return; }
     let alive = true;
     setComments(null); setCLoadErr(false); setAdding(false); setEditingId(null); setRolePick(false);
-    setPendingImages(prev => { prev.forEach(p => URL.revokeObjectURL(p.previewUrl)); return []; });
+    setPendingAttachments(prev => { prev.forEach(p => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl); }); return []; });
     setAttachError(null);
     lastActiveIdRef.current = null;
     fetch(commentsUrl(sel))
@@ -2174,20 +2195,20 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
       if (!d.ok || !d.comment) { notify(d.error || (rtl ? "שמירת ההערה נכשלה" : "Failed to save comment")); return; }
       let comment = d.comment;
 
-      const imagesToUpload = pendingImages;
-      if (imagesToUpload.length > 0) {
+      const filesToUpload = pendingAttachments;
+      if (filesToUpload.length > 0) {
         setUploadingAttachments(true);
         const uploaded: MixCommentAttachment[] = [];
-        for (const p of imagesToUpload) {
+        for (const p of filesToUpload) {
           try {
             const fd = new FormData();
             fd.append("file", p.file);
             const ures = await fetch(`${commentUrl(comment.id)}/attachments`, { method: "POST", body: fd });
             const ud = await ures.json().catch(() => ({} as { ok?: boolean; attachment?: MixCommentAttachment; error?: string }));
             if (ud.ok && ud.attachment) uploaded.push(ud.attachment);
-            else notify(ud.error || (rtl ? `העלאת תמונה נכשלה: ${p.file.name}` : `Image upload failed: ${p.file.name}`));
+            else notify(ud.error || (rtl ? `העלאת קובץ נכשלה: ${p.file.name}` : `File upload failed: ${p.file.name}`));
           } catch {
-            notify(rtl ? `העלאת תמונה נכשלה: ${p.file.name}` : `Image upload failed: ${p.file.name}`);
+            notify(rtl ? `העלאת קובץ נכשלה: ${p.file.name}` : `File upload failed: ${p.file.name}`);
           }
         }
         comment = { ...comment, attachments: uploaded };
@@ -2195,7 +2216,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
       }
 
       setComments(prev => [...(prev ?? []), comment].sort(byTs));
-      setPendingImages(prev => { prev.forEach(p => URL.revokeObjectURL(p.previewUrl)); return []; });
+      setPendingAttachments(prev => { prev.forEach(p => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl); }); return []; });
       setAttachError(null);
       setAdding(false); setNewText("");
     } catch {
@@ -3374,30 +3395,39 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                           onDrop={onComposerDrop}
                           placeholder={t.cPlaceholder} rows={3}
                           style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", borderRadius: 8, background: composerDrag ? `${BRAND}0D` : "#0D0D12", color: TEXT, border: `1px dashed ${composerDrag ? BRAND : BDR2}`, fontSize: 12.5, fontFamily: "inherit", outline: "none", resize: "vertical", lineHeight: 1.5, whiteSpace: "pre-wrap" }} />
-                        {pendingImages.length > 0 && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {pendingImages.map(p => (
-                              <div key={p.id} style={{ position: "relative" }}>
-                                <img src={p.previewUrl} alt={p.file.name} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, display: "block" }} />
-                                <button onClick={() => removePendingImage(p.id)} title={t.cDelete} type="button"
-                                  style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0 }}>✕</button>
-                              </div>
+                        {pendingAttachments.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                            {pendingAttachments.map(p => (
+                              p.kind === "image" ? (
+                                <div key={p.id} style={{ position: "relative" }}>
+                                  <img src={p.previewUrl} alt={p.file.name} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, display: "block" }} />
+                                  <button onClick={() => removePendingAttachment(p.id)} title={t.cDelete} type="button"
+                                    style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0 }}>✕</button>
+                                </div>
+                              ) : (
+                                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 8, background: "#0D0D12", border: `1px solid ${BDR2}` }}>
+                                  <span style={{ fontSize: 13 }}>🎵</span>
+                                  <span title={p.file.name} style={{ fontSize: 11, color: TEXT2, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", unicodeBidi: "plaintext" } as React.CSSProperties}>{p.file.name}</span>
+                                  <button onClick={() => removePendingAttachment(p.id)} title={t.cDelete} type="button"
+                                    style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 12, cursor: "pointer", padding: 0, flexShrink: 0 }}>✕</button>
+                                </div>
+                              )
                             ))}
                           </div>
                         )}
                         {attachError && <div style={{ fontSize: 10.5, color: RED }}>{attachError}</div>}
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <input ref={attachInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple
+                          <input ref={attachInputRef} type="file" accept={ATTACHMENT_ACCEPT} multiple
                             style={{ display: "none" }}
                             onChange={e => { if (e.target.files?.length) addPendingFiles(e.target.files); e.target.value = ""; }} />
                           <button onClick={() => attachInputRef.current?.click()} type="button"
                             style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>
-                            🖼 {rtl ? "הוסף תמונה" : "Add image"}
+                            📎 {rtl ? "הוסף קובץ" : "Add file"}
                           </button>
                           <span style={{ flex: 1 }} />
                           <button onClick={() => void saveNewComment()} disabled={!newText.trim() || savingC || uploadingAttachments}
                             style={{ fontSize: 11, fontWeight: 800, padding: "6px 12px", borderRadius: 8, background: BRAND, border: "none", color: "#fff", cursor: newText.trim() ? "pointer" : "default", opacity: newText.trim() && !savingC && !uploadingAttachments ? 1 : 0.5, fontFamily: "inherit" }}>
-                            {uploadingAttachments ? (rtl ? "מעלה תמונות…" : "Uploading…") : t.save}
+                            {uploadingAttachments ? (rtl ? "מעלה קבצים…" : "Uploading…") : t.save}
                           </button>
                           <button onClick={closeComposer}
                             style={{ fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
@@ -3477,23 +3507,33 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                                 <div onClick={isGeneral ? undefined : () => playerForComment(c)?.seek(c.timestampSeconds!)}
                                   style={{ fontSize: 13, color: TEXT, cursor: isGeneral ? "default" : "pointer", whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.5 }}><LinkifiedText text={c.commentText} /></div>
                               )}
-                              {/* Attached screenshots — same for Owner and Steven; only the
-                                  ✕ (delete) is owner-only. Click opens the lightbox. */}
-                              {c.attachments.length > 0 && (
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                  {c.attachments.map((a, ai) => (
-                                    <div key={a.id} style={{ position: "relative" }}>
-                                      <img src={a.url} alt={a.fileName} loading="lazy"
-                                        onClick={() => setLightbox({ attachments: c.attachments, index: ai })}
-                                        style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, cursor: "pointer", display: "block" }} />
-                                      {!isSteven && (
-                                        <button onClick={e => { e.stopPropagation(); removeAttachment(c, a.id); }} disabled={deletingAttachmentId === a.id} title={t.cDelete}
-                                          style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0, opacity: deletingAttachmentId === a.id ? 0.5 : 1 }}>✕</button>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                              {/* Attached images + audio — same for Owner and Steven; only
+                                  the ✕ (delete) is owner-only. Images open the lightbox;
+                                  audio gets its own tiny play/pause row (no lightbox). */}
+                              {c.attachments.length > 0 && (() => {
+                                const imageAtts = c.attachments.filter(a => !a.mimeType.startsWith("audio/"));
+                                const audioAtts = c.attachments.filter(a => a.mimeType.startsWith("audio/"));
+                                return (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                                    {imageAtts.map((a, ai) => (
+                                      <div key={a.id} style={{ position: "relative" }}>
+                                        <img src={a.url} alt={a.fileName} loading="lazy"
+                                          onClick={() => setLightbox({ attachments: imageAtts, index: ai })}
+                                          style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, cursor: "pointer", display: "block" }} />
+                                        {!isSteven && (
+                                          <button onClick={e => { e.stopPropagation(); removeAttachment(c, a.id); }} disabled={deletingAttachmentId === a.id} title={t.cDelete}
+                                            style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0, opacity: deletingAttachmentId === a.id ? 0.5 : 1 }}>✕</button>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {audioAtts.map(a => (
+                                      <CommentAudioAttachment key={a.id} url={a.url} fileName={a.fileName} t={t}
+                                        onDelete={isSteven ? undefined : () => removeAttachment(c, a.id)}
+                                        deleting={deletingAttachmentId === a.id} />
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                               {/* Row 3 — relative time · status toggle · edit/delete */}
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                                 <span style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{fmtRelative(c.createdAt, lang)}</span>
@@ -3943,6 +3983,44 @@ function WMAudioRow({ name, meta, url, readOnly, onDownload, onDelete, t, rtl }:
         <div style={{ fontSize: 10.5, color: MUTED, marginTop: 1, direction: "ltr", textAlign: rtl ? "right" : "left" } as React.CSSProperties}>{meta}</div>
       </div>
       <WMKebab readOnly={readOnly} onDownload={onDownload} onDelete={onDelete} t={t} rtl={rtl} />
+    </div>
+  );
+}
+
+/**
+ * A comment's audio attachment — the SAME minimal contract as WMAudioRow
+ * (play/pause toggle + filename, no waveform/seek/volume/download) and the
+ * SAME exclusivity mechanism (module-level `activeStevenAudio` + the global
+ * MiniPlayer), just with a delete ✕ instead of a kebab menu, and undefined
+ * `onDelete` for Steven (view/play-only — no delete control renders at all).
+ */
+function CommentAudioAttachment({ url, fileName, onDelete, deleting, t }: { url: string; fileName: string; onDelete?: () => void; deleting?: boolean; t: T }) {
+  const globalPlayer = usePlayerSafe();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => { const a = audioRef.current; return () => { a?.pause(); if (activeStevenAudio === a) activeStevenAudio = null; }; }, []);
+  function toggle() {
+    const a = audioRef.current; if (!a) return;
+    if (a.paused) {
+      if (globalPlayer?.playing) globalPlayer.pause();
+      if (activeStevenAudio && activeStevenAudio !== a) activeStevenAudio.pause();
+      activeStevenAudio = a;
+      a.play().catch(() => {});
+    } else a.pause();
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 9px", borderRadius: 8, background: "#0D0D12", border: `1px solid ${BDR2}`, maxWidth: 220 }}>
+      <audio ref={audioRef} src={url} preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
+      <button type="button" onClick={toggle} title={t.vPlay}
+        style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, border: "none", background: `linear-gradient(145deg, ${BRAND}, #B91C1C)`, color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        {playing ? <svg width="9" height="9" viewBox="0 0 24 24" fill="#fff"><rect x="6" y="5" width="4.4" height="14" rx="1.3"/><rect x="13.6" y="5" width="4.4" height="14" rx="1.3"/></svg>
+                 : <svg width="9" height="9" viewBox="0 0 24 24" fill="#fff" style={{ marginInlineStart: 1.5 }}><path d="M8 5v14l11-7z"/></svg>}
+      </button>
+      <span title={fileName} style={{ fontSize: 11, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "ltr", unicodeBidi: "plaintext", flex: 1, minWidth: 0 } as React.CSSProperties}>{fileName}</span>
+      {onDelete && (
+        <button onClick={onDelete} disabled={deleting} title={t.cDelete} type="button"
+          style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 12, cursor: "pointer", flexShrink: 0, padding: 0, opacity: deleting ? 0.5 : 1 }}>✕</button>
+      )}
     </div>
   );
 }

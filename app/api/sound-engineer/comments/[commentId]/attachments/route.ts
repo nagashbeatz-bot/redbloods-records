@@ -9,8 +9,31 @@ import { createAttachment } from "@/lib/mix-comment-attachments-store";
 
 export const maxDuration = 60;
 
-const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+// M4A in particular is reported inconsistently across browsers/OSes.
+const ALLOWED_AUDIO_MIME = new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave", "audio/mp4", "audio/x-m4a"]);
+const AUDIO_EXT_FALLBACK_MIME: Record<string, string> = { mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4" };
+const MAX_SIZE = 10 * 1024 * 1024; // 10MB — same limit for images and audio.
+
+/**
+ * Resolve the attachment's real kind + the MIME to store. `file.type` is the
+ * source of truth whenever the browser actually reported one — a mismatched
+ * MIME is rejected even if the extension looks right (never let a ".mp3" name
+ * wave through a file the browser itself typed as something else). Extension
+ * is used ONLY as a fallback when the browser reported no type at all, which
+ * happens often enough for M4A specifically.
+ */
+function resolveAttachment(file: File): { ok: true; kind: "image" | "audio"; mimeType: string } | { ok: false } {
+  if (file.type) {
+    if (ALLOWED_IMAGE_MIME.has(file.type)) return { ok: true, kind: "image", mimeType: file.type };
+    if (ALLOWED_AUDIO_MIME.has(file.type)) return { ok: true, kind: "audio", mimeType: file.type };
+    return { ok: false };
+  }
+  const ext = file.name.toLowerCase().split(".").pop() ?? "";
+  const fallbackMime = AUDIO_EXT_FALLBACK_MIME[ext];
+  if (fallbackMime) return { ok: true, kind: "audio", mimeType: fallbackMime };
+  return { ok: false };
+}
 
 function dropboxArg(obj: Record<string, unknown>): string {
   return JSON.stringify(obj).replace(/[^\x00-\x7F]/g, (c) =>
@@ -20,10 +43,10 @@ function dropboxArg(obj: Record<string, unknown>): string {
 
 /**
  * POST /api/sound-engineer/comments/[commentId]/attachments — upload one image
- * and attach it to an existing comment. Owner-only. The comment must already
- * exist (create the comment first, THEN attach images — see the client flow
- * in StevenProfilePage). Server re-validates type/size regardless of what the
- * client already checked; the client check is UX only.
+ * or short audio file and attach it to an existing comment. Owner-only. The
+ * comment must already exist (create the comment first, THEN attach files —
+ * see the client flow in StevenProfilePage). Server re-validates type/size
+ * regardless of what the client already checked; the client check is UX only.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ commentId: string }> }) {
   const denied = await requireOwner(); if (denied) return denied;
@@ -35,8 +58,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ com
     const form = await req.formData();
     const file = form.get("file") as File | null;
     if (!file) return NextResponse.json({ ok: false, error: "חסר קובץ" }, { status: 400 });
-    if (!ALLOWED_MIME.has(file.type)) {
-      return NextResponse.json({ ok: false, error: "סוג קובץ לא נתמך — jpeg/png/webp/gif בלבד" }, { status: 400 });
+    const resolved = resolveAttachment(file);
+    if (!resolved.ok) {
+      return NextResponse.json({ ok: false, error: "סוג קובץ לא נתמך — jpeg/png/webp/gif או mp3/wav/m4a בלבד" }, { status: 400 });
     }
     if (file.size > MAX_SIZE) {
       return NextResponse.json({ ok: false, error: "הקובץ גדול מדי (מקסימום 10MB)" }, { status: 413 });
@@ -59,7 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ com
       dropboxFolder, mixVersionId: version.id, commentId,
     });
 
-    const sanitizedName = sanitizeFolder(file.name) || "image";
+    const sanitizedName = sanitizeFolder(file.name) || (resolved.kind === "audio" ? "audio" : "image");
     const dropboxPath = `${folder}/${sanitizedName}`;
 
     const { getDropboxToken } = await import("@/lib/dropbox-token");
@@ -77,7 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ com
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
       console.error("[comments/attachments] Dropbox upload error:", errText);
-      return NextResponse.json({ ok: false, error: "שגיאה בהעלאת התמונה" }, { status: 500 });
+      return NextResponse.json({ ok: false, error: "שגיאה בהעלאת הקובץ" }, { status: 500 });
     }
     const uploaded = (await uploadRes.json()) as { path_display: string };
 
@@ -86,7 +110,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ com
       dropboxPath: uploaded.path_display,
       fileName:    file.name,
       fileSize:    file.size,
-      mimeType:    file.type,
+      mimeType:    resolved.mimeType,
       uploadedBy:  "owner",
     });
 
