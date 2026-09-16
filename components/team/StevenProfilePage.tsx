@@ -2130,6 +2130,47 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
       .finally(() => setDeletingAttachmentId(null));
   }
 
+  // ── Add attachment(s) to an ALREADY-SAVED comment — owner only. One shared
+  // hidden file input (existingUploadCommentId tracks which comment it's for),
+  // reused across every comment card so we don't need N input elements. Each
+  // file uploads independently (same POST the composer uses) and is appended
+  // straight into that comment's own attachments array — no comment edit, no
+  // new comment. Drag&drop targets the comment card itself (owner only).
+  const [existingUploadCommentId, setExistingUploadCommentId] = useState<string | null>(null);
+  const [existingUploadBusyId, setExistingUploadBusyId] = useState<string | null>(null);
+  const [dragOverCommentId, setDragOverCommentId] = useState<string | null>(null);
+  const existingAttachInputRef = useRef<HTMLInputElement | null>(null);
+
+  function openAddAttachmentFor(commentId: string) {
+    setExistingUploadCommentId(commentId);
+    existingAttachInputRef.current?.click();
+  }
+  async function uploadFilesToExistingComment(commentId: string, files: File[]) {
+    const accepted = files.filter(f => attachmentKind(f) && f.size <= MAX_ATTACHMENT_SIZE);
+    if (accepted.length < files.length) {
+      notify(rtl ? "חלק מהקבצים נדחו — jpeg/png/webp/gif או mp3/wav/m4a בלבד, עד 10MB" : "Some files were rejected — jpeg/png/webp/gif or mp3/wav/m4a only, up to 10MB");
+    }
+    if (accepted.length === 0) return;
+    setExistingUploadBusyId(commentId);
+    for (const file of accepted) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`${commentUrl(commentId)}/attachments`, { method: "POST", body: fd });
+        const d = await res.json().catch(() => ({} as { ok?: boolean; attachment?: MixCommentAttachment; error?: string }));
+        if (d.ok && d.attachment) {
+          const added = d.attachment;
+          setComments(cur => cur?.map(x => (x.id === commentId ? { ...x, attachments: [...x.attachments, added] } : x)) ?? null);
+        } else {
+          notify(d.error || (rtl ? `העלאת קובץ נכשלה: ${file.name}` : `File upload failed: ${file.name}`));
+        }
+      } catch {
+        notify(rtl ? `העלאת קובץ נכשלה: ${file.name}` : `File upload failed: ${file.name}`);
+      }
+    }
+    setExistingUploadBusyId(null);
+  }
+
   const playerRefs = useRef<Record<string, VersionPlayerHandle | null>>({}); // per-file player handles (by file id)
   const lastActiveIdRef = useRef<string | null>(null);               // file id of the last-played stacked player
   // General notes (null timecode) sort after timed ones.
@@ -3379,6 +3420,18 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                           style={{ fontSize: 11, fontWeight: 700, padding: "5px 9px", borderRadius: 8, background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, cursor: "pointer", fontFamily: "inherit" }}>{t.cancel}</button>
                       </div>
                     )}
+                    {/* Shared hidden input for "add attachment to an existing, already-
+                        saved comment" (owner only) — one element for every comment card;
+                        existingUploadCommentId says which comment the picked files go to. */}
+                    {!isSteven && (
+                      <input ref={existingAttachInputRef} type="file" accept={ATTACHMENT_ACCEPT} multiple
+                        style={{ display: "none" }}
+                        onChange={e => {
+                          const files = e.target.files; const targetId = existingUploadCommentId;
+                          e.target.value = "";
+                          if (files?.length && targetId) void uploadFilesToExistingComment(targetId, Array.from(files));
+                        }} />
+                    )}
                     {adding && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: CARD, border: `1px solid ${BRAND}44` }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -3469,10 +3522,19 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                           const cardShadow = isResolved
                             ? (isActive ? `0 0 0 1px ${GREEN}77, 0 0 14px ${GREEN}66` : `0 0 0 1px ${GREEN}33`)
                             : (isActive ? `0 0 0 1px ${col}55, 0 0 12px ${col}55` : "none");
+                          const isDragOver = dragOverCommentId === c.id;
                           return (
                             <div key={c.id}
                               onMouseEnter={() => setHoverCommentId(c.id)} onMouseLeave={() => setHoverCommentId(cur => (cur === c.id ? null : cur))}
-                              style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 13px", borderRadius: 11, background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow, transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
+                              // Drag&drop straight onto the card — owner only, adds to THIS
+                              // comment's existing attachments (no edit, no new comment).
+                              onDragOver={isSteven ? undefined : (e => { e.preventDefault(); setDragOverCommentId(c.id); })}
+                              onDragLeave={isSteven ? undefined : (() => setDragOverCommentId(cur => (cur === c.id ? null : cur)))}
+                              onDrop={isSteven ? undefined : (e => {
+                                e.preventDefault(); setDragOverCommentId(null);
+                                if (e.dataTransfer.files?.length) void uploadFilesToExistingComment(c.id, Array.from(e.dataTransfer.files));
+                              })}
+                              style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 13px", borderRadius: 11, background: isDragOver ? `${BRAND}0D` : cardBg, border: `1px ${isDragOver ? "dashed" : "solid"} ${isDragOver ? BRAND : cardBorder}`, boxShadow: cardShadow, transition: "background .15s ease, border-color .15s ease, box-shadow .15s ease" }}>
                               {/* Row 1 — number · play · timecode/general · role. Never
                                   squeezed against the text (that's its own row below). */}
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -3559,11 +3621,21 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                                     }}>
                                     {isResolved ? `✓ ${t.cResolved}` : "✓"}
                                   </button>
-                                  {/* edit + delete — owner only; Steven's comments are view-only. */}
+                                  {/* edit + add-attachment + delete — owner only; Steven's
+                                      comments are view-only. Small/unobtrusive by design —
+                                      this isn't the primary way to attach a file (that's the
+                                      composer above), just a way back into an already-saved
+                                      comment without re-editing its text. */}
                                   {!isSteven && !isEditing && (
                                     <button onClick={() => { editCancelRef.current = false; setEditingId(c.id); setEditText(c.commentText); }} title={t.cEdit}
                                       style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", flexShrink: 0 }}
                                       onMouseEnter={e => (e.currentTarget.style.color = TEXT2)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>✎</button>
+                                  )}
+                                  {!isSteven && (
+                                    <button onClick={() => openAddAttachmentFor(c.id)} disabled={existingUploadBusyId === c.id} title={rtl ? "הוסף קובץ" : "Add file"}
+                                      style={{ background: "none", border: "none", color: existingUploadBusyId === c.id ? BRAND : MUTED, fontSize: 13, cursor: existingUploadBusyId === c.id ? "wait" : "pointer", flexShrink: 0, opacity: existingUploadBusyId === c.id ? 0.7 : 1 }}
+                                      onMouseEnter={e => { if (existingUploadBusyId !== c.id) e.currentTarget.style.color = TEXT2; }}
+                                      onMouseLeave={e => { if (existingUploadBusyId !== c.id) e.currentTarget.style.color = MUTED; }}>📎</button>
                                   )}
                                   {!isSteven && <button onClick={() => setDelC(c)} title={t.cDelete}
                                     style={{ background: "none", border: "none", color: "#7A4A4A", fontSize: 13, cursor: "pointer", flexShrink: 0 }}
