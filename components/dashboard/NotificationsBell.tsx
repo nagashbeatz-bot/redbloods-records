@@ -173,7 +173,13 @@ function KindIcon({ kind, size = 17 }: { kind: NotifKind; size?: number }) {
 
 // ── Panel geometry ─────────────────────────────────────────────────────────
 const PANEL_W = 344;
-interface PanelPos { top: number; left: number; width: number; }
+// Owner-only "expand downward" tuning — see place() below. Non-owner keeps the
+// original fixed cap untouched (same string, same value, same type).
+const PAGE_SIZE = 10;
+const PANEL_SAFE_BOTTOM_MARGIN = 16;
+const PANEL_MIN_MAX_HEIGHT = 240; // floor so a very short viewport never yields ~0
+const NON_OWNER_MAX_HEIGHT = "min(70vh, 560px)";
+interface PanelPos { top: number; left: number; width: number; maxHeight: number | string; }
 
 export default function NotificationsBell() {
   const [open, setOpen]               = useState(false);
@@ -190,6 +196,11 @@ export default function NotificationsBell() {
   // keeps the original single-fetch-of-50 behaviour untouched.
   const [hasMore, setHasMore]         = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  // How many of the already-loaded `items` are currently rendered — Owner
+  // only. Deliberately separate from `items` (what's been fetched) so
+  // "כווץ" (collapse) can shrink the visible list back to PAGE_SIZE without
+  // dropping any loaded data, fetching, or touching read state.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const router = useRouter();
@@ -243,6 +254,7 @@ export default function NotificationsBell() {
       setItems(data.notifications);
       setUnreadCount(data.unreadCount);
       setHasMore(role === "owner" ? data.hasMore : false);
+      setVisibleCount(PAGE_SIZE); // every refresh re-fetches from scratch — start collapsed again
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -258,9 +270,12 @@ export default function NotificationsBell() {
     if (next) { setActionError(null); refresh(); } // controlled refresh on open only
   };
 
-  // ── "הצג עוד" — Owner only. Fetches the next 10 older than the oldest item
-  // currently loaded (cursor = its createdAt), appends with an id-based dedup
-  // safety net, and never touches read state. ──
+  // ── "הצג עוד" fetch step — Owner only. Fetches the next 10 older than the
+  // oldest item currently loaded (cursor = its createdAt), appends with an
+  // id-based dedup safety net, and never touches read state. Unchanged
+  // pagination contract (limit/before/hasMore/dedup) — the only addition is
+  // advancing visibleCount by however many new rows actually landed, so they
+  // become visible immediately instead of sitting loaded-but-hidden. ──
   const loadMore = useCallback(async () => {
     if (role !== "owner" || loadingMore || !hasMore || items.length === 0) return;
     setLoadingMore(true);
@@ -271,10 +286,10 @@ export default function NotificationsBell() {
       if (!res.ok) throw new Error();
       const data = await res.json();
       const fresh: ApiNotification[] = Array.isArray(data.notifications) ? data.notifications : [];
-      setItems((prev) => {
-        const seen = new Set(prev.map((p) => p.id));
-        return [...prev, ...fresh.filter((f) => !seen.has(f.id))];
-      });
+      const seen = new Set(items.map((p) => p.id));
+      const uniqueFresh = fresh.filter((f) => !seen.has(f.id));
+      setItems((prev) => [...prev, ...uniqueFresh]);
+      setVisibleCount((c) => c + uniqueFresh.length);
       setHasMore(typeof data.hasMore === "boolean" ? data.hasMore : false);
     } catch {
       setActionError(victorT(lang, "bell.loadMoreError"));
@@ -282,6 +297,29 @@ export default function NotificationsBell() {
       setLoadingMore(false);
     }
   }, [role, loadingMore, hasMore, items, lang]);
+
+  // ── "הצג עוד" button handler — Owner only. If the next page is already
+  // sitting in `items` from a previous load, just reveal it (no request); only
+  // reaches for the network once visibleCount has caught up to what's loaded
+  // AND the server says there's more. Never called for non-owner (button is
+  // not rendered for them). ──
+  const handleShowMore = useCallback(() => {
+    if (role !== "owner") return;
+    if (visibleCount < items.length) {
+      setVisibleCount((c) => Math.min(items.length, c + PAGE_SIZE));
+      return;
+    }
+    void loadMore();
+  }, [role, visibleCount, items.length, loadMore]);
+
+  // ── "כווץ" — Owner only, UI-only collapse back to the first page. Loaded
+  // items stay in state (untouched); no fetch, no read-state change. Does NOT
+  // call place(), so the panel's top/anchor never moves — only its rendered
+  // height shrinks back down with the content. ──
+  const handleCollapse = useCallback(() => {
+    if (role !== "owner") return;
+    setVisibleCount(PAGE_SIZE);
+  }, [role]);
 
   // ── Shared "mark one as read" — used by both the row click (which also
   // navigates) and the standalone ✓ button (which never navigates). Same
@@ -348,10 +386,20 @@ export default function NotificationsBell() {
     }
   };
 
-  const shown = tab === "unread" ? items.filter((n) => !n.readAt) : items;
+  // Owner: only reveal up to visibleCount of what's loaded (rest stays in
+  // state, ready for "הצג עוד"/"כווץ"). Every other role renders every loaded
+  // item, exactly as before — visibleCount never applies to them.
+  const paged = role === "owner" ? items.slice(0, visibleCount) : items;
+  const shown = tab === "unread" ? paged.filter((n) => !n.readAt) : paged;
   const badge = unreadCount > 99 ? "99+" : String(unreadCount);
 
-  // Position the panel under the bell, clamped to the viewport.
+  // Position the panel under the bell, clamped to the viewport. Owner also
+  // gets a dynamic maxHeight here (available space below the anchor down to
+  // the viewport bottom, minus a safe margin) so the panel can grow downward
+  // with loaded content instead of always scrolling at a fixed cap. This runs
+  // in exactly the same places as before (open/resize/scroll) — never on
+  // loadMore/collapse — so top/left never move because of item count.
+  // Non-owner keeps the original fixed constant, unchanged.
   const place = useCallback(() => {
     const r = btnRef.current?.getBoundingClientRect();
     if (!r) return;
@@ -359,8 +407,12 @@ export default function NotificationsBell() {
     const width = isMobile ? Math.min(PANEL_W, window.innerWidth - 24) : PANEL_W;
     let left = r.left + r.width / 2 - width / 2;
     left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
-    setPos({ top: r.bottom + 8, left, width });
-  }, []);
+    const top = r.bottom + 8;
+    const maxHeight = role === "owner"
+      ? Math.max(PANEL_MIN_MAX_HEIGHT, window.innerHeight - top - PANEL_SAFE_BOTTOM_MARGIN)
+      : NON_OWNER_MAX_HEIGHT;
+    setPos({ top, left, width, maxHeight });
+  }, [role]);
 
   useEffect(() => {
     if (!open) return;
@@ -444,7 +496,7 @@ export default function NotificationsBell() {
             style={{
               position: "fixed",
               top: pos.top, left: pos.left, width: pos.width,
-              maxHeight: "min(70vh, 560px)",
+              maxHeight: pos.maxHeight,
               zIndex: 9998,
               display: "flex", flexDirection: "column",
               background: "#181818",
@@ -532,37 +584,64 @@ export default function NotificationsBell() {
               </div>
             )}
 
-            {/* Footer — Owner: "הצג עוד" while more pages remain, gone once
-                exhausted. Everyone else: the original static, inert footer,
-                byte-for-byte unchanged. */}
+            {/* Footer — Owner: "הצג עוד" while more (loaded-but-hidden, or
+                still on the server) exists, "כווץ" once expanded past the
+                first page — both can show together. Everyone else: the
+                original static, inert footer, byte-for-byte unchanged. */}
             {role === "owner" ? (
-              hasMore && (
-                <div
-                  className="rb-bell-footer"
-                  style={{
-                    flexShrink: 0,
-                    width: "100%",
-                    padding: "12px 16px",
-                    borderTop: "1px solid rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={loadMore}
-                    disabled={loadingMore}
+              (() => {
+                const canShowMore = visibleCount < items.length || hasMore;
+                const isExpanded = visibleCount > PAGE_SIZE;
+                if (!canShowMore && !isExpanded) return null;
+                return (
+                  <div
+                    className="rb-bell-footer"
                     style={{
-                      width: "100%", background: "none", border: "none", padding: 0,
-                      color: loadingMore ? "#555" : "#9A9A9A", fontSize: 12.5, fontWeight: 600,
-                      fontFamily: "inherit", cursor: loadingMore ? "default" : "pointer", textAlign: "center",
-                      transition: "color 0.15s",
+                      flexShrink: 0,
+                      width: "100%",
+                      padding: "12px 16px",
+                      borderTop: "1px solid rgba(255,255,255,0.06)",
+                      display: "flex",
+                      gap: 18,
+                      justifyContent: "center",
                     }}
-                    onMouseEnter={(e) => { if (!loadingMore) e.currentTarget.style.color = "#C0C0C0"; }}
-                    onMouseLeave={(e) => { if (!loadingMore) e.currentTarget.style.color = "#9A9A9A"; }}
                   >
-                    {loadingMore ? t("bell.loadingMore") : t("bell.loadMore")}
-                  </button>
-                </div>
-              )
+                    {canShowMore && (
+                      <button
+                        type="button"
+                        onClick={handleShowMore}
+                        disabled={loadingMore}
+                        style={{
+                          background: "none", border: "none", padding: 0,
+                          color: loadingMore ? "#555" : "#9A9A9A", fontSize: 12.5, fontWeight: 600,
+                          fontFamily: "inherit", cursor: loadingMore ? "default" : "pointer", textAlign: "center",
+                          transition: "color 0.15s",
+                        }}
+                        onMouseEnter={(e) => { if (!loadingMore) e.currentTarget.style.color = "#C0C0C0"; }}
+                        onMouseLeave={(e) => { if (!loadingMore) e.currentTarget.style.color = "#9A9A9A"; }}
+                      >
+                        {loadingMore ? t("bell.loadingMore") : t("bell.loadMore")}
+                      </button>
+                    )}
+                    {isExpanded && (
+                      <button
+                        type="button"
+                        onClick={handleCollapse}
+                        style={{
+                          background: "none", border: "none", padding: 0,
+                          color: "#9A9A9A", fontSize: 12.5, fontWeight: 600,
+                          fontFamily: "inherit", cursor: "pointer", textAlign: "center",
+                          transition: "color 0.15s",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "#C0C0C0"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "#9A9A9A"; }}
+                      >
+                        {t("bell.collapse")}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()
             ) : (
               <div
                 className="rb-bell-footer"
