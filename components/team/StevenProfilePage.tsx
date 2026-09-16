@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImper
 import { useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useRole } from "@/lib/use-role";
+import { usePlayerSafe } from "@/components/PlayerProvider";
 import LinkifiedText from "@/components/ui/LinkifiedText";
 import DatePickerInput from "@/components/ui/DatePickerInput";
 import type { SoundEngineerWork, MixVersion, MixComment, MixTarget, MixTargetNote } from "@/lib/types";
@@ -1667,6 +1668,7 @@ const VersionPlayer = forwardRef<VersionPlayerHandle, {
   onCommentHover?: (id: string) => void; onCommentLeave?: () => void; activeCommentId?: string | null;
 }>(
 function VersionPlayer({ url, title, roleLabel, roleColor, accentColor, compact = false, shouldPlay, comments, onDownload, t, onPlayStart, onTime, onCommentMove, onCommentHover, onCommentLeave, activeCommentId }, ref) {
+  const globalPlayer = usePlayerSafe();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const barRef   = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying]   = useState(false);
@@ -1691,8 +1693,10 @@ function VersionPlayer({ url, title, roleLabel, roleColor, accentColor, compact 
   ), []);
   const playedBars = Math.round((pct / 100) * bars.length);
 
-  // Start playback while pausing any other stacked player (single active audio).
+  // Start playback while pausing any other stacked player (single active audio),
+  // and pausing the global MiniPlayer if it's currently playing (mutual exclusion).
   function startPlay(a: HTMLAudioElement) {
+    if (globalPlayer?.playing) globalPlayer.pause();
     if (activeStevenAudio && activeStevenAudio !== a) activeStevenAudio.pause();
     activeStevenAudio = a;
     a.play().catch(() => setErr(true));
@@ -3742,12 +3746,18 @@ function WMKebab({ readOnly, onDownload, onDelete, t, rtl }: { readOnly: boolean
 // Compact audio row (Work-Materials cards): small inline play toggle + kebab.
 // Reuses the module-level single-active guard so only one thing ever plays.
 function WMAudioRow({ name, meta, url, readOnly, onDownload, onDelete, t, rtl }: { name: string; meta: string; url: string; readOnly: boolean; onDownload: () => void; onDelete: () => void; t: T; rtl: boolean }) {
+  const globalPlayer = usePlayerSafe();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   useEffect(() => { const a = audioRef.current; return () => { a?.pause(); if (activeStevenAudio === a) activeStevenAudio = null; }; }, []);
   function toggle() {
     const a = audioRef.current; if (!a) return;
-    if (a.paused) { if (activeStevenAudio && activeStevenAudio !== a) activeStevenAudio.pause(); activeStevenAudio = a; a.play().catch(() => {}); }
+    if (a.paused) {
+      if (globalPlayer?.playing) globalPlayer.pause();
+      if (activeStevenAudio && activeStevenAudio !== a) activeStevenAudio.pause();
+      activeStevenAudio = a;
+      a.play().catch(() => {});
+    }
     else a.pause();
   }
   return (
