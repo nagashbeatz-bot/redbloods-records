@@ -39,11 +39,6 @@ function addMonthsYmd(s: string, months: number): string {
   return toYmd(ny, nm0, d);
 }
 
-function addDaysYmd(s: string, days: number): string {
-  const { y, m, d } = parseYmd(s);
-  return toYmd(y, m - 1, d + days);
-}
-
 function daysBetweenYmd(from: string, to: string): number {
   const a = parseYmd(from), b = parseYmd(to);
   const ms = Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d);
@@ -178,8 +173,10 @@ export async function listClosedBalanceCycles(artistId: string): Promise<ClosedB
 export interface CurrentBalanceCycle {
   index: number;
   startDate: string;
-  endDate: string;          // exclusive
-  displayEndDate: string;   // end_date − 1 day, for a non-overlapping-looking label
+  // The actual closing date, shown as-is everywhere in the UI (card/history/push).
+  // Filtering stays exclusive (entryDate < endDate) — only the LABEL shows the raw
+  // date; a transaction dated exactly endDate still belongs to the NEXT cycle.
+  endDate: string;
   daysUntilClose: number;   // negative when the natural end date has already passed
   totals: ArtistBalanceTotals;
 }
@@ -215,7 +212,6 @@ export async function getBalanceCycleState(
     anchorDate,
     current: {
       index, startDate: start, endDate: end,
-      displayEndDate: addDaysYmd(end, -1),
       daysUntilClose: daysBetweenYmd(today, end),
       totals,
     },

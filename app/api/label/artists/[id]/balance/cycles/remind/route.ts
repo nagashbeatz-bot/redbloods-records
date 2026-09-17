@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     }
     const c = state.current;
     const closingLine = cycleClosingLine(c.daysUntilClose);
-    const dateRange = `${c.startDate.split("-").reverse().join(".")} - ${c.displayEndDate.split("-").reverse().join(".")}`;
+    const dateRange = `${c.startDate.split("-").reverse().join(".")} - ${c.endDate.split("-").reverse().join(".")}`;
     const firstName = artist.name.split(" ")[0];
 
     let ownerSent = false, artistSent = false, artistSkipped: string | undefined;

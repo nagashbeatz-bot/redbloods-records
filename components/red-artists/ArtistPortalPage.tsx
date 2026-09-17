@@ -248,14 +248,6 @@ function fmtShowDate(d: string | null): string {
   const [y, m, day] = d.split("-");
   return (y && m && day) ? `${day}.${m}.${y}` : d;
 }
-/** A cycle's end_date is stored EXCLUSIVE (the next cycle's start) so filtering never
- *  overlaps — but showing that same date as a range label looks like an overlap.
- *  This is display-only; every date comparison in the store stays exclusive. */
-function cycleDisplayEnd(endDateExclusive: string): string {
-  const [y, m, d] = endDateExclusive.split("-").map(Number);
-  if (!y || !m || !d) return endDateExclusive;
-  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
-}
 // Short display name for the home-hero greeting: the portal's first-name token,
 // except the DJ CLEANTONE portal (artistName "DJ CLEANTONE") which greets as
 // "קלינטון". Keyed to the ARTIST on screen, so owner-preview matches the artist.
@@ -353,7 +345,7 @@ export type ClosedBalanceCycle = {
   endingBalance: number; closedAt: string; createdAt: string;
 };
 export type CurrentBalanceCycle = {
-  index: number; startDate: string; endDate: string; displayEndDate: string;
+  index: number; startDate: string; endDate: string;
   daysUntilClose: number; totals: BalanceTotals;
 };
 export type BalanceCycleState = { anchorDate: string | null; current: CurrentBalanceCycle | null; closed: ClosedBalanceCycle[] };
@@ -2706,7 +2698,7 @@ function BalanceCycleCard({ cycle, readOnly, onOpenHistory, onCloseCycle, onEdit
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT2 }}>מחזור כספי נוכחי</div>
           <div style={{ fontSize: isMobile ? 14.5 : 16, fontWeight: 900, color: TEXT, direction: "ltr", textAlign: "start", marginTop: 2 }}>
-            {fmtShowDate(cycle.startDate)} - {fmtShowDate(cycle.displayEndDate)}
+            {fmtShowDate(cycle.startDate)} - {fmtShowDate(cycle.endDate)}
           </div>
           <div style={{ fontSize: 11.5, color: (readOnly ? cycle.daysUntilClose <= 0 : overdue) ? BAL_EXP_RED : MUTED, marginTop: 3, fontWeight: (readOnly ? cycle.daysUntilClose <= 0 : overdue) ? 700 : 400 }}>
             {readOnly ? artistLine : (overdue ? "המחזור הסתיים — יש לסגור" : `נסגר בעוד ${cycle.daysUntilClose} ימים`)}
@@ -2888,7 +2880,7 @@ function BalanceCycleHistoryModal({ closed, onClose }: { closed: ClosedBalanceCy
               <div key={c.id} style={{ padding: "13px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, direction: "ltr", textAlign: "start" }}>
-                    {fmtShowDate(c.startDate)} - {fmtShowDate(cycleDisplayEnd(c.endDate))}
+                    {fmtShowDate(c.startDate)} - {fmtShowDate(c.endDate)}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 900, color: balColor, direction: "ltr" }}>{fmtMoney(c.endingBalance, "₪")}</div>
                 </div>
@@ -2940,7 +2932,7 @@ function BalanceCycleCloseModal({ artistId, cycle, onClose, onClosed }: {
       <SkErr msg={err} />
       <div style={{ fontSize: 14, color: TEXT2, lineHeight: 1.7, marginBottom: 10 }}>
         לסגור את המחזור{" "}
-        <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtShowDate(cycle.startDate)} - {fmtShowDate(cycle.displayEndDate)}</b>?
+        <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtShowDate(cycle.startDate)} - {fmtShowDate(cycle.endDate)}</b>?
       </div>
       {early && (
         <div style={{ fontSize: 12.5, fontWeight: 700, color: AMBER, background: "rgba(245,158,11,0.10)", border: `1px solid ${AMBER}55`, borderRadius: 9, padding: "10px 12px", marginBottom: 14, lineHeight: 1.5 }}>
