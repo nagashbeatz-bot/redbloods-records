@@ -2148,7 +2148,11 @@ function BalancePage({
   // hidden/removed from the DB/API; their totals still feed the cards/strip).
   const expectedIncomeEntries  = entries.filter(e => e.entryType === "הכנסות צפויות" && inCycle(e));
   const expectedExpenseEntries = entries.filter(e => e.entryType === "הוצאות צפויות" && inCycle(e));
-  const historyEntries = entries.filter(e => (e.entryType === "הכנסות" || e.entryType === "תשלומים" || e.entryType === "הוצאות") && inCycle(e));
+  // "היסטוריית תנועות" is ALL-TIME, deliberately NOT scoped to the current
+  // cycle — only the 4 reporting cards + the expected-income/expense modals
+  // above are. Cycles are a reporting lens over the ledger, not a filter that
+  // should ever hide older transactions from view.
+  const historyEntries = entries.filter(e => e.entryType === "הכנסות" || e.entryType === "תשלומים" || e.entryType === "הוצאות");
   const curr = "₪";
   const cb = allTimeTotals.currentBalance;
   const balColor = cb > 0 ? GREEN : cb < 0 ? BAL_EXP_RED : "#E5E5EA";
