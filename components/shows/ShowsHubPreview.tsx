@@ -1689,10 +1689,20 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
   const [incomeReceived, setIncomeReceived] = useState(preset);
   const [djPaid,         setDjPaid]         = useState(preset);
   const [artistPaid,     setArtistPaid]     = useState(preset);
+  // Real payment date to the artist — separate from the show's own date, since
+  // the artist's balance-ledger "תשלומים" entry must reflect when the money
+  // actually moved, not when the show happened.
+  const [artistPaidDate, setArtistPaidDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [djName,         setDjName]         = useState(show.dj_name ?? "");
   const [note,           setNote]           = useState("");
   const [saving,         setSaving]         = useState(false);
   const [err,            setErr]            = useState<string | null>(null);
+  // Set when unchecking "שולם לאמן" would otherwise silently leave a stale
+  // payment record on the artist's balance ledger — the save still succeeds,
+  // but the modal stays open with this warning until the owner acknowledges it
+  // (never auto-deletes the payment; a reversal must be explicit, in the ledger).
+  const [paymentReversalWarning, setPaymentReversalWarning] = useState<{ amount: number; entryDate: string } | null>(null);
+  const [savedShow, setSavedShow] = useState<Show | null>(null);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -1720,6 +1730,9 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
       if (djRelevant && djName.trim() && djName.trim() !== (show.dj_name ?? "")) body.dj_name = djName.trim();
       // Per-party closure → the server updates the 3 linked transactions individually.
       body.closeShow = { incomeReceived, djPaid: djRelevant && djPaid, artistPaid: artRelevant && artistPaid };
+      // Real payment date for the artist's balance-ledger "תשלומים" entry — only
+      // meaningful (and sent) when the artist is actually marked paid here.
+      if (artRelevant && artistPaid) body.artistPaidDate = artistPaidDate;
 
       const stamp = new Date().toLocaleDateString("he-IL");
       const parts = [
@@ -1736,6 +1749,13 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בשמירה");
+      if (data.paymentReversalNeeded) {
+        // Save succeeded, but don't close silently — surface the stale payment.
+        setSavedShow(data.show as Show);
+        setPaymentReversalWarning(data.paymentReversalNeeded);
+        setSaving(false);
+        return;
+      }
       onDone(data.show as Show);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "שגיאה");
@@ -1781,6 +1801,20 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
           {show.artist ? ` — ${show.artist}` : ""} · מחיר הופעה <strong style={{ color: GREEN }}>{fmtIls(show.show_price || 0)}</strong>
         </div>
 
+        {paymentReversalWarning ? (
+          <>
+            <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.7, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "12px 14px", marginBottom: 6 }}>
+              ⚠️ ההופעה נשמרה, אבל תשלום של <strong>{fmtIls(paymentReversalWarning.amount)}</strong> לאמן כבר נרשם עבורה
+              (בתאריך {paymentReversalWarning.entryDate.split("-").reverse().join(".")}) ולא נמחק אוטומטית.
+              <br />אם התשלום לא באמת בוצע — יש לבטל/לתקן אותו ידנית במאזן האמן.
+            </div>
+            <button type="button" onClick={() => onDone(savedShow ?? show)} style={{
+              width: "100%", padding: "11px", borderRadius: 10, border: "none",
+              background: BRAND, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+            }}>הבנתי, סגור</button>
+          </>
+        ) : (
+        <>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {toggle("הכסף מההופעה התקבל", fmtIls(show.show_price || 0), incomeReceived, () => setIncomeReceived(v => !v), GREEN)}
           {djRelevant &&
@@ -1795,6 +1829,15 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
             <input value={djName} onChange={e => setDjName(e.target.value)} placeholder="שם הדיג׳יי..."
               style={{ width: "100%", boxSizing: "border-box", background: CARD, border: `1px solid ${BDR}`, borderRadius: 9, color: TEXT, fontSize: 13, padding: "9px 11px", outline: "none", fontFamily: "inherit" }} />
             <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>ניתן לרשום ידנית דיג׳יי שלא ברשימה (לא נוצר לקוח חדש).</div>
+          </div>
+        )}
+
+        {artRelevant && artistPaid && (
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: MUTED, display: "block", marginBottom: 6 }}>תאריך התשלום לאמן</label>
+            <input type="date" value={artistPaidDate} onChange={e => setArtistPaidDate(e.target.value)}
+              style={{ width: "100%", boxSizing: "border-box", background: CARD, border: `1px solid ${BDR}`, borderRadius: 9, color: TEXT, fontSize: 13, padding: "9px 11px", outline: "none", fontFamily: "inherit", colorScheme: "dark" }} />
+            <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>נרשם במאזן האמן כ"תשלומים" בתאריך זה — ההכנסה עצמה נרשמת בתאריך ההופעה.</div>
           </div>
         )}
 
@@ -1818,6 +1861,8 @@ function CloseShowModal({ show, trigger, onClose, onDone }: {
             fontSize: 13, fontWeight: 700, fontFamily: "inherit",
           }}>{saving ? "שומר..." : "שמור וסגור הופעה"}</button>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

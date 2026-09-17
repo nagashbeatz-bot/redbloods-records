@@ -63,6 +63,22 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     // ── Save to DB ──────────────────────────────────────────────────────────
     const show = await patchShow(id, patch);
+    // Set when unchecking "שולם לאמן" would otherwise silently leave a stale
+    // payment record — surfaced to the client instead of ever auto-deleting it.
+    let paymentReversalNeeded: { amount: number; entryDate: string } | undefined;
+    // Set when a balance-ledger write that SHOULD have happened (artist
+    // resolved, fee > 0) actually failed. The whole request must then NOT be
+    // reported as successful — see the final response below — even though the
+    // show row itself was already saved as "בוצע" a few lines up. There's no
+    // multi-table transaction here (no raw Postgres access, no RPC — matching
+    // this codebase's existing show↔Finance sync architecture, which is
+    // deliberately non-transactional and idempotent-retry-based instead, per
+    // shows-finance-sync.ts's own doc comment); the safety net is that every
+    // write in artist-balance-show-close-sync.ts is idempotent lookup-before-
+    // write, so re-sending the exact same close request after this error
+    // always converges to the correct single-row state — it can never create
+    // a duplicate, only finish what didn't complete.
+    let balanceSyncError: string | undefined;
 
     // ── Sync canonical Finance transactions when a finance-relevant field changed ──
     if (["payment_status", "show_price", "dj_fee", "dj_name", "artist_fee", "status", "date", "closeShow"].some((k) => k in body)) {
@@ -83,6 +99,60 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
               djPaid:         !!body.closeShow.djPaid,
               artistPaid:     !!body.closeShow.artistPaid,
             });
+
+            // ── Artist balance ledger: realize income the moment the show is
+            // actually performed and its split confirmed — independent of whether
+            // the label has paid the artist yet (accrual, not cash). Generic: any
+            // show whose artist name resolves to a real label_artists row, not
+            // just Shalev. See lib/artist-balance-show-close-sync.ts for the full
+            // reasoning (idempotency, and how this coexists with the OTHER,
+            // booking-time "הכנסות צפויות" sync in shows-finance-sync.ts).
+            if (fresh.status === "בוצע") {
+              try {
+                const { computeShowSplit } = await import("@/lib/shows-types");
+                const { isValidYmd } = await import("@/lib/artist-balance-store");
+                const {
+                  resolveShowArtistId, logArtistResolutionSkip,
+                  syncArtistIncomeFromClosedShow, createShowArtistPayment, findShowPaymentEntry,
+                } = await import("@/lib/artist-balance-show-close-sync");
+
+                const resolution = await resolveShowArtistId(fresh.artist);
+                if (resolution.status === "skipped") {
+                  logArtistResolutionSkip(fresh, resolution.reason);
+                } else {
+                  const artistId = resolution.artistId;
+                  const rehearsalCounted = await fin.getRehearsalCountedForShow(fresh.id);
+                  const artistFee = computeShowSplit(fresh, rehearsalCounted).artistFee;
+                  if (artistFee > 0) {
+                    // Income: realized the moment the show closes — one row per
+                    // show, ever (never a duplicate expected+realized pair).
+                    await syncArtistIncomeFromClosedShow({ artistId, show: fresh, amount: artistFee });
+
+                    if (body.closeShow.artistPaid) {
+                      // Payment: a separate, unconstrained event — only ever
+                      // CREATED here, never edited/deleted by this flow again.
+                      const paymentDate =
+                        typeof body.artistPaidDate === "string" && isValidYmd(body.artistPaidDate)
+                          ? body.artistPaidDate
+                          : new Date().toISOString().slice(0, 10);
+                      await createShowArtistPayment({ artistId, show: fresh, amount: artistFee, paymentDate });
+                    } else {
+                      // Unchecked (or never checked) — if a payment was already
+                      // recorded for this show, do NOT touch it silently. Tell
+                      // the client so the owner can make an explicit correction
+                      // in the artist's balance ledger instead.
+                      const existingPayment = await findShowPaymentEntry(fresh.id);
+                      if (existingPayment) {
+                        paymentReversalNeeded = { amount: existingPayment.amount, entryDate: existingPayment.entryDate };
+                      }
+                    }
+                  }
+                }
+              } catch (balErr) {
+                console.error("[shows PATCH] artist balance close-sync FAILED:", balErr);
+                balanceSyncError = balErr instanceof Error ? balErr.message : "עדכון המאזן של האמן נכשל";
+              }
+            }
           }
         }
       }
@@ -212,7 +282,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }
     }
 
-    return NextResponse.json(calendarWarning ? { show, calendarWarning } : { show });
+    // A balance-sync failure means the request did NOT fully succeed, even
+    // though the show row itself was saved — non-2xx so the client's own
+    // `if (!res.ok) throw ...` treats this as a failure, never a silent
+    // success. Retrying the same close action is always safe (see above).
+    if (balanceSyncError) {
+      return NextResponse.json({
+        error: `ההופעה נשמרה, אך עדכון המאזן של האמן נכשל (${balanceSyncError}). ניתן לנסות לסגור את ההופעה שוב — הפעולה בטוחה לחזרה ולא תיצור כפילויות.`,
+        show,
+      }, { status: 502 });
+    }
+
+    return NextResponse.json({ show, ...(calendarWarning ? { calendarWarning } : {}), ...(paymentReversalNeeded ? { paymentReversalNeeded } : {}) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "שגיאת שרת";
     return NextResponse.json({ error: msg }, { status: 500 });
