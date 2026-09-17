@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOutAndRedirect } from "@/lib/supabase-browser";
@@ -356,8 +357,11 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
         </button>
       </div>
 
-      {/* Maintenance confirm dialog (owner only) */}
-      {role === "owner" && maintConfirm && (
+      {/* Maintenance confirm dialog (owner only) — portaled to document.body so
+          it gets its own stacking context anchored at <body>, independent of
+          <aside>'s position:sticky stacking context (which otherwise scoped
+          its z-index against sidebar-local siblings only, not the whole app). */}
+      {role === "owner" && maintConfirm && typeof document !== "undefined" && createPortal(
         <div
           onClick={() => !maintBusy && setMaintConfirm(null)}
           style={{ position: "fixed", inset: 0, zIndex: 100050, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
@@ -384,7 +388,8 @@ export default function Sidebar({ role, onOpenChat: _onOpenChat }: { role: Clien
               >{maintBusy ? "…" : maintConfirm === "enable" ? "הפעל תחזוקה" : "שחרר מערכת"}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </aside>
   );
