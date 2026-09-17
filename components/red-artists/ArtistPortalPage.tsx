@@ -2130,6 +2130,8 @@ function BalancePage({
   const [markReceivedTarget, setMarkReceivedTarget] = useState<BalanceEntry | null>(null);
   const [cycleHistoryOpen, setCycleHistoryOpen] = useState(false);
   const [closeCycleOpen, setCloseCycleOpen] = useState(false);
+  const [editAnchorOpen, setEditAnchorOpen] = useState(false);
+  const [remindOpen, setRemindOpen] = useState(false);
 
   if (loadState === "loading") {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
@@ -2190,7 +2192,14 @@ function BalancePage({
           configured: owner-only setup prompt; configured: date range + actions. */}
       {cycleLoadState === "ready" && (
         cycle ? (
-          <BalanceCycleCard cycle={cycle} onOpenHistory={() => setCycleHistoryOpen(true)} onCloseCycle={!readOnly ? () => setCloseCycleOpen(true) : undefined} />
+          <BalanceCycleCard
+            cycle={cycle} readOnly={readOnly}
+            onOpenHistory={!readOnly ? () => setCycleHistoryOpen(true) : undefined}
+            onCloseCycle={!readOnly ? () => setCloseCycleOpen(true) : undefined}
+            onEditAnchor={!readOnly ? () => setEditAnchorOpen(true) : undefined}
+            onSendReminder={!readOnly ? () => setRemindOpen(true) : undefined}
+            editLocked={(cycleState?.closed.length ?? 0) > 0}
+          />
         ) : (!readOnly && artistId ? (
           <BalanceCycleSetup artistId={artistId} onDone={onReloadCycles} />
         ) : null)
@@ -2378,6 +2387,17 @@ function BalancePage({
           onClose={() => setCloseCycleOpen(false)}
           onClosed={async () => { await onReloadCycles(); await onReload(); setCloseCycleOpen(false); }}
         />
+      )}
+      {editAnchorOpen && artistId && cycle && (
+        <BalanceCycleEditAnchorModal
+          artistId={artistId}
+          cycle={cycle}
+          onClose={() => setEditAnchorOpen(false)}
+          onSaved={async () => { await onReloadCycles(); setEditAnchorOpen(false); }}
+        />
+      )}
+      {remindOpen && artistId && (
+        <BalanceCycleRemindModal artistId={artistId} onClose={() => setRemindOpen(false)} />
       )}
     </div>
   );
@@ -2662,12 +2682,23 @@ function BalanceDeleteModal({ artistId, entry, onClose, onDeleted }: {
 // Shalev's read-only portal gets the same `cycle`/`cycleState` via its own scoped
 // endpoint and simply never renders the setup/close controls (readOnly).
 
-function BalanceCycleCard({ cycle, onOpenHistory, onCloseCycle }: {
-  cycle: CurrentBalanceCycle; onOpenHistory: () => void; onCloseCycle?: () => void;
+// `readOnly` (Shalev/artist) renders info ONLY — no buttons of any kind, per the
+// hard requirement that the artist can never even see a management action exists.
+// Every action callback is optional and supplied ONLY by the owner call site;
+// readOnly doesn't just hide them, BalancePage never passes them in that case.
+function BalanceCycleCard({ cycle, readOnly, onOpenHistory, onCloseCycle, onEditAnchor, onSendReminder, editLocked }: {
+  cycle: CurrentBalanceCycle; readOnly: boolean;
+  onOpenHistory?: () => void; onCloseCycle?: () => void; onEditAnchor?: () => void; onSendReminder?: () => void;
+  editLocked?: boolean; // at least one closed cycle exists — anchor edits are refused server-side too
 }) {
   const isMobile = useIsMobile();
   const overdue = cycle.daysUntilClose <= 0;
   const early = cycle.daysUntilClose > 0;
+  // Owner framing is action-oriented ("נסגר בעוד/יש לסגור"); the artist's is purely
+  // informational, in the artist's own wording from the spec.
+  const artistLine = cycle.daysUntilClose > 0 ? `נותרו ${cycle.daysUntilClose} ימים לסגירת המחזור`
+    : cycle.daysUntilClose === 0 ? "המחזור נסגר היום"
+    : "המחזור הסתיים";
   return (
     <div style={{ ...panel, padding: isMobile ? "14px 16px" : "16px 22px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -2677,44 +2708,62 @@ function BalanceCycleCard({ cycle, onOpenHistory, onCloseCycle }: {
           <div style={{ fontSize: isMobile ? 14.5 : 16, fontWeight: 900, color: TEXT, direction: "ltr", textAlign: "start", marginTop: 2 }}>
             {fmtShowDate(cycle.startDate)} - {fmtShowDate(cycle.displayEndDate)}
           </div>
-          <div style={{ fontSize: 11.5, color: overdue ? BAL_EXP_RED : MUTED, marginTop: 3, fontWeight: overdue ? 700 : 400 }}>
-            {overdue ? "המחזור הסתיים — יש לסגור" : `נסגר בעוד ${cycle.daysUntilClose} ימים`}
+          <div style={{ fontSize: 11.5, color: (readOnly ? cycle.daysUntilClose <= 0 : overdue) ? BAL_EXP_RED : MUTED, marginTop: 3, fontWeight: (readOnly ? cycle.daysUntilClose <= 0 : overdue) ? 700 : 400 }}>
+            {readOnly ? artistLine : (overdue ? "המחזור הסתיים — יש לסגור" : `נסגר בעוד ${cycle.daysUntilClose} ימים`)}
           </div>
         </div>
       </div>
-      <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
-        <button onClick={onOpenHistory} style={{
-          padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "pointer",
-          background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
-          fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
-        }}>היסטוריית מחזורים</button>
-        {onCloseCycle && (
-          early ? (
-            // Not yet at the natural end date — disabled by default (prevents an
-            // accidental early close). A deliberate, clearly-labeled override still
-            // opens the same confirm modal, which then requires its own explicit
-            // "I understand this is early" acknowledgment before it can submit.
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-              <button disabled title={`ניתן לסגור מחזור זה החל מ-${fmtShowDate(cycle.endDate)}`} style={{
-                padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "not-allowed",
-                background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
-                fontSize: isMobile ? 12 : 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap", opacity: 0.4,
-              }}>סגור מחזור</button>
-              <button onClick={onCloseCycle} style={{
-                background: "none", border: "none", color: MUTED, fontSize: 11, fontFamily: "inherit",
-                textDecoration: "underline", cursor: "pointer", padding: 0,
-              }}>סגירה מוקדמת (חריג)</button>
-            </div>
-          ) : (
-            <button onClick={onCloseCycle} style={{
+      {!readOnly && (
+        <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap", alignItems: "flex-start" }}>
+          {onEditAnchor && (
+            <button onClick={onEditAnchor} disabled={editLocked} title={editLocked ? "לא ניתן לשנות תאריך התחלה לאחר סגירת מחזור" : undefined} style={{
+              padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: editLocked ? "not-allowed" : "pointer",
+              background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2, opacity: editLocked ? 0.4 : 1,
+              fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+            }}>ערוך מחזור</button>
+          )}
+          {onSendReminder && (
+            <button onClick={onSendReminder} style={{
               padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "pointer",
-              background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
-              fontSize: isMobile ? 12 : 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap",
-              boxShadow: "0 4px 14px rgba(220,38,38,0.25)",
-            }}>סגור מחזור</button>
-          )
-        )}
-      </div>
+              background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
+              fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+            }}>שלח תזכורת</button>
+          )}
+          {onOpenHistory && (
+            <button onClick={onOpenHistory} style={{
+              padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "pointer",
+              background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
+              fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+            }}>היסטוריית מחזורים</button>
+          )}
+          {onCloseCycle && (
+            early ? (
+              // Not yet at the natural end date — disabled by default (prevents an
+              // accidental early close). A deliberate, clearly-labeled override still
+              // opens the same confirm modal, which then requires its own explicit
+              // "I understand this is early" acknowledgment before it can submit.
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                <button disabled title={`ניתן לסגור מחזור זה החל מ-${fmtShowDate(cycle.endDate)}`} style={{
+                  padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "not-allowed",
+                  background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
+                  fontSize: isMobile ? 12 : 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap", opacity: 0.4,
+                }}>סגור מחזור</button>
+                <button onClick={onCloseCycle} style={{
+                  background: "none", border: "none", color: MUTED, fontSize: 11, fontFamily: "inherit",
+                  textDecoration: "underline", cursor: "pointer", padding: 0,
+                }}>סגירה מוקדמת (חריג)</button>
+              </div>
+            ) : (
+              <button onClick={onCloseCycle} style={{
+                padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "pointer",
+                background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
+                fontSize: isMobile ? 12 : 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap",
+                boxShadow: "0 4px 14px rgba(220,38,38,0.25)",
+              }}>סגור מחזור</button>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2758,7 +2807,7 @@ function BalanceCycleSetup({ artistId, onDone }: { artistId: string; onDone: () 
     <div style={{ ...panel, padding: isMobile ? "16px" : "18px 22px" }}>
       <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginBottom: 10 }}>הפעלת מחזורים כספיים</div>
       <div style={{ fontSize: 12, color: MUTED, marginBottom: 12, lineHeight: 1.6 }}>
-        בחר תאריך התחלה למחזור הראשון. המחזורים הבאים ימשיכו אוטומטית כל חודשיים מתאריך זה. לא ניתן לשנות תאריך זה לאחר ההפעלה.
+        בחר תאריך התחלה למחזור הראשון. המחזורים הבאים ימשיכו אוטומטית כל חודשיים מתאריך זה. ניתן לתקן תאריך זה מאוחר יותר ("ערוך מחזור") כל עוד לא נסגר אף מחזור.
       </div>
       <SkErr msg={err} />
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -2775,6 +2824,52 @@ function BalanceCycleSetup({ artistId, onDone }: { artistId: string; onDone: () 
         }}>ביטול</button>
       </div>
     </div>
+  );
+}
+
+// Owner-only correction of an already-set anchor — refused server-side (see
+// updateBalanceCycleAnchor) once the artist has any closed cycle, so a stale
+// `editLocked` check here is only a UX shortcut, never the real gate.
+function BalanceCycleEditAnchorModal({ artistId, cycle, onClose, onSaved }: {
+  artistId: string; cycle: CurrentBalanceCycle; onClose: () => void; onSaved: () => Promise<void>;
+}) {
+  const [date, setDate] = useState(cycle.startDate);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+
+  const save = async () => {
+    if (!validDate || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/label/artists/${artistId}/balance/cycles`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ anchorDate: date }),
+      });
+      if (!res.ok) { setErr(await readErr(res, "השינוי נכשל")); setBusy(false); return; }
+      await onSaved();
+    } catch { setErr("שגיאת רשת, נסה שוב"); setBusy(false); }
+  };
+
+  return (
+    <BalanceModalShell title="עריכת מחזור" onClose={onClose} busy={busy}>
+      <SkErr msg={err} />
+      <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14, lineHeight: 1.6 }}>
+        שינוי תאריך ההתחלה מחשב מחדש את כל רשת המחזורים מתאריך זה ואילך. שום תנועה לא נמחקת ולא משתנה, ולא נוצר snapshot כתוצאה מהשינוי.
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        <label style={skLabel}>תאריך תחילת המחזור הנוכחי</label>
+        <DatePickerInput value={date} onChange={setDate} disabled={busy} style={{ ...skField }} />
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={save} disabled={busy || !validDate} style={{ ...skPrimaryBtn(!busy && validDate), flex: "1 1 150px", width: "auto" }}>
+          {busy ? "שומר…" : "שמור שינוי"}
+        </button>
+        <button onClick={onClose} disabled={busy} style={{
+          flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+        }}>ביטול</button>
+      </div>
+    </BalanceModalShell>
   );
 }
 
@@ -2871,6 +2966,73 @@ function BalanceCycleCloseModal({ artistId, cycle, onClose, onClosed }: {
           flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
           color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
         }}>ביטול</button>
+      </div>
+    </BalanceModalShell>
+  );
+}
+
+// Manual, immediate, one-off reminder push — no cron, no scheduling. Reuses the
+// project's existing push infrastructure server-side (lib/push.ts's
+// sendPushToRoles); this modal only picks recipients and fires the request.
+function BalanceCycleRemindModal({ artistId, onClose }: { artistId: string; onClose: () => void }) {
+  const [toOwner, setToOwner] = useState(true);
+  const [toArtist, setToArtist] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [result, setResult] = useState<{ ownerSent: boolean; artistSent: boolean; artistSkipped?: string } | null>(null);
+  const canSend = (toOwner || toArtist) && !busy;
+
+  const send = async () => {
+    if (!canSend) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/label/artists/${artistId}/balance/cycles/remind`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toOwner, toArtist }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(typeof d?.error === "string" ? d.error : "השליחה נכשלה"); setBusy(false); return; }
+      setResult({ ownerSent: !!d.ownerSent, artistSent: !!d.artistSent, artistSkipped: d.artistSkipped });
+      setBusy(false);
+    } catch { setErr("שגיאת רשת, נסה שוב"); setBusy(false); }
+  };
+
+  return (
+    <BalanceModalShell title="שליחת תזכורת" onClose={onClose} busy={busy}>
+      <SkErr msg={err} />
+      {result ? (
+        <div style={{ fontSize: 13.5, color: TEXT2, lineHeight: 1.8, marginBottom: 18 }}>
+          {toOwner && <div>{result.ownerSent ? "✅ נשלח אליי" : "⚠️ לא נמצא מכשיר רשום עבורי"}</div>}
+          {toArtist && (
+            <div>{result.artistSkipped ? `⚠️ ${result.artistSkipped}` : result.artistSent ? "✅ נשלח לאמן" : "⚠️ לא נמצא מכשיר רשום עבור האמן"}</div>
+          )}
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14, lineHeight: 1.6 }}>
+            נשלח מיידית — תזכורת על טווח המחזור הנוכחי וכמה זמן נשאר עד לסגירתו.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={toOwner} onChange={e => setToOwner(e.target.checked)} disabled={busy} />
+              <span style={{ fontSize: 13.5, color: TEXT }}>שלח אליי</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={toArtist} onChange={e => setToArtist(e.target.checked)} disabled={busy} />
+              <span style={{ fontSize: 13.5, color: TEXT }}>שלח גם לאמן</span>
+            </label>
+          </div>
+        </>
+      )}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {!result && (
+          <button onClick={send} disabled={!canSend} style={{ ...skPrimaryBtn(canSend), flex: "1 1 150px", width: "auto" }}>
+            {busy ? "שולח…" : "שלח תזכורת"}
+          </button>
+        )}
+        <button onClick={onClose} disabled={busy} style={{
+          flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+        }}>{result ? "סגור" : "ביטול"}</button>
       </div>
     </BalanceModalShell>
   );

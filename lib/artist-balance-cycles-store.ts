@@ -74,9 +74,10 @@ export async function getBalanceCycleAnchor(artistId: string): Promise<string | 
   return v?.anchorDate ?? null;
 }
 
-/** Sets the artist's cycle anchor ONCE. Immutable after that (by design — changing
- *  it later would silently shift every future cycle boundary). Throws a Hebrew,
- *  user-facing message when an anchor already exists or the date is malformed. */
+/** First-time activation for an artist that has no anchor yet. Throws a Hebrew,
+ *  user-facing message when an anchor already exists (use updateBalanceCycleAnchor
+ *  to correct it instead — a plain INSERT never overwrites) or the date is
+ *  malformed. */
 export async function setBalanceCycleAnchor(artistId: string, anchorDate: string): Promise<void> {
   if (!isValidYmd(anchorDate)) throw new Error("תאריך לא תקין (YYYY-MM-DD)");
   const { error } = await supabase.from("settings").insert({ key: anchorKey(artistId), value: { anchorDate } });
@@ -84,6 +85,33 @@ export async function setBalanceCycleAnchor(artistId: string, anchorDate: string
     if (error.code === "23505") throw new Error("תאריך העוגן כבר הוגדר עבור אמן זה");
     throw new Error(error.message);
   }
+}
+
+/** Corrects an already-activated anchor (e.g. a typo'd first activation) — ONLY
+ *  while the artist has zero closed cycles. Once a cycle has been closed, its
+ *  frozen snapshot's start/end dates are permanent history; retroactively moving
+ *  the anchor would silently make that snapshot's dates lie, so this refuses
+ *  outright rather than leaving a corrupted-looking history. Recomputes nothing
+ *  in the DB — the next getBalanceCycleState() call re-derives everything live
+ *  from the new anchor; no snapshot is created, no entry is touched. */
+export async function updateBalanceCycleAnchor(artistId: string, anchorDate: string): Promise<void> {
+  if (!isValidYmd(anchorDate)) throw new Error("תאריך לא תקין (YYYY-MM-DD)");
+  const closed = await listClosedBalanceCycles(artistId);
+  if (closed.length > 0) {
+    throw new Error("לא ניתן לשנות את תאריך העוגן — כבר נסגר מחזור אחד לפחות עבור אמן זה");
+  }
+  const { data, error } = await supabase
+    .from("settings").update({ value: { anchorDate } }).eq("key", anchorKey(artistId)).select("key");
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error("לא הוגדר עדיין מחזור כספי עבור אמן זה — יש להפעיל תחילה");
+}
+
+/** Human-facing "closing" line — never a negative day count. Shared by the
+ *  manual reminder push and (if ever needed) any other cycle-status copy. */
+export function cycleClosingLine(daysUntilClose: number): string {
+  if (daysUntilClose > 0) return `נסגר בעוד ${daysUntilClose} ימים`;
+  if (daysUntilClose === 0) return "נסגר היום";
+  return "כבר היה אמור להיסגר וממתין לסגירה";
 }
 
 // ── closed cycles (public.artist_balance_cycles — frozen snapshots) ─────────────
