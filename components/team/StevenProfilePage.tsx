@@ -3461,7 +3461,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                             {pendingAttachments.map(p => (
                               p.kind === "image" ? (
                                 <div key={p.id} style={{ position: "relative" }}>
-                                  <img src={p.previewUrl} alt={p.file.name} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, display: "block" }} />
+                                  <img src={p.previewUrl} alt={p.file.name} style={{ width: "auto", height: "auto", maxWidth: 180, maxHeight: 80, objectFit: "contain", borderRadius: 8, border: `1px solid ${BDR2}`, display: "block" }} />
                                   <button onClick={() => removePendingAttachment(p.id)} title={t.cDelete} type="button"
                                     style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0 }}>✕</button>
                                 </div>
@@ -3589,7 +3589,7 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
                                       <div key={a.id} style={{ position: "relative" }}>
                                         <img src={a.url} alt={a.fileName} loading="lazy"
                                           onClick={() => setLightbox({ attachments: imageAtts, index: ai })}
-                                          style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${BDR2}`, cursor: "pointer", display: "block" }} />
+                                          style={{ width: "auto", height: "auto", maxWidth: 220, maxHeight: 100, objectFit: "contain", borderRadius: 8, border: `1px solid ${BDR2}`, cursor: "pointer", display: "block" }} />
                                         {!isSteven && (
                                           <button onClick={e => { e.stopPropagation(); removeAttachment(c, a.id); }} disabled={deletingAttachmentId === a.id} title={t.cDelete}
                                             style={{ position: "absolute", top: -6, insetInlineEnd: -6, width: 18, height: 18, borderRadius: "50%", background: "#000000CC", border: `1px solid ${BDR2}`, color: "#fff", fontSize: 10, lineHeight: "16px", cursor: "pointer", padding: 0, opacity: deletingAttachmentId === a.id ? 0.5 : 1 }}>✕</button>
