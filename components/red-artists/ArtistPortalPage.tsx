@@ -248,6 +248,14 @@ function fmtShowDate(d: string | null): string {
   const [y, m, day] = d.split("-");
   return (y && m && day) ? `${day}.${m}.${y}` : d;
 }
+/** A cycle's end_date is stored EXCLUSIVE (the next cycle's start) so filtering never
+ *  overlaps — but showing that same date as a range label looks like an overlap.
+ *  This is display-only; every date comparison in the store stays exclusive. */
+function cycleDisplayEnd(endDateExclusive: string): string {
+  const [y, m, d] = endDateExclusive.split("-").map(Number);
+  if (!y || !m || !d) return endDateExclusive;
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
 // Short display name for the home-hero greeting: the portal's first-name token,
 // except the DJ CLEANTONE portal (artistName "DJ CLEANTONE") which greets as
 // "קלינטון". Keyed to the ARTIST on screen, so owner-preview matches the artist.
@@ -334,6 +342,21 @@ export type BalanceEntry = {
 };
 export type BalanceTotals = { income: number; expectedIncome: number; payments: number; expenses: number; expectedExpenses: number; currentBalance: number };
 export type BalanceLedger = { entries: BalanceEntry[]; totals: BalanceTotals };
+
+// ── Financial cycles (GET/POST /api/label/artists/[id]/balance/cycles) ────────────
+// Additive layer on top of the ledger above — mirrors lib/artist-balance-cycles-store.ts
+// exactly. anchorDate === null means cycles aren't configured for this artist yet
+// (the balance page then behaves exactly as it did before this feature existed).
+export type ClosedBalanceCycle = {
+  id: string; artistId: string; cycleIndex: number; startDate: string; endDate: string;
+  income: number; expectedIncome: number; payments: number; expenses: number; expectedExpenses: number;
+  endingBalance: number; closedAt: string; createdAt: string;
+};
+export type CurrentBalanceCycle = {
+  index: number; startDate: string; endDate: string; displayEndDate: string;
+  daysUntilClose: number; totals: BalanceTotals;
+};
+export type BalanceCycleState = { anchorDate: string | null; current: CurrentBalanceCycle | null; closed: ClosedBalanceCycle[] };
 
 // ── Standalone sketches library (manifest-backed, NO Projects) ────────────────────
 // Source of truth: GET /api/red-artists/sketches. Client never manages versions/paths.
@@ -765,6 +788,24 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
   }, [isOwner, isShalev, artistId, isCleantonePortal]);
   useEffect(() => { void reloadLedger(); }, [reloadLedger]);
 
+  // Financial-cycle state — same owner/shalev URL split as the ledger above.
+  // anchorDate === null means the artist hasn't opted into cycles yet (BalancePage
+  // then renders exactly as it did before this feature existed).
+  const [cycleState, setCycleState] = useState<BalanceCycleState | null>(null);
+  const [cycleLoadState, setCycleLoadState] = useState<LoadState>("loading");
+  const reloadCycles = useCallback(async () => {
+    if (isCleantonePortal) return;
+    const url = isShalev ? "/api/red-artists/balance/cycles" : (isOwner && artistId ? `/api/label/artists/${artistId}/balance/cycles` : null);
+    if (!url) return;
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      const d = await r.json();
+      if (r.ok && d?.ok) { setCycleState({ anchorDate: d.anchorDate ?? null, current: d.current ?? null, closed: d.closed ?? [] }); setCycleLoadState("ready"); }
+      else setCycleLoadState("error");
+    } catch { setCycleLoadState("error"); }
+  }, [isOwner, isShalev, artistId, isCleantonePortal]);
+  useEffect(() => { void reloadCycles(); }, [reloadCycles]);
+
   const [nextWork, setNextWork] = useState<PortalWork | null>(null);
   const reloadNextWork = useCallback(async () => {
     if (isCleantonePortal) return; // no music/work tab for him
@@ -1019,7 +1060,8 @@ export default function ArtistPortalPage({ initialRole, artistId, artistName: ar
                 : <ShowsPage summary={summary} loadState={summaryState} isOwner={isOwner} />
             )
             : tab === "לו״ז ועדכונים" ? <SchedulePage summary={summary} loadState={summaryState} isOwner={isOwner} onAvailabilitySent={reloadMandatoryGate} />
-            : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger} readOnly={isShalev} />
+            : tab === "מאזן" ? <BalancePage artistId={artistId} ledger={ledger} loadState={ledgerState} onReload={reloadLedger}
+                cycleState={cycleState} cycleLoadState={cycleLoadState} onReloadCycles={reloadCycles} readOnly={isShalev} />
             : tab === "ביטים פנויים" ? <BeatsPage readOnly={!isOwner} artistSlug={slugForPortalArtistName(artistName) ?? undefined} />
             : tab === "קבצי הופעות ויח״צ" ? <PressAndShowsPage isShalev={isShalev} />
             : <ComingSoon tab={tab} />}
@@ -2073,8 +2115,12 @@ const rowIconBtn: React.CSSProperties = {
   padding: 6, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 0,
 };
 
-function BalancePage({ artistId, ledger, loadState, onReload, readOnly = false }: {
+function BalancePage({
+  artistId, ledger, loadState, onReload, readOnly = false,
+  cycleState, cycleLoadState, onReloadCycles,
+}: {
   artistId?: string; ledger: BalanceLedger | null; loadState: LoadState; onReload: () => Promise<void>; readOnly?: boolean;
+  cycleState: BalanceCycleState | null; cycleLoadState: LoadState; onReloadCycles: () => Promise<void>;
 }) {
   const isMobile = useIsMobile();
   const [modal, setModal] = useState<{ mode: "add" } | { mode: "addExpected" } | { mode: "addExpectedIncome" } | { mode: "edit"; entry: BalanceEntry } | null>(null);
@@ -2082,6 +2128,8 @@ function BalancePage({ artistId, ledger, loadState, onReload, readOnly = false }
   const [manageOpen, setManageOpen] = useState(false);                 // expected EXPENSES manager
   const [manageIncomeOpen, setManageIncomeOpen] = useState(false);     // expected INCOME manager
   const [markReceivedTarget, setMarkReceivedTarget] = useState<BalanceEntry | null>(null);
+  const [cycleHistoryOpen, setCycleHistoryOpen] = useState(false);
+  const [closeCycleOpen, setCloseCycleOpen] = useState(false);
 
   if (loadState === "loading") {
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>טוען…</div>;
@@ -2092,16 +2140,23 @@ function BalancePage({ artistId, ledger, loadState, onReload, readOnly = false }
     return <div style={{ ...panel, padding: "48px 24px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>לא ניתן לטעון נתונים כספיים כרגע</div>;
   }
 
-  const totals = ledger?.totals ?? { income: 0, expectedIncome: 0, payments: 0, expenses: 0, expectedExpenses: 0, currentBalance: 0 };
   const entries = ledger?.entries ?? [];
+  // Financial cycles are additive and scope the REPORTING cards + history only. The
+  // big "יתרה נוכחית" card is the running balance of the whole relationship with the
+  // artist since day one — it must NEVER be cycle-scoped, exactly like before this
+  // feature existed, so it always reads allTimeTotals regardless of cycle state.
+  const allTimeTotals = ledger?.totals ?? { income: 0, expectedIncome: 0, payments: 0, expenses: 0, expectedExpenses: 0, currentBalance: 0 };
+  const cycle = cycleState?.anchorDate && cycleState.current ? cycleState.current : null;
+  const totals = cycle ? cycle.totals : allTimeTotals;
+  const inCycle = (e: BalanceEntry) => !cycle || (e.entryDate >= cycle.startDate && e.entryDate < cycle.endDate);
   // The main "היסטוריית תנועות" shows only REALIZED movements. Both expected categories
   // are managed via their own modals and EXCLUDED from that list (display-only — never
   // hidden/removed from the DB/API; their totals still feed the cards/strip).
-  const expectedIncomeEntries  = entries.filter(e => e.entryType === "הכנסות צפויות");
-  const expectedExpenseEntries = entries.filter(e => e.entryType === "הוצאות צפויות");
-  const historyEntries = entries.filter(e => e.entryType === "הכנסות" || e.entryType === "תשלומים" || e.entryType === "הוצאות");
+  const expectedIncomeEntries  = entries.filter(e => e.entryType === "הכנסות צפויות" && inCycle(e));
+  const expectedExpenseEntries = entries.filter(e => e.entryType === "הוצאות צפויות" && inCycle(e));
+  const historyEntries = entries.filter(e => (e.entryType === "הכנסות" || e.entryType === "תשלומים" || e.entryType === "הוצאות") && inCycle(e));
   const curr = "₪";
-  const cb = totals.currentBalance;
+  const cb = allTimeTotals.currentBalance;
   const balColor = cb > 0 ? GREEN : cb < 0 ? BAL_EXP_RED : "#E5E5EA";
 
   // 4 primary cards; "הוצאות צפויות" (5th category) shown as a slim summary strip below.
@@ -2119,7 +2174,8 @@ function BalancePage({ artistId, ledger, loadState, onReload, readOnly = false }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
 
-      {/* current balance = income − payments − expenses (expected NOT counted) */}
+      {/* current balance = income − payments − expenses (expected NOT counted) —
+          ALL-TIME across the whole relationship, never scoped to a cycle. */}
       <div style={{
         ...panel, padding: isMobile ? "26px 18px" : "34px 24px", textAlign: "center",
         background: `radial-gradient(120% 140% at 50% -10%, rgba(220,38,38,0.20) 0%, rgba(220,38,38,0.05) 42%, #121012 74%), linear-gradient(180deg, #161617 0%, #111112 100%)`,
@@ -2129,6 +2185,16 @@ function BalancePage({ artistId, ledger, loadState, onReload, readOnly = false }
         <div style={{ fontSize: isMobile ? 40 : 52, fontWeight: 900, color: balColor, letterSpacing: "-0.03em", marginTop: 6, direction: "ltr", textShadow: "0 2px 22px rgba(0,0,0,0.5)" }}>{fmtMoney(cb, curr)}</div>
         <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>הכנסות פחות תשלומים והוצאות</div>
       </div>
+
+      {/* Financial-cycle card — loading: render nothing (avoids a flash); not yet
+          configured: owner-only setup prompt; configured: date range + actions. */}
+      {cycleLoadState === "ready" && (
+        cycle ? (
+          <BalanceCycleCard cycle={cycle} onOpenHistory={() => setCycleHistoryOpen(true)} onCloseCycle={!readOnly ? () => setCloseCycleOpen(true) : undefined} />
+        ) : (!readOnly && artistId ? (
+          <BalanceCycleSetup artistId={artistId} onDone={onReloadCycles} />
+        ) : null)
+      )}
 
       {/* 4 primary summary cards. "הכנסות צפויות" is clickable → its management modal
           (view / add / edit / delete / "סמן כהתקבל"). */}
@@ -2300,6 +2366,17 @@ function BalancePage({ artistId, ledger, loadState, onReload, readOnly = false }
           entry={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onDeleted={async () => { await onReload(); setDeleteTarget(null); }}
+        />
+      )}
+      {cycleHistoryOpen && (
+        <BalanceCycleHistoryModal closed={cycleState?.closed ?? []} onClose={() => setCycleHistoryOpen(false)} />
+      )}
+      {closeCycleOpen && artistId && cycle && (
+        <BalanceCycleCloseModal
+          artistId={artistId}
+          cycle={cycle}
+          onClose={() => setCloseCycleOpen(false)}
+          onClosed={async () => { await onReloadCycles(); await onReload(); setCloseCycleOpen(false); }}
         />
       )}
     </div>
@@ -2570,6 +2647,226 @@ function BalanceDeleteModal({ artistId, entry, onClose, onDeleted }: {
           fontSize: 14.5, fontWeight: 800, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
           background: "linear-gradient(180deg, #E5322F, #C01C1C)", opacity: busy ? 0.6 : 1,
         }}>{busy ? "מוחק…" : "מחק רשומה"}</button>
+        <button onClick={onClose} disabled={busy} style={{
+          flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+        }}>ביטול</button>
+      </div>
+    </BalanceModalShell>
+  );
+}
+
+// ── Financial cycles (מחזור כספי) — additive layer over the ledger above. ─────────
+// GET/POST /api/label/artists/[id]/balance/cycles (+ /close); mirrors
+// lib/artist-balance-cycles-store.ts exactly. Owner-only writes (set anchor / close);
+// Shalev's read-only portal gets the same `cycle`/`cycleState` via its own scoped
+// endpoint and simply never renders the setup/close controls (readOnly).
+
+function BalanceCycleCard({ cycle, onOpenHistory, onCloseCycle }: {
+  cycle: CurrentBalanceCycle; onOpenHistory: () => void; onCloseCycle?: () => void;
+}) {
+  const isMobile = useIsMobile();
+  const overdue = cycle.daysUntilClose <= 0;
+  const early = cycle.daysUntilClose > 0;
+  return (
+    <div style={{ ...panel, padding: isMobile ? "14px 16px" : "16px 22px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <span style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: "rgba(255,255,255,0.04)", border: `1px solid ${BDR2}`, display: "flex", alignItems: "center", justifyContent: "center" }}><IcClock size={17} color={TEXT2} /></span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: TEXT2 }}>מחזור כספי נוכחי</div>
+          <div style={{ fontSize: isMobile ? 14.5 : 16, fontWeight: 900, color: TEXT, direction: "ltr", textAlign: "start", marginTop: 2 }}>
+            {fmtShowDate(cycle.startDate)} - {fmtShowDate(cycle.displayEndDate)}
+          </div>
+          <div style={{ fontSize: 11.5, color: overdue ? BAL_EXP_RED : MUTED, marginTop: 3, fontWeight: overdue ? 700 : 400 }}>
+            {overdue ? "המחזור הסתיים — יש לסגור" : `נסגר בעוד ${cycle.daysUntilClose} ימים`}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+        <button onClick={onOpenHistory} style={{
+          padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "pointer",
+          background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
+          fontSize: isMobile ? 12 : 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+        }}>היסטוריית מחזורים</button>
+        {onCloseCycle && (
+          early ? (
+            // Not yet at the natural end date — disabled by default (prevents an
+            // accidental early close). A deliberate, clearly-labeled override still
+            // opens the same confirm modal, which then requires its own explicit
+            // "I understand this is early" acknowledgment before it can submit.
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+              <button disabled title={`ניתן לסגור מחזור זה החל מ-${fmtShowDate(cycle.endDate)}`} style={{
+                padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "not-allowed",
+                background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
+                fontSize: isMobile ? 12 : 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap", opacity: 0.4,
+              }}>סגור מחזור</button>
+              <button onClick={onCloseCycle} style={{
+                background: "none", border: "none", color: MUTED, fontSize: 11, fontFamily: "inherit",
+                textDecoration: "underline", cursor: "pointer", padding: 0,
+              }}>סגירה מוקדמת (חריג)</button>
+            </div>
+          ) : (
+            <button onClick={onCloseCycle} style={{
+              padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "pointer",
+              background: "linear-gradient(180deg, #E5322F, #C01C1C)", border: "none", color: "#fff",
+              fontSize: isMobile ? 12 : 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap",
+              boxShadow: "0 4px 14px rgba(220,38,38,0.25)",
+            }}>סגור מחזור</button>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Owner-only, one-time activation — shown instead of the card above until an anchor
+// date is set. Deliberately immutable once saved (see setBalanceCycleAnchor).
+function BalanceCycleSetup({ artistId, onDone }: { artistId: string; onDone: () => Promise<void> }) {
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+
+  const activate = async () => {
+    if (!validDate || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/label/artists/${artistId}/balance/cycles`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ anchorDate: date }),
+      });
+      if (!res.ok) { setErr(await readErr(res, "ההפעלה נכשלה")); setBusy(false); return; }
+      await onDone();
+    } catch { setErr("שגיאת רשת, נסה שוב"); setBusy(false); }
+  };
+
+  if (!open) {
+    return (
+      <div style={{ ...panel, padding: isMobile ? "13px 16px" : "14px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12.5, color: TEXT2 }}>ניהול מחזורים כספיים קבועים (כל חודשיים) עדיין לא הופעל עבור אמן זה</div>
+        <button onClick={() => setOpen(true)} style={{
+          padding: isMobile ? "8px 12px" : "9px 14px", borderRadius: 10, cursor: "pointer",
+          background: "transparent", border: `1px solid ${BDR2}`, color: TEXT2,
+          fontSize: 12.5, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+        }}>הפעל מחזורים</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ ...panel, padding: isMobile ? "16px" : "18px 22px" }}>
+      <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT, marginBottom: 10 }}>הפעלת מחזורים כספיים</div>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 12, lineHeight: 1.6 }}>
+        בחר תאריך התחלה למחזור הראשון. המחזורים הבאים ימשיכו אוטומטית כל חודשיים מתאריך זה. לא ניתן לשנות תאריך זה לאחר ההפעלה.
+      </div>
+      <SkErr msg={err} />
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ flex: "1 1 160px" }}>
+          <label style={skLabel}>תאריך תחילת המחזור הראשון</label>
+          <DatePickerInput value={date} onChange={setDate} disabled={busy} style={{ ...skField }} />
+        </div>
+        <button onClick={activate} disabled={busy || !validDate} style={{ ...skPrimaryBtn(!busy && validDate), flex: "0 0 auto", width: "auto", padding: "13px 20px" }}>
+          {busy ? "מפעיל…" : "הפעל מחזורים"}
+        </button>
+        <button onClick={() => setOpen(false)} disabled={busy} style={{
+          padding: "13px 16px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 13.5, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+        }}>ביטול</button>
+      </div>
+    </div>
+  );
+}
+
+// "היסטוריית מחזורים" — closed (frozen-snapshot) cycles only; the current open
+// cycle lives in the card above, never in this list.
+function BalanceCycleHistoryModal({ closed, onClose }: { closed: ClosedBalanceCycle[]; onClose: () => void }) {
+  return (
+    <BalanceModalShell title="היסטוריית מחזורים" onClose={onClose} busy={false}>
+      {closed.length === 0 ? (
+        <div style={{ padding: "26px 8px", textAlign: "center", fontSize: 13.5, color: TEXT2 }}>אין עדיין מחזורים סגורים</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {closed.map(c => {
+            const balColor = c.endingBalance > 0 ? GREEN : c.endingBalance < 0 ? BAL_EXP_RED : "#E5E5EA";
+            return (
+              <div key={c.id} style={{ padding: "13px 14px", borderRadius: 12, border: `1px solid ${BDR2}`, background: "rgba(255,255,255,0.02)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, direction: "ltr", textAlign: "start" }}>
+                    {fmtShowDate(c.startDate)} - {fmtShowDate(cycleDisplayEnd(c.endDate))}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: balColor, direction: "ltr" }}>{fmtMoney(c.endingBalance, "₪")}</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6, marginTop: 10 }}>
+                  <div style={{ fontSize: 11.5, color: MUTED }}>הכנסות: <b style={{ color: GREEN }}>{fmtMoney(c.income, "₪")}</b></div>
+                  <div style={{ fontSize: 11.5, color: MUTED }}>תשלומים: <b style={{ color: "#6BA3E8" }}>{fmtMoney(c.payments, "₪")}</b></div>
+                  <div style={{ fontSize: 11.5, color: MUTED }}>הוצאות: <b style={{ color: BAL_EXP_RED }}>{fmtMoney(c.expenses, "₪")}</b></div>
+                  <div style={{ fontSize: 11.5, color: MUTED }}>הכנסות צפויות: <b style={{ color: AMBER }}>{fmtMoney(c.expectedIncome, "₪")}</b></div>
+                </div>
+                <div style={{ fontSize: 10.5, color: MUTED, marginTop: 8, direction: "ltr", textAlign: "start" }}>נסגר ב-{fmtShowDate(c.closedAt.slice(0, 10))}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ marginTop: 18 }}>
+        <button onClick={onClose} style={{
+          width: "100%", padding: "13px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
+          color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+        }}>סגור</button>
+      </div>
+    </BalanceModalShell>
+  );
+}
+
+// "סגור מחזור" confirmation — freezes the current cycle's live totals into history
+// and (implicitly, via the next GET) advances "current" to the next cycle.
+function BalanceCycleCloseModal({ artistId, cycle, onClose, onClosed }: {
+  artistId: string; cycle: CurrentBalanceCycle; onClose: () => void; onClosed: () => Promise<void>;
+}) {
+  const early = cycle.daysUntilClose > 0;
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ack, setAck] = useState(false);
+  const canClose = !busy && (!early || ack);
+  const close = async () => {
+    if (!canClose) return;                      // guard: never double-submit, never an un-acked early close
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/label/artists/${artistId}/balance/cycles/close`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force: early }),
+      });
+      if (!res.ok) { setErr(await readErr(res, "סגירת המחזור נכשלה")); setBusy(false); return; }
+      await onClosed();
+    } catch { setErr("שגיאת רשת, נסה שוב"); setBusy(false); }
+  };
+  return (
+    <BalanceModalShell title="סגירת מחזור" onClose={onClose} busy={busy}>
+      <SkErr msg={err} />
+      <div style={{ fontSize: 14, color: TEXT2, lineHeight: 1.7, marginBottom: 10 }}>
+        לסגור את המחזור{" "}
+        <b style={{ color: TEXT, direction: "ltr", display: "inline-block" }}>{fmtShowDate(cycle.startDate)} - {fmtShowDate(cycle.displayEndDate)}</b>?
+      </div>
+      {early && (
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: AMBER, background: "rgba(245,158,11,0.10)", border: `1px solid ${AMBER}55`, borderRadius: 9, padding: "10px 12px", marginBottom: 14, lineHeight: 1.5 }}>
+          ⚠️ המחזור הזה עדיין לא הסתיים — נותרו {cycle.daysUntilClose} ימים עד לתאריך הסיום הרגיל ({fmtShowDate(cycle.endDate)}). סגירה עכשיו תקפיא את הנתונים הנוכחיים בלבד ותתחיל את המחזור הבא מיידית.
+        </div>
+      )}
+      <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.6, marginBottom: early ? 14 : 18 }}>
+        הנתונים של המחזור (הכנסות, הוצאות, תשלומים ויתרת הסיום) יישמרו כרשומה קבועה בהיסטוריית המחזורים, והמחזור הבא יתחיל אוטומטית. פעולה זו אינה ניתנת לביטול; תנועות היסטוריות לא נמחקות ולא משתנות.
+      </div>
+      {early && (
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 18, cursor: "pointer" }}>
+          <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} style={{ marginTop: 3 }} />
+          <span style={{ fontSize: 12.5, color: TEXT2, lineHeight: 1.5 }}>אני מבין שזו סגירה מוקדמת ורוצה להמשיך</span>
+        </label>
+      )}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={close} disabled={!canClose} style={{
+          flex: "1 1 150px", padding: "14px 0", borderRadius: 12, border: "none", color: "#fff",
+          fontSize: 14.5, fontWeight: 800, fontFamily: "inherit", cursor: canClose ? "pointer" : "not-allowed",
+          background: "linear-gradient(180deg, #E5322F, #C01C1C)", opacity: canClose ? 1 : 0.5,
+        }}>{busy ? "סוגר…" : "סגור מחזור"}</button>
         <button onClick={onClose} disabled={busy} style={{
           flex: "1 1 110px", padding: "14px 0", borderRadius: 12, border: `1px solid ${BDR2}`, background: "transparent",
           color: TEXT2, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
