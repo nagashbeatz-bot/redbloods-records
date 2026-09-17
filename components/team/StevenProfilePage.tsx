@@ -2635,10 +2635,18 @@ function WorkModal({ work, isSteven, isOwner, focusNotes = false, focusTargetId 
   }
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // The lightbox has no keydown handler of its own (its overlay isn't
+    // focusable, so a listener on it would never see the event) — this is the
+    // one Escape listener in the modal, so it has to own the check: while the
+    // lightbox is open, Escape closes ONLY it; the modal itself is untouched.
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (lightbox) { setLightbox(null); return; }
+      onClose();
+    };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, lightbox]);
 
   // Logical versions (code-only grouping) + the selected one (matched via any of
   // its files → its primary). `sel` always holds the group's primary file id.
