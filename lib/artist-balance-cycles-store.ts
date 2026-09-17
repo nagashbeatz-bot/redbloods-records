@@ -101,6 +101,36 @@ export async function updateBalanceCycleAnchor(artistId: string, anchorDate: str
   if (!data || data.length === 0) throw new Error("לא הוגדר עדיין מחזור כספי עבור אמן זה — יש להפעיל תחילה");
 }
 
+// ── one-time first-cycle bootstrap (per-artist, settings table, NOT exposed in
+// any UI or API route — set directly, once, via a script; see the artist's
+// balance page which never shows or hints at this value) ─────────────────────
+
+const firstCycleBootstrapKey = (artistId: string) => `balance_cycle_first_cycle_bootstrap:${artistId}`;
+
+/** Returns the artist's one-time first-cycle bootstrap start date, or null if
+ *  none is set (the overwhelmingly common case — every artist except one
+ *  that pre-dates the cycles feature and needs its existing history folded
+ *  into cycle 0 once). Only ever consulted for cycle_index === 0. */
+export async function getFirstCycleBootstrapStart(artistId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("settings").select("value").eq("key", firstCycleBootstrapKey(artistId)).maybeSingle();
+  if (error) throw new Error(error.message);
+  const v = data?.value as { effectiveStart?: string } | null;
+  return v?.effectiveStart ?? null;
+}
+
+/** Sets the artist's one-time first-cycle bootstrap start — deliberately no
+ *  UI/API route calls this; it's meant to be set once, directly, for a single
+ *  known migration case. Insert-only (never overwrites silently). */
+export async function setFirstCycleBootstrapStart(artistId: string, effectiveStart: string): Promise<void> {
+  if (!isValidYmd(effectiveStart)) throw new Error("תאריך לא תקין (YYYY-MM-DD)");
+  const { error } = await supabase.from("settings").insert({ key: firstCycleBootstrapKey(artistId), value: { effectiveStart } });
+  if (error) {
+    if (error.code === "23505") throw new Error("bootstrap כבר הוגדר עבור אמן זה");
+    throw new Error(error.message);
+  }
+}
+
 /** Human-facing "closing" line — never a negative day count. Shared by the
  *  manual reminder push and (if ever needed) any other cycle-status copy. */
 export function cycleClosingLine(daysUntilClose: number): string {
@@ -205,7 +235,21 @@ export async function getBalanceCycleState(
   // natural end date) these coincide.
   const index = Math.max(cycleIndexForDate(anchorDate, today), closed.length);
   const { start, end } = cycleBounds(anchorDate, index);
-  const cycleEntries = entries.filter(e => e.entryDate >= start && e.entryDate < end);
+
+  // One-time first-cycle bootstrap: widens ONLY the calculation's lower bound
+  // for cycle_index 0, so pre-existing activity (from before this artist had a
+  // configured cycle) is folded into their very first report. `start` itself —
+  // what's DISPLAYED as the cycle's range everywhere (card/history/push) — is
+  // never touched; only `calcStart`, used solely to filter which entries feed
+  // this cycle's totals, is affected. From cycle_index 1 onward this is never
+  // consulted, so there is no carry-over beyond the first cycle.
+  let calcStart = start;
+  if (index === 0) {
+    const bootstrap = await getFirstCycleBootstrapStart(artistId);
+    if (bootstrap && bootstrap < start) calcStart = bootstrap;
+  }
+
+  const cycleEntries = entries.filter(e => e.entryDate >= calcStart && e.entryDate < end);
   const totals = computeArtistBalanceTotals(cycleEntries);
 
   return {
