@@ -131,6 +131,22 @@ export async function setFirstCycleBootstrapStart(artistId: string, effectiveSta
   }
 }
 
+/** Corrects an already-set bootstrap start — same immutability rule as
+ *  updateBalanceCycleAnchor: refused once the artist has any closed cycle,
+ *  since a closed cycle 0's frozen snapshot already used the old value. Also
+ *  script-only, never exposed via UI/API. */
+export async function updateFirstCycleBootstrapStart(artistId: string, effectiveStart: string): Promise<void> {
+  if (!isValidYmd(effectiveStart)) throw new Error("תאריך לא תקין (YYYY-MM-DD)");
+  const closed = await listClosedBalanceCycles(artistId);
+  if (closed.length > 0) {
+    throw new Error("לא ניתן לשנות את ה-bootstrap — כבר נסגר מחזור אחד לפחות עבור אמן זה");
+  }
+  const { data, error } = await supabase
+    .from("settings").update({ value: { effectiveStart } }).eq("key", firstCycleBootstrapKey(artistId)).select("key");
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error("לא הוגדר עדיין bootstrap עבור אמן זה — יש להגדיר תחילה");
+}
+
 /** Human-facing "closing" line — never a negative day count. Shared by the
  *  manual reminder push and (if ever needed) any other cycle-status copy. */
 export function cycleClosingLine(daysUntilClose: number): string {
